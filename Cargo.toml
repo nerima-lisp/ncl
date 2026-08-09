@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+    ".",
+    "packages/core/syntax",
+    "packages/core/compiler",
+    "packages/core/runtime",
+]
+default-members = [
+    ".",
+    "packages/core/syntax",
+    "packages/core/compiler",
+    "packages/core/runtime",
+]
+
+[package]
+name = "ncl"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A Rust-native Common Lisp runtime"
+license = "MIT"
+
+[dependencies]
+ncl-runtime = { path = "packages/core/runtime" }
+ncl-syntax = { path = "packages/core/syntax" }

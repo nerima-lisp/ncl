@@ -1,0 +1,61 @@
+site_name: NCL
+site_description: A Rust-native Common Lisp runtime
+site_url: https://nerima-lisp.github.io/ncl/
+repo_url: https://github.com/nerima-lisp/ncl
+repo_name: nerima-lisp/ncl
+edit_uri: edit/main/docs/src/
+docs_dir: src
+site_dir: ../site
+use_directory_urls: true
+copyright: MIT
+strict: true
+
+theme:
+  name: material
+  language: en
+  favicon: assets/favicon.svg
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Guide:
+      - Core concepts: guide/core-concepts.md
+      - Recipes: guide/recipes.md
+  - Reference:
+      - API: reference/api.md
+      - Architecture: reference/architecture.md
+      - Compatibility: reference/compatibility.md
+  - Project:
+      - Roadmap: project/roadmap.md
+
+not_in_nav: |
+  notes/

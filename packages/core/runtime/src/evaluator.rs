@@ -10376,6 +10376,7 @@ impl Runtime {
 
     fn signaled_error(
         condition: &str,
+        condition_types: Vec<String>,
         message: String,
         format_control: Option<String>,
         format_arguments: &[Value],
@@ -10386,6 +10387,7 @@ impl Runtime {
             condition: normalize_name(condition)
                 .trim_start_matches(':')
                 .to_owned(),
+            condition_types,
             message,
             format_control,
             format_arguments: format_arguments
@@ -10419,6 +10421,7 @@ impl Runtime {
             .unwrap_or_default();
         Ok(Self::signaled_error(
             condition,
+            value.condition_type_names().unwrap_or_default(),
             message,
             format_control,
             &format_arguments,
@@ -10553,6 +10556,7 @@ impl Runtime {
     ) -> Result<(), RuntimeError> {
         let error = Self::signaled_error(
             condition,
+            Vec::new(),
             message,
             format_control,
             format_arguments,
@@ -10683,6 +10687,7 @@ impl Runtime {
                 let message = Self::condition_message(&arguments[0], format_arguments, span)?;
                 let error = Self::signaled_error(
                     "SIMPLE-ERROR",
+                    Vec::new(),
                     message.clone(),
                     format_control.clone(),
                     format_arguments,
@@ -12103,6 +12108,32 @@ impl Runtime {
                     Ok(value)
                 } else {
                     Err(self.invalid("slot is not defined for this class", span))
+                }
+            }
+            crate::Function::ConditionReader {
+                condition_name,
+                slot_name,
+            } => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("condition reader", "one", arguments.len()));
+                }
+                arguments[0]
+                    .condition_slot(condition_name, slot_name)
+                    .ok_or_else(|| self.invalid("condition slot is not defined", span))
+            }
+            crate::Function::ConditionWriter {
+                condition_name,
+                slot_name,
+            } => {
+                if arguments.len() != 2 {
+                    return Err(self.arity("condition writer", "two", arguments.len()));
+                }
+                let value = arguments[0].clone();
+                let object = &arguments[1];
+                if object.set_condition_slot(condition_name, slot_name, value.clone()) {
+                    Ok(value)
+                } else {
+                    Err(self.invalid("condition slot is not defined", span))
                 }
             }
             crate::Function::StructureConstructor {

@@ -73,6 +73,24 @@ pub(crate) struct StructureDefinition {
 }
 
 #[derive(Clone)]
+pub(crate) struct ConditionSlot {
+    pub(crate) name: String,
+    pub(crate) initarg: Option<String>,
+    pub(crate) init_form: Option<Form>,
+    pub(crate) readers: Vec<String>,
+    pub(crate) writers: Vec<String>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ConditionDefinition {
+    pub(crate) name: String,
+    pub(crate) direct_superclasses: Vec<String>,
+    pub(crate) precedence: Vec<String>,
+    pub(crate) slots: Vec<ConditionSlot>,
+    pub(crate) report: Option<String>,
+}
+
+#[derive(Clone)]
 pub(crate) struct ClassSlot {
     pub(crate) name: String,
     pub(crate) initarg: Option<String>,
@@ -140,6 +158,14 @@ pub enum Function {
     },
     SlotWriter {
         class_name: String,
+        slot_name: String,
+    },
+    ConditionReader {
+        condition_name: String,
+        slot_name: String,
+    },
+    ConditionWriter {
+        condition_name: String,
         slot_name: String,
     },
     Closure {
@@ -666,6 +692,8 @@ impl Stream {
 #[derive(Clone)]
 pub(crate) struct ConditionData {
     actual_type: String,
+    type_names: Rc<Vec<String>>,
+    slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
     message: Rc<str>,
     format_control: Option<Rc<str>>,
     format_arguments: Vec<Value>,
@@ -674,6 +702,7 @@ pub(crate) struct ConditionData {
 impl ConditionData {
     fn equal_value(&self, other: &Self) -> bool {
         self.actual_type == other.actual_type
+            && self.type_names == other.type_names
             && self.message == other.message
             && self.format_control == other.format_control
             && self.format_arguments.len() == other.format_arguments.len()
@@ -682,6 +711,16 @@ impl ConditionData {
                 .iter()
                 .zip(other.format_arguments.iter())
                 .all(|(left, right)| left.equal_value(right))
+            && {
+                let left_slots = self.slots.borrow();
+                let right_slots = other.slots.borrow();
+                left_slots.len() == right_slots.len()
+                    && left_slots.iter().zip(right_slots.iter()).all(
+                        |((left_name, left_value), (right_name, right_value))| {
+                            left_name == right_name && left_value.equal_value(right_value)
+                        },
+                    )
+            }
     }
 }
 
@@ -844,25 +883,41 @@ impl Value {
     }
 
     pub(crate) fn condition(error: &RuntimeError) -> Self {
-        let (message, format_control, format_arguments) = match error {
+        let (actual_type, type_names, message, format_control, format_arguments) = match error {
             RuntimeError::Signaled {
+                condition,
+                condition_types,
                 message,
                 format_control,
                 format_arguments,
                 ..
             } => (
+                error.condition_type_name(),
+                if condition_types.is_empty() {
+                    vec![condition.clone()]
+                } else {
+                    condition_types.clone()
+                },
                 message.clone(),
                 format_control.clone(),
                 format_arguments
                     .iter()
                     .cloned()
                     .map(ReturnValue::into_value)
-                    .collect(),
+                .collect(),
             ),
-            _ => (error.to_string(), None, Vec::new()),
+            _ => (
+                error.condition_type_name(),
+                vec![error.condition_type_name()],
+                error.to_string(),
+                None,
+                Vec::new(),
+            ),
         };
-        Self::condition_from_parts(
-            error.condition_type_name(),
+        Self::condition_from_parts_with_types(
+            actual_type,
+            type_names,
+            Vec::new(),
             message,
             format_control,
             format_arguments,
@@ -875,8 +930,51 @@ impl Value {
         format_control: Option<String>,
         format_arguments: Vec<Value>,
     ) -> Self {
+        Self::condition_from_parts_with_types(
+            actual_type.clone(),
+            vec![actual_type],
+            Vec::new(),
+            message,
+            format_control,
+            format_arguments,
+        )
+    }
+
+    pub(crate) fn condition_from_definition(
+        actual_type: String,
+        type_names: Vec<String>,
+        slots: Vec<(String, Value)>,
+        message: String,
+        format_control: Option<String>,
+        format_arguments: Vec<Value>,
+    ) -> Self {
+        Self::condition_from_parts_with_types(
+            actual_type,
+            type_names,
+            slots,
+            message,
+            format_control,
+            format_arguments,
+        )
+    }
+
+    fn condition_from_parts_with_types(
+        actual_type: String,
+        type_names: Vec<String>,
+        slots: Vec<(String, Value)>,
+        message: String,
+        format_control: Option<String>,
+        format_arguments: Vec<Value>,
+    ) -> Self {
         Self::Condition(Rc::new(ConditionData {
             actual_type,
+            type_names: Rc::new(type_names),
+            slots: Rc::new(RefCell::new(
+                slots
+                    .into_iter()
+                    .map(|(name, value)| (Rc::from(name.as_str()), value))
+                    .collect(),
+            )),
             message: Rc::from(message.as_str()),
             format_control: format_control.map(|value| Rc::from(value.as_str())),
             format_arguments,
@@ -914,6 +1012,26 @@ impl Value {
     pub(crate) fn slot_writer(class_name: impl Into<String>, slot_name: impl Into<String>) -> Self {
         Self::Function(Rc::new(Function::SlotWriter {
             class_name: class_name.into(),
+            slot_name: slot_name.into(),
+        }))
+    }
+
+    pub(crate) fn condition_reader(
+        condition_name: impl Into<String>,
+        slot_name: impl Into<String>,
+    ) -> Self {
+        Self::Function(Rc::new(Function::ConditionReader {
+            condition_name: condition_name.into(),
+            slot_name: slot_name.into(),
+        }))
+    }
+
+    pub(crate) fn condition_writer(
+        condition_name: impl Into<String>,
+        slot_name: impl Into<String>,
+    ) -> Self {
+        Self::Function(Rc::new(Function::ConditionWriter {
+            condition_name: condition_name.into(),
             slot_name: slot_name.into(),
         }))
     }
@@ -1283,8 +1401,17 @@ impl Value {
         let Self::Condition(condition) = self else {
             return false;
         };
-        let expected = expected.to_ascii_uppercase();
+        let expected = expected
+            .trim_start_matches(':')
+            .to_ascii_uppercase();
         if condition.actual_type.eq_ignore_ascii_case(&expected) {
+            return true;
+        }
+        if condition
+            .type_names
+            .iter()
+            .any(|type_name| type_name.eq_ignore_ascii_case(&expected))
+        {
             return true;
         }
         if expected == "CONDITION" {
@@ -1318,6 +1445,56 @@ impl Value {
             }
             "CONTROL-ERROR" => matches!(expected.as_str(), "CONDITION"),
             _ => false,
+        }
+    }
+
+    pub(crate) fn condition_type_names(&self) -> Option<Vec<String>> {
+        match self {
+            Self::Condition(condition) => Some(condition.type_names.as_ref().clone()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn condition_slot(
+        &self,
+        condition_name: &str,
+        slot_name: &str,
+    ) -> Option<Value> {
+        let Self::Condition(condition) = self else {
+            return None;
+        };
+        if !self.condition_is_type(condition_name) {
+            return None;
+        }
+        condition
+            .slots
+            .borrow()
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(slot_name))
+            .map(|(_, value)| value.clone())
+    }
+
+    pub(crate) fn set_condition_slot(
+        &self,
+        condition_name: &str,
+        slot_name: &str,
+        value: Value,
+    ) -> bool {
+        let Self::Condition(condition) = self else {
+            return false;
+        };
+        if !self.condition_is_type(condition_name) {
+            return false;
+        }
+        let mut slots = condition.slots.borrow_mut();
+        if let Some((_, slot_value)) = slots
+            .iter_mut()
+            .find(|(name, _)| name.eq_ignore_ascii_case(slot_name))
+        {
+            *slot_value = value;
+            true
+        } else {
+            false
         }
     }
 
@@ -1709,6 +1886,14 @@ impl fmt::Display for Value {
                     class_name,
                     slot_name,
                 } => write!(formatter, "#<SLOT-WRITER {class_name}-{slot_name}>"),
+                Function::ConditionReader {
+                    condition_name,
+                    slot_name,
+                } => write!(formatter, "#<CONDITION-READER {condition_name}-{slot_name}>"),
+                Function::ConditionWriter {
+                    condition_name,
+                    slot_name,
+                } => write!(formatter, "#<CONDITION-WRITER {condition_name}-{slot_name}>"),
                 Function::Closure { .. } | Function::Compiled { .. } => {
                     formatter.write_str("#<FUNCTION>")
                 }

@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use ncl_syntax::Form;
 
-use crate::value::{ClassDefinition, StructureDefinition};
+use crate::value::{ClassDefinition, ConditionDefinition, StructureDefinition};
 use crate::Value;
 
 #[derive(Clone)]
@@ -21,6 +21,7 @@ struct Frame {
     setf_expanders: HashMap<String, Value>,
     structures: HashMap<String, StructureDefinition>,
     classes: HashMap<String, Rc<ClassDefinition>>,
+    conditions: HashMap<String, Rc<ConditionDefinition>>,
     symbol_properties: Vec<(Value, Value)>,
     block_targets: HashMap<String, u64>,
     tag_targets: HashMap<String, u64>,
@@ -40,6 +41,7 @@ impl Environment {
             setf_expanders: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
+            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),
@@ -59,6 +61,7 @@ impl Environment {
             setf_expanders: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
+            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),
@@ -296,6 +299,24 @@ impl Environment {
             (frame.classes.get(&key).cloned(), frame.parent.clone())
         };
         definition.or_else(|| parent.and_then(|environment| environment.lookup_class(name)))
+    }
+
+    pub(crate) fn define_condition(
+        &self,
+        name: impl AsRef<str>,
+        definition: Rc<ConditionDefinition>,
+    ) {
+        let key = normalize_name(name.as_ref());
+        self.0.borrow_mut().conditions.insert(key, definition);
+    }
+
+    pub(crate) fn lookup_condition(&self, name: &str) -> Option<Rc<ConditionDefinition>> {
+        let key = normalize_name(name);
+        let (definition, parent) = {
+            let frame = self.0.borrow();
+            (frame.conditions.get(&key).cloned(), frame.parent.clone())
+        };
+        definition.or_else(|| parent.and_then(|environment| environment.lookup_condition(name)))
     }
 
     pub(crate) fn symbol_plist(&self, symbol: &Value) -> Option<Value> {

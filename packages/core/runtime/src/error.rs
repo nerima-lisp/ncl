@@ -82,6 +82,7 @@ pub enum RuntimeError {
     },
     Signaled {
         condition: String,
+        condition_types: Vec<String>,
         message: String,
         format_control: Option<String>,
         format_arguments: Vec<ReturnValue>,
@@ -162,17 +163,35 @@ impl RuntimeError {
         }
 
         let condition = normalize_condition_name(condition);
-        if matches!(
-            condition.as_str(),
-            "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
-        ) {
+        if matches!(condition.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION") {
             return match self {
-                Self::Signaled { warning, .. } => {
-                    condition == "CONDITION"
-                        || (!*warning && matches!(
-                            condition.as_str(),
-                            "ERROR" | "SERIOUS-CONDITION"
-                        ))
+                Self::Signaled {
+                    condition: signaled,
+                    condition_types,
+                    warning,
+                    ..
+                } => {
+                    if condition == "CONDITION" {
+                        true
+                    } else if *warning {
+                        false
+                    } else {
+                        condition_types.iter().any(|type_name| {
+                            normalize_condition_name(type_name) == condition
+                        }) || matches!(
+                            normalize_condition_name(signaled).as_str(),
+                            "SIMPLE-ERROR"
+                                | "DIVISION-BY-ZERO"
+                                | "ARITHMETIC-ERROR"
+                                | "TYPE-ERROR"
+                                | "PROGRAM-ERROR"
+                                | "PACKAGE-ERROR"
+                                | "READER-ERROR"
+                                | "COMPILER-ERROR"
+                                | "FILE-ERROR"
+                                | "UNBOUND-VARIABLE"
+                        )
+                    }
                 }
                 _ => true,
             };
@@ -181,10 +200,14 @@ impl RuntimeError {
         match self {
             Self::Signaled {
                 condition: signaled,
+                condition_types,
                 warning,
                 ..
             } => {
                 condition == normalize_condition_name(signaled)
+                    || condition_types
+                        .iter()
+                        .any(|type_name| normalize_condition_name(type_name) == condition)
                     || (*warning && condition == "WARNING")
                     || (!*warning && condition == "SIMPLE-CONDITION")
             }

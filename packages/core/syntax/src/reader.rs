@@ -32,6 +32,14 @@ impl<'source> Reader<'source> {
         self.parse_form()
     }
 
+    pub fn consume_one_whitespace_after_form(&mut self) {
+        if let Some(character) = self.peek_char() {
+            if character.is_whitespace() {
+                self.position += character.len_utf8();
+            }
+        }
+    }
+
     pub fn read_all(&mut self) -> Result<Vec<Form>, ReadError> {
         let mut forms = Vec::new();
         while let Some(form) = self.read_form()? {

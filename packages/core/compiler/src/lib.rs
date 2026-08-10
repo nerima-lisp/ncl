@@ -72,6 +72,13 @@ pub struct HandlerBindClause {
     pub function: FunctionId,
 }
 
+/// One compiled `RESTART-BIND` clause.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RestartBindClause {
+    pub name: String,
+    pub function: FunctionId,
+}
+
 /// One compiled `RESTART-CASE` clause.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RestartCaseClause {
@@ -211,12 +218,21 @@ pub enum Instruction {
         body: FunctionId,
         handlers: Vec<HandlerBindClause>,
     },
+    RestartBind {
+        body: FunctionId,
+        bindings: Vec<RestartBindClause>,
+    },
     Catch {
         tag: FunctionId,
         body: FunctionId,
     },
     WithSimpleRestart {
         name: String,
+        body: FunctionId,
+    },
+    WithConditionRestarts {
+        condition: FunctionId,
+        restarts: FunctionId,
         body: FunctionId,
     },
     RestartCase {
@@ -602,6 +618,12 @@ impl CompileState {
                 "DECLARE" => return self.compile_declare(function, span),
                 "LOCALLY" => return self.compile_progn(function, items),
                 "EVAL-WHEN" => return self.compile_eval_when(function, span, items),
+                "LOAD-TIME-VALUE" => {
+                    return self.compile_runtime_definition(function, span, items);
+                }
+                "NTH-VALUE" => {
+                    return self.compile_runtime_definition(function, span, items);
+                }
                 "DECLAIM" | "PROCLAIM" => return self.compile_declare(function, span),
                 "THE" => return self.compile_the(function, span, items),
                 "IF" => return self.compile_if(function, span, items),
@@ -614,9 +636,16 @@ impl CompileState {
                 "IGNORE-ERRORS" => return self.compile_ignore_errors(function, span, items),
                 "HANDLER-CASE" => return self.compile_handler_case(function, span, items),
                 "HANDLER-BIND" => return self.compile_handler_bind(function, span, items),
+                "RESTART-BIND" => return self.compile_restart_bind(function, span, items),
                 "CATCH" => return self.compile_catch(function, span, items),
                 "WITH-SIMPLE-RESTART" => {
                     return self.compile_with_simple_restart(function, span, items);
+                }
+                "WITH-CONDITION-RESTARTS" => {
+                    return self.compile_with_condition_restarts(function, span, items);
+                }
+                "WITH-OPEN-FILE" => {
+                    return self.compile_with_open_file(function, span, items);
                 }
                 "RESTART-CASE" => return self.compile_restart_case(function, span, items),
                 "PROGV" => return self.compile_progv(function, span, items),
@@ -653,6 +682,9 @@ impl CompileState {
                 "LAMBDA" => return self.compile_lambda(function, span, items),
                 "FUNCTION" => return self.compile_function(function, span, items),
                 "DEFINE" => return self.compile_define(function, span, items),
+                "DEFINE-SYMBOL-MACRO" => {
+                    return self.compile_runtime_definition(function, span, items);
+                }
                 "DEFUN" => return self.compile_defun(function, span, items),
                 "SETQ" => return self.compile_setq(function, span, items),
                 "PSETQ" => return self.compile_psetq(function, span, items),
@@ -660,8 +692,21 @@ impl CompileState {
                     return self.compile_multiple_value_setq(function, span, items);
                 }
                 "SETF" => return self.compile_setf(function, span, items),
-                "INCF" => return self.compile_modify_symbol(function, span, items, "INCF", "+"),
-                "DECF" => return self.compile_modify_symbol(function, span, items, "DECF", "-"),
+                "PSETF" | "PUSH" | "POP" | "PUSHNEW" | "ROTATEF" | "SHIFTF" => {
+                    return self.compile_runtime_definition(function, span, items);
+                }
+                "INCF" => {
+                    if matches!(items.get(1).map(|place| &place.kind), Some(FormKind::Atom(_))) {
+                        return self.compile_modify_symbol(function, span, items, "INCF", "+");
+                    }
+                    return self.compile_runtime_definition(function, span, items);
+                }
+                "DECF" => {
+                    if matches!(items.get(1).map(|place| &place.kind), Some(FormKind::Atom(_))) {
+                        return self.compile_modify_symbol(function, span, items, "DECF", "-");
+                    }
+                    return self.compile_runtime_definition(function, span, items);
+                }
                 "DEFVAR" => return self.compile_defvar(function, span, items, false),
                 "DEFPARAMETER" => return self.compile_defvar(function, span, items, true),
                 "DEFCONSTANT" => {
@@ -669,6 +714,12 @@ impl CompileState {
                 }
                 "DEFSTRUCT" => return self.compile_defstruct(function, span, items),
                 "DEFCLASS" | "DEFGENERIC" | "DEFMETHOD" => {
+                    return self.compile_runtime_definition(function, span, items);
+                }
+                "DEFSETF"
+                | "DEFINE-MODIFY-MACRO"
+                | "DEFINE-SETF-EXPANDER"
+                | "GET-SETF-EXPANSION" => {
                     return self.compile_runtime_definition(function, span, items);
                 }
                 "EVAL" => return self.compile_eval(function, span, items),
@@ -1285,6 +1336,69 @@ impl CompileState {
         Ok(())
     }
 
+    fn compile_restart_bind(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 2 {
+            return Err(self.arity_error(items, "RESTART-BIND", "at least one", span));
+        }
+        let binding_form = items
+            .get(1)
+            .ok_or_else(|| self.internal_error(span, "missing RESTART-BIND binding list"))?;
+        let FormKind::List(binding_items) = &binding_form.kind else {
+            return Err(CompileError::new(
+                CompileErrorKind::ExpectedList {
+                    context: "restart-bind binding list".to_string(),
+                },
+                binding_form.span,
+            ));
+        };
+
+        let mut bindings = Vec::with_capacity(binding_items.len());
+        for binding in binding_items {
+            let FormKind::List(binding_clause) = &binding.kind else {
+                return Err(CompileError::new(
+                    CompileErrorKind::ExpectedList {
+                        context: "restart-bind clause".to_string(),
+                    },
+                    binding.span,
+                ));
+            };
+            if binding_clause.len() != 2 {
+                return Err(CompileError::new(
+                    CompileErrorKind::InvalidForm {
+                        message: "restart-bind clause needs a name and function".to_string(),
+                    },
+                    binding.span,
+                ));
+            }
+            let name = self.control_name(&binding_clause[0], "RESTART-BIND restart name")?;
+            let binding_function = self.reserve_function(None, Vec::new());
+            self.compile_expression(binding_function, &binding_clause[1])?;
+            self.emit(binding_function, Instruction::Return, binding_clause[1].span)?;
+            bindings.push(RestartBindClause {
+                name,
+                function: binding_function,
+            });
+        }
+
+        let body_function = self.reserve_function(None, Vec::new());
+        self.compile_sequence(body_function, items.get(2..).unwrap_or(&[]))?;
+        self.emit(body_function, Instruction::Return, span)?;
+        self.emit(
+            function,
+            Instruction::RestartBind {
+                body: body_function,
+                bindings,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     fn compile_catch(
         &mut self,
         function: FunctionId,
@@ -1426,6 +1540,44 @@ impl CompileState {
         Ok(())
     }
 
+    fn compile_with_condition_restarts(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 4 {
+            return Err(self.arity_error(
+                items,
+                "WITH-CONDITION-RESTARTS",
+                "at least three",
+                span,
+            ));
+        }
+
+        let condition = self.reserve_function(None, Vec::new());
+        self.compile_expression(condition, &items[1])?;
+        self.emit(condition, Instruction::Return, items[1].span)?;
+
+        let restarts = self.reserve_function(None, Vec::new());
+        self.compile_expression(restarts, &items[2])?;
+        self.emit(restarts, Instruction::Return, items[2].span)?;
+
+        let body = self.reserve_function(None, Vec::new());
+        self.compile_sequence(body, &items[3..])?;
+        self.emit(body, Instruction::Return, span)?;
+        self.emit(
+            function,
+            Instruction::WithConditionRestarts {
+                condition,
+                restarts,
+                body,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     fn compile_throw(
         &mut self,
         function: FunctionId,
@@ -1508,6 +1660,74 @@ impl CompileState {
             span,
         )?;
         Ok(())
+    }
+
+    fn compile_with_open_file(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 2 {
+            return Err(self.arity_error(items, "WITH-OPEN-FILE", "at least one", span));
+        }
+        let binding_form = items.get(1).ok_or_else(|| {
+            self.internal_error(
+                span,
+                "missing WITH-OPEN-FILE binding after arity check",
+            )
+        })?;
+        let FormKind::List(binding) = &binding_form.kind else {
+            return Err(CompileError::new(
+                CompileErrorKind::ExpectedList {
+                    context: "WITH-OPEN-FILE binding".to_string(),
+                },
+                binding_form.span,
+            ));
+        };
+        if binding.len() < 2 {
+            return Err(CompileError::new(
+                CompileErrorKind::InvalidForm {
+                    message: "WITH-OPEN-FILE binding needs a stream variable and pathname"
+                        .to_string(),
+                },
+                binding_form.span,
+            ));
+        }
+        self.symbol_name(&binding[0], "WITH-OPEN-FILE stream variable")?;
+
+        let mut open_items = Vec::with_capacity(binding.len());
+        open_items.push(Form::atom("OPEN", binding_form.span));
+        open_items.extend(binding[1..].iter().cloned());
+        let open_form = Form::list(open_items, binding_form.span);
+        let generated_binding = Form::list(
+            vec![Form::list(
+                vec![binding[0].clone(), open_form],
+                binding_form.span,
+            )],
+            binding_form.span,
+        );
+        let body = if items.len() > 2 {
+            let mut body_items = Vec::with_capacity(items.len() - 1);
+            body_items.push(Form::atom("PROGN", span));
+            body_items.extend(items[2..].iter().cloned());
+            Form::list(body_items, span)
+        } else {
+            Form::atom("NIL", span)
+        };
+        let close_form = Form::list(
+            vec![Form::atom("CLOSE", span), binding[0].clone()],
+            span,
+        );
+        let protected_form = Form::list(
+            vec![Form::atom("UNWIND-PROTECT", span), body, close_form],
+            span,
+        );
+        let expanded = Form::list(
+            vec![Form::atom("LET", span), generated_binding, protected_form],
+            span,
+        );
+        self.compile_expression(function, &expanded)
     }
 
     fn compile_block(

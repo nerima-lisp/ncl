@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use ncl_syntax::{ReadError, ReadErrorKind, Reader, Span};
@@ -85,6 +86,8 @@ pub fn install(environment: &Environment) {
         ("make-array", make_array as _),
         ("make-sequence", make_sequence as _),
         ("aref", aref as _),
+        ("svref", svref as _),
+        ("bit", bit as _),
         ("row-major-aref", row_major_aref as _),
         ("array-row-major-index", array_row_major_index as _),
         ("array-in-bounds-p", array_in_bounds_p as _),
@@ -112,17 +115,38 @@ pub fn install(environment: &Environment) {
         ("coerce", coerce as _),
         ("string", string_value as _),
         ("make-string", make_string as _),
+        ("character", character_value as _),
         ("char", character as _),
+        ("schar", simple_character as _),
         ("char-code", char_code as _),
+        ("char-int", char_int as _),
         ("code-char", code_char as _),
+        ("int-char", int_char as _),
         ("char=", character_equal as _),
+        ("char/=", character_not_equal as _),
         ("char-equal", character_case_equal as _),
+        ("char-not-equal", character_case_not_equal as _),
         ("char<", character_less_than as _),
         ("char>", character_greater_than as _),
         ("char<=", character_less_equal as _),
         ("char>=", character_greater_equal as _),
+        ("char-lessp", character_case_less_than as _),
+        ("char-greaterp", character_case_greater_than as _),
+        ("char-not-lessp", character_case_greater_equal as _),
+        ("char-not-greaterp", character_case_less_equal as _),
         ("char-upcase", character_upcase as _),
         ("char-downcase", character_downcase as _),
+        ("alpha-char-p", alpha_character_p as _),
+        ("alphanumericp", alphanumeric_p as _),
+        ("digit-char", digit_character as _),
+        ("digit-char-p", digit_character_p as _),
+        ("graphic-char-p", graphic_character_p as _),
+        ("standard-char-p", standard_character_p as _),
+        ("upper-case-p", upper_case_p as _),
+        ("lower-case-p", lower_case_p as _),
+        ("both-case-p", both_case_p as _),
+        ("char-name", character_name as _),
+        ("name-char", name_character as _),
         ("string=", string_equal as _),
         ("string-equal", string_case_equal as _),
         ("string<", string_less_than as _),
@@ -168,17 +192,34 @@ pub fn install(environment: &Environment) {
         ("identity", identity as _),
         ("type-of", type_of as _),
         ("typep", typep as _),
+        (
+            "simple-condition-format-control",
+            simple_condition_format_control as _,
+        ),
+        (
+            "simple-condition-format-arguments",
+            simple_condition_format_arguments as _,
+        ),
         ("__NCL_THE_CHECK", the_check as _),
         ("__NCL_ECASE_ERROR", ecase_error as _),
         ("__NCL_ETYPECASE_ERROR", etypecase_error as _),
         ("print", print_value as _),
         ("princ", princ as _),
         ("prin1", prin1 as _),
+        ("write", write_value as _),
         ("format", format_value as _),
         ("write-to-string", write_to_string as _),
         ("read-from-string", read_from_string as _),
+        ("read", read as _),
+        ("read-preserving-whitespace", read_preserving_whitespace as _),
         ("make-string-input-stream", make_string_input_stream as _),
         ("make-string-output-stream", make_string_output_stream as _),
+        ("open", open_file as _),
+        ("probe-file", probe_file as _),
+        ("delete-file", delete_file as _),
+        ("rename-file", rename_file as _),
+        ("file-write-date", file_write_date as _),
+        ("truename", truename as _),
         ("get-output-stream-string", get_output_stream_string as _),
         ("read-char", read_char as _),
         ("peek-char", peek_char as _),
@@ -201,6 +242,13 @@ pub fn install(environment: &Environment) {
     }
     for name in [
         "EVAL",
+        "ERROR",
+        "SIGNAL",
+        "WARN",
+        "CERROR",
+        "MAKE-CONDITION",
+        "COMPILE",
+        "LOAD",
         "MAP",
         "REDUCE",
         "MAP-INTO",
@@ -239,6 +287,7 @@ pub fn install(environment: &Environment) {
         "SET-EXCLUSIVE-OR",
         "NSET-EXCLUSIVE-OR",
         "SUBSETP",
+        "SUBTYPEP",
         "MEMBER",
         "MEMBER-IF",
         "MEMBER-IF-NOT",
@@ -262,6 +311,7 @@ pub fn install(environment: &Environment) {
         "FIND-PACKAGE",
         "PACKAGE-NAME",
         "PACKAGE-USE-LIST",
+        "DOCUMENTATION",
         "LIST-ALL-PACKAGES",
         "USE-PACKAGE",
         "UNUSE-PACKAGE",
@@ -274,6 +324,9 @@ pub fn install(environment: &Environment) {
         "BOUNDP",
         "CONSTANTP",
         "FBOUNDP",
+        "MACRO-FUNCTION",
+        "SPECIAL-OPERATOR-P",
+        "COMPILED-FUNCTION-P",
         "FDEFINITION",
         "SYMBOL-FUNCTION",
         "SYMBOL-VALUE",
@@ -294,13 +347,21 @@ pub fn install(environment: &Environment) {
         "SLOT-MAKUNBOUND",
         "CALL-NEXT-METHOD",
         "NEXT-METHOD-P",
+        "COMPUTE-RESTARTS",
+        "FIND-RESTART",
         "INVOKE-RESTART",
+        "RESTART-NAME",
     ] {
         let value = Value::primitive(name);
         environment.define(name, value.clone());
         environment.define(format!("{COMMON_LISP_PACKAGE}::{name}"), value);
     }
-    for (name, value) in [("NIL", Value::Nil), ("T", Value::boolean(true))] {
+    for (name, value) in [
+        ("NIL", Value::Nil),
+        ("T", Value::boolean(true)),
+        ("CHAR-CODE-LIMIT", Value::Integer(0x11_00_00)),
+        ("MOST-POSITIVE-CHAR-CODE", Value::Integer(0x10_FF_FF)),
+    ] {
         environment.define(name, value.clone());
         environment.define(format!("{COMMON_LISP_PACKAGE}::{name}"), value);
     }
@@ -1561,6 +1622,14 @@ fn make_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     ))
 }
 
+fn character_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "character", 1)?;
+    Ok(Value::Character(character_designator(
+        "character",
+        &arguments[0],
+    )?))
+}
+
 fn character(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "char", 2)?;
     let index = index_argument("char", &arguments[1])?;
@@ -1574,6 +1643,19 @@ fn character(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .ok_or_else(|| out_of_bounds("char", index))
 }
 
+fn simple_character(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "schar", 2)?;
+    let index = index_argument("schar", &arguments[1])?;
+    let Value::String(value) = &arguments[0] else {
+        return Err(type_error("schar", "simple-string", &arguments[0]));
+    };
+    value
+        .chars()
+        .nth(index)
+        .map(Value::Character)
+        .ok_or_else(|| out_of_bounds("schar", index))
+}
+
 fn char_code(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "char-code", 1)?;
     Ok(Value::Integer(
@@ -1581,9 +1663,25 @@ fn char_code(arguments: &[Value]) -> Result<Value, RuntimeError> {
     ))
 }
 
+fn char_int(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "char-int", 1)?;
+    Ok(Value::Integer(
+        character_argument("char-int", &arguments[0])? as i64,
+    ))
+}
+
 fn code_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "code-char", 1)?;
-    let code = integer_argument("code-char", &arguments[0])?;
+    code_char_value("code-char", &arguments[0])
+}
+
+fn int_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "int-char", 1)?;
+    code_char_value("int-char", &arguments[0])
+}
+
+fn code_char_value(function: &str, value: &Value) -> Result<Value, RuntimeError> {
+    let code = integer_argument(function, value)?;
     Ok(u32::try_from(code)
         .ok()
         .and_then(char::from_u32)
@@ -1595,8 +1693,16 @@ fn character_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     compare_characters("char=", arguments, false, |left, right| left == right)
 }
 
+fn character_not_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    compare_characters_distinct("char/=", arguments, false)
+}
+
 fn character_case_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     compare_characters("char-equal", arguments, true, |left, right| left == right)
+}
+
+fn character_case_not_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    compare_characters_distinct("char-not-equal", arguments, true)
 }
 
 fn character_less_than(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -1613,6 +1719,22 @@ fn character_less_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn character_greater_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     compare_characters("char>=", arguments, false, |left, right| left >= right)
+}
+
+fn character_case_less_than(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    compare_characters("char-lessp", arguments, true, |left, right| left < right)
+}
+
+fn character_case_greater_than(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    compare_characters("char-greaterp", arguments, true, |left, right| left > right)
+}
+
+fn character_case_less_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    compare_characters("char-not-greaterp", arguments, true, |left, right| left <= right)
+}
+
+fn character_case_greater_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    compare_characters("char-not-lessp", arguments, true, |left, right| left >= right)
 }
 
 fn compare_characters(
@@ -1643,6 +1765,38 @@ fn compare_characters(
     })))
 }
 
+fn compare_characters_distinct(
+    function: &str,
+    arguments: &[Value],
+    ignore_case: bool,
+) -> Result<Value, RuntimeError> {
+    if arguments.len() < 2 {
+        return Err(arity(function, "at least 2", arguments.len()));
+    }
+    let characters = arguments
+        .iter()
+        .map(|value| character_argument(function, value))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (index, left) in characters.iter().enumerate() {
+        for right in characters.iter().skip(index + 1) {
+            let left = if ignore_case {
+                left.to_ascii_lowercase()
+            } else {
+                *left
+            };
+            let right = if ignore_case {
+                right.to_ascii_lowercase()
+            } else {
+                *right
+            };
+            if left == right {
+                return Ok(Value::Nil);
+            }
+        }
+    }
+    Ok(Value::boolean(true))
+}
+
 fn character_upcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "char-upcase", 1)?;
     Ok(Value::Character(
@@ -1655,6 +1809,164 @@ fn character_downcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Character(
         character_argument("char-downcase", &arguments[0])?.to_ascii_lowercase(),
     ))
+}
+
+fn alpha_character_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    character_predicate("alpha-char-p", arguments, |character| {
+        character.is_alphabetic()
+    })
+}
+
+fn alphanumeric_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    character_predicate("alphanumericp", arguments, |character| {
+        character.is_alphanumeric()
+    })
+}
+
+fn graphic_character_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    character_predicate("graphic-char-p", arguments, |character| {
+        !character.is_control()
+    })
+}
+
+fn standard_character_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    character_predicate("standard-char-p", arguments, |character| {
+        character == '\n' || character == ' ' || character.is_ascii_graphic()
+    })
+}
+
+fn upper_case_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    character_predicate("upper-case-p", arguments, char::is_uppercase)
+}
+
+fn lower_case_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    character_predicate("lower-case-p", arguments, char::is_lowercase)
+}
+
+fn both_case_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    character_predicate("both-case-p", arguments, |character| {
+        character.is_uppercase() || character.is_lowercase()
+    })
+}
+
+fn character_predicate(
+    function: &str,
+    arguments: &[Value],
+    predicate: impl Fn(char) -> bool,
+) -> Result<Value, RuntimeError> {
+    exact(arguments, function, 1)?;
+    Ok(Value::boolean(predicate(character_argument(
+        function,
+        &arguments[0],
+    )?)))
+}
+
+fn digit_character(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if !(1..=2).contains(&arguments.len()) {
+        return Err(arity("digit-char", "1 or 2", arguments.len()));
+    }
+    let weight = integer_argument("digit-char", &arguments[0])?;
+    let radix = radix_argument("digit-char", arguments, 1)?;
+    if weight < 0 || weight >= i64::from(radix) {
+        return Ok(Value::Nil);
+    }
+    let digit = weight as u32;
+    let character = if digit < 10 {
+        (b'0' + digit as u8) as char
+    } else {
+        (b'A' + (digit - 10) as u8) as char
+    };
+    Ok(Value::Character(character))
+}
+
+fn digit_character_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if !(1..=2).contains(&arguments.len()) {
+        return Err(arity("digit-char-p", "1 or 2", arguments.len()));
+    }
+    let character = character_argument("digit-char-p", &arguments[0])?;
+    let radix = radix_argument("digit-char-p", arguments, 1)?;
+    let digit = match character {
+        '0'..='9' => Some(character as u32 - '0' as u32),
+        'A'..='Z' => Some(character as u32 - 'A' as u32 + 10),
+        'a'..='z' => Some(character as u32 - 'a' as u32 + 10),
+        _ => None,
+    };
+    match digit {
+        Some(digit) if digit < radix => Ok(Value::Integer(i64::from(digit))),
+        _ => Ok(Value::Nil),
+    }
+}
+
+fn radix_argument(
+    function: &str,
+    arguments: &[Value],
+    index: usize,
+) -> Result<u32, RuntimeError> {
+    let radix = arguments
+        .get(index)
+        .map(|value| integer_argument(function, value))
+        .transpose()?
+        .unwrap_or(10);
+    if !(2..=36).contains(&radix) {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("{function} radix must be between 2 and 36"),
+            span: None,
+        });
+    }
+    Ok(radix as u32)
+}
+
+fn character_name(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "char-name", 1)?;
+    Ok(named_character_name(character_argument(
+        "char-name",
+        &arguments[0],
+    )?)
+    .map(Value::string)
+    .unwrap_or(Value::Nil))
+}
+
+fn name_character(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "name-char", 1)?;
+    let name = string_designator("name-char", &arguments[0])?;
+    if let Some(character) = named_character_from_name(&name) {
+        return Ok(Value::Character(character));
+    }
+    let mut characters = name.chars();
+    match (characters.next(), characters.next()) {
+        (Some(character), None) => Ok(Value::Character(character)),
+        _ => Ok(Value::Nil),
+    }
+}
+
+fn named_character_name(character: char) -> Option<&'static str> {
+    match character {
+        '\0' => Some("Null"),
+        '\x07' => Some("Bell"),
+        '\x08' => Some("Backspace"),
+        '\t' => Some("Tab"),
+        '\n' => Some("Newline"),
+        '\x0c' => Some("Page"),
+        '\r' => Some("Return"),
+        ' ' => Some("Space"),
+        '\x7f' => Some("Rubout"),
+        _ => None,
+    }
+}
+
+fn named_character_from_name(name: &str) -> Option<char> {
+    match name.to_ascii_uppercase().as_str() {
+        "NULL" | "NUL" => Some('\0'),
+        "BELL" => Some('\x07'),
+        "BACKSPACE" | "BS" => Some('\x08'),
+        "TAB" => Some('\t'),
+        "NEWLINE" | "LINEFEED" | "LF" => Some('\n'),
+        "PAGE" | "FORMFEED" | "FF" => Some('\x0c'),
+        "RETURN" | "CR" => Some('\r'),
+        "SPACE" => Some(' '),
+        "RUBOUT" | "DELETE" | "DEL" => Some('\x7f'),
+        _ => None,
+    }
 }
 
 fn string_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -1857,6 +2169,26 @@ fn character_argument(function: &str, value: &Value) -> Result<char, RuntimeErro
     match value {
         Value::Character(value) => Ok(*value),
         value => Err(type_error(function, "character", value)),
+    }
+}
+
+fn character_designator(function: &str, value: &Value) -> Result<char, RuntimeError> {
+    match value {
+        Value::Character(value) => Ok(*value),
+        Value::String(_)
+        | Value::Symbol(_)
+        | Value::UninternedSymbol(_)
+        | Value::Keyword(_)
+        | Value::SymbolExact(_)
+        | Value::KeywordExact(_) => {
+            let string = string_designator(function, value)?;
+            let mut characters = string.chars();
+            match (characters.next(), characters.next()) {
+                (Some(character), None) => Ok(character),
+                _ => Err(type_error(function, "character designator", value)),
+            }
+        }
+        value => Err(type_error(function, "character designator", value)),
     }
 }
 
@@ -2339,19 +2671,669 @@ fn typep(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::boolean(typep_value(&arguments[0], &arguments[1])?))
 }
 
+fn simple_condition_format_control(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "simple-condition-format-control", 1)?;
+    arguments[0]
+        .simple_condition_format_control()
+        .map(|control| Value::string(control.to_owned()))
+        .ok_or_else(|| type_error("simple-condition-format-control", "SIMPLE-CONDITION", &arguments[0]))
+}
+
+fn simple_condition_format_arguments(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "simple-condition-format-arguments", 1)?;
+    arguments[0]
+        .simple_condition_format_arguments()
+        .map(Value::list)
+        .ok_or_else(|| {
+            type_error(
+                "simple-condition-format-arguments",
+                "SIMPLE-CONDITION",
+                &arguments[0],
+            )
+        })
+}
+
 pub(crate) fn typep_value(value: &Value, type_designator: &Value) -> Result<bool, RuntimeError> {
-    let type_name = type_designator_name("typep", type_designator)?;
-    type_matches(value, &type_name)
+    type_matches_designator("typep", value, type_designator)
+}
+
+pub(crate) fn subtypep_value(
+    subtype: &Value,
+    supertype: &Value,
+    environment: &Environment,
+) -> Result<Value, RuntimeError> {
+    validate_subtype_designator("subtypep", subtype, environment)?;
+    validate_subtype_designator("subtypep", supertype, environment)?;
+    let relation = subtype_relation(subtype, supertype, environment)?;
+    Ok(Value::values(vec![
+        Value::boolean(relation.unwrap_or(false)),
+        Value::boolean(relation.is_some()),
+    ]))
+}
+
+fn validate_subtype_designator(
+    function: &str,
+    designator: &Value,
+    environment: &Environment,
+) -> Result<(), RuntimeError> {
+    match designator {
+        Value::List(items) => {
+            let Some(operator_value) = items.first() else {
+                return Err(invalid_type_spec(
+                    function,
+                    "compound type designator must name an operator",
+                ));
+            };
+            let operator = type_designator_name(function, operator_value)?;
+            let arguments = &items[1..];
+            match operator.as_str() {
+                "OR" | "AND" => {
+                    for argument in arguments {
+                        validate_subtype_designator(function, argument, environment)?;
+                    }
+                }
+                "NOT" | "EQL" => {
+                    require_type_spec_arity(function, &operator, arguments, 1, 1)?;
+                    if operator == "NOT" {
+                        validate_subtype_designator(function, &arguments[0], environment)?;
+                    }
+                }
+                "MEMBER" => {}
+                "INTEGER" => {
+                    require_type_spec_arity(function, &operator, arguments, 0, 2)?;
+                    for bound in arguments {
+                        integer_type_bound(function, bound)?;
+                    }
+                }
+                "MOD" => {
+                    require_type_spec_arity(function, &operator, arguments, 1, 1)?;
+                    let Value::Integer(modulus) = arguments[0] else {
+                        return Err(type_error(function, "non-negative integer", &arguments[0]));
+                    };
+                    if modulus < 0 {
+                        return Err(invalid_type_spec(
+                            function,
+                            "MOD type specifier requires a non-negative modulus",
+                        ));
+                    }
+                }
+                "SIGNED-BYTE" | "UNSIGNED-BYTE" => {
+                    byte_type_size(function, &operator, arguments)?;
+                }
+                "CONS" => {
+                    require_type_spec_arity(function, &operator, arguments, 0, 2)?;
+                    for argument in arguments {
+                        validate_subtype_designator(function, argument, environment)?;
+                    }
+                }
+                "VECTOR" => {
+                    require_type_spec_arity(function, &operator, arguments, 0, 2)?;
+                    if let Some(element_type) = arguments.first() {
+                        validate_element_subtype_designator(function, element_type, environment)?;
+                    }
+                    if let Some(size) = arguments.get(1) {
+                        type_spec_size(function, size)?;
+                    }
+                }
+                "SIMPLE-VECTOR" | "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => {
+                    require_type_spec_arity(function, &operator, arguments, 0, 1)?;
+                    if let Some(size) = arguments.first() {
+                        type_spec_size(function, size)?;
+                    }
+                }
+                "ARRAY" | "SIMPLE-ARRAY" => {
+                    require_type_spec_arity(function, &operator, arguments, 0, 2)?;
+                    if let Some(element_type) = arguments.first() {
+                        validate_element_subtype_designator(function, element_type, environment)?;
+                    }
+                    if let Some(dimensions) = arguments.get(1) {
+                        validate_array_dimensions_spec(function, dimensions)?;
+                    }
+                }
+                _ => {
+                    return Err(invalid_type_spec(
+                        function,
+                        format!("unknown compound type designator {operator}"),
+                    ));
+                }
+            }
+            Ok(())
+        }
+        Value::DottedList { .. } => Err(invalid_type_spec(
+            function,
+            "type designator must be a proper list",
+        )),
+        _ => {
+            let type_name = type_designator_name(function, designator)?;
+            if known_type_name(&type_name, environment) {
+                Ok(())
+            } else {
+                Err(invalid_type_spec(
+                    function,
+                    format!("unknown type designator {type_name}"),
+                ))
+            }
+        }
+    }
+}
+
+fn validate_element_subtype_designator(
+    function: &str,
+    designator: &Value,
+    environment: &Environment,
+) -> Result<(), RuntimeError> {
+    if is_type_wildcard(designator) {
+        Ok(())
+    } else {
+        validate_subtype_designator(function, designator, environment)
+    }
+}
+
+fn validate_array_dimensions_spec(function: &str, dimensions: &Value) -> Result<(), RuntimeError> {
+    if is_type_wildcard(dimensions) {
+        return Ok(());
+    }
+    match dimensions {
+        Value::Nil | Value::Boolean(false) => Ok(()),
+        Value::Integer(rank) => {
+            usize::try_from(*rank)
+                .map(|_| ())
+                .map_err(|_| invalid_type_spec(function, "array rank must be non-negative"))
+        }
+        Value::List(dimensions) => {
+            for dimension in dimensions.iter() {
+                if is_type_wildcard(dimension) {
+                    continue;
+                }
+                let Value::Integer(dimension) = dimension else {
+                    return Err(type_error(function, "array dimension or *", dimension));
+                };
+                if *dimension < 0 {
+                    return Err(invalid_type_spec(
+                        function,
+                        "array dimensions must be non-negative",
+                    ));
+                }
+            }
+            Ok(())
+        }
+        value => Err(type_error(function, "array dimensions", value)),
+    }
+}
+
+fn known_type_name(type_name: &str, environment: &Environment) -> bool {
+    is_builtin_type_name(type_name)
+        || environment.lookup_class(type_name).is_some()
+        || environment.lookup_structure(type_name).is_some()
+}
+
+fn is_builtin_type_name(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "T"
+            | "OBJECT"
+            | "NIL"
+            | "NULL"
+            | "BOOLEAN"
+            | "NUMBER"
+            | "REAL"
+            | "RATIONAL"
+            | "RATIO"
+            | "INTEGER"
+            | "FIXNUM"
+            | "BIGNUM"
+            | "BIT"
+            | "FLOAT"
+            | "CHARACTER"
+            | "BASE-CHAR"
+            | "STANDARD-CHAR"
+            | "EXTENDED-CHAR"
+            | "STRING"
+            | "BASE-STRING"
+            | "SIMPLE-STRING"
+            | "SIMPLE-BASE-STRING"
+            | "STREAM"
+            | "SYMBOL"
+            | "PACKAGE"
+            | "ENVIRONMENT"
+            | "KEYWORD"
+            | "CONS"
+            | "LIST"
+            | "ATOM"
+            | "VECTOR"
+            | "SIMPLE-VECTOR"
+            | "BIT-VECTOR"
+            | "SIMPLE-BIT-VECTOR"
+            | "ARRAY"
+            | "SIMPLE-ARRAY"
+            | "HASH-TABLE"
+            | "CONDITION"
+            | "RESTART"
+            | "STRUCTURE"
+            | "SEQUENCE"
+            | "FUNCTION"
+            | "COMPILED-FUNCTION"
+            | "UNBOUND"
+            | "VALUES"
+            | "CLASS"
+            | "STANDARD-OBJECT"
+    )
+}
+
+fn subtype_relation(
+    subtype: &Value,
+    supertype: &Value,
+    environment: &Environment,
+) -> Result<Option<bool>, RuntimeError> {
+    if same_type_designator(subtype, supertype) {
+        return Ok(Some(true));
+    }
+
+    if let Some((operator, arguments)) = compound_type_parts(subtype) {
+        match operator.as_str() {
+            "OR" => {
+                let mut unknown = false;
+                for argument in arguments {
+                    match subtype_relation(argument, supertype, environment)? {
+                        Some(true) => {}
+                        Some(false) => return Ok(Some(false)),
+                        None => unknown = true,
+                    }
+                }
+                return Ok(if unknown { None } else { Some(true) });
+            }
+            "AND" => {
+                for argument in arguments {
+                    if subtype_relation(argument, supertype, environment)? == Some(true) {
+                        return Ok(Some(true));
+                    }
+                }
+                return Ok(None);
+            }
+            "MEMBER" | "EQL" => {
+                let candidates = if operator == "MEMBER" {
+                    arguments
+                } else {
+                    &arguments[..1]
+                };
+                let mut unknown = false;
+                for candidate in candidates {
+                    match type_matches_designator("subtypep", candidate, supertype) {
+                        Ok(true) => {}
+                        Ok(false) => return Ok(Some(false)),
+                        Err(_) => unknown = true,
+                    }
+                }
+                return Ok(if unknown { None } else { Some(true) });
+            }
+            "INTEGER" => {
+                if let Some((super_operator, super_arguments)) = compound_type_parts(supertype) {
+                    if super_operator == "INTEGER" {
+                        return Ok(Some(integer_spec_is_subtype(
+                            arguments,
+                            super_arguments,
+                        )?));
+                    }
+                }
+                if let Some(super_name) = atomic_type_name(supertype) {
+                    return Ok(Some(compound_subtype_named(&operator, &super_name)));
+                }
+            }
+            "MOD" | "SIGNED-BYTE" | "UNSIGNED-BYTE" => {
+                if let Some(super_name) = atomic_type_name(supertype) {
+                    return Ok(Some(compound_subtype_named(&operator, &super_name)));
+                }
+            }
+            "CONS" | "VECTOR" | "SIMPLE-VECTOR" | "BIT-VECTOR" | "SIMPLE-BIT-VECTOR"
+            | "ARRAY" | "SIMPLE-ARRAY" => {
+                if let Some(super_name) = atomic_type_name(supertype) {
+                    return Ok(Some(compound_subtype_named(&operator, &super_name)));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let Some((operator, arguments)) = compound_type_parts(supertype) {
+        match operator.as_str() {
+            "OR" => {
+                let mut unknown = false;
+                for argument in arguments {
+                    match subtype_relation(subtype, argument, environment)? {
+                        Some(true) => return Ok(Some(true)),
+                        Some(false) => {}
+                        None => unknown = true,
+                    }
+                }
+                return Ok(if unknown { None } else { Some(false) });
+            }
+            "AND" => {
+                let mut unknown = false;
+                for argument in arguments {
+                    match subtype_relation(subtype, argument, environment)? {
+                        Some(false) => return Ok(Some(false)),
+                        Some(true) => {}
+                        None => unknown = true,
+                    }
+                }
+                return Ok(if unknown { None } else { Some(true) });
+            }
+            "INTEGER" => {
+                if let Some(subtype_name) = atomic_type_name(subtype) {
+                    return Ok(Some(named_integer_is_subtype(
+                        &subtype_name,
+                        arguments,
+                    )?));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let Some(subtype_name) = atomic_type_name(subtype) else {
+        return Ok(None);
+    };
+    let Some(supertype_name) = atomic_type_name(supertype) else {
+        return Ok(None);
+    };
+    Ok(named_subtype_relation(
+        &subtype_name,
+        &supertype_name,
+        environment,
+    ))
+}
+
+fn compound_type_parts(value: &Value) -> Option<(String, &[Value])> {
+    let Value::List(items) = value else {
+        return None;
+    };
+    let operator = type_designator_name("subtypep", items.first()?).ok()?;
+    Some((operator, &items[1..]))
+}
+
+fn atomic_type_name(value: &Value) -> Option<String> {
+    if matches!(value, Value::List(_) | Value::DottedList { .. }) {
+        None
+    } else {
+        type_designator_name("subtypep", value).ok()
+    }
+}
+
+fn same_type_designator(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::List(left), Value::List(right)) => {
+            if left.len() != right.len() {
+                return false;
+            }
+            let Some(left_operator) = left
+                .first()
+                .and_then(|value| type_designator_name("subtypep", value).ok())
+            else {
+                return false;
+            };
+            let Some(right_operator) = right
+                .first()
+                .and_then(|value| type_designator_name("subtypep", value).ok())
+            else {
+                return false;
+            };
+            if left_operator != right_operator {
+                return false;
+            }
+            left.iter()
+                .zip(right.iter())
+                .enumerate()
+                .all(|(index, (left, right))| {
+                    if index == 0 {
+                        true
+                    } else if matches!(left_operator.as_str(), "MEMBER" | "EQL") {
+                        eql_value(left, right)
+                    } else {
+                        same_type_designator(left, right)
+                    }
+                })
+        }
+        (Value::DottedList { .. }, Value::DottedList { .. }) => false,
+        (Value::List(_), _) | (_, Value::List(_)) => false,
+        (Value::DottedList { .. }, _) | (_, Value::DottedList { .. }) => false,
+        _ => match (
+            type_designator_name("subtypep", left).ok(),
+            type_designator_name("subtypep", right).ok(),
+        ) {
+            (Some(left), Some(right)) => left == right,
+            (None, None) => eql_value(left, right),
+            _ => false,
+        },
+    }
+}
+
+fn integer_spec_is_subtype(
+    subtype_arguments: &[Value],
+    supertype_arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    let subtype_lower = subtype_arguments
+        .first()
+        .map(|bound| integer_type_bound("subtypep", bound))
+        .transpose()?
+        .flatten();
+    let subtype_upper = subtype_arguments
+        .get(1)
+        .map(|bound| integer_type_bound("subtypep", bound))
+        .transpose()?
+        .flatten();
+    let supertype_lower = supertype_arguments
+        .first()
+        .map(|bound| integer_type_bound("subtypep", bound))
+        .transpose()?
+        .flatten();
+    let supertype_upper = supertype_arguments
+        .get(1)
+        .map(|bound| integer_type_bound("subtypep", bound))
+        .transpose()?
+        .flatten();
+
+    let subtype_empty = subtype_lower
+        .zip(subtype_upper)
+        .is_some_and(|(lower, upper)| lower > upper);
+    let supertype_empty = supertype_lower
+        .zip(supertype_upper)
+        .is_some_and(|(lower, upper)| lower > upper);
+    if subtype_empty {
+        return Ok(true);
+    }
+    if supertype_empty {
+        return Ok(false);
+    }
+
+    let lower_ok = match (subtype_lower, supertype_lower) {
+        (_, None) => true,
+        (Some(subtype), Some(supertype)) => subtype >= supertype,
+        (None, Some(_)) => false,
+    };
+    let upper_ok = match (subtype_upper, supertype_upper) {
+        (_, None) => true,
+        (Some(subtype), Some(supertype)) => subtype <= supertype,
+        (None, Some(_)) => false,
+    };
+    Ok(lower_ok && upper_ok)
+}
+
+fn named_integer_is_subtype(
+    subtype_name: &str,
+    supertype_arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    if subtype_name == "BIT" {
+        return integer_spec_is_subtype(
+            &[Value::Integer(0), Value::Integer(1)],
+            supertype_arguments,
+        );
+    }
+    if matches!(subtype_name, "INTEGER" | "FIXNUM" | "BIGNUM") {
+        let lower = supertype_arguments
+            .first()
+            .map(|bound| integer_type_bound("subtypep", bound))
+            .transpose()?
+            .flatten();
+        let upper = supertype_arguments
+            .get(1)
+            .map(|bound| integer_type_bound("subtypep", bound))
+            .transpose()?
+            .flatten();
+        return Ok(lower.is_none() && upper.is_none());
+    }
+    Ok(false)
+}
+
+fn compound_subtype_named(operator: &str, supertype_name: &str) -> bool {
+    match operator {
+        "INTEGER" => matches!(
+            supertype_name,
+            "INTEGER" | "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
+        ),
+        "MOD" | "SIGNED-BYTE" | "UNSIGNED-BYTE" => matches!(
+            supertype_name,
+            "INTEGER" | "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
+        ),
+        "CONS" => matches!(supertype_name, "CONS" | "LIST" | "SEQUENCE"),
+        "VECTOR" | "SIMPLE-VECTOR" => matches!(
+            supertype_name,
+            "VECTOR" | "SIMPLE-VECTOR" | "ARRAY" | "SIMPLE-ARRAY" | "SEQUENCE" | "ATOM"
+        ),
+        "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => matches!(
+            supertype_name,
+            "BIT-VECTOR"
+                | "SIMPLE-BIT-VECTOR"
+                | "VECTOR"
+                | "SIMPLE-VECTOR"
+                | "ARRAY"
+                | "SIMPLE-ARRAY"
+                | "SEQUENCE"
+                | "ATOM"
+        ),
+        "ARRAY" | "SIMPLE-ARRAY" => {
+            matches!(supertype_name, "ARRAY" | "SIMPLE-ARRAY" | "ATOM")
+        }
+        _ => false,
+    }
+}
+
+fn named_subtype_relation(
+    subtype_name: &str,
+    supertype_name: &str,
+    environment: &Environment,
+) -> Option<bool> {
+    if subtype_name == supertype_name
+        || matches!(supertype_name, "T" | "OBJECT")
+        || builtin_subtype(subtype_name, supertype_name)
+    {
+        return Some(true);
+    }
+
+    if let Some(class) = environment.lookup_class(subtype_name) {
+        if class
+            .precedence
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(supertype_name))
+        {
+            return Some(true);
+        }
+    }
+    if let Some(structure) = environment.lookup_structure(subtype_name) {
+        if supertype_name == "STRUCTURE"
+            || structure
+                .type_names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(supertype_name))
+        {
+            return Some(true);
+        }
+    }
+
+    if known_type_name(subtype_name, environment) && known_type_name(supertype_name, environment) {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
+    match subtype_name {
+        "NIL" | "NULL" => matches!(
+            supertype_name,
+            "SYMBOL" | "LIST" | "SEQUENCE" | "ATOM" | "BOOLEAN" | "NIL" | "NULL"
+        ),
+        "BOOLEAN" => matches!(supertype_name, "SYMBOL" | "ATOM"),
+        "NUMBER" => matches!(supertype_name, "REAL" | "ATOM"),
+        "REAL" => matches!(supertype_name, "NUMBER" | "ATOM"),
+        "FIXNUM" | "BIGNUM" | "BIT" => matches!(
+            supertype_name,
+            "INTEGER" | "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
+        ),
+        "INTEGER" => matches!(
+            supertype_name,
+            "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
+        ),
+        "RATIO" => matches!(supertype_name, "RATIONAL" | "NUMBER" | "REAL" | "ATOM"),
+        "RATIONAL" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
+        "FLOAT" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
+        "BASE-CHAR" => matches!(supertype_name, "CHARACTER" | "ATOM"),
+        "STANDARD-CHAR" => matches!(supertype_name, "BASE-CHAR" | "CHARACTER" | "ATOM"),
+        "EXTENDED-CHAR" => matches!(supertype_name, "CHARACTER" | "ATOM"),
+        "CHARACTER" => supertype_name == "ATOM",
+        "STRING" | "BASE-STRING" => {
+            matches!(supertype_name, "STRING" | "BASE-STRING" | "SEQUENCE" | "ATOM")
+        }
+        "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => matches!(
+            supertype_name,
+            "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" | "SEQUENCE" | "ATOM"
+        ),
+        "SYMBOL" => supertype_name == "ATOM",
+        "KEYWORD" => matches!(supertype_name, "SYMBOL" | "ATOM"),
+        "CONS" => matches!(supertype_name, "LIST" | "SEQUENCE"),
+        "LIST" => supertype_name == "SEQUENCE",
+        "VECTOR" | "SIMPLE-VECTOR" => matches!(
+            supertype_name,
+            "VECTOR" | "SIMPLE-VECTOR" | "ARRAY" | "SIMPLE-ARRAY" | "SEQUENCE" | "ATOM"
+        ),
+        "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => matches!(
+            supertype_name,
+            "BIT-VECTOR"
+                | "SIMPLE-BIT-VECTOR"
+                | "VECTOR"
+                | "SIMPLE-VECTOR"
+                | "ARRAY"
+                | "SIMPLE-ARRAY"
+                | "SEQUENCE"
+                | "ATOM"
+        ),
+        "ARRAY" | "SIMPLE-ARRAY" => {
+            matches!(supertype_name, "ARRAY" | "SIMPLE-ARRAY" | "ATOM")
+        }
+        "COMPILED-FUNCTION" => matches!(supertype_name, "FUNCTION" | "ATOM"),
+        "FUNCTION"
+        | "STREAM"
+        | "PACKAGE"
+        | "ENVIRONMENT"
+        | "HASH-TABLE"
+        | "CONDITION"
+        | "RESTART"
+        | "STRUCTURE"
+        | "UNBOUND"
+        | "VALUES"
+        | "CLASS"
+        | "STANDARD-OBJECT" => supertype_name == "ATOM",
+        _ => false,
+    }
 }
 
 pub(crate) fn the_check(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "the", 2)?;
-    let type_name = type_designator_name("the", &arguments[1])?;
-    if type_matches(&arguments[0], &type_name)? {
+    let type_description = arguments[1].to_string();
+    if type_matches_designator("the", &arguments[0], &arguments[1])? {
         Ok(arguments[0].clone())
     } else {
         Err(RuntimeError::Type {
-            expected: format!("the requires value of type {type_name}"),
+            expected: format!("the requires value of type {type_description}"),
             actual: arguments[0].type_name().to_string(),
             span: None,
         })
@@ -2376,6 +3358,8 @@ fn etypecase_error(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn type_designator_name(function: &str, value: &Value) -> Result<String, RuntimeError> {
     let type_name = match value {
+        Value::Nil | Value::Boolean(false) => "NIL",
+        Value::Boolean(true) => "T",
         Value::Symbol(name)
         | Value::UninternedSymbol(name)
         | Value::Keyword(name)
@@ -2387,21 +3371,462 @@ fn type_designator_name(function: &str, value: &Value) -> Result<String, Runtime
     Ok(package::normalize_symbol_name(type_name))
 }
 
+fn type_matches_designator(
+    function: &str,
+    value: &Value,
+    type_designator: &Value,
+) -> Result<bool, RuntimeError> {
+    match type_designator {
+        Value::List(items) => type_matches_compound(function, value, items.as_ref()),
+        Value::DottedList { .. } => Err(invalid_type_spec(
+            function,
+            "type designator must be a proper list",
+        )),
+        _ => {
+            let type_name = type_designator_name(function, type_designator)?;
+            type_matches(value, &type_name)
+        }
+    }
+}
+
+fn type_matches_compound(
+    function: &str,
+    value: &Value,
+    items: &[Value],
+) -> Result<bool, RuntimeError> {
+    let Some(operator_value) = items.first() else {
+        return Err(invalid_type_spec(
+            function,
+            "compound type designator must name an operator",
+        ));
+    };
+    let operator = type_designator_name(function, operator_value)?;
+    let arguments = &items[1..];
+    match operator.as_str() {
+        "OR" => {
+            for type_designator in arguments {
+                if type_matches_designator(function, value, type_designator)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        "AND" => {
+            for type_designator in arguments {
+                if !type_matches_designator(function, value, type_designator)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        "NOT" => {
+            require_type_spec_arity(function, &operator, arguments, 1, 1)?;
+            Ok(!type_matches_designator(function, value, &arguments[0])?)
+        }
+        "MEMBER" => Ok(arguments.iter().any(|candidate| eql_value(value, candidate))),
+        "EQL" => {
+            require_type_spec_arity(function, &operator, arguments, 1, 1)?;
+            Ok(eql_value(value, &arguments[0]))
+        }
+        "INTEGER" => integer_type_matches(function, value, arguments),
+        "MOD" => mod_type_matches(function, value, arguments),
+        "SIGNED-BYTE" => signed_byte_type_matches(function, value, arguments),
+        "UNSIGNED-BYTE" => unsigned_byte_type_matches(function, value, arguments),
+        "CONS" => cons_type_matches(function, value, arguments),
+        "VECTOR" => vector_type_matches(function, value, arguments),
+        "SIMPLE-VECTOR" => simple_vector_type_matches(function, value, arguments),
+        "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => {
+            bit_vector_type_matches(function, value, arguments)
+        }
+        "ARRAY" | "SIMPLE-ARRAY" => {
+            array_type_matches(function, &operator, value, arguments)
+        }
+        _ => Err(invalid_type_spec(
+            function,
+            format!("unknown compound type designator {operator}"),
+        )),
+    }
+}
+
+fn require_type_spec_arity(
+    function: &str,
+    operator: &str,
+    arguments: &[Value],
+    minimum: usize,
+    maximum: usize,
+) -> Result<(), RuntimeError> {
+    if (minimum..=maximum).contains(&arguments.len()) {
+        Ok(())
+    } else {
+        Err(invalid_type_spec(
+            function,
+            format!(
+                "{operator} type specifier expects between {minimum} and {maximum} arguments"
+            ),
+        ))
+    }
+}
+
+fn invalid_type_spec(function: &str, message: impl Into<String>) -> RuntimeError {
+    RuntimeError::InvalidForm {
+        message: format!("{function}: {}", message.into()),
+        span: None,
+    }
+}
+
+fn integer_type_matches(
+    function: &str,
+    value: &Value,
+    arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    require_type_spec_arity(function, "INTEGER", arguments, 0, 2)?;
+    let lower = arguments
+        .first()
+        .map(|bound| integer_type_bound(function, bound))
+        .transpose()?
+        .flatten();
+    let upper = arguments
+        .get(1)
+        .map(|bound| integer_type_bound(function, bound))
+        .transpose()?
+        .flatten();
+    let Value::Integer(number) = value else {
+        return Ok(false);
+    };
+    Ok(lower.map_or(true, |bound| *number >= bound)
+        && upper.map_or(true, |bound| *number <= bound))
+}
+
+fn integer_type_bound(function: &str, value: &Value) -> Result<Option<i64>, RuntimeError> {
+    if is_type_wildcard(value) {
+        return Ok(None);
+    }
+    match value {
+        Value::Integer(bound) => Ok(Some(*bound)),
+        value => Err(type_error(function, "integer or *", value)),
+    }
+}
+
+fn mod_type_matches(
+    function: &str,
+    value: &Value,
+    arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    require_type_spec_arity(function, "MOD", arguments, 1, 1)?;
+    let Value::Integer(modulus) = arguments[0] else {
+        return Err(type_error(function, "non-negative integer", &arguments[0]));
+    };
+    if modulus < 0 {
+        return Err(invalid_type_spec(
+            function,
+            "MOD type specifier requires a non-negative modulus",
+        ));
+    }
+    let Value::Integer(number) = value else {
+        return Ok(false);
+    };
+    Ok(*number >= 0 && *number < modulus)
+}
+
+fn unsigned_byte_type_matches(
+    function: &str,
+    value: &Value,
+    arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    let size = byte_type_size(function, "UNSIGNED-BYTE", arguments)?;
+    let Value::Integer(number) = value else {
+        return Ok(false);
+    };
+    if *number < 0 {
+        return Ok(false);
+    }
+    let Some(size) = size else {
+        return Ok(true);
+    };
+    if size >= 63 {
+        return Ok(true);
+    }
+    let upper = (1_i128 << size) - 1;
+    Ok((*number as i128) <= upper)
+}
+
+fn signed_byte_type_matches(
+    function: &str,
+    value: &Value,
+    arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    let size = byte_type_size(function, "SIGNED-BYTE", arguments)?;
+    let Value::Integer(number) = value else {
+        return Ok(false);
+    };
+    let Some(size) = size else {
+        return Ok(true);
+    };
+    if size == 0 {
+        return Ok(false);
+    }
+    if size >= 64 {
+        return Ok(true);
+    }
+    let half = 1_i128 << (size - 1);
+    let number = *number as i128;
+    Ok(number >= -half && number < half)
+}
+
+fn byte_type_size(
+    function: &str,
+    operator: &str,
+    arguments: &[Value],
+) -> Result<Option<usize>, RuntimeError> {
+    require_type_spec_arity(function, operator, arguments, 0, 1)?;
+    let Some(size) = arguments.first() else {
+        return Ok(None);
+    };
+    if is_type_wildcard(size) {
+        return Ok(None);
+    }
+    let Value::Integer(size) = size else {
+        return Err(type_error(function, "non-negative integer or *", size));
+    };
+    usize::try_from(*size).map(Some).map_err(|_| {
+        invalid_type_spec(
+            function,
+            format!("{operator} type specifier requires a non-negative size"),
+        )
+    })
+}
+
+fn cons_type_matches(
+    function: &str,
+    value: &Value,
+    arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    require_type_spec_arity(function, "CONS", arguments, 0, 2)?;
+    let Some((car, cdr)) = cons_parts(value) else {
+        return Ok(false);
+    };
+    if let Some(car_type) = arguments.first() {
+        if !type_matches_designator(function, &car, car_type)? {
+            return Ok(false);
+        }
+    }
+    if let Some(cdr_type) = arguments.get(1) {
+        if !type_matches_designator(function, &cdr, cdr_type)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn cons_parts(value: &Value) -> Option<(Value, Value)> {
+    match value {
+        Value::List(items) if !items.is_empty() => {
+            let items = items.as_ref();
+            let tail = if items.len() == 1 {
+                Value::Nil
+            } else {
+                Value::list(items[1..].to_vec())
+            };
+            Some((items[0].clone(), tail))
+        }
+        Value::DottedList { items, tail } if !items.is_empty() => {
+            Some((items[0].clone(), (*tail).as_ref().clone()))
+        }
+        _ => None,
+    }
+}
+
+fn vector_type_matches(
+    function: &str,
+    value: &Value,
+    arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    require_type_spec_arity(function, "VECTOR", arguments, 0, 2)?;
+    let expected_size = arguments
+        .get(1)
+        .map(|size| type_spec_size(function, size))
+        .transpose()?
+        .flatten();
+    let Some(items) = value.vector_items() else {
+        return Ok(false);
+    };
+    if expected_size.map_or(false, |size| size != items.len()) {
+        return Ok(false);
+    }
+    if let Some(element_type) = arguments.first() {
+        for item in &items {
+            if !type_matches_element_spec(function, item, element_type)? {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn simple_vector_type_matches(
+    function: &str,
+    value: &Value,
+    arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    require_type_spec_arity(function, "SIMPLE-VECTOR", arguments, 0, 1)?;
+    let expected_size = arguments
+        .first()
+        .map(|size| type_spec_size(function, size))
+        .transpose()?
+        .flatten();
+    let Some(items) = value.vector_items() else {
+        return Ok(false);
+    };
+    Ok(expected_size.map_or(true, |size| size == items.len()))
+}
+
+fn bit_vector_type_matches(
+    function: &str,
+    value: &Value,
+    arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    require_type_spec_arity(function, "BIT-VECTOR", arguments, 0, 1)?;
+    let expected_size = arguments
+        .first()
+        .map(|size| type_spec_size(function, size))
+        .transpose()?
+        .flatten();
+    let Some(items) = value.vector_items() else {
+        return Ok(false);
+    };
+    if expected_size.map_or(false, |size| size != items.len()) {
+        return Ok(false);
+    }
+    Ok(items.iter().all(is_bit_value))
+}
+
+fn is_bit_vector_value(value: &Value) -> bool {
+    matches!(value, Value::Vector(items) if items.iter().all(is_bit_value))
+}
+
+fn is_bit_value(value: &Value) -> bool {
+    matches!(value, Value::Integer(bit) if *bit == 0 || *bit == 1)
+}
+
+fn array_type_matches(
+    function: &str,
+    operator: &str,
+    value: &Value,
+    arguments: &[Value],
+) -> Result<bool, RuntimeError> {
+    require_type_spec_arity(function, operator, arguments, 0, 2)?;
+    let Some(actual_dimensions) = dimensions_for_array(value) else {
+        return Ok(false);
+    };
+    if let Some(expected_dimensions) = arguments.get(1) {
+        if !array_dimensions_match(function, expected_dimensions, &actual_dimensions)? {
+            return Ok(false);
+        }
+    }
+    let Some(elements) = array_elements(value) else {
+        return Ok(false);
+    };
+    if let Some(element_type) = arguments.first() {
+        for element in &elements {
+            if !type_matches_element_spec(function, element, element_type)? {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn type_matches_element_spec(
+    function: &str,
+    value: &Value,
+    type_designator: &Value,
+) -> Result<bool, RuntimeError> {
+    if is_type_wildcard(type_designator) {
+        Ok(true)
+    } else {
+        type_matches_designator(function, value, type_designator)
+    }
+}
+
+fn type_spec_size(function: &str, value: &Value) -> Result<Option<usize>, RuntimeError> {
+    if is_type_wildcard(value) {
+        return Ok(None);
+    }
+    let Value::Integer(size) = value else {
+        return Err(type_error(function, "non-negative integer or *", value));
+    };
+    usize::try_from(*size).map(Some).map_err(|_| {
+        invalid_type_spec(function, "sequence or array size must be non-negative")
+    })
+}
+
+fn array_dimensions_match(
+    function: &str,
+    expected: &Value,
+    actual: &[usize],
+) -> Result<bool, RuntimeError> {
+    if is_type_wildcard(expected) {
+        return Ok(true);
+    }
+    match expected {
+        Value::Nil | Value::Boolean(false) => Ok(actual.is_empty()),
+        Value::Integer(rank) => {
+            let rank = usize::try_from(*rank).map_err(|_| {
+                invalid_type_spec(function, "array rank must be non-negative")
+            })?;
+            Ok(actual.len() == rank)
+        }
+        Value::List(dimensions) => {
+            let dimensions = dimensions.as_ref();
+            if dimensions.len() != actual.len() {
+                return Ok(false);
+            }
+            for (dimension, actual) in dimensions.iter().zip(actual) {
+                if is_type_wildcard(dimension) {
+                    continue;
+                }
+                let Value::Integer(expected) = dimension else {
+                    return Err(type_error(function, "array dimension or *", dimension));
+                };
+                let expected = usize::try_from(*expected).map_err(|_| {
+                    invalid_type_spec(function, "array dimensions must be non-negative")
+                })?;
+                if expected != *actual {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        value => Err(type_error(function, "array dimensions", value)),
+    }
+}
+
+fn is_type_wildcard(value: &Value) -> bool {
+    value
+        .symbol_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("*"))
+}
+
 fn type_matches(value: &Value, type_name: &str) -> Result<bool, RuntimeError> {
     let result = match type_name {
         "T" | "OBJECT" => true,
-        "NIL" | "NULL" => matches!(value, Value::Nil),
-        "BOOLEAN" => matches!(value, Value::Boolean(_)),
+        "NIL" | "NULL" => matches!(value, Value::Nil | Value::Boolean(false)),
+        "BOOLEAN" => matches!(value, Value::Nil | Value::Boolean(_)),
         "NUMBER" | "REAL" => matches!(
             value,
             Value::Integer(_) | Value::Rational(_) | Value::Float(_)
         ),
         "RATIONAL" => matches!(value, Value::Integer(_) | Value::Rational(_)),
         "RATIO" => matches!(value, Value::Rational(_)),
-        "INTEGER" => matches!(value, Value::Integer(_)),
+        "INTEGER" | "FIXNUM" | "BIGNUM" => matches!(value, Value::Integer(_)),
+        "BIT" => is_bit_value(value),
         "FLOAT" => matches!(value, Value::Float(_)),
-        "CHARACTER" => matches!(value, Value::Character(_)),
-        "STRING" | "SIMPLE-STRING" => matches!(value, Value::String(_)),
+        "CHARACTER" | "BASE-CHAR" | "STANDARD-CHAR" | "EXTENDED-CHAR" => {
+            matches!(value, Value::Character(_))
+        }
+        "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => {
+            matches!(value, Value::String(_))
+        }
         "STREAM" => matches!(value, Value::Stream(_)),
         "SYMBOL" => matches!(
             value,
@@ -2414,17 +3839,40 @@ fn type_matches(value: &Value, type_name: &str) -> Result<bool, RuntimeError> {
                 | Value::KeywordExact(_)
         ),
         "PACKAGE" => matches!(value, Value::Package(_)),
+        "ENVIRONMENT" => matches!(value, Value::Environment(_)),
         "KEYWORD" => matches!(value, Value::Keyword(_) | Value::KeywordExact(_)),
         "CONS" => matches!(value, Value::List(_) | Value::DottedList { .. }),
-        "LIST" => matches!(value, Value::Nil | Value::List(_)),
+        "LIST" => matches!(value, Value::Nil | Value::Boolean(false) | Value::List(_)),
         "ATOM" => !matches!(value, Value::List(_) | Value::DottedList { .. }),
-        "VECTOR" => matches!(value, Value::Vector(_)),
+        "VECTOR" | "SIMPLE-VECTOR" => matches!(value, Value::Vector(_)),
+        "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => is_bit_vector_value(value),
         "ARRAY" | "SIMPLE-ARRAY" => dimensions_for_array(value).is_some(),
         "HASH-TABLE" => matches!(value, Value::HashTable { .. }),
         "CONDITION" => matches!(value, Value::Condition(_)),
+        "RESTART" => matches!(value, Value::Restart(_)),
+        "ERROR"
+        | "SERIOUS-CONDITION"
+        | "WARNING"
+        | "SIMPLE-CONDITION"
+        | "SIMPLE-ERROR"
+        | "SIMPLE-WARNING"
+        | "ARITHMETIC-ERROR"
+        | "DIVISION-BY-ZERO"
+        | "TYPE-ERROR"
+        | "PROGRAM-ERROR"
+        | "PACKAGE-ERROR"
+        | "READER-ERROR"
+        | "COMPILER-ERROR"
+        | "FILE-ERROR"
+        | "UNBOUND-VARIABLE"
+        | "CONTROL-ERROR" => value.condition_is_type(type_name),
         "STRUCTURE" => value.structure_name().is_some(),
-        "SEQUENCE" => sequence_length(value).is_some(),
-        "FUNCTION" => matches!(value, Value::Function(_)),
+        "SEQUENCE" => matches!(value, Value::Boolean(false)) || sequence_length(value).is_some(),
+        "FUNCTION" | "COMPILED-FUNCTION" => matches!(value, Value::Function(_)),
+        "UNBOUND" => matches!(value, Value::Unbound),
+        "VALUES" => matches!(value, Value::Values(_)),
+        "CLASS" => matches!(value, Value::Class(_)),
+        "STANDARD-OBJECT" => matches!(value, Value::Instance(_)),
         _ if value.instance_is_type(type_name) => true,
         _ if value.structure_is_type(type_name) => true,
         _ => {
@@ -2621,6 +4069,46 @@ fn aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
     array_elements(&arguments[0])
         .and_then(|items| items.get(index).cloned())
         .ok_or_else(|| out_of_bounds("aref", index))
+}
+
+fn svref(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "svref", 2)?;
+    let index = index_argument("svref", &arguments[1])?;
+    let Value::Vector(items) = &arguments[0] else {
+        return Err(type_error("svref", "simple-vector", &arguments[0]));
+    };
+    items
+        .get(index)
+        .cloned()
+        .ok_or_else(|| out_of_bounds("svref", index))
+}
+
+fn bit_value(function: &str, value: &Value) -> Result<(), RuntimeError> {
+    match value {
+        Value::Integer(bit) if *bit == 0 || *bit == 1 => Ok(()),
+        _ => Err(type_error(function, "bit", value)),
+    }
+}
+
+fn bit(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.is_empty() {
+        return Err(arity("bit", "array and subscripts", 0));
+    }
+    let dimensions = dimensions_for_array(&arguments[0])
+        .ok_or_else(|| type_error("bit", "array", &arguments[0]))?;
+    if arguments.len() != dimensions.len() + 1 {
+        return Err(arity(
+            "bit",
+            (dimensions.len() + 1).to_string(),
+            arguments.len(),
+        ));
+    }
+    let index = array_coordinate_index("bit", &dimensions, &arguments[1..])?;
+    let value = array_elements(&arguments[0])
+        .and_then(|items| items.get(index).cloned())
+        .ok_or_else(|| out_of_bounds("bit", index))?;
+    bit_value("bit", &value)?;
+    Ok(value)
 }
 
 fn row_major_aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -3000,18 +4488,28 @@ fn array_coordinate_index(
     indices: &[Value],
 ) -> Result<usize, RuntimeError> {
     let mut offset: usize = 0;
-    for (dimension, value) in dimensions.iter().zip(indices) {
+    for (axis, (dimension, value)) in dimensions.iter().zip(indices).enumerate() {
         let index = index_argument(function, value)?;
         if index >= *dimension {
             return Err(out_of_bounds(function, index));
         }
-        offset = offset
-            .checked_mul(*dimension)
-            .and_then(|offset| offset.checked_add(index))
+        let stride = dimensions[axis + 1..]
+            .iter()
+            .try_fold(1_usize, |stride, dimension| {
+                stride.checked_mul(*dimension)
+            })
             .ok_or_else(|| RuntimeError::InvalidForm {
                 message: format!("{function} index is too large"),
                 span: None,
             })?;
+        let contribution = index.checked_mul(stride).ok_or_else(|| RuntimeError::InvalidForm {
+            message: format!("{function} index is too large"),
+            span: None,
+        })?;
+        offset = offset.checked_add(contribution).ok_or_else(|| RuntimeError::InvalidForm {
+            message: format!("{function} index is too large"),
+            span: None,
+        })?;
     }
     Ok(offset)
 }
@@ -3234,8 +4732,9 @@ fn print_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("print", "1 to 2", arguments.len()));
     }
+    let text = printed_value(&arguments[0], true);
     write_destination("print", arguments.get(1), "\n")?;
-    write_destination("print", arguments.get(1), &arguments[0].to_string())?;
+    write_destination("print", arguments.get(1), &text)?;
     write_destination("print", arguments.get(1), "\n")?;
     Ok(arguments[0].clone())
 }
@@ -3244,10 +4743,7 @@ fn princ(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("princ", "1 to 2", arguments.len()));
     }
-    let text = match &arguments[0] {
-        Value::String(value) => value.to_string(),
-        value => value.to_string(),
-    };
+    let text = printed_value(&arguments[0], false);
     write_destination("princ", arguments.get(1), &text)?;
     Ok(arguments[0].clone())
 }
@@ -3256,18 +4752,108 @@ fn prin1(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("prin1", "1 to 2", arguments.len()));
     }
-    write_destination("prin1", arguments.get(1), &arguments[0].to_string())?;
+    let text = printed_value(&arguments[0], true);
+    write_destination("prin1", arguments.get(1), &text)?;
+    Ok(arguments[0].clone())
+}
+
+fn write_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.is_empty() {
+        return Err(arity("write", "at least 1", arguments.len()));
+    }
+    let (escape, stream) = parse_print_options("write", &arguments[1..], true)?;
+    let text = printed_value(&arguments[0], escape);
+    write_destination("write", stream.as_ref(), &text)?;
     Ok(arguments[0].clone())
 }
 
 fn write_to_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "write-to-string", 1)?;
-    Ok(Value::string(arguments[0].to_string()))
+    if arguments.is_empty() {
+        return Err(arity("write-to-string", "at least 1", arguments.len()));
+    }
+    let (escape, _) = parse_print_options("write-to-string", &arguments[1..], false)?;
+    Ok(Value::string(printed_value(&arguments[0], escape)))
+}
+
+fn parse_print_options(
+    function: &str,
+    options: &[Value],
+    allow_stream: bool,
+) -> Result<(bool, Option<Value>), RuntimeError> {
+    if options.len() % 2 != 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("{function} requires keyword/value pairs"),
+            span: None,
+        });
+    }
+    let mut escape = true;
+    let mut stream = None;
+    for pair in options.chunks_exact(2) {
+        let name = array_option_name(function, &pair[0])?;
+        match name.as_str() {
+            "ESCAPE" => escape = pair[1].is_truthy(),
+            "STREAM" if allow_stream => stream = Some(pair[1].clone()),
+            "STREAM" => {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!("{function} does not support keyword :stream"),
+                    span: None,
+                });
+            }
+            _ => {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!("{function} does not support keyword :{name}"),
+                    span: None,
+                });
+            }
+        }
+    }
+    Ok((escape, stream))
+}
+
+fn printed_value(value: &Value, escape: bool) -> String {
+    match value {
+        Value::String(value) if !escape => value.to_string(),
+        Value::String(value) => format!("{value:?}"),
+        Value::List(values) => {
+            let contents = values
+                .iter()
+                .map(|value| printed_value(value, escape))
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("({contents})")
+        }
+        Value::DottedList { items, tail } => {
+            let mut text = String::from("(");
+            if !items.is_empty() {
+                text.push_str(
+                    &items
+                        .iter()
+                        .map(|value| printed_value(value, escape))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+                text.push(' ');
+            }
+            text.push_str(". ");
+            text.push_str(&printed_value(tail, escape));
+            text.push(')');
+            text
+        }
+        Value::Vector(values) => {
+            let contents = values
+                .iter()
+                .map(|value| printed_value(value, escape))
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("#({contents})")
+        }
+        _ => value.to_string(),
+    }
 }
 
 fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    if !(1..=3).contains(&arguments.len()) {
-        return Err(arity("read-from-string", "1 to 3", arguments.len()));
+    if arguments.len() < 1 {
+        return Err(arity("read-from-string", "at least 1", arguments.len()));
     }
     let source = match &arguments[0] {
         Value::String(value) => value.as_ref(),
@@ -3275,9 +4861,58 @@ fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     };
     let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
     let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
-    let mut reader = Reader::new(source);
+    let source_length = source.chars().count();
+    let mut start = 0;
+    let mut end = source_length;
+    let mut preserving_whitespace = false;
+    let keyword_arguments = arguments.get(3..).unwrap_or_default();
+    if keyword_arguments.len() % 2 != 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: "read-from-string keyword arguments must be name/value pairs".to_string(),
+            span: None,
+        });
+    }
+    for pair in keyword_arguments.chunks_exact(2) {
+        let name = match &pair[0] {
+            Value::Keyword(name) | Value::KeywordExact(name) => name.as_ref(),
+            value => return Err(type_error("read-from-string", "a keyword", value)),
+        };
+        if name.eq_ignore_ascii_case("START") {
+            start = stream_bound("read-from-string", &pair[1], source_length)?;
+        } else if name.eq_ignore_ascii_case("END") {
+            end = stream_bound("read-from-string", &pair[1], source_length)?;
+        } else if name.eq_ignore_ascii_case("PRESERVE-WHITESPACE") {
+            preserving_whitespace = pair[1].is_truthy();
+        } else {
+            return Err(RuntimeError::InvalidForm {
+                message: format!("read-from-string does not support keyword :{name}"),
+                span: None,
+            });
+        }
+    }
+    if start > end {
+        return Err(RuntimeError::InvalidForm {
+            message: "read-from-string start must not exceed end".to_string(),
+            span: None,
+        });
+    }
+    let window = source
+        .chars()
+        .skip(start)
+        .take(end - start)
+        .collect::<String>();
+    let mut reader = Reader::new(&window);
     let (value, byte_position) = match reader.read_form()? {
-        Some(form) => (quoted_form_value(&form)?, form.span.end),
+        Some(form) => {
+            let value = quoted_form_value(&form)?;
+            let byte_position = if preserving_whitespace {
+                form.span.end
+            } else {
+                reader.consume_one_whitespace_after_form();
+                reader.position()
+            };
+            (value, byte_position)
+        }
         None => {
             let position = reader.position();
             if eof_error_p {
@@ -3289,9 +4924,85 @@ fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
             (eof_value, position)
         }
     };
-    let position = source[..byte_position].chars().count();
+    let local_position = window[..byte_position].chars().count();
+    let position = start
+        .checked_add(local_position)
+        .ok_or(RuntimeError::NumericOverflow)?;
     let position = i64::try_from(position).map_err(|_| RuntimeError::NumericOverflow)?;
     Ok(Value::values(vec![value, Value::Integer(position)]))
+}
+
+fn read(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    read_stream_form("read", arguments, false)
+}
+
+fn read_preserving_whitespace(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    read_stream_form("read-preserving-whitespace", arguments, true)
+}
+
+fn read_stream_form(
+    function: &str,
+    arguments: &[Value],
+    preserving_whitespace: bool,
+) -> Result<Value, RuntimeError> {
+    if arguments.len() > 4 {
+        return Err(arity(function, "0 to 4", arguments.len()));
+    }
+    let stream = match arguments.first() {
+        Some(Value::Stream(stream)) => stream,
+        None | Some(Value::Nil) | Some(Value::Boolean(true)) => {
+            return Err(RuntimeError::InvalidForm {
+                message: format!(
+                    "{function} requires an explicit input stream; standard input is unavailable"
+                ),
+                span: None,
+            });
+        }
+        Some(value) => return Err(type_error(function, "an input stream", value)),
+    };
+    let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
+    let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
+    let source = {
+        let stream = stream.borrow();
+        if !stream.is_input() {
+            return Err(stream_state_error(function, "an input stream"));
+        }
+        stream
+            .remaining_input()
+            .ok_or_else(|| stream_state_error(function, "an open input stream"))?
+    };
+    let mut reader = Reader::new(&source);
+    let (value, byte_position) = match reader.read_form()? {
+        Some(form) => {
+            let value = quoted_form_value(&form)?;
+            let byte_position = if preserving_whitespace {
+                form.span.end
+            } else {
+                reader.consume_one_whitespace_after_form();
+                reader.position()
+            };
+            (value, byte_position)
+        }
+        None => {
+            let position = reader.position();
+            let consumed = source[..position].chars().count();
+            if !stream.borrow_mut().consume_input(consumed) {
+                return Err(stream_state_error(function, "an open input stream"));
+            }
+            if eof_error_p {
+                return Err(RuntimeError::Read(ReadError::new(
+                    ReadErrorKind::UnexpectedEnd { context: "a form" },
+                    Span::new(position, position),
+                )));
+            }
+            return Ok(eof_value);
+        }
+    };
+    let consumed = source[..byte_position].chars().count();
+    if !stream.borrow_mut().consume_input(consumed) {
+        return Err(stream_state_error(function, "an open input stream"));
+    }
+    Ok(value)
 }
 
 fn make_string_input_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -3340,6 +5051,297 @@ fn make_string_output_stream(arguments: &[Value]) -> Result<Value, RuntimeError>
     Ok(Value::string_output_stream())
 }
 
+fn pathname_argument(function: &str, value: &Value) -> Result<PathBuf, RuntimeError> {
+    match value {
+        Value::String(value) => Ok(PathBuf::from(value.as_ref())),
+        value => Err(type_error(function, "a string pathname", value)),
+    }
+}
+
+fn open_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.is_empty() {
+        return Err(arity("open", "at least 1", arguments.len()));
+    }
+    if (arguments.len() - 1) % 2 != 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: "open requires keyword/value pairs after the pathname".to_string(),
+            span: None,
+        });
+    }
+    let path = pathname_argument("open", &arguments[0])?;
+    let mut direction = "INPUT".to_string();
+    let mut if_does_not_exist = None;
+    let mut if_exists = None;
+    for pair in arguments[1..].chunks_exact(2) {
+        let keyword = stream_keyword_name("open", &pair[0])?;
+        match keyword.as_str() {
+            "DIRECTION" => {
+                direction = stream_keyword_name("open :direction", &pair[1])?;
+            }
+            "IF-DOES-NOT-EXIST" => {
+                if_does_not_exist = Some(stream_keyword_name("open :if-does-not-exist", &pair[1])?);
+            }
+            "IF-EXISTS" => {
+                if_exists = Some(stream_keyword_name("open :if-exists", &pair[1])?);
+            }
+            "ELEMENT-TYPE" | "EXTERNAL-FORMAT" => {}
+            _ => {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!("open does not recognize keyword :{keyword}"),
+                    span: None,
+                });
+            }
+        }
+    }
+
+    let if_does_not_exist = if_does_not_exist.unwrap_or_else(|| {
+        if direction == "INPUT" || direction == "IO" {
+            "ERROR".to_string()
+        } else {
+            "CREATE".to_string()
+        }
+    });
+    let if_exists = if_exists.unwrap_or_else(|| "NEW-VERSION".to_string());
+    match direction.as_str() {
+        "INPUT" => open_input_file(&path, &if_does_not_exist),
+        "OUTPUT" => open_output_file(&path, &if_does_not_exist, &if_exists),
+        "PROBE" => {
+            if path.exists() {
+                Ok(Value::file_input_stream(String::new()))
+            } else {
+                Ok(Value::Nil)
+            }
+        }
+        "IO" => open_io_file(&path, &if_does_not_exist, &if_exists),
+        _ => Err(RuntimeError::InvalidForm {
+            message: format!("open received unknown direction :{direction}"),
+            span: None,
+        }),
+    }
+}
+
+fn probe_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "probe-file", 1)?;
+    let path = pathname_argument("probe-file", &arguments[0])?;
+    match std::fs::metadata(&path) {
+        Ok(_) => Ok(arguments[0].clone()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Value::Nil),
+        Err(error) => Err(RuntimeError::Io(format!(
+            "probe-file {}: {error}",
+            path.display()
+        ))),
+    }
+}
+
+fn delete_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "delete-file", 1)?;
+    let path = pathname_argument("delete-file", &arguments[0])?;
+    std::fs::remove_file(&path).map_err(|error| {
+        RuntimeError::Io(format!("delete-file {}: {error}", path.display()))
+    })?;
+    Ok(Value::boolean(true))
+}
+
+fn rename_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "rename-file", 2)?;
+    let old_path = pathname_argument("rename-file", &arguments[0])?;
+    let new_path = pathname_argument("rename-file", &arguments[1])?;
+    let old_truename = std::fs::canonicalize(&old_path).map_err(|error| {
+        RuntimeError::Io(format!("rename-file {}: {error}", old_path.display()))
+    })?;
+    std::fs::rename(&old_path, &new_path).map_err(|error| {
+        RuntimeError::Io(format!(
+            "rename-file {} to {}: {error}",
+            old_path.display(),
+            new_path.display()
+        ))
+    })?;
+    let new_truename = std::fs::canonicalize(&new_path).map_err(|error| {
+        RuntimeError::Io(format!("rename-file {}: {error}", new_path.display()))
+    })?;
+    Ok(Value::values(vec![
+        arguments[1].clone(),
+        Value::string(old_truename.to_string_lossy().to_string()),
+        Value::string(new_truename.to_string_lossy().to_string()),
+    ]))
+}
+
+fn file_write_date(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "file-write-date", 1)?;
+    let path = pathname_argument("file-write-date", &arguments[0])?;
+    let modified = std::fs::metadata(&path)
+        .and_then(|metadata| metadata.modified())
+        .map_err(|error| RuntimeError::Io(format!("file-write-date {}: {error}", path.display())))?;
+    let seconds_since_unix = modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| RuntimeError::Io(format!("file-write-date {}: {error}", path.display())))?;
+    let seconds_since_unix = i64::try_from(seconds_since_unix.as_secs()).map_err(|_| {
+        RuntimeError::Io(format!(
+            "file-write-date {}: modification time is out of range",
+            path.display()
+        ))
+    })?;
+    let universal_time = seconds_since_unix.checked_add(2_208_988_800).ok_or_else(|| {
+        RuntimeError::Io(format!(
+            "file-write-date {}: modification time is out of range",
+            path.display()
+        ))
+    })?;
+    Ok(Value::Integer(universal_time))
+}
+
+fn truename(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "truename", 1)?;
+    let path = pathname_argument("truename", &arguments[0])?;
+    let canonical = std::fs::canonicalize(&path)
+        .map_err(|error| RuntimeError::Io(format!("truename {}: {error}", path.display())))?;
+    Ok(Value::string(canonical.to_string_lossy().to_string()))
+}
+
+fn stream_keyword_name(function: &str, value: &Value) -> Result<String, RuntimeError> {
+    match value {
+        Value::Keyword(name) | Value::KeywordExact(name) => Ok(normalize_name(name)),
+        value => Err(type_error(function, "a keyword", value)),
+    }
+}
+
+fn open_input_file(path: &std::path::Path, if_does_not_exist: &str) -> Result<Value, RuntimeError> {
+    if !path.exists() {
+        match if_does_not_exist {
+            "NIL" => return Ok(Value::Nil),
+            "CREATE" => {
+                std::fs::write(path, []).map_err(|error| {
+                    RuntimeError::Io(format!("open {}: {error}", path.display()))
+                })?;
+            }
+            "ERROR" => {
+                return Err(RuntimeError::Io(format!(
+                    "open {}: file does not exist",
+                    path.display()
+                )));
+            }
+            _ => {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!(
+                        "open received unknown :if-does-not-exist value :{if_does_not_exist}"
+                    ),
+                    span: None,
+                });
+            }
+        }
+    }
+    let source = std::fs::read_to_string(path)
+        .map_err(|error| RuntimeError::Io(format!("open {}: {error}", path.display())))?;
+    Ok(Value::file_input_stream(source))
+}
+
+fn open_output_file(
+    path: &std::path::Path,
+    if_does_not_exist: &str,
+    if_exists: &str,
+) -> Result<Value, RuntimeError> {
+    if path.exists() {
+        match if_exists {
+            "NIL" => return Ok(Value::Nil),
+            "ERROR" => {
+                return Err(RuntimeError::Io(format!(
+                    "open {}: file already exists",
+                    path.display()
+                )));
+            }
+            "APPEND" => {
+                let source = std::fs::read_to_string(path).map_err(|error| {
+                    RuntimeError::Io(format!("open {}: {error}", path.display()))
+                })?;
+                return Ok(Value::file_output_stream(path.to_path_buf(), source));
+            }
+            "NEW-VERSION" | "RENAME" | "RENAME-AND-DELETE" | "OVERWRITE" | "SUPERSEDE" => {}
+            _ => {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!("open received unknown :if-exists value :{if_exists}"),
+                    span: None,
+                });
+            }
+        }
+    } else {
+        match if_does_not_exist {
+            "CREATE" => {}
+            "NIL" => return Ok(Value::Nil),
+            "ERROR" => {
+                return Err(RuntimeError::Io(format!(
+                    "open {}: file does not exist",
+                    path.display()
+                )));
+            }
+            _ => {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!(
+                        "open received unknown :if-does-not-exist value :{if_does_not_exist}"
+                    ),
+                    span: None,
+                });
+            }
+        }
+    }
+    Ok(Value::file_output_stream(path.to_path_buf(), String::new()))
+}
+
+fn open_io_file(
+    path: &std::path::Path,
+    if_does_not_exist: &str,
+    if_exists: &str,
+) -> Result<Value, RuntimeError> {
+    let mut append = false;
+    let source = if path.exists() {
+        match if_exists {
+            "NIL" => return Ok(Value::Nil),
+            "ERROR" => {
+                return Err(RuntimeError::Io(format!(
+                    "open {}: file already exists",
+                    path.display()
+                )));
+            }
+            "APPEND" => {
+                append = true;
+                std::fs::read_to_string(path).map_err(|error| {
+                    RuntimeError::Io(format!("open {}: {error}", path.display()))
+                })?
+            }
+            "NEW-VERSION" | "RENAME" | "RENAME-AND-DELETE" | "OVERWRITE" | "SUPERSEDE" => {
+                std::fs::read_to_string(path).map_err(|error| {
+                    RuntimeError::Io(format!("open {}: {error}", path.display()))
+                })?
+            }
+            _ => {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!("open received unknown :if-exists value :{if_exists}"),
+                    span: None,
+                });
+            }
+        }
+    } else {
+        match if_does_not_exist {
+            "CREATE" => String::new(),
+            "NIL" => return Ok(Value::Nil),
+            "ERROR" => {
+                return Err(RuntimeError::Io(format!(
+                    "open {}: file does not exist",
+                    path.display()
+                )));
+            }
+            _ => {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!(
+                        "open received unknown :if-does-not-exist value :{if_does_not_exist}"
+                    ),
+                    span: None,
+                });
+            }
+        }
+    };
+    Ok(Value::file_io_stream(path.to_path_buf(), source, append))
+}
+
 fn stream_reference<'a>(
     function: &str,
     value: &'a Value,
@@ -3350,10 +5352,65 @@ fn stream_reference<'a>(
     }
 }
 
+fn input_stream_reference<'a>(
+    function: &str,
+    value: Option<&'a Value>,
+) -> Result<&'a Rc<RefCell<Stream>>, RuntimeError> {
+    match value {
+        Some(Value::Stream(stream)) => Ok(stream),
+        None | Some(Value::Nil) | Some(Value::Boolean(true)) => {
+            Err(RuntimeError::InvalidForm {
+                message: format!(
+                    "{function} requires an explicit input stream; standard input is unavailable"
+                ),
+                span: None,
+            })
+        }
+        Some(value) => Err(type_error(function, "an input stream", value)),
+    }
+}
+
 fn stream_state_error(function: &str, expected: &str) -> RuntimeError {
     RuntimeError::InvalidForm {
         message: format!("{function} requires {expected}"),
         span: None,
+    }
+}
+
+fn end_of_file_error(context: &'static str) -> RuntimeError {
+    RuntimeError::Read(ReadError::new(
+        ReadErrorKind::UnexpectedEnd { context },
+        Span::new(0, 0),
+    ))
+}
+
+fn peek_character(
+    stream: &mut Stream,
+    peek_type: Option<&Value>,
+) -> Result<Option<char>, RuntimeError> {
+    match peek_type {
+        None
+        | Some(Value::Nil)
+        | Some(Value::Boolean(false))
+        | Some(Value::Boolean(true))
+        | Some(Value::Character(_)) => {}
+        Some(value) => return Err(type_error("peek-char", "NIL, T, or a character", value)),
+    }
+
+    loop {
+        let Some(character) = stream.peek_char() else {
+            return Ok(None);
+        };
+        let matches = match peek_type {
+            None | Some(Value::Nil) | Some(Value::Boolean(false)) => true,
+            Some(Value::Boolean(true)) => !character.is_whitespace(),
+            Some(Value::Character(expected)) => character == *expected,
+            Some(_) => unreachable!("peek-char type was validated above"),
+        };
+        if matches {
+            return Ok(Some(character));
+        }
+        let _ = stream.read_char();
     }
 }
 
@@ -3368,32 +5425,61 @@ fn get_output_stream_string(arguments: &[Value]) -> Result<Value, RuntimeError> 
 }
 
 fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "read-char", 1)?;
-    let stream = stream_reference("read-char", &arguments[0])?;
+    if arguments.len() > 4 {
+        return Err(arity("read-char", "0 to 4", arguments.len()));
+    }
+    let stream = input_stream_reference("read-char", arguments.first())?;
+    let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
+    let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let mut stream = stream.borrow_mut();
     if !stream.is_input() {
         return Err(stream_state_error("read-char", "an input stream"));
     }
-    Ok(stream.read_char().map_or(Value::Nil, Value::Character))
+    match stream.read_char() {
+        Some(character) => Ok(Value::Character(character)),
+        None if eof_error_p => Err(end_of_file_error("a character")),
+        None => Ok(eof_value),
+    }
 }
 
 fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "peek-char", 1)?;
-    let stream = stream_reference("peek-char", &arguments[0])?;
-    let stream = stream.borrow();
+    if arguments.len() > 5 {
+        return Err(arity("peek-char", "0 to 5", arguments.len()));
+    }
+    let (peek_type, stream_value, optional_index) =
+        if matches!(arguments.first(), Some(Value::Stream(_))) {
+            (None, arguments.first(), 1)
+        } else {
+            (arguments.first(), arguments.get(1), 2)
+        };
+    let stream = input_stream_reference("peek-char", stream_value)?;
+    let eof_error_p = arguments
+        .get(optional_index)
+        .map_or(true, Value::is_truthy);
+    let eof_value = arguments
+        .get(optional_index + 1)
+        .cloned()
+        .unwrap_or(Value::Nil);
+    let mut stream = stream.borrow_mut();
     if !stream.is_input() {
         return Err(stream_state_error("peek-char", "an input stream"));
     }
-    Ok(stream.peek_char().map_or(Value::Nil, Value::Character))
+    match peek_character(&mut stream, peek_type)? {
+        Some(character) => Ok(Value::Character(character)),
+        None if eof_error_p => Err(end_of_file_error("a character")),
+        None => Ok(eof_value),
+    }
 }
 
 fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "unread-char", 2)?;
+    if !(1..=2).contains(&arguments.len()) {
+        return Err(arity("unread-char", "1 to 2", arguments.len()));
+    }
     let character = match arguments[0] {
         Value::Character(character) => character,
         ref value => return Err(type_error("unread-char", "a character", value)),
     };
-    let stream = stream_reference("unread-char", &arguments[1])?;
+    let stream = input_stream_reference("unread-char", arguments.get(1))?;
     let mut stream = stream.borrow_mut();
     if !stream.is_input() {
         return Err(stream_state_error("unread-char", "an input stream"));
@@ -3408,15 +5494,20 @@ fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "read-line", 1)?;
-    let stream = stream_reference("read-line", &arguments[0])?;
+    if arguments.len() > 4 {
+        return Err(arity("read-line", "0 to 4", arguments.len()));
+    }
+    let stream = input_stream_reference("read-line", arguments.first())?;
+    let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
+    let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let mut stream = stream.borrow_mut();
     if !stream.is_input() {
         return Err(stream_state_error("read-line", "an input stream"));
     }
     match stream.read_line() {
         Some((line, eof)) => Ok(Value::values(vec![Value::string(line), Value::boolean(eof)])),
-        None => Ok(Value::values(vec![Value::Nil, Value::boolean(true)])),
+        None if eof_error_p => Err(end_of_file_error("a line")),
+        None => Ok(Value::values(vec![eof_value, Value::boolean(true)])),
     }
 }
 
@@ -3515,9 +5606,25 @@ fn write_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 fn close_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "close", 1)?;
+    if arguments.len() != 1 && arguments.len() != 3 {
+        return Err(arity("close", "1 or 3", arguments.len()));
+    }
+    let abort = if arguments.len() == 3 {
+        if stream_keyword_name("close :abort", &arguments[1])? != "ABORT" {
+            return Err(RuntimeError::InvalidForm {
+                message: "close accepts only the :abort keyword".to_string(),
+                span: None,
+            });
+        }
+        arguments[2].is_truthy()
+    } else {
+        false
+    };
     let stream = stream_reference("close", &arguments[0])?;
-    stream.borrow_mut().close();
+    stream
+        .borrow_mut()
+        .close(abort)
+        .map_err(|error| RuntimeError::Io(format!("close: {error}")))?;
     Ok(Value::boolean(true))
 }
 
@@ -3570,16 +5677,165 @@ fn format_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-fn format_control(control: &str, arguments: &[Value]) -> Result<String, RuntimeError> {
+pub(crate) fn format_control(control: &str, arguments: &[Value]) -> Result<String, RuntimeError> {
     let characters = control.chars().collect::<Vec<_>>();
-    let (output, _) = format_control_characters(&characters, arguments)?;
+    let (output, _, _) = format_control_characters(&characters, arguments, false)?;
     Ok(output)
+}
+
+#[derive(Clone, Copy)]
+enum FormatParameter {
+    Missing,
+    Number(i64),
+    Character(char),
+}
+
+#[derive(Clone, Copy)]
+struct FormatTermination {
+    colon_modifier: bool,
+}
+
+fn parse_format_parameters(
+    characters: &[char],
+    character_index: &mut usize,
+    arguments: &[Value],
+    argument_index: &mut usize,
+) -> Result<Vec<FormatParameter>, RuntimeError> {
+    let mut parameters = Vec::new();
+    let mut current_parameter = None;
+    let mut comma_seen = false;
+    while *character_index < characters.len() {
+        match characters[*character_index] {
+            ',' => {
+                parameters.push(current_parameter.take().unwrap_or(FormatParameter::Missing));
+                comma_seen = true;
+                *character_index += 1;
+            }
+            '\'' => {
+                *character_index += 1;
+                let character = characters.get(*character_index).copied().ok_or_else(|| {
+                    RuntimeError::InvalidForm {
+                        message: "format character parameter is missing its character".to_string(),
+                        span: None,
+                    }
+                })?;
+                current_parameter = Some(FormatParameter::Character(character));
+                comma_seen = false;
+                *character_index += 1;
+            }
+            '#' => {
+                *character_index += 1;
+                let remaining = arguments.len().saturating_sub(*argument_index);
+                let remaining = i64::try_from(remaining).unwrap_or(i64::MAX);
+                current_parameter = Some(FormatParameter::Number(remaining));
+                comma_seen = false;
+            }
+            'v' | 'V' => {
+                *character_index += 1;
+                let argument = format_argument("format parameter", arguments, argument_index)?;
+                current_parameter = Some(FormatParameter::Number(integer_argument(
+                    "format parameter",
+                    argument,
+                )?));
+                comma_seen = false;
+            }
+            '-' | '0'..='9' => {
+                let start = *character_index;
+                if characters[*character_index] == '-' {
+                    *character_index += 1;
+                }
+                let digit_start = *character_index;
+                while *character_index < characters.len()
+                    && characters[*character_index].is_ascii_digit()
+                {
+                    *character_index += 1;
+                }
+                if digit_start == *character_index {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format numeric parameter needs digits".to_string(),
+                        span: None,
+                    });
+                }
+                let text = characters[start..*character_index].iter().collect::<String>();
+                let value = text.parse::<i64>().map_err(|_| RuntimeError::InvalidForm {
+                    message: format!("format numeric parameter is out of range: {text}"),
+                    span: None,
+                })?;
+                current_parameter = Some(FormatParameter::Number(value));
+                comma_seen = false;
+            }
+            _ => break,
+        }
+    }
+    if let Some(parameter) = current_parameter {
+        parameters.push(parameter);
+    } else if comma_seen {
+        parameters.push(FormatParameter::Missing);
+    }
+    Ok(parameters)
+}
+
+fn format_directive_prefix(
+    characters: &[char],
+    start: usize,
+) -> Result<(usize, bool, bool), RuntimeError> {
+    let mut directive_index = start;
+    while directive_index < characters.len() {
+        match characters[directive_index] {
+            ',' | '#' | 'v' | 'V' => directive_index += 1,
+            '\'' => {
+                directive_index += 1;
+                if directive_index >= characters.len() {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format character parameter is missing its character".to_string(),
+                        span: None,
+                    });
+                }
+                directive_index += 1;
+            }
+            '-' | '0'..='9' => {
+                if characters[directive_index] == '-' {
+                    directive_index += 1;
+                }
+                let digit_start = directive_index;
+                while directive_index < characters.len()
+                    && characters[directive_index].is_ascii_digit()
+                {
+                    directive_index += 1;
+                }
+                if digit_start == directive_index {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format numeric parameter needs digits".to_string(),
+                        span: None,
+                    });
+                }
+            }
+            _ => break,
+        }
+    }
+    let mut colon_modifier = false;
+    let mut at_sign_modifier = false;
+    while directive_index < characters.len() {
+        match characters[directive_index] {
+            ':' => {
+                colon_modifier = true;
+                directive_index += 1;
+            }
+            '@' => {
+                at_sign_modifier = true;
+                directive_index += 1;
+            }
+            _ => break,
+        }
+    }
+    Ok((directive_index, colon_modifier, at_sign_modifier))
 }
 
 fn format_control_characters(
     characters: &[char],
     arguments: &[Value],
-) -> Result<(String, usize), RuntimeError> {
+    colon_iteration_last: bool,
+) -> Result<(String, usize, Option<FormatTermination>), RuntimeError> {
     let mut output = String::new();
     let mut argument_index = 0;
     let mut character_index = 0;
@@ -3591,6 +5847,12 @@ fn format_control_characters(
             continue;
         }
 
+        let parameters = parse_format_parameters(
+            characters,
+            &mut character_index,
+            arguments,
+            &mut argument_index,
+        )?;
         let mut colon_modifier = false;
         let mut at_sign_modifier = false;
         while character_index < characters.len() {
@@ -3610,13 +5872,18 @@ fn format_control_characters(
             characters
                 .get(character_index)
                 .copied()
-                .ok_or_else(|| RuntimeError::InvalidForm {
-                    message: "format control ends after a tilde".to_string(),
-                    span: None,
-                })?;
+            .ok_or_else(|| RuntimeError::InvalidForm {
+                message: "format control ends after a tilde".to_string(),
+                span: None,
+            })?;
         character_index += 1;
         let directive = directive.to_ascii_uppercase();
-        if (colon_modifier || at_sign_modifier) && !matches!(directive, '{' | '[') {
+        let supports_modifiers = matches!(
+            directive,
+            '{' | '[' | '<' | 'A' | 'S' | 'C' | 'D' | 'B' | 'O' | 'X' | 'R' | 'F' | 'E' | 'G'
+                | 'I' | 'P' | '$' | '^' | 'T' | 'W' | '?' | '_' | '('
+        );
+        if (colon_modifier || at_sign_modifier) && !supports_modifiers {
             return Err(RuntimeError::InvalidForm {
                 message: format!("unsupported format modifier before ~{directive}"),
                 span: None,
@@ -3625,11 +5892,50 @@ fn format_control_characters(
         match directive {
             'A' => {
                 let argument = format_argument("~A", arguments, &mut argument_index)?;
-                append_aesthetic(&mut output, argument);
+                let mut formatted = String::new();
+                if colon_modifier && matches!(argument, Value::Nil) {
+                    formatted.push_str("()");
+                } else {
+                    append_aesthetic(&mut formatted, argument);
+                }
+                output.push_str(&format_text_field(
+                    formatted,
+                    &parameters,
+                    at_sign_modifier,
+                )?);
             }
             'S' => {
                 let argument = format_argument("~S", arguments, &mut argument_index)?;
-                output.push_str(&argument.to_string());
+                output.push_str(&format_text_field(
+                    argument.to_string(),
+                    &parameters,
+                    at_sign_modifier,
+                )?);
+            }
+            '(' => {
+                if !parameters.is_empty() {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format case conversion does not accept parameters".to_string(),
+                        span: None,
+                    });
+                }
+                let body_end = format_case_conversion_end(characters, character_index)?;
+                let body = &characters[character_index..body_end];
+                character_index = body_end + 2;
+                let (formatted, consumed, termination) = format_control_characters(
+                    body,
+                    &arguments[argument_index..],
+                    colon_iteration_last,
+                )?;
+                output.push_str(&format_case_conversion(
+                    &formatted,
+                    colon_modifier,
+                    at_sign_modifier,
+                ));
+                argument_index += consumed;
+                if let Some(termination) = termination {
+                    return Ok((output, argument_index, Some(termination)));
+                }
             }
             'D' | 'B' | 'O' | 'X' => {
                 let argument =
@@ -3642,44 +5948,221 @@ fn format_control_characters(
                     'X' => 16,
                     _ => unreachable!(),
                 };
-                output.push_str(&format_integer_radix(integer, radix));
+                output.push_str(&format_integer_directive(
+                    integer,
+                    radix,
+                    &parameters,
+                    colon_modifier,
+                    at_sign_modifier,
+                )?);
+            }
+            'F' => {
+                let argument = format_argument("~F", arguments, &mut argument_index)?;
+                let value = number_argument("format", argument)?.as_float();
+                output.push_str(&format_fixed_float_directive(
+                    value,
+                    &parameters,
+                    colon_modifier,
+                    at_sign_modifier,
+                )?);
+            }
+            'G' => {
+                let argument = format_argument("~G", arguments, &mut argument_index)?;
+                let value = number_argument("format", argument)?.as_float();
+                output.push_str(&format_general_float_directive(
+                    value,
+                    &parameters,
+                    colon_modifier,
+                    at_sign_modifier,
+                )?);
+            }
+            'E' => {
+                let argument = format_argument("~E", arguments, &mut argument_index)?;
+                let value = number_argument("format", argument)?.as_float();
+                output.push_str(&format_exponential_float_directive(
+                    value,
+                    &parameters,
+                    colon_modifier,
+                    at_sign_modifier,
+                )?);
+            }
+            '$' => {
+                let argument = format_argument("~$", arguments, &mut argument_index)?;
+                let value = number_argument("format", argument)?.as_float();
+                output.push_str(&format_dollar_float_directive(
+                    value,
+                    &parameters,
+                    colon_modifier,
+                    at_sign_modifier,
+                )?);
+            }
+            'P' => {
+                if !parameters.is_empty() {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format ~P does not accept parameters".to_string(),
+                        span: None,
+                    });
+                }
+                let argument = if colon_modifier {
+                    let index = argument_index.checked_sub(1).ok_or_else(|| {
+                        RuntimeError::InvalidForm {
+                            message: "format ~:P has no previous argument".to_string(),
+                            span: None,
+                        }
+                    })?;
+                    arguments.get(index).ok_or_else(|| RuntimeError::InvalidForm {
+                        message: "format ~:P has no previous argument".to_string(),
+                        span: None,
+                    })?
+                } else {
+                    format_argument("~P", arguments, &mut argument_index)?
+                };
+                let value = integer_argument("format", argument)?;
+                if at_sign_modifier {
+                    output.push_str(if value == 1 { "y" } else { "ies" });
+                } else if value == 1 {
+                    output.push_str("");
+                } else {
+                    output.push('s');
+                }
             }
             'C' => {
                 let argument = format_argument("~C", arguments, &mut argument_index)?;
                 let Value::Character(character) = argument else {
                     return Err(type_error("format", "a character for ~C", argument));
                 };
-                output.push(*character);
+                output.push_str(&format_character_directive(
+                    *character,
+                    colon_modifier,
+                    at_sign_modifier,
+                ));
             }
-            '%' => output.push('\n'),
-            '&' => {
-                if !output.is_empty() && !output.ends_with('\n') {
+            '%' => {
+                let count = format_parameter_count(&parameters, 0, 1)?;
+                for repetition in 0..count {
+                    if repetition == 0 && (output.is_empty() || output.ends_with('\n')) {
+                        continue;
+                    }
                     output.push('\n');
                 }
             }
-            '~' => output.push('~'),
+            '&' => {
+                let count = format_parameter_count(&parameters, 0, 1)?;
+                for repetition in 0..count {
+                    if repetition == 0 {
+                        if !output.is_empty() && !output.ends_with('\n') {
+                            output.push('\n');
+                        }
+                    } else {
+                        output.push('\n');
+                    }
+                }
+            }
+            '|' => {
+                let count = format_parameter_count(&parameters, 0, 1)?;
+                for _ in 0..count {
+                    output.push('\x0c');
+                }
+            }
+            '~' => {
+                let count = format_parameter_count(&parameters, 0, 1)?;
+                for _ in 0..count {
+                    output.push('~');
+                }
+            }
+            '_' => {
+                if !parameters.is_empty() {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format ~_ does not accept parameters".to_string(),
+                        span: None,
+                    });
+                }
+            }
+            'I' => {
+                if at_sign_modifier {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format ~I does not support the at-sign modifier".to_string(),
+                        span: None,
+                    });
+                }
+                if parameters.len() > 1 {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format ~I accepts at most one parameter".to_string(),
+                        span: None,
+                    });
+                }
+                let _ = format_parameter_count(&parameters, 0, 0)?;
+            }
             '*' => {
-                format_argument("~*", arguments, &mut argument_index)?;
+                let count = format_parameter_count(&parameters, 0, 1)?;
+                argument_index = argument_index
+                    .saturating_add(count)
+                    .min(arguments.len());
             }
             '?' => {
+                if !parameters.is_empty() || colon_modifier {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format ~? only supports the at-sign modifier".to_string(),
+                        span: None,
+                    });
+                }
                 let nested_control = format_argument("~?", arguments, &mut argument_index)?;
                 let nested_control = match nested_control {
                     Value::String(value) => value,
                     value => return Err(type_error("format", "a string for ~?", value)),
                 };
-                let nested_arguments = format_argument("~?", arguments, &mut argument_index)?;
-                let nested_arguments = nested_arguments.list_items().ok_or_else(|| {
-                    type_error("format", "a list of arguments for ~?", nested_arguments)
-                })?;
-                output.push_str(&format_control(&nested_control, &nested_arguments)?);
+                if at_sign_modifier {
+                    let nested_characters = nested_control.chars().collect::<Vec<_>>();
+                    let (formatted, consumed, termination) = format_control_characters(
+                        &nested_characters,
+                        &arguments[argument_index..],
+                        false,
+                    )?;
+                    output.push_str(&formatted);
+                    argument_index += consumed;
+                    if let Some(termination) = termination {
+                        return Ok((
+                            output,
+                            argument_index,
+                            Some(termination),
+                        ));
+                    }
+                } else {
+                    let nested_arguments = format_argument("~?", arguments, &mut argument_index)?;
+                    let nested_arguments = nested_arguments.list_items().ok_or_else(|| {
+                        type_error("format", "a list of arguments for ~?", nested_arguments)
+                    })?;
+                    output.push_str(&format_control(&nested_control, &nested_arguments)?);
+                }
+            }
+            '^' => {
+                if format_escape_upward(
+                    &parameters,
+                    arguments,
+                    argument_index,
+                    colon_modifier,
+                    colon_iteration_last,
+                )? {
+                    return Ok((
+                        output,
+                        argument_index,
+                        Some(FormatTermination { colon_modifier }),
+                    ));
+                }
             }
             '{' => {
                 let body_end = format_iteration_end(characters, character_index)?;
                 let body = &characters[character_index..body_end];
                 character_index = body_end + 2;
+                let limit = format_iteration_limit(&parameters)?;
                 if at_sign_modifier {
                     let (formatted, consumed) =
-                        format_iteration(body, &arguments[argument_index..], colon_modifier)?;
+                        format_iteration(
+                            body,
+                            &arguments[argument_index..],
+                            colon_modifier,
+                            limit,
+                        )?;
                     output.push_str(&formatted);
                     argument_index += consumed;
                 } else {
@@ -3687,7 +6170,7 @@ fn format_control_characters(
                     let list = list
                         .list_items()
                         .ok_or_else(|| type_error("format", "a list for ~{", list))?;
-                    let (formatted, _) = format_iteration(body, &list, colon_modifier)?;
+                    let (formatted, _) = format_iteration(body, &list, colon_modifier, limit)?;
                     output.push_str(&formatted);
                 }
             }
@@ -3714,13 +6197,48 @@ fn format_control_characters(
                         span: None,
                     });
                 }
-                let selector = format_argument("~[", arguments, &mut argument_index)?;
+                if (colon_modifier || at_sign_modifier) && !parameters.is_empty() {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format choice parameters cannot be used with : or @ modifier"
+                            .to_string(),
+                        span: None,
+                    });
+                }
+                if !colon_modifier && !at_sign_modifier && parameters.len() > 1 {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format choice accepts at most one parameter".to_string(),
+                        span: None,
+                    });
+                }
+
                 let selected_index = if colon_modifier {
+                    let selector = format_argument("~[", arguments, &mut argument_index)?;
                     Some(usize::from(selector.is_truthy()))
                 } else if at_sign_modifier {
-                    selector.is_truthy().then_some(0)
+                    let selector = arguments
+                        .get(argument_index)
+                        .ok_or_else(|| RuntimeError::InvalidForm {
+                            message: "format directive ~[ needs another argument".to_string(),
+                            span: None,
+                        })?;
+                    if selector.is_truthy() {
+                        Some(0)
+                    } else {
+                        argument_index += 1;
+                        None
+                    }
                 } else {
-                    let index = integer_argument("format choice", selector)?;
+                    let has_selector_parameter = matches!(
+                        parameters.first().copied(),
+                        Some(FormatParameter::Number(_))
+                            | Some(FormatParameter::Character(_))
+                    );
+                    let index = if has_selector_parameter {
+                        format_parameter_number(&parameters, 0, 0)?
+                    } else {
+                        let selector = format_argument("~[", arguments, &mut argument_index)?;
+                        integer_argument("format choice", selector)?
+                    };
                     usize::try_from(index).ok()
                 };
                 let selected_clause = selected_index.and_then(|index| {
@@ -3729,18 +6247,103 @@ fn format_control_characters(
                         .or_else(|| clauses.iter().find(|(_, default)| *default))
                 });
                 if let Some((clause, _)) = selected_clause {
-                    let (formatted, consumed) =
-                        format_control_characters(clause, &arguments[argument_index..])?;
+                    let (formatted, consumed, termination) =
+                        format_control_characters(
+                            clause,
+                            &arguments[argument_index..],
+                            colon_iteration_last,
+                        )?;
                     output.push_str(&formatted);
                     argument_index += consumed;
+                    if let Some(termination) = termination {
+                        return Ok((output, argument_index, Some(termination)));
+                    }
                 } else if !colon_modifier && !at_sign_modifier {
                     if let Some((clause, _)) = clauses.iter().find(|(_, default)| *default) {
-                        let (formatted, consumed) =
-                            format_control_characters(clause, &arguments[argument_index..])?;
+                        let (formatted, consumed, termination) =
+                            format_control_characters(
+                                clause,
+                                &arguments[argument_index..],
+                                colon_iteration_last,
+                            )?;
                         output.push_str(&formatted);
                         argument_index += consumed;
+                        if let Some(termination) = termination {
+                            return Ok((output, argument_index, Some(termination)));
+                        }
                     }
                 }
+            }
+            '<' => {
+                if parameters.len() > 4 {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format justification accepts at most four parameters".to_string(),
+                        span: None,
+                    });
+                }
+                let body_end = format_justification_end(characters, character_index)?;
+                let body = &characters[character_index..body_end];
+                character_index = body_end + 2;
+                let clauses = format_justification_clauses(body)?;
+                let (formatted, consumed) = format_justification(
+                    &clauses,
+                    &arguments[argument_index..],
+                    &parameters,
+                    colon_modifier,
+                    at_sign_modifier,
+                    colon_iteration_last,
+                )?;
+                output.push_str(&formatted);
+                argument_index += consumed;
+            }
+            'R' => {
+                let argument =
+                    format_argument("~R", arguments, &mut argument_index)?;
+                let integer = integer_argument("format", argument)?;
+                output.push_str(&format_radix_directive(
+                    integer,
+                    &parameters,
+                    colon_modifier,
+                    at_sign_modifier,
+                )?);
+            }
+            'T' => {
+                let column = format_parameter_count(&parameters, 0, 1)?;
+                let increment = format_parameter_count(&parameters, 1, 1)?;
+                if !colon_modifier {
+                    let current_column = output
+                        .rsplit('\n')
+                        .next()
+                        .unwrap_or_default()
+                        .chars()
+                        .count();
+                    let spaces = if at_sign_modifier {
+                        let relative_column = current_column.saturating_add(column);
+                        let additional = if increment == 0 {
+                            0
+                        } else {
+                            (increment - (relative_column % increment)) % increment
+                        };
+                        column.saturating_add(additional)
+                    } else if current_column < column {
+                        column - current_column
+                    } else if increment == 0 {
+                        0
+                    } else {
+                        increment - ((current_column - column) % increment)
+                    };
+                    output.extend(std::iter::repeat(' ').take(spaces));
+                }
+            }
+            'W' => {
+                if !parameters.is_empty() {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format ~W does not accept parameters".to_string(),
+                        span: None,
+                    });
+                }
+                let argument = format_argument("~W", arguments, &mut argument_index)?;
+                output.push_str(&printed_value(argument, true));
             }
             '}' => {
                 return Err(RuntimeError::InvalidForm {
@@ -3756,7 +6359,7 @@ fn format_control_characters(
             }
         }
     }
-    Ok((output, argument_index))
+    Ok((output, argument_index, None))
 }
 
 fn format_iteration_end(characters: &[char], start: usize) -> Result<usize, RuntimeError> {
@@ -3765,6 +6368,24 @@ fn format_iteration_end(characters: &[char], start: usize) -> Result<usize, Runt
 
 fn format_choice_end(characters: &[char], start: usize) -> Result<usize, RuntimeError> {
     format_directive_end(characters, start, '[', "format choice is missing ~]")
+}
+
+fn format_justification_end(characters: &[char], start: usize) -> Result<usize, RuntimeError> {
+    format_directive_end(
+        characters,
+        start,
+        '<',
+        "format justification is missing ~>",
+    )
+}
+
+fn format_case_conversion_end(characters: &[char], start: usize) -> Result<usize, RuntimeError> {
+    format_directive_end(
+        characters,
+        start,
+        '(',
+        "format case conversion is missing ~)",
+    )
 }
 
 fn format_directive_end(
@@ -3781,18 +6402,20 @@ fn format_directive_end(
             continue;
         }
 
-        let mut directive_index = index + 1;
-        while directive_index < characters.len() && matches!(characters[directive_index], ':' | '@')
-        {
-            directive_index += 1;
-        }
+        let (directive_index, _, _) = format_directive_prefix(characters, index + 1)?;
         let Some(directive) = characters.get(directive_index).copied() else {
             break;
         };
         match directive.to_ascii_uppercase() {
-            '{' | '[' => stack.push(directive.to_ascii_uppercase()),
-            '}' | ']' => {
-                let expected_opening = if directive == '}' { '{' } else { '[' };
+            '{' | '[' | '<' | '(' => stack.push(directive.to_ascii_uppercase()),
+            '}' | ']' | '>' | ')' => {
+                let expected_opening = match directive {
+                    '}' => '{',
+                    ']' => '[',
+                    '>' => '<',
+                    ')' => '(',
+                    _ => unreachable!(),
+                };
                 if stack.last().copied() == Some(expected_opening) {
                     stack.pop();
                     if stack.is_empty() {
@@ -3822,22 +6445,8 @@ fn format_choice_clauses<'a>(body: &'a [char]) -> Result<Vec<(&'a [char], bool)>
             continue;
         }
 
-        let mut directive_index = index + 1;
-        let mut colon_modifier = false;
-        let mut at_sign_modifier = false;
-        while directive_index < body.len() {
-            match body[directive_index] {
-                ':' => {
-                    colon_modifier = true;
-                    directive_index += 1;
-                }
-                '@' => {
-                    at_sign_modifier = true;
-                    directive_index += 1;
-                }
-                _ => break,
-            }
-        }
+        let (directive_index, colon_modifier, at_sign_modifier) =
+            format_directive_prefix(body, index + 1)?;
         let Some(directive) = body.get(directive_index).copied() else {
             return Err(RuntimeError::InvalidForm {
                 message: "format choice clause ends after a tilde".to_string(),
@@ -3846,9 +6455,15 @@ fn format_choice_clauses<'a>(body: &'a [char]) -> Result<Vec<(&'a [char], bool)>
         };
         let directive = directive.to_ascii_uppercase();
         match directive {
-            '{' | '[' => stack.push(directive),
-            '}' | ']' => {
-                let expected_opening = if directive == '}' { '{' } else { '[' };
+            '{' | '[' | '<' | '(' => stack.push(directive),
+            '}' | ']' | '>' | ')' => {
+                let expected_opening = match directive {
+                    '}' => '{',
+                    ']' => '[',
+                    '>' => '<',
+                    ')' => '(',
+                    _ => unreachable!(),
+                };
                 if stack.last().copied() == Some(expected_opening) {
                     stack.pop();
                 } else if stack.is_empty() {
@@ -3884,15 +6499,296 @@ fn format_choice_clauses<'a>(body: &'a [char]) -> Result<Vec<(&'a [char], bool)>
     Ok(clauses)
 }
 
+fn format_justification_clauses<'a>(body: &'a [char]) -> Result<Vec<&'a [char]>, RuntimeError> {
+    let mut clauses = Vec::new();
+    let mut clause_start = 0;
+    let mut stack = Vec::new();
+    let mut index = 0;
+    while index < body.len() {
+        if body[index] != '~' {
+            index += 1;
+            continue;
+        }
+
+        let (directive_index, colon_modifier, at_sign_modifier) =
+            format_directive_prefix(body, index + 1)?;
+        let Some(directive) = body.get(directive_index).copied() else {
+            return Err(RuntimeError::InvalidForm {
+                message: "format justification clause ends after a tilde".to_string(),
+                span: None,
+            });
+        };
+        let directive = directive.to_ascii_uppercase();
+        match directive {
+            '{' | '[' | '<' | '(' => stack.push(directive),
+            '}' | ']' | '>' | ')' => {
+                let expected_opening = match directive {
+                    '}' => '{',
+                    ']' => '[',
+                    '>' => '<',
+                    ')' => '(',
+                    _ => unreachable!(),
+                };
+                if stack.last().copied() == Some(expected_opening) {
+                    stack.pop();
+                } else if stack.is_empty() {
+                    return Err(RuntimeError::InvalidForm {
+                        message: format!("unexpected format justification terminator ~{directive}"),
+                        span: None,
+                    });
+                } else {
+                    return Err(RuntimeError::InvalidForm {
+                        message: format!("mismatched format justification terminator ~{directive}"),
+                        span: None,
+                    });
+                }
+            }
+            ';' if stack.is_empty() => {
+                if colon_modifier || at_sign_modifier {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format justification does not support modifiers on ~;"
+                            .to_string(),
+                        span: None,
+                    });
+                }
+                clauses.push(&body[clause_start..index]);
+                clause_start = directive_index + 1;
+            }
+            _ => {}
+        }
+        index = directive_index + 1;
+    }
+    if !stack.is_empty() {
+        return Err(RuntimeError::InvalidForm {
+            message: "format justification contains an unclosed nested directive".to_string(),
+            span: None,
+        });
+    }
+    clauses.push(&body[clause_start..]);
+    Ok(clauses)
+}
+
+fn format_justification(
+    clauses: &[&[char]],
+    arguments: &[Value],
+    parameters: &[FormatParameter],
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+    colon_iteration_last: bool,
+) -> Result<(String, usize), RuntimeError> {
+    let minimum_column = format_parameter_count(parameters, 0, 0)?;
+    let column_increment = format_parameter_count(parameters, 1, 1)?;
+    let minimum_padding = format_parameter_count(parameters, 2, 0)?;
+    let pad_character = format_parameter_character(parameters, 3, ' ')?;
+    if column_increment == 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: "format justification column increment must be positive".to_string(),
+            span: None,
+        });
+    }
+
+    let mut pieces = Vec::new();
+    let mut argument_index = 0;
+    for clause in clauses {
+        let (formatted, consumed, termination) = format_control_characters(
+            clause,
+            &arguments[argument_index..],
+            colon_iteration_last,
+        )?;
+        argument_index += consumed;
+        if termination.is_some() {
+            break;
+        }
+        pieces.push(formatted);
+    }
+
+    if pieces.is_empty() {
+        return Ok((String::new(), argument_index));
+    }
+
+    let between_count = pieces.len().saturating_sub(1);
+    let content_width = pieces.iter().fold(0usize, |width, piece| {
+        width.saturating_add(piece.chars().count())
+    });
+    let required_width = content_width.saturating_add(
+        minimum_padding.saturating_mul(between_count),
+    );
+    let mut target_width = minimum_column.max(required_width);
+    if target_width > minimum_column {
+        let remainder = (target_width - minimum_column) % column_increment;
+        if remainder != 0 {
+            target_width = target_width.saturating_add(column_increment - remainder);
+        }
+    }
+    let total_padding = target_width.saturating_sub(content_width);
+    let base_between_padding = minimum_padding.saturating_mul(between_count);
+
+    let leading_gap = if pieces.len() == 1 {
+        colon_modifier || !at_sign_modifier
+    } else {
+        colon_modifier
+    };
+    let trailing_gap = at_sign_modifier;
+    let gap_count = (if leading_gap { 1usize } else { 0usize })
+        .saturating_add(between_count)
+        .saturating_add(if trailing_gap { 1usize } else { 0usize });
+    let distributed_padding = total_padding.saturating_sub(base_between_padding);
+    let base_padding = if gap_count == 0 {
+        0
+    } else {
+        distributed_padding / gap_count
+    };
+    let remainder = if gap_count == 0 {
+        0
+    } else {
+        distributed_padding % gap_count
+    };
+    let mut gaps = vec![0usize; gap_count];
+    for (index, gap) in gaps.iter_mut().enumerate() {
+        *gap = base_padding.saturating_add(usize::from(index >= gap_count - remainder));
+    }
+
+    let mut gap_index = 0;
+    if leading_gap {
+        gap_index += 1;
+    }
+    for _ in 0..between_count {
+        gaps[gap_index] = gaps[gap_index].saturating_add(minimum_padding);
+        gap_index += 1;
+    }
+
+    let mut output = String::new();
+    let append_padding = |output: &mut String, count: usize| {
+        output.extend(std::iter::repeat(pad_character).take(count));
+    };
+    gap_index = 0;
+    if leading_gap {
+        append_padding(&mut output, gaps[gap_index]);
+        gap_index += 1;
+    }
+    for (index, piece) in pieces.iter().enumerate() {
+        output.push_str(piece);
+        if index + 1 < pieces.len() {
+            append_padding(&mut output, gaps[gap_index]);
+            gap_index += 1;
+        }
+    }
+    if trailing_gap {
+        append_padding(&mut output, gaps[gap_index]);
+    }
+    Ok((output, argument_index))
+}
+
+fn format_case_conversion(
+    text: &str,
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> String {
+    let mut output = String::new();
+    if colon_modifier && at_sign_modifier {
+        for character in text.chars() {
+            output.extend(character.to_uppercase());
+        }
+        return output;
+    }
+
+    if colon_modifier {
+        let mut word_start = true;
+        for character in text.chars() {
+            if character.is_alphanumeric() {
+                if word_start {
+                    output.extend(character.to_uppercase());
+                } else {
+                    output.extend(character.to_lowercase());
+                }
+                word_start = false;
+            } else {
+                output.push(character);
+                word_start = true;
+            }
+        }
+        return output;
+    }
+
+    if at_sign_modifier {
+        let mut first_word = true;
+        let mut word_start = true;
+        for character in text.chars() {
+            if first_word && character.is_whitespace() {
+                first_word = false;
+                output.push(character);
+            } else if first_word && character.is_alphanumeric() {
+                if word_start {
+                    output.extend(character.to_uppercase());
+                } else {
+                    output.extend(character.to_lowercase());
+                }
+                word_start = false;
+            } else {
+                output.extend(character.to_lowercase());
+            }
+        }
+        return output;
+    }
+
+    for character in text.chars() {
+        output.extend(character.to_lowercase());
+    }
+    output
+}
+
+fn format_escape_upward(
+    parameters: &[FormatParameter],
+    arguments: &[Value],
+    argument_index: usize,
+    colon_modifier: bool,
+    colon_iteration_last: bool,
+) -> Result<bool, RuntimeError> {
+    if parameters.is_empty() {
+        return Ok(if colon_modifier {
+            colon_iteration_last
+        } else {
+            argument_index >= arguments.len()
+        });
+    }
+    if parameters.len() > 3 {
+        return Err(RuntimeError::InvalidForm {
+            message: "format ~^ accepts at most three parameters".to_string(),
+            span: None,
+        });
+    }
+    let values = parameters
+        .iter()
+        .map(|parameter| match parameter {
+            FormatParameter::Missing => Ok(0),
+            FormatParameter::Number(value) => Ok(*value),
+            FormatParameter::Character(_) => Err(RuntimeError::InvalidForm {
+                message: "format ~^ parameters must be numeric".to_string(),
+                span: None,
+            }),
+        })
+        .collect::<Result<Vec<_>, RuntimeError>>()?;
+    Ok(match values.as_slice() {
+        [value] => *value == 0,
+        [first, second] => first == second,
+        [first, second, third] => first <= second && second <= third,
+        _ => unreachable!("format ~^ parameter count was checked"),
+    })
+}
+
 fn format_iteration(
     body: &[char],
     arguments: &[Value],
     colon_modifier: bool,
+    limit: Option<usize>,
 ) -> Result<(String, usize), RuntimeError> {
     let mut output = String::new();
     let mut argument_index = 0;
-    while argument_index < arguments.len() {
-        let consumed = if colon_modifier {
+    let mut repetitions = 0;
+    while argument_index < arguments.len()
+        && limit.map_or(true, |limit| repetitions < limit)
+    {
+        let (consumed, termination) = if colon_modifier {
             let nested_arguments = arguments[argument_index].list_items().ok_or_else(|| {
                 type_error(
                     "format",
@@ -3900,18 +6796,1002 @@ fn format_iteration(
                     &arguments[argument_index],
                 )
             })?;
-            let (formatted, consumed) = format_control_characters(body, &nested_arguments)?;
+            let (formatted, consumed, termination) =
+                format_control_characters(
+                    body,
+                    &nested_arguments,
+                    argument_index + 1 >= arguments.len(),
+                )?;
             output.push_str(&formatted);
-            consumed
+            (consumed, termination)
         } else {
-            let (formatted, consumed) =
-                format_control_characters(body, &arguments[argument_index..])?;
+            let (formatted, consumed, termination) =
+                format_control_characters(body, &arguments[argument_index..], false)?;
             output.push_str(&formatted);
-            consumed
+            (consumed, termination)
         };
         argument_index += if colon_modifier { 1 } else { consumed.max(1) };
+        repetitions += 1;
+        if let Some(termination) = termination {
+            if colon_modifier && !termination.colon_modifier {
+                continue;
+            }
+            break;
+        }
     }
     Ok((output, argument_index))
+}
+
+fn format_parameter_number(
+    parameters: &[FormatParameter],
+    index: usize,
+    default: i64,
+) -> Result<i64, RuntimeError> {
+    match parameters.get(index).copied().unwrap_or(FormatParameter::Missing) {
+        FormatParameter::Missing => Ok(default),
+        FormatParameter::Number(value) => Ok(value),
+        FormatParameter::Character(_) => Err(RuntimeError::InvalidForm {
+            message: format!("format parameter {index} must be numeric"),
+            span: None,
+        }),
+    }
+}
+
+fn format_parameter_count(
+    parameters: &[FormatParameter],
+    index: usize,
+    default: i64,
+) -> Result<usize, RuntimeError> {
+    let value = format_parameter_number(parameters, index, default)?;
+    usize::try_from(value).map_err(|_| RuntimeError::InvalidForm {
+        message: format!("format parameter {index} must be non-negative"),
+        span: None,
+    })
+}
+
+fn format_parameter_character(
+    parameters: &[FormatParameter],
+    index: usize,
+    default: char,
+) -> Result<char, RuntimeError> {
+    match parameters.get(index).copied().unwrap_or(FormatParameter::Missing) {
+        FormatParameter::Missing => Ok(default),
+        FormatParameter::Character(value) => Ok(value),
+        FormatParameter::Number(_) => Err(RuntimeError::InvalidForm {
+            message: format!("format parameter {index} must be a character"),
+            span: None,
+        }),
+    }
+}
+
+fn format_iteration_limit(
+    parameters: &[FormatParameter],
+) -> Result<Option<usize>, RuntimeError> {
+    if parameters.is_empty() || matches!(parameters[0], FormatParameter::Missing) {
+        Ok(None)
+    } else {
+        Ok(Some(format_parameter_count(parameters, 0, 0)?))
+    }
+}
+
+fn format_text_field(
+    text: String,
+    parameters: &[FormatParameter],
+    at_sign_modifier: bool,
+) -> Result<String, RuntimeError> {
+    let minimum_column = format_parameter_count(parameters, 0, 0)?;
+    let column_increment = format_parameter_count(parameters, 1, 1)?;
+    let minimum_padding = format_parameter_count(parameters, 2, 0)?;
+    let padding_character = format_parameter_character(parameters, 3, ' ')?;
+    if column_increment == 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: "format column increment must be positive".to_string(),
+            span: None,
+        });
+    }
+
+    let width = text.chars().count();
+    let mut target = minimum_column.max(width.saturating_add(minimum_padding));
+    if target > minimum_column {
+        let remainder = (target - minimum_column) % column_increment;
+        if remainder != 0 {
+            target += column_increment - remainder;
+        }
+    }
+    let padding = target.saturating_sub(width);
+    let mut formatted = String::new();
+    if at_sign_modifier {
+        formatted.extend(std::iter::repeat(padding_character).take(padding));
+        formatted.push_str(&text);
+    } else {
+        formatted.push_str(&text);
+        formatted.extend(std::iter::repeat(padding_character).take(padding));
+    }
+    Ok(formatted)
+}
+
+fn format_integer_directive(
+    value: i64,
+    radix: u32,
+    parameters: &[FormatParameter],
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> Result<String, RuntimeError> {
+    let minimum_column = format_parameter_count(parameters, 0, 0)?;
+    let padding_character = format_parameter_character(parameters, 1, ' ')?;
+    let comma_character = format_parameter_character(parameters, 2, ',')?;
+    let comma_interval = format_parameter_count(parameters, 3, 3)?;
+    if colon_modifier && comma_interval == 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: "format comma interval must be positive".to_string(),
+            span: None,
+        });
+    }
+
+    let mut digits = format_unsigned_integer(value.unsigned_abs(), radix);
+    if colon_modifier {
+        digits = format_grouped_digits(&digits, comma_character, comma_interval);
+    }
+    let mut formatted = String::new();
+    if value < 0 {
+        formatted.push('-');
+    } else if at_sign_modifier {
+        formatted.push('+');
+    }
+    formatted.push_str(&digits);
+    let padding = minimum_column.saturating_sub(formatted.chars().count());
+    let mut result = String::new();
+    result.extend(std::iter::repeat(padding_character).take(padding));
+    result.push_str(&formatted);
+    Ok(result)
+}
+
+fn format_fixed_float_directive(
+    value: f64,
+    parameters: &[FormatParameter],
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> Result<String, RuntimeError> {
+    if colon_modifier {
+        return Err(RuntimeError::InvalidForm {
+            message: "unsupported format modifier before ~F".to_string(),
+            span: None,
+        });
+    }
+    let minimum_column = format_parameter_count(parameters, 0, 0)?;
+    let fractional_digits = match parameters.get(1).copied().unwrap_or(FormatParameter::Missing)
+    {
+        FormatParameter::Missing => None,
+        FormatParameter::Number(value) => Some(usize::try_from(value).map_err(|_| {
+            RuntimeError::InvalidForm {
+                message: "format fractional digit count must be non-negative".to_string(),
+                span: None,
+            }
+        })?),
+        FormatParameter::Character(_) => {
+            return Err(RuntimeError::InvalidForm {
+                message: "format parameter 1 must be numeric".to_string(),
+                span: None,
+            });
+        }
+    };
+    let scale = format_parameter_number(parameters, 2, 0)?;
+    let scale = i32::try_from(scale).map_err(|_| RuntimeError::InvalidForm {
+        message: "format scale factor is out of range".to_string(),
+        span: None,
+    })?;
+    let overflow_character = match parameters.get(3).copied().unwrap_or(FormatParameter::Missing)
+    {
+        FormatParameter::Missing => None,
+        FormatParameter::Character(value) => Some(value),
+        FormatParameter::Number(_) => {
+            return Err(RuntimeError::InvalidForm {
+                message: "format parameter 3 must be a character".to_string(),
+                span: None,
+            });
+        }
+    };
+    let padding_character = format_parameter_character(parameters, 4, ' ')?;
+    let scaled = value * 10_f64.powi(scale);
+    let negative = scaled.is_sign_negative();
+    let magnitude = scaled.abs();
+    let mut digits = if let Some(fractional_digits) = fractional_digits {
+        let mut digits = format!("{:.*}", fractional_digits, magnitude);
+        if fractional_digits == 0 {
+            digits.push('.');
+        }
+        digits
+    } else {
+        let mut digits = magnitude.to_string();
+        if !digits.contains('.') && !digits.contains('e') && !digits.contains('E') {
+            digits.push_str(".0");
+        }
+        digits
+    };
+    if let Some(fractional_digits) = fractional_digits {
+        if minimum_column == fractional_digits.saturating_add(1) && digits.starts_with("0.") {
+            digits.remove(0);
+        }
+    }
+
+    let mut formatted = String::new();
+    if negative {
+        formatted.push('-');
+    } else if at_sign_modifier {
+        formatted.push('+');
+    }
+    formatted.push_str(&digits);
+
+    let width = formatted.chars().count();
+    if minimum_column > 0 && width > minimum_column {
+        if let Some(overflow_character) = overflow_character {
+            return Ok(std::iter::repeat(overflow_character)
+                .take(minimum_column)
+                .collect());
+        }
+        return Ok(formatted);
+    }
+    let padding = minimum_column.saturating_sub(width);
+    let mut result = String::new();
+    result.extend(std::iter::repeat(padding_character).take(padding));
+    result.push_str(&formatted);
+    Ok(result)
+}
+
+fn format_general_float_directive(
+    value: f64,
+    parameters: &[FormatParameter],
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> Result<String, RuntimeError> {
+    if colon_modifier {
+        return Err(RuntimeError::InvalidForm {
+            message: "unsupported format modifier before ~G".to_string(),
+            span: None,
+        });
+    }
+
+    let parameter_at = |index| {
+        parameters
+            .get(index)
+            .copied()
+            .unwrap_or(FormatParameter::Missing)
+    };
+    let minimum_column = format_parameter_count(parameters, 0, 0)?;
+    let requested_fractional_digits = match parameter_at(1) {
+        FormatParameter::Missing => None,
+        FormatParameter::Number(value) => Some(usize::try_from(value).map_err(|_| {
+            RuntimeError::InvalidForm {
+                message: "format fractional digit count must be non-negative".to_string(),
+                span: None,
+            }
+        })?),
+        FormatParameter::Character(_) => {
+            return Err(RuntimeError::InvalidForm {
+                message: "format parameter 1 must be numeric".to_string(),
+                span: None,
+            });
+        }
+    };
+    let exponent_padding = match parameter_at(2) {
+        FormatParameter::Missing => 4,
+        FormatParameter::Number(value) => usize::try_from(value)
+            .map_err(|_| RuntimeError::InvalidForm {
+                message: "format exponent field count must be non-negative".to_string(),
+                span: None,
+            })?
+            .checked_add(2)
+            .ok_or_else(|| RuntimeError::InvalidForm {
+                message: "format exponent field count is out of range".to_string(),
+                span: None,
+            })?,
+        FormatParameter::Character(_) => {
+            return Err(RuntimeError::InvalidForm {
+                message: "format parameter 2 must be numeric".to_string(),
+                span: None,
+            });
+        }
+    };
+    let exponent_character = match parameter_at(6) {
+        FormatParameter::Missing => FormatParameter::Character('e'),
+        parameter => parameter,
+    };
+
+    if !value.is_finite() {
+        let exponential_parameters = vec![
+            FormatParameter::Number(i64::try_from(minimum_column).map_err(|_| {
+                RuntimeError::InvalidForm {
+                    message: "format field width is out of range".to_string(),
+                    span: None,
+                }
+            })?),
+            FormatParameter::Missing,
+            FormatParameter::Missing,
+            parameter_at(3),
+            parameter_at(4),
+            parameter_at(5),
+            exponent_character,
+        ];
+        return format_exponential_float_directive(
+            value,
+            &exponential_parameters,
+            false,
+            at_sign_modifier,
+        );
+    }
+
+    let exponent = general_float_decimal_exponent(value);
+    let fractional_digits = requested_fractional_digits.unwrap_or_else(|| {
+        let q = general_float_default_fractional_digits(value, exponent);
+        let minimum = usize::try_from(exponent.min(7).max(0)).unwrap_or(0);
+        q.max(minimum).max(1)
+    });
+    let fixed_point = exponent >= 0
+        && fractional_digits >= usize::try_from(exponent).unwrap_or(usize::MAX);
+    let fractional_digits = i64::try_from(fractional_digits).map_err(|_| RuntimeError::InvalidForm {
+        message: "format fractional digit count is out of range".to_string(),
+        span: None,
+    })?;
+    let exponent_padding = i64::try_from(exponent_padding).map_err(|_| RuntimeError::InvalidForm {
+        message: "format exponent field count is out of range".to_string(),
+        span: None,
+    })?;
+    let minimum_column = i64::try_from(minimum_column).map_err(|_| RuntimeError::InvalidForm {
+        message: "format field width is out of range".to_string(),
+        span: None,
+    })?;
+
+    if fixed_point {
+        let exponent_as_usize = usize::try_from(exponent).unwrap_or(0);
+        let fixed_fractional_digits = fractional_digits
+            .checked_sub(i64::try_from(exponent_as_usize).unwrap_or(i64::MAX))
+            .ok_or_else(|| RuntimeError::InvalidForm {
+                message: "format fractional digit count is out of range".to_string(),
+                span: None,
+            })?;
+        let fixed_width = minimum_column.saturating_sub(exponent_padding).max(0);
+        let fixed_parameters = vec![
+            FormatParameter::Number(fixed_width),
+            FormatParameter::Number(fixed_fractional_digits),
+            FormatParameter::Missing,
+            parameter_at(4),
+            parameter_at(5),
+        ];
+        let mut formatted = format_fixed_float_directive(
+            value,
+            &fixed_parameters,
+            false,
+            at_sign_modifier,
+        )?;
+        formatted.extend(std::iter::repeat(' ').take(usize::try_from(exponent_padding).unwrap_or(0)));
+        return Ok(formatted);
+    }
+
+    let exponential_parameters = vec![
+        FormatParameter::Number(minimum_column),
+        FormatParameter::Number(fractional_digits),
+        FormatParameter::Missing,
+        parameter_at(3),
+        parameter_at(4),
+        parameter_at(5),
+        exponent_character,
+    ];
+    format_exponential_float_directive(
+        value,
+        &exponential_parameters,
+        false,
+        at_sign_modifier,
+    )
+}
+
+fn general_float_decimal_exponent(value: f64) -> i64 {
+    if value == 0.0 {
+        return 1;
+    }
+    let magnitude = value.abs();
+    let mut exponent = magnitude.log10().floor() as i64 + 1;
+    while magnitude < 10_f64.powi((exponent - 1) as i32) {
+        exponent -= 1;
+    }
+    while magnitude >= 10_f64.powi(exponent as i32) {
+        exponent += 1;
+    }
+    exponent
+}
+
+fn general_float_default_fractional_digits(value: f64, exponent: i64) -> usize {
+    let decimal = value.abs().to_string();
+    let mantissa = decimal
+        .split_once('e')
+        .or_else(|| decimal.split_once('E'))
+        .map(|(mantissa, _)| mantissa)
+        .unwrap_or(&decimal);
+    let mut found_nonzero = false;
+    let mut significant_digits = 0usize;
+    for character in mantissa.chars() {
+        if !character.is_ascii_digit() {
+            continue;
+        }
+        if character != '0' || found_nonzero {
+            found_nonzero = true;
+            significant_digits = significant_digits.saturating_add(1);
+        }
+    }
+    let significant_digits = significant_digits.max(1);
+    let leading_decimal_places = if exponent < 0 {
+        usize::try_from(exponent.unsigned_abs()).unwrap_or(usize::MAX)
+    } else {
+        0
+    };
+    significant_digits.saturating_add(leading_decimal_places)
+}
+
+fn format_dollar_float_directive(
+    value: f64,
+    parameters: &[FormatParameter],
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> Result<String, RuntimeError> {
+    let fractional_digits = format_parameter_count(parameters, 0, 2)?;
+    let minimum_integer_digits = format_parameter_count(parameters, 1, 1)?;
+    let minimum_column = format_parameter_count(parameters, 2, 0)?;
+    let padding_character = format_parameter_character(parameters, 3, ' ')?;
+
+    let negative = value.is_sign_negative();
+    let magnitude = value.abs();
+    let mut digits = format!("{:.*}", fractional_digits, magnitude);
+    if fractional_digits == 0 {
+        digits.push('.');
+    }
+    let (integer_part, fractional_part) = digits
+        .split_once('.')
+        .ok_or_else(|| RuntimeError::InvalidForm {
+            message: "format ~$ could not produce a fixed-point number".to_string(),
+            span: None,
+        })?;
+
+    let mut numeric = String::new();
+    numeric.extend(
+        std::iter::repeat('0').take(
+            minimum_integer_digits.saturating_sub(integer_part.chars().count()),
+        ),
+    );
+    numeric.push_str(integer_part);
+    numeric.push('.');
+    numeric.push_str(fractional_part);
+
+    let sign = if negative {
+        Some('-')
+    } else if at_sign_modifier {
+        Some('+')
+    } else {
+        None
+    };
+    let sign_width = usize::from(sign.is_some());
+    let padding = minimum_column.saturating_sub(sign_width + numeric.chars().count());
+    let mut result = String::new();
+    if colon_modifier {
+        if let Some(sign) = sign {
+            result.push(sign);
+        }
+        result.extend(std::iter::repeat(padding_character).take(padding));
+    } else {
+        result.extend(std::iter::repeat(padding_character).take(padding));
+        if let Some(sign) = sign {
+            result.push(sign);
+        }
+    }
+    result.push_str(&numeric);
+    Ok(result)
+}
+
+fn format_exponential_float_directive(
+    value: f64,
+    parameters: &[FormatParameter],
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> Result<String, RuntimeError> {
+    if colon_modifier {
+        return Err(RuntimeError::InvalidForm {
+            message: "unsupported format modifier before ~E".to_string(),
+            span: None,
+        });
+    }
+    let minimum_column = format_parameter_count(parameters, 0, 0)?;
+    let requested_fractional_digits = match parameters.get(1).copied().unwrap_or(FormatParameter::Missing)
+    {
+        FormatParameter::Missing => None,
+        FormatParameter::Number(value) => Some(usize::try_from(value).map_err(|_| {
+            RuntimeError::InvalidForm {
+                message: "format fractional digit count must be non-negative".to_string(),
+                span: None,
+            }
+        })?),
+        FormatParameter::Character(_) => {
+            return Err(RuntimeError::InvalidForm {
+                message: "format parameter 1 must be numeric".to_string(),
+                span: None,
+            });
+        }
+    };
+    let requested_exponent_digits = match parameters.get(2).copied().unwrap_or(FormatParameter::Missing)
+    {
+        FormatParameter::Missing => None,
+        FormatParameter::Number(value) => Some(usize::try_from(value).map_err(|_| {
+            RuntimeError::InvalidForm {
+                message: "format exponent digit count must be non-negative".to_string(),
+                span: None,
+            }
+        })?),
+        FormatParameter::Character(_) => {
+            return Err(RuntimeError::InvalidForm {
+                message: "format parameter 2 must be numeric".to_string(),
+                span: None,
+            });
+        }
+    };
+    let scale = i32::try_from(format_parameter_number(parameters, 3, 1)?).map_err(|_| {
+        RuntimeError::InvalidForm {
+            message: "format scale factor is out of range".to_string(),
+            span: None,
+        }
+    })?;
+    if let Some(fractional_digits) = requested_fractional_digits {
+        let invalid_positive_scale = scale > 0
+            && (scale as usize) >= fractional_digits.saturating_add(2);
+        let invalid_negative_scale = scale < 0
+            && (scale.unsigned_abs() as usize) >= fractional_digits;
+        if invalid_positive_scale || invalid_negative_scale {
+            return Err(RuntimeError::InvalidForm {
+                message: "format scale factor is incompatible with fractional digit count"
+                    .to_string(),
+                span: None,
+            });
+        }
+    }
+    let fractional_digits = requested_fractional_digits.unwrap_or_else(|| {
+        let minimum = if scale > 0 {
+            (scale as usize).saturating_sub(1)
+        } else if scale < 0 {
+            (scale.unsigned_abs() as usize).saturating_add(1)
+        } else {
+            0
+        };
+        6.max(minimum)
+    });
+    let significant_digits = if scale > 0 {
+        fractional_digits.checked_add(1)
+    } else if scale == 0 {
+        Some(fractional_digits.max(1))
+    } else {
+        fractional_digits.checked_sub(scale.unsigned_abs() as usize)
+    }
+    .filter(|value| *value > 0)
+    .ok_or_else(|| RuntimeError::InvalidForm {
+        message: "format scale factor leaves no significant digits".to_string(),
+        span: None,
+    })?;
+    let overflow_character = match parameters.get(4).copied().unwrap_or(FormatParameter::Missing)
+    {
+        FormatParameter::Missing => None,
+        FormatParameter::Character(value) => Some(value),
+        FormatParameter::Number(_) => {
+            return Err(RuntimeError::InvalidForm {
+                message: "format parameter 4 must be a character".to_string(),
+                span: None,
+            });
+        }
+    };
+    let padding_character = format_parameter_character(parameters, 5, ' ')?;
+    let exponent_character = format_parameter_character(parameters, 6, 'E')?;
+    let apply_field = |formatted: String| {
+        let width = formatted.chars().count();
+        if minimum_column > 0 && width > minimum_column {
+            if let Some(overflow_character) = overflow_character {
+                return Ok(std::iter::repeat(overflow_character)
+                    .take(minimum_column)
+                    .collect());
+            }
+            return Ok(formatted);
+        }
+        let padding = minimum_column.saturating_sub(width);
+        let mut result = String::new();
+        result.extend(std::iter::repeat(padding_character).take(padding));
+        result.push_str(&formatted);
+        Ok(result)
+    };
+
+    if !value.is_finite() {
+        let mut formatted = String::new();
+        if value.is_sign_negative() {
+            formatted.push('-');
+        } else if at_sign_modifier {
+            formatted.push('+');
+        }
+        formatted.push_str(if value.is_nan() { "NaN" } else { "Inf" });
+        return apply_field(formatted);
+    }
+
+    let magnitude = value.abs();
+    let scientific = format!(
+        "{:.*e}",
+        significant_digits.saturating_sub(1),
+        magnitude
+    );
+    let (coefficient, exponent_text) = scientific
+        .split_once('e')
+        .or_else(|| scientific.split_once('E'))
+        .ok_or_else(|| RuntimeError::InvalidForm {
+            message: "format exponential conversion did not produce an exponent".to_string(),
+            span: None,
+        })?;
+    let raw_exponent = exponent_text.parse::<i32>().map_err(|_| RuntimeError::InvalidForm {
+        message: "format exponential conversion produced an invalid exponent".to_string(),
+        span: None,
+    })?;
+    let mut digits = coefficient
+        .chars()
+        .filter(|character| character.is_ascii_digit())
+        .collect::<Vec<_>>();
+    digits.truncate(significant_digits);
+    digits.resize(significant_digits, '0');
+
+    let mut mantissa = String::new();
+    if scale > 0 {
+        let digits_before_decimal = scale as usize;
+        for index in 0..digits_before_decimal {
+            mantissa.push(*digits.get(index).unwrap_or(&'0'));
+        }
+        mantissa.push('.');
+        let digits_after_decimal = fractional_digits
+            .saturating_sub(digits_before_decimal.saturating_sub(1));
+        for index in 0..digits_after_decimal {
+            mantissa.push(*digits.get(digits_before_decimal + index).unwrap_or(&'0'));
+        }
+    } else if scale == 0 {
+        mantissa.push_str("0.");
+        for index in 0..fractional_digits {
+            mantissa.push(*digits.get(index).unwrap_or(&'0'));
+        }
+    } else {
+        mantissa.push_str("0.");
+        mantissa.extend(std::iter::repeat('0').take(scale.unsigned_abs() as usize));
+        let significant_fractional_digits = fractional_digits
+            .saturating_sub(scale.unsigned_abs() as usize);
+        for index in 0..significant_fractional_digits {
+            mantissa.push(*digits.get(index).unwrap_or(&'0'));
+        }
+    }
+    if requested_fractional_digits.is_none() {
+        if let Some(decimal_index) = mantissa.find('.') {
+            while mantissa.len() > decimal_index + 2 && mantissa.ends_with('0') {
+                mantissa.pop();
+            }
+        }
+    }
+
+    let exponent = i64::from(raw_exponent)
+        .checked_sub(i64::from(scale) - 1)
+        .ok_or_else(|| RuntimeError::InvalidForm {
+            message: "format exponent is out of range".to_string(),
+            span: None,
+        })?;
+    let mut formatted = String::new();
+    if value.is_sign_negative() {
+        formatted.push('-');
+    } else if at_sign_modifier {
+        formatted.push('+');
+    }
+    formatted.push_str(&mantissa);
+    formatted.push(exponent_character);
+    if exponent < 0 {
+        formatted.push('-');
+    } else {
+        formatted.push('+');
+    }
+    let exponent_magnitude = exponent.unsigned_abs().to_string();
+    if let Some(exponent_width) = requested_exponent_digits {
+        formatted.extend(std::iter::repeat('0').take(
+            exponent_width.saturating_sub(exponent_magnitude.chars().count()),
+        ));
+    }
+    formatted.push_str(&exponent_magnitude);
+    apply_field(formatted)
+}
+
+fn format_grouped_digits(digits: &str, separator: char, interval: usize) -> String {
+    if digits.is_empty() || interval == 0 {
+        return digits.to_string();
+    }
+    let mut grouped = String::new();
+    for (index, character) in digits.chars().enumerate() {
+        if index != 0 && (digits.chars().count() - index) % interval == 0 {
+            grouped.push(separator);
+        }
+        grouped.push(character);
+    }
+    grouped
+}
+
+fn format_character_directive(
+    character: char,
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> String {
+    let name = match character {
+        '\0' => Some("Null"),
+        '\x07' => Some("Bell"),
+        '\x08' => Some("Backspace"),
+        '\t' => Some("Tab"),
+        '\n' => Some("Newline"),
+        '\x0c' => Some("Page"),
+        '\r' => Some("Return"),
+        ' ' => Some("Space"),
+        _ => None,
+    };
+    if at_sign_modifier {
+        let mut result = String::from("#\\");
+        if let Some(name) = name {
+            result.push_str(name);
+        } else {
+            result.push(character);
+        }
+        result
+    } else if colon_modifier {
+        name.map(str::to_string)
+            .unwrap_or_else(|| character.to_string())
+    } else {
+        character.to_string()
+    }
+}
+
+fn format_radix_directive(
+    value: i64,
+    parameters: &[FormatParameter],
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> Result<String, RuntimeError> {
+    if let Some(parameter) = parameters.first().copied() {
+        if !matches!(parameter, FormatParameter::Missing) {
+            let radix = match parameter {
+                FormatParameter::Number(value) => u32::try_from(value).map_err(|_| {
+                    RuntimeError::InvalidForm {
+                        message: "format radix must be between 2 and 36".to_string(),
+                        span: None,
+                    }
+                })?,
+                FormatParameter::Missing => unreachable!(),
+                FormatParameter::Character(_) => {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format radix must be numeric".to_string(),
+                        span: None,
+                    });
+                }
+            };
+            if !(2..=36).contains(&radix) {
+                return Err(RuntimeError::InvalidForm {
+                    message: "format radix must be between 2 and 36".to_string(),
+                    span: None,
+                });
+            }
+            return format_integer_directive(
+                value,
+                radix,
+                &parameters[1..],
+                false,
+                at_sign_modifier,
+            );
+        }
+    }
+    if at_sign_modifier {
+        Ok(format_roman_number(value, colon_modifier))
+    } else {
+        Ok(format_english_number(value, colon_modifier))
+    }
+}
+
+fn format_english_number(value: i64, ordinal: bool) -> String {
+    if value < 0 {
+        if value == i64::MIN {
+            return format!(
+                "minus {}",
+                format_unsigned_integer(value.unsigned_abs(), 10)
+            );
+        }
+        return format!("minus {}", format_english_number(value.wrapping_neg(), ordinal));
+    }
+    let magnitude = value as u64;
+    if magnitude == 0 {
+        return if ordinal {
+            "zeroth".to_string()
+        } else {
+            "zero".to_string()
+        };
+    }
+    const GROUPS: &[&str] = &["", "thousand", "million", "billion", "trillion", "quadrillion"];
+    let mut chunks = Vec::new();
+    let mut remainder = magnitude;
+    while remainder != 0 {
+        chunks.push(remainder % 1000);
+        remainder /= 1000;
+    }
+    if chunks.len() > GROUPS.len() {
+        return format_integer_radix(value, 10);
+    }
+    let ordinal_group = if ordinal {
+        chunks.iter().position(|chunk| *chunk != 0)
+    } else {
+        None
+    };
+    let mut parts = Vec::new();
+    for index in (0..chunks.len()).rev() {
+        let chunk = chunks[index];
+        if chunk == 0 {
+            continue;
+        }
+        let group_is_ordinal = ordinal_group == Some(index);
+        let mut part = if group_is_ordinal && index == 0 {
+            english_under_thousand(chunk, true)
+        } else {
+            english_under_thousand(chunk, false)
+        };
+        if index != 0 {
+            part.push(' ');
+            part.push_str(GROUPS[index]);
+            if group_is_ordinal {
+                part.push_str("th");
+            }
+        }
+        parts.push(part);
+    }
+    parts.join(" ")
+}
+
+fn english_under_thousand(value: u64, ordinal: bool) -> String {
+    const CARDINALS: &[&str] = &[
+        "zero",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
+    ];
+    const ORDINALS: &[&str] = &[
+        "zeroth",
+        "first",
+        "second",
+        "third",
+        "fourth",
+        "fifth",
+        "sixth",
+        "seventh",
+        "eighth",
+        "ninth",
+        "tenth",
+        "eleventh",
+        "twelfth",
+        "thirteenth",
+        "fourteenth",
+        "fifteenth",
+        "sixteenth",
+        "seventeenth",
+        "eighteenth",
+        "nineteenth",
+    ];
+    const TENS: &[&str] = &[
+        "",
+        "",
+        "twenty",
+        "thirty",
+        "forty",
+        "fifty",
+        "sixty",
+        "seventy",
+        "eighty",
+        "ninety",
+    ];
+    const ORDINAL_TENS: &[&str] = &[
+        "",
+        "",
+        "twentieth",
+        "thirtieth",
+        "fortieth",
+        "fiftieth",
+        "sixtieth",
+        "seventieth",
+        "eightieth",
+        "ninetieth",
+    ];
+    if value < 20 {
+        return if ordinal {
+            ORDINALS[value as usize].to_string()
+        } else {
+            CARDINALS[value as usize].to_string()
+        };
+    }
+    if value < 100 {
+        let tens = value / 10;
+        let ones = value % 10;
+        if ones == 0 {
+            return if ordinal {
+                ORDINAL_TENS[tens as usize].to_string()
+            } else {
+                TENS[tens as usize].to_string()
+            };
+        }
+        return format!(
+            "{}-{}",
+            TENS[tens as usize],
+            english_under_thousand(ones, ordinal)
+        );
+    }
+    let hundreds = value / 100;
+    let remainder = value % 100;
+    if remainder == 0 {
+        if ordinal {
+            format!("{} hundredth", CARDINALS[hundreds as usize])
+        } else {
+            format!("{} hundred", CARDINALS[hundreds as usize])
+        }
+    } else {
+        format!(
+            "{} hundred {}",
+            CARDINALS[hundreds as usize],
+            english_under_thousand(remainder, ordinal)
+        )
+    }
+}
+
+fn format_roman_number(value: i64, old_style: bool) -> String {
+    if value == 0 {
+        return "N".to_string();
+    }
+    let negative = value < 0;
+    let magnitude = value.unsigned_abs();
+    if !old_style && magnitude > 3999 {
+        return format_integer_radix(value, 10);
+    }
+    let numerals = [
+        (1000_u64, "M"),
+        (900, "CM"),
+        (500, "D"),
+        (400, "CD"),
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
+    ];
+    let mut remainder = magnitude;
+    let mut result = String::new();
+    if negative {
+        result.push('-');
+    }
+    for (unit, numeral) in numerals {
+        while remainder >= unit {
+            result.push_str(numeral);
+            remainder -= unit;
+        }
+    }
+    result
 }
 
 fn format_argument<'a>(
@@ -3973,19 +7853,22 @@ fn append_aesthetic(output: &mut String, value: &Value) {
 }
 
 fn format_integer_radix(value: i64, radix: u32) -> String {
+    let mut result = format_unsigned_integer(value.unsigned_abs(), radix);
+    if value < 0 {
+        result.insert(0, '-');
+    }
+    result
+}
+
+fn format_unsigned_integer(mut magnitude: u64, radix: u32) -> String {
     const DIGITS: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    if value == 0 {
+    if magnitude == 0 {
         return "0".to_string();
     }
-    let negative = value < 0;
-    let mut magnitude = value.unsigned_abs();
     let mut digits = Vec::new();
     while magnitude != 0 {
         digits.push(DIGITS[(magnitude % u64::from(radix)) as usize] as char);
         magnitude /= u64::from(radix);
-    }
-    if negative {
-        digits.push('-');
     }
     digits.iter().rev().collect()
 }

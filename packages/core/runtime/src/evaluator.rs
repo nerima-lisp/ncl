@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::rc::Rc;
 
 use ncl_compiler::Compiler;
@@ -40,6 +41,48 @@ struct DynamicState {
     exact_globals: HashMap<String, Value>,
     bindings: Vec<(String, Value)>,
     exact_bindings: Vec<(String, Value)>,
+    condition_handlers: Vec<ConditionHandlerBinding>,
+    restart_bindings: Vec<RestartBinding>,
+    condition_restart_bindings: Vec<ConditionRestartBinding>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ConditionHandlerBinding {
+    pub(crate) condition: String,
+    pub(crate) function: Option<Value>,
+    pub(crate) catch: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct RestartBinding {
+    pub(crate) name: String,
+    pub(crate) function: Option<Value>,
+    restart: Value,
+}
+
+impl RestartBinding {
+    pub(crate) fn new(name: String, function: Option<Value>) -> Self {
+        let restart = Value::restart(&name);
+        Self {
+            name,
+            function,
+            restart,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct ConditionRestartBinding {
+    pub(crate) condition: Value,
+    pub(crate) restarts: Vec<Value>,
+}
+
+struct SetfExpansion {
+    temporaries: Vec<Form>,
+    values: Vec<Form>,
+    store: Form,
+    store_form: Form,
+    access_form: Form,
 }
 
 pub(crate) struct DynamicGuard {
@@ -53,6 +96,65 @@ impl Drop for DynamicGuard {
         let mut state = self.state.borrow_mut();
         state.bindings.truncate(self.depth);
         state.exact_bindings.truncate(self.exact_depth);
+    }
+}
+
+pub(crate) struct ConditionHandlerGuard {
+    state: Rc<RefCell<DynamicState>>,
+    depth: usize,
+}
+
+impl Drop for ConditionHandlerGuard {
+    fn drop(&mut self) {
+        self.state
+            .borrow_mut()
+            .condition_handlers
+            .truncate(self.depth);
+    }
+}
+
+pub(crate) struct RestartGuard {
+    state: Rc<RefCell<DynamicState>>,
+    depth: usize,
+}
+
+impl Drop for RestartGuard {
+    fn drop(&mut self) {
+        self.state
+            .borrow_mut()
+            .restart_bindings
+            .truncate(self.depth);
+    }
+}
+
+pub(crate) struct ConditionRestartGuard {
+    state: Rc<RefCell<DynamicState>>,
+    depth: usize,
+}
+
+impl Drop for ConditionRestartGuard {
+    fn drop(&mut self) {
+        self.state
+            .borrow_mut()
+            .condition_restart_bindings
+            .truncate(self.depth);
+    }
+}
+
+pub(crate) struct ConditionHandlerSuspension {
+    state: Rc<RefCell<DynamicState>>,
+    index: usize,
+    binding: Option<ConditionHandlerBinding>,
+}
+
+impl Drop for ConditionHandlerSuspension {
+    fn drop(&mut self) {
+        let Some(binding) = self.binding.take() else {
+            return;
+        };
+        let mut state = self.state.borrow_mut();
+        let index = self.index.min(state.condition_handlers.len());
+        state.condition_handlers.insert(index, binding);
     }
 }
 
@@ -214,12 +316,12 @@ impl Runtime {
             }
             let package_name = {
                 let packages = self.packages.borrow();
+                let package_name = packages.canonical_package_name_for(current, &package_name);
                 if !packages.package_exists(&package_name) {
                     return Err(
                         self.package_error(&format!("unknown package {package_name}"), span)
                     );
                 }
-                let package_name = packages.canonical_package_name(&package_name);
                 if token.external && !packages.is_exported(&package_name, &symbol_name) {
                     return Err(self.package_error(
                         &format!(
@@ -445,6 +547,105 @@ impl Runtime {
             depth: self.dynamic.borrow().bindings.len(),
             exact_depth: self.dynamic.borrow().exact_bindings.len(),
         }
+    }
+
+    pub(crate) fn condition_handler_guard(
+        &self,
+        handlers: Vec<ConditionHandlerBinding>,
+    ) -> ConditionHandlerGuard {
+        let mut state = self.dynamic.borrow_mut();
+        let depth = state.condition_handlers.len();
+        state.condition_handlers.extend(handlers);
+        ConditionHandlerGuard {
+            state: self.dynamic.clone(),
+            depth,
+        }
+    }
+
+    pub(crate) fn condition_handlers(&self) -> Vec<ConditionHandlerBinding> {
+        self.dynamic.borrow().condition_handlers.clone()
+    }
+
+    pub(crate) fn suspend_condition_handler(
+        &self,
+        condition: &str,
+    ) -> Option<ConditionHandlerSuspension> {
+        let condition = normalize_name(condition);
+        let mut state = self.dynamic.borrow_mut();
+        let index = state
+            .condition_handlers
+            .iter()
+            .rposition(|handler| normalize_name(&handler.condition) == condition)?;
+        let binding = state.condition_handlers.remove(index);
+        Some(ConditionHandlerSuspension {
+            state: self.dynamic.clone(),
+            index,
+            binding: Some(binding),
+        })
+    }
+
+    pub(crate) fn restart_guard(&self, bindings: Vec<RestartBinding>) -> RestartGuard {
+        let mut state = self.dynamic.borrow_mut();
+        let depth = state.restart_bindings.len();
+        state.restart_bindings.extend(bindings);
+        RestartGuard {
+            state: self.dynamic.clone(),
+            depth,
+        }
+    }
+
+    pub(crate) fn restart_bindings(&self) -> Vec<RestartBinding> {
+        self.dynamic.borrow().restart_bindings.clone()
+    }
+
+    pub(crate) fn condition_restart_guard(
+        &self,
+        condition: Value,
+        restarts: Vec<Value>,
+    ) -> ConditionRestartGuard {
+        let mut state = self.dynamic.borrow_mut();
+        let depth = state.condition_restart_bindings.len();
+        state
+            .condition_restart_bindings
+            .push(ConditionRestartBinding { condition, restarts });
+        ConditionRestartGuard {
+            state: self.dynamic.clone(),
+            depth,
+        }
+    }
+
+    pub(crate) fn condition_restart_bindings(&self) -> Vec<ConditionRestartBinding> {
+        self.dynamic.borrow().condition_restart_bindings.clone()
+    }
+
+    pub(crate) fn restart_bindings_for_condition(
+        &self,
+        condition: Option<&Value>,
+    ) -> Vec<RestartBinding> {
+        let bindings = self.restart_bindings();
+        let Some(condition) = condition else {
+            return bindings;
+        };
+        let associations = self.condition_restart_bindings();
+        bindings
+            .into_iter()
+            .filter(|binding| {
+                let associated_with_condition = associations.iter().any(|association| {
+                    association.condition.eq_value(condition)
+                        && association
+                            .restarts
+                            .iter()
+                            .any(|restart| restart.eq_value(&binding.restart))
+                });
+                let associated_with_any_condition = associations.iter().any(|association| {
+                    association
+                        .restarts
+                        .iter()
+                        .any(|restart| restart.eq_value(&binding.restart))
+                });
+                associated_with_condition || !associated_with_any_condition
+            })
+            .collect()
     }
 
     pub(crate) fn dynamic_depth(&self) -> usize {
@@ -713,14 +914,76 @@ impl Runtime {
         candidates
     }
 
+    fn symbol_macro_expansion_for_atom(
+        &self,
+        atom: &str,
+        environment: &Environment,
+    ) -> Option<Form> {
+        if literal_atom(atom).is_some() {
+            return None;
+        }
+
+        let (name, escaped) = resolved_symbol(atom);
+        if escaped {
+            environment.lookup_symbol_macro_exact(&name)
+        } else {
+            environment.lookup_symbol_macro(&name)
+        }
+    }
+
+    fn expand_symbol_macro_form(
+        &self,
+        form: &Form,
+        environment: &Environment,
+    ) -> Result<Option<Form>, RuntimeError> {
+        let mut current = form.clone();
+        let mut expanded = false;
+        let mut seen = HashSet::new();
+
+        loop {
+            let Some(atom) = atom_name(&current) else {
+                return Ok(if expanded { Some(current) } else { None });
+            };
+            let Some(next) = self.symbol_macro_expansion_for_atom(atom, environment) else {
+                return Ok(if expanded { Some(current) } else { None });
+            };
+            let (name, escaped) = resolved_symbol(atom);
+            let key = format!("{}:{}", if escaped { "escaped" } else { "normal" }, name);
+            if !seen.insert(key) {
+                return Err(self.invalid("recursive symbol macro expansion", form.span));
+            }
+            expanded = true;
+            current = next;
+        }
+    }
+
     fn prepare_compiled_form(
         &self,
         form: &Form,
         environment: &Environment,
     ) -> Result<Form, RuntimeError> {
+        if let Some(expanded) = self.expand_symbol_macro_form(form, environment)? {
+            return self.prepare_compiled_form(&expanded, environment);
+        }
+
+        if is_operator_form(form, "MACROLET") {
+            return self.prepare_compiled_macrolet(form, environment);
+        }
+        if is_operator_form(form, "SYMBOL-MACROLET") {
+            return self.prepare_compiled_symbol_macrolet(form, environment);
+        }
+        if is_operator_form(form, "WITH-OPEN-FILE") {
+            let expanded = self.expand_with_open_file(form)?;
+            return self.prepare_compiled_form(&expanded, environment);
+        }
+
         if is_operator_form(form, "DEFMACRO")
+            || is_operator_form(form, "DEFINE-MODIFY-MACRO")
+            || is_operator_form(form, "DEFINE-SETF-EXPANDER")
+            || is_operator_form(form, "DEFINE-SYMBOL-MACRO")
             || is_operator_form(form, "MACROEXPAND-1")
             || is_operator_form(form, "MACROEXPAND")
+            || is_operator_form(form, "LOAD-TIME-VALUE")
             || is_operator_form(form, "DEFPACKAGE")
             || is_operator_form(form, "IN-PACKAGE")
         {
@@ -733,6 +996,122 @@ impl Runtime {
             FormKind::List(items) => self.prepare_compiled_list(&expanded, items, environment),
             _ => Ok(expanded),
         }
+    }
+
+    fn prepare_compiled_macrolet(
+        &self,
+        form: &Form,
+        environment: &Environment,
+    ) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity("macrolet", "at least one", items.len().saturating_sub(1)));
+        }
+        let FormKind::List(bindings) = &items[1].kind else {
+            return Err(self.invalid("local macro bindings must be a list", items[1].span));
+        };
+
+        let local = environment.child();
+        let captured = environment.clone();
+        let mut names = HashSet::new();
+        for binding in bindings {
+            let FormKind::List(parts) = &binding.kind else {
+                return Err(self.invalid("local macro binding must be a list", binding.span));
+            };
+            if parts.len() < 3 {
+                return Err(self.invalid(
+                    "local macro needs a name, parameters, and a body",
+                    binding.span,
+                ));
+            }
+            let (name, escaped) =
+                self.variable_name_info(&parts[0], "local macro name must be a symbol")?;
+            if !names.insert(name.clone()) {
+                return Err(self.invalid("local macro names must be unique", parts[0].span));
+            }
+            let lambda_list = self.macro_parameters(&parts[1])?;
+            let function = Value::macro_function(
+                lambda_list,
+                parts[2..].to_vec(),
+                captured.clone(),
+            );
+            if escaped {
+                local.define_exact(name, function);
+            } else {
+                local.define(name, function);
+            }
+        }
+
+        let mut prepared = Vec::with_capacity(items.len().saturating_sub(2) + 1);
+        prepared.push(Form::atom("PROGN", form.span));
+        for body_form in &items[2..] {
+            prepared.push(self.prepare_compiled_form(body_form, &local)?);
+        }
+        Ok(Form::list(prepared, form.span))
+    }
+
+    fn prepare_compiled_symbol_macrolet(
+        &self,
+        form: &Form,
+        environment: &Environment,
+    ) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity(
+                "symbol-macrolet",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let FormKind::List(bindings) = &items[1].kind else {
+            return Err(self.invalid(
+                "symbol macro bindings must be a list",
+                items[1].span,
+            ));
+        };
+
+        let local = environment.child();
+        let mut names = HashSet::new();
+        for binding in bindings {
+            let FormKind::List(parts) = &binding.kind else {
+                return Err(self.invalid(
+                    "symbol macro binding must be a list",
+                    binding.span,
+                ));
+            };
+            if parts.len() != 2 {
+                return Err(self.invalid(
+                    "symbol macro binding needs a name and an expansion",
+                    binding.span,
+                ));
+            }
+            let (name, escaped) = self.variable_name_info(
+                &parts[0],
+                "symbol macro name must be a symbol",
+            )?;
+            if !names.insert((name.clone(), escaped)) {
+                return Err(self.invalid(
+                    "symbol macro names must be unique",
+                    parts[0].span,
+                ));
+            }
+            if escaped {
+                local.define_symbol_macro_exact(name, parts[1].clone());
+            } else {
+                local.define_symbol_macro(name, parts[1].clone());
+            }
+        }
+
+        let mut prepared = Vec::with_capacity(items.len().saturating_sub(2) + 1);
+        prepared.push(Form::atom("PROGN", form.span));
+        for body_form in &items[2..] {
+            prepared.push(self.prepare_compiled_form(body_form, &local)?);
+        }
+        Ok(Form::list(prepared, form.span))
     }
 
     fn prepare_compiled_list(
@@ -761,6 +1140,8 @@ impl Runtime {
             | "DEFCLASS"
             | "DEFGENERIC"
             | "DEFMETHOD"
+            | "DEFSETF"
+            | "DEFINE-MODIFY-MACRO"
             | "DEFCONSTANT" => return Ok(form.clone()),
             "THE" => {
                 self.prepare_tail(&mut prepared, 2, environment)?;
@@ -852,21 +1233,35 @@ impl Runtime {
                 self.prepare_tail(&mut prepared, 3, environment)?;
             }
             "MULTIPLE-VALUE-SETQ" => {
-                if prepared.len() > 2 {
-                    prepared[2] = self.prepare_compiled_form(&prepared[2], environment)?;
-                }
+                return self.prepare_compiled_multiple_value_setq(
+                    form,
+                    &prepared,
+                    environment,
+                );
             }
             "LAMBDA" => {
                 if prepared.len() > 1 {
-                    prepared[1] = self.prepare_compiled_lambda_list(&prepared[1], environment)?;
+                    let parameter_form = prepared[1].clone();
+                    let local =
+                        self.prepare_compiled_lambda_environment(&parameter_form, environment)?;
+                    prepared[1] =
+                        self.prepare_compiled_lambda_list(&parameter_form, &local)?;
+                    self.prepare_tail(&mut prepared, 2, &local)?;
+                } else {
+                    self.prepare_tail(&mut prepared, 2, environment)?;
                 }
-                self.prepare_tail(&mut prepared, 2, environment)?;
             }
             "DEFUN" => {
                 if prepared.len() > 2 {
-                    prepared[2] = self.prepare_compiled_lambda_list(&prepared[2], environment)?;
+                    let parameter_form = prepared[2].clone();
+                    let local =
+                        self.prepare_compiled_lambda_environment(&parameter_form, environment)?;
+                    prepared[2] =
+                        self.prepare_compiled_lambda_list(&parameter_form, &local)?;
+                    self.prepare_tail(&mut prepared, 3, &local)?;
+                } else {
+                    self.prepare_tail(&mut prepared, 3, environment)?;
                 }
-                self.prepare_tail(&mut prepared, 3, environment)?;
             }
             "FUNCTION" => {
                 if prepared.len() == 2 && is_operator_form(&prepared[1], "LAMBDA") {
@@ -916,11 +1311,40 @@ impl Runtime {
                 }
                 self.prepare_tail(&mut prepared, 2, environment)?;
             }
-            "LET" | "LET*" => {
+            "RESTART-BIND" => {
                 if prepared.len() > 1 {
-                    prepared[1] = self.prepare_bindings(&prepared[1], environment)?;
+                    let FormKind::List(bindings) = &prepared[1].kind else {
+                        return Ok(Form::list(prepared, form.span));
+                    };
+                    let mut prepared_bindings = Vec::with_capacity(bindings.len());
+                    for binding in bindings {
+                        let FormKind::List(parts) = &binding.kind else {
+                            prepared_bindings.push(binding.clone());
+                            continue;
+                        };
+                        let mut prepared_parts = parts.to_vec();
+                        if prepared_parts.len() > 1 {
+                            prepared_parts[1] =
+                                self.prepare_compiled_form(&parts[1], environment)?;
+                        }
+                        prepared_bindings.push(Form::list(prepared_parts, binding.span));
+                    }
+                    prepared[1] = Form::list(prepared_bindings, prepared[1].span);
                 }
                 self.prepare_tail(&mut prepared, 2, environment)?;
+            }
+            "LET" | "LET*" => {
+                if prepared.len() > 1 {
+                    let current = Form::list(prepared.clone(), form.span);
+                    return Ok(self.prepare_compiled_let(
+                        &current,
+                        &prepared,
+                        environment,
+                        normalize_name(operator) == "LET*",
+                    )?);
+                } else {
+                    self.prepare_tail(&mut prepared, 2, environment)?;
+                }
             }
             "FLET" | "LABELS" => {
                 if prepared.len() > 1 {
@@ -947,17 +1371,28 @@ impl Runtime {
             "SETF" => {
                 self.prepare_tail(&mut prepared, 1, environment)?;
             }
+            "PSETF" => {
+                self.prepare_tail(&mut prepared, 1, environment)?;
+            }
+            "PUSH" | "POP" => {
+                self.prepare_tail(&mut prepared, 1, environment)?;
+            }
+            "PUSHNEW" => {
+                self.prepare_tail(&mut prepared, 1, environment)?;
+            }
+            "ROTATEF" | "SHIFTF" => {
+                self.prepare_tail(&mut prepared, 1, environment)?;
+            }
             "INCF" | "DECF" => {
                 self.prepare_tail(&mut prepared, 2, environment)?;
             }
             "PSETQ" => {
-                for index in (2..prepared.len()).step_by(2) {
-                    let prepared_value =
-                        self.prepare_compiled_form(&prepared[index], environment)?;
-                    prepared[index] = prepared_value;
-                }
+                return self.prepare_compiled_psetq(form, &prepared, environment);
             }
-            "DEFINE" | "DEFVAR" | "DEFPARAMETER" | "SETQ" => {
+            "SETQ" => {
+                return self.prepare_compiled_setq(form, &prepared, environment);
+            }
+            "DEFINE" | "DEFVAR" | "DEFPARAMETER" => {
                 self.prepare_tail(&mut prepared, 2, environment)?;
             }
             _ => {
@@ -966,6 +1401,264 @@ impl Runtime {
         }
 
         Ok(Form::list(prepared, form.span))
+    }
+
+    fn prepare_compiled_lambda_environment(
+        &self,
+        form: &Form,
+        environment: &Environment,
+    ) -> Result<Environment, RuntimeError> {
+        let lambda_list = match self.parameters(form) {
+            Ok(lambda_list) => lambda_list,
+            Err(RuntimeError::InvalidForm { .. }) => return Ok(environment.child()),
+            Err(error) => return Err(error),
+        };
+        let local = environment.child();
+        let define = |name: &str, escaped: bool| {
+            if escaped {
+                local.define_exact(name, Value::Nil);
+            } else {
+                local.define(name, Value::Nil);
+            }
+        };
+
+        for (name, escaped) in lambda_list
+            .required
+            .iter()
+            .zip(lambda_list.required_escaped.iter().copied())
+        {
+            define(name, escaped);
+        }
+        for parameter in &lambda_list.optional {
+            define(&parameter.name, parameter.name_escaped);
+            if let Some(name) = &parameter.supplied_p {
+                define(name, parameter.supplied_p_escaped.unwrap_or(false));
+            }
+        }
+        if let Some(name) = &lambda_list.rest {
+            define(name, lambda_list.rest_escaped);
+        }
+        for parameter in &lambda_list.keywords {
+            define(&parameter.name, parameter.name_escaped);
+            if let Some(name) = &parameter.supplied_p {
+                define(name, parameter.supplied_p_escaped.unwrap_or(false));
+            }
+        }
+        for parameter in &lambda_list.auxiliary {
+            define(&parameter.name, parameter.name_escaped);
+        }
+        Ok(local)
+    }
+
+    fn prepare_compiled_let(
+        &self,
+        form: &Form,
+        items: &[Form],
+        environment: &Environment,
+        sequential: bool,
+    ) -> Result<Form, RuntimeError> {
+        let Some(binding_form) = items.get(1) else {
+            return Ok(form.clone());
+        };
+        let FormKind::List(bindings) = &binding_form.kind else {
+            let mut prepared = items.to_vec();
+            self.prepare_tail(&mut prepared, 2, environment)?;
+            return Ok(Form::list(prepared, form.span));
+        };
+
+        let local = environment.child();
+        let mut prepared_bindings = Vec::with_capacity(bindings.len());
+        for binding in bindings {
+            let FormKind::List(parts) = &binding.kind else {
+                prepared_bindings.push(binding.clone());
+                continue;
+            };
+            if parts.is_empty() {
+                prepared_bindings.push(binding.clone());
+                continue;
+            }
+
+            let (name, escaped) =
+                self.variable_name_info(&parts[0], "let binding name must be a symbol")?;
+            let mut prepared_parts = parts.to_vec();
+            if parts.len() > 1 {
+                let initializer_environment = if sequential { &local } else { environment };
+                prepared_parts[1] =
+                    self.prepare_compiled_form(&parts[1], initializer_environment)?;
+            }
+            prepared_bindings.push(Form::list(prepared_parts, binding.span));
+            if escaped {
+                local.define_exact(name, Value::Nil);
+            } else {
+                local.define(name, Value::Nil);
+            }
+        }
+
+        let mut prepared = items.to_vec();
+        prepared[1] = Form::list(prepared_bindings, binding_form.span);
+        self.prepare_tail(&mut prepared, 2, &local)?;
+        Ok(Form::list(prepared, form.span))
+    }
+
+    fn prepare_compiled_setq(
+        &self,
+        form: &Form,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Form, RuntimeError> {
+        if items.len() < 3 || items.len() % 2 == 0 {
+            let mut prepared = items.to_vec();
+            self.prepare_tail(&mut prepared, 2, environment)?;
+            return Ok(Form::list(prepared, form.span));
+        }
+
+        let expansions = items[1..]
+            .chunks_exact(2)
+            .map(|pair| self.expand_symbol_macro_form(&pair[0], environment))
+            .collect::<Result<Vec<_>, _>>()?;
+        if !expansions.iter().any(|expansion| expansion.is_some()) {
+            let mut prepared = items.to_vec();
+            for index in (2..prepared.len()).step_by(2) {
+                prepared[index] = self.prepare_compiled_form(&items[index], environment)?;
+            }
+            return Ok(Form::list(prepared, form.span));
+        }
+
+        let mut transformed = vec![Form::atom("PROGN", form.span)];
+        for (pair, expansion) in items[1..].chunks_exact(2).zip(expansions) {
+            let is_symbol_macro = expansion.is_some();
+            let target = expansion.unwrap_or_else(|| pair[0].clone());
+            let operator = if is_symbol_macro { "SETF" } else { "SETQ" };
+            let assignment = Form::list(
+                vec![Form::atom(operator, pair[0].span), target, pair[1].clone()],
+                pair[0].span,
+            );
+            transformed.push(self.prepare_compiled_form(&assignment, environment)?);
+        }
+        Ok(Form::list(transformed, form.span))
+    }
+
+    fn prepare_compiled_psetq(
+        &self,
+        form: &Form,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Form, RuntimeError> {
+        if items.len() < 3 || items.len() % 2 == 0 {
+            let mut prepared = items.to_vec();
+            self.prepare_tail(&mut prepared, 2, environment)?;
+            return Ok(Form::list(prepared, form.span));
+        }
+
+        let expansions = items[1..]
+            .chunks_exact(2)
+            .map(|pair| self.expand_symbol_macro_form(&pair[0], environment))
+            .collect::<Result<Vec<_>, _>>()?;
+        if !expansions.iter().any(|expansion| expansion.is_some()) {
+            let mut prepared = items.to_vec();
+            for index in (2..prepared.len()).step_by(2) {
+                prepared[index] = self.prepare_compiled_form(&items[index], environment)?;
+            }
+            return Ok(Form::list(prepared, form.span));
+        }
+
+        let mut bindings = Vec::with_capacity(expansions.len());
+        let mut body = vec![Form::atom("PROGN", form.span)];
+        for (index, (pair, expansion)) in items[1..].chunks_exact(2).zip(expansions).enumerate() {
+            let temporary = self.symbol_macro_temporary(form, index, pair[0].span);
+            bindings.push(Form::list(
+                vec![temporary.clone(), pair[1].clone()],
+                pair[0].span,
+            ));
+            let is_symbol_macro = expansion.is_some();
+            let target = expansion.unwrap_or_else(|| pair[0].clone());
+            let operator = if is_symbol_macro { "SETF" } else { "SETQ" };
+            body.push(Form::list(
+                vec![Form::atom(operator, pair[0].span), target, temporary],
+                pair[0].span,
+            ));
+        }
+        body.push(Form::atom("NIL", form.span));
+
+        let mut transformed = vec![
+            Form::atom("LET", form.span),
+            Form::list(bindings, form.span),
+        ];
+        transformed.push(Form::list(body, form.span));
+        self.prepare_compiled_form(&Form::list(transformed, form.span), environment)
+    }
+
+    fn prepare_compiled_multiple_value_setq(
+        &self,
+        form: &Form,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Form, RuntimeError> {
+        let Some(variable_form) = items.get(1) else {
+            let mut prepared = items.to_vec();
+            self.prepare_tail(&mut prepared, 2, environment)?;
+            return Ok(Form::list(prepared, form.span));
+        };
+        let FormKind::List(variable_forms) = &variable_form.kind else {
+            let mut prepared = items.to_vec();
+            if prepared.len() > 2 {
+                prepared[2] = self.prepare_compiled_form(&items[2], environment)?;
+            }
+            return Ok(Form::list(prepared, form.span));
+        };
+
+        let expansions = variable_forms
+            .iter()
+            .map(|variable| self.expand_symbol_macro_form(variable, environment))
+            .collect::<Result<Vec<_>, _>>()?;
+        if !expansions.iter().any(|expansion| expansion.is_some()) {
+            let mut prepared = items.to_vec();
+            if prepared.len() > 2 {
+                prepared[2] = self.prepare_compiled_form(&items[2], environment)?;
+            }
+            return Ok(Form::list(prepared, form.span));
+        }
+
+        let temporaries = variable_forms
+            .iter()
+            .enumerate()
+            .map(|(index, variable)| {
+                self.symbol_macro_temporary(form, index, variable.span)
+            })
+            .collect::<Vec<_>>();
+        let mut body = Vec::with_capacity(variable_forms.len() + 1);
+        for ((variable, expansion), temporary) in variable_forms
+            .iter()
+            .zip(expansions)
+            .zip(temporaries.iter())
+        {
+            let is_symbol_macro = expansion.is_some();
+            let target = expansion.unwrap_or_else(|| variable.clone());
+            let operator = if is_symbol_macro { "SETF" } else { "SETQ" };
+            body.push(Form::list(
+                vec![Form::atom(operator, variable.span), target, temporary.clone()],
+                variable.span,
+            ));
+        }
+        body.push(temporaries[0].clone());
+
+        let mut transformed = vec![
+            Form::atom("MULTIPLE-VALUE-BIND", form.span),
+            Form::list(temporaries, variable_form.span),
+            items[2].clone(),
+        ];
+        transformed.extend(body);
+        self.prepare_compiled_form(&Form::list(transformed, form.span), environment)
+    }
+
+    fn symbol_macro_temporary(&self, form: &Form, index: usize, span: Span) -> Form {
+        Form::atom(
+            format!(
+                "NCL-SYMBOL-MACRO-TEMP-{}-{}-{}",
+                form.span.start, form.span.end, index
+            ),
+            span,
+        )
     }
 
     fn prepare_compiled_lambda_list(
@@ -1020,10 +1713,19 @@ impl Runtime {
             };
             let mut prepared_parts = parts.to_vec();
             if prepared_parts.len() > 1 {
-                prepared_parts[1] = self.prepare_compiled_lambda_list(&parts[1], environment)?;
-            }
-            for index in 2..prepared_parts.len() {
-                prepared_parts[index] = self.prepare_compiled_form(&parts[index], environment)?;
+                let parameter_form = parts[1].clone();
+                let local = self.prepare_compiled_lambda_environment(&parameter_form, environment)?;
+                prepared_parts[1] =
+                    self.prepare_compiled_lambda_list(&parameter_form, &local)?;
+                for index in 2..prepared_parts.len() {
+                    prepared_parts[index] =
+                        self.prepare_compiled_form(&parts[index], &local)?;
+                }
+            } else {
+                for index in 2..prepared_parts.len() {
+                    prepared_parts[index] =
+                        self.prepare_compiled_form(&parts[index], environment)?;
+                }
             }
             prepared_bindings.push(Form::list(prepared_parts, binding.span));
         }
@@ -1254,7 +1956,12 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         match &form.kind {
-            FormKind::Atom(atom) => self.eval_atom(atom, form.span, environment),
+            FormKind::Atom(atom) => {
+                if let Some(expanded) = self.expand_symbol_macro_form(form, environment)? {
+                    return self.eval_values_in(&expanded, environment);
+                }
+                self.eval_atom(atom, form.span, environment)
+            }
             FormKind::String(value) => Ok(Value::string(value.clone())),
             FormKind::Character(value) => Ok(Value::Character(*value)),
             FormKind::Vector(items) => Ok(Value::vector(
@@ -1327,6 +2034,10 @@ impl Runtime {
                 "EVAL-WHEN" => return self.special_eval_when(items, environment),
                 "DECLAIM" | "PROCLAIM" => return Ok(Value::Nil),
                 "THE" => return self.special_the(items, environment),
+                "LOAD-TIME-VALUE" => {
+                    return self.special_load_time_value(items, environment);
+                }
+                "NTH-VALUE" => return self.special_nth_value(items, environment),
                 "IF" => return self.special_if(items, environment),
                 "PROGN" => return self.special_progn(&items[1..], environment),
                 "PROG1" => return self.special_prog1(items, environment),
@@ -1337,11 +2048,19 @@ impl Runtime {
                 "IGNORE-ERRORS" => return self.special_ignore_errors(items, environment),
                 "HANDLER-CASE" => return self.special_handler_case(items, environment),
                 "HANDLER-BIND" => return self.special_handler_bind(items, environment),
+                "RESTART-BIND" => return self.special_restart_bind(items, environment),
                 "CATCH" => return self.special_catch(items, environment),
                 "PROGV" => return self.special_progv(items, environment),
                 "THROW" => return self.special_throw(items, environment),
+                "WITH-CONDITION-RESTARTS" => {
+                    return self.special_with_condition_restarts(items, environment);
+                }
                 "WITH-SIMPLE-RESTART" => {
                     return self.special_with_simple_restart(items, environment);
+                }
+                "WITH-OPEN-FILE" => {
+                    let expanded = self.expand_with_open_file(form)?;
+                    return self.eval_expanded_values(&expanded, environment);
                 }
                 "RESTART-CASE" => return self.special_restart_case(items, environment),
                 "UNWIND-PROTECT" => {
@@ -1380,6 +2099,8 @@ impl Runtime {
                 "LET*" => return self.special_let(items, environment, true),
                 "FLET" => return self.special_flet(items, environment, false),
                 "LABELS" => return self.special_flet(items, environment, true),
+                "MACROLET" => return self.special_macrolet(items, environment),
+                "SYMBOL-MACROLET" => return self.special_symbol_macrolet(items, environment),
                 "DOTIMES" => return self.special_dotimes(items, environment),
                 "DOLIST" => return self.special_dolist(items, environment),
                 "DO" => return self.special_do(items, environment, false),
@@ -1388,17 +2109,29 @@ impl Runtime {
                 "FUNCTION" => return self.special_function(items, environment),
                 "DEFUN" => return self.special_defun(items, environment),
                 "DEFMACRO" => return self.special_defmacro(items, environment),
+                "DEFINE-MODIFY-MACRO" => {
+                    return self.special_define_modify_macro(items, environment);
+                }
                 "MACROEXPAND-1" => return self.special_macroexpand_1(items, environment),
                 "MACROEXPAND" => return self.special_macroexpand(items, environment),
                 "DEFPACKAGE" => return self.special_defpackage(items),
                 "IN-PACKAGE" => return self.special_in_package(items),
                 "DEFINE" => return self.special_define(items, environment),
+                "DEFINE-SYMBOL-MACRO" => {
+                    return self.special_define_symbol_macro(items, environment);
+                }
                 "SETQ" => return self.special_setq(items, environment),
                 "PSETQ" => return self.special_psetq(items, environment),
                 "MULTIPLE-VALUE-SETQ" => {
                     return self.special_multiple_value_setq(items, environment);
                 }
                 "SETF" => return self.special_setf(items, environment),
+                "PSETF" => return self.special_psetf(items, environment),
+                "PUSH" => return self.special_push(items, environment),
+                "POP" => return self.special_pop(items, environment),
+                "PUSHNEW" => return self.special_pushnew(items, environment),
+                "ROTATEF" => return self.special_rotatef(items, environment),
+                "SHIFTF" => return self.special_shiftf(items, environment),
                 "INCF" => {
                     return self.special_modify_symbol(items, environment, "INCF", "+");
                 }
@@ -1409,6 +2142,13 @@ impl Runtime {
                 "DEFCLASS" => return self.special_defclass(items, environment),
                 "DEFGENERIC" => return self.special_defgeneric(items, environment),
                 "DEFMETHOD" => return self.special_defmethod(items, environment),
+                "DEFSETF" => return self.special_defsetf(items, environment),
+                "DEFINE-SETF-EXPANDER" => {
+                    return self.special_define_setf_expander(items, environment);
+                }
+                "GET-SETF-EXPANSION" => {
+                    return self.special_get_setf_expansion(items, environment);
+                }
                 "DEFVAR" => return self.special_defvar(items, environment, false),
                 "DEFPARAMETER" => return self.special_defvar(items, environment, true),
                 "DEFCONSTANT" => return self.special_defconstant(items, environment),
@@ -1490,23 +2230,98 @@ impl Runtime {
         } else {
             self.lookup_in(&resolved_name, environment)
         };
-        let Some(Value::Function(function)) = function else {
+        let Some(function) = function else {
+            if !escaped {
+                match normalize_name(&resolved_name).as_str() {
+                    "WITH-SLOTS" => {
+                        return self
+                            .expand_builtin_with_slots(form, false)
+                            .map(Some);
+                    }
+                    "WITH-ACCESSORS" => {
+                        return self
+                            .expand_builtin_with_slots(form, true)
+                            .map(Some);
+                    }
+                    _ => {}
+                }
+            }
             return Ok(None);
         };
-        let crate::Function::Macro {
-            lambda_list,
-            body,
-            environment: macro_environment,
-        } = function.as_ref()
-        else {
+        let Value::Function(function) = function else {
             return Ok(None);
         };
+        let expansion = match function.as_ref() {
+            crate::Function::Macro {
+                lambda_list,
+                body,
+                environment: macro_environment,
+            } => {
+                let expansion = self.invoke_macro(
+                    form,
+                    &items[1..],
+                    name,
+                    lambda_list,
+                    body,
+                    macro_environment,
+                    environment,
+                )?;
+                let expansion = expansion.primary_value();
+                self.form_from_value(&expansion, form.span)?
+            }
+            crate::Function::ModifyMacro {
+                lambda_list,
+                function,
+                environment: macro_environment,
+            } => self.invoke_modify_macro(
+                form,
+                &items[1..],
+                name,
+                lambda_list,
+                function,
+                macro_environment,
+                environment,
+            )?,
+            _ => return Ok(None),
+        };
+        Ok(Some(expansion))
+    }
 
-        let argument_count = items.len().saturating_sub(1);
+    fn invoke_macro(
+        &self,
+        form: &Form,
+        arguments: &[Form],
+        macro_name: &str,
+        lambda_list: &MacroLambdaList,
+        body: &[Form],
+        macro_environment: &Environment,
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        let local = self.bind_macro_arguments(
+            form,
+            arguments,
+            macro_name,
+            lambda_list,
+            macro_environment,
+            environment,
+        )?;
+        self.eval_sequence_values(body, &local)
+    }
+
+    fn bind_macro_arguments(
+        &self,
+        form: &Form,
+        arguments: &[Form],
+        macro_name: &str,
+        lambda_list: &MacroLambdaList,
+        macro_environment: &Environment,
+        environment: &Environment,
+    ) -> Result<Environment, RuntimeError> {
+        let argument_count = arguments.len();
         let required_count = lambda_list.required.len();
         if argument_count < required_count {
             return Err(self.arity(
-                &normalize_name(name),
+                &normalize_name(macro_name),
                 &format!("at least {required_count}"),
                 argument_count,
             ));
@@ -1517,7 +2332,7 @@ impl Runtime {
                 .saturating_sub(required_count)
                 .min(lambda_list.optional.len());
             (0..available)
-                .take_while(|index| !is_macro_keyword_form(&items[index + required_count + 1]))
+                .take_while(|index| !is_macro_keyword_form(&arguments[index + required_count]))
                 .count()
         } else {
             argument_count
@@ -1531,20 +2346,20 @@ impl Runtime {
         {
             let maximum = required_count + lambda_list.optional.len();
             return Err(self.arity(
-                &normalize_name(name),
+                &normalize_name(macro_name),
                 &format!("at most {maximum}"),
                 argument_count,
             ));
         }
 
         let keyword_arguments = if lambda_list.has_keyword_section {
-            let arguments = &items[key_start + 1..];
-            if arguments.len() % 2 != 0 {
+            let keyword_arguments = &arguments[key_start..];
+            if keyword_arguments.len() % 2 != 0 {
                 return Err(self.invalid("keyword arguments must be supplied in pairs", form.span));
             }
             let mut supplied = HashMap::new();
             let mut accepts_unknown_keywords = lambda_list.allow_other_keys;
-            for pair in arguments.chunks_exact(2) {
+            for pair in keyword_arguments.chunks_exact(2) {
                 let Some(keyword_name) = macro_keyword_name(&pair[0]) else {
                     return Err(
                         self.invalid("keyword argument name must be a keyword", pair[0].span)
@@ -1576,19 +2391,22 @@ impl Runtime {
         };
 
         let local = macro_environment.child();
+        if let Some(environment_name) = &lambda_list.environment {
+            local.define(environment_name, Value::environment(environment.clone()));
+        }
         if let Some(whole) = &lambda_list.whole {
             local.define(whole, self.quoted_value(form)?);
         }
         for (pattern, argument) in lambda_list
             .required
             .iter()
-            .zip(items[1..required_count + 1].iter())
+            .zip(arguments[..required_count].iter())
         {
             self.bind_macro_pattern(pattern, self.quoted_value(argument)?, &local, argument.span)?;
         }
         for (index, specification) in lambda_list.optional.iter().enumerate() {
             let supplied =
-                (index < optional_supplied_count).then(|| &items[required_count + index + 1]);
+                (index < optional_supplied_count).then(|| &arguments[required_count + index]);
             let value = match supplied {
                 Some(argument) => self.quoted_value(argument)?,
                 None => self.eval_in(&specification.init_form, &local)?,
@@ -1599,7 +2417,7 @@ impl Runtime {
             }
         }
         if let Some(rest_name) = &lambda_list.rest {
-            let rest_values = items[key_start + 1..]
+            let rest_values = arguments[key_start..]
                 .iter()
                 .map(|argument| self.quoted_value(argument))
                 .collect::<Result<Vec<_>, _>>()?;
@@ -1624,8 +2442,338 @@ impl Runtime {
             local.define(&specification.name, value);
         }
 
-        let expansion = self.eval_sequence(body, &local)?;
-        self.form_from_value(&expansion, form.span).map(Some)
+        Ok(local)
+    }
+
+    fn invoke_modify_macro(
+        &self,
+        form: &Form,
+        arguments: &[Form],
+        macro_name: &str,
+        lambda_list: &MacroLambdaList,
+        function: &Form,
+        macro_environment: &Environment,
+        environment: &Environment,
+    ) -> Result<Form, RuntimeError> {
+        let local = self.bind_macro_arguments(
+            form,
+            arguments,
+            macro_name,
+            lambda_list,
+            macro_environment,
+            environment,
+        )?;
+        let Some(MacroPattern::Name(place_name)) = lambda_list.required.first() else {
+            return Err(self.invalid(
+                "define-modify-macro requires a place parameter",
+                form.span,
+            ));
+        };
+        let place_value = self.lookup_in(place_name, &local).ok_or_else(|| {
+            self.invalid(
+                "define-modify-macro could not bind its place parameter",
+                form.span,
+            )
+        })?;
+        let place = self.form_from_value(&place_value, form.span)?;
+        let expansion = self.get_modify_macro_setf_expansion(&place, environment)?;
+
+        let function_designator = if is_operator_form(function, "FUNCTION") {
+            function.clone()
+        } else {
+            Form::list(
+                vec![Form::atom("FUNCTION", function.span), function.clone()],
+                function.span,
+            )
+        };
+        let mut call_items = vec![
+            Form::atom("FUNCALL", form.span),
+            function_designator,
+            expansion.access_form.clone(),
+        ];
+        for pattern in lambda_list.required.iter().skip(1) {
+            let MacroPattern::Name(name) = pattern else {
+                return Err(self.invalid(
+                    "define-modify-macro required parameters must be names",
+                    form.span,
+                ));
+            };
+            let value = self.lookup_in(name, &local).ok_or_else(|| {
+                self.invalid("define-modify-macro parameter is unbound", form.span)
+            })?;
+            call_items.push(self.form_from_value(&value, form.span)?);
+        }
+        for specification in &lambda_list.optional {
+            let MacroPattern::Name(name) = &specification.pattern else {
+                return Err(self.invalid(
+                    "define-modify-macro optional parameters must be names",
+                    form.span,
+                ));
+            };
+            let value = self.lookup_in(name, &local).ok_or_else(|| {
+                self.invalid("define-modify-macro parameter is unbound", form.span)
+            })?;
+            call_items.push(self.form_from_value(&value, form.span)?);
+        }
+        if let Some(rest_name) = &lambda_list.rest {
+            let rest_value = self.lookup_in(rest_name, &local).ok_or_else(|| {
+                self.invalid("define-modify-macro rest parameter is unbound", form.span)
+            })?;
+            let rest_values = rest_value.list_items().ok_or_else(|| {
+                self.invalid(
+                    "define-modify-macro rest parameter is not a list",
+                    form.span,
+                )
+            })?;
+            for value in rest_values {
+                call_items.push(self.form_from_value(&value, form.span)?);
+            }
+        } else if lambda_list.has_keyword_section {
+            for specification in &lambda_list.keywords {
+                let MacroPattern::Name(name) = &specification.pattern else {
+                    return Err(self.invalid(
+                        "define-modify-macro keyword parameters must be names",
+                        form.span,
+                    ));
+                };
+                let value = self.lookup_in(name, &local).ok_or_else(|| {
+                    self.invalid("define-modify-macro keyword parameter is unbound", form.span)
+                })?;
+                call_items.push(Form::atom(
+                    format!(":{}", specification.keyword_name),
+                    form.span,
+                ));
+                call_items.push(self.form_from_value(&value, form.span)?);
+            }
+        }
+        let call = Form::list(call_items, form.span);
+        let store_binding = Form::list(
+            vec![expansion.store.clone(), call],
+            form.span,
+        );
+        let update = Form::list(
+            vec![
+                Form::atom("LET", form.span),
+                Form::list(vec![store_binding], form.span),
+                Form::list(
+                    vec![
+                        Form::atom("PROGN", form.span),
+                        expansion.store_form.clone(),
+                        expansion.store.clone(),
+                    ],
+                    form.span,
+                ),
+            ],
+            form.span,
+        );
+        let temporary_bindings = expansion
+            .temporaries
+            .iter()
+            .zip(expansion.values.iter())
+            .map(|(temporary, value)| {
+                Form::list(vec![temporary.clone(), value.clone()], form.span)
+            })
+            .collect();
+        Ok(Form::list(
+            vec![
+                Form::atom("LET*", form.span),
+                Form::list(temporary_bindings, form.span),
+                update,
+            ],
+            form.span,
+        ))
+    }
+
+    fn expand_builtin_with_slots(
+        &self,
+        form: &Form,
+        with_accessors: bool,
+    ) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        let operator = if with_accessors {
+            "WITH-ACCESSORS"
+        } else {
+            "WITH-SLOTS"
+        };
+        if items.len() < 3 {
+            return Err(self.arity(operator, "at least two", items.len().saturating_sub(1)));
+        }
+        let FormKind::List(bindings) = &items[1].kind else {
+            return Err(self.invalid(
+                if with_accessors {
+                    "with-accessors bindings must be a list"
+                } else {
+                    "with-slots bindings must be a list"
+                },
+                items[1].span,
+            ));
+        };
+
+        let validate_symbol = |candidate: &Form, context: &str| {
+            let Some(name) = atom_name(candidate) else {
+                return Err(self.invalid(context, candidate.span));
+            };
+            let Ok(token) = parse_symbol_token(name) else {
+                return Err(self.invalid(context, candidate.span));
+            };
+            if token.name.is_empty()
+                || (!token.escaped
+                    && literal_atom(name).is_some()
+                    && !name.eq_ignore_ascii_case("nil")
+                    && !name.eq_ignore_ascii_case("t"))
+            {
+                return Err(self.invalid(context, candidate.span));
+            }
+            Ok(())
+        };
+
+        let temporary = self.symbol_macro_temporary(&items[2], 0, form.span);
+        let mut symbol_bindings = Vec::with_capacity(bindings.len());
+        for entry in bindings {
+            let (variable, expansion) = if with_accessors {
+                let FormKind::List(parts) = &entry.kind else {
+                    return Err(self.invalid(
+                        "with-accessors entry must be a (variable accessor) list",
+                        entry.span,
+                    ));
+                };
+                if parts.len() != 2 {
+                    return Err(self.invalid(
+                        "with-accessors entry needs a variable and accessor",
+                        entry.span,
+                    ));
+                }
+                self.variable_name_info(
+                    &parts[0],
+                    "with-accessors variable must be a symbol",
+                )?;
+                validate_symbol(&parts[1], "with-accessors accessor must be a symbol")?;
+                (
+                    parts[0].clone(),
+                    Form::list(
+                        vec![parts[1].clone(), temporary.clone()],
+                        entry.span,
+                    ),
+                )
+            } else {
+                let (slot, variable) = match &entry.kind {
+                    FormKind::Atom(_) => (entry.clone(), entry.clone()),
+                    FormKind::List(parts) if parts.len() == 2 => {
+                        (parts[0].clone(), parts[1].clone())
+                    }
+                    _ => {
+                        return Err(self.invalid(
+                            "with-slots entry must be a slot or (slot variable) list",
+                            entry.span,
+                        ));
+                    }
+                };
+                validate_symbol(&slot, "with-slots slot must be a symbol")?;
+                self.variable_name_info(&variable, "with-slots variable must be a symbol")?;
+                let quoted_slot = Form::list(
+                    vec![Form::atom("QUOTE", slot.span), slot],
+                    entry.span,
+                );
+                (
+                    variable,
+                    Form::list(
+                        vec![
+                            Form::atom("SLOT-VALUE", entry.span),
+                            temporary.clone(),
+                            quoted_slot,
+                        ],
+                        entry.span,
+                    ),
+                )
+            };
+            symbol_bindings.push(Form::list(
+                vec![variable, expansion],
+                entry.span,
+            ));
+        }
+
+        let symbol_macrolet = {
+            let mut forms = Vec::with_capacity(items.len().saturating_sub(1));
+            forms.push(Form::atom("SYMBOL-MACROLET", form.span));
+            forms.push(Form::list(symbol_bindings, items[1].span));
+            forms.extend(items[3..].iter().cloned());
+            Form::list(forms, form.span)
+        };
+        let let_bindings = Form::list(
+            vec![Form::list(
+                vec![temporary, items[2].clone()],
+                items[2].span,
+            )],
+            items[1].span,
+        );
+        Ok(Form::list(
+            vec![Form::atom("LET", form.span), let_bindings, symbol_macrolet],
+            form.span,
+        ))
+    }
+
+    fn expand_with_open_file(&self, form: &Form) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity(
+                "with-open-file",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let binding_form = &items[1];
+        let FormKind::List(binding) = &binding_form.kind else {
+            return Err(self.invalid(
+                "with-open-file binding must be a list",
+                binding_form.span,
+            ));
+        };
+        if binding.len() < 2 {
+            return Err(self.invalid(
+                "with-open-file binding needs a stream variable and pathname",
+                binding_form.span,
+            ));
+        }
+        self.variable_name_info(
+            &binding[0],
+            "with-open-file stream variable must be a symbol",
+        )?;
+
+        let mut open_items = Vec::with_capacity(binding.len());
+        open_items.push(Form::atom("OPEN", binding_form.span));
+        open_items.extend(binding[1..].iter().cloned());
+        let open_form = Form::list(open_items, binding_form.span);
+        let generated_binding = Form::list(
+            vec![Form::list(
+                vec![binding[0].clone(), open_form],
+                binding_form.span,
+            )],
+            binding_form.span,
+        );
+        let body = if items.len() > 2 {
+            let mut body_items = Vec::with_capacity(items.len() - 1);
+            body_items.push(Form::atom("PROGN", form.span));
+            body_items.extend(items[2..].iter().cloned());
+            Form::list(body_items, form.span)
+        } else {
+            Form::atom("NIL", form.span)
+        };
+        let close_form = Form::list(
+            vec![Form::atom("CLOSE", form.span), binding[0].clone()],
+            form.span,
+        );
+        let protected_form = Form::list(
+            vec![Form::atom("UNWIND-PROTECT", form.span), body, close_form],
+            form.span,
+        );
+        Ok(Form::list(
+            vec![Form::atom("LET", form.span), generated_binding, protected_form],
+            form.span,
+        ))
     }
 
     fn bind_macro_pattern(
@@ -1841,6 +2989,58 @@ impl Runtime {
         let type_designator = quoted_form_value(&items[1])?;
         let value = self.eval_in(&items[2], environment)?;
         builtins::the_check(&[value, type_designator])
+    }
+
+    fn special_load_time_value(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if !(2..=3).contains(&items.len()) {
+            return Err(self.arity(
+                "load-time-value",
+                "one or two",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let value = self.eval_values_in(&items[1], environment)?;
+        if let Some(read_only_p) = items.get(2) {
+            let _ = self.eval_in(read_only_p, environment)?;
+        }
+        Ok(value)
+    }
+
+    fn special_nth_value(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() != 3 {
+            return Err(self.arity("nth-value", "two", items.len().saturating_sub(1)));
+        }
+
+        let index_value = self.eval_in(&items[1], environment)?;
+        let index = match index_value {
+            Value::Integer(index) if index >= 0 => {
+                usize::try_from(index).map_err(|_| RuntimeError::NumericOverflow)?
+            }
+            Value::Integer(_) => {
+                return Err(self.invalid(
+                    "nth-value index must be non-negative",
+                    items[1].span,
+                ));
+            }
+            value => {
+                return Err(RuntimeError::Type {
+                    expected: "INTEGER".to_string(),
+                    actual: value.type_name().to_string(),
+                    span: Some(items[1].span),
+                });
+            }
+        };
+
+        let values = self.eval_values_in(&items[2], environment)?.multiple_values();
+        Ok(values.get(index).cloned().unwrap_or(Value::Nil))
     }
 
     fn special_locally(
@@ -2273,6 +3473,7 @@ impl Runtime {
             ));
         }
 
+        let mut handlers = Vec::with_capacity(items.len().saturating_sub(2));
         for clause in &items[2..] {
             let FormKind::List(clause_items) = &clause.kind else {
                 return Err(self.invalid("handler-case clause must be a list", clause.span));
@@ -2295,13 +3496,21 @@ impl Runtime {
                     clause_items[1].span,
                 ));
             }
-            self.condition_name(&clause_items[0])?;
+            let condition = self.condition_name(&clause_items[0])?;
             if let Some(variable) = variables.first() {
                 self.variable_name_info(variable, "handler-case condition variable")?;
             }
+            handlers.push(ConditionHandlerBinding {
+                condition,
+                function: None,
+                catch: true,
+            });
         }
 
-        let protected = match self.eval_values_in(&items[1], environment) {
+        let guard = self.condition_handler_guard(handlers);
+        let protected_result = self.eval_values_in(&items[1], environment);
+        drop(guard);
+        let protected = match protected_result {
             Ok(value) => return Ok(value),
             Err(error @ RuntimeError::ReturnFrom { .. }) => return Err(error),
             Err(error @ RuntimeError::Go { .. }) => return Err(error),
@@ -2347,6 +3556,7 @@ impl Runtime {
         let FormKind::List(handlers) = &items[1].kind else {
             return Err(self.invalid("handler-bind handler list must be a list", items[1].span));
         };
+        let mut handler_bindings = Vec::with_capacity(handlers.len());
         for handler in handlers {
             let FormKind::List(parts) = &handler.kind else {
                 return Err(self.invalid("handler-bind clause must be a list", handler.span));
@@ -2357,26 +3567,37 @@ impl Runtime {
                     handler.span,
                 ));
             }
-            self.condition_name(&parts[0])?;
+            let condition = self.condition_name(&parts[0])?;
+            let function = self.eval_in(&parts[1], environment)?;
+            handler_bindings.push(ConditionHandlerBinding {
+                condition,
+                function: Some(function),
+                catch: false,
+            });
         }
 
-        let body = match self.eval_sequence_values(&items[2..], environment) {
+        let guard = self.condition_handler_guard(handler_bindings.clone());
+        let body_result = self.eval_sequence_values(&items[2..], environment);
+        drop(guard);
+        let body = match body_result {
             Ok(value) => return Ok(value),
             Err(error @ RuntimeError::ReturnFrom { .. }) => return Err(error),
             Err(error @ RuntimeError::Go { .. }) => return Err(error),
             Err(error @ RuntimeError::InvokeRestart { .. }) => return Err(error),
+            Err(error @ RuntimeError::Signaled { .. }) => return Err(error),
             Err(error) => error,
         };
 
-        for handler in handlers {
+        for (handler, binding) in handlers.iter().zip(handler_bindings.iter()).rev() {
             let FormKind::List(parts) = &handler.kind else {
                 unreachable!("handler-bind clauses were validated above");
             };
-            let condition = self.condition_name(&parts[0])?;
-            if body.matches_condition(&condition) {
-                let function = self.eval_in(&parts[1], environment)?;
+            if body.matches_condition(&binding.condition) {
+                let Some(function) = &binding.function else {
+                    return Err(body);
+                };
                 return self.apply_in(
-                    &function,
+                    function,
                     &[Value::condition(&body)],
                     parts[1].span,
                     environment,
@@ -2385,6 +3606,72 @@ impl Runtime {
         }
 
         Err(body)
+    }
+
+    fn special_restart_bind(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 2 {
+            return Err(self.arity("restart-bind", "at least one", 0));
+        }
+        let FormKind::List(bindings) = &items[1].kind else {
+            return Err(self.invalid("restart-bind binding list must be a list", items[1].span));
+        };
+
+        let mut restarts = Vec::with_capacity(bindings.len());
+        for binding in bindings {
+            let FormKind::List(parts) = &binding.kind else {
+                return Err(self.invalid("restart-bind clause must be a list", binding.span));
+            };
+            if parts.len() != 2 {
+                return Err(self.invalid(
+                    "restart-bind clause needs a name and function",
+                    binding.span,
+                ));
+            }
+            let name = self.restart_name(&parts[0])?;
+            let function = self.eval_in(&parts[1], environment)?;
+            restarts.push((name, function, parts[1].span));
+        }
+
+        let guard = self.restart_guard(
+            restarts
+                .iter()
+                .map(|(name, function, _)| {
+                    RestartBinding::new(name.clone(), Some(function.clone()))
+                })
+                .collect(),
+        );
+        let body_result = self.eval_sequence_values(&items[2..], environment);
+        drop(guard);
+        match body_result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                let RuntimeError::InvokeRestart {
+                    name: invoked,
+                    arguments,
+                    ..
+                } = &error
+                else {
+                    return Err(error);
+                };
+                let Some((_, function, binding_span)) = restarts
+                    .iter()
+                    .rev()
+                    .find(|(name, _, _)| normalize_name(invoked.as_str()) == name.as_str())
+                else {
+                    return Err(error);
+                };
+                let argument_values = arguments
+                    .iter()
+                    .cloned()
+                    .map(ReturnValue::into_value)
+                    .collect::<Vec<_>>();
+                self.apply_in(function, &argument_values, *binding_span, environment)
+            }
+        }
     }
 
     fn special_catch(
@@ -2433,7 +3720,10 @@ impl Runtime {
             ));
         }
         let name = self.restart_name(&clause[0])?;
-        match self.eval_sequence_values(&items[2..], environment) {
+        let guard = self.restart_guard(vec![RestartBinding::new(name.clone(), None)]);
+        let body_result = self.eval_sequence_values(&items[2..], environment);
+        drop(guard);
+        match body_result {
             Ok(value) => Ok(value),
             Err(RuntimeError::InvokeRestart {
                 name: invoked,
@@ -2442,6 +3732,50 @@ impl Runtime {
             }) if normalize_name(invoked.as_str()) == name => Ok(value.into_value()),
             Err(error) => Err(error),
         }
+    }
+
+    fn special_with_condition_restarts(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 4 {
+            return Err(self.arity(
+                "with-condition-restarts",
+                "at least three",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let condition = self.eval_values_in(&items[1], environment)?.primary_value();
+        if condition.condition_type_name().is_none() {
+            return Err(RuntimeError::Type {
+                expected: "CONDITION".to_string(),
+                actual: condition.type_name().to_string(),
+                span: Some(items[1].span),
+            });
+        }
+        let restarts_value = self.eval_values_in(&items[2], environment)?.primary_value();
+        let Some(restarts) = restarts_value.list_items() else {
+            return Err(RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: restarts_value.type_name().to_string(),
+                span: Some(items[2].span),
+            });
+        };
+        if let Some(restart) = restarts
+            .iter()
+            .find(|restart| restart.restart_name().is_none())
+        {
+            return Err(RuntimeError::Type {
+                expected: "RESTART".to_string(),
+                actual: restart.type_name().to_string(),
+                span: Some(items[2].span),
+            });
+        }
+        let guard = self.condition_restart_guard(condition, restarts);
+        let result = self.eval_sequence_values(&items[3..], environment);
+        drop(guard);
+        result
     }
 
     fn special_restart_case(
@@ -2497,7 +3831,15 @@ impl Runtime {
             clauses.push((name, closure, clause.span));
         }
 
-        match self.eval_values_in(&items[1], environment) {
+        let guard = self.restart_guard(
+            clauses
+                .iter()
+                .map(|(name, _, _)| RestartBinding::new(name.clone(), None))
+                .collect(),
+        );
+        let protected_result = self.eval_values_in(&items[1], environment);
+        drop(guard);
+        match protected_result {
             Ok(value) => Ok(value),
             Err(error) => {
                 if let RuntimeError::InvokeRestart {
@@ -2991,7 +4333,16 @@ impl Runtime {
             ));
         }
         let lambda_list = match &items[1].kind {
-            FormKind::List(_) => Some(self.macro_parameters(&items[1])?),
+            FormKind::List(_) => {
+                let lambda_list = self.macro_parameters(&items[1])?;
+                if lambda_list.environment.is_some() {
+                    return Err(self.invalid(
+                        "&environment is only valid in macro lambda lists",
+                        items[1].span,
+                    ));
+                }
+                Some(lambda_list)
+            }
             _ => None,
         };
         let mut seen = HashSet::new();
@@ -3116,6 +4467,130 @@ impl Runtime {
             }
         }
         self.eval_sequence_values(&items[2..], &local)
+    }
+
+    fn special_macrolet(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 2 {
+            return Err(self.arity("macrolet", "at least one", items.len().saturating_sub(1)));
+        }
+        let FormKind::List(bindings) = &items[1].kind else {
+            return Err(self.invalid("local macro bindings must be a list", items[1].span));
+        };
+
+        let local = environment.child();
+        let captured = environment.clone();
+        let mut names = HashSet::new();
+        for binding in bindings {
+            let FormKind::List(parts) = &binding.kind else {
+                return Err(self.invalid("local macro binding must be a list", binding.span));
+            };
+            if parts.len() < 3 {
+                return Err(self.invalid(
+                    "local macro needs a name, parameters, and a body",
+                    binding.span,
+                ));
+            }
+            let (name, escaped) =
+                self.variable_name_info(&parts[0], "local macro name must be a symbol")?;
+            if !names.insert(name.clone()) {
+                return Err(self.invalid("local macro names must be unique", parts[0].span));
+            }
+            let lambda_list = self.macro_parameters(&parts[1])?;
+            let function = Value::macro_function(
+                lambda_list,
+                parts[2..].to_vec(),
+                captured.clone(),
+            );
+            if escaped {
+                local.define_exact(name, function);
+            } else {
+                local.define(name, function);
+            }
+        }
+        self.eval_sequence_values(&items[2..], &local)
+    }
+
+    fn special_symbol_macrolet(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 2 {
+            return Err(self.arity(
+                "symbol-macrolet",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let FormKind::List(bindings) = &items[1].kind else {
+            return Err(self.invalid(
+                "symbol macro bindings must be a list",
+                items[1].span,
+            ));
+        };
+
+        let local = environment.child();
+        let mut names = HashSet::new();
+        for binding in bindings {
+            let FormKind::List(parts) = &binding.kind else {
+                return Err(self.invalid(
+                    "symbol macro binding must be a list",
+                    binding.span,
+                ));
+            };
+            if parts.len() != 2 {
+                return Err(self.invalid(
+                    "symbol macro binding needs a name and an expansion",
+                    binding.span,
+                ));
+            }
+            let (name, escaped) =
+                self.variable_name_info(&parts[0], "symbol macro name must be a symbol")?;
+            if !names.insert((name.clone(), escaped)) {
+                return Err(self.invalid(
+                    "symbol macro names must be unique",
+                    parts[0].span,
+                ));
+            }
+            if escaped {
+                local.define_symbol_macro_exact(name, parts[1].clone());
+            } else {
+                local.define_symbol_macro(name, parts[1].clone());
+            }
+        }
+        self.eval_sequence_values(&items[2..], &local)
+    }
+
+    fn special_define_symbol_macro(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() != 3 {
+            return Err(self.arity(
+                "DEFINE-SYMBOL-MACRO",
+                "two",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let (name, escaped) = self.variable_name_info(
+            &items[1],
+            "DEFINE-SYMBOL-MACRO name must be a symbol",
+        )?;
+        if escaped {
+            environment.define_symbol_macro_exact(name.clone(), items[2].clone());
+        } else {
+            environment.define_symbol_macro(name.clone(), items[2].clone());
+        }
+        Ok(if escaped {
+            Value::symbol_exact(name)
+        } else {
+            Value::symbol(name)
+        })
     }
 
     fn special_dotimes(
@@ -3438,6 +4913,95 @@ impl Runtime {
         })
     }
 
+    fn special_defsetf(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() != 3 {
+            return Err(self.invalid("DEFSETF needs an accessor and a writer", items[0].span));
+        }
+        let Some(accessor) = atom_name(&items[1]) else {
+            return Err(self.invalid("DEFSETF accessor must be a symbol", items[1].span));
+        };
+
+        let writer_designator = if let Some(writer) = atom_name(&items[2]) {
+            let (resolved_name, escaped) = resolved_symbol(writer);
+            if escaped {
+                Value::symbol_exact(resolved_name)
+            } else {
+                Value::symbol(resolved_name)
+            }
+        } else {
+            self.eval_in(&items[2], environment)?
+        };
+        let writer = Value::Function(self.resolve_function_designator(
+            &writer_designator,
+            items[2].span,
+            environment,
+        )?);
+        let (resolved_name, escaped) = resolved_symbol(accessor);
+        environment.define_setf_function(unqualified_name(&resolved_name), writer);
+        Ok(if escaped {
+            Value::symbol_exact(resolved_name)
+        } else {
+            Value::symbol(resolved_name)
+        })
+    }
+
+    fn special_define_setf_expander(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 4 {
+            return Err(self.invalid(
+                "DEFINE-SETF-EXPANDER needs a name, parameters, and a body",
+                items[0].span,
+            ));
+        }
+        let Some(name) = atom_name(&items[1]) else {
+            return Err(self.invalid(
+                "DEFINE-SETF-EXPANDER name must be a symbol",
+                items[1].span,
+            ));
+        };
+        let lambda_list = self.macro_parameters(&items[2])?;
+        let function =
+            Value::macro_function(lambda_list, items[3..].to_vec(), environment.clone());
+        let (resolved_name, escaped) = resolved_symbol(name);
+        environment.define_setf_expander(unqualified_name(&resolved_name), function);
+        Ok(if escaped {
+            Value::symbol_exact(resolved_name)
+        } else {
+            Value::symbol(resolved_name)
+        })
+    }
+
+    fn special_get_setf_expansion(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if !(2..=3).contains(&items.len()) {
+            return Err(self.arity(
+                "GET-SETF-EXPANSION",
+                "one or two",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let place_value = self.eval_in(&items[1], environment)?;
+        let place = self.form_from_value(&place_value, items[1].span)?;
+        let expansion_environment = if items.len() == 3 {
+            let value = self.eval_in(&items[2], environment)?;
+            self.macroexpansion_environment(value, items[2].span)?
+        } else {
+            environment.clone()
+        };
+        let expansion = self.get_setf_expansion(&place, &expansion_environment)?;
+        self.setf_expansion_value(&expansion, items[0].span)
+    }
+
     fn special_defmacro(
         &self,
         items: &[Form],
@@ -3467,17 +5031,66 @@ impl Runtime {
         })
     }
 
+    fn special_define_modify_macro(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 4 {
+            return Err(self.invalid(
+                "define-modify-macro needs a name, parameters, and a function",
+                items[0].span,
+            ));
+        }
+        let Some(name) = atom_name(&items[1]) else {
+            return Err(self.invalid(
+                "define-modify-macro name must be a symbol",
+                items[1].span,
+            ));
+        };
+        let mut lambda_list = self.macro_parameters(&items[2])?;
+        lambda_list
+            .required
+            .insert(0, MacroPattern::Name("NCL-MODIFY-MACRO-PLACE".to_owned()));
+        let function = Value::modify_macro_function(
+            lambda_list,
+            items[3].clone(),
+            environment.clone(),
+        );
+        let (resolved_name, escaped) = resolved_symbol(name);
+        if escaped {
+            self.define_exact_in(&resolved_name, function, environment);
+        } else {
+            self.define_in(&resolved_name, function, environment);
+        }
+        Ok(if escaped {
+            Value::symbol_exact(resolved_name)
+        } else {
+            Value::symbol(resolved_name)
+        })
+    }
+
     fn special_macroexpand_1(
         &self,
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        if items.len() != 2 {
-            return Err(self.arity("macroexpand-1", "one", items.len().saturating_sub(1)));
+        if !(2..=3).contains(&items.len()) {
+            return Err(self.arity(
+                "macroexpand-1",
+                "one or two",
+                items.len().saturating_sub(1),
+            ));
         }
         let value = self.eval_in(&items[1], environment)?;
         let form = self.form_from_value(&value, items[1].span)?;
-        let (expanded, expanded_p) = match self.expand_macro_once(&form, environment)? {
+        let expansion_environment = if items.len() == 3 {
+            let value = self.eval_in(&items[2], environment)?;
+            self.macroexpansion_environment(value, items[2].span)?
+        } else {
+            environment.clone()
+        };
+        let (expanded, expanded_p) = match self.expand_macro_once(&form, &expansion_environment)? {
             Some(expanded) => (expanded, true),
             None => (form, false),
         };
@@ -3492,16 +5105,42 @@ impl Runtime {
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        if items.len() != 2 {
-            return Err(self.arity("macroexpand", "one", items.len().saturating_sub(1)));
+        if !(2..=3).contains(&items.len()) {
+            return Err(self.arity(
+                "macroexpand",
+                "one or two",
+                items.len().saturating_sub(1),
+            ));
         }
         let value = self.eval_in(&items[1], environment)?;
         let form = self.form_from_value(&value, items[1].span)?;
-        let (expanded, expanded_p) = self.expand_macros_with_flag(form, environment)?;
+        let expansion_environment = if items.len() == 3 {
+            let value = self.eval_in(&items[2], environment)?;
+            self.macroexpansion_environment(value, items[2].span)?
+        } else {
+            environment.clone()
+        };
+        let (expanded, expanded_p) =
+            self.expand_macros_with_flag(form, &expansion_environment)?;
         Ok(Value::values(vec![
             self.quoted_value(&expanded)?,
             Value::boolean(expanded_p),
         ]))
+    }
+
+    fn macroexpansion_environment(
+        &self,
+        value: Value,
+        span: Span,
+    ) -> Result<Environment, RuntimeError> {
+        match value {
+            Value::Nil | Value::Boolean(false) => Ok(self.global.clone()),
+            Value::Environment(environment) => Ok(environment),
+            _ => Err(self.invalid(
+                "macro expansion environment must be an environment",
+                span,
+            )),
+        }
     }
 
     fn special_define(
@@ -3529,16 +5168,21 @@ impl Runtime {
         }
         let mut result = Value::Nil;
         for pair in items[1..].chunks_exact(2) {
+            let expansion = self.expand_symbol_macro_form(&pair[0], environment)?;
             let (name, escaped) =
                 self.variable_name_info(&pair[0], "setq target must be a symbol")?;
             result = self.eval_in(&pair[1], environment)?;
-            self.set_or_define_variable_in(
-                &name,
-                escaped,
-                result.clone(),
-                environment,
-                pair[0].span,
-            )?;
+            if let Some(place) = expansion {
+                self.set_place(&place, result.clone(), environment)?;
+            } else {
+                self.set_or_define_variable_in(
+                    &name,
+                    escaped,
+                    result.clone(),
+                    environment,
+                    pair[0].span,
+                )?;
+            }
         }
         Ok(result)
     }
@@ -3553,9 +5197,11 @@ impl Runtime {
         }
         let mut names = Vec::with_capacity((items.len() - 1) / 2);
         for pair in items[1..].chunks_exact(2) {
-            names.push(
+            let expansion = self.expand_symbol_macro_form(&pair[0], environment)?;
+            names.push((
                 self.variable_name_info(&pair[0], "psetq target must be a symbol")?,
-            );
+                expansion,
+            ));
         }
         let values = items[1..]
             .chunks_exact(2)
@@ -3564,8 +5210,12 @@ impl Runtime {
                     .map(|value| value.primary_value())
             })
             .collect::<Result<Vec<_>, _>>()?;
-        for ((name, escaped), value) in names.iter().zip(values) {
-            self.set_or_define_variable_in(name, *escaped, value, environment, items[0].span)?;
+        for (((name, escaped), expansion), value) in names.iter().zip(values) {
+            if let Some(place) = expansion {
+                self.set_place(place, value, environment)?;
+            } else {
+                self.set_or_define_variable_in(name, *escaped, value, environment, items[0].span)?;
+            }
         }
         Ok(Value::Nil)
     }
@@ -3587,14 +5237,21 @@ impl Runtime {
         let names = variable_forms
             .iter()
             .map(|form| {
-                self.variable_name_info(form, "multiple-value-setq variable must be a symbol")
+                Ok::<_, RuntimeError>((
+                    self.variable_name_info(form, "multiple-value-setq variable must be a symbol")?,
+                    self.expand_symbol_macro_form(form, environment)?,
+                ))
             })
             .collect::<Result<Vec<_>, _>>()?;
         let source = self.eval_values_in(&items[2], environment)?;
         let values = source.multiple_values();
-        for (index, (name, escaped)) in names.iter().enumerate() {
+        for (index, ((name, escaped), expansion)) in names.iter().enumerate() {
             let value = values.get(index).cloned().unwrap_or(Value::Nil);
-            self.set_or_define_variable_in(name, *escaped, value, environment, items[0].span)?;
+            if let Some(place) = expansion {
+                self.set_place(place, value, environment)?;
+            } else {
+                self.set_or_define_variable_in(name, *escaped, value, environment, items[0].span)?;
+            }
         }
         Ok(source.primary_value())
     }
@@ -3616,6 +5273,239 @@ impl Runtime {
         Ok(result)
     }
 
+    fn special_psetf(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 3 || items.len() % 2 == 0 {
+            return Err(self.invalid("psetf needs place/value pairs", items[0].span));
+        }
+
+        let mut assignments = Vec::with_capacity((items.len() - 1) / 2);
+        for pair in items[1..].chunks_exact(2) {
+            let value = self.eval_in(&pair[1], environment)?;
+            assignments.push((pair[0].clone(), value));
+        }
+
+        let mut result = Value::Nil;
+        for (place, value) in assignments {
+            self.set_place(&place, value.clone(), environment)?;
+            result = value;
+        }
+        Ok(result)
+    }
+
+    fn special_push(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() != 3 {
+            return Err(self.arity("PUSH", "two", items.len().saturating_sub(1)));
+        }
+
+        let value = self.eval_in(&items[1], environment)?;
+        let current = self.eval_in(&items[2], environment)?;
+        let mut elements = current
+            .list_items()
+            .ok_or_else(|| self.invalid("PUSH place must contain a proper list", items[2].span))?;
+        elements.insert(0, value);
+        let result = Value::list(elements);
+        self.set_place(&items[2], result.clone(), environment)?;
+        Ok(result)
+    }
+
+    fn special_pop(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() != 2 {
+            return Err(self.arity("POP", "one", items.len().saturating_sub(1)));
+        }
+
+        let current = self.eval_in(&items[1], environment)?;
+        let mut elements = current
+            .list_items()
+            .ok_or_else(|| self.invalid("POP place must contain a proper list", items[1].span))?;
+        let popped = if elements.is_empty() {
+            Value::Nil
+        } else {
+            elements.remove(0)
+        };
+        self.set_place(&items[1], Value::list(elements), environment)?;
+        Ok(popped)
+    }
+
+    fn special_pushnew(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 3 {
+            return Err(self.arity("PUSHNEW", "at least two", items.len().saturating_sub(1)));
+        }
+        if (items.len() - 3) % 2 != 0 {
+            return Err(self.invalid(
+                "PUSHNEW keyword arguments must be supplied in pairs",
+                items[0].span,
+            ));
+        }
+
+        let mut test = None;
+        let mut test_not = None;
+        let mut key = None;
+        for pair in items[3..].chunks_exact(2) {
+            let Some(keyword_name) = macro_keyword_name(&pair[0]) else {
+                return Err(self.invalid(
+                    "PUSHNEW keyword argument name must be a keyword",
+                    pair[0].span,
+                ));
+            };
+            match keyword_name.as_str() {
+                "TEST" => {
+                    if test_not.is_some() {
+                        return Err(self.invalid(
+                            "PUSHNEW cannot use both :test and :test-not",
+                            pair[0].span,
+                        ));
+                    }
+                    test = Some(self.eval_in(&pair[1], environment)?);
+                }
+                "TEST-NOT" => {
+                    if test.is_some() {
+                        return Err(self.invalid(
+                            "PUSHNEW cannot use both :test and :test-not",
+                            pair[0].span,
+                        ));
+                    }
+                    test_not = Some(self.eval_in(&pair[1], environment)?);
+                }
+                "KEY" => {
+                    key = Some(self.eval_in(&pair[1], environment)?);
+                }
+                _ => {
+                    return Err(RuntimeError::InvalidForm {
+                        message: format!("unknown PUSHNEW keyword :{keyword_name}"),
+                        span: Some(pair[0].span),
+                    });
+                }
+            }
+        }
+
+        let item = self.eval_in(&items[1], environment)?;
+        let current = self.eval_in(&items[2], environment)?;
+        let elements = current
+            .list_items()
+            .ok_or_else(|| self.invalid("PUSHNEW place must contain a proper list", items[2].span))?;
+
+        let invert_test = test_not.is_some();
+        let test_designator = test
+            .or(test_not)
+            .unwrap_or_else(|| Value::symbol("EQL"));
+        let test_function = Value::Function(self.resolve_function_designator(
+            &test_designator,
+            items[0].span,
+            environment,
+        )?);
+        let key_function = match key {
+            Some(value) if value.is_truthy() => Some(Value::Function(
+                self.resolve_function_designator(&value, items[0].span, environment)?,
+            )),
+            _ => None,
+        };
+        let item_key = match &key_function {
+            Some(key_function) => self
+                .apply_in(
+                    key_function,
+                    std::slice::from_ref(&item),
+                    items[0].span,
+                    environment,
+                )?
+                .primary_value(),
+            None => item.clone(),
+        };
+
+        for candidate in &elements {
+            let candidate_key = match &key_function {
+                Some(key_function) => self
+                    .apply_in(
+                        key_function,
+                        std::slice::from_ref(candidate),
+                        items[0].span,
+                        environment,
+                    )?
+                    .primary_value(),
+                None => candidate.clone(),
+            };
+            let equal = self
+                .apply_in(
+                    &test_function,
+                    &[item_key.clone(), candidate_key],
+                    items[0].span,
+                    environment,
+                )?
+                .primary_value()
+                .is_truthy();
+            if if invert_test { !equal } else { equal } {
+                return Ok(current);
+            }
+        }
+
+        let mut result_elements = elements;
+        result_elements.insert(0, item);
+        let result = Value::list(result_elements);
+        self.set_place(&items[2], result.clone(), environment)?;
+        Ok(result)
+    }
+
+    fn special_rotatef(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        let places = &items[1..];
+        let values = places
+            .iter()
+            .map(|place| self.eval_in(place, environment))
+            .collect::<Result<Vec<_>, _>>()?;
+        if values.len() > 1 {
+            let mut rotated = Vec::with_capacity(values.len());
+            rotated.push(values.last().cloned().unwrap_or(Value::Nil));
+            rotated.extend(values[..values.len() - 1].iter().cloned());
+            for (place, value) in places.iter().zip(rotated) {
+                self.set_place(place, value, environment)?;
+            }
+        }
+        Ok(Value::Nil)
+    }
+
+    fn special_shiftf(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 3 {
+            return Err(self.arity("SHIFTF", "at least two", items.len().saturating_sub(1)));
+        }
+
+        let places = &items[1..items.len() - 1];
+        let old_values = places
+            .iter()
+            .map(|place| self.eval_in(place, environment))
+            .collect::<Result<Vec<_>, _>>()?;
+        let new_value = self.eval_in(&items[items.len() - 1], environment)?;
+        for (index, place) in places.iter().enumerate() {
+            let value = old_values
+                .get(index + 1)
+                .cloned()
+                .unwrap_or_else(|| new_value.clone());
+            self.set_place(place, value, environment)?;
+        }
+        Ok(old_values.into_iter().next().unwrap_or(Value::Nil))
+    }
+
     fn special_modify_symbol(
         &self,
         items: &[Form],
@@ -3627,7 +5517,13 @@ impl Runtime {
             return Err(self.arity(operator, "one or two", items.len().saturating_sub(1)));
         }
         let place = &items[1];
-        self.variable_name(place, &format!("{operator} target"))?;
+        if atom_name(place).is_some()
+            && self
+                .expand_symbol_macro_form(place, environment)?
+                .is_none()
+        {
+            self.variable_name(place, &format!("{operator} target"))?;
+        }
         let current = self.eval_in(place, environment)?;
         let delta = items
             .get(2)
@@ -3647,12 +5543,339 @@ impl Runtime {
         Ok(value)
     }
 
+    fn fresh_setf_temporary(&self, span: Span) -> Form {
+        let counter = self.gensym_counter.get();
+        self.gensym_counter.set(counter.wrapping_add(1));
+        Form::atom(format!("NCL-SETF-TEMP-{counter}"), span)
+    }
+
+    fn setf_expansion_forms(
+        &self,
+        value: &Value,
+        label: &str,
+        span: Span,
+    ) -> Result<Vec<Form>, RuntimeError> {
+        let Some(values) = value.list_items() else {
+            return Err(self.invalid(
+                &format!("SETF expansion {label} must be a proper list"),
+                span,
+            ));
+        };
+        values
+            .iter()
+            .map(|value| self.form_from_value(value, span))
+            .collect()
+    }
+
+    fn parse_setf_expansion(
+        &self,
+        value: &Value,
+        span: Span,
+    ) -> Result<SetfExpansion, RuntimeError> {
+        let values = value.multiple_values();
+        if values.len() != 5 {
+            return Err(self.invalid(
+                "SETF expander must return five values",
+                span,
+            ));
+        }
+        let temporaries = self.setf_expansion_forms(&values[0], "temporary variables", span)?;
+        let value_forms = self.setf_expansion_forms(&values[1], "value forms", span)?;
+        if temporaries.len() != value_forms.len() {
+            return Err(self.invalid(
+                "SETF expansion temporary and value lists must have the same length",
+                span,
+            ));
+        }
+        let mut stores = self.setf_expansion_forms(&values[2], "store variables", span)?;
+        if stores.len() != 1 {
+            return Err(self.invalid(
+                "SETF expansion must provide exactly one store variable",
+                span,
+            ));
+        }
+        Ok(SetfExpansion {
+            temporaries,
+            values: value_forms,
+            store: stores.remove(0),
+            store_form: self.form_from_value(&values[3], span)?,
+            access_form: self.form_from_value(&values[4], span)?,
+        })
+    }
+
+    fn setf_expansion_value(
+        &self,
+        expansion: &SetfExpansion,
+        _span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let list_value = |forms: &[Form]| {
+            forms
+                .iter()
+                .map(|form| self.quoted_value(form))
+                .collect::<Result<Vec<_>, _>>()
+                .map(Value::list)
+        };
+        Ok(Value::values(vec![
+            list_value(&expansion.temporaries)?,
+            list_value(&expansion.values)?,
+            Value::list(vec![self.quoted_value(&expansion.store)?]),
+            self.quoted_value(&expansion.store_form)?,
+            self.quoted_value(&expansion.access_form)?,
+        ]))
+    }
+
+    fn custom_setf_expansion(
+        &self,
+        place: &Form,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Option<SetfExpansion>, RuntimeError> {
+        let Some(operator) = items.first().and_then(atom_name) else {
+            return Ok(None);
+        };
+        let lookup_name = unqualified_name(operator);
+        let Some(function) = environment.lookup_setf_expander(&lookup_name) else {
+            return Ok(None);
+        };
+        let Value::Function(function) = function else {
+            return Err(self.invalid("SETF expander is not a function", place.span));
+        };
+        let crate::Function::Macro {
+            lambda_list,
+            body,
+            environment: macro_environment,
+        } = function.as_ref()
+        else {
+            return Err(self.invalid("SETF expander is not a macro function", place.span));
+        };
+        let expansion = self.invoke_macro(
+            place,
+            &items[1..],
+            operator,
+            lambda_list,
+            body,
+            macro_environment,
+            environment,
+        )?;
+        Ok(Some(self.parse_setf_expansion(&expansion, place.span)?))
+    }
+
+    fn get_setf_expansion(
+        &self,
+        place: &Form,
+        environment: &Environment,
+    ) -> Result<SetfExpansion, RuntimeError> {
+        if let Some(expanded) = self.expand_symbol_macro_form(place, environment)? {
+            return self.get_setf_expansion(&expanded, environment);
+        }
+        if atom_name(place).is_some() {
+            self.variable_name_info(place, "SETF place must be a symbol")?;
+            let store = self.fresh_setf_temporary(place.span);
+            let store_form = Form::list(
+                vec![
+                    Form::atom("SETQ", place.span),
+                    place.clone(),
+                    store.clone(),
+                ],
+                place.span,
+            );
+            return Ok(SetfExpansion {
+                temporaries: Vec::new(),
+                values: Vec::new(),
+                store,
+                store_form,
+                access_form: place.clone(),
+            });
+        }
+
+        let FormKind::List(items) = &place.kind else {
+            return Err(self.invalid("unsupported SETF place", place.span));
+        };
+        let Some(operator) = items.first().and_then(atom_name) else {
+            return Err(self.invalid("unsupported SETF place", place.span));
+        };
+        if let Some(expansion) = self.custom_setf_expansion(place, items, environment)? {
+            return Ok(expansion);
+        }
+
+        let temporaries = items[1..]
+            .iter()
+            .map(|_| self.fresh_setf_temporary(place.span))
+            .collect::<Vec<_>>();
+        let values = items[1..].to_vec();
+        let store = self.fresh_setf_temporary(place.span);
+        let mut access_items = Vec::with_capacity(items.len());
+        access_items.push(items[0].clone());
+        access_items.extend(temporaries.iter().cloned());
+        let access_form = Form::list(access_items, place.span);
+        let store_form = Form::list(
+            vec![
+                Form::atom("SETF", place.span),
+                access_form.clone(),
+                store.clone(),
+            ],
+            place.span,
+        );
+        let _ = operator;
+        Ok(SetfExpansion {
+            temporaries,
+            values,
+            store,
+            store_form,
+            access_form,
+        })
+    }
+
+    fn get_modify_macro_setf_expansion(
+        &self,
+        place: &Form,
+        environment: &Environment,
+    ) -> Result<SetfExpansion, RuntimeError> {
+        if let Some(expanded) = self.expand_symbol_macro_form(place, environment)? {
+            return self.get_modify_macro_setf_expansion(&expanded, environment);
+        }
+        if atom_name(place).is_some() {
+            return self.get_setf_expansion(place, environment);
+        }
+
+        let FormKind::List(items) = &place.kind else {
+            return Err(self.invalid("unsupported SETF place", place.span));
+        };
+        let Some(operator) = items.first().and_then(atom_name) else {
+            return Err(self.invalid("unsupported SETF place", place.span));
+        };
+        if let Some(expansion) = self.custom_setf_expansion(place, items, environment)? {
+            return Ok(expansion);
+        }
+        let Some(container_index) = Self::modify_macro_container_index(
+            operator,
+            items.len().saturating_sub(1),
+        ) else {
+            return self.get_setf_expansion(place, environment);
+        };
+
+        let outer_temporaries = items[1..]
+            .iter()
+            .map(|_| self.fresh_setf_temporary(place.span))
+            .collect::<Vec<_>>();
+        let outer_values = items[1..].to_vec();
+        let nested = self.get_modify_macro_setf_expansion(
+            &outer_values[container_index],
+            environment,
+        )?;
+
+        let mut temporaries = Vec::new();
+        let mut values = Vec::new();
+        for (index, (temporary, value_form)) in outer_temporaries
+            .iter()
+            .zip(outer_values.iter())
+            .enumerate()
+        {
+            if index == container_index {
+                temporaries.extend(nested.temporaries.iter().cloned());
+                values.extend(nested.values.iter().cloned());
+                temporaries.push(temporary.clone());
+                values.push(nested.access_form.clone());
+            } else {
+                temporaries.push(temporary.clone());
+                values.push(value_form.clone());
+            }
+        }
+
+        let mut access_items = Vec::with_capacity(items.len());
+        access_items.push(items[0].clone());
+        access_items.extend(outer_temporaries.iter().cloned());
+        let access_form = Form::list(access_items, place.span);
+        let store = self.fresh_setf_temporary(place.span);
+        let outer_store_form = Form::list(
+            vec![
+                Form::atom("SETF", place.span),
+                access_form.clone(),
+                store.clone(),
+            ],
+            place.span,
+        );
+        let nested_store_form = Form::list(
+            vec![
+                Form::atom("LET", place.span),
+                Form::list(
+                    vec![Form::list(
+                        vec![
+                            nested.store.clone(),
+                            outer_temporaries[container_index].clone(),
+                        ],
+                        place.span,
+                    )],
+                    place.span,
+                ),
+                nested.store_form.clone(),
+            ],
+            place.span,
+        );
+        let store_form = Form::list(
+            vec![
+                Form::atom("PROGN", place.span),
+                outer_store_form,
+                nested_store_form,
+            ],
+            place.span,
+        );
+
+        Ok(SetfExpansion {
+            temporaries,
+            values,
+            store,
+            store_form,
+            access_form,
+        })
+    }
+
+    fn modify_macro_container_index(operator: &str, argument_count: usize) -> Option<usize> {
+        let index = match unqualified_name(operator).as_str() {
+            "CAR" | "FIRST" | "CDR" | "REST" | "GETF" | "ELT" | "CHAR" | "SCHAR"
+            | "BIT" | "AREF" | "ROW-MAJOR-AREF" | "SVREF" | "SUBSEQ" => 0,
+            "NTH" => 1,
+            _ => return None,
+        };
+        (index < argument_count).then_some(index)
+    }
+
+    fn apply_setf_expansion(
+        &self,
+        expansion: &SetfExpansion,
+        value: Value,
+        environment: &Environment,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        if expansion.temporaries.len() != expansion.values.len() {
+            return Err(self.invalid(
+                "SETF expansion temporary and value lists must have the same length",
+                span,
+            ));
+        }
+        let local = environment.child();
+        for (temporary, value_form) in expansion.temporaries.iter().zip(&expansion.values) {
+            let (name, escaped) =
+                self.variable_name_info(temporary, "SETF temporary must be a symbol")?;
+            let value = self.eval_in(value_form, &local)?;
+            self.define_variable_in(&name, escaped, value, &local);
+        }
+        let (store_name, store_escaped) =
+            self.variable_name_info(&expansion.store, "SETF store variable must be a symbol")?;
+        self.define_variable_in(&store_name, store_escaped, value, &local);
+        self.eval_in(&expansion.store_form, &local)?;
+        Ok(())
+    }
+
     pub(crate) fn set_place(
         &self,
         place: &Form,
         value: Value,
         environment: &Environment,
     ) -> Result<(), RuntimeError> {
+        if let Some(expanded) = self.expand_symbol_macro_form(place, environment)? {
+            return self.set_place(&expanded, value, environment);
+        }
         if atom_name(place).is_some() {
             let (resolved_name, escaped) =
                 self.variable_name_info(place, "SETF target must be a symbol")?;
@@ -3675,6 +5898,10 @@ impl Runtime {
         let args = &items[1..];
 
         let lookup_name = unqualified_name(operator);
+        if environment.lookup_setf_expander(&lookup_name).is_some() {
+            let expansion = self.get_setf_expansion(place, environment)?;
+            return self.apply_setf_expansion(&expansion, value, environment, place.span);
+        }
         if let Some(Value::Function(function)) = self.lookup_function_in(&lookup_name, environment)
         {
             match function.as_ref() {
@@ -3725,6 +5952,16 @@ impl Runtime {
                 }
                 _ => {}
             }
+        }
+
+        if let Some(updater) = environment.lookup_setf_function(&lookup_name) {
+            let mut arguments = args
+                .iter()
+                .map(|argument| self.eval_in(argument, environment))
+                .collect::<Result<Vec<_>, _>>()?;
+            arguments.push(value);
+            self.apply_in(&updater, &arguments, place.span, environment)?;
+            return Ok(());
         }
 
         match lookup_name.as_str() {
@@ -3861,6 +6098,124 @@ impl Runtime {
                     }),
                 }
             }
+            "SUBSEQ" => {
+                if !(2..=3).contains(&args.len()) {
+                    return Err(self.arity("setf subseq", "two or three", args.len()));
+                }
+                let current = self.eval_in(&args[0], environment)?;
+                let mut destination = match &current {
+                    Value::Nil => Vec::new(),
+                    Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+                    Value::String(text) => text.chars().map(Value::Character).collect(),
+                    other => {
+                        return Err(RuntimeError::Type {
+                            expected: "SEQUENCE".to_string(),
+                            actual: other.type_name().to_string(),
+                            span: Some(args[0].span),
+                        });
+                    }
+                };
+                let start =
+                    self.setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
+                let end = args
+                    .get(2)
+                    .map(|form| {
+                        self.eval_in(form, environment)
+                            .and_then(|value| self.setf_index(value, form.span))
+                    })
+                    .transpose()?
+                    .unwrap_or(destination.len());
+                if start > end || end > destination.len() {
+                    return Err(self.invalid("SETF SUBSEQ bounds are invalid", place.span));
+                }
+
+                let replacement = match &value {
+                    Value::Nil => Vec::new(),
+                    Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+                    Value::String(text) => text.chars().map(Value::Character).collect(),
+                    other => {
+                        return Err(RuntimeError::Type {
+                            expected: "SEQUENCE".to_string(),
+                            actual: other.type_name().to_string(),
+                            span: Some(place.span),
+                        });
+                    }
+                };
+                let count = (end - start).min(replacement.len());
+                destination[start..start + count].clone_from_slice(&replacement[..count]);
+
+                let rebuilt = match &current {
+                    Value::Nil | Value::List(_) => Value::list(destination),
+                    Value::Vector(_) => Value::vector(destination),
+                    Value::String(_) => {
+                        let mut text = String::new();
+                        for item in destination {
+                            let Value::Character(character) = item else {
+                                return Err(RuntimeError::Type {
+                                    expected: "CHARACTER".to_string(),
+                                    actual: item.type_name().to_string(),
+                                    span: Some(place.span),
+                                });
+                            };
+                            text.push(character);
+                        }
+                        Value::string(text)
+                    }
+                    _ => unreachable!("setf subseq type checked above"),
+                };
+                self.set_place(&args[0], rebuilt, environment)
+            }
+            "CHAR" | "SCHAR" => {
+                if args.len() != 2 {
+                    return Err(self.arity("setf char", "two", args.len()));
+                }
+                let current = self.eval_in(&args[0], environment)?;
+                let index = self.setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
+                let Value::String(text) = current else {
+                    return Err(RuntimeError::Type {
+                        expected: "STRING".to_string(),
+                        actual: current.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
+                };
+                let Value::Character(character) = value else {
+                    return Err(RuntimeError::Type {
+                        expected: "CHARACTER".to_string(),
+                        actual: value.type_name().to_string(),
+                        span: Some(place.span),
+                    });
+                };
+                let mut characters = text.chars().collect::<Vec<_>>();
+                let Some(slot) = characters.get_mut(index) else {
+                    return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                };
+                *slot = character;
+                self.set_place(
+                    &args[0],
+                    Value::string(characters.into_iter().collect::<String>()),
+                    environment,
+                )
+            }
+            "SVREF" => {
+                if args.len() != 2 {
+                    return Err(self.arity("setf svref", "two", args.len()));
+                }
+                let current = self.eval_in(&args[0], environment)?;
+                let index = self.setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
+                let Value::Vector(_) = &current else {
+                    return Err(RuntimeError::Type {
+                        expected: "SIMPLE-VECTOR".to_string(),
+                        actual: current.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
+                };
+                let mut elements = current.vector_items().expect("vector items");
+                let Some(slot) = elements.get_mut(index) else {
+                    return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                };
+                *slot = value;
+                self.set_place(&args[0], Value::vector(elements), environment)
+            }
             "AREF" => {
                 if args.is_empty() {
                     return Err(self.arity("setf aref", "at least one", args.len()));
@@ -3901,12 +6256,20 @@ impl Runtime {
                                 return Err(self
                                     .invalid("SETF index is out of bounds", args[axis + 1].span));
                             }
-                            offset = offset
-                                .checked_mul(*dimension)
-                                .and_then(|offset| offset.checked_add(index))
+                            let stride = dimensions[axis + 1..]
+                                .iter()
+                                .try_fold(1_usize, |stride, dimension| {
+                                    stride.checked_mul(*dimension)
+                                })
                                 .ok_or_else(|| {
                                     self.invalid("SETF index is too large", place.span)
                                 })?;
+                            let contribution = index.checked_mul(stride).ok_or_else(|| {
+                                self.invalid("SETF index is too large", place.span)
+                            })?;
+                            offset = offset.checked_add(contribution).ok_or_else(|| {
+                                self.invalid("SETF index is too large", place.span)
+                            })?;
                         }
                         let mut elements = current.array_items().expect("array items");
                         let Some(slot) = elements.get_mut(offset) else {
@@ -3924,6 +6287,128 @@ impl Runtime {
                         actual: other.type_name().to_string(),
                         span: Some(args[0].span),
                     }),
+                }
+            }
+            "ROW-MAJOR-AREF" => {
+                if args.len() != 2 {
+                    return Err(self.arity("setf row-major-aref", "two", args.len()));
+                }
+                let current = self.eval_in(&args[0], environment)?;
+                let index =
+                    self.setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
+                match &current {
+                    Value::Vector(_) => {
+                        let mut elements = current.vector_items().expect("vector items");
+                        let Some(slot) = elements.get_mut(index) else {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        };
+                        *slot = value;
+                        self.set_place(&args[0], Value::vector(elements), environment)
+                    }
+                    Value::Array { .. } => {
+                        let mut elements = current.array_items().expect("array items");
+                        let Some(slot) = elements.get_mut(index) else {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        };
+                        *slot = value;
+                        let dimensions = current
+                            .array_dimensions()
+                            .expect("array dimensions");
+                        self.set_place(
+                            &args[0],
+                            Value::array(dimensions, elements),
+                            environment,
+                        )
+                    }
+                    other => Err(RuntimeError::Type {
+                        expected: "ARRAY or VECTOR".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(args[0].span),
+                    }),
+                }
+            }
+            "BIT" => {
+                if args.is_empty() {
+                    return Err(self.arity("setf bit", "array and subscripts", 0));
+                }
+                let current = self.eval_in(&args[0], environment)?;
+                let dimensions = match &current {
+                    Value::Vector(items) => vec![items.len()],
+                    Value::Array { dimensions, .. } => dimensions.as_ref().clone(),
+                    other => {
+                        return Err(RuntimeError::Type {
+                            expected: "ARRAY".to_string(),
+                            actual: other.type_name().to_string(),
+                            span: Some(args[0].span),
+                        });
+                    }
+                };
+                if args.len() != dimensions.len() + 1 {
+                    return Err(self.arity(
+                        "setf bit",
+                        &format!("{} subscripts", dimensions.len()),
+                        args.len() - 1,
+                    ));
+                }
+                let indices = args[1..]
+                    .iter()
+                    .map(|argument| self.eval_in(argument, environment))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let mut offset = 0_usize;
+                for (axis, (dimension, index_value)) in
+                    dimensions.iter().zip(&indices).enumerate()
+                {
+                    let index =
+                        self.setf_index(index_value.clone(), args[axis + 1].span)?;
+                    if index >= *dimension {
+                        return Err(self
+                            .invalid("SETF index is out of bounds", args[axis + 1].span));
+                    }
+                    let stride = dimensions[axis + 1..]
+                        .iter()
+                        .try_fold(1_usize, |stride, dimension| {
+                            stride.checked_mul(*dimension)
+                        })
+                        .ok_or_else(|| self.invalid("SETF index is too large", place.span))?;
+                    let contribution = index.checked_mul(stride).ok_or_else(|| {
+                        self.invalid("SETF index is too large", place.span)
+                    })?;
+                    offset = offset.checked_add(contribution).ok_or_else(|| {
+                        self.invalid("SETF index is too large", place.span)
+                    })?;
+                }
+                if !matches!(&value, Value::Integer(bit) if *bit == 0 || *bit == 1) {
+                    return Err(RuntimeError::Type {
+                        expected: "BIT".to_string(),
+                        actual: value.type_name().to_string(),
+                        span: Some(place.span),
+                    });
+                }
+                match &current {
+                    Value::Vector(_) => {
+                        let mut elements = current.vector_items().expect("vector items");
+                        let Some(slot) = elements.get_mut(offset) else {
+                            return Err(self.invalid("SETF index is out of bounds", place.span));
+                        };
+                        *slot = value;
+                        self.set_place(&args[0], Value::vector(elements), environment)
+                    }
+                    Value::Array { .. } => {
+                        let mut elements = current.array_items().expect("array items");
+                        let Some(slot) = elements.get_mut(offset) else {
+                            return Err(self.invalid("SETF index is out of bounds", place.span));
+                        };
+                        *slot = value;
+                        let dimensions = current
+                            .array_dimensions()
+                            .expect("array dimensions");
+                        self.set_place(
+                            &args[0],
+                            Value::array(dimensions, elements),
+                            environment,
+                        )
+                    }
+                    _ => unreachable!("bit array type checked above"),
                 }
             }
             "SYMBOL-VALUE" => {
@@ -4433,6 +6918,7 @@ impl Runtime {
         let mut slots: Vec<ClassSlot> = Vec::new();
         let mut readers = Vec::new();
         let mut writers = Vec::new();
+        let mut default_initargs = Vec::new();
 
         for slot_form in slot_forms {
             let (slot_name_form, options) = match &slot_form.kind {
@@ -4451,6 +6937,7 @@ impl Runtime {
             let slot_name = unqualified_name(&slot_name);
             let mut initarg = None;
             let mut init_form = None;
+            let mut class_value = None;
 
             if options.len() % 2 != 0 {
                 return Err(self.invalid(
@@ -4469,6 +6956,15 @@ impl Runtime {
                         };
                     }
                     "INITFORM" => init_form = Some(option[1].clone()),
+                    "ALLOCATION" => {
+                        let allocation =
+                            self.definition_name_from_form(&option[1], "defclass allocation")?;
+                        if allocation == "CLASS" {
+                            class_value = Some(Rc::new(RefCell::new(Value::Unbound)));
+                        } else {
+                            class_value = None;
+                        }
+                    }
                     "ACCESSOR" | "READER" => {
                         let accessor_name =
                             self.variable_name(&option[1], "defclass accessor must be a symbol")?;
@@ -4479,7 +6975,7 @@ impl Runtime {
                             self.variable_name(&option[1], "defclass writer must be a symbol")?;
                         writers.push((unqualified_name(&writer_name), slot_name.clone()));
                     }
-                    "ALLOCATION" | "TYPE" | "DOCUMENTATION" => {}
+                    "TYPE" | "DOCUMENTATION" => {}
                     _ => {
                         return Err(self.invalid(
                             "unsupported defclass slot option",
@@ -4492,12 +6988,56 @@ impl Runtime {
             if let Some(existing) = slots.iter_mut().find(|slot| slot.name == slot_name) {
                 existing.initarg = initarg;
                 existing.init_form = init_form;
+                existing.class_value = class_value;
             } else {
                 slots.push(ClassSlot {
                     name: slot_name,
                     initarg,
                     init_form,
+                    class_value,
                 });
+            }
+        }
+
+        for option in items.iter().skip(4) {
+            let option_items = self.list_form_items(option, "defclass option")?;
+            if option_items.is_empty() {
+                return Err(self.invalid("defclass option must be a non-empty list", option.span));
+            }
+            let option_name =
+                self.definition_name_from_form(&option_items[0], "defclass option name")?;
+            match option_name.as_str() {
+                "DEFAULT-INITARGS" => {
+                    if option_items.len() < 3 || (option_items.len() - 1) % 2 != 0 {
+                        return Err(self.invalid(
+                            "defclass :default-initargs requires initarg and form pairs",
+                            option.span,
+                        ));
+                    }
+                    for pair in option_items[1..].chunks_exact(2) {
+                        let initarg = self
+                            .definition_name_from_form(&pair[0], "defclass default initarg")?;
+                        if let Some(existing) = default_initargs
+                            .iter_mut()
+                            .find(|(name, _)| name == &initarg)
+                        {
+                            existing.1 = pair[1].clone();
+                        } else {
+                            default_initargs.push((initarg, pair[1].clone()));
+                        }
+                    }
+                }
+                "DOCUMENTATION" => {
+                    if option_items.len() != 2
+                        || !matches!(option_items[1].kind, FormKind::String(_))
+                    {
+                        return Err(self.invalid(
+                            "defclass :documentation needs one string",
+                            option.span,
+                        ));
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -4522,6 +7062,14 @@ impl Runtime {
                     slots.push(inherited.clone());
                 }
             }
+            for inherited in &definition.default_initargs {
+                if !default_initargs
+                    .iter()
+                    .any(|(name, _)| name == &inherited.0)
+                {
+                    default_initargs.push(inherited.clone());
+                }
+            }
         }
         if !precedence.iter().any(|name| name == "STANDARD-OBJECT") {
             precedence.push("STANDARD-OBJECT".to_owned());
@@ -4532,6 +7080,7 @@ impl Runtime {
             direct_superclasses,
             precedence,
             slots,
+            default_initargs,
         });
         environment.define_class(&class_name, definition);
         for (accessor_name, slot_name) in readers {
@@ -4840,6 +7389,10 @@ impl Runtime {
         let mut operations = Vec::new();
         let mut saw_nicknames = false;
         let mut saw_use = false;
+        let mut documentation = None;
+        let mut saw_documentation = false;
+        let mut saw_size = false;
+        let mut local_nicknames = HashMap::new();
 
         for option in items.iter().skip(2) {
             let FormKind::List(option_items) = &option.kind else {
@@ -4872,6 +7425,67 @@ impl Runtime {
                     use_packages.clear();
                     for package_form in option_items.iter().skip(1) {
                         use_packages.push(self.package_name_from_form(package_form)?);
+                    }
+                }
+                "DOCUMENTATION" => {
+                    if saw_documentation || option_items.len() != 2 {
+                        return Err(self.invalid(
+                            "defpackage :documentation needs one string",
+                            option.span,
+                        ));
+                    }
+                    saw_documentation = true;
+                    let FormKind::String(value) = &option_items[1].kind else {
+                        return Err(self.invalid(
+                            "defpackage :documentation needs a string",
+                            option_items[1].span,
+                        ));
+                    };
+                    documentation = Some(value.clone());
+                }
+                "SIZE" => {
+                    if saw_size || option_items.len() != 2 {
+                        return Err(self.invalid(
+                            "defpackage :size needs one non-negative integer",
+                            option.span,
+                        ));
+                    }
+                    saw_size = true;
+                    let FormKind::Atom(value) = &option_items[1].kind else {
+                        return Err(self.invalid(
+                            "defpackage :size needs a non-negative integer",
+                            option_items[1].span,
+                        ));
+                    };
+                    if value.parse::<i64>().map_or(true, |size| size < 0) {
+                        return Err(self.invalid(
+                            "defpackage :size needs a non-negative integer",
+                            option_items[1].span,
+                        ));
+                    }
+                }
+                "LOCAL-NICKNAMES" => {
+                    for nickname_option in option_items.iter().skip(1) {
+                        let FormKind::List(mapping) = &nickname_option.kind else {
+                            return Err(self.invalid(
+                                "defpackage local nickname needs a two-element list",
+                                nickname_option.span,
+                            ));
+                        };
+                        if mapping.len() != 2 {
+                            return Err(self.invalid(
+                                "defpackage local nickname needs a two-element list",
+                                nickname_option.span,
+                            ));
+                        }
+                        let nickname = self.package_name_from_form(&mapping[0])?;
+                        let target = self.package_name_from_form(&mapping[1])?;
+                        if local_nicknames.insert(nickname, target).is_some() {
+                            return Err(self.invalid(
+                                "defpackage has duplicate local package nickname",
+                                nickname_option.span,
+                            ));
+                        }
                     }
                 }
                 "EXPORT" => {
@@ -4958,9 +7572,14 @@ impl Runtime {
         }
 
         let mut packages = self.packages.borrow_mut();
-        if let Err(message) =
-            packages.define_package(name.clone(), nicknames, use_packages, exports)
-        {
+        if let Err(message) = packages.define_package(
+            name.clone(),
+            nicknames,
+            use_packages,
+            exports,
+            documentation,
+            local_nicknames,
+        ) {
             return Err(self.package_error(&message, items[1].span));
         }
         for operation in operations {
@@ -7559,26 +10178,480 @@ impl Runtime {
         let class = environment
             .lookup_class(&class_name)
             .ok_or_else(|| self.invalid("unknown class", span))?;
-        let mut slots = Vec::with_capacity(class.slots.len());
-        for slot in &class.slots {
-            let value = slot
-                .init_form
-                .as_ref()
-                .map(|form| self.eval_in(form, environment))
-                .transpose()?
-                .unwrap_or(Value::Unbound);
-            slots.push((slot.name.clone(), value));
-        }
+
+        let mut initargs = Vec::with_capacity(arguments.len().saturating_sub(1));
         for pair in arguments[1..].chunks_exact(2) {
             let initarg = self.name_designator_from_value(&pair[0], span)?;
+            initargs.push((initarg, pair[1].clone()));
+        }
+        for (initarg, init_form) in &class.default_initargs {
+            if initargs.iter().any(|(name, _)| name == initarg) {
+                continue;
+            }
+            initargs.push((initarg.clone(), self.eval_in(init_form, environment)?));
+        }
+        for (initarg, _) in &initargs {
+            if !class
+                .slots
+                .iter()
+                .any(|slot| slot.initarg.as_deref() == Some(initarg.as_str()))
+            {
+                return Err(self.invalid("unknown make-instance initarg", span));
+            }
+        }
+
+        let mut slots = Vec::with_capacity(class.slots.len());
+        for slot in &class.slots {
+            let initarg_value = slot.initarg.as_ref().and_then(|initarg| {
+                initargs
+                    .iter()
+                    .rev()
+                    .find(|(name, _)| name == initarg)
+                    .map(|(_, value)| value.clone())
+            });
+            let value = if let Some(initarg_value) = initarg_value {
+                initarg_value
+            } else if let Some(class_value) = &slot.class_value {
+                let current = class_value.borrow().clone();
+                if matches!(current, Value::Unbound) {
+                    let value = slot
+                        .init_form
+                        .as_ref()
+                        .map(|form| self.eval_in(form, environment))
+                        .transpose()?
+                        .unwrap_or(Value::Unbound);
+                    *class_value.borrow_mut() = value.clone();
+                    value
+                } else {
+                    current
+                }
+            } else {
+                slot.init_form
+                    .as_ref()
+                    .map(|form| self.eval_in(form, environment))
+                    .transpose()?
+                    .unwrap_or(Value::Unbound)
+            };
+            slots.push((slot.name.clone(), value));
+        }
+        let instance = Value::instance(class.clone(), slots);
+        for (initarg, value) in initargs {
             let Some(index) = class.slots.iter().position(|slot| {
                 slot.initarg.as_deref() == Some(initarg.as_str())
             }) else {
                 return Err(self.invalid("unknown make-instance initarg", span));
             };
-            slots[index].1 = pair[1].clone();
+            if !instance.set_instance_slot(&class.name, &class.slots[index].name, value) {
+                return Err(self.invalid("unknown make-instance initarg", span));
+            }
         }
-        Ok(Value::instance(class, slots))
+        Ok(instance)
+    }
+
+    fn compile_function(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if !(1..=2).contains(&arguments.len()) {
+            return Err(self.arity("compile", "one or two", arguments.len()));
+        }
+
+        let name = match &arguments[0] {
+            Value::Nil | Value::Boolean(false) => None,
+            value => {
+                let (name, exact) = value
+                    .symbol_reference()
+                    .ok_or_else(|| self.invalid("compile name must be a symbol or NIL", span))?;
+                Some((name.to_owned(), exact))
+            }
+        };
+
+        let function = match arguments.get(1) {
+            None | Some(Value::Nil) | Some(Value::Boolean(false)) => {
+                let Some((name, exact)) = name.as_ref() else {
+                    return Err(self.invalid(
+                        "compile needs a function definition when the name is NIL",
+                        span,
+                    ));
+                };
+                let function = if *exact {
+                    self.lookup_function_exact_in(name, environment)
+                } else {
+                    self.lookup_function_in(name, environment)
+                };
+                match function {
+                    Some(value @ Value::Function(_)) => value,
+                    Some(value) => {
+                        return Err(RuntimeError::NotCallable {
+                            value: value.to_string(),
+                            span: Some(span),
+                        });
+                    }
+                    None => {
+                        return Err(RuntimeError::UnboundVariable {
+                            name: name.clone(),
+                            span: Some(span),
+                        });
+                    }
+                }
+            }
+            Some(definition) => {
+                let form = self.form_from_value(definition, span)?;
+                let expanded = self.prepare_compiled_form(&form, environment)?;
+                let program = Rc::new(Compiler::compile_form(&expanded)?);
+                crate::vm::run_entry(
+                    self,
+                    program,
+                    0,
+                    environment.clone(),
+                    expanded.span,
+                )?
+                .primary_value()
+            }
+        };
+
+        if !matches!(function, Value::Function(_)) {
+            return Err(RuntimeError::Type {
+                expected: "FUNCTION".to_owned(),
+                actual: function.type_name().to_owned(),
+                span: Some(span),
+            });
+        }
+
+        if let Some((name, exact)) = name {
+            if exact {
+                environment.define_function_exact(name, function.clone());
+            } else {
+                environment.define_function(name, function.clone());
+            }
+        }
+
+        Ok(Value::values(vec![function, Value::Nil, Value::Nil]))
+    }
+
+    fn load_file(&self, arguments: &[Value], span: Span) -> Result<Value, RuntimeError> {
+        if arguments.len() != 1 {
+            return Err(self.arity("load", "one", arguments.len()));
+        }
+        let path = match &arguments[0] {
+            Value::String(path) => path.to_string(),
+            value => {
+                return Err(RuntimeError::Type {
+                    expected: "PATHNAME-DESIGNATOR".to_owned(),
+                    actual: value.type_name().to_owned(),
+                    span: Some(span),
+                });
+            }
+        };
+        let source = fs::read_to_string(&path)
+            .map_err(|error| RuntimeError::Io(format!("cannot load {}: {}", path, error)))?;
+        self.eval_source(&source)?;
+        Ok(Value::boolean(true))
+    }
+
+    fn condition_format_control(value: &Value) -> Option<String> {
+        match value {
+            Value::String(control) => Some(control.to_string()),
+            _ => None,
+        }
+    }
+
+    fn condition_message(
+        value: &Value,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<String, RuntimeError> {
+        match value {
+            Value::String(control) => builtins::format_control(control, arguments),
+            value if arguments.is_empty() => Ok(value.to_string()),
+            value => Err(RuntimeError::Type {
+                expected: "a string format control".to_owned(),
+                actual: value.type_name().to_owned(),
+                span: Some(span),
+            }),
+        }
+    }
+
+    fn signaled_error(
+        condition: &str,
+        message: String,
+        format_control: Option<String>,
+        format_arguments: &[Value],
+        warning: bool,
+        span: Span,
+    ) -> RuntimeError {
+        RuntimeError::Signaled {
+            condition: normalize_name(condition)
+                .trim_start_matches(':')
+                .to_owned(),
+            message,
+            format_control,
+            format_arguments: format_arguments
+                .iter()
+                .cloned()
+                .map(ReturnValue::new)
+                .collect(),
+            warning,
+            span: Some(span),
+        }
+    }
+
+    fn condition_error(
+        value: &Value,
+        warning: bool,
+        span: Span,
+    ) -> Result<RuntimeError, RuntimeError> {
+        let Some(condition) = value.condition_type_name() else {
+            return Err(RuntimeError::Type {
+                expected: "CONDITION".to_owned(),
+                actual: value.type_name().to_owned(),
+                span: Some(span),
+            });
+        };
+        let message = value.condition_message().unwrap_or_default().to_owned();
+        let format_control = value
+            .simple_condition_format_control()
+            .map(ToOwned::to_owned);
+        let format_arguments = value
+            .simple_condition_format_arguments()
+            .unwrap_or_default();
+        Ok(Self::signaled_error(
+            condition,
+            message,
+            format_control,
+            &format_arguments,
+            warning,
+            span,
+        ))
+    }
+
+    fn make_condition(
+        &self,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() {
+            return Err(self.arity("make-condition", "at least one", arguments.len()));
+        }
+        let initargs = &arguments[1..];
+        if !initargs.len().is_multiple_of(2) {
+            return Err(self.invalid(
+                "make-condition initargs must be keyword/value pairs",
+                span,
+            ));
+        }
+
+        let actual_type = self.name_designator_from_value(&arguments[0], span)?;
+        let mut format_control = None;
+        let mut format_arguments = Vec::new();
+        for pair in initargs.chunks_exact(2) {
+            let initarg = self.name_designator_from_value(&pair[0], span)?;
+            match initarg.as_str() {
+                "FORMAT-CONTROL" => {
+                    let Value::String(control) = &pair[1] else {
+                        return Err(RuntimeError::Type {
+                            expected: "STRING".to_owned(),
+                            actual: pair[1].type_name().to_owned(),
+                            span: Some(span),
+                        });
+                    };
+                    format_control = Some(control.to_string());
+                }
+                "FORMAT-ARGUMENTS" => {
+                    format_arguments = pair[1].list_items().ok_or_else(|| {
+                        RuntimeError::Type {
+                            expected: "PROPER-LIST".to_owned(),
+                            actual: pair[1].type_name().to_owned(),
+                            span: Some(span),
+                        }
+                    })?;
+                }
+                _ => {
+                    return Err(self.invalid(
+                        &format!("unknown make-condition initarg :{initarg}"),
+                        span,
+                    ));
+                }
+            }
+        }
+
+        let message = match format_control.as_deref() {
+            Some(control) => builtins::format_control(control, &format_arguments)?,
+            None => String::new(),
+        };
+        Ok(Value::condition_from_parts(
+            actual_type,
+            message,
+            format_control,
+            format_arguments,
+        ))
+    }
+
+    fn dispatch_condition(
+        &self,
+        error: RuntimeError,
+        condition: &Value,
+        environment: &Environment,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let Some(binding) = self
+            .condition_handlers()
+            .into_iter()
+            .rev()
+            .find(|handler| error.matches_condition(&handler.condition))
+        else {
+            return Ok(());
+        };
+        if binding.catch {
+            return Err(error);
+        }
+        let Some(function) = binding.function else {
+            return Ok(());
+        };
+        let result = if let Some(suspension) = self.suspend_condition_handler(&binding.condition) {
+            let result = self.apply_in(
+                &function,
+                std::slice::from_ref(condition),
+                span,
+                environment,
+            );
+            drop(suspension);
+            result
+        } else {
+            self.apply_in(
+                &function,
+                std::slice::from_ref(condition),
+                span,
+                environment,
+            )
+        };
+        result.map(|_| ())
+    }
+
+    fn signal_condition_value(
+        &self,
+        condition: &Value,
+        warning: bool,
+        environment: &Environment,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let error = Self::condition_error(condition, warning, span)?;
+        self.dispatch_condition(error, condition, environment, span)
+    }
+
+    fn signal_condition(
+        &self,
+        condition: &str,
+        message: String,
+        format_control: Option<String>,
+        format_arguments: &[Value],
+        warning: bool,
+        environment: &Environment,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let error = Self::signaled_error(
+            condition,
+            message,
+            format_control,
+            format_arguments,
+            warning,
+            span,
+        );
+        let condition_value = Value::condition(&error);
+        self.dispatch_condition(error, &condition_value, environment, span)
+    }
+
+    fn restart_invocation_error(
+        name: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> RuntimeError {
+        let value = match arguments {
+            [] => Value::Nil,
+            [value] => value.clone(),
+            values => Value::values(values.to_vec()),
+        };
+        RuntimeError::InvokeRestart {
+            name: normalize_name(name),
+            value: ReturnValue::new(value),
+            arguments: arguments
+                .iter()
+                .cloned()
+                .map(ReturnValue::new)
+                .collect(),
+            span: Some(span),
+        }
+    }
+
+    fn restart_binding_for_designator_in(
+        &self,
+        designator: &Value,
+        bindings: &[RestartBinding],
+        span: Span,
+    ) -> Result<Option<RestartBinding>, RuntimeError> {
+        if let Some((name, _)) = designator.symbol_reference() {
+            let normalized = normalize_name(name);
+            return Ok(bindings
+                .iter()
+                .rev()
+                .find(|binding| normalize_name(&binding.name) == normalized)
+                .cloned());
+        }
+        if designator.restart_name().is_some() {
+            return Ok(bindings
+                .iter()
+                .rev()
+                .find(|binding| binding.restart.eq_value(designator))
+                .cloned());
+        }
+        Err(self.invalid("restart designator must be a symbol or restart", span))
+    }
+
+    fn restart_binding_for_designator(
+        &self,
+        designator: &Value,
+        span: Span,
+    ) -> Result<Option<RestartBinding>, RuntimeError> {
+        let bindings = self.restart_bindings();
+        self.restart_binding_for_designator_in(designator, &bindings, span)
+    }
+
+    fn invoke_restart_binding(
+        &self,
+        binding: RestartBinding,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let Some(function) = binding.function else {
+            return Err(Self::restart_invocation_error(
+                &binding.name,
+                arguments,
+                span,
+            ));
+        };
+        self.apply_in(&function, arguments, span, environment)
+    }
+
+    fn invoke_restart_named(
+        &self,
+        name: &str,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let normalized = normalize_name(name);
+        let Some(binding) = self
+            .restart_bindings()
+            .into_iter()
+            .rev()
+            .find(|binding| normalize_name(&binding.name) == normalized)
+        else {
+            return Err(Self::restart_invocation_error(&normalized, arguments, span));
+        };
+        self.invoke_restart_binding(binding, arguments, environment, span)
     }
 
     fn apply_primitive(
@@ -7589,6 +10662,157 @@ impl Runtime {
         span: Span,
     ) -> Result<Value, RuntimeError> {
         match name {
+            "ERROR" => {
+                if arguments.is_empty() {
+                    return Err(self.arity("error", "at least one", arguments.len()));
+                }
+                if arguments[0].condition_type_name().is_some() {
+                    let error = Self::condition_error(&arguments[0], false, span)?;
+                    return match self.dispatch_condition(
+                        error.clone(),
+                        &arguments[0],
+                        environment,
+                        span,
+                    ) {
+                        Ok(()) => Err(error),
+                        Err(error) => Err(error),
+                    };
+                }
+                let format_arguments = &arguments[1..];
+                let format_control = Self::condition_format_control(&arguments[0]);
+                let message = Self::condition_message(&arguments[0], format_arguments, span)?;
+                let error = Self::signaled_error(
+                    "SIMPLE-ERROR",
+                    message.clone(),
+                    format_control.clone(),
+                    format_arguments,
+                    false,
+                    span,
+                );
+                match self.signal_condition(
+                    "SIMPLE-ERROR",
+                    message.clone(),
+                    format_control,
+                    format_arguments,
+                    false,
+                    environment,
+                    span,
+                ) {
+                    Ok(()) => Err(error),
+                    Err(error) => Err(error),
+                }
+            }
+            "SIGNAL" => {
+                if arguments.is_empty() {
+                    return Err(self.arity("signal", "at least one", arguments.len()));
+                }
+                if arguments[0].condition_type_name().is_some() {
+                    if arguments.len() != 1 {
+                        return Err(self.invalid(
+                            "signal does not accept format arguments with a condition object",
+                            span,
+                        ));
+                    }
+                    self.signal_condition_value(&arguments[0], false, environment, span)?;
+                    return Ok(Value::Nil);
+                }
+                let format_arguments = &arguments[1..];
+                let format_control = Self::condition_format_control(&arguments[0]);
+                self.signal_condition(
+                    "SIMPLE-CONDITION",
+                    Self::condition_message(&arguments[0], format_arguments, span)?,
+                    format_control,
+                    format_arguments,
+                    false,
+                    environment,
+                    span,
+                )?;
+                Ok(Value::Nil)
+            }
+            "WARN" => {
+                if arguments.is_empty() {
+                    return Err(self.arity("warn", "at least one", arguments.len()));
+                }
+                if arguments[0].condition_type_name().is_some() {
+                    if arguments.len() != 1 {
+                        return Err(self.invalid(
+                            "warn does not accept format arguments with a condition object",
+                            span,
+                        ));
+                    }
+                    self.signal_condition_value(&arguments[0], true, environment, span)?;
+                    return Ok(Value::Nil);
+                }
+                let format_arguments = &arguments[1..];
+                let format_control = Self::condition_format_control(&arguments[0]);
+                self.signal_condition(
+                    "SIMPLE-WARNING",
+                    Self::condition_message(&arguments[0], format_arguments, span)?,
+                    format_control,
+                    format_arguments,
+                    true,
+                    environment,
+                    span,
+                )?;
+                Ok(Value::Nil)
+            }
+            "CERROR" => {
+                if arguments.len() < 2 {
+                    return Err(self.arity("cerror", "at least two", arguments.len()));
+                }
+                let format_arguments = &arguments[2..];
+                let _continue_message =
+                    Self::condition_message(&arguments[0], format_arguments, span)?;
+                let condition_object = arguments[1].condition_type_name().is_some();
+                if condition_object && !format_arguments.is_empty() {
+                    return Err(self.invalid(
+                        "cerror does not accept format arguments with a condition object",
+                        span,
+                    ));
+                }
+                let format_control = Self::condition_format_control(&arguments[1]);
+                let message = Self::condition_message(&arguments[1], format_arguments, span)?;
+                let signal_result = if condition_object {
+                    let error = Self::condition_error(&arguments[1], false, span)?;
+                    self.dispatch_condition(error, &arguments[1], environment, span)
+                } else {
+                    self.signal_condition(
+                        "SIMPLE-ERROR",
+                        message.clone(),
+                        format_control,
+                        format_arguments,
+                        false,
+                        environment,
+                        span,
+                    )
+                };
+                match signal_result {
+                    Ok(()) => {}
+                    Err(error @ RuntimeError::InvokeRestart { .. }) => {
+                        let RuntimeError::InvokeRestart { name, .. } = &error else {
+                            unreachable!()
+                        };
+                        if normalize_name(name) == "CONTINUE" {
+                            return Ok(Value::Nil);
+                        }
+                        return Err(error);
+                    }
+                    Err(error) => return Err(error),
+                }
+                if self
+                    .restart_bindings()
+                    .iter()
+                    .any(|binding| normalize_name(&binding.name) == "CONTINUE")
+                {
+                    self.invoke_restart_named("CONTINUE", &[], environment, span)
+                } else {
+                    Err(RuntimeError::InvalidForm {
+                        message,
+                        span: Some(span),
+                    })
+                }
+            }
+            "MAKE-CONDITION" => self.make_condition(arguments, span),
             "EVAL" => {
                 if arguments.len() != 1 {
                     return Err(self.arity("eval", "one", arguments.len()));
@@ -7596,6 +10820,8 @@ impl Runtime {
                 let form = self.form_from_value(&arguments[0], span)?;
                 self.eval_values_in(&form, environment)
             }
+            "COMPILE" => self.compile_function(arguments, environment, span),
+            "LOAD" => self.load_file(arguments, span),
             "MAKE-INSTANCE" => self.make_instance(arguments, environment, span),
             "SLOT-VALUE" => {
                 if arguments.len() != 2 {
@@ -7617,6 +10843,12 @@ impl Runtime {
                 }
                 Ok(value)
             }
+            "SUBTYPEP" => {
+                if arguments.len() != 2 {
+                    return Err(self.arity("subtypep", "two", arguments.len()));
+                }
+                builtins::subtypep_value(&arguments[0], &arguments[1], environment)
+            }
             "CLASS-OF" => {
                 if arguments.len() != 1 {
                     return Err(self.arity("class-of", "one", arguments.len()));
@@ -7630,6 +10862,7 @@ impl Runtime {
                             direct_superclasses: Vec::new(),
                             precedence: vec![name, "STANDARD-OBJECT".to_owned()],
                             slots: Vec::new(),
+                            default_initargs: Vec::new(),
                         })
                     }
                 };
@@ -7860,6 +11093,25 @@ impl Runtime {
                     }),
                 }
             }
+            "DOCUMENTATION" => {
+                if arguments.len() != 2 {
+                    return Err(self.arity("documentation", "two", arguments.len()));
+                }
+                match &arguments[0] {
+                    Value::Package(package) => Ok(self
+                        .packages
+                        .borrow()
+                        .package_documentation(package)
+                        .map_or(Value::Nil, |documentation| {
+                            Value::string(documentation.as_str())
+                        })),
+                    other => Err(RuntimeError::Type {
+                        expected: "PACKAGE".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(span),
+                    }),
+                }
+            }
             "LIST-ALL-PACKAGES" => {
                 if !arguments.is_empty() {
                     return Err(self.arity("list-all-packages", "zero", arguments.len()));
@@ -8040,6 +11292,60 @@ impl Runtime {
                     self.lookup_function_in(name, environment)
                 };
                 Ok(Value::boolean(matches!(value, Some(Value::Function(_)))))
+            }
+            "MACRO-FUNCTION" => {
+                if arguments.len() != 1 && arguments.len() != 2 {
+                    return Err(self.arity("macro-function", "one or two", arguments.len()));
+                }
+                let (name, exact) = arguments[0]
+                    .symbol_reference()
+                    .ok_or_else(|| self.invalid("macro-function argument must be a symbol", span))?;
+                let lookup_environment = match arguments.get(1) {
+                    None | Some(Value::Nil | Value::Boolean(false)) => &self.global,
+                    Some(Value::Environment(environment)) => environment,
+                    Some(_) => {
+                        return Err(self.invalid(
+                            "macro-function environment must be an environment",
+                            span,
+                        ))
+                    }
+                };
+                let value = if exact {
+                    self.lookup_function_exact_in(name, lookup_environment)
+                } else {
+                    self.lookup_function_in(name, lookup_environment)
+                };
+                Ok(match value {
+                    Some(Value::Function(function))
+                        if matches!(
+                            function.as_ref(),
+                            crate::Function::Macro { .. }
+                                | crate::Function::ModifyMacro { .. }
+                        ) =>
+                    {
+                        Value::Function(function)
+                    }
+                    _ => Value::Nil,
+                })
+            }
+            "SPECIAL-OPERATOR-P" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("special-operator-p", "one", arguments.len()));
+                }
+                let (name, _) = arguments[0]
+                    .symbol_reference()
+                    .ok_or_else(|| self.invalid("special-operator-p argument must be a symbol", span))?;
+                Ok(Value::boolean(is_special_operator_name(name)))
+            }
+            "COMPILED-FUNCTION-P" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("compiled-function-p", "one", arguments.len()));
+                }
+                Ok(Value::boolean(matches!(
+                    &arguments[0],
+                    Value::Function(function)
+                        if matches!(function.as_ref(), crate::Function::Compiled { .. })
+                )))
             }
             "FDEFINITION" => {
                 if arguments.len() != 1 {
@@ -8270,28 +11576,77 @@ impl Runtime {
                 }
                 Ok(arguments[0].clone())
             }
+            "COMPUTE-RESTARTS" => {
+                if arguments.len() > 1 {
+                    return Err(self.arity("compute-restarts", "at most one", arguments.len()));
+                }
+                let condition = arguments
+                    .first()
+                    .filter(|condition| !condition.eq_value(&Value::Nil));
+                if let Some(condition) = condition {
+                    if condition.condition_type_name().is_none() {
+                        return Err(RuntimeError::Type {
+                            expected: "CONDITION".to_string(),
+                            actual: condition.type_name().to_string(),
+                            span: Some(span),
+                        });
+                    }
+                }
+                Ok(Value::list(
+                    self.restart_bindings_for_condition(condition)
+                        .into_iter()
+                        .rev()
+                        .map(|binding| binding.restart)
+                        .collect(),
+                ))
+            }
+            "FIND-RESTART" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(self.arity("find-restart", "one or two", arguments.len()));
+                }
+                let condition = arguments
+                    .get(1)
+                    .filter(|condition| !condition.eq_value(&Value::Nil));
+                if let Some(condition) = condition {
+                    if condition.condition_type_name().is_none() {
+                        return Err(RuntimeError::Type {
+                            expected: "CONDITION".to_string(),
+                            actual: condition.type_name().to_string(),
+                            span: Some(span),
+                        });
+                    }
+                }
+                let bindings = self.restart_bindings_for_condition(condition);
+                Ok(self
+                    .restart_binding_for_designator_in(&arguments[0], &bindings, span)?
+                    .map(|binding| binding.restart)
+                    .unwrap_or(Value::Nil))
+            }
+            "RESTART-NAME" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("restart-name", "one", arguments.len()));
+                }
+                let Some(name) = arguments[0].restart_name() else {
+                    return Err(RuntimeError::Type {
+                        expected: "RESTART".to_string(),
+                        actual: arguments[0].type_name().to_string(),
+                        span: Some(span),
+                    });
+                };
+                Ok(Value::symbol(name))
+            }
             "INVOKE-RESTART" => {
                 if arguments.is_empty() {
                     return Err(self.arity("invoke-restart", "at least one", arguments.len()));
                 }
-                let (name, _) = arguments[0]
-                    .symbol_reference()
-                    .ok_or_else(|| self.invalid("invoke-restart name must be a symbol", span))?;
-                let value = match arguments.len() {
-                    1 => Value::Nil,
-                    2 => arguments[1].clone(),
-                    _ => Value::values(arguments[1..].to_vec()),
+                if let Some((name, _)) = arguments[0].symbol_reference() {
+                    return self.invoke_restart_named(name, &arguments[1..], environment, span);
+                }
+                let Some(binding) = self.restart_binding_for_designator(&arguments[0], span)?
+                else {
+                    return Err(self.invalid("restart is not active", span));
                 };
-                Err(RuntimeError::InvokeRestart {
-                    name: normalize_name(name),
-                    value: ReturnValue::new(value),
-                    arguments: arguments[1..]
-                        .iter()
-                        .cloned()
-                        .map(ReturnValue::new)
-                        .collect(),
-                    span: Some(span),
-                })
+                self.invoke_restart_binding(binding, &arguments[1..], environment, span)
             }
             "MAP" => {
                 if arguments.len() < 3 {
@@ -9033,10 +12388,12 @@ impl Runtime {
                 }
                 self.eval_sequence_values(body, &local)
             }
-            crate::Function::Macro { .. } => Err(RuntimeError::NotCallable {
+            crate::Function::Macro { .. } | crate::Function::ModifyMacro { .. } => {
+                Err(RuntimeError::NotCallable {
                 value: Value::Function(function.clone()).to_string(),
                 span: Some(span),
-            }),
+                })
+            }
             crate::Function::Compiled {
                 program,
                 function,
@@ -9294,6 +12651,7 @@ impl Runtime {
 
         let mut lambda_list = MacroLambdaList {
             whole: None,
+            environment: None,
             required: Vec::new(),
             optional: Vec::new(),
             rest: None,
@@ -9392,10 +12750,15 @@ impl Runtime {
                         index += 1;
                     }
                     "&ENVIRONMENT" => {
-                        return Err(self.invalid(
-                            "&environment is not supported in macro lambda lists",
-                            parameter.span,
-                        ));
+                        if lambda_list.environment.is_some() || index + 1 >= parameters.len() {
+                            return Err(self.invalid(
+                                "&environment must be followed by one parameter",
+                                parameter.span,
+                            ));
+                        }
+                        lambda_list.environment =
+                            Some(self.macro_binding_name(&parameters[index + 1], &mut seen)?);
+                        index += 2;
                     }
                     _ if marker.starts_with('&') => {
                         return Err(
@@ -9787,7 +13150,9 @@ impl Runtime {
             | Value::Stream(_)
             | Value::Values(_)
             | Value::Condition(_)
+            | Value::Restart(_)
             | Value::Unbound
+            | Value::Environment(_)
             | Value::Class(_)
             | Value::Instance(_)
             | Value::Structure { .. } => Err(RuntimeError::Type {
@@ -10039,6 +13404,36 @@ fn unqualified_name(name: &str) -> String {
         .unwrap_or(normalized)
 }
 
+fn is_special_operator_name(name: &str) -> bool {
+    matches!(
+        unqualified_name(name).as_str(),
+        "BLOCK"
+            | "CATCH"
+            | "EVAL-WHEN"
+            | "FLET"
+            | "FUNCTION"
+            | "GO"
+            | "IF"
+            | "LABELS"
+            | "LET"
+            | "LET*"
+            | "LOAD-TIME-VALUE"
+            | "LOCALLY"
+            | "MACROLET"
+            | "MULTIPLE-VALUE-CALL"
+            | "MULTIPLE-VALUE-PROG1"
+            | "PROGN"
+            | "PROGV"
+            | "QUOTE"
+            | "SETQ"
+            | "SYMBOL-MACROLET"
+            | "TAGBODY"
+            | "THE"
+            | "THROW"
+            | "UNWIND-PROTECT"
+    )
+}
+
 fn is_case_default_form(form: &Form) -> bool {
     let Some(name) = atom_name(form) else {
         return false;
@@ -10072,6 +13467,8 @@ fn is_special_form(form: &Form) -> bool {
             | "DECLARE"
             | "LOCALLY"
             | "EVAL-WHEN"
+            | "LOAD-TIME-VALUE"
+            | "NTH-VALUE"
             | "DECLAIM"
             | "PROCLAIM"
             | "THE"
@@ -10085,10 +13482,13 @@ fn is_special_form(form: &Form) -> bool {
             | "IGNORE-ERRORS"
             | "HANDLER-CASE"
             | "HANDLER-BIND"
+            | "RESTART-BIND"
+            | "WITH-CONDITION-RESTARTS"
             | "CATCH"
             | "PROGV"
             | "THROW"
             | "WITH-SIMPLE-RESTART"
+            | "WITH-OPEN-FILE"
             | "RESTART-CASE"
             | "UNWIND-PROTECT"
             | "BLOCK"
@@ -10114,6 +13514,8 @@ fn is_special_form(form: &Form) -> bool {
             | "LET*"
             | "FLET"
             | "LABELS"
+            | "MACROLET"
+            | "SYMBOL-MACROLET"
             | "DOTIMES"
             | "DOLIST"
             | "DO"
@@ -10122,15 +13524,24 @@ fn is_special_form(form: &Form) -> bool {
             | "FUNCTION"
             | "DEFUN"
             | "DEFMACRO"
+            | "DEFINE-MODIFY-MACRO"
             | "MACROEXPAND-1"
             | "MACROEXPAND"
             | "DEFPACKAGE"
             | "IN-PACKAGE"
             | "DEFINE"
+            | "DEFINE-SYMBOL-MACRO"
             | "SETQ"
             | "PSETQ"
             | "MULTIPLE-VALUE-SETQ"
             | "SETF"
+            | "PSETF"
+            | "PUSH"
+            | "POP"
+            | "PUSHNEW"
+            | "ROTATEF"
+            | "SHIFTF"
+            | "DEFSETF"
             | "INCF"
             | "DECF"
             | "DEFSTRUCT"
@@ -10140,6 +13551,8 @@ fn is_special_form(form: &Form) -> bool {
             | "DEFVAR"
             | "DEFPARAMETER"
             | "DEFCONSTANT"
+            | "DEFINE-SETF-EXPANDER"
+            | "GET-SETF-EXPANSION"
             | "EVAL"
             | "FUNCALL"
             | "APPLY"

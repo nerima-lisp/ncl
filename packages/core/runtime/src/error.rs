@@ -80,6 +80,14 @@ pub enum RuntimeError {
         message: String,
         span: Option<Span>,
     },
+    Signaled {
+        condition: String,
+        message: String,
+        format_control: Option<String>,
+        format_arguments: Vec<ReturnValue>,
+        warning: bool,
+        span: Option<Span>,
+    },
     Package {
         message: String,
         span: Option<Span>,
@@ -112,22 +120,33 @@ pub enum RuntimeError {
 }
 
 impl RuntimeError {
-    pub(crate) fn condition_type_name(&self) -> &'static str {
+    pub(crate) fn condition_type_name(&self) -> String {
         match self {
-            Self::Read(_) => "READER-ERROR",
-            Self::Compile(_) => "COMPILER-ERROR",
-            Self::UnboundVariable { .. } => "UNBOUND-VARIABLE",
-            Self::NotCallable { .. } | Self::Type { .. } => "TYPE-ERROR",
-            Self::Arity { .. } => "PROGRAM-ERROR",
-            Self::InvalidForm { .. } => "SIMPLE-ERROR",
-            Self::Package { .. } => "PACKAGE-ERROR",
+            Self::Read(_) => "READER-ERROR".to_owned(),
+            Self::Compile(_) => "COMPILER-ERROR".to_owned(),
+            Self::UnboundVariable { .. } => "UNBOUND-VARIABLE".to_owned(),
+            Self::NotCallable { .. } | Self::Type { .. } => "TYPE-ERROR".to_owned(),
+            Self::Arity { .. } => "PROGRAM-ERROR".to_owned(),
+            Self::InvalidForm { .. } => "SIMPLE-ERROR".to_owned(),
+            Self::Signaled {
+                condition,
+                warning,
+                ..
+            } => {
+                if *warning {
+                    "SIMPLE-WARNING".to_owned()
+                } else {
+                    condition.clone()
+                }
+            }
+            Self::Package { .. } => "PACKAGE-ERROR".to_owned(),
             Self::ReturnFrom { .. }
             | Self::Go { .. }
             | Self::Throw { .. }
-            | Self::InvokeRestart { .. } => "CONTROL-ERROR",
-            Self::DivisionByZero => "DIVISION-BY-ZERO",
-            Self::NumericOverflow => "ARITHMETIC-ERROR",
-            Self::Io(_) => "FILE-ERROR",
+            | Self::InvokeRestart { .. } => "CONTROL-ERROR".to_owned(),
+            Self::DivisionByZero => "DIVISION-BY-ZERO".to_owned(),
+            Self::NumericOverflow => "ARITHMETIC-ERROR".to_owned(),
+            Self::Io(_) => "FILE-ERROR".to_owned(),
         }
     }
 
@@ -147,10 +166,28 @@ impl RuntimeError {
             condition.as_str(),
             "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
         ) {
-            return true;
+            return match self {
+                Self::Signaled { warning, .. } => {
+                    condition == "CONDITION"
+                        || (!*warning && matches!(
+                            condition.as_str(),
+                            "ERROR" | "SERIOUS-CONDITION"
+                        ))
+                }
+                _ => true,
+            };
         }
 
         match self {
+            Self::Signaled {
+                condition: signaled,
+                warning,
+                ..
+            } => {
+                condition == normalize_condition_name(signaled)
+                    || (*warning && condition == "WARNING")
+                    || (!*warning && condition == "SIMPLE-CONDITION")
+            }
             Self::DivisionByZero => {
                 matches!(condition.as_str(), "DIVISION-BY-ZERO" | "ARITHMETIC-ERROR")
             }
@@ -190,6 +227,10 @@ impl fmt::Display for RuntimeError {
                 write_span(formatter, *span)
             }
             Self::InvalidForm { message, span } => {
+                formatter.write_str(message)?;
+                write_span(formatter, *span)
+            }
+            Self::Signaled { message, span, .. } => {
                 formatter.write_str(message)?;
                 write_span(formatter, *span)
             }

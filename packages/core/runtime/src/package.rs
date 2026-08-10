@@ -11,6 +11,8 @@ struct Package {
     symbols: HashSet<String>,
     imports: HashMap<String, String>,
     shadows: HashSet<String>,
+    documentation: Option<String>,
+    local_nicknames: HashMap<String, String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -68,6 +70,8 @@ impl PackageState {
                 symbols: HashSet::new(),
                 imports: HashMap::new(),
                 shadows: HashSet::new(),
+                documentation: None,
+                local_nicknames: HashMap::new(),
             },
         );
         packages.insert(
@@ -78,6 +82,8 @@ impl PackageState {
                 symbols: HashSet::new(),
                 imports: HashMap::new(),
                 shadows: HashSet::new(),
+                documentation: None,
+                local_nicknames: HashMap::new(),
             },
         );
         packages.insert(
@@ -88,6 +94,8 @@ impl PackageState {
                 symbols: HashSet::new(),
                 imports: HashMap::new(),
                 shadows: HashSet::new(),
+                documentation: None,
+                local_nicknames: HashMap::new(),
             },
         );
         Self {
@@ -106,8 +114,26 @@ impl PackageState {
         self.nicknames.get(&name).cloned().unwrap_or(name)
     }
 
+    pub(crate) fn canonical_package_name_for(&self, current: &str, name: &str) -> String {
+        let current = self.canonical_package_name(current);
+        let name = normalize_package_name(name);
+        let local_target = self
+            .packages
+            .get(&current)
+            .and_then(|package| package.local_nicknames.get(&name))
+            .cloned();
+        local_target.unwrap_or_else(|| self.canonical_package_name(&name))
+    }
+
     pub(crate) fn package_exists(&self, name: &str) -> bool {
         self.packages.contains_key(&self.canonical_package_name(name))
+    }
+
+    pub(crate) fn package_documentation(&self, package: &str) -> Option<String> {
+        let package = self.canonical_package_name(package);
+        self.packages
+            .get(&package)
+            .and_then(|entry| entry.documentation.clone())
     }
 
     pub(crate) fn is_exported(&self, package: &str, name: &str) -> bool {
@@ -163,7 +189,7 @@ impl PackageState {
         current: &str,
     ) -> Result<SymbolReference, SymbolResolutionError> {
         if let Some((package_name, symbol_name, external)) = split_symbol(raw) {
-            let package_name = self.canonical_package_name(package_name);
+            let package_name = self.canonical_package_name_for(current, package_name);
             let symbol_name = normalize_symbol_name(symbol_name);
             if package_name.is_empty() || symbol_name.is_empty() {
                 return Err(SymbolResolutionError::Invalid);
@@ -322,6 +348,8 @@ impl PackageState {
         nicknames: Vec<String>,
         use_packages: Vec<String>,
         exports: HashSet<String>,
+        documentation: Option<String>,
+        local_nicknames: HashMap<String, String>,
     ) -> Result<(), String> {
         let name = normalize_package_name(&name);
         if self.nicknames.contains_key(&name) {
@@ -357,6 +385,27 @@ impl PackageState {
             .into_iter()
             .map(|symbol| normalize_symbol_name(&symbol))
             .collect();
+        let mut normalized_local_nicknames = HashMap::new();
+        for (nickname, target) in local_nicknames {
+            let nickname = normalize_package_name(&nickname);
+            if nickname.is_empty() || nickname == name {
+                return Err(format!("invalid local package nickname {nickname}"));
+            }
+            let target = self.canonical_package_name(&target);
+            if !self.package_exists(&target) {
+                return Err(format!(
+                    "unknown package {target} for local nickname {nickname}"
+                ));
+            }
+            if normalized_local_nicknames
+                .insert(nickname.clone(), target)
+                .is_some()
+            {
+                return Err(format!(
+                    "duplicate local package nickname {nickname}"
+                ));
+            }
+        }
 
         self.nicknames.retain(|_, package| package != &name);
         self.packages.insert(
@@ -367,6 +416,8 @@ impl PackageState {
                 exports,
                 imports: HashMap::new(),
                 shadows: HashSet::new(),
+                documentation,
+                local_nicknames: normalized_local_nicknames,
             },
         );
         for nickname in normalized_nicknames {

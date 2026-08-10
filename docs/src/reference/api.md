@@ -40,9 +40,9 @@ through the Rust syntax crate.
 ### Reading and declarations
 
 <code>quote</code>, <code>quasiquote</code>, <code>declare</code>,
-<code>locally</code>, <code>eval-when</code>, <code>declaim</code>,
-<code>proclaim</code>, and <code>the</code> are recognized. Declaration and
-type-checking behavior is bounded.
+<code>locally</code>, <code>eval-when</code>, <code>load-time-value</code>,
+<code>declaim</code>, <code>proclaim</code>, and <code>the</code> are recognized.
+Declaration and type-checking behavior is bounded.
 
 ### Conditionals and sequencing
 
@@ -72,15 +72,21 @@ applies a lambda-list pattern to a value.
 
 <code>values</code>, <code>multiple-value-bind</code>,
 <code>multiple-value-call</code>, <code>multiple-value-list</code>,
-<code>multiple-value-prog1</code>, and <code>multiple-value-setq</code> create,
-consume, sequence, or assign multiple values.
+<code>multiple-value-prog1</code>, <code>multiple-value-setq</code>, and
+<code>nth-value</code> create, consume, sequence, or assign multiple values.
 
 ### Conditions and non-local control
 
-<code>ignore-errors</code>, <code>handler-case</code>,
-<code>handler-bind</code>, <code>with-simple-restart</code>,
-<code>restart-case</code>, and <code>invoke-restart</code> provide bounded
-condition and restart handling.
+<code>error</code> (one message argument), <code>ignore-errors</code>,
+<code>handler-case</code>,
+<code>handler-bind</code>, <code>with-simple-restart</code>, <code>restart-bind</code>,
+<code>restart-case</code>, <code>with-condition-restarts</code>,
+<code>compute-restarts</code>, <code>find-restart</code>,
+<code>restart-name</code>, and <code>invoke-restart</code> provide bounded
+condition and restart handling. Restart introspection returns restart objects
+and can filter them by an associated condition. <code>error</code> signals a
+<code>SIMPLE-ERROR</code> that can be caught by the existing condition
+handlers.
 
 <code>catch</code>, <code>throw</code>, <code>block</code>,
 <code>return-from</code>, <code>return</code>, <code>tagbody</code>,
@@ -91,9 +97,22 @@ non-local control, dynamic variable binding, and cleanup.
 
 <code>defpackage</code>, <code>in-package</code>, <code>define</code>,
 <code>setq</code>, <code>psetq</code>, <code>defvar</code>,
-<code>defparameter</code>, <code>setf</code>, <code>incf</code>,
-<code>decf</code>, and <code>defstruct</code> define packages, variables,
-places, and basic structures.
+<code>defparameter</code>, <code>defconstant</code>, <code>setf</code>,
+<code>incf</code>, <code>decf</code>, <code>defsetf</code>,
+<code>define-setf-expander</code>, <code>define-symbol-macro</code>,
+<code>define-modify-macro</code>, and <code>defstruct</code> define packages,
+variables, places, and basic structures.
+
+### Object system
+
+<code>defclass</code>, <code>defgeneric</code>, <code>defmethod</code>,
+<code>make-instance</code>, <code>slot-value</code>, <code>slot-exists-p</code>,
+<code>slot-boundp</code>, <code>slot-makunbound</code>, <code>class-of</code>,
+<code>find-class</code>, <code>class-name</code>, <code>with-slots</code>, and
+<code>with-accessors</code> provide the current bounded CLOS surface.
+<code>subtypep</code>, <code>call-next-method</code>, and
+<code>next-method-p</code> cover the corresponding type and method-dispatch
+queries supported by the runtime.
 
 <code>eval</code>, <code>funcall</code>, <code>apply</code>, and
 <code>mapcar</code> are handled with access to the caller's runtime context.
@@ -162,13 +181,20 @@ string comparison and case conversion.
 ### Streams and output
 
 <code>make-string-input-stream</code>, <code>make-string-output-stream</code>,
-<code>get-output-stream-string</code>, <code>read-char</code>,
-<code>peek-char</code>, <code>unread-char</code>, <code>read-line</code>,
-<code>write-char</code>, <code>write-string</code>, <code>terpri</code>,
-<code>fresh-line</code>, <code>write-line</code>, <code>close</code>,
-<code>streamp</code>, <code>input-stream-p</code>, and
-<code>output-stream-p</code> implement the current string-stream and stream
-predicate surface.
+<code>get-output-stream-string</code>, <code>open</code>,
+<code>with-open-file</code>, <code>read-char</code>, <code>peek-char</code>,
+<code>unread-char</code>, <code>read-line</code>, <code>write-char</code>,
+<code>write-string</code>, <code>terpri</code>, <code>fresh-line</code>,
+<code>write-line</code>, <code>close</code>, <code>streamp</code>,
+<code>input-stream-p</code>, and <code>output-stream-p</code> implement the
+current string/file-stream and stream predicate surface. The pathname
+operations <code>probe-file</code>, <code>delete-file</code>,
+<code>rename-file</code>, <code>file-write-date</code>, and
+<code>truename</code> cover the current file-management surface. File
+streams currently provide character I/O and bounded <code>:direction</code>,
+<code>:if-does-not-exist</code>, and <code>:if-exists</code> handling;
+<code>:direction :io</code> supports duplex access with current-position
+overwrites and append-mode writes.
 
 <code>print</code>, <code>princ</code>, <code>prin1</code>,
 <code>write-to-string</code>, and <code>format</code> provide output

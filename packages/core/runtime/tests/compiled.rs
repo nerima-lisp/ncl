@@ -384,6 +384,86 @@ fn compiled_evaluates_restart_case_and_passes_restart_arguments() {
 }
 
 #[test]
+fn compiled_evaluates_restart_bind_invokes_function_and_propagates() {
+    assert_eq!(
+        evaluate(
+            "(restart-bind
+               ((use-values (lambda (left right) (+ left right))))
+               (invoke-restart 'use-values 20 22))",
+        )
+        .to_string(),
+        "42"
+    );
+    assert_eq!(
+        evaluate(
+            "(restart-case
+               (restart-bind
+                 ((use-value (lambda (value) value)))
+                 (invoke-restart 'outer 7))
+               (outer (value) value))",
+        )
+        .to_string(),
+        "7"
+    );
+}
+
+#[test]
+fn compiled_evaluates_restart_introspection_and_object_invocation() {
+    assert_eq!(
+        evaluate(
+            "(let ((seen nil))
+               (restart-case
+                 (with-simple-restart (outer \"outer\")
+                   (let ((restart (find-restart 'use-value)))
+                     (setq seen
+                       (list
+                         (typep restart 'restart)
+                         (eq restart (find-restart 'use-value))
+                         (restart-name restart)
+                         (restart-name (car (compute-restarts)))
+                         (restart-name (car (cdr (compute-restarts))))
+                         (eq restart (car (cdr (compute-restarts))))))
+                     (invoke-restart restart 42)))
+                 (use-value (value) (list seen value))))",
+        )
+        .to_string(),
+        "((T T USE-VALUE OUTER USE-VALUE T) 42)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_condition_restart_associations() {
+    assert_eq!(
+        evaluate(
+            "(let ((condition (make-condition 'simple-condition
+                              :format-control \"condition\"))
+                  (other (make-condition 'simple-condition
+                          :format-control \"other\"))
+                  (seen nil))
+               (restart-case
+                 (with-simple-restart (outer \"outer\")
+                   (with-condition-restarts
+                       condition
+                       (list (find-restart 'use-value))
+                     (with-condition-restarts
+                         other
+                         (list (find-restart 'outer))
+                       (setq seen
+                         (list
+                           (mapcar #'restart-name (compute-restarts condition))
+                           (mapcar #'restart-name (compute-restarts other))
+                           (mapcar #'restart-name (compute-restarts))
+                           (restart-name (find-restart 'use-value condition))
+                           (find-restart 'outer condition)))
+                       (invoke-restart 'use-value 42))))
+                 (use-value (value) (list seen value))))",
+        )
+        .to_string(),
+        "(((USE-VALUE) (OUTER) (OUTER USE-VALUE) USE-VALUE NIL) 42)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_parallel_assignments_and_multiple_value_setq() {
     assert_eq!(
         evaluate(
@@ -641,6 +721,18 @@ fn compiled_macro_lambda_lists_bind_optional_keywords_and_auxiliary_parameters()
 }
 
 #[test]
+fn compiled_macro_lambda_lists_bind_expansion_environment() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(defmacro environment-present (&environment environment)
+               (if (typep environment 'environment) '(quote t) '(quote nil)))
+             (environment-present)",
+        )
+        .unwrap();
+    assert_eq!(values[1].to_string(), "T");
+}
+
+#[test]
 fn compiled_optional_parameters_report_missing_and_extra_arguments() {
     let missing = Runtime::new()
         .eval_compiled_source(
@@ -703,6 +795,55 @@ fn compiled_expands_user_macros_across_forms() {
 }
 
 #[test]
+fn compiled_macrolet_uses_local_shadowing_and_macroexpand() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defmacro twice (value) `(+ ,value ,value))
+               (list
+                 (macrolet ((twice (value) `(* ,value ,value)))
+                   (list (twice 3) (macroexpand-1 '(twice 4))))
+                 (twice 3)))",
+        )
+        .to_string(),
+        "((9 (* 4 4)) 6)"
+    );
+}
+
+#[test]
+fn compiled_symbol_macrolet_with_lexical_shadowing_and_places() {
+    assert_eq!(
+        evaluate(
+            "(let ((cell (list 1)))
+               (symbol-macrolet ((answer (+ 20 22))
+                                 (item (car cell)))
+                 (list answer
+                       (let ((answer 7)) answer)
+                       ((lambda (answer) answer) 9)
+                       (progn (setq item 5) cell)
+                       (progn (psetq item 6) cell))))",
+        )
+        .to_string(),
+        "(42 7 9 (5) (6))"
+    );
+}
+
+#[test]
+fn compiled_symbol_macrolet_with_multiple_value_setq() {
+    assert_eq!(
+        evaluate(
+            "(let ((cell (list 0)))
+               (symbol-macrolet ((item (car cell)))
+                 (progn
+                   (multiple-value-setq (item) (values 7 8))
+                   cell)))",
+        )
+        .to_string(),
+        "(7)"
+    );
+}
+
+#[test]
 fn compiled_expands_macros_defined_in_same_progn() {
     assert_eq!(
         evaluate("(progn (defmacro twice (x) `(+ ,x ,x)) (twice 4))").to_string(),
@@ -743,6 +884,25 @@ fn compiled_macroexpand_1_returns_expanded_form() {
     assert_eq!(
         evaluate("(progn (defmacro twice (x) `(+ ,x ,x)) (macroexpand-1 '(twice 4)))").to_string(),
         "(+ 4 4)"
+    );
+}
+
+#[test]
+fn compiled_macroexpand_accepts_an_explicit_environment() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defmacro expand-one-with-environment (form &environment environment)
+                 (macroexpand-1 form environment))
+               (defmacro expand-all-with-environment (form &environment environment)
+                 (macroexpand form environment))
+               (macrolet ((local () '(quote local)))
+                 (list
+                   (expand-one-with-environment '(local))
+                   (expand-all-with-environment '(local)))))",
+        )
+        .to_string(),
+        "((LOCAL) (LOCAL))"
     );
 }
 
@@ -1380,6 +1540,103 @@ fn compiled_evaluates_function_namespace_introspection() {
 }
 
 #[test]
+fn compiled_evaluates_compile_function() {
+    assert_eq!(
+        evaluate(
+            "(let ((function (compile nil '(lambda (value) (+ value 1)))))
+               (list (compiled-function-p function)
+                     (funcall function 5)))"
+        )
+        .to_string(),
+        "(T 6)"
+    );
+    assert_eq!(
+        evaluate("(multiple-value-list (compile nil '(lambda () 42)))").to_string(),
+        "(#<FUNCTION> NIL NIL)"
+    );
+    assert_eq!(
+        evaluate(
+            "(progn
+               (compile 'compiled-compile-target '(lambda (value) (* value value)))
+               (list (compiled-function-p #'compiled-compile-target)
+                     (compiled-compile-target 7)))"
+        )
+        .to_string(),
+        "(T 49)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_load_file() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/load.lisp")
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    assert_eq!(
+        evaluate(&format!(
+            r#"(list (load "{}") *NCL-LOAD-VALUE* (NCL-LOAD-TARGET 1))"#,
+            path
+        ))
+        .to_string(),
+        "(T 41 42)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_load_time_value() {
+    assert_eq!(
+        evaluate(
+            "(let ((function (lambda () (load-time-value (+ 8 9)))))
+               (list (funcall function) (funcall function)
+                     (load-time-value (+ 1 2) nil)))",
+        )
+        .to_string(),
+        "(17 17 3)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_nth_value() {
+    assert_eq!(
+        evaluate(
+            "(list
+               (nth-value 0 (values 10 20))
+               (nth-value 1 (values 10 20))
+               (nth-value 4 (values 10 20))
+               (nth-value 0 99)
+               (nth-value 0 (values)))",
+        )
+        .to_string(),
+        "(10 20 NIL 99 NIL)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_function_and_macro_introspection() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defmacro introspection-macro (value) (list '+ value 1))
+               (defmacro local-macro-visible (&environment environment)
+                 (if (functionp (macro-function 'local-macro environment))
+                     '(quote t)
+                     '(quote nil)))
+               (list (functionp (macro-function 'introspection-macro))
+                     (eq (macro-function 'missing-macro) nil)
+                     (special-operator-p 'if)
+                     (special-operator-p 'and)
+                     (special-operator-p 'return-from)
+                     (special-operator-p 'load-time-value)
+                     (compiled-function-p (function +))
+                     (macrolet ((local-macro (value) (list '+ value 2)))
+                       (list (functionp (macro-function 'local-macro))
+                             (local-macro-visible)))))",
+        )
+        .to_string(),
+        "(T T T NIL NIL T NIL (NIL T))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_symbol_function_and_setf() {
     assert_eq!(
         evaluate(
@@ -1544,6 +1801,129 @@ fn compiled_evaluates_basic_format_directives() {
 }
 
 #[test]
+fn compiled_evaluates_plural_format_directive() {
+    assert_eq!(
+        evaluate(r#"(format nil "~P|~P|~@P|~@P" 1 2 1 2)"#).to_string(),
+        r#""|s|y|ies""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~D~:P|~D~:@P" 1 2)"#).to_string(),
+        r#""1|2ies""#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_dollar_float_format_directive() {
+    assert_eq!(
+        evaluate(r#"(format nil "~$|~,3$|~,,8$|~2,4,10,'*$|~@$|~,,10:@$" 12.3456 12.3456 12.3 12.3 12.3 12.3)"#)
+            .to_string(),
+        r#""12.35|012.35|   12.30|***0012.30|+12.30|+    12.30""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~0$|~0@$|~0:$" 12.3 12.3 -12.3)"#).to_string(),
+        r#""12.|+12.|-12.""#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_general_float_format_directive() {
+    assert_eq!(
+        evaluate(r#"(format nil "~G|~,3G|~10,3G|~10,3G|~10,3,0G|~10,3,1G|~10,3,2G|~@G" 12.3456 1.25 12.3456 0.0123456 12.3456 12.3456 12.3456 1.25)"#)
+            .to_string(),
+        r#""12.3456    |1.25    |  12.3    |  1.235e-2|    12.3  |   12.3   |  12.3    |+1.25    ""#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_tabulation_modifiers() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "x~T|")
+                       (format nil "x~:T|")
+                       (format nil "x~@T|")
+                       (format nil "x~:@T|")
+                       (format nil "x~3,4T|")
+                       (format nil "x~3,4:T|")
+                       (format nil "x~3,4@T|")
+                       (format nil "x~3,4:@T|"))"#,
+        )
+        .to_string(),
+        r#"("x |" "x|" "x |" "x|" "x  |" "x|" "x   |" "x|")"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_write_directive() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~W" '("abc"))
+                       (format nil "~:W" "abc")
+                       (format nil "~@W" "abc")
+                       (format nil "~:@W" "abc"))"#,
+        )
+        .to_string(),
+        r#"("(\"abc\")" "\"abc\"" "\"abc\"" "\"abc\"")"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_fixed_float_format_directive() {
+    assert_eq!(
+        evaluate(r#"(format nil "~F|~,2F|~10,2F|~@F|~4,2,,'*F" 1.25 1.25 1.25 1.25 123.4)"#)
+            .to_string(),
+        r#""1.25|1.25|      1.25|+1.25|****""#,
+    );
+    assert_eq!(evaluate(r#"(format nil "~,0F" 1.25)"#).to_string(), r#""1.""#);
+    assert_eq!(evaluate(r#"(format nil "~F" 3)"#).to_string(), r#""3.0""#);
+}
+
+#[test]
+fn compiled_evaluates_exponential_float_format_directive() {
+    assert_eq!(
+        evaluate(r#"(format nil "~E|~,2E|~10,2E|~@E" 1.25 1.25 1.25 1.25)"#).to_string(),
+        r#""1.25E+0|1.25E+0|   1.25E+0|+1.25E+0""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~,2,3E|~,2,,0E|~,2,,-1E" 0.0125 637.5 637.5)"#)
+            .to_string(),
+        r#""1.25E-002|0.64E+3|0.06E+4""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~6,2,,,'*E" 123.4)"#).to_string(),
+        r#""******""#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_parameterized_format_directives() {
+    assert_eq!(
+        evaluate(r#"(format nil "~10A|~10@A|~10,'0D|~:D|~@D" "x" "y" 42 1234567 8)"#)
+            .to_string(),
+        r#""x         |         y|0000000042|1,234,567|+8""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~2{~A~}" '(a b c))"#).to_string(),
+        r#""AB""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~vA/~8T" 5 "x")"#).to_string(),
+        r#""x    /  ""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~R/~:R/~@R/~W" 42 42 4 '(a 1))"#).to_string(),
+        r#""forty-two/forty-second/IV/(A 1)""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~:C/~@C" #\Newline #\Space)"#).to_string(),
+        r#""Newline/#\\Space""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "a~2%b")"#).to_string(),
+        r#""a\n\nb""#,
+    );
+}
+
+#[test]
 fn compiled_evaluates_format_iteration_directives() {
     assert_eq!(
         evaluate(r#"(format nil "~{~A/~A~}" '(one 1 two 2))"#).to_string(),
@@ -1560,6 +1940,130 @@ fn compiled_evaluates_format_iteration_directives() {
     assert_eq!(
         evaluate(r#"(format nil "~{~{~A~}~}" '((one two) (three four)))"#).to_string(),
         r#""ONETWOTHREEFOUR""#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_recursive_processing_directive() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~? ~D" "<~A ~D>" '("Foo" 5) 7)
+                       (format nil "~@? ~D" "<~A ~D>" "Foo" 5 7)
+                       (format nil "~@? ~D" "<~A ~D>" "Foo" 5 14 7))"#,
+        )
+        .to_string(),
+        r#"("<Foo 5> 7" "<Foo 5> 7" "<Foo 5> 14")"#,
+    );
+    assert_eq!(
+        evaluate(
+            r#"(format nil "~:{ ~@?~:^ ...~} " '(("a") ("b")))"#,
+        )
+        .to_string(),
+        r#"" a ... b ""#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_justification_directive() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~15<~S~;~^~S~;~^~S~>" 'foo)
+                       (format nil "~15<~S~;~^~S~;~^~S~>" 'foo 'bar)
+                       (format nil "~15<~S~;~^~S~;~^~S~>" 'foo 'bar 'baz)
+                       (format nil "~10<~A~;~A~>" "a" "b")
+                       (format nil "~10:<~A~;~A~>" "a" "b")
+                       (format nil "~10@<~A~;~A~>" "a" "b")
+                       (format nil "~10:@<~A~;~A~>" "a" "b")
+                       (format nil "~10,2,1<~A~;~A~>" "a" "b")
+                       (format nil "~10<~A~;~A~1,1^~>~A" "a" "b" "c"))"#,
+        )
+        .to_string(),
+        r#"("            FOO" "FOO         BAR" "FOO   BAR   BAZ" "a        b" "    a    b" "a    b    " "  a   b   " "a        b" "         ac")"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_conditional_newline_directive() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "a~_b")
+                       (format nil "a~:_b")
+                       (format nil "a~@_b")
+                       (format nil "a~:@_b")
+                       (format nil "a~_~A" 'b))"#,
+        )
+        .to_string(),
+        r#"("ab" "ab" "ab" "ab" "aB")"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_indentation_directive() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "a~I b")
+                       (format nil "a~1I b")
+                       (format nil "a~:I b")
+                       (format nil "a~1:I b")
+                       (format nil "a~I~A" 'b))"#,
+        )
+        .to_string(),
+        r#"("a b" "a b" "a b" "a b" "aB")"#,
+    );
+    for source in [
+        r#"(format nil "a~1,2I b")"#,
+        r#"(format nil "a~@I b")"#,
+        r#"(format nil "a~:@I b")"#,
+    ] {
+        assert!(
+            Runtime::new().eval_compiled_source(source).is_err(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn compiled_evaluates_format_case_conversion_directive() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~(~A~)" "MiXeD Words")
+                       (format nil "~:(~A~)" "MiXeD Words")
+                       (format nil "~@(~A~)" "MiXeD Words")
+                       (format nil "~:@(~A~)" "MiXeD Words")
+                       (format nil "~(~A ~A~)" "MiXeD" "WORDS")
+                       (format nil "~:(~A ~A~)" "MiXeD" "WORDS")
+                       (format nil "~:@(~A ~A~)" "MiXeD" "WORDS"))"#,
+        )
+        .to_string(),
+        r#"("mixed words" "Mixed Words" "Mixed words" "MIXED WORDS" "mixed words" "Mixed Words" "MIXED WORDS")"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_escape_upward_directive() {
+    assert_eq!(
+        evaluate(r#"(format nil "~{~A~^, ~}" '(one two three))"#).to_string(),
+        r#""ONE, TWO, THREE""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "done~^ignored")"#).to_string(),
+        r#""done""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "a~1,1^b")"#).to_string(),
+        r#""a""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "a~1,2^b")"#).to_string(),
+        r#""ab""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~:{~A~:^, ~}" '((a) (b) (c)))"#).to_string(),
+        r#""A, B, C""#,
+    );
+    assert_eq!(
+        evaluate(r#"(format nil "~[a~^b~;c~]" 0)"#).to_string(),
+        r#""a""#,
     );
 }
 
@@ -1593,6 +2097,29 @@ fn compiled_evaluates_format_choice_directives() {
         evaluate(r#"(format nil "~@[yes~]" nil)"#).to_string(),
         r#""""#,
     );
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~@[~A~]~A" t 'x)
+                       (format nil "~@[~A~]~A" nil 'x)
+                       (format nil "~@[yes~]~A" t 'x)
+                       (format nil "~@[yes~]~A" nil 'x))"#,
+        )
+        .to_string(),
+        r#"("TX" "X" "yesT" "X")"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_choice_parameters() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~2[zero~;one~;two~]~A" 'x)
+                       (format nil "~v[zero~;one~;two~]~A" 2 'x)
+                       (format nil "~#[zero~;one~;two~;many~]~A" 'x 'y))"#,
+        )
+        .to_string(),
+        r#"("twoX" "twoX" "twoX")"#,
+    );
 }
 
 #[test]
@@ -1612,6 +2139,19 @@ fn compiled_evaluates_write_to_string() {
 }
 
 #[test]
+fn compiled_evaluates_write_escape_options() {
+    assert_eq!(
+        evaluate(
+            r#"(list (write-to-string "abc")
+                       (write-to-string "abc" :escape nil)
+                       (write-to-string '("abc") :escape nil))"#,
+        )
+        .to_string(),
+        r#"("\"abc\"" "abc" "(abc)")"#,
+    );
+}
+
+#[test]
 fn compiled_evaluates_print_variants_to_string_stream() {
     assert_eq!(
         evaluate(
@@ -1627,6 +2167,22 @@ fn compiled_evaluates_print_variants_to_string_stream() {
 }
 
 #[test]
+fn compiled_evaluates_write_to_stream() {
+    assert_eq!(
+        evaluate(
+            r#"(let ((output (make-string-output-stream)))
+               (list (princ "abc" output)
+                     (prin1 "abc" output)
+                     (write "abc" :stream output :escape nil)
+                     (write "abc" :stream output :escape t)
+                     (get-output-stream-string output)))"#,
+        )
+        .to_string(),
+        r#"("abc" "abc" "abc" "abc" "abc\"abc\"abc\"abc\"")"#,
+    );
+}
+
+#[test]
 fn compiled_evaluates_read_from_string() {
     assert_eq!(
         evaluate(
@@ -1635,7 +2191,7 @@ fn compiled_evaluates_read_from_string() {
                  (list value position))"#,
         )
         .to_string(),
-        "((A 1) 7)",
+        "((A 1) 8)",
     );
     assert_eq!(
         evaluate(
@@ -1644,7 +2200,7 @@ fn compiled_evaluates_read_from_string() {
                  (list value position))"#,
         )
         .to_string(),
-        "(42 2)",
+        "(42 3)",
     );
     assert_eq!(
         evaluate(
@@ -1658,6 +2214,90 @@ fn compiled_evaluates_read_from_string() {
 }
 
 #[test]
+fn compiled_evaluates_read_from_string_options() {
+    assert_eq!(
+        evaluate(
+            r#"(list
+                   (multiple-value-bind (value position)
+                       (read-from-string "  (a)  b" nil :eof :start 1 :end 8)
+                     (list value position))
+                   (multiple-value-bind (value position)
+                       (read-from-string "  (a)  b" nil :eof :start 1 :end 8
+                                         :preserve-whitespace t)
+                     (list value position))
+                   (multiple-value-bind (value position)
+                       (read-from-string "  (a)  b" nil :eof :start 2 :end 5)
+                     (list value position)))"#,
+        )
+        .to_string(),
+        "(((A) 6) ((A) 5) ((A) 5))",
+    );
+}
+
+#[test]
+fn compiled_evaluates_read_from_string_stream() {
+    assert_eq!(
+        evaluate(
+            r#"(let ((input (make-string-input-stream "  (a 1) 42  ")))
+               (list (read input)
+                     (read input)
+                     (read-preserving-whitespace input nil :eof)
+                     (read input nil :eof)))"#,
+        )
+        .to_string(),
+        "((A 1) 42 :EOF :EOF)",
+    );
+}
+
+#[test]
+fn compiled_evaluates_read_whitespace_consumption() {
+    assert_eq!(
+        evaluate(
+            r#"(let ((read-input (make-string-input-stream "(a)  b"))
+                     (preserve-input (make-string-input-stream "(a)  b")))
+                 (list (read read-input)
+                       (read-char read-input)
+                       (read read-input)
+                       (read-preserving-whitespace preserve-input)
+                       (read-char preserve-input)
+                       (read preserve-input)))"#,
+        )
+        .to_string(),
+        r#"((A) #\SPACE B (A) #\SPACE B)"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_character_stream_options_and_eof() {
+    assert_eq!(
+        evaluate(
+            r#"(list
+                 (let ((input (make-string-input-stream "a")))
+                   (list (read-char input nil :eof)
+                         (read-char input nil :eof)))
+                 (let ((input (make-string-input-stream "  a ")))
+                   (list (peek-char t input nil :eof)
+                         (read-char input nil :eof)
+                         (peek-char nil input nil :eof)
+                         (read-char input nil :eof)
+                         (read-char input nil :eof)))
+                 (let ((input (make-string-input-stream "acb")))
+                   (list (peek-char #\b input nil :eof)
+                         (read-char input nil :eof)))
+                 (let ((input (make-string-input-stream "a")))
+                   (list (multiple-value-list (read-line input nil :eof))
+                         (multiple-value-list (read-line input nil :eof))))
+                 (let ((input (make-string-input-stream (format nil "abc~%def"))))
+                   (list (multiple-value-list (read-line input nil :eof))
+                         (multiple-value-list (read-line input nil :eof))
+                         (multiple-value-list (read-line input nil :eof)))))"#,
+        )
+        .to_string(),
+        r#"((#\a :EOF) (#\a #\a #\SPACE #\SPACE :EOF) (#\b #\b) (("a" T) (:EOF T)) (("abc" NIL) ("def" T) (:EOF T)))"#,
+    );
+}
+
+#[test]
 fn compiled_evaluates_sequence_operations_and_type_predicates() {
     assert_eq!(
         evaluate("(list (first '(a b c)) (rest '(a b c)) (nth 1 '(a b c)) (elt \"abc\" 1) (subseq '(a b c d) 1 3) (subseq \"abcd\" 1 3) (member 'b '(a b c)) (assoc 'b '((a 1) (b 2))) (getf '(:a 1 :b 2) :b) (length \"abc\"))").to_string(),
@@ -1666,6 +2306,57 @@ fn compiled_evaluates_sequence_operations_and_type_predicates() {
     assert_eq!(
         evaluate("(list (typep 1 'integer) (typep \"abc\" 'sequence) (characterp #\\a) (keywordp :x) (vectorp #(1 2)) (endp nil) (endp '(1)))").to_string(),
         "(T T T T T T NIL)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_compound_type_designators() {
+    assert_eq!(
+        evaluate(
+            "(list
+                (typep 3 '(or string (integer 0 5)))
+                (typep 7 '(and integer (not (member 4 5))))
+                (typep 4 '(member 3 4 5))
+                (typep 4 '(eql 4))
+                (typep 3 '(mod 4))
+                (typep 3 '(unsigned-byte 4))
+                (typep -8 '(signed-byte 4))
+                (typep '(1 2) '(cons integer list))
+                (typep #(1 2) '(vector integer 2))
+                (typep #(1 2) '(simple-vector 2))
+                (typep #(0 1) '(bit-vector 2))
+                (typep #(1 2) '(array integer 1))
+                (typep #(1 2) '(array integer (2)))
+                (typep #(0 2) 'bit-vector)
+                (the (or integer string) 7)
+                (the (vector integer 2) #(1 2)))",
+        )
+        .to_string(),
+        "(T T T T T T T T T T T T T NIL 7 #(1 2))"
+    );
+}
+
+#[test]
+fn compiled_evaluates_subtypep() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass subtypep-parent () ())
+                 (defclass subtypep-child (subtypep-parent) ())
+                 (defstruct subtypep-record value)
+                 (list
+                   (multiple-value-list (subtypep 'integer 'number))
+                   (multiple-value-list (subtypep '(integer 0 5) '(integer -1 10)))
+                   (multiple-value-list (subtypep '(integer 0 10) '(integer 1 5)))
+                   (multiple-value-list (subtypep 'subtypep-child 'subtypep-parent))
+                   (multiple-value-list (subtypep 'subtypep-record 'structure))
+                   (multiple-value-list (subtypep 'string 'sequence))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "((T T) (T T) (NIL T) (T T) (T T) (T T))"
     );
 }
 
@@ -1732,6 +2423,33 @@ fn compiled_evaluates_basic_clos_instances_and_accessors() {
 }
 
 #[test]
+fn compiled_evaluates_clos_with_slots_and_accessors() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass ws-point ()
+                   ((x :initarg :x :accessor ws-point-x)
+                    (y :initarg :y :accessor ws-point-y)))
+                 (let ((point (make-instance 'ws-point :x 2 :y 3)))
+                   (with-slots ((x xx) y) point
+                     (setf xx 5 y 7)
+                     (with-accessors ((ax ws-point-x) (ay ws-point-y)) point
+                       (list xx y ax ay
+                             (progn (setf ax 11) ax)
+                             (ws-point-x point)
+                             (ws-point-y point))))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
+
+    assert!(runtime
+        .eval_compiled_source("(with-accessors (x) object x)")
+        .is_err());
+}
+
+#[test]
 fn compiled_evaluates_clos_slot_initialization_options() {
     let values = Runtime::new()
         .eval_compiled_source(
@@ -1750,6 +2468,51 @@ fn compiled_evaluates_clos_slot_initialization_options() {
         .unwrap();
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(7 9 NIL T)");
+}
+
+#[test]
+fn compiled_evaluates_clos_class_allocated_slots() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass counter ()
+                   ((value :allocation :class :initarg :value
+                           :initform 0 :accessor counter-value)))
+                 (defclass child-counter (counter) ())
+                 (let ((counter (make-instance 'counter))
+                       (child (make-instance 'child-counter :value 4)))
+                   (setf (counter-value counter) 7)
+                   (let ((before (list (counter-value counter)
+                                       (counter-value child)
+                                       (slot-boundp counter 'value)
+                                       (slot-boundp child 'value))))
+                     (slot-makunbound child 'value)
+                     (list before
+                           (slot-boundp counter 'value)
+                           (slot-boundp child 'value)))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "((7 7 T T) NIL NIL)");
+}
+
+#[test]
+fn compiled_evaluates_clos_default_initargs() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass defaults ()
+                   ((value :initarg :value :initform 1))
+                   (:default-initargs :value (+ 2 5)))
+                 (defclass child-defaults (defaults) ())
+                 (let ((explicit (make-instance 'child-defaults :value 9))
+                       (implicit (make-instance 'child-defaults)))
+                   (list (slot-value explicit 'value)
+                         (slot-value implicit 'value))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(9 7)");
 }
 
 #[test]
@@ -2216,6 +2979,160 @@ fn compiled_evaluates_handler_case_and_handler_bind() {
 }
 
 #[test]
+fn compiled_evaluates_error_through_condition_handlers() {
+    assert_eq!(
+        evaluate(
+            "(handler-case (error \"boom\")
+               (simple-error (condition) (list (type-of condition) 'caught)))",
+        )
+        .to_string(),
+        "(CONDITION CAUGHT)"
+    );
+    assert_eq!(
+        evaluate(
+            "(multiple-value-bind (value condition)
+                (ignore-errors (error \"boom\"))
+              (list value (type-of condition)))",
+        )
+        .to_string(),
+        "(NIL CONDITION)"
+    );
+    assert_eq!(
+        evaluate(
+            "(handler-bind ((simple-error
+                               (lambda (condition)
+                                 (declare (ignore condition))
+                                 (invoke-restart 'continue))))
+               (restart-case (error \"boom\")
+                 (continue () 42)))",
+        )
+        .to_string(),
+        "42"
+    );
+}
+
+#[test]
+fn compiled_evaluates_signal_warn_cerror_and_dynamic_handlers() {
+    assert_eq!(
+        evaluate(
+            "(handler-case (signal \"boom\")
+               (simple-condition (condition) (list (type-of condition) 'signal-caught)))",
+        )
+        .to_string(),
+        "(CONDITION SIGNAL-CAUGHT)"
+    );
+    assert_eq!(
+        evaluate(
+            "(handler-case (warn \"careful\")
+               (warning (condition) (list (type-of condition) 'warning-caught)))",
+        )
+        .to_string(),
+        "(CONDITION WARNING-CAUGHT)"
+    );
+    assert_eq!(
+        evaluate(
+            "(handler-bind ((simple-condition
+                               (lambda (condition)
+                                 (declare (ignore condition))
+                                 (invoke-restart 'continue))))
+               (restart-case (signal \"continue\")
+                 (continue () 37)))",
+        )
+        .to_string(),
+        "37"
+    );
+    assert_eq!(
+        evaluate(
+            "(restart-case (cerror \"continue\" \"boom\")
+               (continue () 42))",
+        )
+        .to_string(),
+        "42"
+    );
+    assert_eq!(
+        evaluate(
+            "(handler-bind ((simple-error
+                               (lambda (condition)
+                                 (declare (ignore condition))
+                                 (invoke-restart 'continue))))
+               (cerror \"continue\" \"boom\"))",
+        )
+        .to_string(),
+        "NIL"
+    );
+}
+
+#[test]
+fn compiled_evaluates_condition_format_arguments() {
+    assert_eq!(
+        evaluate(
+            r#"(handler-case
+                   (error "failed: ~A (~D)" 'name 7)
+                   (simple-error (condition)
+                     (list
+                       (simple-condition-format-control condition)
+                       (simple-condition-format-arguments condition)
+                       (typep condition 'simple-condition)
+                       (typep condition 'simple-error))))"#,
+        )
+        .to_string(),
+        "(\"failed: ~A (~D)\" (NAME 7) T T)"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(handler-case
+                   (signal "warning: ~A" 'careful)
+                   (simple-condition (condition)
+                     (list
+                       (simple-condition-format-control condition)
+                       (simple-condition-format-arguments condition))))"#,
+        )
+        .to_string(),
+        "(\"warning: ~A\" (CAREFUL))"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(let ((seen nil))
+                   (handler-bind ((simple-error
+                                   (lambda (condition)
+                                     (setq seen
+                                       (list
+                                         (simple-condition-format-control condition)
+                                         (simple-condition-format-arguments condition))))))
+                     (restart-case
+                       (cerror "continue ~A" "failed ~A" 'again)
+                       (continue () (list 42 seen)))))"#,
+        )
+        .to_string(),
+        "(42 (\"failed ~A\" (AGAIN)))"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(handler-case
+                   (error (make-condition 'simple-error
+                            :format-control "constructed: ~A"
+                            :format-arguments (list 'condition)))
+                   (simple-error (condition)
+                     (list
+                       (simple-condition-format-control condition)
+                       (simple-condition-format-arguments condition)
+                       (typep condition 'condition)
+                       (typep condition 'simple-error))))"#,
+        )
+        .to_string(),
+        "(\"constructed: ~A\" (CONDITION) T T)"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(let ((condition (make-condition 'user-condition)))
+                   (typep condition 'condition))"#,
+        )
+        .to_string(),
+        "T"
+    );
+}
+
+#[test]
 fn compiled_evaluates_catch_and_throw() {
     assert_eq!(
         evaluate(
@@ -2258,6 +3175,43 @@ fn compiled_evaluates_character_and_string_operations() {
 }
 
 #[test]
+fn compiled_evaluates_extended_character_operations() {
+    assert_eq!(
+        evaluate(
+            r#"(list
+                   (character "A")
+                   (character 'Z)
+                   (char-int #\A)
+                   (int-char 98)
+                   (char/= #\a #\b #\c)
+                   (char/= #\a #\b #\a)
+                   (char-not-equal #\A #\a)
+                   (char-lessp #\A #\b)
+                   (char-greaterp #\b #\A)
+                   (char-not-lessp #\B #\a)
+                   (char-not-greaterp #\A #\b)
+                   (alpha-char-p #\A)
+                   (alphanumericp #\7)
+                   (digit-char 10 16)
+                   (digit-char-p #\f 16)
+                   (digit-char-p #\g 16)
+                   (graphic-char-p #\Space)
+                   (standard-char-p #\Newline)
+                   (upper-case-p #\A)
+                   (lower-case-p #\a)
+                   (both-case-p #\A)
+                   (char-name #\Newline)
+                   (name-char "space")
+                   (name-char "?")
+                   char-code-limit
+                   most-positive-char-code)"#,
+        )
+        .to_string(),
+        "(#\\A #\\Z 65 #\\b T NIL NIL T T T T T T #\\A 15 NIL T T T T T \"Newline\" #\\SPACE #\\? 1114112 1114111)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_setf_places() {
     assert_eq!(
         evaluate("(let ((xs (list 1 2 3))) (setf (car xs) 9 (nth 2 xs) 7) xs)").to_string(),
@@ -2268,12 +3222,73 @@ fn compiled_evaluates_setf_places() {
         "#(1 8)"
     );
     assert_eq!(
+        evaluate("(let ((text \"abc\")) (setf (char text 1) #\\X) text)").to_string(),
+        "\"aXc\""
+    );
+    assert_eq!(
+        evaluate("(let ((text \"abc\")) (setf (schar text 1) #\\Y) text)").to_string(),
+        "\"aYc\""
+    );
+    assert_eq!(
+        evaluate("(let ((values #(1 2 3))) (setf (svref values 1) 8) values)").to_string(),
+        "#(1 8 3)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array '(2 2) :initial-element 0)))
+               (setf (row-major-aref array 2) 9)
+               (row-major-aref array 2))",
+        )
+        .to_string(),
+        "9"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array '(2 3) :initial-element 0)))
+               (setf (aref array 1 0) 9)
+               (list (aref array 1 0) (row-major-aref array 3)))",
+        )
+        .to_string(),
+        "(9 9)"
+    );
+    assert_eq!(
+        evaluate("(let ((bits #(0 1 0))) (setf (bit bits 1) 0) (bit bits 1))").to_string(),
+        "0"
+    );
+    assert_eq!(
         evaluate("(let ((xs (list (list 1 2)))) (setf (car (nth 0 xs)) 9) xs)").to_string(),
         "((9 2))"
     );
     assert_eq!(
         evaluate("(let ((text \"abc\")) (setf (elt text 1) #\\X) text)").to_string(),
         "\"aXc\""
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 1 2 3 4 5)))
+               (setf (subseq xs 1 4) #(9 8 7))
+               xs)",
+        )
+        .to_string(),
+        "(1 9 8 7 5)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((text \"abcde\"))
+               (setf (subseq text 1 4) '(#\\X #\\Y #\\Z))
+               text)",
+        )
+        .to_string(),
+        "\"aXYZe\""
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 1 2 3 4)))
+               (setf (subseq xs 1 3) '(9))
+               xs)",
+        )
+        .to_string(),
+        "(1 9 3 4)"
     );
     assert_eq!(
         evaluate("(let ((plist (list :a 1))) (setf (getf plist :a) 2) plist)").to_string(),
@@ -2289,6 +3304,164 @@ fn compiled_evaluates_setf_places() {
         )
         .to_string(),
         "(7 7)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_push_pop_and_psetf() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 2 3)))
+               (list (push 1 xs) xs (pop xs) xs))",
+        )
+        .to_string(),
+        "((1 2 3) (1 2 3) 1 (2 3))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 10 20)))
+               (list (push 5 (cdr xs)) xs))",
+        )
+        .to_string(),
+        "((5 20) (10 5 20))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((a 0) (b 0))
+               (list (psetf a 1 b 2) a b))",
+        )
+        .to_string(),
+        "(2 1 2)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_pushnew() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 1 2)))
+               (list (pushnew 2 xs) (pushnew 3 xs) xs))",
+        )
+        .to_string(),
+        "((1 2) (3 1 2) (3 1 2))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list (list 1 :a))))
+               (list (pushnew (list 1 :b) xs :key #'car :test #'eql)
+                     (pushnew (list 1 :c) xs :key #'car :test-not #'equal)))",
+        )
+        .to_string(),
+        "(((1 :A)) ((1 :C) (1 :A)))"
+    );
+}
+
+#[test]
+fn compiled_evaluates_simple_defsetf() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *compiled-defsetf-cell* 1)
+               (defun compiled-defsetf-reader () *compiled-defsetf-cell*)
+               (defun compiled-defsetf-writer (value) (setq *compiled-defsetf-cell* value))
+               (defsetf compiled-defsetf-reader compiled-defsetf-writer)
+               (setf (compiled-defsetf-reader) 42)
+               (compiled-defsetf-reader))",
+        )
+        .to_string(),
+        "42"
+    );
+}
+
+#[test]
+fn compiled_evaluates_defsetf_passes_place_arguments_before_value() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *compiled-defsetf-arguments* nil)
+               (defun compiled-defsetf-argument-reader (first second) nil)
+               (defun compiled-defsetf-argument-writer (&rest arguments)
+                 (setq *compiled-defsetf-arguments* arguments))
+               (defsetf compiled-defsetf-argument-reader compiled-defsetf-argument-writer)
+               (setf (compiled-defsetf-argument-reader :first :second) :new)
+               *compiled-defsetf-arguments*)",
+        )
+        .to_string(),
+        "(:FIRST :SECOND :NEW)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_define_setf_expander_and_get_setf_expansion() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *compiled-custom-setf-cell* 1)
+               (define-setf-expander compiled-custom-setf-place ()
+                 (values nil nil '(new-value)
+                         '(progn
+                            (setq *compiled-custom-setf-cell* new-value)
+                            new-value)
+                         '*compiled-custom-setf-cell*))
+               (setf (compiled-custom-setf-place) 42)
+               (multiple-value-bind (temporaries value-forms stores store-form access-form)
+                   (get-setf-expansion '(compiled-custom-setf-place))
+                 (list *compiled-custom-setf-cell*
+                       (length temporaries)
+                       (length value-forms)
+                       (length stores)
+                       (car stores)
+                       store-form
+                       access-form)))",
+        )
+        .to_string(),
+        "(42 0 0 1 NEW-VALUE (PROGN (SETQ *COMPILED-CUSTOM-SETF-CELL* NEW-VALUE) NEW-VALUE) *COMPILED-CUSTOM-SETF-CELL*)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_define_modify_macro_on_generalized_place() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (define-modify-macro compiled-add-to-place (&optional (delta 1)) +)
+               (let ((cell (list 10)))
+                 (list (compiled-add-to-place (car cell) 2)
+                       (compiled-add-to-place (car cell))
+                       cell)))",
+        )
+        .to_string(),
+        "(12 13 (13))"
+    );
+    assert_eq!(
+        evaluate(
+            "(progn
+               (define-modify-macro compiled-add-to-nested-place (&optional (delta 1)) +)
+               (let ((cells (list (list 10))))
+                 (list (compiled-add-to-nested-place (car (nth 0 cells)) 2)
+                       cells)))",
+        )
+        .to_string(),
+        "(12 ((12)))"
+    );
+}
+
+#[test]
+fn compiled_evaluates_define_symbol_macro_and_generalized_places() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *compiled-symbol-macro-cell* (list 1))
+               (define-symbol-macro *compiled-symbol-macro-item*
+                 (car *compiled-symbol-macro-cell*))
+               (list *compiled-symbol-macro-item*
+                     (progn
+                       (setq *compiled-symbol-macro-item* 7)
+                       *compiled-symbol-macro-item*)
+                     *compiled-symbol-macro-cell*))",
+        )
+        .to_string(),
+        "(1 7 (7))"
     );
 }
 
@@ -2326,6 +3499,38 @@ fn compiled_evaluates_incf_and_decf_symbol_places() {
         )
         .to_string(),
         "(11 11 13 12 10 10)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_incf_and_decf_generalized_places() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 10)) (delta 2))
+               (list (incf (car xs) delta) xs (decf (car xs)) xs))",
+        )
+        .to_string(),
+        "(12 (12) 11 (11))"
+    );
+}
+
+#[test]
+fn compiled_evaluates_rotatef_and_shiftf() {
+    assert_eq!(
+        evaluate(
+            "(let ((a 1) (b 2) (c 3))
+               (list (rotatef a b c) a b c))",
+        )
+        .to_string(),
+        "(NIL 3 1 2)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 1 2)))
+               (list (shiftf (car xs) (car (cdr xs)) 9) xs))",
+        )
+        .to_string(),
+        "(1 (2 9))"
     );
 }
 
@@ -2851,6 +4056,53 @@ fn compiled_defpackage_symbol_options_update_package_state() {
 }
 
 #[test]
+fn compiled_defpackage_local_nicknames_and_documentation_work() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_compiled_source(
+            r#"(defpackage :local-target-compiled
+                 (:use :common-lisp)
+                 (:export :answer))
+               (in-package :local-target-compiled)
+               (define answer 42)
+               (defpackage :local-owner-compiled
+                 (:use :common-lisp)
+                 (:local-nicknames (:target :local-target-compiled))
+                 (:documentation "local owner documentation"))
+               (in-package :local-owner-compiled)
+               (list target:answer
+                     (documentation (find-package :local-owner-compiled) t)
+                     (find-package :target))"#,
+        )
+        .unwrap();
+
+    assert_eq!(
+        values.last().unwrap().to_string(),
+        r#"(42 "local owner documentation" NIL)"#
+    );
+}
+
+#[test]
+fn compiled_defpackage_size_option_is_accepted_and_validated() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_compiled_source(
+            r#"(defpackage :package-size-compiled
+                 (:use :common-lisp)
+                 (:size 0))
+               (package-name (find-package :package-size-compiled))"#,
+        )
+        .unwrap();
+
+    assert_eq!(values.last().unwrap().to_string(), "\"PACKAGE-SIZE-COMPILED\"");
+
+    let error = runtime
+        .eval_compiled_source("(defpackage :package-size-invalid-compiled (:size -1))")
+        .unwrap_err();
+    assert!(error.to_string().contains("defpackage :size"));
+}
+
+#[test]
 fn compiled_string_streams_read_and_write() {
     let runtime = Runtime::new();
     let values = runtime
@@ -2898,6 +4150,148 @@ fn compiled_string_streams_line_output_operations() {
         values.last().unwrap().to_string(),
         r#"("head" T NIL NIL "tail" "head\n\ntail\n")"#
     );
+}
+
+#[test]
+fn compiled_file_streams_round_trip_through_with_open_file() {
+    let path = std::env::temp_dir().join(format!(
+        "ncl-with-open-file-compiled-{}",
+        std::process::id()
+    ));
+    let pathname = format!("{:?}", path.to_string_lossy().to_string());
+    let source = format!(
+        r#"(progn
+               (with-open-file (stream {pathname}
+                                :direction :output
+                                :if-exists :supersede)
+                 (write-string "hello" stream))
+               (with-open-file (stream {pathname})
+                 (char= (read-char stream) #\h)))"#,
+        pathname = pathname
+    );
+
+    assert_eq!(evaluate(&source).to_string(), "T");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn compiled_file_stream_options_cover_probe_append_and_abort() {
+    let path = std::env::temp_dir().join(format!(
+        "ncl-file-stream-options-compiled-{}",
+        std::process::id()
+    ));
+    let missing_path = std::env::temp_dir().join(format!(
+        "ncl-file-stream-options-compiled-missing-{}",
+        std::process::id()
+    ));
+    let pathname = format!("{:?}", path.to_string_lossy().to_string());
+    let missing_pathname = format!("{:?}", missing_path.to_string_lossy().to_string());
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&missing_path);
+    let source = format!(
+        r#"(progn
+               (with-open-file (stream {pathname}
+                                :direction :output
+                                :if-exists :supersede)
+                 (write-string "a" stream))
+               (with-open-file (stream {pathname}
+                                :direction :output
+                                :if-exists :append)
+                 (write-string "b" stream))
+               (let ((existing (open {pathname} :direction :probe))
+                     (missing (open {missing_pathname} :direction :probe)))
+                 (prog1 (list (streamp existing) (null missing))
+                   (close existing)))
+               (let ((stream (open {missing_pathname}
+                                   :direction :output
+                                   :if-does-not-exist :create)))
+                 (write-string "discard" stream)
+                 (close stream :abort t))
+               (null (open {missing_pathname} :direction :probe)))"#,
+        pathname = pathname,
+        missing_pathname = missing_pathname
+    );
+
+    assert_eq!(evaluate(&source).to_string(), "T");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "ab");
+    assert!(!missing_path.exists());
+    let _ = std::fs::remove_file(path);
+    let _ = std::fs::remove_file(missing_path);
+}
+
+#[test]
+fn compiled_file_io_stream_reads_writes_and_appends() {
+    let path = std::env::temp_dir().join(format!(
+        "ncl-file-io-stream-compiled-{}",
+        std::process::id()
+    ));
+    let pathname = format!("{:?}", path.to_string_lossy().to_string());
+    std::fs::write(&path, "abc").unwrap();
+    let source = format!(
+        r#"(let ((stream (open {pathname}
+                            :direction :io
+                            :if-exists :overwrite)))
+               (list (input-stream-p stream)
+                     (output-stream-p stream)
+                     (progn
+                       (read-char stream)
+                       (write-string "Z" stream)
+                       (close stream)
+                       t)
+                     (progn
+                       (let ((append-stream (open {pathname}
+                                                  :direction :io
+                                                  :if-exists :append)))
+                         (write-string "!" append-stream)
+                         (close append-stream))
+                       t)
+                     (with-open-file (input {pathname})
+                       (string= (read-line input) "aZc!"))))"#,
+        pathname = pathname
+    );
+
+    assert_eq!(evaluate(&source).to_string(), "(T T T T T)");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "aZc!");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn compiled_file_pathname_primitives_probe_rename_delete_and_date() {
+    let source_path = std::env::temp_dir().join(format!(
+        "ncl-file-pathname-primitives-source-compiled-{}",
+        std::process::id()
+    ));
+    let renamed_path = std::env::temp_dir().join(format!(
+        "ncl-file-pathname-primitives-renamed-compiled-{}",
+        std::process::id()
+    ));
+    let source = format!("{:?}", source_path.to_string_lossy().to_string());
+    let renamed = format!("{:?}", renamed_path.to_string_lossy().to_string());
+    let _ = std::fs::remove_file(&source_path);
+    let _ = std::fs::remove_file(&renamed_path);
+    std::fs::write(&source_path, "content").unwrap();
+    let form = format!(
+        r#"(let ((original (probe-file {source})))
+             (multiple-value-bind (new old-truename new-truename)
+                 (rename-file {source} {renamed})
+               (list (stringp original)
+                     (stringp (truename {renamed}))
+                     (stringp new)
+                     (stringp old-truename)
+                     (stringp new-truename)
+                     (integerp (file-write-date {renamed}))
+                     (null (probe-file {source}))
+                     (stringp (probe-file {renamed}))
+                     (delete-file {renamed})
+                     (null (probe-file {renamed})))))"#,
+        source = source,
+        renamed = renamed
+    );
+
+    assert_eq!(evaluate(&form).to_string(), "(T T T T T T T T T T)");
+    let _ = std::fs::remove_file(source_path);
+    let _ = std::fs::remove_file(renamed_path);
 }
 
 #[test]

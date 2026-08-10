@@ -17,14 +17,14 @@ change as implementation and conformance work reveal the next boundary.
 
 - Grow the numeric tower, coercion rules, printing, and the remaining
   <code>format</code> directives.
-- Generalize streams beyond the current string-stream operations and complete
-  standard I/O behavior.
+- Complete file-stream option semantics, the general stream protocol, binary
+  streams, and standard I/O behavior.
 - Complete package objects, symbol identity, shadowing, and package protocol
   semantics.
-- Expand condition types, reporting, continuable handlers, and restart
-  behavior.
-- Add the remaining object-system pieces: classes, generic functions, and
-  method dispatch.
+- Complete the full condition hierarchy, reporting, continuable handlers, and
+  remaining restart protocol behavior.
+- Complete CLOS slot and method options, class precedence details, and the
+  remaining object-protocol behavior.
 
 ## Compiler and execution
 
@@ -34,6 +34,7 @@ change as implementation and conformance work reveal the next boundary.
 - Establish a larger conformance suite and investigate memory-management and
   garbage-collection requirements.
 
-Implemented foundations such as arrays, hash tables, rationals, string
-streams, basic structures, packages, and condition/control constructs are
-documented as bounded features rather than listed as absent work.
+Implemented foundations such as arrays, hash tables, rationals, string and
+file streams, structures, CLOS classes and methods, packages, and
+condition/control constructs are documented as bounded features rather than
+listed as absent work.

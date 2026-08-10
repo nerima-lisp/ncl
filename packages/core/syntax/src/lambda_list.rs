@@ -123,11 +123,17 @@ impl Error for LambdaListError {}
 /// interpreter fail consistently instead of silently treating a marker as a
 /// variable name.
 pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, LambdaListError> {
-    let FormKind::List(parameters) = &form.kind else {
-        return Err(LambdaListError {
-            kind: LambdaListErrorKind::ExpectedList,
-            span: form.span,
-        });
+    let parameters: &[Form] = match &form.kind {
+        FormKind::List(parameters) => parameters,
+        // Runtime values represent the empty list as NIL.  This case is
+        // needed when a quoted lambda form is reconstructed for EVAL/COMPILE.
+        FormKind::Atom(name) if name == "NIL" => &[],
+        _ => {
+            return Err(LambdaListError {
+                kind: LambdaListErrorKind::ExpectedList,
+                span: form.span,
+            });
+        }
     };
 
     let mut required = Vec::new();

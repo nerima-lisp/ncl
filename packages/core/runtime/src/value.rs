@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::fmt::Write as _;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use ncl_compiler::{FunctionId, Program};
@@ -10,7 +11,7 @@ use ncl_syntax::{
 };
 
 use crate::environment::Environment;
-use crate::error::RuntimeError;
+use crate::error::{ReturnValue, RuntimeError};
 
 pub type Builtin = fn(&[Value]) -> Result<Value, RuntimeError>;
 
@@ -48,6 +49,7 @@ pub(crate) struct MacroAuxiliaryParameter {
 #[derive(Clone)]
 pub(crate) struct MacroLambdaList {
     pub(crate) whole: Option<String>,
+    pub(crate) environment: Option<String>,
     pub(crate) required: Vec<MacroPattern>,
     pub(crate) optional: Vec<MacroOptionalParameter>,
     pub(crate) rest: Option<String>,
@@ -75,6 +77,7 @@ pub(crate) struct ClassSlot {
     pub(crate) name: String,
     pub(crate) initarg: Option<String>,
     pub(crate) init_form: Option<Form>,
+    pub(crate) class_value: Option<Rc<RefCell<Value>>>,
 }
 
 #[derive(Clone)]
@@ -83,6 +86,7 @@ pub(crate) struct ClassDefinition {
     pub(crate) direct_superclasses: Vec<String>,
     pub(crate) precedence: Vec<String>,
     pub(crate) slots: Vec<ClassSlot>,
+    pub(crate) default_initargs: Vec<(String, Form)>,
 }
 
 #[derive(Clone)]
@@ -154,6 +158,11 @@ pub enum Function {
     Macro {
         lambda_list: MacroLambdaList,
         body: Vec<Form>,
+        environment: Environment,
+    },
+    ModifyMacro {
+        lambda_list: MacroLambdaList,
+        function: Form,
         environment: Environment,
     },
     Compiled {
@@ -234,10 +243,19 @@ enum StreamKind {
         characters: Rc<Vec<char>>,
         position: usize,
         pushback: Option<char>,
+        file: bool,
+    },
+    Io {
+        characters: Vec<char>,
+        position: usize,
+        pushback: Option<char>,
+        at_line_start: bool,
+        file_path: Rc<PathBuf>,
     },
     Output {
         buffer: String,
         at_line_start: bool,
+        file_path: Option<Rc<PathBuf>>,
     },
 }
 
@@ -248,6 +266,39 @@ impl Stream {
                 characters: Rc::new(source.chars().skip(start).take(end - start).collect()),
                 position: 0,
                 pushback: None,
+                file: false,
+            },
+            closed: false,
+        }
+    }
+
+    fn file_input(source: String) -> Self {
+        Self {
+            kind: StreamKind::Input {
+                characters: Rc::new(source.chars().collect()),
+                position: 0,
+                pushback: None,
+                file: true,
+            },
+            closed: false,
+        }
+    }
+
+    fn file_io(path: PathBuf, source: String, append: bool) -> Self {
+        let characters: Vec<char> = source.chars().collect();
+        let position = if append { characters.len() } else { 0 };
+        let at_line_start = if position == 0 {
+            true
+        } else {
+            characters.get(position - 1) == Some(&'\n')
+        };
+        Self {
+            kind: StreamKind::Io {
+                characters,
+                position,
+                pushback: None,
+                at_line_start,
+                file_path: Rc::new(path),
             },
             closed: false,
         }
@@ -258,6 +309,19 @@ impl Stream {
             kind: StreamKind::Output {
                 buffer: String::new(),
                 at_line_start: true,
+                file_path: None,
+            },
+            closed: false,
+        }
+    }
+
+    fn file_output(path: PathBuf, initial: String) -> Self {
+        let at_line_start = initial.ends_with('\n');
+        Self {
+            kind: StreamKind::Output {
+                buffer: initial,
+                at_line_start,
+                file_path: Some(Rc::new(path)),
             },
             closed: false,
         }
@@ -265,77 +329,135 @@ impl Stream {
 
     pub(crate) fn kind_name(&self) -> &'static str {
         match &self.kind {
-            StreamKind::Input { .. } => "STRING-INPUT-STREAM",
-            StreamKind::Output { .. } => "STRING-OUTPUT-STREAM",
+            StreamKind::Input { file, .. } => {
+                if *file {
+                    "FILE-INPUT-STREAM"
+                } else {
+                    "STRING-INPUT-STREAM"
+                }
+            }
+            StreamKind::Io { .. } => "FILE-IO-STREAM",
+            StreamKind::Output { file_path, .. } => {
+                if file_path.is_some() {
+                    "FILE-OUTPUT-STREAM"
+                } else {
+                    "STRING-OUTPUT-STREAM"
+                }
+            }
         }
     }
 
     pub(crate) fn is_input(&self) -> bool {
-        matches!(&self.kind, StreamKind::Input { .. })
+        matches!(&self.kind, StreamKind::Input { .. } | StreamKind::Io { .. })
     }
 
     pub(crate) fn is_output(&self) -> bool {
-        matches!(&self.kind, StreamKind::Output { .. })
+        matches!(&self.kind, StreamKind::Output { .. } | StreamKind::Io { .. })
     }
 
     pub(crate) fn read_char(&mut self) -> Option<char> {
         if self.closed {
             return None;
         }
-        let StreamKind::Input {
-            characters,
-            position,
-            pushback,
-        } = &mut self.kind
-        else {
-            return None;
-        };
-        if let Some(character) = pushback.take() {
-            return Some(character);
+        match &mut self.kind {
+            StreamKind::Input {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                if let Some(character) = pushback.take() {
+                    return Some(character);
+                }
+                let character = characters.get(*position).copied()?;
+                *position += 1;
+                Some(character)
+            }
+            StreamKind::Io {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                if let Some(character) = pushback.take() {
+                    return Some(character);
+                }
+                let character = characters.get(*position).copied()?;
+                *position += 1;
+                Some(character)
+            }
+            StreamKind::Output { .. } => None,
         }
-        let character = characters.get(*position).copied()?;
-        *position += 1;
-        Some(character)
     }
 
     pub(crate) fn peek_char(&self) -> Option<char> {
         if self.closed {
             return None;
         }
-        let StreamKind::Input {
-            characters,
-            position,
-            pushback,
-        } = &self.kind
-        else {
-            return None;
-        };
-        if let Some(character) = pushback {
-            return Some(*character);
+        match &self.kind {
+            StreamKind::Input {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                if let Some(character) = pushback {
+                    return Some(*character);
+                }
+                characters.get(*position).copied()
+            }
+            StreamKind::Io {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                if let Some(character) = pushback {
+                    return Some(*character);
+                }
+                characters.get(*position).copied()
+            }
+            StreamKind::Output { .. } => None,
         }
-        characters.get(*position).copied()
     }
 
     pub(crate) fn unread_char(&mut self, character: char) -> bool {
         if self.closed {
             return false;
         }
-        let StreamKind::Input {
-            characters,
-            position,
-            pushback,
-        } = &mut self.kind
-        else {
-            return false;
-        };
-        if pushback.is_some() || *position == 0 {
-            return false;
+        match &mut self.kind {
+            StreamKind::Input {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                if pushback.is_some() || *position == 0 {
+                    return false;
+                }
+                if characters.get(*position - 1).copied() != Some(character) {
+                    return false;
+                }
+                *pushback = Some(character);
+                true
+            }
+            StreamKind::Io {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                if pushback.is_some() || *position == 0 {
+                    return false;
+                }
+                if characters.get(*position - 1).copied() != Some(character) {
+                    return false;
+                }
+                *pushback = Some(character);
+                true
+            }
+            StreamKind::Output { .. } => false,
         }
-        if characters.get(*position - 1).copied() != Some(character) {
-            return false;
-        }
-        *pushback = Some(character);
-        true
     }
 
     pub(crate) fn read_line(&mut self) -> Option<(String, bool)> {
@@ -354,53 +476,218 @@ impl Stream {
         }
     }
 
+    pub(crate) fn remaining_input(&self) -> Option<String> {
+        if self.closed {
+            return None;
+        }
+        match &self.kind {
+            StreamKind::Input {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                let mut source = String::new();
+                if let Some(character) = pushback {
+                    source.push(*character);
+                }
+                source.extend(characters.iter().skip(*position).copied());
+                Some(source)
+            }
+            StreamKind::Io {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                let mut source = String::new();
+                if let Some(character) = pushback {
+                    source.push(*character);
+                }
+                source.extend(characters.iter().skip(*position).copied());
+                Some(source)
+            }
+            StreamKind::Output { .. } => None,
+        }
+    }
+
+    pub(crate) fn consume_input(&mut self, count: usize) -> bool {
+        if self.closed {
+            return false;
+        }
+        match &mut self.kind {
+            StreamKind::Input {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                let available = usize::from(pushback.is_some())
+                    + characters.len().saturating_sub(*position);
+                if count > available {
+                    return false;
+                }
+                if count == 0 {
+                    return true;
+                }
+                let mut remaining = count;
+                if pushback.take().is_some() {
+                    remaining -= 1;
+                }
+                *position += remaining;
+                true
+            }
+            StreamKind::Io {
+                characters,
+                position,
+                pushback,
+                ..
+            } => {
+                let available = usize::from(pushback.is_some())
+                    + characters.len().saturating_sub(*position);
+                if count > available {
+                    return false;
+                }
+                if count == 0 {
+                    return true;
+                }
+                let mut remaining = count;
+                if pushback.take().is_some() {
+                    remaining -= 1;
+                }
+                *position += remaining;
+                true
+            }
+            StreamKind::Output { .. } => false,
+        }
+    }
+
     pub(crate) fn write(&mut self, text: &str) -> bool {
         if self.closed {
             return false;
         }
-        let StreamKind::Output {
-            buffer,
-            at_line_start,
-        } = &mut self.kind
-        else {
-            return false;
-        };
-        buffer.push_str(text);
-        if let Some(character) = text.chars().last() {
-            *at_line_start = character == '\n';
+        match &mut self.kind {
+            StreamKind::Output {
+                buffer,
+                at_line_start,
+                ..
+            } => {
+                buffer.push_str(text);
+                if let Some(character) = text.chars().last() {
+                    *at_line_start = character == '\n';
+                }
+                true
+            }
+            StreamKind::Io {
+                characters,
+                position,
+                pushback,
+                at_line_start,
+                ..
+            } => {
+                pushback.take();
+                for character in text.chars() {
+                    if *position < characters.len() {
+                        characters[*position] = character;
+                    } else {
+                        characters.push(character);
+                    }
+                    *position += 1;
+                }
+                if let Some(character) = text.chars().last() {
+                    *at_line_start = character == '\n';
+                }
+                true
+            }
+            StreamKind::Input { .. } => false,
         }
-        true
     }
 
     pub(crate) fn fresh_line(&mut self) -> Option<bool> {
         if self.closed {
             return None;
         }
-        let StreamKind::Output {
-            buffer,
-            at_line_start,
-        } = &mut self.kind
-        else {
-            return None;
+        let at_line_start = match &self.kind {
+            StreamKind::Output { at_line_start, .. } | StreamKind::Io { at_line_start, .. } => {
+                *at_line_start
+            }
+            StreamKind::Input { .. } => return None,
         };
-        if *at_line_start {
+        if at_line_start {
             return Some(false);
         }
-        buffer.push('\n');
-        *at_line_start = true;
-        Some(true)
+        if self.write("\n") {
+            Some(true)
+        } else {
+            None
+        }
     }
 
     pub(crate) fn take_output(&mut self) -> Option<String> {
-        let StreamKind::Output { buffer, .. } = &mut self.kind else {
+        let StreamKind::Output {
+            buffer,
+            file_path: None,
+            ..
+        } = &mut self.kind
+        else {
             return None;
         };
         Some(std::mem::take(buffer))
     }
 
-    pub(crate) fn close(&mut self) {
+    pub(crate) fn close(&mut self, abort: bool) -> Result<(), std::io::Error> {
+        if self.closed {
+            return Ok(());
+        }
+        if !abort {
+            if let StreamKind::Output {
+                buffer,
+                file_path: Some(path),
+                ..
+            } = &self.kind
+            {
+                std::fs::write(path.as_ref(), buffer.as_bytes())?;
+            }
+            if let StreamKind::Io {
+                characters,
+                file_path,
+                ..
+            } = &self.kind
+            {
+                let source: String = characters.iter().collect();
+                std::fs::write(file_path.as_ref(), source.as_bytes())?;
+            }
+        }
         self.closed = true;
+        Ok(())
     }
+}
+
+#[derive(Clone)]
+pub(crate) struct ConditionData {
+    actual_type: String,
+    message: Rc<str>,
+    format_control: Option<Rc<str>>,
+    format_arguments: Vec<Value>,
+}
+
+impl ConditionData {
+    fn equal_value(&self, other: &Self) -> bool {
+        self.actual_type == other.actual_type
+            && self.message == other.message
+            && self.format_control == other.format_control
+            && self.format_arguments.len() == other.format_arguments.len()
+            && self
+                .format_arguments
+                .iter()
+                .zip(other.format_arguments.iter())
+                .all(|(left, right)| left.equal_value(right))
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct RestartData {
+    name: Rc<str>,
 }
 
 #[derive(Clone)]
@@ -415,6 +702,7 @@ pub enum Value {
     Character(char),
     Stream(Rc<RefCell<Stream>>),
     Package(Rc<str>),
+    Environment(Environment),
     Symbol(Rc<str>),
     SymbolExact(Rc<str>),
     UninternedSymbol(Rc<str>),
@@ -435,7 +723,8 @@ pub enum Value {
         entries: Rc<RefCell<Vec<(Value, Value)>>>,
     },
     Values(Rc<Vec<Value>>),
-    Condition(Rc<str>),
+    Condition(Rc<ConditionData>),
+    Restart(Rc<RestartData>),
     Structure {
         name: Rc<str>,
         types: Rc<Vec<Rc<str>>>,
@@ -476,8 +765,24 @@ impl Value {
         Self::Stream(Rc::new(RefCell::new(Stream::output())))
     }
 
+    pub(crate) fn file_input_stream(source: String) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::file_input(source))))
+    }
+
+    pub(crate) fn file_output_stream(path: PathBuf, initial: String) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::file_output(path, initial))))
+    }
+
+    pub(crate) fn file_io_stream(path: PathBuf, source: String, append: bool) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::file_io(path, source, append))))
+    }
+
     pub fn package(value: impl AsRef<str>) -> Self {
         Self::Package(Rc::from(value.as_ref()))
+    }
+
+    pub(crate) fn environment(value: Environment) -> Self {
+        Self::Environment(value)
     }
 
     pub fn symbol(value: impl AsRef<str>) -> Self {
@@ -539,7 +844,49 @@ impl Value {
     }
 
     pub(crate) fn condition(error: &RuntimeError) -> Self {
-        Self::Condition(Rc::from(error.to_string()))
+        let (message, format_control, format_arguments) = match error {
+            RuntimeError::Signaled {
+                message,
+                format_control,
+                format_arguments,
+                ..
+            } => (
+                message.clone(),
+                format_control.clone(),
+                format_arguments
+                    .iter()
+                    .cloned()
+                    .map(ReturnValue::into_value)
+                    .collect(),
+            ),
+            _ => (error.to_string(), None, Vec::new()),
+        };
+        Self::condition_from_parts(
+            error.condition_type_name(),
+            message,
+            format_control,
+            format_arguments,
+        )
+    }
+
+    pub(crate) fn condition_from_parts(
+        actual_type: String,
+        message: String,
+        format_control: Option<String>,
+        format_arguments: Vec<Value>,
+    ) -> Self {
+        Self::Condition(Rc::new(ConditionData {
+            actual_type,
+            message: Rc::from(message.as_str()),
+            format_control: format_control.map(|value| Rc::from(value.as_str())),
+            format_arguments,
+        }))
+    }
+
+    pub(crate) fn restart(name: impl AsRef<str>) -> Self {
+        Self::Restart(Rc::new(RestartData {
+            name: Rc::from(name.as_ref()),
+        }))
     }
 
     pub fn builtin(name: &'static str, function: Builtin) -> Self {
@@ -654,6 +1001,18 @@ impl Value {
         Self::Function(Rc::new(Function::Macro {
             lambda_list,
             body,
+                environment,
+        }))
+    }
+
+    pub(crate) fn modify_macro_function(
+        lambda_list: MacroLambdaList,
+        function: Form,
+        environment: Environment,
+    ) -> Self {
+        Self::Function(Rc::new(Function::ModifyMacro {
+            lambda_list,
+            function,
             environment,
         }))
     }
@@ -747,6 +1106,16 @@ impl Value {
         let Self::Instance(instance) = self else {
             return None;
         };
+        if let Some(slot) = instance
+            .class
+            .slots
+            .iter()
+            .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+        {
+            if let Some(class_value) = &slot.class_value {
+                return Some(class_value.borrow().clone());
+            }
+        }
         instance
             .slots
             .borrow()
@@ -782,6 +1151,17 @@ impl Value {
         };
         if !self.instance_is_type(class_name) {
             return false;
+        }
+        if let Some(slot) = instance
+            .class
+            .slots
+            .iter()
+            .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+        {
+            if let Some(class_value) = &slot.class_value {
+                *class_value.borrow_mut() = value;
+                return true;
+            }
         }
         let mut slots = instance.slots.borrow_mut();
         let Some((_, slot_value)) = slots
@@ -880,6 +1260,7 @@ impl Value {
             Self::Character(_) => "CHARACTER",
             Self::Stream(_) => "STREAM",
             Self::Package(_) => "PACKAGE",
+            Self::Environment(_) => "ENVIRONMENT",
             Self::Symbol(_)
             | Self::SymbolExact(_)
             | Self::UninternedSymbol(_) => "SYMBOL",
@@ -890,10 +1271,90 @@ impl Value {
             Self::HashTable { .. } => "HASH-TABLE",
             Self::Values(_) => "VALUES",
             Self::Condition(_) => "CONDITION",
+            Self::Restart(_) => "RESTART",
             Self::Structure { .. } => "STRUCTURE",
             Self::Class(_) => "CLASS",
             Self::Instance(_) => "STANDARD-OBJECT",
             Self::Function(_) => "FUNCTION",
+        }
+    }
+
+    pub(crate) fn condition_is_type(&self, expected: &str) -> bool {
+        let Self::Condition(condition) = self else {
+            return false;
+        };
+        let expected = expected.to_ascii_uppercase();
+        if condition.actual_type.eq_ignore_ascii_case(&expected) {
+            return true;
+        }
+        if expected == "CONDITION" {
+            return true;
+        }
+        match condition.actual_type.as_str() {
+            "SIMPLE-ERROR" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "SIMPLE-CONDITION"
+            ),
+            "SIMPLE-WARNING" => matches!(
+                expected.as_str(),
+                "CONDITION" | "WARNING" | "SIMPLE-CONDITION"
+            ),
+            "SIMPLE-CONDITION" => expected == "CONDITION",
+            "DIVISION-BY-ZERO" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "ARITHMETIC-ERROR"
+            ),
+            "ARITHMETIC-ERROR" => {
+                matches!(expected.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION")
+            }
+            "TYPE-ERROR"
+            | "PROGRAM-ERROR"
+            | "PACKAGE-ERROR"
+            | "READER-ERROR"
+            | "COMPILER-ERROR"
+            | "FILE-ERROR"
+            | "UNBOUND-VARIABLE" => {
+                matches!(expected.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION")
+            }
+            "CONTROL-ERROR" => matches!(expected.as_str(), "CONDITION"),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn simple_condition_format_control(&self) -> Option<&str> {
+        match self {
+            Self::Condition(condition) => condition.format_control.as_deref(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn condition_type_name(&self) -> Option<&str> {
+        match self {
+            Self::Condition(condition) => Some(condition.actual_type.as_str()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn condition_message(&self) -> Option<&str> {
+        match self {
+            Self::Condition(condition) => Some(condition.message.as_ref()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn restart_name(&self) -> Option<&str> {
+        match self {
+            Self::Restart(restart) => Some(restart.name.as_ref()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn simple_condition_format_arguments(&self) -> Option<Vec<Value>> {
+        match self {
+            Self::Condition(condition) if condition.format_control.is_some() => {
+                Some(condition.format_arguments.clone())
+            }
+            _ => None,
         }
     }
 
@@ -1013,6 +1474,7 @@ impl Value {
             ) => Rc::ptr_eq(left_entries, right_entries),
             (Self::Values(left), Self::Values(right)) => Rc::ptr_eq(left, right),
             (Self::Condition(left), Self::Condition(right)) => Rc::ptr_eq(left, right),
+            (Self::Restart(left), Self::Restart(right)) => Rc::ptr_eq(left, right),
             (
                 Self::Structure {
                     name: left_name,
@@ -1026,6 +1488,7 @@ impl Value {
                 },
             ) => Rc::ptr_eq(left_name, right_name) && Rc::ptr_eq(left_slots, right_slots),
             (Self::Class(left), Self::Class(right)) => Rc::ptr_eq(left, right),
+            (Self::Environment(left), Self::Environment(right)) => left.same(right),
             (Self::Instance(left), Self::Instance(right)) => {
                 Rc::ptr_eq(&left.class, &right.class) && Rc::ptr_eq(&left.slots, &right.slots)
             }
@@ -1078,7 +1541,8 @@ impl Value {
                         .zip(right.iter())
                         .all(|(left, right)| left.equal_value(right))
             }
-            (Self::Condition(left), Self::Condition(right)) => left == right,
+            (Self::Condition(left), Self::Condition(right)) => left.equal_value(right),
+            (Self::Restart(left), Self::Restart(right)) => Rc::ptr_eq(left, right),
             (
                 Self::Structure {
                     name: left_name,
@@ -1168,6 +1632,7 @@ impl fmt::Display for Value {
             },
             Self::Stream(stream) => write!(formatter, "#<{}>", stream.borrow().kind_name()),
             Self::Package(value) => write!(formatter, "#<PACKAGE \"{value}\">"),
+            Self::Environment(_) => formatter.write_str("#<ENVIRONMENT>"),
             Self::Symbol(value) => formatter.write_str(value),
             Self::SymbolExact(value) => write_escaped_symbol(formatter, value),
             Self::UninternedSymbol(value) => write!(formatter, "#:{value}"),
@@ -1204,7 +1669,8 @@ impl fmt::Display for Value {
                 }
                 formatter.write_str(">")
             }
-            Self::Condition(message) => write!(formatter, "#<CONDITION {message}>"),
+            Self::Condition(condition) => write!(formatter, "#<CONDITION {}>", condition.message),
+            Self::Restart(restart) => write!(formatter, "#<RESTART {}>", restart.name),
             Self::Structure { name, slots, .. } => {
                 write!(formatter, "#S({name}")?;
                 for (slot_name, value) in slots.borrow().iter() {
@@ -1246,7 +1712,9 @@ impl fmt::Display for Value {
                 Function::Closure { .. } | Function::Compiled { .. } => {
                     formatter.write_str("#<FUNCTION>")
                 }
-                Function::Macro { .. } => formatter.write_str("#<MACRO>"),
+                Function::Macro { .. } | Function::ModifyMacro { .. } => {
+                    formatter.write_str("#<MACRO>")
+                }
             },
         }
     }

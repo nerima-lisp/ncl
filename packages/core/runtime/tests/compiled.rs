@@ -278,6 +278,45 @@ fn compiled_evaluates_typecase_and_etypecase_with_typep() {
 }
 
 #[test]
+fn compiled_rejects_invalid_with_stream_binding_forms() {
+    for (source, message) in [
+        (
+            "(with-open-file 1 42)",
+            "with-open-file binding must be a list",
+        ),
+        (
+            "(with-open-file (1 \"file\") 42)",
+            "with-open-file stream variable must be a symbol",
+        ),
+        (
+            "(with-output-to-string 1 42)",
+            "with-output-to-string binding must be a list",
+        ),
+        (
+            "(with-output-to-string (1) 42)",
+            "with-output-to-string stream variable must be a symbol",
+        ),
+        (
+            "(with-input-from-string 1 42)",
+            "with-input-from-string binding must be a list",
+        ),
+        (
+            "(with-input-from-string (1 \"abc\") 42)",
+            "with-input-from-string stream variable must be a symbol",
+        ),
+    ] {
+        let error = Runtime::new().eval_compiled_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm {
+                message: ref actual_message,
+                ..
+            } if actual_message == message
+        ));
+    }
+}
+
+#[test]
 fn compiled_special_variables_are_dynamically_bound_and_accessible_by_symbol_primitives() {
     assert_eq!(
         evaluate(
@@ -3732,6 +3771,22 @@ fn compiled_evaluates_destructuring_bind_lambda_list_parameters() {
         )
         .to_string(),
         "(3 (4 5) 2)",
+    );
+}
+
+#[test]
+fn compiled_destructuring_bind_binds_environment_parameter() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (macrolet ((local () '(quote local)))
+                 (destructuring-bind (&environment environment) nil
+                   (list
+                     (macroexpand-1 '(local) environment)
+                     (macroexpand '(local) environment)))))",
+        )
+        .to_string(),
+        "((QUOTE LOCAL) (QUOTE LOCAL))"
     );
 }
 

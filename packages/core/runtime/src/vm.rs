@@ -1351,6 +1351,13 @@ fn destructure_specification(
                     span,
                 ));
             };
+            if let Some(environment_name) = &lambda_list.environment {
+                runtime.define_in(
+                    environment_name,
+                    Value::environment(environment.clone()),
+                    environment,
+                );
+            }
             if let Some(whole) = &lambda_list.whole {
                 runtime.define_in(whole, value.clone(), environment);
             }

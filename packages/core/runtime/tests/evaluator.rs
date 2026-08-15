@@ -1,4 +1,4 @@
-use ncl_runtime::{Runtime, Value};
+use ncl_runtime::{Runtime, RuntimeError, Value};
 
 fn evaluate(source: &str) -> Value {
     Runtime::new().eval_source(source).unwrap().pop().unwrap()
@@ -246,6 +246,45 @@ fn evaluates_define_symbol_macro_and_generalized_places() {
         .to_string(),
         "(1 7 (7))"
     );
+}
+
+#[test]
+fn rejects_invalid_with_stream_binding_forms() {
+    for (source, message) in [
+        (
+            "(with-open-file 1 42)",
+            "with-open-file binding must be a list",
+        ),
+        (
+            "(with-open-file (1 \"file\") 42)",
+            "with-open-file stream variable must be a symbol",
+        ),
+        (
+            "(with-output-to-string 1 42)",
+            "with-output-to-string binding must be a list",
+        ),
+        (
+            "(with-output-to-string (1) 42)",
+            "with-output-to-string stream variable must be a symbol",
+        ),
+        (
+            "(with-input-from-string 1 42)",
+            "with-input-from-string binding must be a list",
+        ),
+        (
+            "(with-input-from-string (1 \"abc\") 42)",
+            "with-input-from-string stream variable must be a symbol",
+        ),
+    ] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm {
+                message: ref actual_message,
+                ..
+            } if actual_message == message
+        ));
+    }
 }
 
 #[test]
@@ -4345,6 +4384,22 @@ fn evaluates_destructuring_bind_lambda_list_parameters() {
         .to_string(),
         "(3 (4 5) 2)",
     );
+}
+
+#[test]
+fn destructuring_bind_binds_environment_parameter() {
+    let values = Runtime::new()
+        .eval_source(
+            "(macrolet ((local () '(quote local)))
+               (destructuring-bind (&environment environment) nil
+                 (list
+                   (macroexpand-1 '(local) environment)
+                   (macroexpand '(local) environment))))",
+        )
+        .unwrap();
+
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "((QUOTE LOCAL) (QUOTE LOCAL))");
 }
 
 #[test]

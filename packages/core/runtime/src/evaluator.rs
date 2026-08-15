@@ -976,6 +976,14 @@ impl Runtime {
             let expanded = self.expand_with_open_file(form)?;
             return self.prepare_compiled_form(&expanded, environment);
         }
+        if is_operator_form(form, "WITH-OUTPUT-TO-STRING") {
+            let expanded = self.expand_with_output_to_string(form)?;
+            return self.prepare_compiled_form(&expanded, environment);
+        }
+        if is_operator_form(form, "WITH-INPUT-FROM-STRING") {
+            let expanded = self.expand_with_input_from_string(form)?;
+            return self.prepare_compiled_form(&expanded, environment);
+        }
 
         if is_operator_form(form, "DEFMACRO")
             || is_operator_form(form, "DEFINE-MODIFY-MACRO")
@@ -1031,7 +1039,7 @@ impl Runtime {
             if !names.insert(name.clone()) {
                 return Err(self.invalid("local macro names must be unique", parts[0].span));
             }
-            let lambda_list = self.macro_parameters(&parts[1])?;
+            let lambda_list = self.macro_parameters(&parts[1], false)?;
             let function = Value::macro_function(
                 lambda_list,
                 parts[2..].to_vec(),
@@ -1208,7 +1216,12 @@ impl Runtime {
                 if prepared.len() > 2 {
                     prepared[2] = self.prepare_compiled_form(&prepared[2], environment)?;
                 }
-                self.prepare_tail(&mut prepared, 3, environment)?;
+                let local = if prepared.len() > 1 {
+                    self.prepare_compiled_destructuring_environment(&prepared[1], environment)?
+                } else {
+                    environment.child()
+                };
+                self.prepare_tail(&mut prepared, 3, &local)?;
             }
             "THROW" => {
                 self.prepare_tail(&mut prepared, 1, environment)?;
@@ -1448,6 +1461,73 @@ impl Runtime {
             define(&parameter.name, parameter.name_escaped);
         }
         Ok(local)
+    }
+
+    fn prepare_compiled_destructuring_environment(
+        &self,
+        form: &Form,
+        environment: &Environment,
+    ) -> Result<Environment, RuntimeError> {
+        let local = environment.child();
+        match &form.kind {
+            FormKind::List(_) => {
+                let lambda_list = self.macro_parameters(form, true)?;
+
+                if let Some(name) = &lambda_list.whole {
+                    local.define(name, Value::Nil);
+                }
+                if let Some(name) = &lambda_list.environment {
+                    local.define(name, Value::environment(local.clone()));
+                }
+                for pattern in &lambda_list.required {
+                    Self::define_compiled_macro_pattern(pattern, &local);
+                }
+                for parameter in &lambda_list.optional {
+                    Self::define_compiled_macro_pattern(&parameter.pattern, &local);
+                    if let Some(name) = &parameter.supplied_p {
+                        local.define(name, Value::Nil);
+                    }
+                }
+                if let Some(name) = &lambda_list.rest {
+                    local.define(name, Value::Nil);
+                }
+                for parameter in &lambda_list.keywords {
+                    Self::define_compiled_macro_pattern(&parameter.pattern, &local);
+                    if let Some(name) = &parameter.supplied_p {
+                        local.define(name, Value::Nil);
+                    }
+                }
+                for parameter in &lambda_list.auxiliary {
+                    local.define(&parameter.name, Value::Nil);
+                }
+            }
+            _ => {
+                let mut seen = HashSet::new();
+                let pattern = self.macro_pattern(form, &mut seen, true)?;
+                Self::define_compiled_macro_pattern(&pattern, &local);
+            }
+        }
+
+        Ok(local)
+    }
+
+    fn define_compiled_macro_pattern(pattern: &MacroPattern, environment: &Environment) {
+        match pattern {
+            MacroPattern::Name(name) => {
+                environment.define(name, Value::Nil);
+            }
+            MacroPattern::List(patterns) => {
+                for pattern in patterns {
+                    Self::define_compiled_macro_pattern(pattern, environment);
+                }
+            }
+            MacroPattern::Dotted { items, tail } => {
+                for pattern in items {
+                    Self::define_compiled_macro_pattern(pattern, environment);
+                }
+                Self::define_compiled_macro_pattern(tail, environment);
+            }
+        }
     }
 
     fn prepare_compiled_let(
@@ -2060,6 +2140,14 @@ impl Runtime {
                 }
                 "WITH-OPEN-FILE" => {
                     let expanded = self.expand_with_open_file(form)?;
+                    return self.eval_expanded_values(&expanded, environment);
+                }
+                "WITH-OUTPUT-TO-STRING" => {
+                    let expanded = self.expand_with_output_to_string(form)?;
+                    return self.eval_expanded_values(&expanded, environment);
+                }
+                "WITH-INPUT-FROM-STRING" => {
+                    let expanded = self.expand_with_input_from_string(form)?;
                     return self.eval_expanded_values(&expanded, environment);
                 }
                 "RESTART-CASE" => return self.special_restart_case(items, environment),
@@ -2776,6 +2864,269 @@ impl Runtime {
         ))
     }
 
+    fn expand_with_output_to_string(&self, form: &Form) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity(
+                "with-output-to-string",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let binding_form = &items[1];
+        let FormKind::List(binding) = &binding_form.kind else {
+            return Err(self.invalid(
+                "with-output-to-string binding must be a list",
+                binding_form.span,
+            ));
+        };
+        if !(1..=2).contains(&binding.len()) {
+            return Err(self.invalid(
+                "with-output-to-string binding needs a stream variable and optional string place",
+                binding_form.span,
+            ));
+        }
+        self.variable_name_info(
+            &binding[0],
+            "with-output-to-string stream variable must be a symbol",
+        )?;
+
+        let output_form = Form::list(
+            vec![Form::atom("MAKE-STRING-OUTPUT-STREAM", binding_form.span)],
+            binding_form.span,
+        );
+        let generated_binding = Form::list(
+            vec![Form::list(
+                vec![binding[0].clone(), output_form],
+                binding_form.span,
+            )],
+            binding_form.span,
+        );
+        let body = if items.len() > 2 {
+            let mut body_items = Vec::with_capacity(items.len() - 1);
+            body_items.push(Form::atom("PROGN", form.span));
+            body_items.extend(items[2..].iter().cloned());
+            Form::list(body_items, form.span)
+        } else {
+            Form::atom("NIL", form.span)
+        };
+        let output_string_form = Form::list(
+            vec![
+                Form::atom("GET-OUTPUT-STREAM-STRING", form.span),
+                binding[0].clone(),
+            ],
+            form.span,
+        );
+        let result_form = if let Some(string_place) = binding.get(1) {
+            let append_form = Form::list(
+                vec![
+                    Form::atom("__NCL_APPEND_OUTPUT_TO_STRING", form.span),
+                    string_place.clone(),
+                    output_string_form,
+                ],
+                form.span,
+            );
+            let setf_form = Form::list(
+                vec![
+                    Form::atom("SETF", form.span),
+                    string_place.clone(),
+                    append_form,
+                ],
+                form.span,
+            );
+            Form::list(
+                vec![
+                    Form::atom("MULTIPLE-VALUE-PROG1", form.span),
+                    body,
+                    setf_form,
+                ],
+                form.span,
+            )
+        } else {
+            Form::list(
+                vec![Form::atom("PROGN", form.span), body, output_string_form],
+                form.span,
+            )
+        };
+        let close_form = Form::list(
+            vec![Form::atom("CLOSE", form.span), binding[0].clone()],
+            form.span,
+        );
+        let protected_form = Form::list(
+            vec![
+                Form::atom("UNWIND-PROTECT", form.span),
+                result_form,
+                close_form,
+            ],
+            form.span,
+        );
+        Ok(Form::list(
+            vec![
+                Form::atom("LET", form.span),
+                generated_binding,
+                protected_form,
+            ],
+            form.span,
+        ))
+    }
+
+    fn expand_with_input_from_string(&self, form: &Form) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity(
+                "with-input-from-string",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let binding_form = &items[1];
+        let FormKind::List(binding) = &binding_form.kind else {
+            return Err(self.invalid(
+                "with-input-from-string binding must be a list",
+                binding_form.span,
+            ));
+        };
+        if binding.len() < 2 {
+            return Err(self.invalid(
+                "with-input-from-string binding needs a stream variable and string",
+                binding_form.span,
+            ));
+        }
+        self.variable_name_info(
+            &binding[0],
+            "with-input-from-string stream variable must be a symbol",
+        )?;
+
+        let options = &binding[2..];
+        if options.len() % 2 != 0 {
+            return Err(self.invalid(
+                "with-input-from-string options need keyword/value pairs",
+                binding_form.span,
+            ));
+        }
+        let mut start = None;
+        let mut end = None;
+        let mut index = None;
+        for pair in options.chunks_exact(2) {
+            let Some(keyword) = macro_keyword_name(&pair[0]) else {
+                return Err(self.invalid(
+                    "with-input-from-string option must be a keyword",
+                    pair[0].span,
+                ));
+            };
+            match keyword.as_str() {
+                "START" => {
+                    if start.is_some() {
+                        return Err(self.invalid(
+                            "with-input-from-string :start may appear only once",
+                            pair[0].span,
+                        ));
+                    }
+                    start = Some(pair[1].clone());
+                }
+                "END" => {
+                    if end.is_some() {
+                        return Err(self.invalid(
+                            "with-input-from-string :end may appear only once",
+                            pair[0].span,
+                        ));
+                    }
+                    end = Some(pair[1].clone());
+                }
+                "INDEX" => {
+                    if index.is_some() {
+                        return Err(self.invalid(
+                            "with-input-from-string :index may appear only once",
+                            pair[0].span,
+                        ));
+                    }
+                    index = Some(pair[1].clone());
+                }
+                _ => {
+                    return Err(self.invalid(
+                        "with-input-from-string option is not supported",
+                        pair[0].span,
+                    ));
+                }
+            }
+        }
+
+        let mut input_items = Vec::with_capacity(4);
+        input_items.push(Form::atom("MAKE-STRING-INPUT-STREAM", binding_form.span));
+        input_items.push(binding[1].clone());
+        match (start, end) {
+            (None, None) => {}
+            (Some(start), None) => input_items.push(start),
+            (None, Some(end)) => {
+                input_items.push(Form::atom("0", binding_form.span));
+                input_items.push(end);
+            }
+            (Some(start), Some(end)) => {
+                input_items.push(start);
+                input_items.push(end);
+            }
+        }
+        let input_form = Form::list(input_items, binding_form.span);
+        let generated_binding = Form::list(
+            vec![Form::list(
+                vec![binding[0].clone(), input_form],
+                binding_form.span,
+            )],
+            binding_form.span,
+        );
+        let body = if items.len() > 2 {
+            let mut body_items = Vec::with_capacity(items.len() - 1);
+            body_items.push(Form::atom("PROGN", form.span));
+            body_items.extend(items[2..].iter().cloned());
+            Form::list(body_items, form.span)
+        } else {
+            Form::atom("NIL", form.span)
+        };
+        let body = if let Some(index) = index {
+            let stream_position_form = Form::list(
+                vec![
+                    Form::atom("%STREAM-INPUT-POSITION", form.span),
+                    binding[0].clone(),
+                ],
+                form.span,
+            );
+            let setf_form = Form::list(
+                vec![Form::atom("SETF", form.span), index, stream_position_form],
+                form.span,
+            );
+            Form::list(
+                vec![
+                    Form::atom("MULTIPLE-VALUE-PROG1", form.span),
+                    body,
+                    setf_form,
+                ],
+                form.span,
+            )
+        } else {
+            body
+        };
+        let close_form = Form::list(
+            vec![Form::atom("CLOSE", form.span), binding[0].clone()],
+            form.span,
+        );
+        let protected_form = Form::list(
+            vec![Form::atom("UNWIND-PROTECT", form.span), body, close_form],
+            form.span,
+        );
+        Ok(Form::list(
+            vec![
+                Form::atom("LET", form.span),
+                generated_binding,
+                protected_form,
+            ],
+            form.span,
+        ))
+    }
+
     fn bind_macro_pattern(
         &self,
         pattern: &MacroPattern,
@@ -2837,6 +3188,12 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Result<(), RuntimeError> {
+        if let Some(environment_name) = &lambda_list.environment {
+            environment.define(environment_name, Value::environment(environment.clone()));
+        }
+        if let Some(whole) = &lambda_list.whole {
+            environment.define(whole, value.clone());
+        }
         let Some(arguments) = value.list_items() else {
             return Err(self.invalid(
                 "destructuring-bind value must be a proper list",
@@ -4333,29 +4690,18 @@ impl Runtime {
             ));
         }
         let lambda_list = match &items[1].kind {
-            FormKind::List(_) => {
-                let lambda_list = self.macro_parameters(&items[1])?;
-                if lambda_list.environment.is_some() {
-                    return Err(self.invalid(
-                        "&environment is only valid in macro lambda lists",
-                        items[1].span,
-                    ));
-                }
-                Some(lambda_list)
-            }
+            FormKind::List(_) => Some(self.macro_parameters(&items[1], true)?),
             _ => None,
         };
         let mut seen = HashSet::new();
-        let pattern = lambda_list.is_none().then(|| self.macro_pattern(&items[1], &mut seen));
+        let pattern =
+            lambda_list
+                .is_none()
+                .then(|| self.macro_pattern(&items[1], &mut seen, true));
         let pattern = pattern.transpose()?;
         let local = environment.child();
         let _dynamic_guard = self.dynamic_guard();
         let value = self.eval_in(&items[2], environment)?.primary_value();
-        if let Some(lambda_list) = &lambda_list {
-            if let Some(whole) = &lambda_list.whole {
-                local.define(whole, value.clone());
-            }
-        }
         if let Some(lambda_list) = lambda_list {
             self.bind_destructuring_lambda_list(&lambda_list, value, &local, items[1].span)?;
         } else if let Some(pattern) = pattern {
@@ -4499,7 +4845,7 @@ impl Runtime {
             if !names.insert(name.clone()) {
                 return Err(self.invalid("local macro names must be unique", parts[0].span));
             }
-            let lambda_list = self.macro_parameters(&parts[1])?;
+            let lambda_list = self.macro_parameters(&parts[1], false)?;
             let function = Value::macro_function(
                 lambda_list,
                 parts[2..].to_vec(),
@@ -4966,7 +5312,7 @@ impl Runtime {
                 items[1].span,
             ));
         };
-        let lambda_list = self.macro_parameters(&items[2])?;
+        let lambda_list = self.macro_parameters(&items[2], false)?;
         let function =
             Value::macro_function(lambda_list, items[3..].to_vec(), environment.clone());
         let (resolved_name, escaped) = resolved_symbol(name);
@@ -5016,7 +5362,7 @@ impl Runtime {
         let Some(name) = atom_name(&items[1]) else {
             return Err(self.invalid("defmacro name must be a symbol", items[1].span));
         };
-        let lambda_list = self.macro_parameters(&items[2])?;
+        let lambda_list = self.macro_parameters(&items[2], false)?;
         let function = Value::macro_function(lambda_list, items[3..].to_vec(), environment.clone());
         let (resolved_name, escaped) = resolved_symbol(name);
         if escaped {
@@ -5048,7 +5394,7 @@ impl Runtime {
                 items[1].span,
             ));
         };
-        let mut lambda_list = self.macro_parameters(&items[2])?;
+        let mut lambda_list = self.macro_parameters(&items[2], false)?;
         lambda_list
             .required
             .insert(0, MacroPattern::Name("NCL-MODIFY-MACRO-PLACE".to_owned()));
@@ -12675,11 +13021,25 @@ impl Runtime {
         })
     }
 
-    fn macro_parameters(&self, form: &Form) -> Result<MacroLambdaList, RuntimeError> {
+    fn macro_parameters(
+        &self,
+        form: &Form,
+        destructuring: bool,
+    ) -> Result<MacroLambdaList, RuntimeError> {
         let FormKind::List(parameters) = &form.kind else {
             return Err(self.invalid("macro parameters must be a list", form.span));
         };
+        let mut seen = HashSet::new();
+        self.macro_parameters_with_seen(parameters, form.span, destructuring, &mut seen)
+    }
 
+    fn macro_parameters_with_seen(
+        &self,
+        parameters: &[Form],
+        _span: Span,
+        destructuring: bool,
+        seen: &mut HashSet<String>,
+    ) -> Result<MacroLambdaList, RuntimeError> {
         let mut lambda_list = MacroLambdaList {
             whole: None,
             environment: None,
@@ -12691,7 +13051,6 @@ impl Runtime {
             allow_other_keys: false,
             auxiliary: Vec::new(),
         };
-        let mut seen = HashSet::new();
         let mut section = MacroLambdaListSection::Required;
         let mut index = 0;
 
@@ -12710,8 +13069,11 @@ impl Runtime {
                                 parameter.span,
                             ));
                         }
-                        lambda_list.whole =
-                            Some(self.macro_binding_name(&parameters[index + 1], &mut seen)?);
+                        lambda_list.whole = Some(self.macro_binding_name(
+                            &parameters[index + 1],
+                            seen,
+                            destructuring,
+                        )?);
                         index += 2;
                     }
                     "&OPTIONAL" => {
@@ -12739,8 +13101,11 @@ impl Runtime {
                                 parameter.span,
                             ));
                         }
-                        lambda_list.rest =
-                            Some(self.macro_binding_name(&parameters[index + 1], &mut seen)?);
+                        lambda_list.rest = Some(self.macro_binding_name(
+                            &parameters[index + 1],
+                            seen,
+                            destructuring,
+                        )?);
                         section = MacroLambdaListSection::Rest;
                         index += 2;
                     }
@@ -12787,8 +13152,11 @@ impl Runtime {
                                 parameter.span,
                             ));
                         }
-                        lambda_list.environment =
-                            Some(self.macro_binding_name(&parameters[index + 1], &mut seen)?);
+                        lambda_list.environment = Some(self.macro_binding_name(
+                            &parameters[index + 1],
+                            seen,
+                            destructuring,
+                        )?);
                         index += 2;
                     }
                     _ if marker.starts_with('&') => {
@@ -12805,13 +13173,19 @@ impl Runtime {
                         }
                         match section {
                             MacroLambdaListSection::Required => {
-                                lambda_list
-                                    .required
-                                    .push(self.macro_pattern(parameter, &mut seen)?);
+                                lambda_list.required.push(self.macro_pattern(
+                                    parameter,
+                                    seen,
+                                    destructuring,
+                                )?);
                             }
                             MacroLambdaListSection::Optional => {
                                 lambda_list.optional.push(
-                                    self.parse_macro_optional_parameter(parameter, &mut seen)?,
+                                    self.parse_macro_optional_parameter(
+                                        parameter,
+                                        seen,
+                                        destructuring,
+                                    )?,
                                 );
                             }
                             MacroLambdaListSection::Keyword => {
@@ -12821,8 +13195,11 @@ impl Runtime {
                                         parameter.span,
                                     ));
                                 }
-                                let specification =
-                                    self.parse_macro_keyword_parameter(parameter, &mut seen)?;
+                                let specification = self.parse_macro_keyword_parameter(
+                                    parameter,
+                                    seen,
+                                    destructuring,
+                                )?;
                                 if lambda_list
                                     .keywords
                                     .iter()
@@ -12837,7 +13214,11 @@ impl Runtime {
                             }
                             MacroLambdaListSection::Auxiliary => {
                                 lambda_list.auxiliary.push(
-                                    self.parse_macro_auxiliary_parameter(parameter, &mut seen)?,
+                                    self.parse_macro_auxiliary_parameter(
+                                        parameter,
+                                        seen,
+                                        destructuring,
+                                    )?,
                                 );
                             }
                             MacroLambdaListSection::Rest => unreachable!(),
@@ -12858,12 +13239,16 @@ impl Runtime {
                 MacroLambdaListSection::Required => {
                     lambda_list
                         .required
-                        .push(self.macro_pattern(parameter, &mut seen)?);
+                        .push(self.macro_pattern(parameter, seen, destructuring)?);
                 }
                 MacroLambdaListSection::Optional => {
                     lambda_list
                         .optional
-                        .push(self.parse_macro_optional_parameter(parameter, &mut seen)?);
+                        .push(self.parse_macro_optional_parameter(
+                            parameter,
+                            seen,
+                            destructuring,
+                        )?);
                 }
                 MacroLambdaListSection::Keyword => {
                     if lambda_list.allow_other_keys {
@@ -12872,7 +13257,8 @@ impl Runtime {
                             parameter.span,
                         ));
                     }
-                    let specification = self.parse_macro_keyword_parameter(parameter, &mut seen)?;
+                    let specification =
+                        self.parse_macro_keyword_parameter(parameter, seen, destructuring)?;
                     if lambda_list
                         .keywords
                         .iter()
@@ -12887,7 +13273,11 @@ impl Runtime {
                 MacroLambdaListSection::Auxiliary => {
                     lambda_list
                         .auxiliary
-                        .push(self.parse_macro_auxiliary_parameter(parameter, &mut seen)?);
+                        .push(self.parse_macro_auxiliary_parameter(
+                            parameter,
+                            seen,
+                            destructuring,
+                        )?);
                 }
                 MacroLambdaListSection::Rest => unreachable!(),
             }
@@ -12901,9 +13291,17 @@ impl Runtime {
         &self,
         form: &Form,
         seen: &mut HashSet<String>,
+        destructuring: bool,
     ) -> Result<String, RuntimeError> {
         let Some(name) = atom_name(form) else {
-            return Err(self.invalid("macro parameter must be a symbol", form.span));
+            return Err(self.invalid(
+                if destructuring {
+                    "destructuring parameter name must be a symbol"
+                } else {
+                    "macro parameter must be a symbol"
+                },
+                form.span,
+            ));
         };
         let normalized = normalize_name(name);
         if normalized.is_empty()
@@ -12923,21 +13321,26 @@ impl Runtime {
         &self,
         form: &Form,
         seen: &mut HashSet<String>,
+        destructuring: bool,
     ) -> Result<MacroPattern, RuntimeError> {
         match &form.kind {
-            FormKind::Atom(_) => Ok(MacroPattern::Name(self.macro_binding_name(form, seen)?)),
+            FormKind::Atom(_) => Ok(MacroPattern::Name(self.macro_binding_name(
+                form,
+                seen,
+                destructuring,
+            )?)),
             FormKind::List(items) => Ok(MacroPattern::List(
                 items
                     .iter()
-                    .map(|item| self.macro_pattern(item, seen))
+                    .map(|item| self.macro_pattern(item, seen, destructuring))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
             FormKind::DottedList { items, tail } => Ok(MacroPattern::Dotted {
                 items: items
                     .iter()
-                    .map(|item| self.macro_pattern(item, seen))
+                    .map(|item| self.macro_pattern(item, seen, destructuring))
                     .collect::<Result<Vec<_>, _>>()?,
-                tail: Box::new(self.macro_pattern(tail, seen)?),
+                tail: Box::new(self.macro_pattern(tail, seen, destructuring)?),
             }),
             _ => Err(self.invalid(
                 "macro destructuring pattern must be a symbol or list",
@@ -12950,20 +13353,29 @@ impl Runtime {
         &self,
         form: &Form,
         seen: &mut HashSet<String>,
+        destructuring: bool,
     ) -> Result<MacroOptionalParameter, RuntimeError> {
         let nil = || Form::atom("NIL", form.span);
         match &form.kind {
             FormKind::Atom(_) => Ok(MacroOptionalParameter {
-                pattern: self.macro_pattern(form, seen)?,
+                pattern: self.macro_pattern(form, seen, destructuring)?,
                 init_form: nil(),
                 supplied_p: None,
             }),
             FormKind::List(items) if (1..=3).contains(&items.len()) => {
-                let pattern = self.macro_pattern(&items[0], seen)?;
+                let pattern = self.macro_pattern(&items[0], seen, destructuring)?;
                 let init_form = items.get(1).cloned().unwrap_or_else(nil);
                 let supplied_p = items
                     .get(2)
-                    .map(|item| self.macro_binding_name(item, seen))
+                    .map(|item| {
+                        self.macro_binding_name(item, seen, destructuring)
+                            .map_err(|_| {
+                                self.invalid(
+                                    "destructuring supplied-p name must be a symbol",
+                                    item.span,
+                                )
+                            })
+                    })
                     .transpose()?;
                 Ok(MacroOptionalParameter {
                     pattern,
@@ -12986,11 +13398,12 @@ impl Runtime {
         &self,
         form: &Form,
         seen: &mut HashSet<String>,
+        destructuring: bool,
     ) -> Result<MacroKeywordParameter, RuntimeError> {
         let nil = || Form::atom("NIL", form.span);
         let (keyword_name, pattern, trailing_start) = match &form.kind {
             FormKind::Atom(_) => {
-                let name = self.macro_binding_name(form, seen)?;
+                let name = self.macro_binding_name(form, seen, destructuring)?;
                 let keyword_name = normalize_name(&name);
                 (keyword_name, MacroPattern::Name(name), 0)
             }
@@ -13004,11 +13417,16 @@ impl Runtime {
                     }
                     let Some(keyword_name) = macro_keyword_name(&key_specification[0]) else {
                         return Err(self.invalid(
-                            "macro keyword designator must start with a keyword",
+                            if destructuring {
+                                "destructuring keyword designator must be a symbol"
+                            } else {
+                                "macro keyword designator must start with a keyword"
+                            },
                             key_specification[0].span,
                         ));
                     };
-                    let pattern = self.macro_pattern(&key_specification[1], seen)?;
+                    let pattern =
+                        self.macro_pattern(&key_specification[1], seen, destructuring)?;
                     (keyword_name, pattern, 1)
                 } else if atom_name(&items[0]).is_some_and(|name| name.starts_with(':')) {
                     let Some(keyword_name) = macro_keyword_name(&items[0]) else {
@@ -13022,10 +13440,10 @@ impl Runtime {
                             self.invalid("macro keyword parameter needs a variable", form.span)
                         );
                     }
-                    let pattern = self.macro_pattern(&items[1], seen)?;
+                    let pattern = self.macro_pattern(&items[1], seen, destructuring)?;
                     (keyword_name, pattern, 2)
                 } else {
-                    let pattern = self.macro_pattern(&items[0], seen)?;
+                    let pattern = self.macro_pattern(&items[0], seen, destructuring)?;
                     let MacroPattern::Name(name) = &pattern else {
                         return Err(self.invalid(
                             "macro keyword parameter must have a variable name",
@@ -13058,7 +13476,7 @@ impl Runtime {
                 items.get(trailing_start).cloned().unwrap_or_else(nil),
                 items
                     .get(trailing_start + 1)
-                    .map(|item| self.macro_binding_name(item, seen))
+                    .map(|item| self.macro_binding_name(item, seen, destructuring))
                     .transpose()?,
             ),
             _ => unreachable!(),
@@ -13075,15 +13493,16 @@ impl Runtime {
         &self,
         form: &Form,
         seen: &mut HashSet<String>,
+        destructuring: bool,
     ) -> Result<MacroAuxiliaryParameter, RuntimeError> {
         match &form.kind {
             FormKind::Atom(_) => Ok(MacroAuxiliaryParameter {
-                name: self.macro_binding_name(form, seen)?,
+                name: self.macro_binding_name(form, seen, destructuring)?,
                 init_form: Form::atom("NIL", form.span),
             }),
             FormKind::List(items) if (1..=2).contains(&items.len()) => {
                 Ok(MacroAuxiliaryParameter {
-                    name: self.macro_binding_name(&items[0], seen)?,
+                    name: self.macro_binding_name(&items[0], seen, destructuring)?,
                     init_form: items
                         .get(1)
                         .cloned()
@@ -13379,6 +13798,10 @@ fn is_macro_keyword_form(form: &Form) -> bool {
     macro_keyword_name(form).is_some()
 }
 
+fn is_macro_lambda_marker(form: &Form) -> bool {
+    atom_name(form).is_some_and(|name| normalize_name(name).starts_with('&'))
+}
+
 fn macro_keyword_name(form: &Form) -> Option<String> {
     let name = atom_name(form)?;
     let keyword = name.strip_prefix(':')?;
@@ -13520,6 +13943,8 @@ fn is_special_form(form: &Form) -> bool {
             | "THROW"
             | "WITH-SIMPLE-RESTART"
             | "WITH-OPEN-FILE"
+            | "WITH-OUTPUT-TO-STRING"
+            | "WITH-INPUT-FROM-STRING"
             | "RESTART-CASE"
             | "UNWIND-PROTECT"
             | "BLOCK"

@@ -595,6 +595,36 @@ fn run_code_from(
                 stack.push(Value::values(values));
                 program_counter += 1;
             }
+            Instruction::NthValue(index_span) => {
+                let values = pop_value(&mut stack, span, "nth-value values")?;
+                let index = pop_value(&mut stack, span, "nth-value index")?.primary_value();
+                let index = match index {
+                    Value::Integer(index) if index >= 0 => {
+                        usize::try_from(index).map_err(|_| RuntimeError::NumericOverflow)?
+                    }
+                    Value::Integer(_) => {
+                        return Err(RuntimeError::InvalidForm {
+                            message: "nth-value index must be non-negative".to_string(),
+                            span: Some(*index_span),
+                        });
+                    }
+                    value => {
+                        return Err(RuntimeError::Type {
+                            expected: "INTEGER".to_string(),
+                            actual: value.type_name().to_string(),
+                            span: Some(*index_span),
+                        });
+                    }
+                };
+                stack.push(
+                    values
+                        .multiple_values()
+                        .get(index)
+                        .cloned()
+                        .unwrap_or(Value::Nil),
+                );
+                program_counter += 1;
+            }
             Instruction::MultipleValueList => {
                 let value = pop_value(&mut stack, span, "multiple-value-list")?;
                 stack.push(Value::list(value.multiple_values()));

@@ -28,9 +28,10 @@ cargo run -- --file path/to/program.lisp
 
 Multiple <code>--eval</code> options run in the same runtime, so definitions
 from an earlier form are available to later forms. Use <code>--quiet</code> to
-suppress value output and REPL prompts. <code>--compile</code> reads and
-macro-expands the input, builds bytecode artifacts, and reports their sizes
-without executing runtime forms. Use <code>--compiled</code> when the input
+suppress value output and REPL prompts. <code>--compile</code> reads the input,
+performs supported compile-time preparation such as macro and package
+processing, builds bytecode artifacts, and reports their sizes without
+executing ordinary runtime forms. Use <code>--compiled</code> when the input
 should also execute through the bytecode VM.
 
 ## Install

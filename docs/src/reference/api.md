@@ -13,7 +13,7 @@ Common Lisp specification.
 | <code>--file</code>, <code>-f</code> <em>path</em> | Read and evaluate a Lisp file. |
 | <code>--repl</code> | Start the interactive REPL. |
 | <code>--compiled</code> | Use the stack-bytecode compiler and VM for evaluation. |
-| <code>--compile</code> | Compile input and report bytecode artifact sizes without executing it. Requires <code>--eval</code> or <code>--file</code>. |
+| <code>--compile</code> | Compile input and report bytecode artifact sizes without executing ordinary runtime forms. Supported compile-time preparation may still run. Requires <code>--eval</code> or <code>--file</code>. |
 | <code>--quiet</code>, <code>-q</code> | Suppress normal value output and REPL prompts. |
 | <code>--help</code>, <code>-h</code> | Print usage information. |
 | <code>--version</code>, <code>-V</code> | Print the package version. |
@@ -277,8 +277,10 @@ workspace.
 
 <code>Runtime::compile</code> compiles one parsed <code>Form</code> and
 <code>Runtime::compile_source</code> reads and compiles all forms in a source
-string. Both return <code>CompiledForm</code> values without executing runtime
-forms. A compiled form exposes its macro-expanded form through
+string. Both return <code>CompiledForm</code> values without executing ordinary
+runtime forms. Compilation may evaluate supported compile-time forms, so
+macro and package definitions can affect later forms on the same runtime. A
+compiled form exposes its macro-expanded form through
 <code>form()</code>, its bytecode program through <code>program()</code>, and
 summary metrics through <code>function_count()</code> and
 <code>instruction_count()</code>.

@@ -40,9 +40,12 @@ same language forms to stack bytecode, and the VM executes that bytecode.
 
 The compiled path shares the runtime's value and environment model. Before a
 form reaches the compiler, the runtime resolves package names and performs the
-supported macro-expansion steps. The resulting <code>Program</code> can either
-be returned as a <code>CompiledForm</code> for inspection/embedding or passed
-to the VM for execution.
+supported macro-expansion and compile-time preparation steps. Those steps may
+evaluate forms such as macro or package definitions and
+<code>load-time-value</code>; ordinary runtime forms are not executed by
+<code>Runtime::compile</code>. The resulting <code>Program</code> can either be
+returned as a <code>CompiledForm</code> for inspection/embedding or passed to
+the VM for execution.
 
 ~~~text
 source
@@ -53,7 +56,8 @@ source
   -> optional VM execution
 ~~~
 
-The <code>--compile</code> CLI mode stops at the compiled artifact. The
+The <code>--compile</code> CLI mode stops at the compiled artifact after
+compile-time preparation; it does not execute ordinary runtime forms. The
 <code>--compiled</code> execution path compiles and executes forms in order,
 which preserves definitions and package operations across a source stream.
 This is a second execution route for the implemented surface, not a claim of
@@ -63,6 +67,9 @@ compatibility with an external Lisp compiler.
 
 The root crate exposes the common runtime and syntax types needed by an
 embedding application, including <code>CompiledForm</code> for the public
-compilation boundary. The CLI is a consumer of that API. Lower-level compiler
-instructions and runtime helpers remain workspace implementation details unless
-they are explicitly re-exported.
+compilation boundary. Its <code>program()</code> accessor permits inspection or
+embedding of the current in-memory bytecode representation, but it does not
+promise a stable instruction set or serialized-artifact format. The CLI is a
+consumer of that API. Lower-level compiler instructions and runtime helpers
+remain workspace implementation details unless they are explicitly
+re-exported.

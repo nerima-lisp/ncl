@@ -28,9 +28,16 @@ change as implementation and conformance work reveal the next boundary.
 
 ## Compiler and execution
 
-- Broaden compiler and VM coverage until it matches the interpreted surface.
+- Move evaluator-backed compiler paths to native bytecode incrementally; the
+  current native surface includes multiple-value selection through
+  <code>nth-value</code>, while the remaining fallback paths stay explicit in
+  compatibility tests.
+- Define and test a behavior matrix for interpreted execution, compiled
+  execution, and compile-only artifact generation, including compile-time
+  macro/package effects and runtime non-execution.
 - Improve compiler diagnostics and execution behavior without weakening
-  interpreter tests.
+  interpreter tests, then establish a stable serialized-artifact boundary
+  before treating compiled output as a portable deliverable.
 - Establish a larger conformance suite and investigate memory-management and
   garbage-collection requirements.
 

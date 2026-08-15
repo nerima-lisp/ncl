@@ -211,6 +211,7 @@ pub enum Instruction {
     Dup,
     Primary,
     Values(usize),
+    NthValue(Span),
     MultipleValueList,
     BindValues(Vec<String>),
     BindValuesExact(Vec<(String, bool)>),
@@ -645,7 +646,7 @@ impl CompileState {
                     return self.compile_runtime_definition(function, span, items);
                 }
                 "NTH-VALUE" => {
-                    return self.compile_runtime_definition(function, span, items);
+                    return self.compile_nth_value(function, span, items);
                 }
                 "DECLAIM" | "PROCLAIM" => return self.compile_declare(function, span),
                 "THE" => return self.compile_the(function, span, items),
@@ -1164,6 +1165,25 @@ impl CompileState {
             Instruction::Values(items.len().saturating_sub(1)),
             span,
         )?;
+        Ok(())
+    }
+
+    fn compile_nth_value(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        self.require_arity(items, "NTH-VALUE", "two", 2, span)?;
+        let Some(index_form) = items.get(1) else {
+            return Err(self.internal_error(span, "missing NTH-VALUE index form after arity check"));
+        };
+        let Some(value_form) = items.get(2) else {
+            return Err(self.internal_error(span, "missing NTH-VALUE value form after arity check"));
+        };
+        self.compile_expression(function, index_form)?;
+        self.compile_expression(function, value_form)?;
+        self.emit(function, Instruction::NthValue(index_form.span), span)?;
         Ok(())
     }
 

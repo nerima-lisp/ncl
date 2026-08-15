@@ -1,3 +1,4 @@
+use ncl_compiler::Instruction;
 use ncl_runtime::{Runtime, RuntimeError, Value};
 
 fn evaluate(source: &str) -> Value {
@@ -1754,6 +1755,21 @@ fn compiled_evaluates_nth_value() {
         )
         .to_string(),
         "(10 20 NIL 99 NIL)"
+    );
+}
+
+#[test]
+fn compiled_lowers_nth_value_to_native_instruction() {
+    let compiled = Runtime::new()
+        .compile_source("(nth-value 1 (values 10 20))")
+        .expect("source should compile");
+
+    assert!(
+        compiled
+            .iter()
+            .flat_map(|form| form.program().functions.iter())
+            .flat_map(|function| function.instructions.iter())
+            .any(|instruction| matches!(instruction, Instruction::NthValue(_)))
     );
 }
 

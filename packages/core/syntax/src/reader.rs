@@ -117,6 +117,9 @@ impl<'source> Reader<'source> {
                 Span::new(start, self.position),
             ));
         };
+        if character.is_ascii_digit() {
+            return self.parse_numeric_dispatch(start).map(Some);
+        }
         match character {
             ';' => {
                 self.position += 1;
@@ -131,6 +134,13 @@ impl<'source> Reader<'source> {
                 self.parse_form()
             }
             '(' => self.parse_sequence(true, start).map(Some),
+            '*' => self.parse_bit_vector(start).map(Some),
+            'b' | 'B' => self.parse_radix_integer(start, 2).map(Some),
+            'o' | 'O' => self.parse_radix_integer(start, 8).map(Some),
+            'x' | 'X' => self.parse_radix_integer(start, 16).map(Some),
+            'c' | 'C' => self.parse_complex_literal(start).map(Some),
+            's' | 'S' => self.parse_structure_literal(start).map(Some),
+            'p' | 'P' => self.parse_pathname_literal(start).map(Some),
             '\'' => {
                 self.position += 1;
                 self.parse_prefixed_form("function", start, self.position)
@@ -148,6 +158,24 @@ impl<'source> Reader<'source> {
                 Ok(Some(Form::atom("#f", Span::new(start, self.position))))
             }
             _ => Err(self.error(ReadErrorKind::InvalidDispatch, Span::new(start, start + 1))),
+        }
+    }
+
+    fn parse_numeric_dispatch(&mut self, start: usize) -> Result<Form, ReadError> {
+        let digits_start = self.position;
+        while matches!(self.peek_char(), Some(character) if character.is_ascii_digit()) {
+            self.position += 1;
+        }
+
+        let rank = self.source[digits_start..self.position]
+            .parse::<usize>()
+            .map_err(|_| self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position)))?;
+        match self.peek_char() {
+            Some('a') | Some('A') => self.parse_array_literal(start, rank),
+            _ => Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            )),
         }
     }
 
@@ -169,6 +197,254 @@ impl<'source> Reader<'source> {
             &self.source[start..self.position],
             Span::new(start, self.position),
         ))
+    }
+
+    fn parse_bit_vector(&mut self, start: usize) -> Result<Form, ReadError> {
+        self.position += 1;
+        let mut items = Vec::new();
+
+        while let Some(character) = self.peek_char() {
+            if self.is_delimiter(character) {
+                break;
+            }
+
+            let item_start = self.position;
+            self.position += character.len_utf8();
+            match character {
+                '0' | '1' => items.push(Form::atom(
+                    &self.source[item_start..self.position],
+                    Span::new(item_start, self.position),
+                )),
+                _ => {
+                    return Err(
+                        self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position))
+                    );
+                }
+            }
+        }
+
+        Ok(Form::new(FormKind::Vector(items), Span::new(start, self.position)))
+    }
+
+    fn parse_radix_integer(&mut self, start: usize, radix: u32) -> Result<Form, ReadError> {
+        self.position += 1;
+        let digits_start = self.position;
+
+        if matches!(self.peek_char(), Some('+') | Some('-')) {
+            self.position += 1;
+        }
+
+        let mut saw_digit = false;
+        while let Some(character) = self.peek_char() {
+            if self.is_delimiter(character) {
+                break;
+            }
+
+            self.position += character.len_utf8();
+            if character.to_digit(radix).is_some() {
+                saw_digit = true;
+                continue;
+            }
+
+            return Err(self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position)));
+        }
+
+        if !saw_digit || self.position == digits_start {
+            return Err(self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position)));
+        }
+
+        let token = &self.source[digits_start..self.position];
+        let value = i64::from_str_radix(
+            token.strip_prefix('+').or_else(|| token.strip_prefix('-')).unwrap_or(token),
+            radix,
+        )
+        .map_err(|_| self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position)))?;
+        let normalized = if token.starts_with('-') {
+            format!("-{value}")
+        } else {
+            value.to_string()
+        };
+
+        Ok(Form::atom(&normalized, Span::new(start, self.position)))
+    }
+
+    fn parse_structure_literal(&mut self, start: usize) -> Result<Form, ReadError> {
+        self.position += 1;
+        self.skip_ignored()?;
+        let Some(form) = self.parse_form()? else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            ));
+        };
+
+        let FormKind::List(items) = &form.kind else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, form.span.end),
+            ));
+        };
+        if items.is_empty() || items.len() % 2 == 0 {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, form.span.end),
+            ));
+        }
+
+        let FormKind::Atom(name) = &items[0].kind else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, items[0].span.end),
+            ));
+        };
+
+        let constructor = format!("MAKE-{name}");
+        let mut rewritten = Vec::with_capacity(items.len());
+        rewritten.push(Form::atom(
+            &constructor,
+            Span::new(start, items[0].span.end),
+        ));
+        rewritten.extend(items.iter().skip(1).cloned());
+        Ok(Form::list(rewritten, Span::new(start, form.span.end)))
+    }
+
+    fn parse_complex_literal(&mut self, start: usize) -> Result<Form, ReadError> {
+        self.position += 1;
+        self.skip_ignored()?;
+        let Some(form) = self.parse_form()? else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            ));
+        };
+
+        let FormKind::List(items) = &form.kind else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, form.span.end),
+            ));
+        };
+        let [real, imag] = items.as_slice() else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, form.span.end),
+            ));
+        };
+
+        Ok(Form::list(
+            vec![
+                Form::atom("complex", Span::new(start, start + 1)),
+                real.clone(),
+                imag.clone(),
+            ],
+            Span::new(start, form.span.end),
+        ))
+    }
+
+    fn parse_pathname_literal(&mut self, start: usize) -> Result<Form, ReadError> {
+        self.position += 1;
+        self.skip_ignored()?;
+        let Some(form) = self.parse_form()? else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            ));
+        };
+
+        match form.kind {
+            FormKind::String(value) => Ok(Form::new(
+                FormKind::String(value),
+                Span::new(start, form.span.end),
+            )),
+            _ => Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, form.span.end),
+            )),
+        }
+    }
+
+    fn parse_array_literal(&mut self, start: usize, rank: usize) -> Result<Form, ReadError> {
+        if rank == 0 {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            ));
+        }
+
+        self.position += 1;
+        self.skip_ignored()?;
+        let Some(contents) = self.parse_form()? else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            ));
+        };
+
+        let dimensions = self.array_literal_dimensions(&contents, rank, start)?;
+        let end = contents.span.end;
+        let span = Span::new(start, end);
+        let dimensions_form = Form::list(
+            dimensions
+                .iter()
+                .map(|dimension| Form::atom(dimension.to_string(), contents.span))
+                .collect(),
+            contents.span,
+        );
+
+        Ok(Form::list(
+            vec![
+                Form::atom("make-array", Span::new(start, start + 1)),
+                self.quote_form(dimensions_form, span),
+                Form::atom(":initial-contents", contents.span),
+                self.quote_form(contents, span),
+            ],
+            span,
+        ))
+    }
+
+    fn array_literal_dimensions(
+        &self,
+        form: &Form,
+        rank: usize,
+        start: usize,
+    ) -> Result<Vec<usize>, ReadError> {
+        let FormKind::List(items) = &form.kind else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, form.span.end),
+            ));
+        };
+
+        if rank == 1 {
+            return Ok(vec![items.len()]);
+        }
+
+        let Some((first, rest)) = items.split_first() else {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, form.span.end),
+            ));
+        };
+
+        let nested = self.array_literal_dimensions(first, rank - 1, start)?;
+        for item in rest {
+            let candidate = self.array_literal_dimensions(item, rank - 1, start)?;
+            if candidate != nested {
+                return Err(self.error(
+                    ReadErrorKind::InvalidDispatch,
+                    Span::new(start, item.span.end),
+                ));
+            }
+        }
+
+        let mut dimensions = Vec::with_capacity(rank);
+        dimensions.push(items.len());
+        dimensions.extend(nested);
+        Ok(dimensions)
+    }
+
+    fn quote_form(&self, form: Form, span: Span) -> Form {
+        Form::list(vec![Form::atom("quote", span), form], span)
     }
 
     fn parse_sequence(&mut self, vector: bool, start: usize) -> Result<Form, ReadError> {

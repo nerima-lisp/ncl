@@ -427,6 +427,27 @@ fn emits_quoted_vectors_as_data() {
 }
 
 #[test]
+fn emits_bit_vectors_as_vector_data() {
+    let program = compile("#*101");
+    let forms = read("#*101").expect("test source should parse");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![Instruction::Quote(forms[0].clone()), Instruction::Return]
+    );
+}
+
+#[test]
+fn emits_radix_integer_literals_as_numbers() {
+    let program = compile("#xff");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![Instruction::Constant(Constant::Integer(255)), Instruction::Return]
+    );
+}
+
+#[test]
 fn emits_control_flow_and_dynamic_binding_instructions() {
     let program = compile(
         "(defvar answer 1)

@@ -4,6 +4,11 @@ NCL is a Rust-native Common Lisp runtime under active development. It provides
 an interpreted evaluator and a stack-bytecode compiler with a bounded
 Common Lisp-oriented surface.
 
+The current implemented surface includes reader dispatch literals, compiled and
+interpreted generalized places, bounded condition definition and signaling, and
+string stream forms such as <code>with-input-from-string</code> and
+<code>with-output-to-string</code>.
+
 ## Quick Start
 
 NCL requires Rust 1.85 or newer.

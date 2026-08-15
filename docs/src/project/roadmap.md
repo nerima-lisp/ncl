@@ -21,8 +21,8 @@ change as implementation and conformance work reveal the next boundary.
   streams, and standard I/O behavior.
 - Complete package objects, symbol identity, shadowing, and package protocol
   semantics.
-- Complete the full condition hierarchy, reporting, continuable handlers, and
-  remaining restart protocol behavior.
+- Complete the remaining standard condition hierarchy, constructor and
+  reporting details, continuable handlers, and restart protocol behavior.
 - Complete CLOS slot and method options, class precedence details, and the
   remaining object-protocol behavior.
 

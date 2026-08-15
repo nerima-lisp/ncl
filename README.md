@@ -21,13 +21,17 @@ NCL requires Rust 1.85 or newer.
 ~~~sh
 cargo run -- --eval '(+ 1 2)'
 cargo run -- --compiled --eval '(+ 1 2)'
+cargo run -- --compile --eval '(defun square (x) (* x x))'
 cargo run -- --repl
 cargo run -- --file path/to/program.lisp
 ~~~
 
 Multiple <code>--eval</code> options run in the same runtime, so definitions
 from an earlier form are available to later forms. Use <code>--quiet</code> to
-suppress value output and REPL prompts.
+suppress value output and REPL prompts. <code>--compile</code> reads and
+macro-expands the input, builds bytecode artifacts, and reports their sizes
+without executing runtime forms. Use <code>--compiled</code> when the input
+should also execute through the bytecode VM.
 
 ## Install
 

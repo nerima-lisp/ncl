@@ -9,6 +9,30 @@ fn evaluate(source: &str) -> Value {
 }
 
 #[test]
+fn compile_source_returns_artifacts_without_running_runtime_forms() {
+    let runtime = Runtime::new();
+    let compiled = runtime
+        .compile_source("(define answer 42)")
+        .expect("source should compile");
+
+    assert_eq!(compiled.len(), 1);
+    assert!(compiled[0].instruction_count() > 0);
+    assert!(runtime.eval_source("answer").is_err());
+}
+
+#[test]
+fn compile_source_expands_macros_for_later_forms() {
+    let runtime = Runtime::new();
+    let compiled = runtime
+        .compile_source("(defmacro twice (x) `(+ ,x ,x)) (twice 4)")
+        .expect("source should compile");
+
+    assert_eq!(compiled.len(), 2);
+    assert!(compiled[1].instruction_count() > 0);
+    assert_eq!(runtime.eval_source("(twice 4)").unwrap()[0].to_string(), "8");
+}
+
+#[test]
 fn compiled_supports_uninterned_symbols_and_gensym() {
     assert_eq!(
         evaluate(

@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::rc::Rc;
 
-use ncl_compiler::Compiler;
+use ncl_compiler::{Compiler, Program};
 use ncl_syntax::{
     parse_ordinary_lambda_list, parse_symbol_token, read, Form, FormKind,
     LambdaListAuxiliaryParameter, LambdaListKeywordParameter, LambdaListOptionalParameter,
@@ -214,6 +214,30 @@ pub struct Runtime {
     method_context: RefCell<Vec<MethodContext>>,
 }
 
+#[derive(Clone, Debug)]
+pub struct CompiledForm {
+    form: Form,
+    program: Rc<Program>,
+}
+
+impl CompiledForm {
+    pub fn form(&self) -> &Form {
+        &self.form
+    }
+
+    pub fn program(&self) -> &Program {
+        &self.program
+    }
+
+    pub fn function_count(&self) -> usize {
+        self.program.function_count()
+    }
+
+    pub fn instruction_count(&self) -> usize {
+        self.program.instruction_count()
+    }
+}
+
 impl Runtime {
     pub fn new() -> Self {
         let global = Environment::new();
@@ -258,19 +282,43 @@ impl Runtime {
         read(source)?.iter().map(|form| self.eval(form)).collect()
     }
 
-    pub fn eval_compiled(&self, form: &Form) -> Result<Value, RuntimeError> {
+    pub fn compile(&self, form: &Form) -> Result<CompiledForm, RuntimeError> {
         let resolved = self.resolve_form(form)?;
         let expanded = self.prepare_compiled_form(&resolved, &self.global)?;
         let program = Rc::new(Compiler::compile_form(&expanded)?);
-        crate::vm::run_entry(self, program, 0, self.global.clone(), expanded.span)
-            .map(|value| value.primary_value())
+        Ok(CompiledForm {
+            form: expanded,
+            program,
+        })
+    }
+
+    pub fn compile_source(&self, source: &str) -> Result<Vec<CompiledForm>, RuntimeError> {
+        read(source)?
+            .iter()
+            .map(|form| self.compile(form))
+            .collect()
+    }
+
+    pub fn eval_compiled(&self, form: &Form) -> Result<Value, RuntimeError> {
+        self.execute_compiled(self.compile(form)?)
     }
 
     pub fn eval_compiled_source(&self, source: &str) -> Result<Vec<Value>, RuntimeError> {
         read(source)?
             .iter()
-            .map(|form| self.eval_compiled(form))
+            .map(|form| self.execute_compiled(self.compile(form)?))
             .collect()
+    }
+
+    fn execute_compiled(&self, compiled: CompiledForm) -> Result<Value, RuntimeError> {
+        crate::vm::run_entry(
+            self,
+            compiled.program,
+            0,
+            self.global.clone(),
+            compiled.form.span,
+        )
+        .map(|value| value.primary_value())
     }
 
     fn resolve_form(&self, form: &Form) -> Result<Form, RuntimeError> {

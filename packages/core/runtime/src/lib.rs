@@ -8,5 +8,5 @@ mod vm;
 
 pub use environment::Environment;
 pub use error::{ReturnValue, RuntimeError};
-pub use evaluator::Runtime;
+pub use evaluator::{CompiledForm, Runtime};
 pub use value::{Function, Rational, Stream, Value};

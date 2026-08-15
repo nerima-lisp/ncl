@@ -46,6 +46,7 @@ fn run_inner() -> Result<(), CliError> {
     let mut repl = false;
     let mut quiet = false;
     let mut compiled = false;
+    let mut compile_only = false;
     let mut index = 0;
     while index < arguments.len() {
         match arguments[index].as_str() {
@@ -67,6 +68,7 @@ fn run_inner() -> Result<(), CliError> {
             }
             "--repl" => repl = true,
             "--compiled" => compiled = true,
+            "--compile" => compile_only = true,
             "--quiet" | "-q" => quiet = true,
             argument if argument.starts_with('-') => {
                 return Err(CliError::Usage(format!("unknown option {argument}")));
@@ -80,17 +82,62 @@ fn run_inner() -> Result<(), CliError> {
         index += 1;
     }
 
+    if compile_only && compiled {
+        return Err(CliError::Usage(
+            "--compile cannot be combined with --compiled".to_string(),
+        ));
+    }
+    if compile_only && repl {
+        return Err(CliError::Usage(
+            "--compile cannot be combined with --repl".to_string(),
+        ));
+    }
+    if compile_only && evaluations.is_empty() && file.is_none() {
+        return Err(CliError::Usage(
+            "--compile requires --eval or --file".to_string(),
+        ));
+    }
+
     let runtime = Runtime::new();
     for source in &evaluations {
-        print_values(&runtime, source, quiet, compiled)?;
+        if compile_only {
+            print_compilation(&runtime, source, quiet)?;
+        } else {
+            print_values(&runtime, source, quiet, compiled)?;
+        }
     }
     if let Some(ref path) = file {
         let source = fs::read_to_string(&path)
             .map_err(|error| CliError::Io(format!("cannot read {path}: {error}")))?;
-        print_values(&runtime, &source, quiet, compiled)?;
+        if compile_only {
+            print_compilation(&runtime, &source, quiet)?;
+        } else {
+            print_values(&runtime, &source, quiet, compiled)?;
+        }
     }
     if repl || (evaluations.is_empty() && file.is_none()) {
         repl_loop(&runtime, quiet, compiled)?;
+    }
+    Ok(())
+}
+
+fn print_compilation(runtime: &Runtime, source: &str, quiet: bool) -> Result<(), CliError> {
+    let forms = runtime.compile_source(source).map_err(CliError::Runtime)?;
+    if !quiet {
+        let function_count = forms
+            .iter()
+            .map(|form| form.function_count())
+            .sum::<usize>();
+        let instruction_count = forms
+            .iter()
+            .map(|form| form.instruction_count())
+            .sum::<usize>();
+        println!(
+            "compiled {} form(s), {} function(s), {} instruction(s)",
+            forms.len(),
+            function_count,
+            instruction_count
+        );
     }
     Ok(())
 }
@@ -170,6 +217,7 @@ Options:
   -f, --file PATH   Evaluate a source file
       --repl        Start the line-oriented REPL
       --compiled     Execute input through the bytecode compiler and VM
+      --compile      Compile input without executing it
   -q, --quiet       Suppress value output and REPL prompts
   -h, --help        Show this help
   -V, --version     Show the version"

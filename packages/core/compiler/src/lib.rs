@@ -303,6 +303,19 @@ pub struct Program {
     pub entry: FunctionId,
 }
 
+impl Program {
+    pub fn function_count(&self) -> usize {
+        self.functions.len()
+    }
+
+    pub fn instruction_count(&self) -> usize {
+        self.functions
+            .iter()
+            .map(|function| function.instructions.len())
+            .sum()
+    }
+}
+
 /// The category of a compile-time error.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CompileErrorKind {

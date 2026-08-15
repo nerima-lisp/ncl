@@ -27,6 +27,17 @@ stack-bytecode compiler and VM:
 cargo run -- --compiled --eval '(+ 1 2)'
 ~~~
 
+Use <code>--compile</code> to build and inspect bytecode artifacts without
+executing the forms:
+
+~~~sh
+cargo run -- --compile --eval '(defun square (x) (* x x))'
+~~~
+
+Compilation still performs source reading, package resolution, and macro
+expansion in input order, so later forms can use earlier compile-time state.
+Runtime definitions and other runtime effects are not executed in this mode.
+
 ## Run a file or the REPL
 
 Evaluate a Lisp file with an explicit path:

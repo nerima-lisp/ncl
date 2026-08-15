@@ -250,7 +250,14 @@ multiple values.
 currently registered mapping operations; list mapping stops at the shortest
 proper input list where applicable.
 
-## Rust API
+## Runtime API boundary
+
+The direct Common Lisp API is the `ncl` package and is documented in the
+[Common Lisp core guide](../guide/common-lisp-core.md). The Rust API below is
+the embedding surface for the production runtime; it is separate from the
+direct SBCL-loaded core.
+
+## Rust runtime API
 
 The root Rust crate re-exports these convenience types:
 

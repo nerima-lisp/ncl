@@ -1,6 +1,6 @@
 # Getting started
 
-## Requirements
+## Rust runtime requirements
 
 Install Rust 1.85 or newer. The repository is a Cargo workspace, so all
 commands below are run from its root.
@@ -69,3 +69,34 @@ contains the required tools:
 ~~~sh
 nix shell nixpkgs#rustc nixpkgs#rustfmt --command cargo run -- --eval '(+ 1 2)'
 ~~~
+
+## Common Lisp core
+
+Enter the project development shell to get SBCL, cl-weave, paredit-cli, and
+the documentation tools:
+
+~~~sh
+nix develop path:.
+~~~
+
+Run the direct Common Lisp CLI:
+
+~~~sh
+nix run path:. -- --eval '(defun square (x) (* x x))' --eval '(square 5)'
+~~~
+
+Run the executable test suite through cl-weave:
+
+~~~sh
+nix run path:.#test
+~~~
+
+Run the same suite with coverage instrumentation:
+
+~~~sh
+nix run path:.#coverage
+~~~
+
+The implementation and test systems are declared in `ncl.asd`. The direct
+entry points read that declaration and load source files in its serial order;
+this keeps the command-line and test paths aligned.

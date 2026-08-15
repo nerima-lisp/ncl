@@ -1,8 +1,10 @@
 # Compatibility
 
-NCL is a bounded Common Lisp-oriented runtime, not an SBCL-compatible
-implementation. The table below describes the current boundary at the feature
-level.
+NCL has a production-oriented Rust runtime and a direct Common Lisp core. Both
+are bounded Common Lisp-oriented implementations, not SBCL-compatible
+implementations. The table below describes the runtime feature boundary; the
+direct core's source layout and entry points are covered in the
+[Common Lisp core guide](../guide/common-lisp-core.md).
 
 | Area | Implemented surface | Current boundary |
 | --- | --- | --- |

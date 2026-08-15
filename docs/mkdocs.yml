@@ -49,6 +49,7 @@ nav:
   - Getting started: getting-started.md
   - Guide:
       - Core concepts: guide/core-concepts.md
+      - Common Lisp core: guide/common-lisp-core.md
       - Recipes: guide/recipes.md
   - Reference:
       - API: reference/api.md

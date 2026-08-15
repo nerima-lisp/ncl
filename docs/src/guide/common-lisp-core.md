@@ -1,0 +1,74 @@
+# Common Lisp core
+
+The Common Lisp core is a direct implementation layer for NCL. It is designed
+to make the language machinery easy to inspect and extend while retaining a
+small, explicit surface. It does not claim full conformance with an external
+Common Lisp implementation.
+
+## Source boundaries
+
+The implementation follows the data/logic split:
+
+| File | Responsibility |
+| --- | --- |
+| `lisp/package.lisp` | Package boundary and public API |
+| `lisp/data.lisp` | Environments, bindings, and closures |
+| `lisp/logic.lisp` | CPS combinators and sequencing macros |
+| `lisp/reader.lisp` | Reading a source string into forms |
+| `lisp/conditions.lisp` | Public NCL condition types and reports |
+| `lisp/evaluator.lisp` | Macro expansion, special forms, and CPS evaluation |
+| `lisp/lambda-list.lisp` | Required, optional, rest, keyword, and auxiliary bindings |
+| `lisp/standard.lisp` | Direct standard functions and macros |
+| `lisp/cli.lisp` | CLI arguments, files, and the REPL |
+
+The evaluator expands macros to a fixed point before dispatching special forms
+or function calls. User functions are closures over an environment, and
+function invocation passes through the same CPS continuation boundary as
+special-form evaluation.
+
+## Direct execution
+
+`ncl.asd` is the source-of-truth system declaration. The command-line entry
+point loads the declared `lisp/` source sequence directly:
+
+~~~sh
+sbcl --script run.lisp --eval '(+ 2 3)'
+~~~
+
+The flake packages the same path:
+
+~~~sh
+nix run path:. -- --eval '(+ 2 3)'
+~~~
+
+## Tests and coverage
+
+Tests are written with cl-weave. The standalone `run-tests.lisp` entry point
+loads the declared source sequence and then the test definitions. The flake
+exposes both the normal suite and a coverage runner; the latter loads the
+ASDF declaration before the test files so the current source is instrumented:
+
+~~~sh
+nix run path:.#test
+nix run path:.#coverage
+~~~
+
+The coverage runner fails when no tests are discovered and writes a raw
+coverage artifact plus a report directory under `artifacts/ncl-coverage/`.
+Set `NCL_COVERAGE_DIR` when the output should live elsewhere.
+The test and coverage apps use one worker and a 5000 ms per-test timeout by
+default; additional cl-weave options can be passed after the app name.
+
+## Editing workflow
+
+Use paredit-cli for structural checks and formatting inside the development
+shell:
+
+~~~sh
+paredit inspect check --file lisp/evaluator.lisp
+paredit inspect check --file test/core.lisp
+~~~
+
+The Rust runtime remains the production embedding path for the workspace; the
+Common Lisp core is the direct language layer and shares the repository's
+explicit-test and documentation requirements.

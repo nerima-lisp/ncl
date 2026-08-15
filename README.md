@@ -1,8 +1,13 @@
 # NCL
 
-NCL is a Rust-native Common Lisp runtime under active development. It provides
-an interpreted evaluator and a stack-bytecode compiler with a bounded
-Common Lisp-oriented surface.
+NCL is a Common Lisp project with two execution layers: a Rust-native runtime
+and a direct, CPS-first Common Lisp core. Both layers keep the supported
+language surface explicit instead of implying compatibility with a complete
+external implementation.
+
+The Rust workspace provides the interpreted evaluator and stack-bytecode
+compiler. The Common Lisp core is organized as readable source files for
+language experiments, embedding, and direct macro-driven extension.
 
 The current implemented surface includes reader dispatch literals, compiled and
 interpreted generalized places, bounded condition definition and signaling, and
@@ -35,6 +40,30 @@ cargo build --release
 
 The project does not currently publish a package or prebuilt binary.
 
+## Common Lisp core
+
+The Nix flake provides SBCL, cl-weave, paredit-cli, and documentation tooling:
+
+~~~sh
+nix develop path:.
+nix run path:. -- --eval '(+ 1 2)'
+nix run path:.#test
+nix run path:.#coverage
+~~~
+
+The source declaration is [ncl.asd](ncl.asd). The CLI and standalone test
+entry points load that declared source sequence directly, while coverage and
+ASDF consumers use the system declaration. Coverage artifacts are written
+below `artifacts/` by default; set `NCL_COVERAGE_DIR` to choose another
+directory. The `test` and `coverage` apps default to one worker and a 5000 ms
+per-test timeout; pass additional cl-weave options after the app name. The direct core's
+source boundaries and extension points are described in the
+[Common Lisp core guide](docs/src/guide/common-lisp-core.md).
+
+The Common Lisp tests use [cl-weave](https://github.com/nerima-lisp/cl-weave),
+and source formatting and structural checks use
+[paredit-cli](https://github.com/nerima-lisp/paredit-cli).
+
 ## Documentation
 
 The detailed documentation is in [docs/src/index.md](docs/src/index.md).
@@ -50,6 +79,8 @@ mkdocs build --strict --config-file docs/mkdocs.yml
 cargo check --workspace --all-targets
 cargo test --workspace --all-targets
 cargo fmt --all -- --check
+nix flake check path:.
+nix flake check --no-build --all-systems path:.
 ~~~
 
 If Rust is provided through Nix, the equivalent formatter check is:

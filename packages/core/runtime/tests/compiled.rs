@@ -1774,6 +1774,25 @@ fn compiled_lowers_nth_value_to_native_instruction() {
 }
 
 #[test]
+fn compiled_lowers_simple_push_and_pop_without_eval() {
+    let compiled = Runtime::new()
+        .compile_source("(let ((xs (list 2 3))) (list (push 1 xs) (pop xs)))")
+        .expect("source should compile");
+    let instructions = compiled
+        .iter()
+        .flat_map(|form| form.program().functions.iter())
+        .flat_map(|function| function.instructions.iter())
+        .collect::<Vec<_>>();
+
+    assert!(instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::Setf(_))
+    }));
+    assert!(!instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::Eval(_))));
+}
+
+#[test]
 fn compiled_evaluates_function_and_macro_introspection() {
     assert_eq!(
         evaluate(

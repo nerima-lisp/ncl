@@ -722,7 +722,25 @@ impl CompileState {
                     return self.compile_multiple_value_setq(function, span, items);
                 }
                 "SETF" => return self.compile_setf(function, span, items),
-                "PSETF" | "PUSH" | "POP" | "PUSHNEW" | "REMF" | "ROTATEF" | "SHIFTF" => {
+                "PSETF" | "PUSHNEW" | "REMF" | "ROTATEF" | "SHIFTF" => {
+                    return self.compile_runtime_definition(function, span, items);
+                }
+                "PUSH" => {
+                    if matches!(
+                        items.get(2).map(|place| &place.kind),
+                        Some(FormKind::Atom(_)) | None
+                    ) {
+                        return self.compile_push_symbol(function, span, items);
+                    }
+                    return self.compile_runtime_definition(function, span, items);
+                }
+                "POP" => {
+                    if matches!(
+                        items.get(1).map(|place| &place.kind),
+                        Some(FormKind::Atom(_)) | None
+                    ) {
+                        return self.compile_pop_symbol(function, span, items);
+                    }
                     return self.compile_runtime_definition(function, span, items);
                 }
                 "INCF" => {
@@ -3028,6 +3046,105 @@ impl CompileState {
                 self.emit(function, Instruction::Pop, value_form.span)?;
             }
         }
+        Ok(())
+    }
+
+    fn compile_push_symbol(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        self.require_arity(items, "PUSH", "two", 2, span)?;
+        let item = items
+            .get(1)
+            .ok_or_else(|| self.internal_error(span, "missing PUSH item"))?;
+        let place = items
+            .get(2)
+            .ok_or_else(|| self.internal_error(span, "missing PUSH place"))?;
+        self.symbol_name_info(place, "PUSH place")?;
+
+        let item_name = self.fresh_name("PUSH_ITEM");
+        let place_name = self.fresh_name("PUSH_PLACE");
+        self.emit(function, Instruction::EnterScope, span)?;
+        self.compile_expression(function, item)?;
+        self.emit(function, Instruction::Define(item_name.clone()), item.span)?;
+        self.emit(function, Instruction::Pop, item.span)?;
+        self.compile_expression(function, place)?;
+        self.emit(function, Instruction::Define(place_name.clone()), place.span)?;
+        self.emit(function, Instruction::Pop, place.span)?;
+
+        self.emit(
+            function,
+            Instruction::FunctionLoad("LIST-LENGTH".to_string()),
+            place.span,
+        )?;
+        self.emit(function, Instruction::Load(place_name.clone()), place.span)?;
+        self.emit(function, Instruction::Call(1), place.span)?;
+        self.emit(function, Instruction::Pop, place.span)?;
+
+        self.emit(
+            function,
+            Instruction::FunctionLoad("CONS".to_string()),
+            place.span,
+        )?;
+        self.emit(function, Instruction::Load(item_name), item.span)?;
+        self.emit(function, Instruction::Load(place_name), place.span)?;
+        self.emit(function, Instruction::Call(2), span)?;
+        self.emit(function, Instruction::Setf(place.clone()), place.span)?;
+        self.emit(function, Instruction::ExitScope, span)?;
+        Ok(())
+    }
+
+    fn compile_pop_symbol(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        self.require_arity(items, "POP", "one", 1, span)?;
+        let place = items
+            .get(1)
+            .ok_or_else(|| self.internal_error(span, "missing POP place"))?;
+        self.symbol_name_info(place, "POP place")?;
+
+        let place_name = self.fresh_name("POP_PLACE");
+        let value_name = self.fresh_name("POP_VALUE");
+        self.emit(function, Instruction::EnterScope, span)?;
+        self.compile_expression(function, place)?;
+        self.emit(function, Instruction::Define(place_name.clone()), place.span)?;
+        self.emit(function, Instruction::Pop, place.span)?;
+
+        self.emit(
+            function,
+            Instruction::FunctionLoad("LIST-LENGTH".to_string()),
+            place.span,
+        )?;
+        self.emit(function, Instruction::Load(place_name.clone()), place.span)?;
+        self.emit(function, Instruction::Call(1), place.span)?;
+        self.emit(function, Instruction::Pop, place.span)?;
+
+        self.emit(
+            function,
+            Instruction::FunctionLoad("CAR".to_string()),
+            place.span,
+        )?;
+        self.emit(function, Instruction::Load(place_name.clone()), place.span)?;
+        self.emit(function, Instruction::Call(1), place.span)?;
+        self.emit(function, Instruction::Define(value_name.clone()), place.span)?;
+        self.emit(function, Instruction::Pop, place.span)?;
+
+        self.emit(
+            function,
+            Instruction::FunctionLoad("CDR".to_string()),
+            place.span,
+        )?;
+        self.emit(function, Instruction::Load(place_name), place.span)?;
+        self.emit(function, Instruction::Call(1), place.span)?;
+        self.emit(function, Instruction::Setf(place.clone()), place.span)?;
+        self.emit(function, Instruction::Pop, place.span)?;
+        self.emit(function, Instruction::Load(value_name), place.span)?;
+        self.emit(function, Instruction::ExitScope, span)?;
         Ok(())
     }
 

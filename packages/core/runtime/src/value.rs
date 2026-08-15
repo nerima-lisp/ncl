@@ -19,6 +19,7 @@ pub type Builtin = fn(&[Value]) -> Result<Value, RuntimeError>;
 pub(crate) enum MacroPattern {
     Name(String),
     List(Vec<MacroPattern>),
+    LambdaList(MacroLambdaList),
     Dotted {
         items: Vec<MacroPattern>,
         tail: Box<MacroPattern>,
@@ -105,18 +106,28 @@ pub(crate) struct ClassDefinition {
     pub(crate) precedence: Vec<String>,
     pub(crate) slots: Vec<ClassSlot>,
     pub(crate) default_initargs: Vec<(String, Form)>,
+    pub(crate) documentation: Rc<RefCell<Option<String>>>,
 }
 
 #[derive(Clone)]
-pub(crate) struct MethodDefinition {
+pub(crate) enum MethodSpecializer {
+    Class(String),
+    Eql(Value),
+}
+
+#[derive(Clone)]
+pub struct MethodDefinition {
+    pub(crate) id: u64,
+    pub(crate) generic_function: String,
+    pub(crate) lambda_list: Value,
     pub(crate) qualifiers: Vec<String>,
-    pub(crate) specializers: Vec<String>,
+    pub(crate) specializers: Vec<MethodSpecializer>,
     pub(crate) function: Value,
 }
 
 #[derive(Clone)]
 pub(crate) struct Instance {
-    pub(crate) class: Rc<ClassDefinition>,
+    pub(crate) class: Rc<RefCell<Rc<ClassDefinition>>>,
     pub(crate) slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
 }
 
@@ -150,6 +161,7 @@ pub enum Function {
     },
     Generic {
         name: String,
+        lambda_list: OrdinaryLambdaList,
         methods: Rc<RefCell<Vec<MethodDefinition>>>,
     },
     SlotReader {
@@ -186,6 +198,12 @@ pub enum Function {
         body: Vec<Form>,
         environment: Environment,
     },
+    LongDefsetf {
+        lambda_list: MacroLambdaList,
+        store_variable: String,
+        body: Vec<Form>,
+        environment: Environment,
+    },
     ModifyMacro {
         lambda_list: MacroLambdaList,
         function: Form,
@@ -212,7 +230,9 @@ impl Rational {
 
         let (numerator, denominator) = if denominator < 0 {
             (
-                numerator.checked_neg().ok_or(RuntimeError::NumericOverflow)?,
+                numerator
+                    .checked_neg()
+                    .ok_or(RuntimeError::NumericOverflow)?,
                 denominator
                     .checked_neg()
                     .ok_or(RuntimeError::NumericOverflow)?,
@@ -267,6 +287,7 @@ pub struct Stream {
 enum StreamKind {
     Input {
         characters: Rc<Vec<char>>,
+        base_position: usize,
         position: usize,
         pushback: Option<char>,
         file: bool,
@@ -290,6 +311,7 @@ impl Stream {
         Self {
             kind: StreamKind::Input {
                 characters: Rc::new(source.chars().skip(start).take(end - start).collect()),
+                base_position: start,
                 position: 0,
                 pushback: None,
                 file: false,
@@ -302,6 +324,7 @@ impl Stream {
         Self {
             kind: StreamKind::Input {
                 characters: Rc::new(source.chars().collect()),
+                base_position: 0,
                 position: 0,
                 pushback: None,
                 file: true,
@@ -378,7 +401,10 @@ impl Stream {
     }
 
     pub(crate) fn is_output(&self) -> bool {
-        matches!(&self.kind, StreamKind::Output { .. } | StreamKind::Io { .. })
+        matches!(
+            &self.kind,
+            StreamKind::Output { .. } | StreamKind::Io { .. }
+        )
     }
 
     pub(crate) fn read_char(&mut self) -> Option<char> {
@@ -548,8 +574,8 @@ impl Stream {
                 pushback,
                 ..
             } => {
-                let available = usize::from(pushback.is_some())
-                    + characters.len().saturating_sub(*position);
+                let available =
+                    usize::from(pushback.is_some()) + characters.len().saturating_sub(*position);
                 if count > available {
                     return false;
                 }
@@ -569,8 +595,8 @@ impl Stream {
                 pushback,
                 ..
             } => {
-                let available = usize::from(pushback.is_some())
-                    + characters.len().saturating_sub(*position);
+                let available =
+                    usize::from(pushback.is_some()) + characters.len().saturating_sub(*position);
                 if count > available {
                     return false;
                 }
@@ -585,6 +611,24 @@ impl Stream {
                 true
             }
             StreamKind::Output { .. } => false,
+        }
+    }
+
+    pub(crate) fn input_position(&self) -> Option<usize> {
+        if self.closed {
+            return None;
+        }
+        match &self.kind {
+            StreamKind::Input {
+                base_position,
+                position,
+                pushback,
+                ..
+            } => Some(base_position + position.saturating_sub(usize::from(pushback.is_some()))),
+            StreamKind::Io {
+                position, pushback, ..
+            } => Some(position.saturating_sub(usize::from(pushback.is_some()))),
+            StreamKind::Output { .. } => None,
         }
     }
 
@@ -642,11 +686,7 @@ impl Stream {
         if at_line_start {
             return Some(false);
         }
-        if self.write("\n") {
-            Some(true)
-        } else {
-            None
-        }
+        if self.write("\n") { Some(true) } else { None }
     }
 
     pub(crate) fn take_output(&mut self) -> Option<String> {
@@ -737,6 +777,10 @@ pub enum Value {
     Integer(i64),
     Rational(Rational),
     Float(f64),
+    Complex {
+        real: Rc<Value>,
+        imag: Rc<Value>,
+    },
     String(Rc<str>),
     Character(char),
     Stream(Rc<RefCell<Stream>>),
@@ -752,10 +796,22 @@ pub enum Value {
         items: Rc<Vec<Value>>,
         tail: Rc<Value>,
     },
-    Vector(Rc<Vec<Value>>),
+    Vector {
+        elements: Rc<RefCell<Vec<Value>>>,
+        length: usize,
+        fill_pointer: Option<usize>,
+        element_type: Rc<Value>,
+        adjustable: bool,
+        displaced_to: Option<Rc<Value>>,
+        displaced_index_offset: usize,
+    },
     Array {
         dimensions: Rc<Vec<usize>>,
-        elements: Rc<Vec<Value>>,
+        elements: Rc<RefCell<Vec<Value>>>,
+        element_type: Rc<Value>,
+        adjustable: bool,
+        displaced_to: Option<Rc<Value>>,
+        displaced_index_offset: usize,
     },
     HashTable {
         test: Rc<str>,
@@ -771,6 +827,7 @@ pub enum Value {
     },
     Class(Rc<ClassDefinition>),
     Instance(Instance),
+    Method(Rc<MethodDefinition>),
     Function(Rc<Function>),
 }
 
@@ -793,6 +850,13 @@ impl Value {
             Ok(Self::Integer(rational.numerator()))
         } else {
             Ok(Self::Rational(rational))
+        }
+    }
+
+    pub(crate) fn complex(real: Self, imag: Self) -> Self {
+        Self::Complex {
+            real: Rc::new(real),
+            imag: Rc::new(imag),
         }
     }
 
@@ -861,13 +925,173 @@ impl Value {
     }
 
     pub fn vector(values: Vec<Self>) -> Self {
-        Self::Vector(Rc::new(values))
+        Self::vector_with_fill_pointer_element_type_adjustable_and_displacement(
+            values,
+            None,
+            Self::symbol("T"),
+            false,
+            None,
+            0,
+        )
+    }
+
+    pub fn vector_with_fill_pointer(values: Vec<Self>, fill_pointer: usize) -> Self {
+        Self::vector_with_fill_pointer_element_type_adjustable_and_displacement(
+            values,
+            Some(fill_pointer),
+            Self::symbol("T"),
+            false,
+            None,
+            0,
+        )
     }
 
     pub fn array(dimensions: Vec<usize>, elements: Vec<Self>) -> Self {
+        Self::array_with_element_type_adjustable_and_displacement(
+            dimensions,
+            elements,
+            Self::symbol("T"),
+            false,
+            None,
+            0,
+        )
+    }
+
+    pub fn vector_with_fill_pointer_and_element_type(
+        values: Vec<Self>,
+        fill_pointer: Option<usize>,
+        element_type: Self,
+    ) -> Self {
+        Self::vector_with_fill_pointer_element_type_adjustable_and_displacement(
+            values,
+            fill_pointer,
+            element_type,
+            false,
+            None,
+            0,
+        )
+    }
+
+    pub fn vector_with_fill_pointer_element_type_and_adjustable(
+        values: Vec<Self>,
+        fill_pointer: Option<usize>,
+        element_type: Self,
+        adjustable: bool,
+    ) -> Self {
+        Self::vector_with_fill_pointer_element_type_adjustable_and_displacement(
+            values,
+            fill_pointer,
+            element_type,
+            adjustable,
+            None,
+            0,
+        )
+    }
+
+    pub fn vector_with_fill_pointer_element_type_adjustable_and_displacement(
+        values: Vec<Self>,
+        fill_pointer: Option<usize>,
+        element_type: Self,
+        adjustable: bool,
+        displaced_to: Option<Self>,
+        displaced_index_offset: usize,
+    ) -> Self {
+        let length = values.len();
+        Self::vector_with_storage_fill_pointer_element_type_adjustable_and_displacement(
+            Rc::new(RefCell::new(values)),
+            length,
+            fill_pointer,
+            element_type,
+            adjustable,
+            displaced_to,
+            displaced_index_offset,
+        )
+    }
+
+    pub(crate) fn vector_with_storage_fill_pointer_element_type_adjustable_and_displacement(
+        elements: Rc<RefCell<Vec<Self>>>,
+        length: usize,
+        fill_pointer: Option<usize>,
+        element_type: Self,
+        adjustable: bool,
+        displaced_to: Option<Self>,
+        displaced_index_offset: usize,
+    ) -> Self {
+        Self::Vector {
+            length,
+            elements,
+            fill_pointer,
+            element_type: Rc::new(element_type),
+            adjustable,
+            displaced_to: displaced_to.map(Rc::new),
+            displaced_index_offset,
+        }
+    }
+
+    pub fn array_with_element_type(
+        dimensions: Vec<usize>,
+        elements: Vec<Self>,
+        element_type: Self,
+    ) -> Self {
+        Self::array_with_element_type_adjustable_and_displacement(
+            dimensions,
+            elements,
+            element_type,
+            false,
+            None,
+            0,
+        )
+    }
+
+    pub fn array_with_element_type_and_adjustable(
+        dimensions: Vec<usize>,
+        elements: Vec<Self>,
+        element_type: Self,
+        adjustable: bool,
+    ) -> Self {
+        Self::array_with_element_type_adjustable_and_displacement(
+            dimensions,
+            elements,
+            element_type,
+            adjustable,
+            None,
+            0,
+        )
+    }
+
+    pub fn array_with_element_type_adjustable_and_displacement(
+        dimensions: Vec<usize>,
+        elements: Vec<Self>,
+        element_type: Self,
+        adjustable: bool,
+        displaced_to: Option<Self>,
+        displaced_index_offset: usize,
+    ) -> Self {
+        Self::array_with_storage_element_type_adjustable_and_displacement(
+            dimensions,
+            Rc::new(RefCell::new(elements)),
+            element_type,
+            adjustable,
+            displaced_to,
+            displaced_index_offset,
+        )
+    }
+
+    pub(crate) fn array_with_storage_element_type_adjustable_and_displacement(
+        dimensions: Vec<usize>,
+        elements: Rc<RefCell<Vec<Self>>>,
+        element_type: Self,
+        adjustable: bool,
+        displaced_to: Option<Self>,
+        displaced_index_offset: usize,
+    ) -> Self {
         Self::Array {
             dimensions: Rc::new(dimensions),
-            elements: Rc::new(elements),
+            elements,
+            element_type: Rc::new(element_type),
+            adjustable,
+            displaced_to: displaced_to.map(Rc::new),
+            displaced_index_offset,
         }
     }
 
@@ -904,7 +1128,7 @@ impl Value {
                     .iter()
                     .cloned()
                     .map(ReturnValue::into_value)
-                .collect(),
+                    .collect(),
             ),
             _ => (
                 error.condition_type_name(),
@@ -995,9 +1219,10 @@ impl Value {
         Self::Function(Rc::new(Function::Primitive { name }))
     }
 
-    pub(crate) fn generic(name: impl Into<String>) -> Self {
+    pub(crate) fn generic(name: impl Into<String>, lambda_list: OrdinaryLambdaList) -> Self {
         Self::Function(Rc::new(Function::Generic {
             name: name.into(),
+            lambda_list,
             methods: Rc::new(RefCell::new(Vec::new())),
         }))
     }
@@ -1119,7 +1344,7 @@ impl Value {
         Self::Function(Rc::new(Function::Macro {
             lambda_list,
             body,
-                environment,
+            environment,
         }))
     }
 
@@ -1131,6 +1356,20 @@ impl Value {
         Self::Function(Rc::new(Function::ModifyMacro {
             lambda_list,
             function,
+            environment,
+        }))
+    }
+
+    pub(crate) fn long_defsetf_function(
+        lambda_list: MacroLambdaList,
+        store_variable: String,
+        body: Vec<Form>,
+        environment: Environment,
+    ) -> Self {
+        Self::Function(Rc::new(Function::LongDefsetf {
+            lambda_list,
+            store_variable,
+            body,
             environment,
         }))
     }
@@ -1180,12 +1419,9 @@ impl Value {
         Self::Class(definition)
     }
 
-    pub(crate) fn instance(
-        definition: Rc<ClassDefinition>,
-        slots: Vec<(String, Value)>,
-    ) -> Self {
+    pub(crate) fn instance(definition: Rc<ClassDefinition>, slots: Vec<(String, Value)>) -> Self {
         Self::Instance(Instance {
-            class: definition,
+            class: Rc::new(RefCell::new(definition)),
             slots: Rc::new(RefCell::new(
                 slots
                     .into_iter()
@@ -1204,9 +1440,25 @@ impl Value {
 
     pub(crate) fn instance_class_definition(&self) -> Option<Rc<ClassDefinition>> {
         match self {
-            Self::Instance(instance) => Some(instance.class.clone()),
+            Self::Instance(instance) => Some(instance.class.borrow().clone()),
             _ => None,
         }
+    }
+
+    pub(crate) fn replace_instance_layout(
+        &self,
+        class: Rc<ClassDefinition>,
+        slots: Vec<(String, Value)>,
+    ) -> bool {
+        let Self::Instance(instance) = self else {
+            return false;
+        };
+        *instance.class.borrow_mut() = class;
+        *instance.slots.borrow_mut() = slots
+            .into_iter()
+            .map(|(slot_name, value)| (Rc::<str>::from(slot_name), value))
+            .collect();
+        true
     }
 
     pub(crate) fn instance_is_type(&self, expected: &str) -> bool {
@@ -1215,6 +1467,7 @@ impl Value {
         };
         instance
             .class
+            .borrow()
             .precedence
             .iter()
             .any(|class_name| class_name.eq_ignore_ascii_case(expected))
@@ -1224,8 +1477,8 @@ impl Value {
         let Self::Instance(instance) = self else {
             return None;
         };
-        if let Some(slot) = instance
-            .class
+        let class = instance.class.borrow();
+        if let Some(slot) = class
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
@@ -1270,8 +1523,8 @@ impl Value {
         if !self.instance_is_type(class_name) {
             return false;
         }
-        if let Some(slot) = instance
-            .class
+        let class = instance.class.borrow();
+        if let Some(slot) = class
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
@@ -1374,17 +1627,16 @@ impl Value {
             Self::Integer(_) => "INTEGER",
             Self::Rational(_) => "RATIO",
             Self::Float(_) => "FLOAT",
+            Self::Complex { .. } => "COMPLEX",
             Self::String(_) => "STRING",
             Self::Character(_) => "CHARACTER",
             Self::Stream(_) => "STREAM",
             Self::Package(_) => "PACKAGE",
             Self::Environment(_) => "ENVIRONMENT",
-            Self::Symbol(_)
-            | Self::SymbolExact(_)
-            | Self::UninternedSymbol(_) => "SYMBOL",
+            Self::Symbol(_) | Self::SymbolExact(_) | Self::UninternedSymbol(_) => "SYMBOL",
             Self::Keyword(_) | Self::KeywordExact(_) => "KEYWORD",
             Self::List(_) | Self::DottedList { .. } => "LIST",
-            Self::Vector(_) => "VECTOR",
+            Self::Vector { .. } => "VECTOR",
             Self::Array { .. } => "ARRAY",
             Self::HashTable { .. } => "HASH-TABLE",
             Self::Values(_) => "VALUES",
@@ -1393,6 +1645,7 @@ impl Value {
             Self::Structure { .. } => "STRUCTURE",
             Self::Class(_) => "CLASS",
             Self::Instance(_) => "STANDARD-OBJECT",
+            Self::Method(_) => "METHOD",
             Self::Function(_) => "FUNCTION",
         }
     }
@@ -1401,9 +1654,7 @@ impl Value {
         let Self::Condition(condition) = self else {
             return false;
         };
-        let expected = expected
-            .trim_start_matches(':')
-            .to_ascii_uppercase();
+        let expected = expected.trim_start_matches(':').to_ascii_uppercase();
         if condition.actual_type.eq_ignore_ascii_case(&expected) {
             return true;
         }
@@ -1432,16 +1683,17 @@ impl Value {
                 "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "ARITHMETIC-ERROR"
             ),
             "ARITHMETIC-ERROR" => {
-                matches!(expected.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION")
+                matches!(
+                    expected.as_str(),
+                    "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+                )
             }
-            "TYPE-ERROR"
-            | "PROGRAM-ERROR"
-            | "PACKAGE-ERROR"
-            | "READER-ERROR"
-            | "COMPILER-ERROR"
-            | "FILE-ERROR"
-            | "UNBOUND-VARIABLE" => {
-                matches!(expected.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION")
+            "TYPE-ERROR" | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR"
+            | "COMPILER-ERROR" | "FILE-ERROR" | "UNBOUND-VARIABLE" => {
+                matches!(
+                    expected.as_str(),
+                    "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+                )
             }
             "CONTROL-ERROR" => matches!(expected.as_str(), "CONDITION"),
             _ => false,
@@ -1455,11 +1707,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn condition_slot(
-        &self,
-        condition_name: &str,
-        slot_name: &str,
-    ) -> Option<Value> {
+    pub(crate) fn condition_slot(&self, condition_name: &str, slot_name: &str) -> Option<Value> {
         let Self::Condition(condition) = self else {
             return None;
         };
@@ -1545,8 +1793,59 @@ impl Value {
 
     pub fn vector_items(&self) -> Option<Vec<Value>> {
         match self {
-            Self::Vector(items) => Some(items.as_ref().clone()),
+            Self::Vector {
+                elements,
+                length,
+                displaced_index_offset,
+                ..
+            } => {
+                let elements = elements.borrow();
+                let end = displaced_index_offset.checked_add(*length)?;
+                Some(elements[*displaced_index_offset..end].to_vec())
+            }
             _ => None,
+        }
+    }
+
+    pub fn vector_length(&self) -> Option<usize> {
+        match self {
+            Self::Vector { length, .. } => Some(*length),
+            _ => None,
+        }
+    }
+
+    pub fn vector_fill_pointer(&self) -> Option<usize> {
+        match self {
+            Self::Vector { fill_pointer, .. } => *fill_pointer,
+            _ => None,
+        }
+    }
+
+    pub fn array_element_type_value(&self) -> Option<Self> {
+        match self {
+            Self::Vector { element_type, .. } | Self::Array { element_type, .. } => {
+                Some(element_type.as_ref().clone())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn is_simple_vector(&self) -> bool {
+        matches!(
+            self,
+            Self::Vector {
+                fill_pointer: None,
+                adjustable: false,
+                displaced_to: None,
+                ..
+            }
+        )
+    }
+
+    pub fn is_adjustable_array(&self) -> bool {
+        match self {
+            Self::Vector { adjustable, .. } | Self::Array { adjustable, .. } => *adjustable,
+            _ => false,
         }
     }
 
@@ -1559,8 +1858,88 @@ impl Value {
 
     pub fn array_items(&self) -> Option<Vec<Value>> {
         match self {
-            Self::Array { elements, .. } => Some(elements.as_ref().clone()),
+            Self::Array {
+                dimensions,
+                elements,
+                displaced_index_offset,
+                ..
+            } => {
+                let total_size = dimensions.iter().copied().product::<usize>();
+                let elements = elements.borrow();
+                let end = displaced_index_offset.checked_add(total_size)?;
+                Some(elements[*displaced_index_offset..end].to_vec())
+            }
             _ => None,
+        }
+    }
+
+    pub fn array_storage(&self) -> Option<Rc<RefCell<Vec<Value>>>> {
+        match self {
+            Self::Vector { elements, .. } | Self::Array { elements, .. } => Some(elements.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn array_displacement_value(&self) -> Option<(Self, usize)> {
+        match self {
+            Self::Vector {
+                displaced_to,
+                displaced_index_offset,
+                ..
+            }
+            | Self::Array {
+                displaced_to,
+                displaced_index_offset,
+                ..
+            } => displaced_to
+                .as_ref()
+                .map(|displaced_to| (displaced_to.as_ref().clone(), *displaced_index_offset)),
+            _ => None,
+        }
+    }
+
+    pub fn with_array_displacement(self, displaced_to: Option<Self>, displaced_index_offset: usize) -> Self {
+        match self {
+            Self::Vector {
+                elements,
+                length,
+                fill_pointer,
+                element_type,
+                adjustable,
+                ..
+            } => Self::Vector {
+                elements,
+                length,
+                fill_pointer,
+                element_type,
+                adjustable,
+                displaced_to: displaced_to.map(Rc::new),
+                displaced_index_offset,
+            },
+            Self::Array {
+                dimensions,
+                elements,
+                element_type,
+                adjustable,
+                ..
+            } => Self::Array {
+                dimensions,
+                elements,
+                element_type,
+                adjustable,
+                displaced_to: displaced_to.map(Rc::new),
+                displaced_index_offset,
+            },
+            value => value,
+        }
+    }
+
+    pub fn with_array_displacement_value(self, displacement: Option<(Self, usize)>) -> Self {
+        match displacement {
+            Some((displaced_to, displaced_index_offset)) => {
+                self.with_array_displacement(Some(displaced_to), displaced_index_offset)
+            }
+            None => self.with_array_displacement(None, 0),
         }
     }
 
@@ -1612,6 +1991,16 @@ impl Value {
             (Self::Integer(left), Self::Integer(right)) => left == right,
             (Self::Rational(left), Self::Rational(right)) => left == right,
             (Self::Float(left), Self::Float(right)) => left == right,
+            (
+                Self::Complex {
+                    real: left_real,
+                    imag: left_imag,
+                },
+                Self::Complex {
+                    real: right_real,
+                    imag: right_imag,
+                },
+            ) => left_real.eq_value(right_real) && left_imag.eq_value(right_imag),
             (Self::Character(left), Self::Character(right)) => left == right,
             (Self::Stream(left), Self::Stream(right)) => Rc::ptr_eq(left, right),
             (Self::Package(left), Self::Package(right)) => left == right,
@@ -1623,21 +2012,69 @@ impl Value {
             (Self::UninternedSymbol(left), Self::UninternedSymbol(right)) => {
                 Rc::ptr_eq(left, right)
             }
-            (Self::List(left), Self::List(right)) | (Self::Vector(left), Self::Vector(right)) => {
+            (Self::List(left), Self::List(right)) => {
                 Rc::ptr_eq(left, right)
+            }
+            (
+                Self::Vector {
+                    elements: left_elements,
+                    length: left_length,
+                    fill_pointer: left_fill_pointer,
+                    element_type: left_element_type,
+                    adjustable: left_adjustable,
+                    displaced_to: left_displaced_to,
+                    displaced_index_offset: left_displaced_index_offset,
+                },
+                Self::Vector {
+                    elements: right_elements,
+                    length: right_length,
+                    fill_pointer: right_fill_pointer,
+                    element_type: right_element_type,
+                    adjustable: right_adjustable,
+                    displaced_to: right_displaced_to,
+                    displaced_index_offset: right_displaced_index_offset,
+                },
+            ) => {
+                Rc::ptr_eq(left_elements, right_elements)
+                    && left_length == right_length
+                    && left_fill_pointer == right_fill_pointer
+                    && Rc::ptr_eq(left_element_type, right_element_type)
+                    && left_adjustable == right_adjustable
+                    && left_displaced_index_offset == right_displaced_index_offset
+                    && match (left_displaced_to, right_displaced_to) {
+                        (Some(left), Some(right)) => Rc::ptr_eq(left, right),
+                        (None, None) => true,
+                        _ => false,
+                    }
             }
             (
                 Self::Array {
                     dimensions: left_dimensions,
                     elements: left_elements,
+                    element_type: left_element_type,
+                    adjustable: left_adjustable,
+                    displaced_to: left_displaced_to,
+                    displaced_index_offset: left_displaced_index_offset,
                 },
                 Self::Array {
                     dimensions: right_dimensions,
                     elements: right_elements,
+                    element_type: right_element_type,
+                    adjustable: right_adjustable,
+                    displaced_to: right_displaced_to,
+                    displaced_index_offset: right_displaced_index_offset,
                 },
             ) => {
                 Rc::ptr_eq(left_dimensions, right_dimensions)
                     && Rc::ptr_eq(left_elements, right_elements)
+                    && Rc::ptr_eq(left_element_type, right_element_type)
+                    && left_adjustable == right_adjustable
+                    && left_displaced_index_offset == right_displaced_index_offset
+                    && match (left_displaced_to, right_displaced_to) {
+                        (Some(left), Some(right)) => Rc::ptr_eq(left, right),
+                        (None, None) => true,
+                        _ => false,
+                    }
             }
             (
                 Self::HashTable {
@@ -1669,6 +2106,7 @@ impl Value {
             (Self::Instance(left), Self::Instance(right)) => {
                 Rc::ptr_eq(&left.class, &right.class) && Rc::ptr_eq(&left.slots, &right.slots)
             }
+            (Self::Method(left), Self::Method(right)) => left.id == right.id,
             (
                 Self::DottedList {
                     items: left,
@@ -1686,8 +2124,18 @@ impl Value {
 
     pub fn equal_value(&self, other: &Self) -> bool {
         match (self, other) {
+            (
+                Self::Complex {
+                    real: left_real,
+                    imag: left_imag,
+                },
+                Self::Complex {
+                    real: right_real,
+                    imag: right_imag,
+                },
+            ) => left_real.equal_value(right_real) && left_imag.equal_value(right_imag),
             (Self::String(left), Self::String(right)) => left == right,
-            (Self::List(left), Self::List(right)) | (Self::Vector(left), Self::Vector(right)) => {
+            (Self::List(left), Self::List(right)) => {
                 left.len() == right.len()
                     && left
                         .iter()
@@ -1695,20 +2143,86 @@ impl Value {
                         .all(|(left, right)| left.equal_value(right))
             }
             (
+                Self::Vector {
+                    elements: left_elements,
+                    length: left_length,
+                    fill_pointer: left_fill_pointer,
+                    element_type: left_element_type,
+                    adjustable: left_adjustable,
+                    displaced_to: left_displaced_to,
+                    displaced_index_offset: left_displaced_index_offset,
+                },
+                Self::Vector {
+                    elements: right_elements,
+                    length: right_length,
+                    fill_pointer: right_fill_pointer,
+                    element_type: right_element_type,
+                    adjustable: right_adjustable,
+                    displaced_to: right_displaced_to,
+                    displaced_index_offset: right_displaced_index_offset,
+                },
+            ) => {
+                let left_items = {
+                    let end = left_displaced_index_offset + left_length;
+                    left_elements.borrow()[*left_displaced_index_offset..end].to_vec()
+                };
+                let right_items = {
+                    let end = right_displaced_index_offset + right_length;
+                    right_elements.borrow()[*right_displaced_index_offset..end].to_vec()
+                };
+                left_fill_pointer == right_fill_pointer
+                    && left_length == right_length
+                    && left_adjustable == right_adjustable
+                    && left_displaced_index_offset == right_displaced_index_offset
+                    && left_element_type.equal_value(right_element_type)
+                    && match (left_displaced_to, right_displaced_to) {
+                        (Some(left), Some(right)) => left.equal_value(right),
+                        (None, None) => true,
+                        _ => false,
+                    }
+                    && left_items.len() == right_items.len()
+                    && left_items
+                        .iter()
+                        .zip(right_items.iter())
+                        .all(|(left, right)| left.equal_value(right))
+            }
+            (
                 Self::Array {
                     dimensions: left_dimensions,
-                    elements: left_elements,
+                    element_type: left_element_type,
+                    adjustable: left_adjustable,
+                    displaced_to: left_displaced_to,
+                    displaced_index_offset: left_displaced_index_offset,
+                    ..
                 },
                 Self::Array {
                     dimensions: right_dimensions,
-                    elements: right_elements,
+                    element_type: right_element_type,
+                    adjustable: right_adjustable,
+                    displaced_to: right_displaced_to,
+                    displaced_index_offset: right_displaced_index_offset,
+                    ..
                 },
             ) => {
+                let Some(left_items) = self.array_items() else {
+                    return false;
+                };
+                let Some(right_items) = other.array_items() else {
+                    return false;
+                };
                 left_dimensions == right_dimensions
-                    && left_elements.len() == right_elements.len()
-                    && left_elements
+                    && left_adjustable == right_adjustable
+                    && left_displaced_index_offset == right_displaced_index_offset
+                    && left_element_type.equal_value(right_element_type)
+                    && match (left_displaced_to, right_displaced_to) {
+                        (Some(left), Some(right)) => left.equal_value(right),
+                        (None, None) => true,
+                        _ => false,
+                    }
+                    && left_items.len() == right_items.len()
+                    && left_items
                         .iter()
-                        .zip(right_elements.iter())
+                        .zip(right_items.iter())
                         .all(|(left, right)| left.equal_value(right))
             }
             (Self::Values(left), Self::Values(right)) => {
@@ -1744,11 +2258,11 @@ impl Value {
                         },
                     )
             }
-            (Self::Class(left), Self::Class(right)) => {
-                left.name.eq_ignore_ascii_case(&right.name)
-            }
+            (Self::Class(left), Self::Class(right)) => left.name.eq_ignore_ascii_case(&right.name),
             (Self::Instance(left), Self::Instance(right)) => {
-                if !left.class.name.eq_ignore_ascii_case(&right.class.name) {
+                let left_class = left.class.borrow();
+                let right_class = right.class.borrow();
+                if !left_class.name.eq_ignore_ascii_case(&right_class.name) {
                     return false;
                 }
                 let left_slots = left.slots.borrow();
@@ -1799,6 +2313,7 @@ impl fmt::Display for Value {
                     value.fmt(formatter)
                 }
             }
+            Self::Complex { real, imag } => write!(formatter, "#C({real} {imag})"),
             Self::String(value) => write!(formatter, "{value:?}"),
             Self::Character(value) => match value {
                 ' ' => formatter.write_str("#\\SPACE"),
@@ -1831,13 +2346,15 @@ impl fmt::Display for Value {
                 }
                 write!(formatter, ". {tail})")
             }
-            Self::Vector(values) => {
+            Self::Vector { .. } => {
+                let values = self.vector_items().unwrap_or_default();
                 formatter.write_str("#(")?;
-                write_sequence(formatter, values)?;
+                write_sequence(formatter, &values)?;
                 formatter.write_str(")")
             }
             Self::Array { dimensions, .. } => write!(formatter, "#<ARRAY {dimensions:?}>"),
             Self::HashTable { test, .. } => write!(formatter, "#<HASH-TABLE {test}>"),
+            Self::Method(_) => formatter.write_str("#<METHOD>"),
             Self::Values(values) => {
                 formatter.write_str("#<VALUES")?;
                 if !values.is_empty() {
@@ -1856,7 +2373,10 @@ impl fmt::Display for Value {
                 formatter.write_char(')')
             }
             Self::Class(definition) => write!(formatter, "#<CLASS {}>", definition.name),
-            Self::Instance(instance) => write!(formatter, "#<{} INSTANCE>", instance.class.name),
+            Self::Instance(instance) => {
+                let class = instance.class.borrow();
+                write!(formatter, "#<{} INSTANCE>", class.name)
+            }
             Self::Function(function) => match function.as_ref() {
                 Function::Builtin { name, .. } => write!(formatter, "#<BUILTIN {name}>"),
                 Function::Primitive { name } => write!(formatter, "#<PRIMITIVE {name}>"),
@@ -1889,15 +2409,23 @@ impl fmt::Display for Value {
                 Function::ConditionReader {
                     condition_name,
                     slot_name,
-                } => write!(formatter, "#<CONDITION-READER {condition_name}-{slot_name}>"),
+                } => write!(
+                    formatter,
+                    "#<CONDITION-READER {condition_name}-{slot_name}>"
+                ),
                 Function::ConditionWriter {
                     condition_name,
                     slot_name,
-                } => write!(formatter, "#<CONDITION-WRITER {condition_name}-{slot_name}>"),
+                } => write!(
+                    formatter,
+                    "#<CONDITION-WRITER {condition_name}-{slot_name}>"
+                ),
                 Function::Closure { .. } | Function::Compiled { .. } => {
                     formatter.write_str("#<FUNCTION>")
                 }
-                Function::Macro { .. } | Function::ModifyMacro { .. } => {
+                Function::Macro { .. }
+                | Function::LongDefsetf { .. }
+                | Function::ModifyMacro { .. } => {
                     formatter.write_str("#<MACRO>")
                 }
             },

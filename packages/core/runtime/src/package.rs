@@ -126,7 +126,8 @@ impl PackageState {
     }
 
     pub(crate) fn package_exists(&self, name: &str) -> bool {
-        self.packages.contains_key(&self.canonical_package_name(name))
+        self.packages
+            .contains_key(&self.canonical_package_name(name))
     }
 
     pub(crate) fn package_documentation(&self, package: &str) -> Option<String> {
@@ -134,6 +135,19 @@ impl PackageState {
         self.packages
             .get(&package)
             .and_then(|entry| entry.documentation.clone())
+    }
+
+    pub(crate) fn set_package_documentation(
+        &mut self,
+        package: &str,
+        documentation: Option<String>,
+    ) -> bool {
+        let package = self.canonical_package_name(package);
+        let Some(entry) = self.packages.get_mut(&package) else {
+            return false;
+        };
+        entry.documentation = documentation;
+        true
     }
 
     pub(crate) fn is_exported(&self, package: &str, name: &str) -> bool {
@@ -283,9 +297,10 @@ impl PackageState {
         let target = self.canonical_package_name(target);
         if let Some(entry) = self.packages.get_mut(&target) {
             entry.symbols.insert(source_name.clone());
-            entry
-                .imports
-                .insert(source_name.clone(), canonical_symbol_name(&source_package, &source_name));
+            entry.imports.insert(
+                source_name.clone(),
+                canonical_symbol_name(&source_package, &source_name),
+            );
             if shadowing {
                 entry.shadows.insert(source_name);
             } else {
@@ -353,7 +368,9 @@ impl PackageState {
     ) -> Result<(), String> {
         let name = normalize_package_name(&name);
         if self.nicknames.contains_key(&name) {
-            return Err(format!("package name {name} conflicts with an existing nickname"));
+            return Err(format!(
+                "package name {name} conflicts with an existing nickname"
+            ));
         }
         let mut normalized_nicknames = Vec::new();
         for nickname in nicknames {
@@ -369,9 +386,7 @@ impl PackageState {
             if let Some(existing) = self.nicknames.get(&nickname)
                 && existing != &name
             {
-                return Err(format!(
-                    "package nickname {nickname} is already in use"
-                ));
+                return Err(format!("package nickname {nickname} is already in use"));
             }
             if !normalized_nicknames.contains(&nickname) {
                 normalized_nicknames.push(nickname);
@@ -401,9 +416,7 @@ impl PackageState {
                 .insert(nickname.clone(), target)
                 .is_some()
             {
-                return Err(format!(
-                    "duplicate local package nickname {nickname}"
-                ));
+                return Err(format!("duplicate local package nickname {nickname}"));
             }
         }
 

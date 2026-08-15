@@ -1,5 +1,6 @@
-use std::cmp::Ordering;
 use std::cell::RefCell;
+use std::cmp::Ordering;
+use std::f64::consts::PI;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -16,10 +17,30 @@ pub fn install(environment: &Environment) {
         ("-", subtract as _),
         ("*", multiply as _),
         ("/", divide as _),
+        ("sin", sine as _),
+        ("cos", cosine as _),
+        ("tan", tangent as _),
+        ("asin", arc_sine as _),
+        ("acos", arc_cosine as _),
+        ("atan", arc_tangent as _),
+        ("sinh", hyperbolic_sine as _),
+        ("cosh", hyperbolic_cosine as _),
+        ("tanh", hyperbolic_tangent as _),
+        ("asinh", arc_hyperbolic_sine as _),
+        ("acosh", arc_hyperbolic_cosine as _),
+        ("atanh", arc_hyperbolic_tangent as _),
+        ("exp", exponential as _),
+        ("log", logarithm as _),
+        ("cis", cis as _),
         ("expt", exponentiate as _),
         ("sqrt", square_root as _),
         ("signum", signum as _),
         ("float", float_value as _),
+        ("complex", complex as _),
+        ("conjugate", conjugate as _),
+        ("phase", phase as _),
+        ("realpart", realpart as _),
+        ("imagpart", imagpart as _),
         ("rational", rational as _),
         ("rationalize", rationalize as _),
         ("=", numeric_equal as _),
@@ -48,9 +69,26 @@ pub fn install(environment: &Environment) {
         ("mod", modulo as _),
         ("rem", remainder as _),
         ("ash", arithmetic_shift as _),
+        ("byte", byte as _),
+        ("byte-size", byte_size as _),
+        ("byte-position", byte_position as _),
+        ("ldb", ldb as _),
+        ("ldb-test", ldb_test as _),
+        ("dpb", dpb as _),
+        ("mask-field", mask_field as _),
+        ("deposit-field", deposit_field as _),
+        ("logbitp", logbitp as _),
         ("logand", logand as _),
         ("logior", logior as _),
         ("logxor", logxor as _),
+        ("lognand", lognand as _),
+        ("lognor", lognor as _),
+        ("logandc1", logandc1 as _),
+        ("logandc2", logandc2 as _),
+        ("logorc1", logorc1 as _),
+        ("logorc2", logorc2 as _),
+        ("logeqv", logeqv as _),
+        ("boole", boole as _),
         ("lognot", lognot as _),
         ("logtest", logtest as _),
         ("logcount", logcount as _),
@@ -68,6 +106,15 @@ pub fn install(environment: &Environment) {
         ("car", car as _),
         ("cdr", cdr as _),
         ("first", first as _),
+        ("second", second as _),
+        ("third", third as _),
+        ("fourth", fourth as _),
+        ("fifth", fifth as _),
+        ("sixth", sixth as _),
+        ("seventh", seventh as _),
+        ("eighth", eighth as _),
+        ("ninth", ninth as _),
+        ("tenth", tenth as _),
         ("rest", rest as _),
         ("append", append as _),
         ("nconc", nconc as _),
@@ -88,16 +135,21 @@ pub fn install(environment: &Environment) {
         ("aref", aref as _),
         ("svref", svref as _),
         ("bit", bit as _),
+        ("sbit", sbit as _),
         ("row-major-aref", row_major_aref as _),
         ("array-row-major-index", array_row_major_index as _),
         ("array-in-bounds-p", array_in_bounds_p as _),
         ("array-element-type", array_element_type as _),
+        ("array-has-fill-pointer-p", array_has_fill_pointer_p as _),
+        ("adjustable-array-p", adjustable_array_p as _),
+        ("array-displacement", array_displacement as _),
         ("simple-array-p", simple_array_p as _),
         ("arrayp", arrayp as _),
         ("array-rank", array_rank as _),
         ("array-dimensions", array_dimensions as _),
         ("array-dimension", array_dimension as _),
         ("array-total-size", array_total_size as _),
+        ("adjust-array", adjust_array as _),
         ("make-hash-table", make_hash_table as _),
         ("gethash", gethash as _),
         ("remhash", remhash as _),
@@ -171,6 +223,7 @@ pub fn install(environment: &Environment) {
         ("consp", consp as _),
         ("listp", listp as _),
         ("numberp", numberp as _),
+        ("complexp", complexp as _),
         ("integerp", integerp as _),
         ("floatp", floatp as _),
         ("rationalp", rationalp as _),
@@ -183,6 +236,7 @@ pub fn install(environment: &Environment) {
         ("symbol-name", symbol_name_value as _),
         ("symbol-package", symbol_package_value as _),
         ("vectorp", vectorp as _),
+        ("fill-pointer", fill_pointer as _),
         ("simple-vector-p", simple_vector_p as _),
         ("functionp", functionp as _),
         ("eq", eq as _),
@@ -201,6 +255,12 @@ pub fn install(environment: &Environment) {
             simple_condition_format_arguments as _,
         ),
         ("__NCL_THE_CHECK", the_check as _),
+        ("__NCL_REQUIRE_INTEGER", require_integer as _),
+        ("__NCL_REQUIRE_LIST", require_list as _),
+        (
+            "__NCL_APPEND_OUTPUT_TO_STRING",
+            append_output_to_string as _,
+        ),
         ("__NCL_ECASE_ERROR", ecase_error as _),
         ("__NCL_ETYPECASE_ERROR", etypecase_error as _),
         ("print", print_value as _),
@@ -211,8 +271,12 @@ pub fn install(environment: &Environment) {
         ("write-to-string", write_to_string as _),
         ("read-from-string", read_from_string as _),
         ("read", read as _),
-        ("read-preserving-whitespace", read_preserving_whitespace as _),
+        (
+            "read-preserving-whitespace",
+            read_preserving_whitespace as _,
+        ),
         ("make-string-input-stream", make_string_input_stream as _),
+        ("%stream-input-position", stream_input_position as _),
         ("make-string-output-stream", make_string_output_stream as _),
         ("open", open_file as _),
         ("probe-file", probe_file as _),
@@ -288,6 +352,7 @@ pub fn install(environment: &Environment) {
         "NSET-EXCLUSIVE-OR",
         "SUBSETP",
         "SUBTYPEP",
+        "UPGRADED-ARRAY-ELEMENT-TYPE",
         "MEMBER",
         "MEMBER-IF",
         "MEMBER-IF-NOT",
@@ -325,8 +390,10 @@ pub fn install(environment: &Environment) {
         "CONSTANTP",
         "FBOUNDP",
         "MACRO-FUNCTION",
+        "COMPILER-MACRO-FUNCTION",
         "SPECIAL-OPERATOR-P",
         "COMPILED-FUNCTION-P",
+        "FUNCTION-LAMBDA-EXPRESSION",
         "FDEFINITION",
         "SYMBOL-FUNCTION",
         "SYMBOL-VALUE",
@@ -338,6 +405,23 @@ pub fn install(environment: &Environment) {
         "MAKUNBOUND",
         "FMAKUNBOUND",
         "MAKE-INSTANCE",
+        "ALLOCATE-INSTANCE",
+        "CHANGE-CLASS",
+        "REINITIALIZE-INSTANCE",
+        "SHARED-INITIALIZE",
+        "ENSURE-GENERIC-FUNCTION",
+        "FIND-METHOD",
+        "COMPUTE-APPLICABLE-METHODS",
+        "GENERIC-FUNCTION-CLASS",
+        "GENERIC-FUNCTION-METHODS",
+        "GENERIC-FUNCTION-NAME",
+        "METHOD-CLASS",
+        "METHOD-COMBINATION",
+        "METHOD-FUNCTION",
+        "METHOD-GENERIC-FUNCTION",
+        "METHOD-LAMBDA-LIST",
+        "METHOD-QUALIFIERS",
+        "METHOD-SPECIALIZERS",
         "SLOT-VALUE",
         "CLASS-OF",
         "FIND-CLASS",
@@ -359,8 +443,27 @@ pub fn install(environment: &Environment) {
     for (name, value) in [
         ("NIL", Value::Nil),
         ("T", Value::boolean(true)),
+        ("ARRAY-RANK-LIMIT", Value::Integer(i64::MAX)),
+        ("ARRAY-DIMENSION-LIMIT", Value::Integer(i64::MAX)),
+        ("ARRAY-TOTAL-SIZE-LIMIT", Value::Integer(i64::MAX)),
         ("CHAR-CODE-LIMIT", Value::Integer(0x11_00_00)),
         ("MOST-POSITIVE-CHAR-CODE", Value::Integer(0x10_FF_FF)),
+        ("BOOLE-CLR", Value::Integer(0)),
+        ("BOOLE-SET", Value::Integer(1)),
+        ("BOOLE-1", Value::Integer(2)),
+        ("BOOLE-2", Value::Integer(3)),
+        ("BOOLE-C1", Value::Integer(4)),
+        ("BOOLE-C2", Value::Integer(5)),
+        ("BOOLE-AND", Value::Integer(6)),
+        ("BOOLE-IOR", Value::Integer(7)),
+        ("BOOLE-XOR", Value::Integer(8)),
+        ("BOOLE-EQV", Value::Integer(9)),
+        ("BOOLE-NAND", Value::Integer(10)),
+        ("BOOLE-NOR", Value::Integer(11)),
+        ("BOOLE-ANDC1", Value::Integer(12)),
+        ("BOOLE-ANDC2", Value::Integer(13)),
+        ("BOOLE-ORC1", Value::Integer(14)),
+        ("BOOLE-ORC2", Value::Integer(15)),
     ] {
         environment.define(name, value.clone());
         environment.define(format!("{COMMON_LISP_PACKAGE}::{name}"), value);
@@ -368,16 +471,11 @@ pub fn install(environment: &Environment) {
 }
 
 fn add(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    let mut result = Number::Integer(0);
+    let mut result = Numeric::Real(Number::Integer(0));
     for argument in arguments {
-        let value = number_argument("+", argument)?;
-        result = if result.is_float() || value.is_float() {
-            Number::Float(result.as_float() + value.as_float())
-        } else {
-            exact_binary(result, value, '+')?
-        };
+        result = add_numeric(result, numeric_argument("+", argument)?)?;
     }
-    number_to_value(result)
+    numeric_to_value(result)
 }
 
 fn subtract(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -386,34 +484,25 @@ fn subtract(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
     let values = arguments
         .iter()
-        .map(|value| number_argument("-", value))
+        .map(|value| numeric_argument("-", value))
         .collect::<Result<Vec<_>, _>>()?;
     let mut result = values[0];
     if values.len() == 1 {
-        result = negate_number(result)?;
+        result = negate_numeric(result)?;
     } else {
         for value in &values[1..] {
-            result = if result.is_float() || value.is_float() {
-                Number::Float(result.as_float() - value.as_float())
-            } else {
-                exact_binary(result, *value, '-')?
-            };
+            result = subtract_numeric(result, *value)?;
         }
     }
-    number_to_value(result)
+    numeric_to_value(result)
 }
 
 fn multiply(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    let mut result = Number::Integer(1);
+    let mut result = Numeric::Real(Number::Integer(1));
     for argument in arguments {
-        let value = number_argument("*", argument)?;
-        result = if result.is_float() || value.is_float() {
-            Number::Float(result.as_float() * value.as_float())
-        } else {
-            exact_binary(result, value, '*')?
-        };
+        result = multiply_numeric(result, numeric_argument("*", argument)?)?;
     }
-    number_to_value(result)
+    numeric_to_value(result)
 }
 
 fn divide(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -422,55 +511,420 @@ fn divide(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
     let values = arguments
         .iter()
-        .map(|value| number_argument("/", value))
+        .map(|value| numeric_argument("/", value))
         .collect::<Result<Vec<_>, _>>()?;
     let mut result;
     if values.len() == 1 {
-        result = if values[0].is_float() {
-            let divisor = values[0].as_float();
-            if divisor == 0.0 {
-                return Err(RuntimeError::DivisionByZero);
-            }
-            Number::Float(1.0 / divisor)
-        } else {
-            exact_binary(Number::Integer(1), values[0], '/')?
-        };
+        result = divide_numeric(Numeric::Real(Number::Integer(1)), values[0])?;
     } else {
         result = values[0];
         for value in &values[1..] {
-            result = if result.is_float() || value.is_float() {
-                let divisor = value.as_float();
-                if divisor == 0.0 {
-                    return Err(RuntimeError::DivisionByZero);
-                }
-                Number::Float(result.as_float() / divisor)
-            } else {
-                exact_binary(result, *value, '/')?
-            };
+            result = divide_numeric(result, *value)?;
         }
     }
-    number_to_value(result)
+    numeric_to_value(result)
 }
 
 fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "expt", 2)?;
-    let base = number_argument("expt", &arguments[0])?;
-    let exponent = number_argument("expt", &arguments[1])?;
+    let base = numeric_argument("expt", &arguments[0])?;
+    let exponent = numeric_argument("expt", &arguments[1])?;
 
-    if !base.is_float() {
-        if let Some((exponent_numerator, exponent_denominator)) = exponent.exact_parts() {
-            if exponent_denominator == 1 {
-                return number_to_value(exact_power(base, exponent_numerator)?);
+    if let (Numeric::Real(base), Numeric::Real(exponent)) = (base, exponent) {
+        if !base.is_float() {
+            if let Some((exponent_numerator, exponent_denominator)) = exponent.exact_parts() {
+                if exponent_denominator == 1 {
+                    return number_to_value(exact_power(base, exponent_numerator)?);
+                }
+            }
+        }
+
+        if base.as_float() >= 0.0 || float_is_integer(exponent.as_float()) {
+            return Ok(Value::Float(base.as_float().powf(exponent.as_float())));
+        }
+
+        return exponentiate_complex(Numeric::Real(base), Numeric::Real(exponent));
+    }
+
+    exponentiate_complex(base, exponent)
+}
+
+fn exponentiate_complex(base: Numeric, exponent: Numeric) -> Result<Value, RuntimeError> {
+    let (base_real, base_imag) = base.into_complex();
+    let (exponent_real, exponent_imag) = exponent.into_complex();
+
+    if base_real.as_float() == 0.0 && base_imag.as_float() == 0.0 {
+        return zero_power(exponent_real, exponent_imag);
+    }
+
+    let base_real = base_real.as_float();
+    let base_imag = base_imag.as_float();
+    let exponent_real = exponent_real.as_float();
+    let exponent_imag = exponent_imag.as_float();
+
+    let magnitude = base_real.hypot(base_imag);
+    let angle = base_imag.atan2(base_real);
+    let log_real = magnitude.ln();
+    let log_imag = angle;
+
+    let power_real = exponent_real * log_real - exponent_imag * log_imag;
+    let power_imag = exponent_real * log_imag + exponent_imag * log_real;
+    let scale = power_real.exp();
+    let real_part = canonicalize_float(scale * power_imag.cos());
+    let imag_part = canonicalize_float(scale * power_imag.sin());
+
+    Ok(Value::complex(
+        number_to_value(real_part)?,
+        number_to_value(imag_part)?,
+    ))
+}
+
+fn sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "sin", 1)?;
+    numeric_to_value(sine_numeric(numeric_argument("sin", &arguments[0])?))
+}
+
+fn sine_numeric(value: Numeric) -> Numeric {
+    match value {
+        Numeric::Real(value) => Numeric::Real(Number::Float(value.as_float().sin())),
+        Numeric::Complex { real, imag } => {
+            let real_part = canonicalize_float(real.as_float().sin() * imag.as_float().cosh());
+            let imag_part = canonicalize_float(real.as_float().cos() * imag.as_float().sinh());
+            if imag_part.as_float() == 0.0 {
+                Numeric::Real(real_part)
+            } else {
+                Numeric::Complex {
+                    real: real_part,
+                    imag: imag_part,
+                }
             }
         }
     }
+}
 
-    Ok(Value::Float(base.as_float().powf(exponent.as_float())))
+fn cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "cos", 1)?;
+    numeric_to_value(cosine_numeric(numeric_argument("cos", &arguments[0])?))
+}
+
+fn cosine_numeric(value: Numeric) -> Numeric {
+    match value {
+        Numeric::Real(value) => Numeric::Real(Number::Float(value.as_float().cos())),
+        Numeric::Complex { real, imag } => {
+            let real_part = canonicalize_float(real.as_float().cos() * imag.as_float().cosh());
+            let imag_part = canonicalize_float(-(real.as_float().sin() * imag.as_float().sinh()));
+            if imag_part.as_float() == 0.0 {
+                Numeric::Real(real_part)
+            } else {
+                Numeric::Complex {
+                    real: real_part,
+                    imag: imag_part,
+                }
+            }
+        }
+    }
+}
+
+fn tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "tan", 1)?;
+    let value = numeric_argument("tan", &arguments[0])?;
+    numeric_to_value(divide_numeric(sine_numeric(value), cosine_numeric(value))?)
+}
+
+fn arc_sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "asin", 1)?;
+    numeric_to_value(arc_sine_numeric(numeric_argument("asin", &arguments[0])?)?)
+}
+
+fn arc_sine_numeric(value: Numeric) -> Result<Numeric, RuntimeError> {
+    let imaginary_unit = Numeric::Complex {
+        real: Number::Integer(0),
+        imag: Number::Integer(1),
+    };
+    let one = Numeric::Real(Number::Integer(1));
+    let negative_imaginary_unit = Numeric::Complex {
+        real: Number::Integer(0),
+        imag: Number::Integer(-1),
+    };
+    let value_squared = multiply_numeric(value, value)?;
+    let radicand = subtract_numeric(one, value_squared)?;
+    let root = square_root_numeric(radicand)?;
+    let sum = add_numeric(multiply_numeric(imaginary_unit, value)?, root)?;
+
+    Ok(canonicalize_numeric(multiply_numeric(
+        negative_imaginary_unit,
+        logarithm_numeric(sum),
+    )?))
+}
+
+fn arc_cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "acos", 1)?;
+    numeric_to_value(arc_cosine_numeric(numeric_argument(
+        "acos",
+        &arguments[0],
+    )?)?)
+}
+
+fn arc_cosine_numeric(value: Numeric) -> Result<Numeric, RuntimeError> {
+    Ok(canonicalize_numeric(subtract_numeric(
+        Numeric::Real(Number::Float(PI / 2.0)),
+        arc_sine_numeric(value)?,
+    )?))
+}
+
+fn arc_tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    match arguments.len() {
+        1 => numeric_to_value(arc_tangent_numeric(numeric_argument(
+            "atan",
+            &arguments[0],
+        )?)?),
+        2 => {
+            let y = number_argument("atan", &real_number_argument("atan", &arguments[0])?)?;
+            let x = number_argument("atan", &real_number_argument("atan", &arguments[1])?)?;
+            number_to_value(arc_tangent_real(y, x))
+        }
+        _ => Err(arity("atan", "1 or 2", arguments.len())),
+    }
+}
+
+fn arc_tangent_real(y: Number, x: Number) -> Number {
+    canonicalize_number(Number::Float(y.as_float().atan2(x.as_float())))
+}
+
+fn arc_tangent_numeric(value: Numeric) -> Result<Numeric, RuntimeError> {
+    let imaginary_unit = Numeric::Complex {
+        real: Number::Integer(0),
+        imag: Number::Integer(1),
+    };
+    let one = Numeric::Real(Number::Integer(1));
+    let difference = subtract_numeric(
+        logarithm_numeric(add_numeric(one, multiply_numeric(imaginary_unit, value)?)?),
+        logarithm_numeric(subtract_numeric(
+            one,
+            multiply_numeric(imaginary_unit, value)?,
+        )?),
+    )?;
+
+    Ok(canonicalize_numeric(multiply_numeric(
+        Numeric::Complex {
+            real: Number::Integer(0),
+            imag: Number::Float(-0.5),
+        },
+        difference,
+    )?))
+}
+
+fn hyperbolic_sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "sinh", 1)?;
+    numeric_to_value(hyperbolic_sine_numeric(numeric_argument(
+        "sinh",
+        &arguments[0],
+    )?))
+}
+
+fn hyperbolic_sine_numeric(value: Numeric) -> Numeric {
+    match value {
+        Numeric::Real(value) => Numeric::Real(Number::Float(value.as_float().sinh())),
+        Numeric::Complex { real, imag } => {
+            let real_part = canonicalize_float(real.as_float().sinh() * imag.as_float().cos());
+            let imag_part = canonicalize_float(real.as_float().cosh() * imag.as_float().sin());
+            if imag_part.as_float() == 0.0 {
+                Numeric::Real(real_part)
+            } else {
+                Numeric::Complex {
+                    real: real_part,
+                    imag: imag_part,
+                }
+            }
+        }
+    }
+}
+
+fn hyperbolic_cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "cosh", 1)?;
+    numeric_to_value(hyperbolic_cosine_numeric(numeric_argument(
+        "cosh",
+        &arguments[0],
+    )?))
+}
+
+fn hyperbolic_cosine_numeric(value: Numeric) -> Numeric {
+    match value {
+        Numeric::Real(value) => Numeric::Real(Number::Float(value.as_float().cosh())),
+        Numeric::Complex { real, imag } => {
+            let real_part = canonicalize_float(real.as_float().cosh() * imag.as_float().cos());
+            let imag_part = canonicalize_float(real.as_float().sinh() * imag.as_float().sin());
+            if imag_part.as_float() == 0.0 {
+                Numeric::Real(real_part)
+            } else {
+                Numeric::Complex {
+                    real: real_part,
+                    imag: imag_part,
+                }
+            }
+        }
+    }
+}
+
+fn hyperbolic_tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "tanh", 1)?;
+    let value = numeric_argument("tanh", &arguments[0])?;
+    numeric_to_value(divide_numeric(
+        hyperbolic_sine_numeric(value),
+        hyperbolic_cosine_numeric(value),
+    )?)
+}
+
+fn arc_hyperbolic_sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "asinh", 1)?;
+    numeric_to_value(arc_hyperbolic_sine_numeric(numeric_argument(
+        "asinh",
+        &arguments[0],
+    )?)?)
+}
+
+fn arc_hyperbolic_sine_numeric(value: Numeric) -> Result<Numeric, RuntimeError> {
+    let one = Numeric::Real(Number::Integer(1));
+    let value_squared = multiply_numeric(value, value)?;
+    let radicand = add_numeric(one, value_squared)?;
+    let root = square_root_numeric(radicand)?;
+    let sum = add_numeric(value, root)?;
+    Ok(canonicalize_numeric(logarithm_numeric(sum)))
+}
+
+fn arc_hyperbolic_cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "acosh", 1)?;
+    numeric_to_value(arc_hyperbolic_cosine_numeric(numeric_argument(
+        "acosh",
+        &arguments[0],
+    )?)?)
+}
+
+fn arc_hyperbolic_cosine_numeric(value: Numeric) -> Result<Numeric, RuntimeError> {
+    let one = Numeric::Real(Number::Integer(1));
+    let lower = square_root_numeric(subtract_numeric(value, one)?)?;
+    let upper = square_root_numeric(add_numeric(value, one)?)?;
+    let sum = add_numeric(value, multiply_numeric(lower, upper)?)?;
+    Ok(canonicalize_numeric(logarithm_numeric(sum)))
+}
+
+fn arc_hyperbolic_tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "atanh", 1)?;
+    numeric_to_value(arc_hyperbolic_tangent_numeric(numeric_argument(
+        "atanh",
+        &arguments[0],
+    )?)?)
+}
+
+fn arc_hyperbolic_tangent_numeric(value: Numeric) -> Result<Numeric, RuntimeError> {
+    let one = Numeric::Real(Number::Integer(1));
+    let numerator = logarithm_numeric(add_numeric(one, value)?);
+    let denominator = logarithm_numeric(subtract_numeric(one, value)?);
+    Ok(canonicalize_numeric(multiply_numeric(
+        Numeric::Real(Number::Float(0.5)),
+        subtract_numeric(numerator, denominator)?,
+    )?))
+}
+
+fn exponential(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "exp", 1)?;
+    match numeric_argument("exp", &arguments[0])? {
+        Numeric::Real(value) => Ok(Value::Float(value.as_float().exp())),
+        Numeric::Complex { real, imag } => {
+            let scale = real.as_float().exp();
+            let angle = imag.as_float();
+            Ok(Value::complex(
+                number_to_value(canonicalize_float(scale * angle.cos()))?,
+                number_to_value(canonicalize_float(scale * angle.sin()))?,
+            ))
+        }
+    }
+}
+
+fn logarithm(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if !(1..=2).contains(&arguments.len()) {
+        return Err(arity("log", "1 or 2", arguments.len()));
+    }
+
+    let value = logarithm_numeric(numeric_argument("log", &arguments[0])?);
+    if arguments.len() == 1 {
+        return numeric_to_value(value);
+    }
+
+    let base = logarithm_numeric(numeric_argument("log", &arguments[1])?);
+    numeric_to_value(divide_numeric(value, base)?)
+}
+
+fn logarithm_numeric(value: Numeric) -> Numeric {
+    let (real, imag) = value.into_complex();
+    let magnitude = real.as_float().hypot(imag.as_float());
+    let angle = imag.as_float().atan2(real.as_float());
+    let real_part = canonicalize_float(magnitude.ln());
+    let imag_part = canonicalize_float(angle);
+
+    if imag_part.as_float() == 0.0 {
+        Numeric::Real(real_part)
+    } else {
+        Numeric::Complex {
+            real: real_part,
+            imag: imag_part,
+        }
+    }
+}
+
+fn cis(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "cis", 1)?;
+    let angle = number_argument("cis", &arguments[0])?.as_float();
+    Ok(Value::complex(
+        number_to_value(canonicalize_float(angle.cos()))?,
+        number_to_value(canonicalize_float(angle.sin()))?,
+    ))
+}
+
+fn zero_power(exponent_real: Number, exponent_imag: Number) -> Result<Value, RuntimeError> {
+    if exponent_imag.as_float() != 0.0 {
+        return Err(RuntimeError::DivisionByZero);
+    }
+
+    if exponent_real.as_float() == 0.0 {
+        return Ok(Value::Integer(1));
+    }
+
+    if exponent_real.as_float() < 0.0 {
+        return Err(RuntimeError::DivisionByZero);
+    }
+
+    if let Some((exponent_numerator, exponent_denominator)) = exponent_real.exact_parts() {
+        if exponent_numerator > 0 && exponent_denominator == 1 {
+            return Ok(Value::Integer(0));
+        }
+    }
+
+    Ok(Value::Float(0.0))
+}
+
+fn canonicalize_float(value: f64) -> Number {
+    if value.abs() < 1e-12 {
+        Number::Integer(0)
+    } else {
+        Number::Float(value)
+    }
+}
+
+fn float_is_integer(value: f64) -> bool {
+    value.is_finite() && value.fract() == 0.0
 }
 
 fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "sqrt", 1)?;
-    match number_argument("sqrt", &arguments[0])? {
+    match numeric_argument("sqrt", &arguments[0])? {
+        Numeric::Real(number) => square_root_real(number),
+        Numeric::Complex { real, imag } => square_root_complex(real, imag),
+    }
+}
+
+fn square_root_real(number: Number) -> Result<Value, RuntimeError> {
+    match number {
         Number::Integer(value) if value >= 0 => {
             let root = integer_square_root(value as u128);
             if root * root == value as u128 {
@@ -479,7 +933,12 @@ fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 Ok(Value::Float((value as f64).sqrt()))
             }
         }
-        Number::Integer(_) => Err(negative_real_error("sqrt")),
+        Number::Integer(value) => Ok(Value::complex(
+            Value::Integer(0),
+            square_root_real(Number::Integer(
+                value.checked_neg().ok_or(RuntimeError::NumericOverflow)?,
+            ))?,
+        )),
         Number::Rational(value) if value.numerator() >= 0 => {
             let numerator = value.numerator() as u128;
             let denominator = value.denominator() as u128;
@@ -496,9 +955,18 @@ fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 ))
             }
         }
-        Number::Rational(_) => Err(negative_real_error("sqrt")),
+        Number::Rational(value) => Ok(Value::complex(
+            Value::Integer(0),
+            square_root_real(Number::Rational(Rational::new(
+                -i128::from(value.numerator()),
+                i128::from(value.denominator()),
+            )?))?,
+        )),
         Number::Float(value) if value >= 0.0 => Ok(Value::Float(value.sqrt())),
-        Number::Float(_) => Err(negative_real_error("sqrt")),
+        Number::Float(value) => Ok(Value::complex(
+            Value::Integer(0),
+            Value::Float((-value).sqrt()),
+        )),
     }
 }
 
@@ -517,16 +985,34 @@ fn integer_square_root(value: u128) -> u128 {
     }
 }
 
-fn negative_real_error(function: &str) -> RuntimeError {
-    RuntimeError::InvalidForm {
-        message: format!("{function} of a negative real requires complex numbers"),
-        span: None,
-    }
+fn square_root_complex(real: Number, imag: Number) -> Result<Value, RuntimeError> {
+    let real = real.as_float();
+    let imag = imag.as_float();
+    let magnitude = real.hypot(imag);
+    let real_part = ((magnitude + real) / 2.0).sqrt();
+    let imag_magnitude = ((magnitude - real) / 2.0).sqrt();
+    let imag_part = if imag < 0.0 {
+        -imag_magnitude
+    } else {
+        imag_magnitude
+    };
+
+    Ok(Value::complex(
+        Value::Float(real_part),
+        Value::Float(imag_part),
+    ))
 }
 
 fn signum(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "signum", 1)?;
-    match number_argument("signum", &arguments[0])? {
+    match numeric_argument("signum", &arguments[0])? {
+        Numeric::Real(number) => signum_real(number),
+        Numeric::Complex { real, imag } => signum_complex(real, imag),
+    }
+}
+
+fn signum_real(number: Number) -> Result<Value, RuntimeError> {
+    match number {
         Number::Integer(value) => Ok(Value::Integer(value.signum())),
         Number::Rational(value) => Ok(Value::Integer(value.numerator().signum())),
         Number::Float(value) if value.is_nan() => Err(RuntimeError::InvalidForm {
@@ -540,6 +1026,17 @@ fn signum(arguments: &[Value]) -> Result<Value, RuntimeError> {
             1.0
         })),
     }
+}
+
+fn signum_complex(real: Number, imag: Number) -> Result<Value, RuntimeError> {
+    if real.as_float() == 0.0 && imag.as_float() == 0.0 {
+        return numeric_to_value(Numeric::Complex { real, imag });
+    }
+
+    let magnitude = absolute_complex(real, imag)?;
+    let magnitude = numeric_argument("signum", &magnitude)?;
+    let value = Numeric::Complex { real, imag };
+    numeric_to_value(divide_numeric(value, magnitude)?)
 }
 
 fn float_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -591,9 +1088,7 @@ fn rational_from_float(value: f64) -> Result<Value, RuntimeError> {
     };
 
     if exponent < 0 {
-        let canceled = significand
-            .trailing_zeros()
-            .min((-exponent) as u32);
+        let canceled = significand.trailing_zeros().min((-exponent) as u32);
         significand >>= canceled;
         exponent += canceled as i32;
     }
@@ -677,11 +1172,8 @@ fn simplest_positive_rational(
 
     let lower_fraction = lower - lower_floor;
     let upper_fraction = upper - lower_floor;
-    let (reciprocal_numerator, reciprocal_denominator) = simplest_positive_rational(
-        1.0 / upper_fraction,
-        1.0 / lower_fraction,
-        depth + 1,
-    )?;
+    let (reciprocal_numerator, reciprocal_denominator) =
+        simplest_positive_rational(1.0 / upper_fraction, 1.0 / lower_fraction, depth + 1)?;
     let numerator = (lower_floor as i128)
         .checked_mul(reciprocal_numerator)
         .and_then(|value| value.checked_add(reciprocal_denominator))
@@ -690,9 +1182,8 @@ fn simplest_positive_rational(
 }
 
 fn exact_power(base: Number, exponent: i64) -> Result<Number, RuntimeError> {
-    let (mut numerator, mut denominator) = base
-        .exact_parts()
-        .expect("exact power received a float");
+    let (mut numerator, mut denominator) =
+        base.exact_parts().expect("exact power received a float");
     let negative_exponent = exponent < 0;
     if negative_exponent && numerator == 0 {
         return Err(RuntimeError::DivisionByZero);
@@ -728,7 +1219,18 @@ fn checked_power(base: i128, mut exponent: u64) -> Result<i128, RuntimeError> {
 }
 
 fn numeric_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    compare_numbers("=", arguments, |ordering| ordering == Ordering::Equal)
+    if arguments.is_empty() {
+        return Err(arity("=", "at least one", 0));
+    }
+    let values = arguments
+        .iter()
+        .map(|value| numeric_argument("=", value))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Value::boolean(
+        values
+            .windows(2)
+            .all(|window| numeric_equal_values(window[0], window[1])),
+    ))
 }
 
 fn less_than(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -750,7 +1252,10 @@ fn greater_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
 fn zerop(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "zerop", 1)?;
     Ok(Value::boolean(
-        number_argument("zerop", &arguments[0])?.as_float() == 0.0,
+        match numeric_argument("zerop", &arguments[0])? {
+            Numeric::Real(number) => number.as_float() == 0.0,
+            Numeric::Complex { real, imag } => real.as_float() == 0.0 && imag.as_float() == 0.0,
+        },
     ))
 }
 
@@ -816,7 +1321,14 @@ fn extreme(
 
 fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "abs", 1)?;
-    match number_argument("abs", &arguments[0])? {
+    match numeric_argument("abs", &arguments[0])? {
+        Numeric::Real(number) => absolute_real(number),
+        Numeric::Complex { real, imag } => absolute_complex(real, imag),
+    }
+}
+
+fn absolute_real(number: Number) -> Result<Value, RuntimeError> {
+    match number {
         Number::Integer(value) => value
             .checked_abs()
             .map(Value::Integer)
@@ -827,6 +1339,12 @@ fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {
         )?),
         Number::Float(value) => Ok(Value::Float(value.abs())),
     }
+}
+
+fn absolute_complex(real: Number, imag: Number) -> Result<Value, RuntimeError> {
+    let magnitude_squared =
+        add_numbers(multiply_numbers(real, real)?, multiply_numbers(imag, imag)?)?;
+    square_root_real(magnitude_squared)
 }
 
 fn compare_numbers(
@@ -927,12 +1445,8 @@ fn exact_quotient_and_remainder(
         quotient_denominator = -quotient_denominator;
     }
     let truncated = quotient_numerator / quotient_denominator;
-    let quotient = adjust_exact_quotient(
-        truncated,
-        quotient_numerator,
-        quotient_denominator,
-        mode,
-    )?;
+    let quotient =
+        adjust_exact_quotient(truncated, quotient_numerator, quotient_denominator, mode)?;
     let quotient = i64::try_from(quotient).map_err(|_| RuntimeError::NumericOverflow)?;
     let remainder = rational_number(
         dividend_numerator * divisor_denominator
@@ -1140,6 +1654,89 @@ fn arithmetic_shift(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }))
 }
 
+fn byte(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "byte", 2)?;
+    let size = integer_argument("byte", &arguments[0])?;
+    let position = integer_argument("byte", &arguments[1])?;
+    validate_byte_bounds("byte", size, position)?;
+    Ok(byte_spec_value(size, position))
+}
+
+fn byte_size(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "byte-size", 1)?;
+    let (size, _) = parse_byte_spec("byte-size", &arguments[0])?;
+    Ok(Value::Integer(i64::from(size)))
+}
+
+fn byte_position(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "byte-position", 1)?;
+    let (_, position) = parse_byte_spec("byte-position", &arguments[0])?;
+    Ok(Value::Integer(i64::from(position)))
+}
+
+fn ldb(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "ldb", 2)?;
+    ldb_value("ldb", &arguments[0], &arguments[1])
+}
+
+fn ldb_test(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "ldb-test", 2)?;
+    let (size, position) = parse_byte_spec("ldb-test", &arguments[0])?;
+    let integer = integer_argument("ldb-test", &arguments[1])? as u64;
+    Ok(Value::boolean(
+        extract_byte_field(integer, size, position) != 0,
+    ))
+}
+
+fn dpb(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "dpb", 3)?;
+    dpb_value("dpb", &arguments[0], &arguments[1], &arguments[2])
+}
+
+fn mask_field(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "mask-field", 2)?;
+    let (size, position) = parse_byte_spec("mask-field", &arguments[0])?;
+    let integer = integer_argument("mask-field", &arguments[1])? as u64;
+    Ok(Value::Integer((integer & byte_mask(size, position)) as i64))
+}
+
+fn deposit_field(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "deposit-field", 3)?;
+    let (size, position) = parse_byte_spec("deposit-field", &arguments[1])?;
+    let newbyte = integer_argument("deposit-field", &arguments[0])? as u64;
+    let integer = integer_argument("deposit-field", &arguments[2])? as u64;
+    let mask = byte_mask(size, position);
+    Ok(Value::Integer(
+        ((integer & !mask) | (newbyte & mask)) as i64,
+    ))
+}
+
+pub(crate) fn ldb_value(
+    function: &str,
+    byte_spec: &Value,
+    integer: &Value,
+) -> Result<Value, RuntimeError> {
+    let (size, position) = parse_byte_spec(function, byte_spec)?;
+    let integer = integer_argument(function, integer)? as u64;
+    let field = extract_byte_field(integer, size, position);
+    let field = i64::try_from(field).map_err(|_| RuntimeError::NumericOverflow)?;
+    Ok(Value::Integer(field))
+}
+
+pub(crate) fn dpb_value(
+    function: &str,
+    newbyte: &Value,
+    byte_spec: &Value,
+    integer: &Value,
+) -> Result<Value, RuntimeError> {
+    let (size, position) = parse_byte_spec(function, byte_spec)?;
+    let newbyte = integer_argument(function, newbyte)? as u64;
+    let integer = integer_argument(function, integer)? as u64;
+    let mask = byte_mask(size, position);
+    let field = (newbyte << position) & mask;
+    Ok(Value::Integer(((integer & !mask) | field) as i64))
+}
+
 fn logand(arguments: &[Value]) -> Result<Value, RuntimeError> {
     bitwise(arguments, "logand", -1, |left, right| left & right)
 }
@@ -1150,6 +1747,94 @@ fn logior(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn logxor(arguments: &[Value]) -> Result<Value, RuntimeError> {
     bitwise(arguments, "logxor", 0, |left, right| left ^ right)
+}
+
+fn lognand(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    let value = arguments.iter().try_fold(-1_i64, |accumulator, argument| {
+        Ok::<_, RuntimeError>(accumulator & integer_argument("lognand", argument)?)
+    })?;
+    Ok(Value::Integer(!value))
+}
+
+fn lognor(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    let value = arguments.iter().try_fold(0_i64, |accumulator, argument| {
+        Ok::<_, RuntimeError>(accumulator | integer_argument("lognor", argument)?)
+    })?;
+    Ok(Value::Integer(!value))
+}
+
+fn logandc1(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "logandc1", 2)?;
+    let left = integer_argument("logandc1", &arguments[0])?;
+    let right = integer_argument("logandc1", &arguments[1])?;
+    Ok(Value::Integer((!left) & right))
+}
+
+fn logandc2(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "logandc2", 2)?;
+    let left = integer_argument("logandc2", &arguments[0])?;
+    let right = integer_argument("logandc2", &arguments[1])?;
+    Ok(Value::Integer(left & (!right)))
+}
+
+fn logorc1(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "logorc1", 2)?;
+    let left = integer_argument("logorc1", &arguments[0])?;
+    let right = integer_argument("logorc1", &arguments[1])?;
+    Ok(Value::Integer((!left) | right))
+}
+
+fn logorc2(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "logorc2", 2)?;
+    let left = integer_argument("logorc2", &arguments[0])?;
+    let right = integer_argument("logorc2", &arguments[1])?;
+    Ok(Value::Integer(left | (!right)))
+}
+
+fn logeqv(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    bitwise(arguments, "logeqv", -1, |left, right| !(left ^ right))
+}
+
+fn boole(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "boole", 3)?;
+    let operation = integer_argument("boole", &arguments[0])?;
+    let left = integer_argument("boole", &arguments[1])?;
+    let right = integer_argument("boole", &arguments[2])?;
+    let value = match operation {
+        0 => 0,
+        1 => -1,
+        2 => left,
+        3 => right,
+        4 => !left,
+        5 => !right,
+        6 => left & right,
+        7 => left | right,
+        8 => left ^ right,
+        9 => !(left ^ right),
+        10 => !(left & right),
+        11 => !(left | right),
+        12 => (!left) & right,
+        13 => left & (!right),
+        14 => (!left) | right,
+        15 => left | (!right),
+        _ => {
+            return Err(RuntimeError::InvalidForm {
+                message: format!(
+                    "boole operation must be an integer between 0 and 15, got {operation}"
+                ),
+                span: None,
+            });
+        }
+    };
+    Ok(Value::Integer(value))
+}
+
+fn logbitp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "logbitp", 2)?;
+    let index = integer_argument("logbitp", &arguments[0])?;
+    validate_bit_index("logbitp", index)?;
+    let integer = integer_argument("logbitp", &arguments[1])? as u64;
+    Ok(Value::boolean(((integer >> index as u32) & 1) != 0))
 }
 
 fn bitwise(
@@ -1279,14 +1964,19 @@ fn parse_integer(arguments: &[Value]) -> Result<Value, RuntimeError> {
         });
     }
     let signed = if negative {
-        magnitude.checked_neg().ok_or(RuntimeError::NumericOverflow)?
+        magnitude
+            .checked_neg()
+            .ok_or(RuntimeError::NumericOverflow)?
     } else {
         magnitude
     };
     let integer = i64::try_from(signed).map_err(|_| RuntimeError::NumericOverflow)?;
     if junk_allowed {
         let position = i64::try_from(cursor).map_err(|_| RuntimeError::NumericOverflow)?;
-        return Ok(Value::values(vec![Value::Integer(integer), Value::Integer(position)]));
+        return Ok(Value::values(vec![
+            Value::Integer(integer),
+            Value::Integer(position),
+        ]));
     }
     let mut trailing = cursor;
     while trailing < end && chars[trailing].is_whitespace() {
@@ -1299,7 +1989,10 @@ fn parse_integer(arguments: &[Value]) -> Result<Value, RuntimeError> {
         });
     }
     let position = i64::try_from(end).map_err(|_| RuntimeError::NumericOverflow)?;
-    Ok(Value::values(vec![Value::Integer(integer), Value::Integer(position)]))
+    Ok(Value::values(vec![
+        Value::Integer(integer),
+        Value::Integer(position),
+    ]))
 }
 
 fn parse_integer_digit(character: char) -> Option<u32> {
@@ -1501,8 +2194,52 @@ fn first(arguments: &[Value]) -> Result<Value, RuntimeError> {
     car(arguments)
 }
 
+fn second(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    nth_accessor("second", 1, arguments)
+}
+
+fn third(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    nth_accessor("third", 2, arguments)
+}
+
+fn fourth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    nth_accessor("fourth", 3, arguments)
+}
+
+fn fifth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    nth_accessor("fifth", 4, arguments)
+}
+
+fn sixth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    nth_accessor("sixth", 5, arguments)
+}
+
+fn seventh(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    nth_accessor("seventh", 6, arguments)
+}
+
+fn eighth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    nth_accessor("eighth", 7, arguments)
+}
+
+fn ninth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    nth_accessor("ninth", 8, arguments)
+}
+
+fn tenth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    nth_accessor("tenth", 9, arguments)
+}
+
 fn rest(arguments: &[Value]) -> Result<Value, RuntimeError> {
     cdr(arguments)
+}
+
+fn nth_accessor(function: &str, index: usize, arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, function, 1)?;
+    let Some(items) = arguments[0].list_items() else {
+        return Err(type_error(function, "list", &arguments[0]));
+    };
+    Ok(items.get(index).cloned().unwrap_or(Value::Nil))
 }
 
 fn append(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -1566,7 +2303,10 @@ fn length(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "length", 1)?;
     let length = match &arguments[0] {
         Value::Nil => 0,
-        Value::List(items) | Value::Vector(items) => items.len(),
+        Value::List(items) => items.len(),
+        value if value.vector_items().is_some() => {
+            value.vector_items().expect("vector has vector items").len()
+        }
         Value::String(value) => value.chars().count(),
         _ => {
             return Err(type_error("length", "sequence", &arguments[0]));
@@ -1589,7 +2329,7 @@ fn elt(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let index = index_argument("elt", &arguments[1])?;
     match &arguments[0] {
         Value::Nil => Err(out_of_bounds("elt", index)),
-        Value::List(items) | Value::Vector(items) => items
+        Value::List(items) => items
             .get(index)
             .cloned()
             .ok_or_else(|| out_of_bounds("elt", index)),
@@ -1598,7 +2338,16 @@ fn elt(arguments: &[Value]) -> Result<Value, RuntimeError> {
             .nth(index)
             .map(Value::Character)
             .ok_or_else(|| out_of_bounds("elt", index)),
-        value => Err(type_error("elt", "sequence", value)),
+        value => value
+            .vector_items()
+            .and_then(|items| items.get(index).cloned())
+            .ok_or_else(|| {
+                if value.vector_items().is_some() {
+                    out_of_bounds("elt", index)
+                } else {
+                    type_error("elt", "sequence", value)
+                }
+            }),
     }
 }
 
@@ -1607,16 +2356,57 @@ fn string_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::string(string_designator("string", &arguments[0])?))
 }
 
+fn validate_make_string_element_type(value: &Value) -> Result<(), RuntimeError> {
+    let element_type = type_designator_name("make-string", value)?;
+    match element_type.as_str() {
+        "CHARACTER" | "BASE-CHAR" | "STANDARD-CHAR" | "EXTENDED-CHAR" => Ok(()),
+        _ => Err(RuntimeError::InvalidForm {
+            message: format!(
+                "make-string :element-type must be a character type, got {element_type}"
+            ),
+            span: None,
+        }),
+    }
+}
+
 fn make_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    if !(1..=2).contains(&arguments.len()) {
-        return Err(arity("make-string", "1 or 2", arguments.len()));
+    if arguments.is_empty() {
+        return Err(arity("make-string", "at least 1", 0));
     }
     let length = index_argument("make-string", &arguments[0])?;
-    let initial = arguments
-        .get(1)
-        .map(|value| character_argument("make-string", value))
-        .transpose()?
-        .unwrap_or(' ');
+    let mut initial = ' ';
+    match arguments.get(1) {
+        None => {}
+        Some(value)
+            if arguments.len() == 2
+                && !matches!(value, Value::Keyword(_) | Value::KeywordExact(_)) =>
+        {
+            initial = character_argument("make-string", value)?;
+        }
+        Some(_) => {
+            if (arguments.len() - 1) % 2 != 0 {
+                return Err(arity(
+                    "make-string",
+                    "a size and keyword/value pairs",
+                    arguments.len(),
+                ));
+            }
+            for pair in arguments[1..].chunks_exact(2) {
+                match array_option_name("make-string", &pair[0])?.as_str() {
+                    "INITIAL-ELEMENT" => {
+                        initial = character_argument("make-string", &pair[1])?;
+                    }
+                    "ELEMENT-TYPE" => validate_make_string_element_type(&pair[1])?,
+                    option => {
+                        return Err(RuntimeError::InvalidForm {
+                            message: format!("make-string does not accept :{option}"),
+                            span: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
     Ok(Value::string(
         std::iter::repeat(initial).take(length).collect::<String>(),
     ))
@@ -1730,11 +2520,15 @@ fn character_case_greater_than(arguments: &[Value]) -> Result<Value, RuntimeErro
 }
 
 fn character_case_less_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    compare_characters("char-not-greaterp", arguments, true, |left, right| left <= right)
+    compare_characters("char-not-greaterp", arguments, true, |left, right| {
+        left <= right
+    })
 }
 
 fn character_case_greater_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    compare_characters("char-not-lessp", arguments, true, |left, right| left >= right)
+    compare_characters("char-not-lessp", arguments, true, |left, right| {
+        left >= right
+    })
 }
 
 fn compare_characters(
@@ -1897,11 +2691,7 @@ fn digit_character_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-fn radix_argument(
-    function: &str,
-    arguments: &[Value],
-    index: usize,
-) -> Result<u32, RuntimeError> {
+fn radix_argument(function: &str, arguments: &[Value], index: usize) -> Result<u32, RuntimeError> {
     let radix = arguments
         .get(index)
         .map(|value| integer_argument(function, value))
@@ -1918,12 +2708,11 @@ fn radix_argument(
 
 fn character_name(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "char-name", 1)?;
-    Ok(named_character_name(character_argument(
-        "char-name",
-        &arguments[0],
-    )?)
-    .map(Value::string)
-    .unwrap_or(Value::Nil))
+    Ok(
+        named_character_name(character_argument("char-name", &arguments[0])?)
+            .map(Value::string)
+            .unwrap_or(Value::Nil),
+    )
 }
 
 fn name_character(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -2147,7 +2936,9 @@ fn trim_string(
     let characters = value.chars().collect::<Vec<_>>();
     let is_trimmed = |character: &char| trim_set.contains(character);
     let start = if trim_left {
-        characters.iter().position(|character| !is_trimmed(character))
+        characters
+            .iter()
+            .position(|character| !is_trimmed(character))
     } else {
         Some(0)
     }
@@ -2202,9 +2993,7 @@ fn string_designator(function: &str, value: &Value) -> Result<String, RuntimeErr
         | Value::UninternedSymbol(value)
         | Value::Keyword(value)
         | Value::SymbolExact(value)
-        | Value::KeywordExact(value) => {
-            Ok(value.to_string())
-        }
+        | Value::KeywordExact(value) => Ok(value.to_string()),
         Value::Character(value) => Ok(value.to_string()),
         value => Err(type_error(function, "string designator", value)),
     }
@@ -2231,7 +3020,21 @@ fn subseq(arguments: &[Value]) -> Result<Value, RuntimeError> {
     match &arguments[0] {
         Value::Nil => Ok(Value::Nil),
         Value::List(items) => Ok(Value::list(items[start..end].to_vec())),
-        Value::Vector(items) => Ok(Value::vector(items[start..end].to_vec())),
+        Value::Vector {
+            fill_pointer,
+            element_type,
+            adjustable,
+            ..
+        } => {
+            let items = arguments[0].vector_items().expect("vector items");
+            let slice = items[start..end].to_vec();
+            Ok(Value::vector_with_fill_pointer_element_type_and_adjustable(
+                slice,
+                *fill_pointer,
+                element_type.as_ref().clone(),
+                *adjustable,
+            ))
+        }
         Value::String(value) => {
             let result = value
                 .chars()
@@ -2258,10 +3061,12 @@ fn fill(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let length = sequence_length(&arguments[1])
         .ok_or_else(|| type_error("fill", "sequence", &arguments[1]))?;
     let (start, end) = sequence_bounds("fill", length, &arguments[2..])?;
-    if matches!(arguments[1], Value::String(_))
-        && !matches!(arguments[0], Value::Character(_))
-    {
-        return Err(type_error("fill", "a character for a string", &arguments[0]));
+    if matches!(arguments[1], Value::String(_)) && !matches!(arguments[0], Value::Character(_)) {
+        return Err(type_error(
+            "fill",
+            "a character for a string",
+            &arguments[0],
+        ));
     }
     let mut items = sequence_elements("fill", &arguments[1])?;
     for item in &mut items[start..end] {
@@ -2325,7 +3130,7 @@ fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     match result_type.as_str() {
         "LIST" => Ok(Value::list(items)),
         "VECTOR" => Ok(Value::vector(items)),
-        "STRING" | "SIMPLE-STRING" => {
+        "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => {
             let mut result = String::new();
             for item in items {
                 let Value::Character(character) = item else {
@@ -2373,7 +3178,7 @@ fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
     match result_type.as_str() {
         "LIST" => Ok(Value::list(vec![initial_element; size])),
         "VECTOR" | "SIMPLE-VECTOR" => Ok(Value::vector(vec![initial_element; size])),
-        "STRING" | "SIMPLE-STRING" => {
+        "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => {
             let initial = character_argument("make-sequence", &initial_element)?;
             Ok(Value::string(
                 std::iter::repeat(initial).take(size).collect::<String>(),
@@ -2396,7 +3201,7 @@ fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
         "VECTOR" | "SIMPLE-VECTOR" => {
             Ok(Value::vector(sequence_elements("coerce", &arguments[0])?))
         }
-        "STRING" | "SIMPLE-STRING" => {
+        "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => {
             let result = match &arguments[0] {
                 Value::Nil
                 | Value::Boolean(_)
@@ -2415,7 +3220,7 @@ fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
             Ok(Value::string(result))
         }
         "SEQUENCE" => match &arguments[0] {
-            Value::Nil | Value::List(_) | Value::Vector(_) | Value::String(_) => {
+            Value::Nil | Value::List(_) | Value::Vector { .. } | Value::String(_) => {
                 Ok(arguments[0].clone())
             }
             value => Err(type_error("coerce", "a sequence", value)),
@@ -2495,7 +3300,10 @@ fn replace_bounds(
 fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Value>, RuntimeError> {
     match value {
         Value::Nil => Ok(Vec::new()),
-        Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
+        Value::List(items) => Ok(items.as_ref().clone()),
+        value if value.vector_items().is_some() => {
+            Ok(value.vector_items().expect("vector has vector items"))
+        }
         Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
         _ => Err(type_error(function, "sequence", value)),
     }
@@ -2508,7 +3316,17 @@ fn rebuild_sequence(
 ) -> Result<Value, RuntimeError> {
     match template {
         Value::Nil | Value::List(_) => Ok(Value::list(items)),
-        Value::Vector(_) => Ok(Value::vector(items)),
+        Value::Vector {
+            fill_pointer,
+            element_type,
+            adjustable,
+            ..
+        } => Ok(Value::vector_with_fill_pointer_element_type_and_adjustable(
+            items,
+            *fill_pointer,
+            element_type.as_ref().clone(),
+            *adjustable,
+        )),
         Value::String(_) => {
             let mut result = String::new();
             for item in items {
@@ -2580,7 +3398,10 @@ fn get_properties(arguments: &[Value]) -> Result<Value, RuntimeError> {
 fn sequence_length(value: &Value) -> Option<usize> {
     match value {
         Value::Nil => Some(0),
-        Value::List(items) | Value::Vector(items) => Some(items.len()),
+        Value::List(items) => Some(items.len()),
+        value if value.vector_items().is_some() => {
+            Some(value.vector_items().expect("vector has vector items").len())
+        }
         Value::String(value) => Some(value.chars().count()),
         _ => None,
     }
@@ -2647,10 +3468,12 @@ fn symbol_package_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
         Value::UninternedSymbol(_) => return Ok(Value::Nil),
         Value::Keyword(_) | Value::KeywordExact(_) => KEYWORD_PACKAGE.to_string(),
         Value::Nil | Value::Boolean(_) => COMMON_LISP_PACKAGE.to_string(),
-        Value::Symbol(name) | Value::SymbolExact(name) => match package::split_symbol(name.as_ref()) {
-            Some((package_name, _, _)) => package::normalize_package_name(package_name),
-            None => package::DEFAULT_PACKAGE.to_string(),
-        },
+        Value::Symbol(name) | Value::SymbolExact(name) => {
+            match package::split_symbol(name.as_ref()) {
+                Some((package_name, _, _)) => package::normalize_package_name(package_name),
+                None => package::DEFAULT_PACKAGE.to_string(),
+            }
+        }
         value => return Err(type_error("symbol-package", "a symbol", value)),
     };
     Ok(Value::symbol(package_name))
@@ -2658,12 +3481,20 @@ fn symbol_package_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn vectorp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "vectorp", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::Vector(_))))
+    Ok(Value::boolean(arguments[0].vector_items().is_some()))
 }
 
 fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-vector-p", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::Vector(_))))
+    Ok(Value::boolean(arguments[0].is_simple_vector()))
+}
+
+fn fill_pointer(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "fill-pointer", 1)?;
+    arguments[0]
+        .vector_fill_pointer()
+        .map(|fill_pointer| Value::Integer(fill_pointer as i64))
+        .ok_or_else(|| type_error("fill-pointer", "vector with fill pointer", &arguments[0]))
 }
 
 fn typep(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -2676,7 +3507,13 @@ fn simple_condition_format_control(arguments: &[Value]) -> Result<Value, Runtime
     arguments[0]
         .simple_condition_format_control()
         .map(|control| Value::string(control.to_owned()))
-        .ok_or_else(|| type_error("simple-condition-format-control", "SIMPLE-CONDITION", &arguments[0]))
+        .ok_or_else(|| {
+            type_error(
+                "simple-condition-format-control",
+                "SIMPLE-CONDITION",
+                &arguments[0],
+            )
+        })
 }
 
 fn simple_condition_format_arguments(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -2694,7 +3531,15 @@ fn simple_condition_format_arguments(arguments: &[Value]) -> Result<Value, Runti
 }
 
 pub(crate) fn typep_value(value: &Value, type_designator: &Value) -> Result<bool, RuntimeError> {
-    type_matches_designator("typep", value, type_designator)
+    type_matches_designator("typep", value, type_designator, None)
+}
+
+pub(crate) fn typep_value_in(
+    value: &Value,
+    type_designator: &Value,
+    environment: &Environment,
+) -> Result<bool, RuntimeError> {
+    type_matches_designator("typep", value, type_designator, Some(environment))
 }
 
 pub(crate) fn subtypep_value(
@@ -2709,6 +3554,31 @@ pub(crate) fn subtypep_value(
         Value::boolean(relation.unwrap_or(false)),
         Value::boolean(relation.is_some()),
     ]))
+}
+
+pub(crate) fn upgraded_array_element_type_value(
+    type_spec: &Value,
+    environment: &Environment,
+) -> Result<Value, RuntimeError> {
+    validate_element_subtype_designator("upgraded-array-element-type", type_spec, environment)?;
+    match type_spec {
+        Value::List(_) => Ok(type_spec.clone()),
+        Value::DottedList { .. } => Err(invalid_type_spec(
+            "upgraded-array-element-type",
+            "type designator must be a proper list",
+        )),
+        _ => {
+            let type_name = type_designator_name("upgraded-array-element-type", type_spec)?;
+            let upgraded = match type_name.as_str() {
+                "BASE-CHAR" | "STANDARD-CHAR" | "EXTENDED-CHAR" => "CHARACTER",
+                _ => type_name.as_str(),
+            };
+            Ok(match upgraded {
+                "NIL" => Value::Nil,
+                name => Value::symbol(name),
+            })
+        }
+    }
 }
 
 fn validate_subtype_designator(
@@ -2835,11 +3705,9 @@ fn validate_array_dimensions_spec(function: &str, dimensions: &Value) -> Result<
     }
     match dimensions {
         Value::Nil | Value::Boolean(false) => Ok(()),
-        Value::Integer(rank) => {
-            usize::try_from(*rank)
-                .map(|_| ())
-                .map_err(|_| invalid_type_spec(function, "array rank must be non-negative"))
-        }
+        Value::Integer(rank) => usize::try_from(*rank)
+            .map(|_| ())
+            .map_err(|_| invalid_type_spec(function, "array rank must be non-negative")),
         Value::List(dimensions) => {
             for dimension in dimensions.iter() {
                 if is_type_wildcard(dimension) {
@@ -2865,13 +3733,13 @@ fn known_type_name(type_name: &str, environment: &Environment) -> bool {
     is_builtin_type_name(type_name)
         || environment.lookup_class(type_name).is_some()
         || environment.lookup_structure(type_name).is_some()
+        || environment.lookup_condition(type_name).is_some()
 }
 
 fn is_builtin_type_name(type_name: &str) -> bool {
     matches!(
         type_name,
-        "T"
-            | "OBJECT"
+        "T" | "OBJECT"
             | "NIL"
             | "NULL"
             | "BOOLEAN"
@@ -2916,6 +3784,7 @@ fn is_builtin_type_name(type_name: &str) -> bool {
             | "UNBOUND"
             | "VALUES"
             | "CLASS"
+            | "METHOD"
             | "STANDARD-OBJECT"
     )
 }
@@ -2958,7 +3827,7 @@ fn subtype_relation(
                 };
                 let mut unknown = false;
                 for candidate in candidates {
-                    match type_matches_designator("subtypep", candidate, supertype) {
+                    match type_matches_designator("subtypep", candidate, supertype, None) {
                         Ok(true) => {}
                         Ok(false) => return Ok(Some(false)),
                         Err(_) => unknown = true,
@@ -2969,10 +3838,7 @@ fn subtype_relation(
             "INTEGER" => {
                 if let Some((super_operator, super_arguments)) = compound_type_parts(supertype) {
                     if super_operator == "INTEGER" {
-                        return Ok(Some(integer_spec_is_subtype(
-                            arguments,
-                            super_arguments,
-                        )?));
+                        return Ok(Some(integer_spec_is_subtype(arguments, super_arguments)?));
                     }
                 }
                 if let Some(super_name) = atomic_type_name(supertype) {
@@ -2984,8 +3850,8 @@ fn subtype_relation(
                     return Ok(Some(compound_subtype_named(&operator, &super_name)));
                 }
             }
-            "CONS" | "VECTOR" | "SIMPLE-VECTOR" | "BIT-VECTOR" | "SIMPLE-BIT-VECTOR"
-            | "ARRAY" | "SIMPLE-ARRAY" => {
+            "CONS" | "VECTOR" | "SIMPLE-VECTOR" | "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" | "ARRAY"
+            | "SIMPLE-ARRAY" => {
                 if let Some(super_name) = atomic_type_name(supertype) {
                     return Ok(Some(compound_subtype_named(&operator, &super_name)));
                 }
@@ -3020,10 +3886,7 @@ fn subtype_relation(
             }
             "INTEGER" => {
                 if let Some(subtype_name) = atomic_type_name(subtype) {
-                    return Ok(Some(named_integer_is_subtype(
-                        &subtype_name,
-                        arguments,
-                    )?));
+                    return Ok(Some(named_integer_is_subtype(&subtype_name, arguments)?));
                 }
             }
             _ => {}
@@ -3238,6 +4101,15 @@ fn named_subtype_relation(
             return Some(true);
         }
     }
+    if let Some(condition) = environment.lookup_condition(subtype_name) {
+        if condition
+            .precedence
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(supertype_name))
+        {
+            return Some(true);
+        }
+    }
     if let Some(structure) = environment.lookup_structure(subtype_name) {
         if supertype_name == "STRUCTURE"
             || structure
@@ -3269,10 +4141,7 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
             supertype_name,
             "INTEGER" | "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
         ),
-        "INTEGER" => matches!(
-            supertype_name,
-            "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
-        ),
+        "INTEGER" => matches!(supertype_name, "RATIONAL" | "NUMBER" | "REAL" | "ATOM"),
         "RATIO" => matches!(supertype_name, "RATIONAL" | "NUMBER" | "REAL" | "ATOM"),
         "RATIONAL" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
         "FLOAT" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
@@ -3281,7 +4150,10 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
         "EXTENDED-CHAR" => matches!(supertype_name, "CHARACTER" | "ATOM"),
         "CHARACTER" => supertype_name == "ATOM",
         "STRING" | "BASE-STRING" => {
-            matches!(supertype_name, "STRING" | "BASE-STRING" | "SEQUENCE" | "ATOM")
+            matches!(
+                supertype_name,
+                "STRING" | "BASE-STRING" | "SEQUENCE" | "ATOM"
+            )
         }
         "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => matches!(
             supertype_name,
@@ -3310,26 +4182,32 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
             matches!(supertype_name, "ARRAY" | "SIMPLE-ARRAY" | "ATOM")
         }
         "COMPILED-FUNCTION" => matches!(supertype_name, "FUNCTION" | "ATOM"),
-        "FUNCTION"
-        | "STREAM"
-        | "PACKAGE"
-        | "ENVIRONMENT"
-        | "HASH-TABLE"
-        | "CONDITION"
-        | "RESTART"
-        | "STRUCTURE"
-        | "UNBOUND"
-        | "VALUES"
-        | "CLASS"
-        | "STANDARD-OBJECT" => supertype_name == "ATOM",
+        "FUNCTION" | "STREAM" | "PACKAGE" | "ENVIRONMENT" | "HASH-TABLE" | "CONDITION"
+        | "RESTART" | "STRUCTURE" | "UNBOUND" | "VALUES" | "CLASS" | "STANDARD-OBJECT" => {
+            supertype_name == "ATOM"
+        }
         _ => false,
     }
 }
 
 pub(crate) fn the_check(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    the_check_with_environment(arguments, None)
+}
+
+pub(crate) fn the_check_in(
+    arguments: &[Value],
+    environment: &Environment,
+) -> Result<Value, RuntimeError> {
+    the_check_with_environment(arguments, Some(environment))
+}
+
+fn the_check_with_environment(
+    arguments: &[Value],
+    environment: Option<&Environment>,
+) -> Result<Value, RuntimeError> {
     exact(arguments, "the", 2)?;
     let type_description = arguments[1].to_string();
-    if type_matches_designator("the", &arguments[0], &arguments[1])? {
+    if type_matches_designator("the", &arguments[0], &arguments[1], environment)? {
         Ok(arguments[0].clone())
     } else {
         Err(RuntimeError::Type {
@@ -3337,6 +4215,30 @@ pub(crate) fn the_check(arguments: &[Value]) -> Result<Value, RuntimeError> {
             actual: arguments[0].type_name().to_string(),
             span: None,
         })
+    }
+}
+
+fn require_integer(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "__NCL_REQUIRE_INTEGER", 1)?;
+    match &arguments[0] {
+        Value::Integer(_) => Ok(arguments[0].clone()),
+        value => Err(RuntimeError::Type {
+            expected: "INTEGER".to_string(),
+            actual: value.type_name().to_string(),
+            span: None,
+        }),
+    }
+}
+
+fn require_list(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "__NCL_REQUIRE_LIST", 1)?;
+    match &arguments[0] {
+        Value::Nil | Value::List(_) => Ok(arguments[0].clone()),
+        value => Err(RuntimeError::Type {
+            expected: "LIST".to_string(),
+            actual: value.type_name().to_string(),
+            span: None,
+        }),
     }
 }
 
@@ -3375,16 +4277,17 @@ fn type_matches_designator(
     function: &str,
     value: &Value,
     type_designator: &Value,
+    environment: Option<&Environment>,
 ) -> Result<bool, RuntimeError> {
     match type_designator {
-        Value::List(items) => type_matches_compound(function, value, items.as_ref()),
+        Value::List(items) => type_matches_compound(function, value, items.as_ref(), environment),
         Value::DottedList { .. } => Err(invalid_type_spec(
             function,
             "type designator must be a proper list",
         )),
         _ => {
             let type_name = type_designator_name(function, type_designator)?;
-            type_matches(value, &type_name)
+            type_matches(value, &type_name, environment)
         }
     }
 }
@@ -3393,6 +4296,7 @@ fn type_matches_compound(
     function: &str,
     value: &Value,
     items: &[Value],
+    environment: Option<&Environment>,
 ) -> Result<bool, RuntimeError> {
     let Some(operator_value) = items.first() else {
         return Err(invalid_type_spec(
@@ -3405,7 +4309,7 @@ fn type_matches_compound(
     match operator.as_str() {
         "OR" => {
             for type_designator in arguments {
-                if type_matches_designator(function, value, type_designator)? {
+                if type_matches_designator(function, value, type_designator, environment)? {
                     return Ok(true);
                 }
             }
@@ -3413,7 +4317,7 @@ fn type_matches_compound(
         }
         "AND" => {
             for type_designator in arguments {
-                if !type_matches_designator(function, value, type_designator)? {
+                if !type_matches_designator(function, value, type_designator, environment)? {
                     return Ok(false);
                 }
             }
@@ -3421,9 +4325,16 @@ fn type_matches_compound(
         }
         "NOT" => {
             require_type_spec_arity(function, &operator, arguments, 1, 1)?;
-            Ok(!type_matches_designator(function, value, &arguments[0])?)
+            Ok(!type_matches_designator(
+                function,
+                value,
+                &arguments[0],
+                environment,
+            )?)
         }
-        "MEMBER" => Ok(arguments.iter().any(|candidate| eql_value(value, candidate))),
+        "MEMBER" => Ok(arguments
+            .iter()
+            .any(|candidate| eql_value(value, candidate))),
         "EQL" => {
             require_type_spec_arity(function, &operator, arguments, 1, 1)?;
             Ok(eql_value(value, &arguments[0]))
@@ -3432,14 +4343,12 @@ fn type_matches_compound(
         "MOD" => mod_type_matches(function, value, arguments),
         "SIGNED-BYTE" => signed_byte_type_matches(function, value, arguments),
         "UNSIGNED-BYTE" => unsigned_byte_type_matches(function, value, arguments),
-        "CONS" => cons_type_matches(function, value, arguments),
-        "VECTOR" => vector_type_matches(function, value, arguments),
+        "CONS" => cons_type_matches(function, value, arguments, environment),
+        "VECTOR" => vector_type_matches(function, value, arguments, environment),
         "SIMPLE-VECTOR" => simple_vector_type_matches(function, value, arguments),
-        "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => {
-            bit_vector_type_matches(function, value, arguments)
-        }
+        "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => bit_vector_type_matches(function, value, arguments),
         "ARRAY" | "SIMPLE-ARRAY" => {
-            array_type_matches(function, &operator, value, arguments)
+            array_type_matches(function, &operator, value, arguments, environment)
         }
         _ => Err(invalid_type_spec(
             function,
@@ -3460,9 +4369,7 @@ fn require_type_spec_arity(
     } else {
         Err(invalid_type_spec(
             function,
-            format!(
-                "{operator} type specifier expects between {minimum} and {maximum} arguments"
-            ),
+            format!("{operator} type specifier expects between {minimum} and {maximum} arguments"),
         ))
     }
 }
@@ -3493,8 +4400,10 @@ fn integer_type_matches(
     let Value::Integer(number) = value else {
         return Ok(false);
     };
-    Ok(lower.map_or(true, |bound| *number >= bound)
-        && upper.map_or(true, |bound| *number <= bound))
+    Ok(
+        lower.map_or(true, |bound| *number >= bound)
+            && upper.map_or(true, |bound| *number <= bound),
+    )
 }
 
 fn integer_type_bound(function: &str, value: &Value) -> Result<Option<i64>, RuntimeError> {
@@ -3600,18 +4509,19 @@ fn cons_type_matches(
     function: &str,
     value: &Value,
     arguments: &[Value],
+    environment: Option<&Environment>,
 ) -> Result<bool, RuntimeError> {
     require_type_spec_arity(function, "CONS", arguments, 0, 2)?;
     let Some((car, cdr)) = cons_parts(value) else {
         return Ok(false);
     };
     if let Some(car_type) = arguments.first() {
-        if !type_matches_designator(function, &car, car_type)? {
+        if !type_matches_designator(function, &car, car_type, environment)? {
             return Ok(false);
         }
     }
     if let Some(cdr_type) = arguments.get(1) {
-        if !type_matches_designator(function, &cdr, cdr_type)? {
+        if !type_matches_designator(function, &cdr, cdr_type, environment)? {
             return Ok(false);
         }
     }
@@ -3640,6 +4550,7 @@ fn vector_type_matches(
     function: &str,
     value: &Value,
     arguments: &[Value],
+    environment: Option<&Environment>,
 ) -> Result<bool, RuntimeError> {
     require_type_spec_arity(function, "VECTOR", arguments, 0, 2)?;
     let expected_size = arguments
@@ -3655,7 +4566,7 @@ fn vector_type_matches(
     }
     if let Some(element_type) = arguments.first() {
         for item in &items {
-            if !type_matches_element_spec(function, item, element_type)? {
+            if !type_matches_element_spec(function, item, element_type, environment)? {
                 return Ok(false);
             }
         }
@@ -3701,7 +4612,9 @@ fn bit_vector_type_matches(
 }
 
 fn is_bit_vector_value(value: &Value) -> bool {
-    matches!(value, Value::Vector(items) if items.iter().all(is_bit_value))
+    value
+        .vector_items()
+        .is_some_and(|items| items.iter().all(is_bit_value))
 }
 
 fn is_bit_value(value: &Value) -> bool {
@@ -3713,6 +4626,7 @@ fn array_type_matches(
     operator: &str,
     value: &Value,
     arguments: &[Value],
+    environment: Option<&Environment>,
 ) -> Result<bool, RuntimeError> {
     require_type_spec_arity(function, operator, arguments, 0, 2)?;
     let Some(actual_dimensions) = dimensions_for_array(value) else {
@@ -3728,7 +4642,7 @@ fn array_type_matches(
     };
     if let Some(element_type) = arguments.first() {
         for element in &elements {
-            if !type_matches_element_spec(function, element, element_type)? {
+            if !type_matches_element_spec(function, element, element_type, environment)? {
                 return Ok(false);
             }
         }
@@ -3740,11 +4654,12 @@ fn type_matches_element_spec(
     function: &str,
     value: &Value,
     type_designator: &Value,
+    environment: Option<&Environment>,
 ) -> Result<bool, RuntimeError> {
     if is_type_wildcard(type_designator) {
         Ok(true)
     } else {
-        type_matches_designator(function, value, type_designator)
+        type_matches_designator(function, value, type_designator, environment)
     }
 }
 
@@ -3755,9 +4670,9 @@ fn type_spec_size(function: &str, value: &Value) -> Result<Option<usize>, Runtim
     let Value::Integer(size) = value else {
         return Err(type_error(function, "non-negative integer or *", value));
     };
-    usize::try_from(*size).map(Some).map_err(|_| {
-        invalid_type_spec(function, "sequence or array size must be non-negative")
-    })
+    usize::try_from(*size)
+        .map(Some)
+        .map_err(|_| invalid_type_spec(function, "sequence or array size must be non-negative"))
 }
 
 fn array_dimensions_match(
@@ -3771,9 +4686,8 @@ fn array_dimensions_match(
     match expected {
         Value::Nil | Value::Boolean(false) => Ok(actual.is_empty()),
         Value::Integer(rank) => {
-            let rank = usize::try_from(*rank).map_err(|_| {
-                invalid_type_spec(function, "array rank must be non-negative")
-            })?;
+            let rank = usize::try_from(*rank)
+                .map_err(|_| invalid_type_spec(function, "array rank must be non-negative"))?;
             Ok(actual.len() == rank)
         }
         Value::List(dimensions) => {
@@ -3807,15 +4721,24 @@ fn is_type_wildcard(value: &Value) -> bool {
         .is_some_and(|name| name.eq_ignore_ascii_case("*"))
 }
 
-fn type_matches(value: &Value, type_name: &str) -> Result<bool, RuntimeError> {
+fn type_matches(
+    value: &Value,
+    type_name: &str,
+    environment: Option<&Environment>,
+) -> Result<bool, RuntimeError> {
     let result = match type_name {
         "T" | "OBJECT" => true,
         "NIL" | "NULL" => matches!(value, Value::Nil | Value::Boolean(false)),
         "BOOLEAN" => matches!(value, Value::Nil | Value::Boolean(_)),
-        "NUMBER" | "REAL" => matches!(
+        "NUMBER" => matches!(
+            value,
+            Value::Integer(_) | Value::Rational(_) | Value::Float(_) | Value::Complex { .. }
+        ),
+        "REAL" => matches!(
             value,
             Value::Integer(_) | Value::Rational(_) | Value::Float(_)
         ),
+        "COMPLEX" => matches!(value, Value::Complex { .. }),
         "RATIONAL" => matches!(value, Value::Integer(_) | Value::Rational(_)),
         "RATIO" => matches!(value, Value::Rational(_)),
         "INTEGER" | "FIXNUM" | "BIGNUM" => matches!(value, Value::Integer(_)),
@@ -3844,35 +4767,35 @@ fn type_matches(value: &Value, type_name: &str) -> Result<bool, RuntimeError> {
         "CONS" => matches!(value, Value::List(_) | Value::DottedList { .. }),
         "LIST" => matches!(value, Value::Nil | Value::Boolean(false) | Value::List(_)),
         "ATOM" => !matches!(value, Value::List(_) | Value::DottedList { .. }),
-        "VECTOR" | "SIMPLE-VECTOR" => matches!(value, Value::Vector(_)),
+        "VECTOR" => value.vector_items().is_some(),
+        "SIMPLE-VECTOR" => value.is_simple_vector(),
         "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => is_bit_vector_value(value),
-        "ARRAY" | "SIMPLE-ARRAY" => dimensions_for_array(value).is_some(),
+        "ARRAY" => dimensions_for_array(value).is_some(),
+        "SIMPLE-ARRAY" => simple_array_value(value),
         "HASH-TABLE" => matches!(value, Value::HashTable { .. }),
         "CONDITION" => matches!(value, Value::Condition(_)),
         "RESTART" => matches!(value, Value::Restart(_)),
-        "ERROR"
-        | "SERIOUS-CONDITION"
-        | "WARNING"
-        | "SIMPLE-CONDITION"
-        | "SIMPLE-ERROR"
-        | "SIMPLE-WARNING"
-        | "ARITHMETIC-ERROR"
-        | "DIVISION-BY-ZERO"
-        | "TYPE-ERROR"
-        | "PROGRAM-ERROR"
-        | "PACKAGE-ERROR"
-        | "READER-ERROR"
-        | "COMPILER-ERROR"
-        | "FILE-ERROR"
-        | "UNBOUND-VARIABLE"
-        | "CONTROL-ERROR" => value.condition_is_type(type_name),
+        "ERROR" | "SERIOUS-CONDITION" | "WARNING" | "SIMPLE-CONDITION" | "SIMPLE-ERROR"
+        | "SIMPLE-WARNING" | "ARITHMETIC-ERROR" | "DIVISION-BY-ZERO" | "TYPE-ERROR"
+        | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR" | "COMPILER-ERROR" | "FILE-ERROR"
+        | "UNBOUND-VARIABLE" | "CONTROL-ERROR" => value.condition_is_type(type_name),
         "STRUCTURE" => value.structure_name().is_some(),
         "SEQUENCE" => matches!(value, Value::Boolean(false)) || sequence_length(value).is_some(),
         "FUNCTION" | "COMPILED-FUNCTION" => matches!(value, Value::Function(_)),
+        "GENERIC-FUNCTION" | "STANDARD-GENERIC-FUNCTION" => matches!(
+            value,
+            Value::Function(function) if matches!(function.as_ref(), crate::Function::Generic { .. })
+        ),
         "UNBOUND" => matches!(value, Value::Unbound),
         "VALUES" => matches!(value, Value::Values(_)),
         "CLASS" => matches!(value, Value::Class(_)),
+        "METHOD" | "STANDARD-METHOD" => matches!(value, Value::Method(_)),
         "STANDARD-OBJECT" => matches!(value, Value::Instance(_)),
+        _ if environment
+            .is_some_and(|environment| environment.lookup_condition(type_name).is_some()) =>
+        {
+            value.condition_is_type(type_name)
+        }
         _ if value.instance_is_type(type_name) => true,
         _ if value.structure_is_type(type_name) => true,
         _ => {
@@ -3963,9 +4886,10 @@ fn copy_alist(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .into_iter()
         .map(|entry| match entry {
             Value::List(items) => Ok(Value::list(items.as_ref().clone())),
-            Value::DottedList { items, tail } => {
-                Ok(Value::dotted_list(items.as_ref().clone(), tail.as_ref().clone()))
-            }
+            Value::DottedList { items, tail } => Ok(Value::dotted_list(
+                items.as_ref().clone(),
+                tail.as_ref().clone(),
+            )),
             value => Err(type_error("copy-alist", "association", &value)),
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -3999,6 +4923,11 @@ fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let dimensions = parse_array_dimensions("make-array", &arguments[0])?;
     let mut initial_element = None;
     let mut initial_contents = None;
+    let mut fill_pointer = None;
+    let mut element_type = None;
+    let mut adjustable = false;
+    let mut displaced_to = None;
+    let mut displaced_index_offset = None;
     if (arguments.len() - 1) % 2 != 0 {
         return Err(arity(
             "make-array",
@@ -4029,6 +4958,11 @@ fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 }
                 initial_contents = Some(pair[1].clone());
             }
+            "FILL-POINTER" => fill_pointer = Some(pair[1].clone()),
+            "ELEMENT-TYPE" => element_type = Some(pair[1].clone()),
+            "ADJUSTABLE" => adjustable = !matches!(pair[1], Value::Nil),
+            "DISPLACED-TO" => displaced_to = Some(pair[1].clone()),
+            "DISPLACED-INDEX-OFFSET" => displaced_index_offset = Some(pair[1].clone()),
             _ => {
                 return Err(RuntimeError::InvalidForm {
                     message: format!("make-array does not support keyword :{name}"),
@@ -4038,17 +4972,245 @@ fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
         }
     }
     let total_size = array_total_size_for("make-array", &dimensions)?;
-    let elements = if let Some(contents) = initial_contents {
-        let mut elements = Vec::with_capacity(total_size);
-        flatten_array_contents("make-array", &contents, &dimensions, &mut elements)?;
-        elements
-    } else {
-        vec![initial_element.unwrap_or(Value::Nil); total_size]
-    };
+    if displaced_to.is_some() && (initial_element.is_some() || initial_contents.is_some()) {
+        return Err(RuntimeError::InvalidForm {
+            message:
+                "make-array cannot combine :displaced-to with :initial-element or :initial-contents"
+                    .to_string(),
+            span: None,
+        });
+    }
+    let displacement = displaced_array_arguments(
+        "make-array",
+        &dimensions,
+        displaced_to,
+        displaced_index_offset,
+    )?;
+    let logical_length = dimensions[0];
+    let (displaced_to, displaced_index_offset, storage, elements) =
+        if let Some((displaced_to, displaced_index_offset, storage)) = displacement {
+            (displaced_to, displaced_index_offset, Some(storage), None)
+        } else if let Some(contents) = initial_contents {
+            let mut elements = Vec::with_capacity(total_size);
+            flatten_array_contents("make-array", &contents, &dimensions, &mut elements)?;
+            (None, 0, None, Some(elements))
+        } else {
+            (
+                None,
+                0,
+                None,
+                Some(vec![initial_element.unwrap_or(Value::Nil); total_size]),
+            )
+        };
+    let element_type = element_type.unwrap_or_else(|| Value::symbol("T"));
     if dimensions.len() == 1 {
-        Ok(Value::vector(elements))
+        let fill_pointer = fill_pointer
+            .map(|value| array_fill_pointer("make-array", &value, logical_length))
+            .transpose()?;
+        Ok(if let Some(storage) = storage {
+            Value::vector_with_storage_fill_pointer_element_type_adjustable_and_displacement(
+                storage,
+                logical_length,
+                fill_pointer,
+                element_type,
+                adjustable,
+                displaced_to,
+                displaced_index_offset,
+            )
+        } else {
+            Value::vector_with_fill_pointer_element_type_adjustable_and_displacement(
+                elements.expect("non-displaced vector elements"),
+                fill_pointer,
+                element_type,
+                adjustable,
+                displaced_to,
+                displaced_index_offset,
+            )
+        })
     } else {
-        Ok(Value::array(dimensions, elements))
+        if fill_pointer.is_some() {
+            return Err(RuntimeError::InvalidForm {
+                message: "make-array :fill-pointer requires a one-dimensional array".to_string(),
+                span: None,
+            });
+        }
+        Ok(if let Some(storage) = storage {
+            Value::array_with_storage_element_type_adjustable_and_displacement(
+                dimensions,
+                storage,
+                element_type,
+                adjustable,
+                displaced_to,
+                displaced_index_offset,
+            )
+        } else {
+            Value::array_with_element_type_adjustable_and_displacement(
+                dimensions,
+                elements.expect("non-displaced array elements"),
+                element_type,
+                adjustable,
+                displaced_to,
+                displaced_index_offset,
+            )
+        })
+    }
+}
+
+fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() < 2 {
+        return Err(arity(
+            "adjust-array",
+            "array, dimensions, and keyword/value pairs",
+            arguments.len(),
+        ));
+    }
+    let source = &arguments[0];
+    dimensions_for_array(source).ok_or_else(|| type_error("adjust-array", "array", source))?;
+    let dimensions = parse_array_dimensions("adjust-array", &arguments[1])?;
+    let mut initial_element = None;
+    let mut initial_contents = None;
+    let mut fill_pointer = None;
+    let mut element_type = None;
+    let mut displaced_to = None;
+    let mut displaced_index_offset = None;
+    if (arguments.len() - 2) % 2 != 0 {
+        return Err(arity(
+            "adjust-array",
+            "array, dimensions, and keyword/value pairs",
+            arguments.len(),
+        ));
+    }
+    for pair in arguments[2..].chunks_exact(2) {
+        let name = array_option_name("adjust-array", &pair[0])?;
+        match name.as_str() {
+            "INITIAL-ELEMENT" => {
+                if initial_contents.is_some() {
+                    return Err(RuntimeError::InvalidForm {
+                        message:
+                            "adjust-array cannot combine :initial-element and :initial-contents"
+                                .to_string(),
+                        span: None,
+                    });
+                }
+                initial_element = Some(pair[1].clone());
+            }
+            "INITIAL-CONTENTS" => {
+                if initial_element.is_some() {
+                    return Err(RuntimeError::InvalidForm {
+                        message:
+                            "adjust-array cannot combine :initial-element and :initial-contents"
+                                .to_string(),
+                        span: None,
+                    });
+                }
+                initial_contents = Some(pair[1].clone());
+            }
+            "FILL-POINTER" => fill_pointer = Some(pair[1].clone()),
+            "ELEMENT-TYPE" => element_type = Some(pair[1].clone()),
+            "DISPLACED-TO" => displaced_to = Some(pair[1].clone()),
+            "DISPLACED-INDEX-OFFSET" => displaced_index_offset = Some(pair[1].clone()),
+            _ => {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!("adjust-array does not support keyword :{name}"),
+                    span: None,
+                });
+            }
+        }
+    }
+    let total_size = array_total_size_for("adjust-array", &dimensions)?;
+    if displaced_to.is_some() && (initial_element.is_some() || initial_contents.is_some()) {
+        return Err(RuntimeError::InvalidForm {
+            message:
+                "adjust-array cannot combine :displaced-to with :initial-element or :initial-contents"
+                    .to_string(),
+            span: None,
+        });
+    }
+    let displacement = displaced_array_arguments(
+        "adjust-array",
+        &dimensions,
+        displaced_to,
+        displaced_index_offset,
+    )?;
+    let logical_length = dimensions[0];
+    let (displaced_to, displaced_index_offset, storage, elements) =
+        if let Some((displaced_to, displaced_index_offset, storage)) = displacement {
+            (displaced_to, displaced_index_offset, Some(storage), None)
+        } else if let Some(contents) = initial_contents {
+            let mut elements = Vec::with_capacity(total_size);
+            flatten_array_contents("adjust-array", &contents, &dimensions, &mut elements)?;
+            (None, 0, None, Some(elements))
+        } else {
+            let mut elements = array_elements(source).expect("array values carry elements");
+            elements.truncate(total_size);
+            if elements.len() < total_size {
+                elements.resize(total_size, initial_element.unwrap_or(Value::Nil));
+            }
+            (None, 0, None, Some(elements))
+        };
+    let element_type = element_type.unwrap_or_else(|| {
+        source
+            .array_element_type_value()
+            .expect("array values carry element type")
+    });
+    if dimensions.len() == 1 {
+        let fill_pointer = if let Some(value) = fill_pointer {
+            Some(array_fill_pointer("adjust-array", &value, logical_length)?)
+        } else if let Some(existing) = source.vector_fill_pointer() {
+            Some(array_fill_pointer(
+                "adjust-array",
+                &Value::Integer(existing as i64),
+                logical_length,
+            )?)
+        } else {
+            None
+        };
+        Ok(if let Some(storage) = storage {
+            Value::vector_with_storage_fill_pointer_element_type_adjustable_and_displacement(
+                storage,
+                logical_length,
+                fill_pointer,
+                element_type,
+                source.is_adjustable_array(),
+                displaced_to,
+                displaced_index_offset,
+            )
+        } else {
+            Value::vector_with_fill_pointer_element_type_adjustable_and_displacement(
+                elements.expect("non-displaced vector elements"),
+                fill_pointer,
+                element_type,
+                source.is_adjustable_array(),
+                displaced_to,
+                displaced_index_offset,
+            )
+        })
+    } else {
+        if fill_pointer.is_some() {
+            return Err(RuntimeError::InvalidForm {
+                message: "adjust-array :fill-pointer requires a one-dimensional array".to_string(),
+                span: None,
+            });
+        }
+        Ok(if let Some(storage) = storage {
+            Value::array_with_storage_element_type_adjustable_and_displacement(
+                dimensions,
+                storage,
+                element_type,
+                source.is_adjustable_array(),
+                displaced_to,
+                displaced_index_offset,
+            )
+        } else {
+            Value::array_with_element_type_adjustable_and_displacement(
+                dimensions,
+                elements.expect("non-displaced array elements"),
+                element_type,
+                source.is_adjustable_array(),
+                displaced_to,
+                displaced_index_offset,
+            )
+        })
     }
 }
 
@@ -4074,9 +5236,12 @@ fn aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
 fn svref(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "svref", 2)?;
     let index = index_argument("svref", &arguments[1])?;
-    let Value::Vector(items) = &arguments[0] else {
+    if !arguments[0].is_simple_vector() {
         return Err(type_error("svref", "simple-vector", &arguments[0]));
-    };
+    }
+    let items = arguments[0]
+        .vector_items()
+        .expect("simple vector has vector items");
     items
         .get(index)
         .cloned()
@@ -4109,6 +5274,16 @@ fn bit(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .ok_or_else(|| out_of_bounds("bit", index))?;
     bit_value("bit", &value)?;
     Ok(value)
+}
+
+fn sbit(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.is_empty() {
+        return Err(arity("sbit", "array and subscripts", 0));
+    }
+    if !simple_bit_array_value(&arguments[0]) {
+        return Err(type_error("sbit", "simple bit array", &arguments[0]));
+    }
+    bit(arguments)
 }
 
 fn row_major_aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -4168,14 +5343,42 @@ fn array_element_type(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "array-element-type", 1)?;
     dimensions_for_array(&arguments[0])
         .ok_or_else(|| type_error("array-element-type", "array", &arguments[0]))?;
-    Ok(Value::symbol("T"))
+    Ok(arguments[0]
+        .array_element_type_value()
+        .expect("array values carry element type"))
+}
+
+fn array_has_fill_pointer_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "array-has-fill-pointer-p", 1)?;
+    dimensions_for_array(&arguments[0])
+        .ok_or_else(|| type_error("array-has-fill-pointer-p", "array", &arguments[0]))?;
+    Ok(Value::boolean(array_has_fill_pointer_value(&arguments[0])))
+}
+
+fn adjustable_array_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "adjustable-array-p", 1)?;
+    dimensions_for_array(&arguments[0])
+        .ok_or_else(|| type_error("adjustable-array-p", "array", &arguments[0]))?;
+    Ok(Value::boolean(arguments[0].is_adjustable_array()))
+}
+
+fn array_displacement(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "array-displacement", 1)?;
+    dimensions_for_array(&arguments[0])
+        .ok_or_else(|| type_error("array-displacement", "array", &arguments[0]))?;
+    if let Some((displaced_to, displaced_index_offset)) = arguments[0].array_displacement_value() {
+        Ok(Value::values(vec![
+            displaced_to,
+            Value::Integer(displaced_index_offset as i64),
+        ]))
+    } else {
+        Ok(Value::values(vec![Value::Nil, Value::Integer(0)]))
+    }
 }
 
 fn simple_array_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-array-p", 1)?;
-    Ok(Value::boolean(
-        dimensions_for_array(&arguments[0]).is_some(),
-    ))
+    Ok(Value::boolean(simple_array_value(&arguments[0])))
 }
 
 fn arrayp(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -4366,9 +5569,7 @@ fn hash_table_option_name(function: &str, value: &Value) -> Result<String, Runti
         | Value::Symbol(name)
         | Value::UninternedSymbol(name)
         | Value::SymbolExact(name)
-        | Value::KeywordExact(name) => {
-            Ok(normalize_name(name))
-        }
+        | Value::KeywordExact(name) => Ok(normalize_name(name)),
         other => Err(type_error(function, "keyword", other)),
     }
 }
@@ -4379,9 +5580,7 @@ fn hash_table_test_name(function: &str, value: &Value) -> Result<String, Runtime
         | Value::Symbol(name)
         | Value::UninternedSymbol(name)
         | Value::SymbolExact(name)
-        | Value::KeywordExact(name) => {
-            normalize_name(name)
-        }
+        | Value::KeywordExact(name) => normalize_name(name),
         Value::Function(function_value) => match function_value.as_ref() {
             Function::Builtin { name, .. } | Function::Primitive { name } => normalize_name(name),
             _ => {
@@ -4417,7 +5616,7 @@ fn parse_array_dimensions(function: &str, value: &Value) -> Result<Vec<usize>, R
     match value {
         Value::Integer(_) => Ok(vec![index_argument(function, value)?]),
         Value::Nil => Ok(Vec::new()),
-        Value::List(_) | Value::Vector(_) => {
+        Value::List(_) | Value::Vector { .. } => {
             let items = sequence_items(value).expect("list or vector has sequence items");
             items
                 .iter()
@@ -4438,9 +5637,7 @@ fn array_option_name(function: &str, value: &Value) -> Result<String, RuntimeErr
         | Value::Symbol(name)
         | Value::UninternedSymbol(name)
         | Value::SymbolExact(name)
-        | Value::KeywordExact(name) => {
-            Ok(normalize_name(name))
-        }
+        | Value::KeywordExact(name) => Ok(normalize_name(name)),
         other => Err(type_error(function, "keyword", other)),
     }
 }
@@ -4495,21 +5692,23 @@ fn array_coordinate_index(
         }
         let stride = dimensions[axis + 1..]
             .iter()
-            .try_fold(1_usize, |stride, dimension| {
-                stride.checked_mul(*dimension)
-            })
+            .try_fold(1_usize, |stride, dimension| stride.checked_mul(*dimension))
             .ok_or_else(|| RuntimeError::InvalidForm {
                 message: format!("{function} index is too large"),
                 span: None,
             })?;
-        let contribution = index.checked_mul(stride).ok_or_else(|| RuntimeError::InvalidForm {
-            message: format!("{function} index is too large"),
-            span: None,
-        })?;
-        offset = offset.checked_add(contribution).ok_or_else(|| RuntimeError::InvalidForm {
-            message: format!("{function} index is too large"),
-            span: None,
-        })?;
+        let contribution = index
+            .checked_mul(stride)
+            .ok_or_else(|| RuntimeError::InvalidForm {
+                message: format!("{function} index is too large"),
+                span: None,
+            })?;
+        offset = offset
+            .checked_add(contribution)
+            .ok_or_else(|| RuntimeError::InvalidForm {
+                message: format!("{function} index is too large"),
+                span: None,
+            })?;
     }
     Ok(offset)
 }
@@ -4527,7 +5726,7 @@ fn array_total_size_for(function: &str, dimensions: &[usize]) -> Result<usize, R
 
 fn dimensions_for_array(value: &Value) -> Option<Vec<usize>> {
     match value {
-        Value::Vector(items) => Some(vec![items.len()]),
+        Value::Vector { .. } => Some(vec![value.vector_length().expect("vector length")]),
         Value::Array { dimensions, .. } => Some(dimensions.as_ref().clone()),
         _ => None,
     }
@@ -4535,6 +5734,106 @@ fn dimensions_for_array(value: &Value) -> Option<Vec<usize>> {
 
 fn array_elements(value: &Value) -> Option<Vec<Value>> {
     value.vector_items().or_else(|| value.array_items())
+}
+
+fn array_has_fill_pointer_value(value: &Value) -> bool {
+    value.vector_fill_pointer().is_some()
+}
+
+fn simple_array_value(value: &Value) -> bool {
+    match value {
+        Value::Vector { .. } => {
+            !array_has_fill_pointer_value(value)
+                && !value.is_adjustable_array()
+                && value.array_displacement_value().is_none()
+        }
+        Value::Array { .. } => {
+            !value.is_adjustable_array() && value.array_displacement_value().is_none()
+        }
+        _ => false,
+    }
+}
+
+fn simple_bit_array_value(value: &Value) -> bool {
+    simple_array_value(value)
+        && matches!(
+            value.array_element_type_value(),
+            Some(Value::Symbol(type_name)) if type_name.as_ref() == "BIT"
+        )
+}
+
+fn displaced_array_arguments(
+    function: &str,
+    dimensions: &[usize],
+    displaced_to: Option<Value>,
+    displaced_index_offset: Option<Value>,
+) -> Result<Option<(Option<Value>, usize, Rc<RefCell<Vec<Value>>>)>, RuntimeError> {
+    match displaced_to {
+        Some(displaced_to) => {
+            dimensions_for_array(&displaced_to)
+                .ok_or_else(|| type_error(function, "array", &displaced_to))?;
+            let displaced_index_offset = match displaced_index_offset {
+                Some(value) => index_argument(function, &value)?,
+                None => 0,
+            };
+            let total_size = array_total_size_for(function, dimensions)?;
+            let effective_offset = displaced_to
+                .array_displacement_value()
+                .map(|(_, offset)| offset)
+                .unwrap_or(0)
+                .checked_add(displaced_index_offset)
+                .ok_or_else(|| RuntimeError::InvalidForm {
+                    message: format!("{function} displacement is too large"),
+                    span: None,
+                })?;
+            let source_storage = displaced_to
+                .array_storage()
+                .expect("array values carry shared storage");
+            let source_size = source_storage.borrow().len();
+            let end = effective_offset.checked_add(total_size).ok_or_else(|| {
+                RuntimeError::InvalidForm {
+                    message: format!("{function} displacement is too large"),
+                    span: None,
+                }
+            })?;
+            if end > source_size {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!(
+                        "{function} displacement range {}..{} is out of bounds for source size {}",
+                        effective_offset, end, source_size
+                    ),
+                    span: None,
+                });
+            }
+            Ok(Some((Some(displaced_to), effective_offset, source_storage)))
+        }
+        None => {
+            if displaced_index_offset.is_some() {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!("{function} :displaced-index-offset requires :displaced-to"),
+                    span: None,
+                });
+            }
+            Ok(None)
+        }
+    }
+}
+
+fn array_fill_pointer(function: &str, value: &Value, length: usize) -> Result<usize, RuntimeError> {
+    if value
+        .symbol_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("T"))
+    {
+        return Ok(length);
+    }
+    let fill_pointer = index_argument(function, value)?;
+    if fill_pointer > length {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("{function} :fill-pointer {fill_pointer} is out of bounds"),
+            span: None,
+        });
+    }
+    Ok(fill_pointer)
 }
 
 fn sequence_items(value: &Value) -> Option<Vec<Value>> {
@@ -4574,7 +5873,15 @@ fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "numberp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
-        Value::Integer(_) | Value::Rational(_) | Value::Float(_)
+        Value::Integer(_) | Value::Rational(_) | Value::Float(_) | Value::Complex { .. }
+    )))
+}
+
+fn complexp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "complexp", 1)?;
+    Ok(Value::boolean(matches!(
+        &arguments[0],
+        Value::Complex { .. }
     )))
 }
 
@@ -4594,6 +5901,77 @@ fn rationalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
         &arguments[0],
         Value::Integer(_) | Value::Rational(_)
     )))
+}
+
+fn complex(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "complex", 2)?;
+    Ok(Value::complex(
+        real_number_argument("complex", &arguments[0])?,
+        real_number_argument("complex", &arguments[1])?,
+    ))
+}
+
+fn conjugate(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "conjugate", 1)?;
+    match numeric_argument("conjugate", &arguments[0])? {
+        Numeric::Real(value) => number_to_value(value),
+        Numeric::Complex { real, imag } => Ok(Value::complex(
+            number_to_value(real)?,
+            number_to_value(negate_number(imag)?)?,
+        )),
+    }
+}
+
+fn phase(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "phase", 1)?;
+    match numeric_argument("phase", &arguments[0])? {
+        Numeric::Real(value) => phase_real(value),
+        Numeric::Complex { real, imag } => phase_complex(real, imag),
+    }
+}
+
+fn phase_real(value: Number) -> Result<Value, RuntimeError> {
+    let as_float = value.as_float();
+    if as_float == 0.0 {
+        return number_to_value(match value {
+            Number::Float(_) => Number::Float(0.0),
+            _ => Number::Integer(0),
+        });
+    }
+    if as_float.is_sign_negative() {
+        Ok(Value::Float(PI))
+    } else {
+        number_to_value(match value {
+            Number::Float(_) => Number::Float(0.0),
+            _ => Number::Integer(0),
+        })
+    }
+}
+
+fn phase_complex(real: Number, imag: Number) -> Result<Value, RuntimeError> {
+    if real.as_float() == 0.0 && imag.as_float() == 0.0 {
+        return Ok(Value::Integer(0));
+    }
+    Ok(Value::Float(imag.as_float().atan2(real.as_float())))
+}
+
+fn realpart(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "realpart", 1)?;
+    match &arguments[0] {
+        Value::Complex { real, .. } => Ok(real.as_ref().clone()),
+        value if is_real_number(value) => Ok(value.clone()),
+        value => Err(number_error("realpart", value)),
+    }
+}
+
+fn imagpart(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "imagpart", 1)?;
+    match &arguments[0] {
+        Value::Complex { imag, .. } => Ok(imag.as_ref().clone()),
+        Value::Float(_) => Ok(Value::Float(0.0)),
+        value if is_real_number(value) => Ok(Value::Integer(0)),
+        value => Err(number_error("imagpart", value)),
+    }
 }
 
 fn stringp(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -4669,8 +6047,43 @@ fn equalp_value(left: &Value, right: &Value) -> bool {
         (Value::Character(left), Value::Character(right)) => {
             left.to_ascii_uppercase() == right.to_ascii_uppercase()
         }
-        (Value::List(left), Value::List(right)) | (Value::Vector(left), Value::Vector(right)) => {
+        (Value::List(left), Value::List(right)) => {
             left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right.iter())
+                    .all(|(left, right)| equalp_value(left, right))
+        }
+        (
+            Value::Vector {
+                fill_pointer: left_fill_pointer,
+                element_type: left_element_type,
+                adjustable: left_adjustable,
+                displaced_to: left_displaced_to,
+                displaced_index_offset: left_displaced_index_offset,
+                ..
+            },
+            Value::Vector {
+                fill_pointer: right_fill_pointer,
+                element_type: right_element_type,
+                adjustable: right_adjustable,
+                displaced_to: right_displaced_to,
+                displaced_index_offset: right_displaced_index_offset,
+                ..
+            },
+        ) => {
+            let left = left.vector_items().expect("vector items");
+            let right = right.vector_items().expect("vector items");
+            left_fill_pointer == right_fill_pointer
+                && left_adjustable == right_adjustable
+                && left_element_type.equal_value(right_element_type)
+                && left_displaced_index_offset == right_displaced_index_offset
+                && match (left_displaced_to, right_displaced_to) {
+                    (Some(left), Some(right)) => equalp_value(left, right),
+                    (None, None) => true,
+                    _ => false,
+                }
+                && left.len() == right.len()
                 && left
                     .iter()
                     .zip(right.iter())
@@ -4679,14 +6092,32 @@ fn equalp_value(left: &Value, right: &Value) -> bool {
         (
             Value::Array {
                 dimensions: left_dimensions,
-                elements: left_elements,
+                element_type: left_element_type,
+                adjustable: left_adjustable,
+                displaced_to: left_displaced_to,
+                displaced_index_offset: left_displaced_index_offset,
+                ..
             },
             Value::Array {
                 dimensions: right_dimensions,
-                elements: right_elements,
+                element_type: right_element_type,
+                adjustable: right_adjustable,
+                displaced_to: right_displaced_to,
+                displaced_index_offset: right_displaced_index_offset,
+                ..
             },
         ) => {
+            let left_elements = left.array_items().expect("array items");
+            let right_elements = right.array_items().expect("array items");
             left_dimensions == right_dimensions
+                && left_adjustable == right_adjustable
+                && left_element_type.equal_value(right_element_type)
+                && left_displaced_index_offset == right_displaced_index_offset
+                && match (left_displaced_to, right_displaced_to) {
+                    (Some(left), Some(right)) => equalp_value(left, right),
+                    (None, None) => true,
+                    _ => false,
+                }
                 && left_elements.len() == right_elements.len()
                 && left_elements
                     .iter()
@@ -4839,7 +6270,8 @@ fn printed_value(value: &Value, escape: bool) -> String {
             text.push(')');
             text
         }
-        Value::Vector(values) => {
+        Value::Vector { .. } => {
+            let values = value.vector_items().expect("vector items");
             let contents = values
                 .iter()
                 .map(|value| printed_value(value, escape))
@@ -5031,6 +6463,25 @@ fn make_string_input_stream(arguments: &[Value]) -> Result<Value, RuntimeError> 
     Ok(Value::string_input_stream(source, start, end))
 }
 
+fn stream_input_position(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "%stream-input-position", 1)?;
+    let stream = input_stream_reference("%stream-input-position", arguments.first())?;
+    let position = {
+        let stream = stream.borrow();
+        if !stream.is_input() {
+            return Err(stream_state_error(
+                "%stream-input-position",
+                "an input stream",
+            ));
+        }
+        stream
+            .input_position()
+            .ok_or_else(|| stream_state_error("%stream-input-position", "an open input stream"))?
+    };
+    let position = i64::try_from(position).map_err(|_| RuntimeError::NumericOverflow)?;
+    Ok(Value::Integer(position))
+}
+
 fn stream_bound(function: &str, value: &Value, length: usize) -> Result<usize, RuntimeError> {
     let bound = integer_argument(function, value)?;
     let bound = usize::try_from(bound).map_err(|_| RuntimeError::InvalidForm {
@@ -5136,9 +6587,8 @@ fn probe_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
 fn delete_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "delete-file", 1)?;
     let path = pathname_argument("delete-file", &arguments[0])?;
-    std::fs::remove_file(&path).map_err(|error| {
-        RuntimeError::Io(format!("delete-file {}: {error}", path.display()))
-    })?;
+    std::fs::remove_file(&path)
+        .map_err(|error| RuntimeError::Io(format!("delete-file {}: {error}", path.display())))?;
     Ok(Value::boolean(true))
 }
 
@@ -5171,22 +6621,28 @@ fn file_write_date(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let path = pathname_argument("file-write-date", &arguments[0])?;
     let modified = std::fs::metadata(&path)
         .and_then(|metadata| metadata.modified())
-        .map_err(|error| RuntimeError::Io(format!("file-write-date {}: {error}", path.display())))?;
+        .map_err(|error| {
+            RuntimeError::Io(format!("file-write-date {}: {error}", path.display()))
+        })?;
     let seconds_since_unix = modified
         .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| RuntimeError::Io(format!("file-write-date {}: {error}", path.display())))?;
+        .map_err(|error| {
+            RuntimeError::Io(format!("file-write-date {}: {error}", path.display()))
+        })?;
     let seconds_since_unix = i64::try_from(seconds_since_unix.as_secs()).map_err(|_| {
         RuntimeError::Io(format!(
             "file-write-date {}: modification time is out of range",
             path.display()
         ))
     })?;
-    let universal_time = seconds_since_unix.checked_add(2_208_988_800).ok_or_else(|| {
-        RuntimeError::Io(format!(
-            "file-write-date {}: modification time is out of range",
-            path.display()
-        ))
-    })?;
+    let universal_time = seconds_since_unix
+        .checked_add(2_208_988_800)
+        .ok_or_else(|| {
+            RuntimeError::Io(format!(
+                "file-write-date {}: modification time is out of range",
+                path.display()
+            ))
+        })?;
     Ok(Value::Integer(universal_time))
 }
 
@@ -5358,14 +6814,12 @@ fn input_stream_reference<'a>(
 ) -> Result<&'a Rc<RefCell<Stream>>, RuntimeError> {
     match value {
         Some(Value::Stream(stream)) => Ok(stream),
-        None | Some(Value::Nil) | Some(Value::Boolean(true)) => {
-            Err(RuntimeError::InvalidForm {
-                message: format!(
-                    "{function} requires an explicit input stream; standard input is unavailable"
-                ),
-                span: None,
-            })
-        }
+        None | Some(Value::Nil) | Some(Value::Boolean(true)) => Err(RuntimeError::InvalidForm {
+            message: format!(
+                "{function} requires an explicit input stream; standard input is unavailable"
+            ),
+            span: None,
+        }),
         Some(value) => Err(type_error(function, "an input stream", value)),
     }
 }
@@ -5424,6 +6878,52 @@ fn get_output_stream_string(arguments: &[Value]) -> Result<Value, RuntimeError> 
     Ok(Value::string(output))
 }
 
+fn append_output_to_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "__ncl_append_output_to_string", 2)?;
+    let Value::Vector {
+        elements,
+        fill_pointer: Some(fill_pointer),
+        element_type,
+        adjustable,
+        ..
+    } = &arguments[0]
+    else {
+        return Err(type_error(
+            "__ncl_append_output_to_string",
+            "vector with fill pointer",
+            &arguments[0],
+        ));
+    };
+
+    let mut combined = Vec::with_capacity(*fill_pointer);
+    for item in elements.borrow().iter().take(*fill_pointer) {
+        let Value::Character(_) = item else {
+            return Err(type_error(
+                "__ncl_append_output_to_string",
+                "characters in vector with fill pointer",
+                &item,
+            ));
+        };
+        combined.push(item.clone());
+    }
+
+    let Value::String(output) = &arguments[1] else {
+        return Err(type_error(
+            "__ncl_append_output_to_string",
+            "string",
+            &arguments[1],
+        ));
+    };
+    combined.extend(output.chars().map(Value::Character));
+    let new_fill_pointer = combined.len();
+    Ok(Value::vector_with_fill_pointer_element_type_and_adjustable(
+        combined,
+        Some(new_fill_pointer),
+        element_type.as_ref().clone(),
+        *adjustable,
+    ))
+}
+
 fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 4 {
         return Err(arity("read-char", "0 to 4", arguments.len()));
@@ -5453,9 +6953,7 @@ fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
             (arguments.first(), arguments.get(1), 2)
         };
     let stream = input_stream_reference("peek-char", stream_value)?;
-    let eof_error_p = arguments
-        .get(optional_index)
-        .map_or(true, Value::is_truthy);
+    let eof_error_p = arguments.get(optional_index).map_or(true, Value::is_truthy);
     let eof_value = arguments
         .get(optional_index + 1)
         .cloned()
@@ -5505,7 +7003,10 @@ fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
         return Err(stream_state_error("read-line", "an input stream"));
     }
     match stream.read_line() {
-        Some((line, eof)) => Ok(Value::values(vec![Value::string(line), Value::boolean(eof)])),
+        Some((line, eof)) => Ok(Value::values(vec![
+            Value::string(line),
+            Value::boolean(eof),
+        ])),
         None if eof_error_p => Err(end_of_file_error("a line")),
         None => Ok(Value::values(vec![eof_value, Value::boolean(true)])),
     }
@@ -5528,11 +7029,7 @@ fn write_destination(
                 Err(stream_state_error(function, "an open output stream"))
             }
         }
-        Some(value) => Err(type_error(
-            function,
-            "NIL, T, or an output stream",
-            value,
-        )),
+        Some(value) => Err(type_error(function, "NIL, T, or an output stream", value)),
     }
 }
 
@@ -5756,7 +7253,9 @@ fn parse_format_parameters(
                         span: None,
                     });
                 }
-                let text = characters[start..*character_index].iter().collect::<String>();
+                let text = characters[start..*character_index]
+                    .iter()
+                    .collect::<String>();
                 let value = text.parse::<i64>().map_err(|_| RuntimeError::InvalidForm {
                     message: format!("format numeric parameter is out of range: {text}"),
                     span: None,
@@ -5872,16 +7371,37 @@ fn format_control_characters(
             characters
                 .get(character_index)
                 .copied()
-            .ok_or_else(|| RuntimeError::InvalidForm {
-                message: "format control ends after a tilde".to_string(),
-                span: None,
-            })?;
+                .ok_or_else(|| RuntimeError::InvalidForm {
+                    message: "format control ends after a tilde".to_string(),
+                    span: None,
+                })?;
         character_index += 1;
         let directive = directive.to_ascii_uppercase();
         let supports_modifiers = matches!(
             directive,
-            '{' | '[' | '<' | 'A' | 'S' | 'C' | 'D' | 'B' | 'O' | 'X' | 'R' | 'F' | 'E' | 'G'
-                | 'I' | 'P' | '$' | '^' | 'T' | 'W' | '?' | '_' | '('
+            '{' | '['
+                | '<'
+                | 'A'
+                | 'S'
+                | 'C'
+                | 'D'
+                | 'B'
+                | 'O'
+                | 'X'
+                | 'R'
+                | 'F'
+                | 'E'
+                | 'G'
+                | 'I'
+                | 'P'
+                | '$'
+                | '^'
+                | 'T'
+                | 'W'
+                | '?'
+                | '_'
+                | '('
+                | '*'
         );
         if (colon_modifier || at_sign_modifier) && !supports_modifiers {
             return Err(RuntimeError::InvalidForm {
@@ -6004,16 +7524,19 @@ fn format_control_characters(
                     });
                 }
                 let argument = if colon_modifier {
-                    let index = argument_index.checked_sub(1).ok_or_else(|| {
-                        RuntimeError::InvalidForm {
+                    let index =
+                        argument_index
+                            .checked_sub(1)
+                            .ok_or_else(|| RuntimeError::InvalidForm {
+                                message: "format ~:P has no previous argument".to_string(),
+                                span: None,
+                            })?;
+                    arguments
+                        .get(index)
+                        .ok_or_else(|| RuntimeError::InvalidForm {
                             message: "format ~:P has no previous argument".to_string(),
                             span: None,
-                        }
-                    })?;
-                    arguments.get(index).ok_or_else(|| RuntimeError::InvalidForm {
-                        message: "format ~:P has no previous argument".to_string(),
-                        span: None,
-                    })?
+                        })?
                 } else {
                     format_argument("~P", arguments, &mut argument_index)?
                 };
@@ -6070,6 +7593,14 @@ fn format_control_characters(
                     output.push('~');
                 }
             }
+            '\n' => {
+                while matches!(
+                    characters.get(character_index),
+                    Some(character) if character.is_whitespace()
+                ) {
+                    character_index += 1;
+                }
+            }
             '_' => {
                 if !parameters.is_empty() {
                     return Err(RuntimeError::InvalidForm {
@@ -6094,10 +7625,28 @@ fn format_control_characters(
                 let _ = format_parameter_count(&parameters, 0, 0)?;
             }
             '*' => {
-                let count = format_parameter_count(&parameters, 0, 1)?;
-                argument_index = argument_index
-                    .saturating_add(count)
-                    .min(arguments.len());
+                if colon_modifier && at_sign_modifier {
+                    return Err(RuntimeError::InvalidForm {
+                        message: "format ~* does not support using colon and at-sign together"
+                            .to_string(),
+                        span: None,
+                    });
+                }
+                if colon_modifier {
+                    let count = format_parameter_count(&parameters, 0, 1)?;
+                    argument_index = argument_index.checked_sub(count).ok_or_else(|| {
+                        RuntimeError::InvalidForm {
+                            message: "format ~:* has no previous argument".to_string(),
+                            span: None,
+                        }
+                    })?;
+                } else if at_sign_modifier {
+                    let count = format_parameter_count(&parameters, 0, 0)?;
+                    argument_index = count.min(arguments.len());
+                } else {
+                    let count = format_parameter_count(&parameters, 0, 1)?;
+                    argument_index = argument_index.saturating_add(count).min(arguments.len());
+                }
             }
             '?' => {
                 if !parameters.is_empty() || colon_modifier {
@@ -6121,11 +7670,7 @@ fn format_control_characters(
                     output.push_str(&formatted);
                     argument_index += consumed;
                     if let Some(termination) = termination {
-                        return Ok((
-                            output,
-                            argument_index,
-                            Some(termination),
-                        ));
+                        return Ok((output, argument_index, Some(termination)));
                     }
                 } else {
                     let nested_arguments = format_argument("~?", arguments, &mut argument_index)?;
@@ -6156,13 +7701,12 @@ fn format_control_characters(
                 character_index = body_end + 2;
                 let limit = format_iteration_limit(&parameters)?;
                 if at_sign_modifier {
-                    let (formatted, consumed) =
-                        format_iteration(
-                            body,
-                            &arguments[argument_index..],
-                            colon_modifier,
-                            limit,
-                        )?;
+                    let (formatted, consumed) = format_iteration(
+                        body,
+                        &arguments[argument_index..],
+                        colon_modifier,
+                        limit,
+                    )?;
                     output.push_str(&formatted);
                     argument_index += consumed;
                 } else {
@@ -6215,12 +7759,13 @@ fn format_control_characters(
                     let selector = format_argument("~[", arguments, &mut argument_index)?;
                     Some(usize::from(selector.is_truthy()))
                 } else if at_sign_modifier {
-                    let selector = arguments
-                        .get(argument_index)
-                        .ok_or_else(|| RuntimeError::InvalidForm {
-                            message: "format directive ~[ needs another argument".to_string(),
-                            span: None,
-                        })?;
+                    let selector =
+                        arguments
+                            .get(argument_index)
+                            .ok_or_else(|| RuntimeError::InvalidForm {
+                                message: "format directive ~[ needs another argument".to_string(),
+                                span: None,
+                            })?;
                     if selector.is_truthy() {
                         Some(0)
                     } else {
@@ -6230,8 +7775,7 @@ fn format_control_characters(
                 } else {
                     let has_selector_parameter = matches!(
                         parameters.first().copied(),
-                        Some(FormatParameter::Number(_))
-                            | Some(FormatParameter::Character(_))
+                        Some(FormatParameter::Number(_)) | Some(FormatParameter::Character(_))
                     );
                     let index = if has_selector_parameter {
                         format_parameter_number(&parameters, 0, 0)?
@@ -6247,12 +7791,11 @@ fn format_control_characters(
                         .or_else(|| clauses.iter().find(|(_, default)| *default))
                 });
                 if let Some((clause, _)) = selected_clause {
-                    let (formatted, consumed, termination) =
-                        format_control_characters(
-                            clause,
-                            &arguments[argument_index..],
-                            colon_iteration_last,
-                        )?;
+                    let (formatted, consumed, termination) = format_control_characters(
+                        clause,
+                        &arguments[argument_index..],
+                        colon_iteration_last,
+                    )?;
                     output.push_str(&formatted);
                     argument_index += consumed;
                     if let Some(termination) = termination {
@@ -6260,12 +7803,11 @@ fn format_control_characters(
                     }
                 } else if !colon_modifier && !at_sign_modifier {
                     if let Some((clause, _)) = clauses.iter().find(|(_, default)| *default) {
-                        let (formatted, consumed, termination) =
-                            format_control_characters(
-                                clause,
-                                &arguments[argument_index..],
-                                colon_iteration_last,
-                            )?;
+                        let (formatted, consumed, termination) = format_control_characters(
+                            clause,
+                            &arguments[argument_index..],
+                            colon_iteration_last,
+                        )?;
                         output.push_str(&formatted);
                         argument_index += consumed;
                         if let Some(termination) = termination {
@@ -6297,8 +7839,7 @@ fn format_control_characters(
                 argument_index += consumed;
             }
             'R' => {
-                let argument =
-                    format_argument("~R", arguments, &mut argument_index)?;
+                let argument = format_argument("~R", arguments, &mut argument_index)?;
                 let integer = integer_argument("format", argument)?;
                 output.push_str(&format_radix_directive(
                     integer,
@@ -6371,12 +7912,7 @@ fn format_choice_end(characters: &[char], start: usize) -> Result<usize, Runtime
 }
 
 fn format_justification_end(characters: &[char], start: usize) -> Result<usize, RuntimeError> {
-    format_directive_end(
-        characters,
-        start,
-        '<',
-        "format justification is missing ~>",
-    )
+    format_directive_end(characters, start, '<', "format justification is missing ~>")
 }
 
 fn format_case_conversion_end(characters: &[char], start: usize) -> Result<usize, RuntimeError> {
@@ -6445,7 +7981,7 @@ fn format_choice_clauses<'a>(body: &'a [char]) -> Result<Vec<(&'a [char], bool)>
             continue;
         }
 
-        let (directive_index, colon_modifier, at_sign_modifier) =
+        let (directive_index, colon_modifier, _at_sign_modifier) =
             format_directive_prefix(body, index + 1)?;
         let Some(directive) = body.get(directive_index).copied() else {
             return Err(RuntimeError::InvalidForm {
@@ -6474,13 +8010,6 @@ fn format_choice_clauses<'a>(body: &'a [char]) -> Result<Vec<(&'a [char], bool)>
                 }
             }
             ';' if stack.is_empty() => {
-                if at_sign_modifier {
-                    return Err(RuntimeError::InvalidForm {
-                        message: "at-sign modifier is not supported on a format choice clause"
-                            .to_string(),
-                        span: None,
-                    });
-                }
                 clauses.push((&body[clause_start..index], default_clause));
                 clause_start = directive_index + 1;
                 default_clause = colon_modifier;
@@ -6590,11 +8119,8 @@ fn format_justification(
     let mut pieces = Vec::new();
     let mut argument_index = 0;
     for clause in clauses {
-        let (formatted, consumed, termination) = format_control_characters(
-            clause,
-            &arguments[argument_index..],
-            colon_iteration_last,
-        )?;
+        let (formatted, consumed, termination) =
+            format_control_characters(clause, &arguments[argument_index..], colon_iteration_last)?;
         argument_index += consumed;
         if termination.is_some() {
             break;
@@ -6610,9 +8136,8 @@ fn format_justification(
     let content_width = pieces.iter().fold(0usize, |width, piece| {
         width.saturating_add(piece.chars().count())
     });
-    let required_width = content_width.saturating_add(
-        minimum_padding.saturating_mul(between_count),
-    );
+    let required_width =
+        content_width.saturating_add(minimum_padding.saturating_mul(between_count));
     let mut target_width = minimum_column.max(required_width);
     if target_width > minimum_column {
         let remainder = (target_width - minimum_column) % column_increment;
@@ -6679,11 +8204,7 @@ fn format_justification(
     Ok((output, argument_index))
 }
 
-fn format_case_conversion(
-    text: &str,
-    colon_modifier: bool,
-    at_sign_modifier: bool,
-) -> String {
+fn format_case_conversion(text: &str, colon_modifier: bool, at_sign_modifier: bool) -> String {
     let mut output = String::new();
     if colon_modifier && at_sign_modifier {
         for character in text.chars() {
@@ -6785,9 +8306,7 @@ fn format_iteration(
     let mut output = String::new();
     let mut argument_index = 0;
     let mut repetitions = 0;
-    while argument_index < arguments.len()
-        && limit.map_or(true, |limit| repetitions < limit)
-    {
+    while argument_index < arguments.len() && limit.map_or(true, |limit| repetitions < limit) {
         let (consumed, termination) = if colon_modifier {
             let nested_arguments = arguments[argument_index].list_items().ok_or_else(|| {
                 type_error(
@@ -6796,12 +8315,11 @@ fn format_iteration(
                     &arguments[argument_index],
                 )
             })?;
-            let (formatted, consumed, termination) =
-                format_control_characters(
-                    body,
-                    &nested_arguments,
-                    argument_index + 1 >= arguments.len(),
-                )?;
+            let (formatted, consumed, termination) = format_control_characters(
+                body,
+                &nested_arguments,
+                argument_index + 1 >= arguments.len(),
+            )?;
             output.push_str(&formatted);
             (consumed, termination)
         } else {
@@ -6827,7 +8345,11 @@ fn format_parameter_number(
     index: usize,
     default: i64,
 ) -> Result<i64, RuntimeError> {
-    match parameters.get(index).copied().unwrap_or(FormatParameter::Missing) {
+    match parameters
+        .get(index)
+        .copied()
+        .unwrap_or(FormatParameter::Missing)
+    {
         FormatParameter::Missing => Ok(default),
         FormatParameter::Number(value) => Ok(value),
         FormatParameter::Character(_) => Err(RuntimeError::InvalidForm {
@@ -6854,7 +8376,11 @@ fn format_parameter_character(
     index: usize,
     default: char,
 ) -> Result<char, RuntimeError> {
-    match parameters.get(index).copied().unwrap_or(FormatParameter::Missing) {
+    match parameters
+        .get(index)
+        .copied()
+        .unwrap_or(FormatParameter::Missing)
+    {
         FormatParameter::Missing => Ok(default),
         FormatParameter::Character(value) => Ok(value),
         FormatParameter::Number(_) => Err(RuntimeError::InvalidForm {
@@ -6864,9 +8390,7 @@ fn format_parameter_character(
     }
 }
 
-fn format_iteration_limit(
-    parameters: &[FormatParameter],
-) -> Result<Option<usize>, RuntimeError> {
+fn format_iteration_limit(parameters: &[FormatParameter]) -> Result<Option<usize>, RuntimeError> {
     if parameters.is_empty() || matches!(parameters[0], FormatParameter::Missing) {
         Ok(None)
     } else {
@@ -6959,15 +8483,20 @@ fn format_fixed_float_directive(
         });
     }
     let minimum_column = format_parameter_count(parameters, 0, 0)?;
-    let fractional_digits = match parameters.get(1).copied().unwrap_or(FormatParameter::Missing)
+    let fractional_digits = match parameters
+        .get(1)
+        .copied()
+        .unwrap_or(FormatParameter::Missing)
     {
         FormatParameter::Missing => None,
-        FormatParameter::Number(value) => Some(usize::try_from(value).map_err(|_| {
-            RuntimeError::InvalidForm {
-                message: "format fractional digit count must be non-negative".to_string(),
-                span: None,
-            }
-        })?),
+        FormatParameter::Number(value) => {
+            Some(
+                usize::try_from(value).map_err(|_| RuntimeError::InvalidForm {
+                    message: "format fractional digit count must be non-negative".to_string(),
+                    span: None,
+                })?,
+            )
+        }
         FormatParameter::Character(_) => {
             return Err(RuntimeError::InvalidForm {
                 message: "format parameter 1 must be numeric".to_string(),
@@ -6980,7 +8509,10 @@ fn format_fixed_float_directive(
         message: "format scale factor is out of range".to_string(),
         span: None,
     })?;
-    let overflow_character = match parameters.get(3).copied().unwrap_or(FormatParameter::Missing)
+    let overflow_character = match parameters
+        .get(3)
+        .copied()
+        .unwrap_or(FormatParameter::Missing)
     {
         FormatParameter::Missing => None,
         FormatParameter::Character(value) => Some(value),
@@ -7060,12 +8592,14 @@ fn format_general_float_directive(
     let minimum_column = format_parameter_count(parameters, 0, 0)?;
     let requested_fractional_digits = match parameter_at(1) {
         FormatParameter::Missing => None,
-        FormatParameter::Number(value) => Some(usize::try_from(value).map_err(|_| {
-            RuntimeError::InvalidForm {
-                message: "format fractional digit count must be non-negative".to_string(),
-                span: None,
-            }
-        })?),
+        FormatParameter::Number(value) => {
+            Some(
+                usize::try_from(value).map_err(|_| RuntimeError::InvalidForm {
+                    message: "format fractional digit count must be non-negative".to_string(),
+                    span: None,
+                })?,
+            )
+        }
         FormatParameter::Character(_) => {
             return Err(RuntimeError::InvalidForm {
                 message: "format parameter 1 must be numeric".to_string(),
@@ -7126,16 +8660,18 @@ fn format_general_float_directive(
         let minimum = usize::try_from(exponent.min(7).max(0)).unwrap_or(0);
         q.max(minimum).max(1)
     });
-    let fixed_point = exponent >= 0
-        && fractional_digits >= usize::try_from(exponent).unwrap_or(usize::MAX);
-    let fractional_digits = i64::try_from(fractional_digits).map_err(|_| RuntimeError::InvalidForm {
-        message: "format fractional digit count is out of range".to_string(),
-        span: None,
-    })?;
-    let exponent_padding = i64::try_from(exponent_padding).map_err(|_| RuntimeError::InvalidForm {
-        message: "format exponent field count is out of range".to_string(),
-        span: None,
-    })?;
+    let fixed_point =
+        exponent >= 0 && fractional_digits >= usize::try_from(exponent).unwrap_or(usize::MAX);
+    let fractional_digits =
+        i64::try_from(fractional_digits).map_err(|_| RuntimeError::InvalidForm {
+            message: "format fractional digit count is out of range".to_string(),
+            span: None,
+        })?;
+    let exponent_padding =
+        i64::try_from(exponent_padding).map_err(|_| RuntimeError::InvalidForm {
+            message: "format exponent field count is out of range".to_string(),
+            span: None,
+        })?;
     let minimum_column = i64::try_from(minimum_column).map_err(|_| RuntimeError::InvalidForm {
         message: "format field width is out of range".to_string(),
         span: None,
@@ -7157,13 +8693,10 @@ fn format_general_float_directive(
             parameter_at(4),
             parameter_at(5),
         ];
-        let mut formatted = format_fixed_float_directive(
-            value,
-            &fixed_parameters,
-            false,
-            at_sign_modifier,
-        )?;
-        formatted.extend(std::iter::repeat(' ').take(usize::try_from(exponent_padding).unwrap_or(0)));
+        let mut formatted =
+            format_fixed_float_directive(value, &fixed_parameters, false, at_sign_modifier)?;
+        formatted
+            .extend(std::iter::repeat(' ').take(usize::try_from(exponent_padding).unwrap_or(0)));
         return Ok(formatted);
     }
 
@@ -7176,12 +8709,7 @@ fn format_general_float_directive(
         parameter_at(5),
         exponent_character,
     ];
-    format_exponential_float_directive(
-        value,
-        &exponential_parameters,
-        false,
-        at_sign_modifier,
-    )
+    format_exponential_float_directive(value, &exponential_parameters, false, at_sign_modifier)
 }
 
 fn general_float_decimal_exponent(value: f64) -> i64 {
@@ -7243,18 +8771,18 @@ fn format_dollar_float_directive(
     if fractional_digits == 0 {
         digits.push('.');
     }
-    let (integer_part, fractional_part) = digits
-        .split_once('.')
-        .ok_or_else(|| RuntimeError::InvalidForm {
-            message: "format ~$ could not produce a fixed-point number".to_string(),
-            span: None,
-        })?;
+    let (integer_part, fractional_part) =
+        digits
+            .split_once('.')
+            .ok_or_else(|| RuntimeError::InvalidForm {
+                message: "format ~$ could not produce a fixed-point number".to_string(),
+                span: None,
+            })?;
 
     let mut numeric = String::new();
     numeric.extend(
-        std::iter::repeat('0').take(
-            minimum_integer_digits.saturating_sub(integer_part.chars().count()),
-        ),
+        std::iter::repeat('0')
+            .take(minimum_integer_digits.saturating_sub(integer_part.chars().count())),
     );
     numeric.push_str(integer_part);
     numeric.push('.');
@@ -7298,15 +8826,20 @@ fn format_exponential_float_directive(
         });
     }
     let minimum_column = format_parameter_count(parameters, 0, 0)?;
-    let requested_fractional_digits = match parameters.get(1).copied().unwrap_or(FormatParameter::Missing)
+    let requested_fractional_digits = match parameters
+        .get(1)
+        .copied()
+        .unwrap_or(FormatParameter::Missing)
     {
         FormatParameter::Missing => None,
-        FormatParameter::Number(value) => Some(usize::try_from(value).map_err(|_| {
-            RuntimeError::InvalidForm {
-                message: "format fractional digit count must be non-negative".to_string(),
-                span: None,
-            }
-        })?),
+        FormatParameter::Number(value) => {
+            Some(
+                usize::try_from(value).map_err(|_| RuntimeError::InvalidForm {
+                    message: "format fractional digit count must be non-negative".to_string(),
+                    span: None,
+                })?,
+            )
+        }
         FormatParameter::Character(_) => {
             return Err(RuntimeError::InvalidForm {
                 message: "format parameter 1 must be numeric".to_string(),
@@ -7314,15 +8847,20 @@ fn format_exponential_float_directive(
             });
         }
     };
-    let requested_exponent_digits = match parameters.get(2).copied().unwrap_or(FormatParameter::Missing)
+    let requested_exponent_digits = match parameters
+        .get(2)
+        .copied()
+        .unwrap_or(FormatParameter::Missing)
     {
         FormatParameter::Missing => None,
-        FormatParameter::Number(value) => Some(usize::try_from(value).map_err(|_| {
-            RuntimeError::InvalidForm {
-                message: "format exponent digit count must be non-negative".to_string(),
-                span: None,
-            }
-        })?),
+        FormatParameter::Number(value) => {
+            Some(
+                usize::try_from(value).map_err(|_| RuntimeError::InvalidForm {
+                    message: "format exponent digit count must be non-negative".to_string(),
+                    span: None,
+                })?,
+            )
+        }
         FormatParameter::Character(_) => {
             return Err(RuntimeError::InvalidForm {
                 message: "format parameter 2 must be numeric".to_string(),
@@ -7337,10 +8875,10 @@ fn format_exponential_float_directive(
         }
     })?;
     if let Some(fractional_digits) = requested_fractional_digits {
-        let invalid_positive_scale = scale > 0
-            && (scale as usize) >= fractional_digits.saturating_add(2);
-        let invalid_negative_scale = scale < 0
-            && (scale.unsigned_abs() as usize) >= fractional_digits;
+        let invalid_positive_scale =
+            scale > 0 && (scale as usize) >= fractional_digits.saturating_add(2);
+        let invalid_negative_scale =
+            scale < 0 && (scale.unsigned_abs() as usize) >= fractional_digits;
         if invalid_positive_scale || invalid_negative_scale {
             return Err(RuntimeError::InvalidForm {
                 message: "format scale factor is incompatible with fractional digit count"
@@ -7371,7 +8909,10 @@ fn format_exponential_float_directive(
         message: "format scale factor leaves no significant digits".to_string(),
         span: None,
     })?;
-    let overflow_character = match parameters.get(4).copied().unwrap_or(FormatParameter::Missing)
+    let overflow_character = match parameters
+        .get(4)
+        .copied()
+        .unwrap_or(FormatParameter::Missing)
     {
         FormatParameter::Missing => None,
         FormatParameter::Character(value) => Some(value),
@@ -7413,11 +8954,7 @@ fn format_exponential_float_directive(
     }
 
     let magnitude = value.abs();
-    let scientific = format!(
-        "{:.*e}",
-        significant_digits.saturating_sub(1),
-        magnitude
-    );
+    let scientific = format!("{:.*e}", significant_digits.saturating_sub(1), magnitude);
     let (coefficient, exponent_text) = scientific
         .split_once('e')
         .or_else(|| scientific.split_once('E'))
@@ -7425,10 +8962,12 @@ fn format_exponential_float_directive(
             message: "format exponential conversion did not produce an exponent".to_string(),
             span: None,
         })?;
-    let raw_exponent = exponent_text.parse::<i32>().map_err(|_| RuntimeError::InvalidForm {
-        message: "format exponential conversion produced an invalid exponent".to_string(),
-        span: None,
-    })?;
+    let raw_exponent = exponent_text
+        .parse::<i32>()
+        .map_err(|_| RuntimeError::InvalidForm {
+            message: "format exponential conversion produced an invalid exponent".to_string(),
+            span: None,
+        })?;
     let mut digits = coefficient
         .chars()
         .filter(|character| character.is_ascii_digit())
@@ -7443,8 +8982,8 @@ fn format_exponential_float_directive(
             mantissa.push(*digits.get(index).unwrap_or(&'0'));
         }
         mantissa.push('.');
-        let digits_after_decimal = fractional_digits
-            .saturating_sub(digits_before_decimal.saturating_sub(1));
+        let digits_after_decimal =
+            fractional_digits.saturating_sub(digits_before_decimal.saturating_sub(1));
         for index in 0..digits_after_decimal {
             mantissa.push(*digits.get(digits_before_decimal + index).unwrap_or(&'0'));
         }
@@ -7456,8 +8995,8 @@ fn format_exponential_float_directive(
     } else {
         mantissa.push_str("0.");
         mantissa.extend(std::iter::repeat('0').take(scale.unsigned_abs() as usize));
-        let significant_fractional_digits = fractional_digits
-            .saturating_sub(scale.unsigned_abs() as usize);
+        let significant_fractional_digits =
+            fractional_digits.saturating_sub(scale.unsigned_abs() as usize);
         for index in 0..significant_fractional_digits {
             mantissa.push(*digits.get(index).unwrap_or(&'0'));
         }
@@ -7491,9 +9030,10 @@ fn format_exponential_float_directive(
     }
     let exponent_magnitude = exponent.unsigned_abs().to_string();
     if let Some(exponent_width) = requested_exponent_digits {
-        formatted.extend(std::iter::repeat('0').take(
-            exponent_width.saturating_sub(exponent_magnitude.chars().count()),
-        ));
+        formatted.extend(
+            std::iter::repeat('0')
+                .take(exponent_width.saturating_sub(exponent_magnitude.chars().count())),
+        );
     }
     formatted.push_str(&exponent_magnitude);
     apply_field(formatted)
@@ -7554,12 +9094,12 @@ fn format_radix_directive(
     if let Some(parameter) = parameters.first().copied() {
         if !matches!(parameter, FormatParameter::Missing) {
             let radix = match parameter {
-                FormatParameter::Number(value) => u32::try_from(value).map_err(|_| {
-                    RuntimeError::InvalidForm {
+                FormatParameter::Number(value) => {
+                    u32::try_from(value).map_err(|_| RuntimeError::InvalidForm {
                         message: "format radix must be between 2 and 36".to_string(),
                         span: None,
-                    }
-                })?,
+                    })?
+                }
                 FormatParameter::Missing => unreachable!(),
                 FormatParameter::Character(_) => {
                     return Err(RuntimeError::InvalidForm {
@@ -7598,7 +9138,10 @@ fn format_english_number(value: i64, ordinal: bool) -> String {
                 format_unsigned_integer(value.unsigned_abs(), 10)
             );
         }
-        return format!("minus {}", format_english_number(value.wrapping_neg(), ordinal));
+        return format!(
+            "minus {}",
+            format_english_number(value.wrapping_neg(), ordinal)
+        );
     }
     let magnitude = value as u64;
     if magnitude == 0 {
@@ -7608,7 +9151,14 @@ fn format_english_number(value: i64, ordinal: bool) -> String {
             "zero".to_string()
         };
     }
-    const GROUPS: &[&str] = &["", "thousand", "million", "billion", "trillion", "quadrillion"];
+    const GROUPS: &[&str] = &[
+        "",
+        "thousand",
+        "million",
+        "billion",
+        "trillion",
+        "quadrillion",
+    ];
     let mut chunks = Vec::new();
     let mut remainder = magnitude;
     while remainder != 0 {
@@ -7693,16 +9243,7 @@ fn english_under_thousand(value: u64, ordinal: bool) -> String {
         "nineteenth",
     ];
     const TENS: &[&str] = &[
-        "",
-        "",
-        "twenty",
-        "thirty",
-        "forty",
-        "fifty",
-        "sixty",
-        "seventy",
-        "eighty",
-        "ninety",
+        "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
     ];
     const ORDINAL_TENS: &[&str] = &[
         "",
@@ -7838,7 +9379,8 @@ fn append_aesthetic(output: &mut String, value: &Value) {
             append_aesthetic(output, tail);
             output.push(')');
         }
-        Value::Vector(values) => {
+        Value::Vector { .. } => {
+            let values = value.vector_items().expect("vector items");
             output.push_str("#(");
             for (index, value) in values.iter().enumerate() {
                 if index != 0 {
@@ -7880,6 +9422,12 @@ enum Number {
     Float(f64),
 }
 
+#[derive(Clone, Copy)]
+enum Numeric {
+    Real(Number),
+    Complex { real: Number, imag: Number },
+}
+
 impl Number {
     fn as_float(self) -> f64 {
         match self {
@@ -7898,6 +9446,15 @@ impl Number {
             Self::Integer(value) => Some((value, 1)),
             Self::Rational(value) => Some((value.numerator(), value.denominator())),
             Self::Float(_) => None,
+        }
+    }
+}
+
+impl Numeric {
+    fn into_complex(self) -> (Number, Number) {
+        match self {
+            Self::Real(value) => (value, Number::Integer(0)),
+            Self::Complex { real, imag } => (real, imag),
         }
     }
 }
@@ -7929,6 +9486,16 @@ fn number_argument(function: &str, value: &Value) -> Result<Number, RuntimeError
     }
 }
 
+fn numeric_argument(function: &str, value: &Value) -> Result<Numeric, RuntimeError> {
+    match value {
+        Value::Complex { real, imag } => Ok(Numeric::Complex {
+            real: number_argument(function, real.as_ref())?,
+            imag: number_argument(function, imag.as_ref())?,
+        }),
+        _ => Ok(Numeric::Real(number_argument(function, value)?)),
+    }
+}
+
 fn number_to_value(number: Number) -> Result<Value, RuntimeError> {
     match number {
         Number::Integer(value) => Ok(Value::Integer(value)),
@@ -7937,6 +9504,47 @@ fn number_to_value(number: Number) -> Result<Value, RuntimeError> {
             i128::from(value.denominator()),
         ),
         Number::Float(value) => Ok(Value::Float(value)),
+    }
+}
+
+fn numeric_to_value(number: Numeric) -> Result<Value, RuntimeError> {
+    match number {
+        Numeric::Real(value) => number_to_value(value),
+        Numeric::Complex { real, imag } => Ok(Value::complex(
+            number_to_value(real)?,
+            number_to_value(imag)?,
+        )),
+    }
+}
+
+fn square_root_numeric(number: Numeric) -> Result<Numeric, RuntimeError> {
+    let value = match number {
+        Numeric::Real(number) => square_root_real(number)?,
+        Numeric::Complex { real, imag } => square_root_complex(real, imag)?,
+    };
+
+    numeric_argument("sqrt", &value)
+}
+
+fn canonicalize_number(number: Number) -> Number {
+    match number {
+        Number::Float(value) => canonicalize_float(value),
+        value => value,
+    }
+}
+
+fn canonicalize_numeric(number: Numeric) -> Numeric {
+    match number {
+        Numeric::Real(value) => Numeric::Real(canonicalize_number(value)),
+        Numeric::Complex { real, imag } => {
+            let real = canonicalize_number(real);
+            let imag = canonicalize_number(imag);
+            if imag.as_float() == 0.0 {
+                Numeric::Real(real)
+            } else {
+                Numeric::Complex { real, imag }
+            }
+        }
     }
 }
 
@@ -7996,6 +9604,129 @@ fn negate_number(value: Number) -> Result<Number, RuntimeError> {
     }
 }
 
+fn add_numbers(left: Number, right: Number) -> Result<Number, RuntimeError> {
+    if left.is_float() || right.is_float() {
+        Ok(Number::Float(left.as_float() + right.as_float()))
+    } else {
+        exact_binary(left, right, '+')
+    }
+}
+
+fn subtract_numbers(left: Number, right: Number) -> Result<Number, RuntimeError> {
+    if left.is_float() || right.is_float() {
+        Ok(Number::Float(left.as_float() - right.as_float()))
+    } else {
+        exact_binary(left, right, '-')
+    }
+}
+
+fn multiply_numbers(left: Number, right: Number) -> Result<Number, RuntimeError> {
+    if left.is_float() || right.is_float() {
+        Ok(Number::Float(left.as_float() * right.as_float()))
+    } else {
+        exact_binary(left, right, '*')
+    }
+}
+
+fn divide_numbers(left: Number, right: Number) -> Result<Number, RuntimeError> {
+    if right.as_float() == 0.0 {
+        return Err(RuntimeError::DivisionByZero);
+    }
+    if left.is_float() || right.is_float() {
+        Ok(Number::Float(left.as_float() / right.as_float()))
+    } else {
+        exact_binary(left, right, '/')
+    }
+}
+
+fn negate_numeric(value: Numeric) -> Result<Numeric, RuntimeError> {
+    match value {
+        Numeric::Real(value) => Ok(Numeric::Real(negate_number(value)?)),
+        Numeric::Complex { real, imag } => Ok(Numeric::Complex {
+            real: negate_number(real)?,
+            imag: negate_number(imag)?,
+        }),
+    }
+}
+
+fn add_numeric(left: Numeric, right: Numeric) -> Result<Numeric, RuntimeError> {
+    match (left, right) {
+        (Numeric::Real(left), Numeric::Real(right)) => Ok(Numeric::Real(add_numbers(left, right)?)),
+        (left, right) => {
+            let (left_real, left_imag) = left.into_complex();
+            let (right_real, right_imag) = right.into_complex();
+            Ok(Numeric::Complex {
+                real: add_numbers(left_real, right_real)?,
+                imag: add_numbers(left_imag, right_imag)?,
+            })
+        }
+    }
+}
+
+fn subtract_numeric(left: Numeric, right: Numeric) -> Result<Numeric, RuntimeError> {
+    match (left, right) {
+        (Numeric::Real(left), Numeric::Real(right)) => {
+            Ok(Numeric::Real(subtract_numbers(left, right)?))
+        }
+        (left, right) => {
+            let (left_real, left_imag) = left.into_complex();
+            let (right_real, right_imag) = right.into_complex();
+            Ok(Numeric::Complex {
+                real: subtract_numbers(left_real, right_real)?,
+                imag: subtract_numbers(left_imag, right_imag)?,
+            })
+        }
+    }
+}
+
+fn multiply_numeric(left: Numeric, right: Numeric) -> Result<Numeric, RuntimeError> {
+    match (left, right) {
+        (Numeric::Real(left), Numeric::Real(right)) => {
+            Ok(Numeric::Real(multiply_numbers(left, right)?))
+        }
+        (left, right) => {
+            let (left_real, left_imag) = left.into_complex();
+            let (right_real, right_imag) = right.into_complex();
+            let ac = multiply_numbers(left_real, right_real)?;
+            let bd = multiply_numbers(left_imag, right_imag)?;
+            let ad = multiply_numbers(left_real, right_imag)?;
+            let bc = multiply_numbers(left_imag, right_real)?;
+            Ok(Numeric::Complex {
+                real: subtract_numbers(ac, bd)?,
+                imag: add_numbers(ad, bc)?,
+            })
+        }
+    }
+}
+
+fn divide_numeric(left: Numeric, right: Numeric) -> Result<Numeric, RuntimeError> {
+    match (left, right) {
+        (Numeric::Real(left), Numeric::Real(right)) => {
+            Ok(Numeric::Real(divide_numbers(left, right)?))
+        }
+        (left, right) => {
+            let (left_real, left_imag) = left.into_complex();
+            let (right_real, right_imag) = right.into_complex();
+            let denominator = add_numbers(
+                multiply_numbers(right_real, right_real)?,
+                multiply_numbers(right_imag, right_imag)?,
+            )?;
+            let real = add_numbers(
+                multiply_numbers(left_real, right_real)?,
+                multiply_numbers(left_imag, right_imag)?,
+            )?;
+            let imag = subtract_numbers(
+                multiply_numbers(left_imag, right_real)?,
+                multiply_numbers(left_real, right_imag)?,
+            )?;
+            Ok(Numeric::Complex {
+                real: divide_numbers(real, denominator)?,
+                imag: divide_numbers(imag, denominator)?,
+            })
+        }
+    }
+}
+
 fn compare_number_values(left: Number, right: Number) -> Ordering {
     if left.is_float() || right.is_float() {
         return left
@@ -8009,19 +9740,135 @@ fn compare_number_values(left: Number, right: Number) -> Ordering {
     let (right_numerator, right_denominator) = right
         .exact_parts()
         .expect("exact numeric comparison received a float");
-    (i128::from(left_numerator) * i128::from(right_denominator)).cmp(&(
-        i128::from(right_numerator) * i128::from(left_denominator)
-    ))
+    (i128::from(left_numerator) * i128::from(right_denominator))
+        .cmp(&(i128::from(right_numerator) * i128::from(left_denominator)))
 }
 
 fn numeric_equalp(left: Number, right: Number) -> bool {
     compare_number_values(left, right) == Ordering::Equal
 }
 
+fn numeric_equal_values(left: Numeric, right: Numeric) -> bool {
+    match (left, right) {
+        (Numeric::Real(left), Numeric::Real(right)) => numeric_equalp(left, right),
+        (left, right) => {
+            let (left_real, left_imag) = left.into_complex();
+            let (right_real, right_imag) = right.into_complex();
+            numeric_equalp(left_real, right_real) && numeric_equalp(left_imag, right_imag)
+        }
+    }
+}
+
+fn byte_spec_value(size: i64, position: i64) -> Value {
+    Value::list(vec![
+        Value::symbol("BYTE"),
+        Value::Integer(size),
+        Value::Integer(position),
+    ])
+}
+
+pub(crate) fn parse_byte_spec(function: &str, value: &Value) -> Result<(u32, u32), RuntimeError> {
+    let Some(items) = value.list_items() else {
+        return Err(type_error(function, "a byte specifier", value));
+    };
+    let [operator, size, position] = items.as_slice() else {
+        return Err(type_error(function, "a byte specifier", value));
+    };
+    if operator
+        .symbol_name()
+        .map(package::normalize_symbol_name)
+        .as_deref()
+        != Some("BYTE")
+    {
+        return Err(type_error(function, "a byte specifier", value));
+    }
+    let size = integer_argument(function, size)?;
+    let position = integer_argument(function, position)?;
+    validate_byte_bounds(function, size, position)?;
+    Ok((size as u32, position as u32))
+}
+
+fn validate_byte_bounds(function: &str, size: i64, position: i64) -> Result<(), RuntimeError> {
+    if size < 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("{function} byte size must be non-negative, got {size}"),
+            span: None,
+        });
+    }
+    if position < 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("{function} byte position must be non-negative, got {position}"),
+            span: None,
+        });
+    }
+    if position >= 64 {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("{function} byte position must be less than 64, got {position}"),
+            span: None,
+        });
+    }
+    if size > 64 - position {
+        return Err(RuntimeError::InvalidForm {
+            message: format!(
+                "{function} byte size {size} at position {position} exceeds the 64-bit integer range"
+            ),
+            span: None,
+        });
+    }
+    Ok(())
+}
+
+fn validate_bit_index(function: &str, index: i64) -> Result<(), RuntimeError> {
+    if index < 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("{function} bit index must be non-negative, got {index}"),
+            span: None,
+        });
+    }
+    if index >= 64 {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("{function} bit index must be less than 64, got {index}"),
+            span: None,
+        });
+    }
+    Ok(())
+}
+
+fn byte_mask(size: u32, position: u32) -> u64 {
+    if size == 0 {
+        0
+    } else {
+        (u64::MAX >> (64 - size)) << position
+    }
+}
+
+fn extract_byte_field(integer: u64, size: u32, position: u32) -> u64 {
+    if size == 0 {
+        0
+    } else {
+        (integer >> position) & (u64::MAX >> (64 - size))
+    }
+}
+
 fn integer_argument(function: &str, value: &Value) -> Result<i64, RuntimeError> {
     value
         .as_integer()
         .ok_or_else(|| type_error(function, "integer", value))
+}
+
+fn is_real_number(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Integer(_) | Value::Rational(_) | Value::Float(_)
+    )
+}
+
+fn real_number_argument(function: &str, value: &Value) -> Result<Value, RuntimeError> {
+    if is_real_number(value) {
+        Ok(value.clone())
+    } else {
+        Err(type_error(function, "real number", value))
+    }
 }
 
 fn number_error(function: &str, value: &Value) -> RuntimeError {

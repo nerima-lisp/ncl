@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use ncl_syntax::Form;
@@ -13,10 +13,18 @@ pub struct Environment(Rc<RefCell<Frame>>);
 struct Frame {
     values: HashMap<String, Value>,
     exact_values: HashMap<String, Value>,
+    constants: HashSet<String>,
+    exact_constants: HashSet<String>,
     symbol_macros: HashMap<String, Form>,
     exact_symbol_macros: HashMap<String, Form>,
     functions: HashMap<String, Value>,
     exact_functions: HashMap<String, Value>,
+    compiler_macros: HashMap<String, Value>,
+    exact_compiler_macros: HashMap<String, Value>,
+    function_documentation: HashMap<String, String>,
+    exact_function_documentation: HashMap<String, String>,
+    variable_documentation: HashMap<String, String>,
+    exact_variable_documentation: HashMap<String, String>,
     setf_functions: HashMap<String, Value>,
     setf_expanders: HashMap<String, Value>,
     structures: HashMap<String, StructureDefinition>,
@@ -33,10 +41,18 @@ impl Environment {
         Self(Rc::new(RefCell::new(Frame {
             values: HashMap::new(),
             exact_values: HashMap::new(),
+            constants: HashSet::new(),
+            exact_constants: HashSet::new(),
             symbol_macros: HashMap::new(),
             exact_symbol_macros: HashMap::new(),
             functions: HashMap::new(),
             exact_functions: HashMap::new(),
+            compiler_macros: HashMap::new(),
+            exact_compiler_macros: HashMap::new(),
+            function_documentation: HashMap::new(),
+            exact_function_documentation: HashMap::new(),
+            variable_documentation: HashMap::new(),
+            exact_variable_documentation: HashMap::new(),
             setf_functions: HashMap::new(),
             setf_expanders: HashMap::new(),
             structures: HashMap::new(),
@@ -53,10 +69,18 @@ impl Environment {
         Self(Rc::new(RefCell::new(Frame {
             values: HashMap::new(),
             exact_values: HashMap::new(),
+            constants: HashSet::new(),
+            exact_constants: HashSet::new(),
             symbol_macros: HashMap::new(),
             exact_symbol_macros: HashMap::new(),
             functions: HashMap::new(),
             exact_functions: HashMap::new(),
+            compiler_macros: HashMap::new(),
+            exact_compiler_macros: HashMap::new(),
+            function_documentation: HashMap::new(),
+            exact_function_documentation: HashMap::new(),
+            variable_documentation: HashMap::new(),
+            exact_variable_documentation: HashMap::new(),
             setf_functions: HashMap::new(),
             setf_expanders: HashMap::new(),
             structures: HashMap::new(),
@@ -85,6 +109,18 @@ impl Environment {
             .insert(name.as_ref().to_string(), value);
     }
 
+    pub(crate) fn define_constant(&self, name: impl AsRef<str>) {
+        let key = normalize_name(name.as_ref());
+        self.0.borrow_mut().constants.insert(key);
+    }
+
+    pub(crate) fn define_constant_exact(&self, name: impl AsRef<str>) {
+        self.0
+            .borrow_mut()
+            .exact_constants
+            .insert(name.as_ref().to_string());
+    }
+
     pub fn lookup(&self, name: &str) -> Option<Value> {
         let key = normalize_name(name);
         let (value, parent) = {
@@ -100,6 +136,37 @@ impl Environment {
             (frame.exact_values.get(name).cloned(), frame.parent.clone())
         };
         value.or_else(|| parent.and_then(|environment| environment.lookup_exact(name)))
+    }
+
+    pub(crate) fn constant_status(&self, name: &str) -> Option<bool> {
+        let key = normalize_name(name);
+        let (status, parent) = {
+            let frame = self.0.borrow();
+            let status = if frame.constants.contains(&key) {
+                Some(true)
+            } else if frame.values.contains_key(&key) {
+                Some(false)
+            } else {
+                None
+            };
+            (status, frame.parent.clone())
+        };
+        status.or_else(|| parent.and_then(|environment| environment.constant_status(name)))
+    }
+
+    pub(crate) fn constant_status_exact(&self, name: &str) -> Option<bool> {
+        let (status, parent) = {
+            let frame = self.0.borrow();
+            let status = if frame.exact_constants.contains(name) {
+                Some(true)
+            } else if frame.exact_values.contains_key(name) {
+                Some(false)
+            } else {
+                None
+            };
+            (status, frame.parent.clone())
+        };
+        status.or_else(|| parent.and_then(|environment| environment.constant_status_exact(name)))
     }
 
     pub fn set(&self, name: &str, value: Value) -> bool {
@@ -138,7 +205,10 @@ impl Environment {
     pub(crate) fn remove_exact(&self, name: &str) -> bool {
         let (removed, parent) = {
             let mut frame = self.0.borrow_mut();
-            (frame.exact_values.remove(name).is_some(), frame.parent.clone())
+            (
+                frame.exact_values.remove(name).is_some(),
+                frame.parent.clone(),
+            )
         };
         removed || parent.is_some_and(|environment| environment.remove_exact(name))
     }
@@ -168,7 +238,8 @@ impl Environment {
         if shadowed {
             None
         } else {
-            expansion.or_else(|| parent.and_then(|environment| environment.lookup_symbol_macro(name)))
+            expansion
+                .or_else(|| parent.and_then(|environment| environment.lookup_symbol_macro(name)))
         }
     }
 
@@ -214,10 +285,241 @@ impl Environment {
     pub(crate) fn lookup_function_exact(&self, name: &str) -> Option<Value> {
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.exact_functions.get(name).cloned(), frame.parent.clone())
+            (
+                frame.exact_functions.get(name).cloned(),
+                frame.parent.clone(),
+            )
         };
-        value.or_else(|| {
-            parent.and_then(|environment| environment.lookup_function_exact(name))
+        value.or_else(|| parent.and_then(|environment| environment.lookup_function_exact(name)))
+    }
+
+    pub(crate) fn define_compiler_macro(&self, name: impl AsRef<str>, value: Value) {
+        let key = normalize_name(name.as_ref());
+        self.0.borrow_mut().compiler_macros.insert(key, value);
+    }
+
+    pub(crate) fn define_compiler_macro_exact(&self, name: impl AsRef<str>, value: Value) {
+        self.0
+            .borrow_mut()
+            .exact_compiler_macros
+            .insert(name.as_ref().to_string(), value);
+    }
+
+    pub(crate) fn lookup_compiler_macro(&self, name: &str) -> Option<Value> {
+        let key = normalize_name(name);
+        let (value, shadowed, parent) = {
+            let frame = self.0.borrow();
+            (
+                frame.compiler_macros.get(&key).cloned(),
+                frame.functions.contains_key(&key),
+                frame.parent.clone(),
+            )
+        };
+        if value.is_some() {
+            value
+        } else if shadowed {
+            None
+        } else {
+            parent.and_then(|environment| environment.lookup_compiler_macro(name))
+        }
+    }
+
+    pub(crate) fn lookup_compiler_macro_exact(&self, name: &str) -> Option<Value> {
+        let (value, shadowed, parent) = {
+            let frame = self.0.borrow();
+            (
+                frame.exact_compiler_macros.get(name).cloned(),
+                frame.exact_functions.contains_key(name),
+                frame.parent.clone(),
+            )
+        };
+        if value.is_some() {
+            value
+        } else if shadowed {
+            None
+        } else {
+            parent.and_then(|environment| environment.lookup_compiler_macro_exact(name))
+        }
+    }
+
+    pub(crate) fn remove_compiler_macro(&self, name: &str) -> bool {
+        let key = normalize_name(name);
+        let (removed, parent) = {
+            let mut frame = self.0.borrow_mut();
+            (
+                frame.compiler_macros.remove(&key).is_some(),
+                frame.parent.clone(),
+            )
+        };
+        removed || parent.is_some_and(|environment| environment.remove_compiler_macro(name))
+    }
+
+    pub(crate) fn remove_compiler_macro_exact(&self, name: &str) -> bool {
+        let (removed, parent) = {
+            let mut frame = self.0.borrow_mut();
+            (
+                frame.exact_compiler_macros.remove(name).is_some(),
+                frame.parent.clone(),
+            )
+        };
+        removed || parent.is_some_and(|environment| environment.remove_compiler_macro_exact(name))
+    }
+
+    pub(crate) fn define_function_documentation(
+        &self,
+        name: impl AsRef<str>,
+        documentation: impl Into<String>,
+    ) {
+        let key = normalize_name(name.as_ref());
+        self.0
+            .borrow_mut()
+            .function_documentation
+            .insert(key, documentation.into());
+    }
+
+    pub(crate) fn define_function_documentation_exact(
+        &self,
+        name: impl AsRef<str>,
+        documentation: impl Into<String>,
+    ) {
+        self.0
+            .borrow_mut()
+            .exact_function_documentation
+            .insert(name.as_ref().to_string(), documentation.into());
+    }
+
+    pub(crate) fn set_function_documentation(
+        &self,
+        name: impl AsRef<str>,
+        documentation: Option<String>,
+    ) {
+        let key = normalize_name(name.as_ref());
+        let mut frame = self.0.borrow_mut();
+        if let Some(documentation) = documentation {
+            frame.function_documentation.insert(key, documentation);
+        } else {
+            frame.function_documentation.remove(&key);
+        }
+    }
+
+    pub(crate) fn set_function_documentation_exact(
+        &self,
+        name: impl AsRef<str>,
+        documentation: Option<String>,
+    ) {
+        let mut frame = self.0.borrow_mut();
+        if let Some(documentation) = documentation {
+            frame
+                .exact_function_documentation
+                .insert(name.as_ref().to_string(), documentation);
+        } else {
+            frame.exact_function_documentation.remove(name.as_ref());
+        }
+    }
+
+    pub(crate) fn lookup_function_documentation(&self, name: &str) -> Option<String> {
+        let key = normalize_name(name);
+        let (documentation, parent) = {
+            let frame = self.0.borrow();
+            (
+                frame.function_documentation.get(&key).cloned(),
+                frame.parent.clone(),
+            )
+        };
+        documentation.or_else(|| {
+            parent.and_then(|environment| environment.lookup_function_documentation(name))
+        })
+    }
+
+    pub(crate) fn lookup_function_documentation_exact(&self, name: &str) -> Option<String> {
+        let (documentation, parent) = {
+            let frame = self.0.borrow();
+            (
+                frame.exact_function_documentation.get(name).cloned(),
+                frame.parent.clone(),
+            )
+        };
+        documentation.or_else(|| {
+            parent.and_then(|environment| environment.lookup_function_documentation_exact(name))
+        })
+    }
+
+    pub(crate) fn define_variable_documentation(
+        &self,
+        name: impl AsRef<str>,
+        documentation: impl Into<String>,
+    ) {
+        let key = normalize_name(name.as_ref());
+        self.0
+            .borrow_mut()
+            .variable_documentation
+            .insert(key, documentation.into());
+    }
+
+    pub(crate) fn define_variable_documentation_exact(
+        &self,
+        name: impl AsRef<str>,
+        documentation: impl Into<String>,
+    ) {
+        self.0
+            .borrow_mut()
+            .exact_variable_documentation
+            .insert(name.as_ref().to_string(), documentation.into());
+    }
+
+    pub(crate) fn set_variable_documentation(
+        &self,
+        name: impl AsRef<str>,
+        documentation: Option<String>,
+    ) {
+        let key = normalize_name(name.as_ref());
+        let mut frame = self.0.borrow_mut();
+        if let Some(documentation) = documentation {
+            frame.variable_documentation.insert(key, documentation);
+        } else {
+            frame.variable_documentation.remove(&key);
+        }
+    }
+
+    pub(crate) fn set_variable_documentation_exact(
+        &self,
+        name: impl AsRef<str>,
+        documentation: Option<String>,
+    ) {
+        let mut frame = self.0.borrow_mut();
+        if let Some(documentation) = documentation {
+            frame
+                .exact_variable_documentation
+                .insert(name.as_ref().to_string(), documentation);
+        } else {
+            frame.exact_variable_documentation.remove(name.as_ref());
+        }
+    }
+
+    pub(crate) fn lookup_variable_documentation(&self, name: &str) -> Option<String> {
+        let key = normalize_name(name);
+        let (documentation, parent) = {
+            let frame = self.0.borrow();
+            (
+                frame.variable_documentation.get(&key).cloned(),
+                frame.parent.clone(),
+            )
+        };
+        documentation.or_else(|| {
+            parent.and_then(|environment| environment.lookup_variable_documentation(name))
+        })
+    }
+
+    pub(crate) fn lookup_variable_documentation_exact(&self, name: &str) -> Option<String> {
+        let (documentation, parent) = {
+            let frame = self.0.borrow();
+            (
+                frame.exact_variable_documentation.get(name).cloned(),
+                frame.parent.clone(),
+            )
+        };
+        documentation.or_else(|| {
+            parent.and_then(|environment| environment.lookup_variable_documentation_exact(name))
         })
     }
 
@@ -230,7 +532,10 @@ impl Environment {
         let key = normalize_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.setf_functions.get(&key).cloned(), frame.parent.clone())
+            (
+                frame.setf_functions.get(&key).cloned(),
+                frame.parent.clone(),
+            )
         };
         value.or_else(|| parent.and_then(|environment| environment.lookup_setf_function(name)))
     }
@@ -244,7 +549,10 @@ impl Environment {
         let key = normalize_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.setf_expanders.get(&key).cloned(), frame.parent.clone())
+            (
+                frame.setf_expanders.get(&key).cloned(),
+                frame.parent.clone(),
+            )
         };
         value.or_else(|| parent.and_then(|environment| environment.lookup_setf_expander(name)))
     }
@@ -283,11 +591,7 @@ impl Environment {
         definition.or_else(|| parent.and_then(|environment| environment.lookup_structure(name)))
     }
 
-    pub(crate) fn define_class(
-        &self,
-        name: impl AsRef<str>,
-        definition: Rc<ClassDefinition>,
-    ) {
+    pub(crate) fn define_class(&self, name: impl AsRef<str>, definition: Rc<ClassDefinition>) {
         let key = normalize_name(name.as_ref());
         self.0.borrow_mut().classes.insert(key, definition);
     }
@@ -369,7 +673,8 @@ impl Environment {
                 frame.parent.clone(),
             )
         };
-        removed.or_else(|| parent.and_then(|environment| environment.remove_symbol_property(symbol)))
+        removed
+            .or_else(|| parent.and_then(|environment| environment.remove_symbol_property(symbol)))
     }
 
     pub(crate) fn define_block(&self, name: impl AsRef<str>, target: u64) {

@@ -104,10 +104,8 @@ pub struct RestartCaseClause {
 pub enum DestructurePattern {
     Name(String),
     List(Vec<Self>),
-    Dotted {
-        items: Vec<Self>,
-        tail: Box<Self>,
-    },
+    LambdaList(DestructureLambdaList),
+    Dotted { items: Vec<Self>, tail: Box<Self> },
 }
 
 /// One compiled `DESTRUCTURING-BIND` `&OPTIONAL` parameter.
@@ -137,8 +135,8 @@ pub struct DestructureAuxiliaryParameter {
 /// A compiled destructuring lambda list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DestructureLambdaList {
-    pub environment: Option<String>,
     pub whole: Option<String>,
+    pub environment: Option<String>,
     pub required: Vec<DestructurePattern>,
     pub optional: Vec<DestructureOptionalParameter>,
     pub keywords: Vec<DestructureKeywordParameter>,
@@ -179,6 +177,16 @@ pub enum Instruction {
     DefineExact(String),
     DefineFunction(String),
     DefineFunctionExact(String),
+    DefineFunctionDocumentation {
+        name: String,
+        exact: bool,
+        documentation: String,
+    },
+    DefineVariableDocumentation {
+        name: String,
+        exact: bool,
+        documentation: String,
+    },
     DefineSpecial {
         name: String,
         force: bool,
@@ -618,6 +626,7 @@ impl CompileState {
                 "QUASIQUOTE" => return self.compile_quasiquote(function, span, items),
                 "DECLARE" => return self.compile_declare(function, span),
                 "LOCALLY" => return self.compile_progn(function, items),
+                "WITH-COMPILATION-UNIT" => return self.compile_progn(function, items),
                 "EVAL-WHEN" => return self.compile_eval_when(function, span, items),
                 "LOAD-TIME-VALUE" => {
                     return self.compile_runtime_definition(function, span, items);
@@ -699,31 +708,39 @@ impl CompileState {
                     return self.compile_multiple_value_setq(function, span, items);
                 }
                 "SETF" => return self.compile_setf(function, span, items),
-                "PSETF" | "PUSH" | "POP" | "PUSHNEW" | "ROTATEF" | "SHIFTF" => {
+                "PSETF" | "PUSH" | "POP" | "PUSHNEW" | "REMF" | "ROTATEF" | "SHIFTF" => {
                     return self.compile_runtime_definition(function, span, items);
                 }
                 "INCF" => {
-                    if matches!(items.get(1).map(|place| &place.kind), Some(FormKind::Atom(_))) {
+                    if matches!(
+                        items.get(1).map(|place| &place.kind),
+                        Some(FormKind::Atom(_))
+                    ) {
                         return self.compile_modify_symbol(function, span, items, "INCF", "+");
                     }
                     return self.compile_runtime_definition(function, span, items);
                 }
                 "DECF" => {
-                    if matches!(items.get(1).map(|place| &place.kind), Some(FormKind::Atom(_))) {
+                    if matches!(
+                        items.get(1).map(|place| &place.kind),
+                        Some(FormKind::Atom(_))
+                    ) {
                         return self.compile_modify_symbol(function, span, items, "DECF", "-");
                     }
                     return self.compile_runtime_definition(function, span, items);
                 }
                 "DEFVAR" => return self.compile_defvar(function, span, items, false),
                 "DEFPARAMETER" => return self.compile_defvar(function, span, items, true),
-                "DEFCONSTANT" => {
-                    return self.compile_runtime_definition(function, span, items)
-                }
+                "DEFCONSTANT" => return self.compile_runtime_definition(function, span, items),
                 "DEFSTRUCT" => return self.compile_defstruct(function, span, items),
+                "DEFINE-CONDITION" => {
+                    return self.compile_runtime_definition(function, span, items);
+                }
                 "DEFCLASS" | "DEFGENERIC" | "DEFMETHOD" => {
                     return self.compile_runtime_definition(function, span, items);
                 }
                 "DEFSETF"
+                | "DEFINE-COMPILER-MACRO"
                 | "DEFINE-MODIFY-MACRO"
                 | "DEFINE-SETF-EXPANDER"
                 | "GET-SETF-EXPANSION" => {
@@ -750,12 +767,10 @@ impl CompileState {
         }
 
         if let FormKind::Atom(name) = &operator.kind {
-            let (reference_name, escaped) = symbol_reference(name)
-                .unwrap_or_else(|| (normalize_name(name), false));
-            let local_function = self.is_local_function(&Self::local_function_key(
-                &reference_name,
-                escaped,
-            ));
+            let (reference_name, escaped) =
+                symbol_reference(name).unwrap_or_else(|| (normalize_name(name), false));
+            let local_function =
+                self.is_local_function(&Self::local_function_key(&reference_name, escaped));
             self.emit(
                 function,
                 if local_function && escaped {
@@ -863,11 +878,7 @@ impl CompileState {
         self.compile_sequence(function, forms)
     }
 
-    fn compile_declare(
-        &mut self,
-        function: FunctionId,
-        span: Span,
-    ) -> Result<(), CompileError> {
+    fn compile_declare(&mut self, function: FunctionId, span: Span) -> Result<(), CompileError> {
         self.emit(function, Instruction::Constant(Constant::Nil), span)?;
         Ok(())
     }
@@ -1016,8 +1027,7 @@ impl CompileState {
                     if !(1..=2).contains(&parts.len()) {
                         return Err(CompileError::new(
                             CompileErrorKind::InvalidForm {
-                                message: "PROG binding needs a name and optional value"
-                                    .to_string(),
+                                message: "PROG binding needs a name and optional value".to_string(),
                             },
                             binding.span,
                         ));
@@ -1243,13 +1253,8 @@ impl CompileState {
                 .map(|(_, escaped)| *escaped)
                 .into_iter()
                 .collect();
-            let clause_function = self.reserve_function_with_rest(
-                None,
-                parameters,
-                required_escaped,
-                None,
-                false,
-            );
+            let clause_function =
+                self.reserve_function_with_rest(None, parameters, required_escaped, None, false);
             self.compile_sequence(clause_function, &clause_items[2..])?;
             self.emit(clause_function, Instruction::Return, clause.span)?;
             clauses.push(HandlerCaseClause {
@@ -1385,7 +1390,11 @@ impl CompileState {
             let name = self.control_name(&binding_clause[0], "RESTART-BIND restart name")?;
             let binding_function = self.reserve_function(None, Vec::new());
             self.compile_expression(binding_function, &binding_clause[1])?;
-            self.emit(binding_function, Instruction::Return, binding_clause[1].span)?;
+            self.emit(
+                binding_function,
+                Instruction::Return,
+                binding_clause[1].span,
+            )?;
             bindings.push(RestartBindClause {
                 name,
                 function: binding_function,
@@ -1554,12 +1563,7 @@ impl CompileState {
         items: &[Form],
     ) -> Result<(), CompileError> {
         if items.len() < 4 {
-            return Err(self.arity_error(
-                items,
-                "WITH-CONDITION-RESTARTS",
-                "at least three",
-                span,
-            ));
+            return Err(self.arity_error(items, "WITH-CONDITION-RESTARTS", "at least three", span));
         }
 
         let condition = self.reserve_function(None, Vec::new());
@@ -1679,10 +1683,7 @@ impl CompileState {
             return Err(self.arity_error(items, "WITH-OPEN-FILE", "at least one", span));
         }
         let binding_form = items.get(1).ok_or_else(|| {
-            self.internal_error(
-                span,
-                "missing WITH-OPEN-FILE binding after arity check",
-            )
+            self.internal_error(span, "missing WITH-OPEN-FILE binding after arity check")
         })?;
         let FormKind::List(binding) = &binding_form.kind else {
             return Err(CompileError::new(
@@ -1722,10 +1723,7 @@ impl CompileState {
         } else {
             Form::atom("NIL", span)
         };
-        let close_form = Form::list(
-            vec![Form::atom("CLOSE", span), binding[0].clone()],
-            span,
-        );
+        let close_form = Form::list(vec![Form::atom("CLOSE", span), binding[0].clone()], span);
         let protected_form = Form::list(
             vec![Form::atom("UNWIND-PROTECT", span), body, close_form],
             span,
@@ -2458,10 +2456,7 @@ impl CompileState {
                 ));
             };
             if case_default_clause(key_spec) {
-                default_clause = Some((
-                    clause_items.get(1..).unwrap_or(&[]).to_vec(),
-                    clause.span,
-                ));
+                default_clause = Some((clause_items.get(1..).unwrap_or(&[]).to_vec(), clause.span));
                 continue;
             }
             let keys = match &key_spec.kind {
@@ -2494,18 +2489,11 @@ impl CompileState {
                     Instruction::FunctionLoad("EQL".to_string()),
                     key.span,
                 )?;
-                self.emit(
-                    function,
-                    Instruction::Load(key_name.clone()),
-                    items[1].span,
-                )?;
+                self.emit(function, Instruction::Load(key_name.clone()), items[1].span)?;
                 self.emit(function, Instruction::Quote(key.clone()), key.span)?;
                 self.emit(function, Instruction::Call(2), key.span)?;
-                let false_jump = self.emit(
-                    function,
-                    Instruction::JumpIfFalse(usize::MAX),
-                    key.span,
-                )?;
+                let false_jump =
+                    self.emit(function, Instruction::JumpIfFalse(usize::MAX), key.span)?;
                 let body_jump = self.emit(function, Instruction::Jump(usize::MAX), key.span)?;
                 let next_key = self.instruction_count(function, key.span)?;
                 self.patch_jump(function, false_jump, next_key, key.span)?;
@@ -2602,10 +2590,7 @@ impl CompileState {
                 ));
             };
             if case_default_clause(type_specifier) {
-                default_clause = Some((
-                    clause_items.get(1..).unwrap_or(&[]).to_vec(),
-                    clause.span,
-                ));
+                default_clause = Some((clause_items.get(1..).unwrap_or(&[]).to_vec(), clause.span));
                 continue;
             }
             clauses.push((
@@ -2632,31 +2617,20 @@ impl CompileState {
                 Instruction::FunctionLoad("TYPEP".to_string()),
                 type_specifier.span,
             )?;
-            self.emit(
-                function,
-                Instruction::Load(key_name.clone()),
-                items[1].span,
-            )?;
+            self.emit(function, Instruction::Load(key_name.clone()), items[1].span)?;
             self.emit(
                 function,
                 Instruction::Quote(type_specifier.clone()),
                 type_specifier.span,
             )?;
-            self.emit(
-                function,
-                Instruction::Call(2),
-                type_specifier.span,
-            )?;
+            self.emit(function, Instruction::Call(2), type_specifier.span)?;
             let false_jump = self.emit(
                 function,
                 Instruction::JumpIfFalse(usize::MAX),
                 type_specifier.span,
             )?;
-            let body_jump = self.emit(
-                function,
-                Instruction::Jump(usize::MAX),
-                type_specifier.span,
-            )?;
+            let body_jump =
+                self.emit(function, Instruction::Jump(usize::MAX), type_specifier.span)?;
             let next_clause = self.instruction_count(function, type_specifier.span)?;
             self.patch_jump(function, false_jump, next_clause, type_specifier.span)?;
             body_jumps.push((body_jump, body, clause_span));
@@ -2844,6 +2818,10 @@ impl CompileState {
         self.functions[child].allow_other_keys = lambda_list.allow_other_keys;
         let auxiliary = self.compile_auxiliary_parameters(&lambda_list.auxiliary)?;
         self.functions[child].auxiliary = auxiliary;
+        let documentation = match &items[3].kind {
+            FormKind::String(value) => Some(value.clone()),
+            _ => None,
+        };
         let body = items.get(3..).unwrap_or(&[]);
         self.compile_sequence(child, body)?;
         self.emit(child, Instruction::Return, span)?;
@@ -2855,17 +2833,24 @@ impl CompileState {
             Instruction::Define(name.clone())
         };
         self.emit(function, define, span)?;
+        if let Some(documentation) = documentation {
+            self.emit(
+                function,
+                Instruction::DefineFunctionDocumentation {
+                    name: name.clone(),
+                    exact: name_escaped,
+                    documentation,
+                },
+                span,
+            )?;
+        }
         self.emit(function, Instruction::Pop, span)?;
         let constant = if name_escaped {
             Constant::SymbolExact(name)
         } else {
             Constant::Symbol(name)
         };
-        self.emit(
-            function,
-            Instruction::Constant(constant),
-            span,
-        )?;
+        self.emit(function, Instruction::Constant(constant), span)?;
         Ok(())
     }
 
@@ -2975,9 +2960,7 @@ impl CompileState {
         let instruction = if has_exact {
             Instruction::MultipleValueSetqExact(names)
         } else {
-            Instruction::MultipleValueSetq(
-                names.into_iter().map(|(name, _)| name).collect(),
-            )
+            Instruction::MultipleValueSetq(names.into_iter().map(|(name, _)| name).collect())
         };
         self.emit(function, instruction, value_form.span)?;
         Ok(())
@@ -3062,8 +3045,8 @@ impl CompileState {
         force: bool,
     ) -> Result<(), CompileError> {
         let operator = if force { "DEFPARAMETER" } else { "DEFVAR" };
-        if !(items.len() == 2 || items.len() == 3) {
-            return Err(self.arity_error(items, operator, "one or two", span));
+        if !(2..=4).contains(&items.len()) {
+            return Err(self.arity_error(items, operator, "one to three", span));
         }
         let name_form = items
             .get(1)
@@ -3076,6 +3059,21 @@ impl CompileState {
                 "defvar name"
             },
         )?;
+        let documentation = match items.get(3) {
+            Some(Form {
+                kind: FormKind::String(documentation),
+                ..
+            }) => Some(documentation.clone()),
+            Some(form) => {
+                return Err(CompileError::new(
+                    CompileErrorKind::InvalidForm {
+                        message: format!("{} documentation must be a string", operator),
+                    },
+                    form.span,
+                ));
+            }
+            None => None,
+        };
         if force {
             if let Some(initializer) = items.get(2) {
                 self.compile_expression(function, initializer)?;
@@ -3086,14 +3084,28 @@ impl CompileState {
                 function,
                 if escaped {
                     Instruction::DefineSpecialExact {
-                        name,
+                        name: name.clone(),
                         force: true,
                     }
                 } else {
-                    Instruction::DefineSpecial { name, force: true }
+                    Instruction::DefineSpecial {
+                        name: name.clone(),
+                        force: true,
+                    }
                 },
                 span,
             )?;
+            if let Some(documentation) = documentation {
+                self.emit(
+                    function,
+                    Instruction::DefineVariableDocumentation {
+                        name,
+                        exact: escaped,
+                        documentation,
+                    },
+                    span,
+                )?;
+            }
             return Ok(());
         }
 
@@ -3127,17 +3139,31 @@ impl CompileState {
             function,
             if escaped {
                 Instruction::DefineSpecialExact {
-                    name,
+                    name: name.clone(),
                     force: false,
                 }
             } else {
-                Instruction::DefineSpecial { name, force: false }
+                Instruction::DefineSpecial {
+                    name: name.clone(),
+                    force: false,
+                }
             },
             span,
         )?;
         let end_target = self.instruction_count(function, span)?;
         self.patch_jump(function, initialize_jump, initialize_target, span)?;
         self.patch_jump(function, end_jump, end_target, span)?;
+        if let Some(documentation) = documentation {
+            self.emit(
+                function,
+                Instruction::DefineVariableDocumentation {
+                    name,
+                    exact: escaped,
+                    documentation,
+                },
+                span,
+            )?;
+        }
         Ok(())
     }
 
@@ -3323,7 +3349,13 @@ impl CompileState {
         let limit = self.fresh_name("DOTIMES_LIMIT");
 
         self.emit(function, Instruction::EnterScope, spec_form.span)?;
+        self.emit(
+            function,
+            Instruction::FunctionLoad("__NCL_REQUIRE_INTEGER".to_string()),
+            count.span,
+        )?;
         self.compile_expression(function, count)?;
+        self.emit(function, Instruction::Call(1), count.span)?;
         self.emit(function, Instruction::Define(limit.clone()), spec_form.span)?;
         self.emit(function, Instruction::Pop, spec_form.span)?;
         self.emit(
@@ -3431,7 +3463,13 @@ impl CompileState {
         let tail = self.fresh_name("DOLIST_TAIL");
 
         self.emit(function, Instruction::EnterScope, spec_form.span)?;
+        self.emit(
+            function,
+            Instruction::FunctionLoad("__NCL_REQUIRE_LIST".to_string()),
+            list.span,
+        )?;
         self.compile_expression(function, list)?;
+        self.emit(function, Instruction::Call(1), list.span)?;
         self.emit(function, Instruction::Define(tail.clone()), spec_form.span)?;
         self.emit(function, Instruction::Pop, spec_form.span)?;
         self.emit(
@@ -3584,12 +3622,7 @@ impl CompileState {
                     name_form.span,
                 ));
             }
-            parsed.push((
-                name,
-                escaped,
-                parts.get(1).cloned(),
-                parts.get(2).cloned(),
-            ));
+            parsed.push((name, escaped, parts.get(1).cloned(), parts.get(2).cloned()));
         }
 
         let loop_function = self.reserve_function(None, Vec::new());
@@ -3735,24 +3768,33 @@ impl CompileState {
     }
 
     fn compile_destructuring_pattern(
-        &self,
+        &mut self,
         form: &Form,
         seen: &mut HashSet<String>,
     ) -> Result<DestructurePattern, CompileError> {
         match &form.kind {
             FormKind::Atom(_) => Ok(DestructurePattern::Name(
-                self.compile_destructuring_binding_name(
-                    form,
-                    seen,
-                    "destructuring pattern name",
-                )?,
+                self.compile_destructuring_binding_name(form, seen, "destructuring pattern name")?,
             )),
-            FormKind::List(items) => Ok(DestructurePattern::List(
-                items
-                    .iter()
-                    .map(|item| self.compile_destructuring_pattern(item, seen))
-                    .collect::<Result<Vec<_>, _>>()?,
-            )),
+            FormKind::List(items) => {
+                if items.iter().any(|item| {
+                    matches!(
+                        &item.kind,
+                        FormKind::Atom(name) if normalize_name(name).starts_with('&')
+                    )
+                }) {
+                    Ok(DestructurePattern::LambdaList(
+                        self.compile_destructuring_lambda_list_with_seen(form, seen)?,
+                    ))
+                } else {
+                    Ok(DestructurePattern::List(
+                        items
+                            .iter()
+                            .map(|item| self.compile_destructuring_pattern(item, seen))
+                            .collect::<Result<Vec<_>, _>>()?,
+                    ))
+                }
+            }
             FormKind::DottedList { items, tail } => Ok(DestructurePattern::Dotted {
                 items: items
                     .iter()
@@ -3810,11 +3852,7 @@ impl CompileState {
     ) -> Result<DestructureOptionalParameter, CompileError> {
         let nil = || Form::atom("NIL", form.span);
         let (pattern, init_form, supplied_p) = match &form.kind {
-            FormKind::Atom(_) => (
-                self.compile_destructuring_pattern(form, seen)?,
-                nil(),
-                None,
-            ),
+            FormKind::Atom(_) => (self.compile_destructuring_pattern(form, seen)?, nil(), None),
             FormKind::List(items) if (1..=3).contains(&items.len()) => {
                 let pattern = self.compile_destructuring_pattern(&items[0], seen)?;
                 let init_form = items.get(1).cloned().unwrap_or_else(nil);
@@ -3918,8 +3956,7 @@ impl CompileState {
                     let pattern =
                         self.compile_destructuring_pattern(&key_specification[1], seen)?;
                     (keyword_name, pattern, 1)
-                } else if matches!(&items[0].kind, FormKind::Atom(name) if name.starts_with(':'))
-                {
+                } else if matches!(&items[0].kind, FormKind::Atom(name) if name.starts_with(':')) {
                     let keyword_name = self.compile_destructuring_keyword_name(&items[0])?;
                     if items.len() < 2 {
                         return Err(CompileError::new(
@@ -3937,8 +3974,9 @@ impl CompileState {
                     let DestructurePattern::Name(name) = &pattern else {
                         return Err(CompileError::new(
                             CompileErrorKind::InvalidForm {
-                                message: "destructuring keyword parameter must have a variable name"
-                                    .to_string(),
+                                message:
+                                    "destructuring keyword parameter must have a variable name"
+                                        .to_string(),
                             },
                             items[0].span,
                         ));
@@ -4050,6 +4088,15 @@ impl CompileState {
         &mut self,
         form: &Form,
     ) -> Result<DestructureLambdaList, CompileError> {
+        let mut seen = HashSet::new();
+        self.compile_destructuring_lambda_list_with_seen(form, &mut seen)
+    }
+
+    fn compile_destructuring_lambda_list_with_seen(
+        &mut self,
+        form: &Form,
+        mut seen: &mut HashSet<String>,
+    ) -> Result<DestructureLambdaList, CompileError> {
         let FormKind::List(parameters) = &form.kind else {
             return Err(CompileError::new(
                 CompileErrorKind::ExpectedList {
@@ -4059,8 +4106,8 @@ impl CompileState {
             ));
         };
         let mut lambda_list = DestructureLambdaList {
-            environment: None,
             whole: None,
+            environment: None,
             required: Vec::new(),
             optional: Vec::new(),
             keywords: Vec::new(),
@@ -4069,7 +4116,6 @@ impl CompileState {
             rest: None,
             auxiliary: Vec::new(),
         };
-        let mut seen = HashSet::new();
         let mut section = DestructureLambdaListSection::Required;
         let mut index = 0;
         while index < parameters.len() {
@@ -4084,8 +4130,9 @@ impl CompileState {
                         {
                             return Err(CompileError::new(
                                 CompileErrorKind::InvalidForm {
-                                    message: "&whole must be the first marker followed by one parameter"
-                                        .to_string(),
+                                    message:
+                                        "&whole must be the first marker followed by one parameter"
+                                            .to_string(),
                                 },
                                 parameter.span,
                             ));
@@ -4101,8 +4148,9 @@ impl CompileState {
                         if section != DestructureLambdaListSection::Required {
                             return Err(CompileError::new(
                                 CompileErrorKind::InvalidForm {
-                                    message: "&optional is out of order in destructuring lambda list"
-                                        .to_string(),
+                                    message:
+                                        "&optional is out of order in destructuring lambda list"
+                                            .to_string(),
                                 },
                                 parameter.span,
                             ));
@@ -4188,15 +4236,15 @@ impl CompileState {
                         if lambda_list.environment.is_some() || index + 1 >= parameters.len() {
                             return Err(CompileError::new(
                                 CompileErrorKind::InvalidForm {
-                                    message: "destructuring lambda list &environment must be followed by a parameter"
-                                        .to_string(),
+                                    message:
+                                        "&environment must be followed by one parameter"
+                                            .to_string(),
                                 },
                                 parameter.span,
                             ));
                         }
-                        let name_form = &parameters[index + 1];
                         lambda_list.environment = Some(self.compile_destructuring_binding_name(
-                            name_form,
+                            &parameters[index + 1],
                             &mut seen,
                             "destructuring environment parameter name",
                         )?);
@@ -4226,7 +4274,9 @@ impl CompileState {
                                 .required
                                 .push(self.compile_destructuring_pattern(parameter, &mut seen)?),
                             DestructureLambdaListSection::Optional => lambda_list.optional.push(
-                                self.compile_destructuring_optional_parameter(parameter, &mut seen)?,
+                                self.compile_destructuring_optional_parameter(
+                                    parameter, &mut seen,
+                                )?,
                             ),
                             DestructureLambdaListSection::Keyword => {
                                 if lambda_list.allow_other_keys {
@@ -4238,8 +4288,9 @@ impl CompileState {
                                         parameter.span,
                                     ));
                                 }
-                                let specification = self
-                                    .compile_destructuring_keyword_parameter(parameter, &mut seen)?;
+                                let specification = self.compile_destructuring_keyword_parameter(
+                                    parameter, &mut seen,
+                                )?;
                                 if lambda_list
                                     .keywords
                                     .iter()
@@ -4256,7 +4307,9 @@ impl CompileState {
                                 lambda_list.keywords.push(specification);
                             }
                             DestructureLambdaListSection::Auxiliary => lambda_list.auxiliary.push(
-                                self.compile_destructuring_auxiliary_parameter(parameter, &mut seen)?,
+                                self.compile_destructuring_auxiliary_parameter(
+                                    parameter, &mut seen,
+                                )?,
                             ),
                             DestructureLambdaListSection::Rest => unreachable!(),
                         }
@@ -4279,9 +4332,9 @@ impl CompileState {
                 DestructureLambdaListSection::Required => lambda_list
                     .required
                     .push(self.compile_destructuring_pattern(parameter, &mut seen)?),
-                DestructureLambdaListSection::Optional => lambda_list.optional.push(
-                    self.compile_destructuring_optional_parameter(parameter, &mut seen)?,
-                ),
+                DestructureLambdaListSection::Optional => lambda_list
+                    .optional
+                    .push(self.compile_destructuring_optional_parameter(parameter, &mut seen)?),
                 DestructureLambdaListSection::Keyword => {
                     if lambda_list.allow_other_keys {
                         return Err(CompileError::new(
@@ -4308,9 +4361,9 @@ impl CompileState {
                     }
                     lambda_list.keywords.push(specification);
                 }
-                DestructureLambdaListSection::Auxiliary => lambda_list.auxiliary.push(
-                    self.compile_destructuring_auxiliary_parameter(parameter, &mut seen)?,
-                ),
+                DestructureLambdaListSection::Auxiliary => lambda_list
+                    .auxiliary
+                    .push(self.compile_destructuring_auxiliary_parameter(parameter, &mut seen)?),
                 DestructureLambdaListSection::Rest => unreachable!(),
             }
             index += 1;
@@ -4330,13 +4383,12 @@ impl CompileState {
         }
         let mut seen = HashSet::new();
         let specification = match &items[1].kind {
-            FormKind::List(_) => DestructureSpec::LambdaList(
-                self.compile_destructuring_lambda_list(&items[1])?,
-            ),
-            _ => DestructureSpec::Pattern(self.compile_destructuring_pattern(
-                &items[1],
-                &mut seen,
-            )?),
+            FormKind::List(_) => {
+                DestructureSpec::LambdaList(self.compile_destructuring_lambda_list(&items[1])?)
+            }
+            _ => {
+                DestructureSpec::Pattern(self.compile_destructuring_pattern(&items[1], &mut seen)?)
+            }
         };
         self.emit(function, Instruction::EnterScope, items[1].span)?;
         self.compile_expression(function, &items[2])?;
@@ -4675,11 +4727,7 @@ impl CompileState {
         Ok(keywords)
     }
 
-    fn symbol_name_info(
-        &self,
-        form: &Form,
-        context: &str,
-    ) -> Result<(String, bool), CompileError> {
+    fn symbol_name_info(&self, form: &Form, context: &str) -> Result<(String, bool), CompileError> {
         let FormKind::Atom(name) = &form.kind else {
             return Err(CompileError::new(
                 CompileErrorKind::ExpectedSymbol {
@@ -4824,20 +4872,14 @@ fn symbol_reference(atom: &str) -> Option<(String, bool)> {
         return None;
     }
     if token.escaped {
-        return token
-            .package
-            .is_none()
-            .then_some((token.name, true));
+        return token.package.is_none().then_some((token.name, true));
     }
     Some((normalize_name(atom), false))
 }
 
 fn special_operator_name(atom: &str) -> Option<String> {
     let token = parse_symbol_token(atom).ok()?;
-    if token.kind == SymbolTokenKind::Symbol
-        && token.package.is_none()
-        && !token.escaped
-    {
+    if token.kind == SymbolTokenKind::Symbol && token.package.is_none() && !token.escaped {
         Some(normalize_name(&token.name))
     } else {
         None
@@ -4853,8 +4895,7 @@ fn case_default_clause(form: &Form) -> bool {
     };
     token.kind == SymbolTokenKind::Symbol
         && !token.escaped
-        && (token.name.eq_ignore_ascii_case("T")
-            || token.name.eq_ignore_ascii_case("OTHERWISE"))
+        && (token.name.eq_ignore_ascii_case("T") || token.name.eq_ignore_ascii_case("OTHERWISE"))
 }
 
 fn compile_eval_when_executes(form: &Form) -> Result<bool, CompileError> {
@@ -4912,14 +4953,10 @@ fn literal_constant(atom: &str) -> Option<Constant> {
             }
         }
         SymbolTokenKind::Symbol if token.package.is_none() && !token.escaped => {
-            if token.name.eq_ignore_ascii_case("nil")
-                || token.name.eq_ignore_ascii_case("#f")
-            {
+            if token.name.eq_ignore_ascii_case("nil") || token.name.eq_ignore_ascii_case("#f") {
                 return Some(Constant::Nil);
             }
-            if token.name.eq_ignore_ascii_case("t")
-                || token.name.eq_ignore_ascii_case("#t")
-            {
+            if token.name.eq_ignore_ascii_case("t") || token.name.eq_ignore_ascii_case("#t") {
                 return Some(Constant::Boolean(true));
             }
             if let Ok(value) = token.name.parse::<i64>() {

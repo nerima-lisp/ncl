@@ -70,8 +70,7 @@ fn preserves_escaped_symbol_identity_across_namespaces() {
         "(1 3)",
     );
     assert_eq!(
-        evaluate(r#"(list (symbol-name :|foo|) (symbol-name :FOO) (eq :|foo| :FOO))"#)
-            .to_string(),
+        evaluate(r#"(list (symbol-name :|foo|) (symbol-name :FOO) (eq :|foo| :FOO))"#).to_string(),
         r#"("foo" "FOO" NIL)"#,
     );
 }
@@ -233,6 +232,83 @@ fn evaluates_symbol_macrolet_with_multiple_value_setq() {
 }
 
 #[test]
+fn evaluates_symbol_macrolet_with_setf_derived_place_operators() {
+    assert_eq!(
+        evaluate(
+            "(let ((cell (list 1))
+                   (stack-cell (list (list 2 3))))
+               (symbol-macrolet ((item (car cell))
+                                 (stack (car stack-cell)))
+                 (list (incf item 4)
+                       cell
+                       (push 1 stack)
+                       stack-cell
+                       (pop stack)
+                       stack
+                       stack-cell)))",
+        )
+        .to_string(),
+        "(5 (5) (1 2 3) ((1 2 3)) 1 (2 3) ((2 3)))"
+    );
+}
+
+#[test]
+fn evaluates_symbol_macrolet_with_other_setf_place_operators() {
+    assert_eq!(
+        evaluate(
+            "(let ((list-cell (list (list 1 2)))
+                   (plist-cell (list (list :a 1 :b 2)))
+                   (left-cell (list 1))
+                   (right-cell (list 2)))
+               (symbol-macrolet ((xs (car list-cell))
+                                 (plist (car plist-cell))
+                                 (left (car left-cell))
+                                 (right (car right-cell)))
+                 (list (pushnew 2 xs)
+                       list-cell
+                       (pushnew 3 xs)
+                       list-cell
+                       (remf plist :a)
+                       plist-cell
+                       (rotatef left right)
+                       left-cell
+                       right-cell
+                       (shiftf left right 9)
+                       left-cell
+                       right-cell)))",
+        )
+        .to_string(),
+        "((1 2) ((1 2)) (3 1 2) ((3 1 2)) T ((:B 2)) NIL (2) (1) 2 (1) (9))"
+    );
+}
+
+#[test]
+fn evaluates_symbol_macrolet_with_custom_setf_expander_and_modify_macro() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *symbol-macro-expander-cell* (list 10))
+               (define-setf-expander symbol-macro-expander ()
+                 (values
+                   nil
+                   nil
+                   '(new-value)
+                   '(progn
+                      (setf (car *symbol-macro-expander-cell*) new-value)
+                      new-value)
+                   '(car *symbol-macro-expander-cell*)))
+               (define-modify-macro add-to-symbol-macro-place (&optional (delta 1)) +)
+               (symbol-macrolet ((item (symbol-macro-expander)))
+                 (list (add-to-symbol-macro-place item 2)
+                       (add-to-symbol-macro-place item)
+                       *symbol-macro-expander-cell*)))",
+        )
+        .to_string(),
+        "(12 13 (13))"
+    );
+}
+
+#[test]
 fn evaluates_define_symbol_macro_and_generalized_places() {
     assert_eq!(
         evaluate(
@@ -246,45 +322,6 @@ fn evaluates_define_symbol_macro_and_generalized_places() {
         .to_string(),
         "(1 7 (7))"
     );
-}
-
-#[test]
-fn rejects_invalid_with_stream_binding_forms() {
-    for (source, message) in [
-        (
-            "(with-open-file 1 42)",
-            "with-open-file binding must be a list",
-        ),
-        (
-            "(with-open-file (1 \"file\") 42)",
-            "with-open-file stream variable must be a symbol",
-        ),
-        (
-            "(with-output-to-string 1 42)",
-            "with-output-to-string binding must be a list",
-        ),
-        (
-            "(with-output-to-string (1) 42)",
-            "with-output-to-string stream variable must be a symbol",
-        ),
-        (
-            "(with-input-from-string 1 42)",
-            "with-input-from-string binding must be a list",
-        ),
-        (
-            "(with-input-from-string (1 \"abc\") 42)",
-            "with-input-from-string stream variable must be a symbol",
-        ),
-    ] {
-        let error = Runtime::new().eval_source(source).unwrap_err();
-        assert!(matches!(
-            error,
-            RuntimeError::InvalidForm {
-                message: ref actual_message,
-                ..
-            } if actual_message == message
-        ));
-    }
 }
 
 #[test]
@@ -764,13 +801,18 @@ fn evaluates_defconstant_and_constantp() {
         evaluate(
             "(progn
                (defconstant +answer+ 42)
-               (list +answer+
-                     (constantp '+answer+)
-                     (constantp 42)
-                     (constantp \"text\")))",
+               (macrolet ((constant-status (form &environment environment)
+                            (if (constantp form environment) 't 'nil)))
+                 (list +answer+
+                       (constantp '+answer+)
+                       (constantp 42)
+                       (constantp \"text\")
+                       (constant-status x)
+                       (constant-status '(1 2))
+                       (constant-status +answer+))))",
         )
         .to_string(),
-        "(42 T T T)"
+        "(42 T T T NIL T T)"
     );
 
     assert!(Runtime::new()
@@ -1092,6 +1134,10 @@ fn evaluates_map_over_sequence_types() {
         "\"abc\""
     );
     assert_eq!(
+        evaluate("(map 'base-string #'identity \"abc\")").to_string(),
+        "\"abc\""
+    );
+    assert_eq!(
         evaluate("(map 'list #'+ '(1 2) '(10 20 30))").to_string(),
         "(11 22)"
     );
@@ -1108,10 +1154,7 @@ fn evaluates_map_over_sequence_types() {
 
 #[test]
 fn evaluates_reduce_over_sequences() {
-    assert_eq!(
-        evaluate("(reduce #'+ '(1 2 3 4))").to_string(),
-        "10"
-    );
+    assert_eq!(evaluate("(reduce #'+ '(1 2 3 4))").to_string(), "10");
     assert_eq!(
         evaluate("(reduce #'- '(1 2 3) :from-end t)").to_string(),
         "2"
@@ -1178,8 +1221,7 @@ fn evaluates_sequence_search_and_mismatch() {
         "2"
     );
     assert_eq!(
-        evaluate("(search \"ab\" \"xxABab\" :test #'char-equal :from-end t)")
-            .to_string(),
+        evaluate("(search \"ab\" \"xxABab\" :test #'char-equal :from-end t)").to_string(),
         "4"
     );
     assert_eq!(
@@ -1241,6 +1283,10 @@ fn evaluates_sequence_merge() {
         "\"abcdef\""
     );
     assert_eq!(
+        evaluate("(merge 'base-string \"ace\" \"bdf\" #'char<)").to_string(),
+        "\"abcdef\""
+    );
+    assert_eq!(
         evaluate("(merge 'list '(-1 -3) '(2 4) #'< :key #'abs)").to_string(),
         "(-1 2 -3 4)"
     );
@@ -1257,14 +1303,8 @@ fn evaluates_sequence_merge() {
 #[test]
 fn evaluates_sequence_quantifiers() {
     assert_eq!(evaluate("(every #'numberp '(1 2))").to_string(), "T");
-    assert_eq!(
-        evaluate("(every #'= '(1 2) #(1 2))").to_string(),
-        "T"
-    );
-    assert_eq!(
-        evaluate("(some #'identity '(nil 2 4))").to_string(),
-        "2"
-    );
+    assert_eq!(evaluate("(every #'= '(1 2) #(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(some #'identity '(nil 2 4))").to_string(), "2");
     assert_eq!(evaluate("(notany #'evenp '(1 3 5))").to_string(), "T");
     assert_eq!(evaluate("(notevery #'evenp '(2 4 5))").to_string(), "T");
     assert_eq!(evaluate("(every #'char= \"ab\" \"ab\")").to_string(), "T");
@@ -1295,14 +1335,8 @@ fn evaluates_list_membership_and_association_searches() {
         evaluate("(member-if-not #'evenp '(2 4 5 6))").to_string(),
         "(5 6)"
     );
-    assert_eq!(
-        evaluate("(adjoin 2 '(1 2 3))").to_string(),
-        "(1 2 3)"
-    );
-    assert_eq!(
-        evaluate("(adjoin 4 '(1 2 3))").to_string(),
-        "(4 1 2 3)"
-    );
+    assert_eq!(evaluate("(adjoin 2 '(1 2 3))").to_string(), "(1 2 3)");
+    assert_eq!(evaluate("(adjoin 4 '(1 2 3))").to_string(), "(4 1 2 3)");
     assert_eq!(
         evaluate("(assoc 'b '((a . 1) (b . 2)))").to_string(),
         "(B . 2)"
@@ -1372,7 +1406,10 @@ fn evaluates_sequence_removals() {
         evaluate("(delete-if #'evenp '(1 2 4 3))").to_string(),
         "(1 3)"
     );
-    assert_eq!(evaluate("(delete-duplicates '(1 2 1))").to_string(), "(1 2)");
+    assert_eq!(
+        evaluate("(delete-duplicates '(1 2 1))").to_string(),
+        "(1 2)"
+    );
     assert_eq!(
         evaluate("(funcall #'remove 2 '(1 2 3))").to_string(),
         "(1 3)"
@@ -1425,10 +1462,7 @@ fn evaluates_sequence_substitutions() {
 
 #[test]
 fn evaluates_list_set_operations() {
-    assert_eq!(
-        evaluate("(union '(1 2 2) '(2 3 3))").to_string(),
-        "(1 2 3)"
-    );
+    assert_eq!(evaluate("(union '(1 2 2) '(2 3 3))").to_string(), "(1 2 3)");
     assert_eq!(
         evaluate("(nunion '(1 2 2) '(2 3 3))").to_string(),
         "(1 2 3)"
@@ -1457,10 +1491,7 @@ fn evaluates_list_set_operations() {
         evaluate("(nset-exclusive-or '(1 2 2 3) '(2 4))").to_string(),
         "(1 3 4)"
     );
-    assert_eq!(
-        evaluate("(subsetp '(1 2) '(3 2 1 4))").to_string(),
-        "T"
-    );
+    assert_eq!(evaluate("(subsetp '(1 2) '(3 2 1 4))").to_string(), "T");
     assert_eq!(evaluate("(subsetp '(1 5) '(3 2 1 4))").to_string(), "NIL");
     assert_eq!(
         evaluate("(union '(1 2) '(2 3) :test #'=)").to_string(),
@@ -1474,18 +1505,12 @@ fn evaluates_list_set_operations() {
         evaluate("(set-difference '(1 2 3) '(2) :test-not #'eql)").to_string(),
         "(2)"
     );
-    assert_eq!(
-        evaluate("(funcall #'union '(1) '(2))").to_string(),
-        "(1 2)"
-    );
+    assert_eq!(evaluate("(funcall #'union '(1) '(2))").to_string(), "(1 2)");
 }
 
 #[test]
 fn evaluates_list_construction_and_partitioning() {
-    assert_eq!(
-        evaluate("(list* 1 2 '(3 4))").to_string(),
-        "(1 2 3 4)"
-    );
+    assert_eq!(evaluate("(list* 1 2 '(3 4))").to_string(), "(1 2 3 4)");
     assert_eq!(evaluate("(list* 1 2 3)").to_string(), "(1 2 . 3)");
     assert_eq!(evaluate("(list* 7)").to_string(), "7");
     assert_eq!(
@@ -1493,10 +1518,7 @@ fn evaluates_list_construction_and_partitioning() {
         "(X X X)"
     );
     assert_eq!(evaluate("(make-list 2)").to_string(), "(NIL NIL)");
-    assert_eq!(
-        evaluate("(copy-list '(1 2 3))").to_string(),
-        "(1 2 3)"
-    );
+    assert_eq!(evaluate("(copy-list '(1 2 3))").to_string(), "(1 2 3)");
     assert_eq!(
         evaluate("(copy-tree '((1) (2 3)))").to_string(),
         "((1) (2 3))"
@@ -1518,8 +1540,7 @@ fn evaluates_list_construction_and_partitioning() {
         "((A . 1) (B 2))"
     );
     assert_eq!(
-        evaluate("(multiple-value-list (get-properties '(:a 1 :b 2) '(:b :a)))")
-            .to_string(),
+        evaluate("(multiple-value-list (get-properties '(:a 1 :b 2) '(:b :a)))").to_string(),
         "(:A 1 (:A 1 :B 2))"
     );
     assert_eq!(
@@ -1532,19 +1553,13 @@ fn evaluates_list_construction_and_partitioning() {
     assert_eq!(evaluate("(butlast '(1 2 3))").to_string(), "(1 2)");
     assert_eq!(evaluate("(nbutlast '(1 2 3) 2)").to_string(), "(1)");
     assert_eq!(evaluate("(nreverse '(1 2 3))").to_string(), "(3 2 1)");
-    assert_eq!(
-        evaluate("(nconc '(1 2) '(3 4))").to_string(),
-        "(1 2 3 4)"
-    );
+    assert_eq!(evaluate("(nconc '(1 2) '(3 4))").to_string(), "(1 2 3 4)");
     assert_eq!(evaluate("(nconc '(1 2) 3)").to_string(), "(1 2 . 3)");
     assert_eq!(
         evaluate("(revappend '(1 2) '(3 4))").to_string(),
         "(2 1 3 4)"
     );
-    assert_eq!(
-        evaluate("(nreconc '(1 2) '(3 4))").to_string(),
-        "(2 1 3 4)"
-    );
+    assert_eq!(evaluate("(nreconc '(1 2) '(3 4))").to_string(), "(2 1 3 4)");
     assert_eq!(
         evaluate("(funcall #'list* 1 '(2 3))").to_string(),
         "(1 2 3)"
@@ -1562,20 +1577,13 @@ fn evaluates_sequence_fill_replace_and_concatenate() {
         evaluate("(fill #\\x \"abcd\" :start 1)").to_string(),
         "\"axxx\""
     );
+    assert_eq!(evaluate("(fill 9 #(1 2 3) :end 2)").to_string(), "#(9 9 3)");
     assert_eq!(
-        evaluate("(fill 9 #(1 2 3) :end 2)").to_string(),
-        "#(9 9 3)"
-    );
-    assert_eq!(
-        evaluate(
-            "(replace '(9 9 9) '(1 2 3 4) :start1 1 :end1 3 :start2 0 :end2 2)"
-        )
-        .to_string(),
+        evaluate("(replace '(9 9 9) '(1 2 3 4) :start1 1 :end1 3 :start2 0 :end2 2)").to_string(),
         "(9 1 2)"
     );
     assert_eq!(
-        evaluate("(replace \"xxxx\" \"abcd\" :start1 1 :end1 3 :start2 0 :end2 2)")
-            .to_string(),
+        evaluate("(replace \"xxxx\" \"abcd\" :start1 1 :end1 3 :start2 0 :end2 2)").to_string(),
         "\"xabx\""
     );
     assert_eq!(evaluate("(copy-seq #(1 2))").to_string(), "#(1 2)");
@@ -1585,6 +1593,10 @@ fn evaluates_sequence_fill_replace_and_concatenate() {
     );
     assert_eq!(
         evaluate("(concatenate 'string \"ab\" '(#\\c #\\d))").to_string(),
+        "\"abcd\""
+    );
+    assert_eq!(
+        evaluate("(concatenate 'base-string \"ab\" '(#\\c #\\d))").to_string(),
         "\"abcd\""
     );
     assert_eq!(
@@ -1752,12 +1764,15 @@ fn evaluates_function_and_macro_introspection() {
         evaluate(
             "(progn
                (defmacro introspection-macro (value) (list '+ value 1))
+               (define-compiler-macro introspection-function (value) (list '+ value 3))
                (defmacro local-macro-visible (&environment environment)
                  (if (functionp (macro-function 'local-macro environment))
                      '(quote t)
                      '(quote nil)))
                (list (functionp (macro-function 'introspection-macro))
                      (eq (macro-function 'missing-macro) nil)
+                     (functionp (compiler-macro-function 'introspection-function))
+                     (eq (compiler-macro-function 'missing-compiler-macro) nil)
                      (special-operator-p 'if)
                      (special-operator-p 'and)
                      (special-operator-p 'return-from)
@@ -1768,7 +1783,23 @@ fn evaluates_function_and_macro_introspection() {
                              (local-macro-visible)))))",
         )
         .to_string(),
-        "(T T T NIL NIL T NIL (NIL T))"
+        "(T T T T T NIL NIL T NIL (NIL T))"
+    );
+    assert_eq!(
+        evaluate(
+            "(multiple-value-list
+               (function-lambda-expression
+                 (lambda (required &optional (optional 10 optional-p) &rest rest
+                           &key ((:renamed keyword) 20 keyword-p) &allow-other-keys
+                           &aux (auxiliary 30))
+                   (list required optional optional-p rest keyword keyword-p auxiliary))))",
+        )
+        .to_string(),
+        "((LAMBDA (REQUIRED &OPTIONAL (OPTIONAL 10 OPTIONAL-P) &REST REST &KEY ((:RENAMED KEYWORD) 20 KEYWORD-P) &ALLOW-OTHER-KEYS &AUX (AUXILIARY 30)) (LIST REQUIRED OPTIONAL OPTIONAL-P REST KEYWORD KEYWORD-P AUXILIARY)) T NIL)"
+    );
+    assert_eq!(
+        evaluate("(multiple-value-list (function-lambda-expression #'car))").to_string(),
+        "(NIL NIL NIL)"
     );
 }
 
@@ -1793,6 +1824,54 @@ fn evaluates_symbol_function_and_setf() {
 }
 
 #[test]
+fn evaluates_macro_function_and_setf() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defmacro source-macro-function (value) (list '+ value 4))
+               (let ((name 'target-macro-function))
+                 (list (eq (macro-function name) nil)
+                       (progn
+                         (setf (macro-function name)
+                               (macro-function 'source-macro-function))
+                         (functionp (macro-function name)))
+                       (macroexpand-1 '(target-macro-function 5))
+                       (eval '(target-macro-function 5))
+                       (progn
+                         (setf (macro-function name) nil)
+                         (eq (macro-function name) nil))
+                       (fboundp name))))",
+        )
+        .to_string(),
+        "(T T (+ 5 4) 9 T NIL)"
+    );
+}
+
+#[test]
+fn evaluates_compiler_macro_function_and_setf() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defun target-compiler-macro-function (value) (+ value 100))
+               (define-compiler-macro source-compiler-macro-function (value) (list '+ value 4))
+               (let ((name 'target-compiler-macro-function))
+                 (list (eq (compiler-macro-function name) nil)
+                       (progn
+                         (setf (compiler-macro-function name)
+                               (compiler-macro-function 'source-compiler-macro-function))
+                         (functionp (compiler-macro-function name)))
+                       (target-compiler-macro-function 5)
+                       (progn
+                         (setf (compiler-macro-function name) nil)
+                         (eq (compiler-macro-function name) nil))
+                       (target-compiler-macro-function 5))))",
+        )
+        .to_string(),
+        "(T T 105 T 105)"
+    );
+}
+
+#[test]
 fn evaluates_function_namespace_mutation() {
     assert_eq!(
         evaluate(
@@ -1810,8 +1889,8 @@ fn evaluates_function_namespace_mutation() {
 #[test]
 fn evaluates_numeric_predicates_and_extrema() {
     assert_eq!(
-        evaluate("(list (zerop 0) (plusp 1) (minusp -1) (evenp 4) (oddp 3) (min 3 1 2) (max 3 1 2) (abs -5))").to_string(),
-        "(T T T T T 1 3 5)"
+        evaluate("(list (zerop 0) (zerop #C(0 0)) (zerop #C(0 1)) (plusp 1) (minusp -1) (evenp 4) (oddp 3) (min 3 1 2) (max 3 1 2) (abs -5) (abs #C(3 4)))").to_string(),
+        "(T T NIL T T T T 1 3 5 5)"
     );
 }
 
@@ -1822,13 +1901,23 @@ fn evaluates_common_lisp_integer_arithmetic_and_bit_operations() {
             "(list (mod -7 3) (mod 7 -3) (rem -7 3) (rem 7 -3)
                     (ash 3 2) (ash -8 -2)
                     (logand 7 3) (logior 4 1) (logxor 7 3) (lognot 0)
+                    (lognand 6 3) (lognor 6 3)
+                    (logandc1 6 3) (logandc2 6 3)
+                    (logorc1 6 3) (logorc2 6 3)
+                    (logeqv 7 3)
+                    (boole boole-and 6 3) (boole boole-ior 4 1)
+                    (boole boole-xor 7 3) (boole boole-eqv 7 3)
+                    (boole boole-andc1 6 3) (boole boole-andc2 6 3)
+                    (logbitp 1 10) (logbitp 0 10)
                     (logtest 6 2) (logtest 4 2)
+                    (ldb-test (byte 3 1) 10) (ldb-test (byte 3 1) 1)
+                    (mask-field (byte 3 1) 15) (deposit-field 10 (byte 3 1) 1)
                     (logcount 13) (logcount -8)
                     (integer-length 8) (integer-length -8)
                     (logand) (logior) (logxor))",
         )
         .to_string(),
-        "(2 -2 -1 1 12 -2 3 5 4 -1 T NIL 3 3 4 3 -1 0 0)"
+        "(2 -2 -1 1 12 -2 3 5 4 -1 -3 -8 1 4 -5 -2 -5 2 5 4 -5 1 4 T NIL T NIL T NIL 14 11 3 3 4 3 -1 0 0)"
     );
 }
 
@@ -1862,10 +1951,11 @@ fn evaluates_common_lisp_expt_across_numeric_types() {
         evaluate(
             "(list (expt 2 10) (expt 2 -3) (expt 3/2 2)
                     (= (expt 2.0 3) 8.0) (floatp (expt 2.0 3))
-                    (floatp (expt 2 1/2)) (expt 0 0))",
+                    (floatp (expt 2 1/2)) (expt 0 0)
+                    (expt -4 1/2) (expt #C(1 1) 2))",
         )
         .to_string(),
-        "(1024 1/8 9/4 T T T 1)"
+        "(1024 1/8 9/4 T T T 1 #C(0 2.0) #C(0 2.0))"
     );
 }
 
@@ -1875,10 +1965,11 @@ fn evaluates_common_lisp_sqrt_across_exact_and_float_numbers() {
         evaluate(
             "(list (sqrt 0) (sqrt 4) (sqrt 1/4)
                     (rationalp (sqrt 2)) (floatp (sqrt 2))
-                    (= (sqrt 4.0) 2.0))",
+                    (= (sqrt 4.0) 2.0)
+                    (sqrt -4) (sqrt -1/4) (sqrt #C(3 4)))",
         )
         .to_string(),
-        "(0 2 1/2 NIL T T)"
+        "(0 2 1/2 NIL T T #C(0 2) #C(0 1/2) #C(2.0 1.0))"
     );
 }
 
@@ -1888,13 +1979,14 @@ fn evaluates_common_lisp_signum_and_rationalize() {
         evaluate(
             "(list (signum -7) (signum 0) (signum -5/2)
                     (signum -0.0) (signum 3.5)
+                    (signum #C(3 4)) (signum #C(0 0))
                     (rationalize 2) (rationalize 3/6)
                     (rationalize 0.1) (rationalize (/ 1.0 3.0))
                     (rationalp (rationalize 0.1))
                     (floatp (signum 0.0)))",
         )
         .to_string(),
-        "(-1 0 -1 -0.0 1.0 2 1/2 1/10 1/3 T T)"
+        "(-1 0 -1 -0.0 1.0 #C(3/5 4/5) #C(0 0) 2 1/2 1/10 1/3 T T)"
     );
 }
 
@@ -1933,6 +2025,21 @@ fn evaluates_basic_format_directives() {
     assert_eq!(
         evaluate(r#"(format nil "~?/~*" "~A ~D" '(foo 7) 99 100)"#).to_string(),
         r#""FOO 7/""#,
+    );
+    assert_eq!(
+        evaluate("(format nil \"foo~\n  bar\")",).to_string(),
+        r#""foobar""#,
+    );
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~A~:*~A" 1 2)
+                       (format nil "~A~A~2:*~A" 1 2 3)
+                       (format nil "~@*~A" 1 2)
+                       (format nil "~2@*~A" 1 2 3)
+                       (format nil "~1@*~A ~A" 1 2 3))"#,
+        )
+        .to_string(),
+        r#"("11" "121" "1" "3" "2 3")"#,
     );
 }
 
@@ -2009,7 +2116,10 @@ fn evaluates_fixed_float_format_directive() {
             .to_string(),
         r#""1.25|1.25|      1.25|+1.25|****""#,
     );
-    assert_eq!(evaluate(r#"(format nil "~,0F" 1.25)"#).to_string(), r#""1.""#);
+    assert_eq!(
+        evaluate(r#"(format nil "~,0F" 1.25)"#).to_string(),
+        r#""1.""#
+    );
     assert_eq!(evaluate(r#"(format nil "~F" 3)"#).to_string(), r#""3.0""#);
 }
 
@@ -2020,8 +2130,7 @@ fn evaluates_exponential_float_format_directive() {
         r#""1.25E+0|1.25E+0|   1.25E+0|+1.25E+0""#,
     );
     assert_eq!(
-        evaluate(r#"(format nil "~,2,3E|~,2,,0E|~,2,,-1E" 0.0125 637.5 637.5)"#)
-            .to_string(),
+        evaluate(r#"(format nil "~,2,3E|~,2,,0E|~,2,,-1E" 0.0125 637.5 637.5)"#).to_string(),
         r#""1.25E-002|0.64E+3|0.06E+4""#,
     );
     assert_eq!(
@@ -2033,8 +2142,7 @@ fn evaluates_exponential_float_format_directive() {
 #[test]
 fn evaluates_parameterized_format_directives() {
     assert_eq!(
-        evaluate(r#"(format nil "~10A|~10@A|~10,'0D|~:D|~@D" "x" "y" 42 1234567 8)"#)
-            .to_string(),
+        evaluate(r#"(format nil "~10A|~10@A|~10,'0D|~:D|~@D" "x" "y" 42 1234567 8)"#).to_string(),
         r#""x         |         y|0000000042|1,234,567|+8""#,
     );
     assert_eq!(
@@ -2091,10 +2199,7 @@ fn evaluates_format_recursive_processing_directive() {
         r#"("<Foo 5> 7" "<Foo 5> 7" "<Foo 5> 14")"#,
     );
     assert_eq!(
-        evaluate(
-            r#"(format nil "~:{ ~@?~:^ ...~} " '(("a") ("b")))"#,
-        )
-        .to_string(),
+        evaluate(r#"(format nil "~:{ ~@?~:^ ...~} " '(("a") ("b")))"#,).to_string(),
         r#"" a ... b ""#,
     );
 }
@@ -2150,6 +2255,8 @@ fn evaluates_format_indentation_directive() {
         r#"(format nil "a~1,2I b")"#,
         r#"(format nil "a~@I b")"#,
         r#"(format nil "a~:@I b")"#,
+        r#"(format nil "~:*~A" 1)"#,
+        r#"(format nil "~:@*~A" 1)"#,
     ] {
         assert!(Runtime::new().eval_source(source).is_err(), "{source}");
     }
@@ -2182,14 +2289,8 @@ fn evaluates_format_escape_upward_directive() {
         evaluate(r#"(format nil "done~^ignored")"#).to_string(),
         r#""done""#,
     );
-    assert_eq!(
-        evaluate(r#"(format nil "a~1,1^b")"#).to_string(),
-        r#""a""#,
-    );
-    assert_eq!(
-        evaluate(r#"(format nil "a~1,2^b")"#).to_string(),
-        r#""ab""#,
-    );
+    assert_eq!(evaluate(r#"(format nil "a~1,1^b")"#).to_string(), r#""a""#,);
+    assert_eq!(evaluate(r#"(format nil "a~1,2^b")"#).to_string(), r#""ab""#,);
     assert_eq!(
         evaluate(r#"(format nil "~:{~A~:^, ~}" '((a) (b) (c)))"#).to_string(),
         r#""A, B, C""#,
@@ -2239,6 +2340,15 @@ fn evaluates_format_choice_directives() {
         )
         .to_string(),
         r#"("TX" "X" "yesT" "X")"#,
+    );
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~[zero~@;one~]" 1)
+                       (format nil "~[zero~@;one~]" 9)
+                       (format nil "~[zero~;one~:@;other~]" 9))"#,
+        )
+        .to_string(),
+        r#"("one" "" "other")"#,
     );
 }
 
@@ -2470,6 +2580,149 @@ fn evaluates_compound_type_designators() {
 }
 
 #[test]
+fn evaluates_bit_vector_dispatch_literals() {
+    assert_eq!(
+        evaluate("(list #*101 (typep #*101 'bit-vector) (aref #*101 1))").to_string(),
+        "(#(1 0 1) T 0)"
+    );
+}
+
+#[test]
+fn evaluates_radix_integer_dispatch_literals() {
+    assert_eq!(
+        evaluate("(list #b1010 #o17 #xff #b-11)").to_string(),
+        "(10 15 255 -3)"
+    );
+}
+
+#[test]
+fn evaluates_complex_literal_dispatch() {
+    assert_eq!(
+        evaluate(
+            "(list (complexp #C(1 2))
+                   (realpart #C(1 2))
+                   (imagpart #C(1 2))
+                   (typep #C(1 2) 'number)
+                   (typep #C(1 2) 'complex)
+                   (typep #C(1 2) 'real)
+                   (realpart 3)
+                   (imagpart 3.0))",
+        )
+        .to_string(),
+        "(T 1 2 T T NIL 3 0.0)",
+    );
+}
+
+#[test]
+fn evaluates_complex_arithmetic() {
+    assert_eq!(
+        evaluate(
+            "(list (+ #C(1 2) 3)
+                   (- #C(1 2) #C(3 4))
+                   (* #C(1 2) #C(3 4))
+                   (/ #C(1 2) #C(3 -4))
+                   (= #C(1 2) #C(1 2) #C(1 2))
+                   (= #C(1 2) 3)
+                   (= #C(3 0) 3))",
+        )
+        .to_string(),
+        "(#C(4 2) #C(-2 -2) #C(-5 10) #C(-1/5 2/5) T NIL T)",
+    );
+}
+
+#[test]
+fn evaluates_complex_polar_operations() {
+    assert_eq!(
+        evaluate(
+            "(list (conjugate #C(3 4))
+                   (conjugate 5)
+                   (phase 1)
+                   (phase -1)
+                   (phase #C(0 2))
+                   (phase #C(0 0)))",
+        )
+        .to_string(),
+        "(#C(3 -4) 5 0 3.141592653589793 1.5707963267948966 0)",
+    );
+}
+
+#[test]
+fn evaluates_complex_exponential_and_logarithm_operations() {
+    assert_eq!(
+        evaluate(
+            "(list (exp 0)
+                   (exp #C(0 3.141592653589793))
+                   (log 1)
+                   (log -1)
+                   (log 8 2)
+                   (cis 0)
+                   (cis 3.141592653589793))",
+        )
+        .to_string(),
+        "(1.0 #C(-1.0 0) 0 #C(0 3.141592653589793) 3.0 #C(1.0 0) #C(-1.0 0))",
+    );
+}
+
+#[test]
+fn evaluates_complex_trigonometric_operations() {
+    assert_eq!(
+        evaluate(
+            "(list (sin 0)
+                   (cos 0)
+                   (tan 0)
+                   (asin 0)
+                   (asin 1)
+                   (acos 1)
+                   (atan 0)
+                   (atan 1)
+                   (atan 0 1)
+                   (atan 1 1)
+                   (atan -1 1)
+                   (atan 0 -1)
+                   (sinh 0)
+                   (cosh 0)
+                   (tanh 0)
+                   (asinh 0)
+                   (asinh 1)
+                   (acosh 1)
+                   (atanh 0)
+                   (atanh 0.5)
+                   (sin #C(0 1))
+                   (cos #C(0 1))
+                   (tan #C(0 1))
+                   (asin #C(0 1))
+                   (acos #C(0 1))
+                   (atan #C(0 0.5))
+                   (sinh #C(0 1))
+                   (cosh #C(0 1))
+                   (tanh #C(0 1))
+                   (asinh #C(0 1))
+                   (acosh #C(0 1))
+                   (atanh #C(0 0.5))
+                   (sin #C(1 0))
+                   (cos #C(1 0))
+                   (sinh #C(1 0))
+                   (cosh #C(1 0)))",
+        )
+        .to_string(),
+        "(0.0 1.0 0.0 0 1.5707963267948966 0 0 0.7853981633974483 0 0.7853981633974483 -0.7853981633974483 3.141592653589793 0.0 1.0 0.0 0 0.8813735870195429 0 0 0.5493061443340548 #C(0 1.1752011936438014) 1.5430806348152437 #C(0.0 0.7615941559557649) #C(0 0.8813735870195428) #C(1.5707963267948966 -0.8813735870195428) #C(0 0.5493061443340548) #C(0 0.8414709848078965) 0.5403023058681398 #C(0.0 1.557407724654902) #C(0 1.5707963267948966) #C(0.8813735870195432 1.5707963267948966) #C(0 0.4636476090008061) 0.8414709848078965 0.5403023058681398 1.1752011936438014 1.5430806348152437)",
+    );
+}
+
+#[test]
+fn evaluates_array_literal_dispatch() {
+    assert_eq!(
+        evaluate(
+            "(list (array-dimensions #2A((1 2) (3 4)))
+                   (aref #2A((1 2) (3 4)) 1 0)
+                   (aref #1A(5 6 7) 2))",
+        )
+        .to_string(),
+        "((2 2) 3 7)"
+    );
+}
+
+#[test]
 fn evaluates_subtypep() {
     let values = Runtime::new()
         .eval_source(
@@ -2500,14 +2753,17 @@ fn evaluates_sequence_construction_and_coercion() {
             "(list (make-sequence 'list 3)
                     (make-sequence 'vector 2 :initial-element 7)
                     (make-sequence 'string 3 :initial-element #\\x)
+                    (make-sequence 'base-string 2 :initial-element #\\y)
                     (coerce '(1 2) 'vector)
                     (coerce #(1 2) 'list)
                     (coerce '(#\\a #\\b) 'string)
+                    (coerce '(#\\c #\\d) 'base-string)
                     (coerce 'foo 'string)
+                    (coerce 'bar 'base-string)
                     (simple-string-p \"abc\"))",
         )
         .to_string(),
-        "((NIL NIL NIL) #(7 7) \"xxx\" #(1 2) (1 2) \"ab\" \"FOO\" T)"
+        "((NIL NIL NIL) #(7 7) \"xxx\" \"yy\" #(1 2) (1 2) \"ab\" \"cd\" \"FOO\" \"BAR\" T)"
     );
 }
 
@@ -2548,11 +2804,13 @@ fn evaluates_basic_clos_instances_and_accessors() {
                          (slot-boundp point 'y)
                          (typep point 'point)
                          (class-name (class-of point))
-                         (class-name (find-class 'point)))))"#,
+                         (class-name (find-class 'point))
+                         (find-class 'missing nil)
+                         (class-name (find-class 'point t nil)))))"#,
         )
         .unwrap();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].to_string(), "(2 2 3 T T T POINT POINT)");
+    assert_eq!(values[0].to_string(), "(2 2 3 T T T POINT POINT NIL POINT)");
 }
 
 #[test]
@@ -2591,16 +2849,17 @@ fn evaluates_clos_slot_initialization_options() {
                    ((x :initform 7 :reader defaults-x)
                     (y :initarg :y :writer set-defaults-y)
                     (z :initarg nil)))
-                 (let ((object (make-instance 'defaults :y 3)))
+                 (let ((object (make-instance 'defaults :y 3 :ignored 5 :allow-other-keys t)))
                    (set-defaults-y 9 object)
                    (list (defaults-x object)
                          (slot-value object 'y)
                          (slot-boundp object 'z)
-                         (not (ignore-errors (make-instance 'defaults :x 1))))))"#,
+                         (not (ignore-errors (make-instance 'defaults :x 1)))
+                         (not (ignore-errors (make-instance 'defaults :x 1 :allow-other-keys nil))))))"#,
         )
         .unwrap();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].to_string(), "(7 9 NIL T)");
+    assert_eq!(values[0].to_string(), "(7 9 NIL T T)");
 }
 
 #[test]
@@ -2630,22 +2889,431 @@ fn evaluates_clos_class_allocated_slots() {
 }
 
 #[test]
+fn rejects_unsupported_defclass_slot_allocation() {
+    let error = Runtime::default()
+        .eval_source(
+            r#"(progn
+                 (defclass invalid-allocation-point ()
+                   ((x :allocation :bogus)))
+                 t)"#,
+        )
+        .expect_err("unsupported defclass slot allocation should fail");
+
+    assert!(error.to_string().contains("unsupported defclass allocation"));
+}
+
+#[test]
+fn rejects_duplicate_defclass_slot_names() {
+    let error = Runtime::default()
+        .eval_source(
+            r#"(progn
+                 (defclass duplicate-slot-point ()
+                   ((x :initarg :x :initform 1)
+                    (x :initarg :y :initform 2)))
+                 t)"#,
+        )
+        .expect_err("duplicate defclass slot names should fail");
+
+    assert!(error.to_string().contains("duplicate defclass slot name"));
+}
+
+#[test]
+fn rejects_duplicate_defclass_superclasses() {
+    let error = Runtime::default()
+        .eval_source(
+            r#"(progn
+                 (defclass duplicate-superclass-point (standard-object standard-object) ())
+                 t)"#,
+        )
+        .expect_err("duplicate defclass superclasses should fail");
+
+    assert!(error.to_string().contains("duplicate defclass superclass"));
+}
+
+#[test]
 fn evaluates_clos_default_initargs() {
     let values = Runtime::new()
         .eval_source(
             r#"(progn
                  (defclass defaults ()
                    ((value :initarg :value :initform 1))
-                   (:default-initargs :value (+ 2 5)))
+                   (:default-initargs :value (+ 2 5))
+                   (:documentation "defaulted class"))
                  (defclass child-defaults (defaults) ())
                  (let ((explicit (make-instance 'child-defaults :value 9))
                        (implicit (make-instance 'child-defaults)))
                    (list (slot-value explicit 'value)
-                         (slot-value implicit 'value))))"#,
+                         (slot-value implicit 'value)
+                         (documentation (find-class 'defaults) t))))"#,
         )
         .unwrap();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].to_string(), "(9 7)");
+    assert_eq!(values[0].to_string(), r#"(9 7 "defaulted class")"#);
+}
+
+#[test]
+fn evaluates_defclass_standard_class_metaclass_option() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass metaclass-point ()
+                   ((x :initarg :x))
+                   (:metaclass standard-class))
+                 (let ((object (make-instance 'metaclass-point :x 5)))
+                   (list (class-name (class-of object))
+                         (class-name (find-class 'metaclass-point))
+                         (slot-value object 'x))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(METACLASS-POINT METACLASS-POINT 5)");
+}
+
+#[test]
+fn rejects_unsupported_defclass_metaclass_option() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(not
+                (ignore-errors
+                  (defclass unsupported-metaclass-point ()
+                    ()
+                    (:metaclass funcallable-standard-class))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "T");
+}
+
+#[test]
+fn rejects_unknown_defclass_option() {
+    let mut runtime = Runtime::default();
+    let values = runtime
+        .eval_source(
+            r#"(not
+                (ignore-errors
+                  (defclass unknown-option-point () ()
+                    (:unknown-option t))))"#,
+        )
+        .expect("evaluation should succeed");
+
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "T");
+}
+
+#[test]
+fn evaluates_function_documentation() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defun documented-function (value)
+                   "function doc"
+                   value)
+                 (defgeneric documented-generic (object)
+                   (:documentation "generic doc")
+                   (:method (object) object))
+                 (list (documentation 'documented-function 'function)
+                       (documentation 'documented-generic 'function)
+                       (documentation 'missing-documentation 'function)
+                       (documented-function 7)
+                       (documented-generic 9)))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r#"("function doc" "generic doc" NIL 7 9)"#
+    );
+}
+
+#[test]
+fn evaluates_variable_documentation() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defvar *documented-variable* 1 "variable doc")
+                 (defvar *documented-variable* 2 "updated variable doc")
+                 (defparameter *documented-parameter* 3 "parameter doc")
+                 (list *documented-variable*
+                       (documentation '*documented-variable* 'variable)
+                       (documentation '*documented-parameter* 'variable)
+                       (documentation '*missing-variable-documentation* 'variable)))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r#"(1 "updated variable doc" "parameter doc" NIL)"#
+    );
+}
+
+#[test]
+fn evaluates_setf_function_documentation() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defun setf-documented-function (value)
+                   value)
+                 (defgeneric setf-documented-generic (object)
+                   (:method (object) object))
+                 (list (setf (documentation 'setf-documented-function 'function) "function doc")
+                       (documentation 'setf-documented-function 'function)
+                       (setf (documentation 'setf-documented-function 'function) nil)
+                       (documentation 'setf-documented-function 'function)
+                       (setf (documentation 'setf-documented-generic 'function) "generic doc")
+                       (documentation 'setf-documented-generic 'function)))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r#"("function doc" "function doc" NIL NIL "generic doc" "generic doc")"#
+    );
+}
+
+#[test]
+fn evaluates_setf_variable_documentation() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defvar *setf-documented-variable* 1)
+                 (list (setf (documentation '*setf-documented-variable* 'variable) "variable doc")
+                       (documentation '*setf-documented-variable* 'variable)
+                       (setf (documentation '*setf-documented-variable* 'variable) nil)
+                       (documentation '*setf-documented-variable* 'variable)))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r#"("variable doc" "variable doc" NIL NIL)"#
+    );
+}
+
+#[test]
+fn evaluates_setf_class_and_package_documentation() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass setf-doc-class () ())
+                 (defpackage :setf-doc-package)
+                 (let ((class (find-class 'setf-doc-class))
+                       (package (find-package :setf-doc-package)))
+                   (list (setf (documentation class t) "class doc")
+                         (documentation class t)
+                         (setf (documentation class t) nil)
+                         (documentation class t)
+                         (setf (documentation package t) "package doc")
+                         (documentation package t)
+                         (setf (documentation package t) nil)
+                         (documentation package t))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r#"("class doc" "class doc" NIL NIL "package doc" "package doc" NIL NIL)"#
+    );
+}
+
+#[test]
+fn evaluates_clos_defgeneric_method_options() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass generic-option-point ()
+                   ((x :initarg :x :accessor generic-option-point-x)))
+                 (defgeneric generic-option-value (object)
+                   (:method ((object generic-option-point))
+                     (generic-option-point-x object))
+                   (:method :before ((object generic-option-point))
+                     (setf (generic-option-point-x object)
+                           (+ (generic-option-point-x object) 1))))
+                 (let ((point (make-instance 'generic-option-point :x 4)))
+                   (list (generic-option-value point)
+                         (generic-option-point-x point))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(5 5)");
+}
+
+#[test]
+fn evaluates_clos_ensure_generic_function() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (ensure-generic-function 'ensured-value :lambda-list '(object))
+                 (ensure-generic-function 'ensured-extra
+                                          :lambda-list '(object)
+                                          :unknown-option 1
+                                          :allow-other-keys t)
+                 (defun ensured-conflict (object) object)
+                 (defmethod ensured-value ((object t))
+                   (list :value object))
+                 (let ((same (ensure-generic-function 'ensured-value
+                              :lambda-list '(object))))
+                   (list (functionp same)
+                         (ensured-value 7)
+                         (fboundp 'ensured-value)
+                         (functionp (symbol-function 'ensured-extra))
+                         (handler-case
+                             (ensure-generic-function 'ensured-conflict
+                                                      :lambda-list '(object))
+                           (error () :error)))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T (:VALUE 7) T T :ERROR)");
+}
+
+#[test]
+fn evaluates_clos_find_method() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass find-method-point () ())
+                 (defgeneric find-method-value (object))
+                 (defmethod find-method-value ((object find-method-point)) :primary)
+                 (defmethod find-method-value :before ((object find-method-point)) nil)
+                 (let ((class (find-class 'find-method-point)))
+                   (list (typep (find-method #'find-method-value '() (list class))
+                                'method)
+                         (typep (find-method #'find-method-value '(:before) (list class))
+                                'method)
+                         (eq (find-method #'find-method-value '() (list class))
+                             (find-method #'find-method-value '() (list class)))
+                         (find-method #'find-method-value '(:after) (list class) nil)
+                         (handler-case
+                             (find-method #'find-method-value '(:after) (list class))
+                           (error () :error)))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T T T NIL :ERROR)");
+}
+
+#[test]
+fn evaluates_clos_method_accessors() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass method-accessor-point () ())
+                 (defgeneric method-accessor-value (object tag))
+                 (defmethod method-accessor-value :around
+                     ((object method-accessor-point) (tag (eql :tag)))
+                   :around)
+                 (let* ((class (find-class 'method-accessor-point))
+                        (method (find-method #'method-accessor-value
+                                             '(:around)
+                                             (list class '(eql :tag))))
+                        (specializers (method-specializers method)))
+                   (list (method-qualifiers method)
+                         (class-name (car specializers))
+                         (car (cdr specializers))
+                         (handler-case
+                             (method-qualifiers class)
+                           (error () :error)))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "((:AROUND) METHOD-ACCESSOR-POINT (EQL :TAG) :ERROR)"
+    );
+}
+
+#[test]
+fn evaluates_clos_compute_applicable_methods() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass applicable-parent () ())
+                 (defclass applicable-child (applicable-parent) ())
+                 (defgeneric applicable-value (object tag))
+                 (defmethod applicable-value ((object t) (tag (eql :hit))) :eql)
+                 (defmethod applicable-value ((object applicable-parent) tag) :parent)
+                 (defmethod applicable-value ((object applicable-child) tag) :child)
+                 (let* ((object (make-instance 'applicable-child))
+                        (methods (compute-applicable-methods #'applicable-value
+                                                             (list object :hit))))
+                   (list (mapcar (lambda (method)
+                                   (class-name (car (method-specializers method))))
+                                 methods)
+                         (typep (car methods) 'method)
+                         (compute-applicable-methods #'applicable-value (list 42 :miss))
+                         (handler-case
+                             (compute-applicable-methods #'+ (list 1 2))
+                           (error () :error))
+                         (handler-case
+                             (compute-applicable-methods #'applicable-value object)
+                           (error () :error)))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "((APPLICABLE-CHILD APPLICABLE-PARENT T) T NIL :ERROR :ERROR)"
+    );
+}
+
+#[test]
+fn evaluates_clos_generic_function_accessors() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass generic-accessor-parent () ())
+                 (defclass generic-accessor-child (generic-accessor-parent) ())
+                 (defgeneric generic-accessor-value (object))
+                 (defmethod generic-accessor-value ((object generic-accessor-parent)) :parent)
+                 (defmethod generic-accessor-value ((object generic-accessor-child)) :child)
+                 (let* ((function #'generic-accessor-value)
+                        (methods (generic-function-methods function)))
+                   (list (generic-function-name function)
+                         (length methods)
+                         (mapcar (lambda (method)
+                                   (class-name (car (method-specializers method))))
+                                 methods)
+                         (method-lambda-list (car methods))
+                         (eq function (method-generic-function (car methods)))
+                         (functionp (method-function (car methods)))
+                         (typep (car methods) 'method)
+                         (typep function 'generic-function)
+                         (typep function 'standard-generic-function)
+                         (typep (car methods) 'standard-method)
+                         (class-name (generic-function-class function))
+                         (class-name (method-class (car methods)))
+                         (method-combination function)
+                         (handler-case
+                             (generic-function-methods #'+)
+                           (error () :error))
+                         (handler-case
+                             (generic-function-name #'+)
+                           (error () :error))
+                         (handler-case
+                             (generic-function-class #'+)
+                           (error () :error))
+                         (handler-case
+                             (method-lambda-list function)
+                           (error () :error))
+                         (handler-case
+                             (method-class function)
+                           (error () :error))
+                         (handler-case
+                             (method-generic-function function)
+                           (error () :error))
+                         (handler-case
+                             (method-function function)
+                           (error () :error))
+                         (handler-case
+                             (method-combination #'+)
+                           (error () :error)))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "(GENERIC-ACCESSOR-VALUE 2 (GENERIC-ACCESSOR-PARENT GENERIC-ACCESSOR-CHILD) (OBJECT) T T T T T T STANDARD-GENERIC-FUNCTION STANDARD-METHOD STANDARD :ERROR :ERROR :ERROR :ERROR :ERROR :ERROR :ERROR :ERROR)"
+    );
 }
 
 #[test]
@@ -2699,6 +3367,38 @@ fn evaluates_clos_methods_with_ordinary_lambda_lists() {
 }
 
 #[test]
+fn rejects_non_congruent_clos_method_lambda_lists() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(list
+                 (not
+                   (ignore-errors
+                     (progn
+                       (defclass point () ())
+                       (defgeneric describe-point (object &optional prefix))
+                       (defmethod describe-point ((object point))
+                         object))))
+                 (not
+                   (ignore-errors
+                     (progn
+                       (defclass point-with-key () ())
+                       (defgeneric point-suffix (object &key suffix))
+                       (defmethod point-suffix ((object point-with-key) &key tail)
+                         tail))))
+                 (not
+                   (ignore-errors
+                     (progn
+                       (defclass point-with-any-key () ())
+                       (defgeneric point-any-key (object &key suffix &allow-other-keys))
+                       (defmethod point-any-key ((object point-with-any-key) &key suffix)
+                         suffix)))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T T T)");
+}
+
+#[test]
 fn evaluates_clos_inheritance_and_specialization() {
     let values = Runtime::new()
         .eval_source(
@@ -2720,6 +3420,45 @@ fn evaluates_clos_inheritance_and_specialization() {
         .unwrap();
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(4 :RED T T (4))");
+}
+
+#[test]
+fn evaluates_clos_c3_precedence_and_leftmost_method_order() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass root () ())
+                 (defclass left (root) ())
+                 (defclass right (root) ())
+                 (defclass diamond (left right) ())
+                 (defgeneric describe-diamond (object))
+                 (defmethod describe-diamond ((object root)) :root)
+                 (defmethod describe-diamond ((object right)) :right)
+                 (defgeneric choose-pair (first second))
+                 (defmethod choose-pair ((first right) (second left)) :right-left)
+                 (defmethod choose-pair ((first left) (second right)) :left-right)
+                 (let ((object (make-instance 'diamond)))
+                   (list (describe-diamond object)
+                         (choose-pair object object))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(:RIGHT :LEFT-RIGHT)");
+}
+
+#[test]
+fn evaluates_clos_eql_specializer() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defgeneric choose-number (value))
+                 (defmethod choose-number ((value t)) :default)
+                 (defmethod choose-number ((value (eql 7))) :seven)
+                 (list (choose-number 7) (choose-number 8)))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(:SEVEN :DEFAULT)");
 }
 
 #[test]
@@ -2781,6 +3520,295 @@ fn evaluates_clos_method_combination() {
 }
 
 #[test]
+fn rejects_call_next_method_arguments_that_change_ordered_applicable_methods() {
+    let error = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass point () ())
+                 (defgeneric point-value (object))
+                 (defmethod point-value ((object t))
+                   :base)
+                 (defmethod point-value ((object point))
+                   (call-next-method 42))
+                 (point-value (make-instance 'point)))"#,
+        )
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        ncl_runtime::RuntimeError::InvalidForm { message, .. }
+            if message
+                == "call-next-method arguments changed the ordered applicable methods for POINT-VALUE"
+    ));
+}
+
+#[test]
+fn evaluates_clos_no_applicable_method_hook() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defgeneric no-applicable-method (generic-function &rest arguments))
+                 (defmethod no-applicable-method ((generic-function t) &rest arguments)
+                   (list (functionp generic-function) arguments))
+                 (defgeneric point-value (object))
+                 (point-value 42))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T (42))");
+}
+
+#[test]
+fn evaluates_clos_no_next_method_hook() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defgeneric no-next-method (generic-function method &rest arguments))
+                 (defmethod no-next-method ((generic-function t) (method t) &rest arguments)
+                   (list
+                     (functionp generic-function)
+                     (functionp method)
+                     (typep (car arguments) 'point)))
+                 (defclass point () ())
+                 (defgeneric point-value (object))
+                 (defmethod point-value ((object point))
+                   (call-next-method))
+                 (point-value (make-instance 'point)))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T T T)");
+}
+
+#[test]
+fn evaluates_clos_defmethod_redefinition_replaces_existing_method() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass point () ())
+                 (defgeneric point-value (object))
+                 (defmethod point-value ((object point)) :first)
+                 (defmethod point-value ((object point)) :second)
+                 (point-value (make-instance 'point)))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), ":SECOND");
+}
+
+#[test]
+fn evaluates_clos_initialize_instance_after_method_without_primary() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x)))
+                 (defmethod initialize-instance :after ((object point) &key x)
+                   (setf (slot-value object 'x) (+ x 1)))
+                 (point-x (make-instance 'point :x 2)))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "3");
+}
+
+#[test]
+fn evaluates_clos_initialize_instance_before_method_runs_before_standard_initialization() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defparameter *seen* nil)
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x)))
+                 (defmethod initialize-instance :before ((object point) &key x)
+                   (setf *seen* (slot-boundp object 'x)))
+                 (let ((point (make-instance 'point :x 10)))
+                   (list *seen* (point-x point))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(NIL 10)");
+}
+
+#[test]
+fn evaluates_clos_shared_initialize_reinitializes_requested_slots() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x :initform 1)
+                    (y :initarg :y :accessor point-y :initform 2)))
+                 (let ((point (make-instance 'point :x 10 :y 20)))
+                   (slot-makunbound point 'x)
+                   (slot-makunbound point 'y)
+                   (shared-initialize point '(x) :y 30)
+                   (list (slot-boundp point 'x)
+                         (point-x point)
+                         (point-y point))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T 1 30)");
+}
+
+#[test]
+fn evaluates_clos_reinitialize_instance_updates_initargs_and_runs_methods() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x :initform 1)
+                    (y :initarg :y :accessor point-y :initform 2)))
+                 (defmethod reinitialize-instance ((object point) &key y)
+                   (prog1 (call-next-method)
+                     (when y
+                       (setf (slot-value object 'x) (+ (point-y object) 1)))))
+                 (let ((point (make-instance 'point :x 10 :y 20)))
+                   (slot-makunbound point 'x)
+                   (slot-makunbound point 'y)
+                   (reinitialize-instance point :y 30 :ignored 4 :allow-other-keys t)
+                   (list (slot-boundp point 'x)
+                         (slot-boundp point 'y)
+                         (point-x point)
+                         (point-y point))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T T 31 30)");
+}
+
+#[test]
+fn evaluates_clos_reinitialize_instance_before_method_runs_before_standard_reinitialization() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defparameter *seen* nil)
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x :initform 1)
+                    (y :initarg :y :accessor point-y :initform 2)))
+                 (defmethod reinitialize-instance :before ((object point) &key y)
+                   (setf *seen* (list (slot-boundp object 'x)
+                                      (slot-boundp object 'y)
+                                      (when (slot-boundp object 'y)
+                                        (point-y object)))))
+                 (let ((point (make-instance 'point :x 10 :y 20)))
+                   (slot-makunbound point 'x)
+                   (slot-makunbound point 'y)
+                   (reinitialize-instance point :y 30)
+                   (list *seen*
+                         (slot-boundp point 'y)
+                         (point-y point))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "((NIL NIL NIL) T 30)");
+}
+
+#[test]
+fn evaluates_clos_change_class_preserves_shared_slots_and_reinitializes_new_ones() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x)
+                    (y :initarg :y :accessor point-y :initform 2)))
+                 (defclass colored-point (point)
+                   ((color :initarg :color :accessor point-color :initform :blue)))
+                 (let ((point (make-instance 'point :x 10 :y 20)))
+                   (list
+                     (eq point (change-class point 'colored-point :color :red :ignored 9 :allow-other-keys t))
+                     (typep point 'colored-point)
+                     (point-x point)
+                     (point-y point)
+                     (point-color point)
+                     (ignore-errors (slot-value point 'missing)))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T T 10 20 :RED NIL)");
+}
+
+#[test]
+fn evaluates_clos_change_class_invokes_update_instance_for_different_class() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x)
+                    (y :initarg :y :accessor point-y)))
+                 (defclass colored-point (point)
+                   ((color :initarg :color :accessor point-color :initform :blue)
+                    (old-x :accessor point-old-x)))
+                 (defmethod update-instance-for-different-class ((previous point) (current colored-point) &key color)
+                   (when color
+                     (setf (point-old-x current) (point-x previous)))
+                   current)
+                 (let ((point (make-instance 'point :x 10 :y 20)))
+                   (list
+                     (eq point (change-class point 'colored-point :color :red))
+                     (point-x point)
+                     (point-y point)
+                     (point-color point)
+                     (point-old-x point))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T 10 20 :RED 10)");
+}
+
+#[test]
+fn evaluates_clos_slot_missing_and_slot_unbound_hooks() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defparameter *slot-events* nil)
+                 (defclass point ()
+                   ((x :accessor point-x)
+                    (y :accessor point-y :initarg :y)))
+                 (defmethod slot-missing ((class t) object slot-name operation &optional new-value)
+                   (push (list (class-name class) (typep object 'point) slot-name operation new-value)
+                         *slot-events*)
+                   :missing)
+                 (defmethod slot-unbound ((class t) object slot-name)
+                   (list (class-name class) (typep object 'point) slot-name))
+                 (let ((point (make-instance 'point :y 2)))
+                   (list
+                     (slot-value point 'missing)
+                     (slot-boundp point 'missing)
+                     (eq point (slot-makunbound point 'missing))
+                     (setf (slot-value point 'missing) 7)
+                     (slot-value point 'x)
+                     (point-x point)
+                     (reverse *slot-events*))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "(:MISSING :MISSING T 7 (POINT T X) (POINT T X) ((POINT T MISSING SLOT-VALUE NIL) (POINT T MISSING SLOT-BOUNDP NIL) (POINT T MISSING SLOT-MAKUNBOUND NIL) (POINT T MISSING SETF 7)))"
+    );
+}
+
+#[test]
+fn evaluates_clos_allocate_instance_returns_uninitialized_standard_object() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x :initform 1)
+                    (y :initarg :y :accessor point-y)))
+                 (let ((point (allocate-instance 'point)))
+                   (list (typep point 'point)
+                         (slot-boundp point 'x)
+                         (slot-boundp point 'y)
+                         (ignore-errors (slot-value point 'x))
+                         (ignore-errors (slot-value point 'y)))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T NIL NIL NIL NIL)");
+}
+
+#[test]
 fn evaluates_the_with_type_designators() {
     assert_eq!(
         evaluate(
@@ -2817,6 +3845,26 @@ fn evaluates_locally_and_eval_when() {
 }
 
 #[test]
+fn evaluates_with_compilation_unit() {
+    assert_eq!(
+        evaluate(
+            "(let ((seen 0))
+               (list
+                 (special-operator-p 'with-compilation-unit)
+                 (with-compilation-unit ()
+                   (setq seen (+ seen 2))
+                   seen)
+                 seen
+                 (with-compilation-unit ()
+                   (setq seen (+ seen 3))
+                   seen)))",
+        )
+        .to_string(),
+        "(T 2 2 5)"
+    );
+}
+
+#[test]
 fn evaluates_defstruct_constructors_accessors_and_copies() {
     let values = Runtime::new()
         .eval_source(
@@ -2829,6 +3877,8 @@ fn evaluates_defstruct_constructors_accessors_and_copies() {
                          (person-age person)
                          (typep person 'person)
                          (type-of person)
+                         (class-name (class-of person))
+                         (class-name (find-class 'person))
                          (eq person (copy-person person))
                          (equal person (copy-person person))
                          (write-to-string person))))"#,
@@ -2837,8 +3887,40 @@ fn evaluates_defstruct_constructors_accessors_and_copies() {
     assert_eq!(values.len(), 1);
     assert_eq!(
         values[0].to_string(),
-        r##"(T "Grace" 21 T PERSON NIL T "#S(PERSON :NAME \"Grace\" :AGE 21)")"##,
+        r##"(T "Grace" 21 T PERSON PERSON PERSON NIL T "#S(PERSON :NAME \"Grace\" :AGE 21)")"##,
     );
+}
+
+#[test]
+fn evaluates_structure_literal_dispatch() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defstruct person name (age 21))
+                 (let ((person #S(person :name "Ada" :age 42)))
+                   (list (person-p person)
+                         (person-name person)
+                         (person-age person)
+                         (write-to-string person))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r##"(T "Ada" 42 "#S(PERSON :NAME \"Ada\" :AGE 42)")"##,
+    );
+}
+
+#[test]
+fn evaluates_pathname_literal_dispatch() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(list (stringp #P"/tmp/demo.txt")
+                     (equal #P"/tmp/demo.txt" "/tmp/demo.txt"))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T T)");
 }
 
 #[test]
@@ -2866,8 +3948,14 @@ fn evaluates_defstruct_name_and_options() {
                     (:copier nil)
                     (:constructor nil))
                    value)
+                 (defstruct
+                   (named-record
+                    (:named)
+                    (:constructor make-named-record))
+                   value)
                  (let ((account (make-account-record :id 7))
-                       (plain (make-plain :amount 9)))
+                       (plain (make-plain :amount 9))
+                       (named (make-named-record :value 12)))
                    (list (account-p account)
                          (acct-id account)
                          (acct-balance account)
@@ -2876,11 +3964,18 @@ fn evaluates_defstruct_name_and_options() {
                          (type-of account)
                          (amount plain)
                          (plain-p plain)
-                         (equal plain (clone-plain plain)))))"#,
+                         (equal plain (clone-plain plain))
+                         (named-record-p named)
+                         (typep named 'named-record)
+                         (type-of named)
+                         (write-to-string named))))"#,
         )
         .unwrap();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].to_string(), "(T 7 0 T T ACCOUNT 9 T T)");
+    assert_eq!(
+        values[0].to_string(),
+        r##"(T 7 0 T T ACCOUNT 9 T T T T NAMED-RECORD "#S(NAMED-RECORD :VALUE 12)")"##
+    );
 }
 
 #[test]
@@ -3021,6 +4116,7 @@ fn evaluates_arrays_and_multidimensional_setf() {
     assert_eq!(
         evaluate(
             "(let ((array (make-array '(2 3)
+                                      :element-type 'character
                                       :initial-contents '((0 1 2) (3 4 5)))))
                (list (array-row-major-index array 1 2)
                      (array-in-bounds-p array 1 2)
@@ -3033,7 +4129,240 @@ fn evaluates_arrays_and_multidimensional_setf() {
                      (simple-vector-p array)))",
         )
         .to_string(),
-        "(5 T NIL 5 5 T T T NIL)"
+        "(5 T NIL 5 5 CHARACTER T T NIL)"
+    );
+    assert_eq!(
+        evaluate(
+            "(list (upgraded-array-element-type 'bit)
+                   array-rank-limit
+                   array-dimension-limit
+                   array-total-size-limit
+                   (upgraded-array-element-type 'base-char)
+                   (upgraded-array-element-type '(unsigned-byte 8)))",
+        )
+        .to_string(),
+        "(BIT 9223372036854775807 9223372036854775807 9223372036854775807 CHARACTER (UNSIGNED-BYTE 8))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((vector (make-array 4
+                                      :element-type 'character
+                                      :initial-element #\\A
+                                      :fill-pointer 2)))
+               (list (array-has-fill-pointer-p vector)
+                     (fill-pointer vector)
+                     (adjustable-array-p vector)
+                     (multiple-value-list (array-displacement vector))
+                     (array-element-type vector)
+                     (simple-vector-p vector)
+                     (simple-array-p vector)
+                     (typep vector 'vector)
+                     (typep vector 'simple-vector)))",
+        )
+        .to_string(),
+        "(T 2 NIL (NIL 0) CHARACTER NIL NIL T NIL)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let* ((vector (make-array 4
+                                       :element-type 'character
+                                       :initial-element #\\A
+                                       :fill-pointer 2))
+                    (array (make-array '(2 2)
+                                       :initial-element 0
+                                       :element-type 'integer)))
+               (setf (aref vector 1) #\\Z
+                     (row-major-aref array 2) 7)
+               (list (fill-pointer vector)
+                     (array-element-type vector)
+                     (aref vector 1)
+                     (array-element-type array)
+                     (aref array 1 0)))",
+        )
+        .to_string(),
+        "(2 CHARACTER #\\Z INTEGER 7)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((vector (make-array 4
+                                      :initial-contents '(1 2 3 4)
+                                      :fill-pointer 3
+                                      :element-type 'integer)))
+               (setf (fill-pointer vector) 1)
+               (list (fill-pointer vector)
+                     (array-element-type vector)
+                     (aref vector 0)
+                     (aref vector 3)))",
+        )
+        .to_string(),
+        "(1 INTEGER 1 4)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array '(2 2) :initial-element 0)))
+               (list (adjustable-array-p array)
+                     (multiple-value-list (array-displacement array))))",
+        )
+        .to_string(),
+        "(NIL (NIL 0))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let* ((base (make-array 5 :initial-contents '(5 1 4 3 2)))
+                    (displaced (make-array 3 :displaced-to base :displaced-index-offset 1)))
+               (list (sort displaced #'<)
+                     (multiple-value-list (array-displacement displaced))
+                     (simple-array-p displaced)))",
+        )
+        .to_string(),
+        "(#(1 3 4) (#(5 1 3 4 2) 1) NIL)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let* ((base (make-array 5 :initial-contents '(10 20 30 40 50)))
+                    (displaced (make-array 3
+                                           :displaced-to base
+                                           :displaced-index-offset 1
+                                           :fill-pointer 2
+                                           :element-type 'integer
+                                           :adjustable t)))
+               (map-into displaced #'1+ '(1 2 3))
+               (list displaced
+                     (multiple-value-list (array-displacement displaced))
+                     (fill-pointer displaced)
+                     (adjustable-array-p displaced)
+                     (array-element-type displaced)
+                     (simple-array-p displaced)))",
+        )
+        .to_string(),
+        "(#(2 3 4) (#(10 2 3 4 50) 1) 2 T INTEGER NIL)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let* ((base (make-array 5 :initial-contents '(1 2 3 2 4)))
+                    (displaced (make-array 5
+                                           :displaced-to base
+                                           :fill-pointer 4
+                                           :element-type 'integer
+                                           :adjustable t)))
+               (let ((result (remove 2 displaced :count 1)))
+                 (list result
+                       (multiple-value-list (array-displacement result))
+                       (fill-pointer result)
+                       (adjustable-array-p result)
+                       (array-element-type result)
+                       (simple-array-p result))))",
+        )
+        .to_string(),
+        "(#(1 3 2 4) (NIL 0) 4 T INTEGER NIL)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let* ((base (make-array 4 :initial-contents '(1 2 2 3)))
+                    (displaced (make-array 4
+                                           :displaced-to base
+                                           :fill-pointer 3
+                                           :element-type 'integer
+                                           :adjustable t)))
+               (let ((result (substitute 9 2 displaced :count 1)))
+                 (list result
+                       (multiple-value-list (array-displacement result))
+                       (fill-pointer result)
+                       (adjustable-array-p result)
+                       (array-element-type result)
+                       (simple-array-p result))))",
+        )
+        .to_string(),
+        "(#(1 9 2 3) (NIL 0) 3 T INTEGER NIL)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((vector (make-array 3
+                                      :initial-contents '(1 2 3)
+                                      :element-type 'integer
+                                      :adjustable t)))
+               (list (adjustable-array-p vector)
+                     (simple-array-p vector)
+                     (typep vector 'simple-vector)
+                     (array-element-type vector)))",
+        )
+        .to_string(),
+        "(T NIL NIL INTEGER)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let* ((vector (make-array 3
+                                       :initial-contents '(1 2 3)
+                                       :adjustable t
+                                       :fill-pointer 2
+                                       :element-type 'integer))
+                    (adjusted (adjust-array vector 5 :initial-element 9)))
+               (list adjusted
+                     (adjustable-array-p adjusted)
+                     (fill-pointer adjusted)
+                     (array-element-type adjusted)
+                     (aref adjusted 3)
+                     (aref adjusted 4)
+                     (adjustable-array-p adjusted)))",
+        )
+        .to_string(),
+        "(#(1 2 3 9 9) T 2 INTEGER 9 9 T)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let* ((array (make-array '(2 2)
+                                      :initial-contents '((1 2) (3 4))
+                                      :element-type 'integer
+                                      :adjustable t))
+                    (adjusted (adjust-array array '(2 3) :initial-element 0)))
+               (list (array-dimensions adjusted)
+                     (adjustable-array-p adjusted)
+                     (simple-array-p adjusted)
+                     (array-element-type adjusted)
+                     (aref adjusted 0 0)
+                     (aref adjusted 0 1)
+                     (aref adjusted 0 2)
+                     (aref adjusted 1 0)
+                     (aref adjusted 1 1)
+                     (aref adjusted 1 2)))",
+        )
+        .to_string(),
+        "((2 3) T NIL INTEGER 1 2 3 4 0 0)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let* ((base (make-array 5 :initial-contents '(10 11 12 13 14)))
+                    (displaced (make-array 3 :displaced-to base :displaced-index-offset 1)))
+               (setf (aref displaced 1) 99)
+               (list displaced
+                     (multiple-value-list (array-displacement displaced))
+                     (simple-array-p displaced)
+                     (aref displaced 0)
+                     (aref displaced 1)
+                     (aref displaced 2)
+                     (aref base 2)))",
+        )
+        .to_string(),
+        "(#(11 99 13) (#(10 11 99 13 14) 1) NIL 11 99 13 99)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let* ((base (make-array 6 :initial-contents '(0 1 2 3 4 5)))
+                    (displaced (make-array '(2 2) :displaced-to base :displaced-index-offset 2))
+                    (adjusted (adjust-array displaced '(1 3) :displaced-to base :displaced-index-offset 1)))
+               (list (array-dimensions displaced)
+                     (row-major-aref displaced 0)
+                     (row-major-aref displaced 3)
+                     (multiple-value-list (array-displacement displaced))
+                     (simple-array-p displaced)
+                     (array-dimensions adjusted)
+                     (row-major-aref adjusted 0)
+                     (row-major-aref adjusted 2)
+                     (multiple-value-list (array-displacement adjusted))
+                     (simple-array-p adjusted)))",
+        )
+        .to_string(),
+        "((2 2) 2 5 (#(0 1 2 3 4 5) 2) NIL (1 3) 1 3 (#(0 1 2 3 4 5) 1) NIL)"
     );
 }
 
@@ -3287,10 +4616,24 @@ fn evaluates_catch_and_throw() {
 fn evaluates_character_and_string_operations() {
     assert_eq!(
         evaluate(
-            "(list (string #\\a) (string 'hello) (make-string 3 #\\x) (char \"abc\" 1) (char-code #\\A) (code-char 98) (char= #\\a #\\a) (char-equal #\\A #\\a) (char< #\\a #\\c) (string= \"abc\" \"abc\") (string-equal \"AbC\" \"aBc\") (string< \"abc\" \"abd\") (string-upcase \"Abc\") (string-downcase \"AbC\"))"
+            "(list (string #\\a)
+                   (string 'hello)
+                   (make-string 3 :initial-element #\\x :element-type 'character)
+                   (make-string 2 :element-type 'base-char)
+                   (char \"abc\" 1)
+                   (char-code #\\A)
+                   (code-char 98)
+                   (char= #\\a #\\a)
+                   (char-equal #\\A #\\a)
+                   (char< #\\a #\\c)
+                   (string= \"abc\" \"abc\")
+                   (string-equal \"AbC\" \"aBc\")
+                   (string< \"abc\" \"abd\")
+                   (string-upcase \"Abc\")
+                   (string-downcase \"AbC\"))"
         )
         .to_string(),
-        "(\"a\" \"HELLO\" \"xxx\" #\\b 65 #\\b T T T T T 2 \"ABC\" \"abc\")"
+        "(\"a\" \"HELLO\" \"xxx\" \"  \" #\\b 65 #\\b T T T T T 2 \"ABC\" \"abc\")"
     );
     assert_eq!(
         evaluate(
@@ -3351,6 +4694,16 @@ fn evaluates_setf_places() {
         "(9 2 7)"
     );
     assert_eq!(
+        evaluate(
+            "(let ((xs (list 1 2 3)))
+               (setf (first xs) 8
+                     (rest xs) (list 9 10))
+               xs)",
+        )
+        .to_string(),
+        "(8 9 10)"
+    );
+    assert_eq!(
         evaluate("(let ((values #(1 2))) (setf (aref values 1) 8) values)").to_string(),
         "#(1 8)"
     );
@@ -3389,8 +4742,31 @@ fn evaluates_setf_places() {
         "0"
     );
     assert_eq!(
+        evaluate(
+            "(let ((bits (make-array '(2 2) :element-type 'bit :initial-contents '((0 1) (1 0)))))
+               (setf (sbit bits 1 0) 0)
+               (list (sbit bits 1 0) (bit bits 1 0)))",
+        )
+        .to_string(),
+        "(0 0)"
+    );
+    assert_eq!(
         evaluate("(let ((xs (list (list 1 2)))) (setf (car (nth 0 xs)) 9) xs)").to_string(),
         "((9 2))"
+    );
+    assert_eq!(
+        evaluate(
+            "(list (byte-size (byte 3 1))
+                   (byte-position (byte 3 1))
+                   (ldb (byte 3 1) 10)
+                   (dpb 5 (byte 3 1) 0))",
+        )
+        .to_string(),
+        "(3 1 5 10)"
+    );
+    assert_eq!(
+        evaluate("(let ((bits 0)) (setf (ldb (byte 3 1) bits) 5) bits)").to_string(),
+        "10"
     );
     assert_eq!(
         evaluate("(let ((text \"abc\")) (setf (elt text 1) #\\X) text)").to_string(),
@@ -3428,6 +4804,23 @@ fn evaluates_setf_places() {
         "(:A 2)"
     );
     assert_eq!(
+        evaluate("(let ((x 1)) (setf (the integer x) 7) x)").to_string(),
+        "7"
+    );
+    assert_eq!(
+        evaluate("(let ((x 1)) (incf (the integer x) 2) x)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((x 0) (y 0))
+               (setf (values x y) (values 7 8))
+               (list x y))",
+        )
+        .to_string(),
+        "(7 8)"
+    );
+    assert_eq!(
         evaluate(
             "(progn
                (defparameter *setf-symbol-value-target* 1)
@@ -3460,11 +4853,57 @@ fn evaluates_push_pop_and_psetf() {
     );
     assert_eq!(
         evaluate(
+            "(let ((count 0)
+                   (cells (vector (list 2 3))))
+               (list
+                 (push 1 (aref cells (progn (incf count) 0)))
+                 count
+                 (aref cells 0)
+                 (pop (aref cells (progn (incf count) 0)))
+                 count
+                 (aref cells 0)))",
+        )
+        .to_string(),
+        "((1 2 3) 1 (1 2 3) 1 2 (2 3))"
+    );
+    assert_eq!(
+        evaluate(
             "(let ((a 0) (b 0))
                (list (psetf a 1 b 2) a b))",
         )
         .to_string(),
-        "(2 1 2)"
+        "(NIL 1 2)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((a 0) (b 0) (x 1) (y 2))
+               (list
+                 (psetf (values a b) (values x y)
+                        x 7
+                        y 8)
+                 a
+                 b
+                 x
+                 y))",
+        )
+        .to_string(),
+        "(NIL 1 2 7 8)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((plist (list :a 1 :b 2)))
+               (list (remf plist :a) plist (remf plist :missing) plist))",
+        )
+        .to_string(),
+        "(T (:B 2) NIL (:B 2))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list (list :a 1 :b 2) :tail)))
+               (list (remf (car xs) :b) xs))",
+        )
+        .to_string(),
+        "(T ((:A 1) :TAIL))"
     );
 }
 
@@ -3486,6 +4925,20 @@ fn evaluates_pushnew() {
         )
         .to_string(),
         "(((1 :A)) ((1 :C) (1 :A)))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((count 0)
+                   (cells (vector (list 1 2))))
+               (list
+                 (pushnew 3 (aref cells (progn (incf count) 0)))
+                 count
+                 (pushnew 3 (aref cells (progn (incf count) 0)))
+                 count
+                 (aref cells 0)))",
+        )
+        .to_string(),
+        "((3 1 2) 1 (3 1 2) 2 (3 1 2))"
     );
 }
 
@@ -3521,6 +4974,55 @@ fn evaluates_defsetf_passes_place_arguments_before_value() {
         )
         .to_string(),
         "(:FIRST :SECOND :NEW)"
+    );
+}
+
+#[test]
+fn evaluates_long_defsetf_and_get_setf_expansion() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *long-defsetf-cell* (list 1 2 3))
+               (defun third-of (list) (third list))
+               (defsetf third-of (list) (store)
+                 `(progn
+                    (setf (nth 2 ,list) ,store)
+                    ,store))
+               (list
+                 (setf (third-of *long-defsetf-cell*) 42)
+                 *long-defsetf-cell*
+                 (multiple-value-bind (temporaries value-forms stores store-form access-form)
+                     (get-setf-expansion '(third-of *long-defsetf-cell*))
+                   (list (length temporaries)
+                         (length value-forms)
+                         (length stores)
+                         store-form
+                         access-form))))",
+        )
+        .to_string(),
+        "(42 (1 2 42) (1 1 1 (PROGN (SETF (NTH 2 *LONG-DEFSETF-CELL*) NCL-SETF-TEMP-3) NCL-SETF-TEMP-3) (THIRD-OF NCL-SETF-TEMP-2)))"
+    );
+}
+
+#[test]
+fn evaluates_long_defsetf_optional_and_keyword_rest_bindings() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defsetf optional-place (x &optional (y 10)) (store)
+                 `(list ,x ,y ,store))
+               (defsetf keyed-place (x &rest rest &key y (z 99)) (store)
+                 `(list :x ,x :rest ,rest :y ,y :z ,z :store ,store))
+               (list
+                 (multiple-value-bind (temporaries value-forms stores store-form access-form)
+                     (get-setf-expansion '(optional-place a))
+                   (list temporaries value-forms stores store-form access-form))
+                 (multiple-value-bind (temporaries value-forms stores store-form access-form)
+                     (get-setf-expansion '(keyed-place a :z b))
+                   (list temporaries value-forms stores store-form access-form))))",
+        )
+        .to_string(),
+        "(((NCL-SETF-TEMP-0) (A) (NCL-SETF-TEMP-1) (LIST A 10 NCL-SETF-TEMP-1) (OPTIONAL-PLACE NCL-SETF-TEMP-0)) ((NCL-SETF-TEMP-2 NCL-SETF-TEMP-3) (A B) (NCL-SETF-TEMP-4) (LIST :X A :REST (:Z B) :Y NIL :Z B :STORE NCL-SETF-TEMP-4) (KEYED-PLACE NCL-SETF-TEMP-2 :Z NCL-SETF-TEMP-3)))"
     );
 }
 
@@ -3577,6 +5079,67 @@ fn evaluates_define_modify_macro_on_generalized_place() {
         .to_string(),
         "(12 ((12)))"
     );
+    assert_eq!(
+        evaluate(
+            "(progn
+               (define-modify-macro add-to-hash-value (&optional (delta 1)) +)
+               (let ((table (make-hash-table :test #'eq)))
+                 (setf (gethash 'count table) 10)
+                 (list (add-to-hash-value (gethash 'count table) 2)
+                       (add-to-hash-value (gethash 'count table))
+                       (gethash 'count table))))",
+        )
+        .to_string(),
+        "(12 13 13)"
+    );
+    assert_eq!(
+        evaluate(
+            "(progn
+               (define-modify-macro add-sum-to-place (&rest deltas) +)
+               (let ((cell (list 10)))
+                 (list (add-sum-to-place (car cell) 1 2 3)
+                       (add-sum-to-place (car cell) 4 5)
+                       cell)))",
+        )
+        .to_string(),
+        "(16 25 (25))"
+    );
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *modify-expander-cell* (list 10))
+               (define-setf-expander modify-expander-place ()
+                 (values
+                   nil
+                   nil
+                   '(new-value)
+                   '(progn
+                      (setf (car *modify-expander-cell*) new-value)
+                      new-value)
+                   '(car *modify-expander-cell*)))
+               (define-modify-macro add-to-expander-place (&optional (delta 1)) +)
+               (list (add-to-expander-place (modify-expander-place) 2)
+                     (add-to-expander-place (modify-expander-place))
+                     *modify-expander-cell*))",
+        )
+        .to_string(),
+        "(12 13 (13))"
+    );
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defun add-scaled-delta (current &key (delta 1) (scale 1))
+                 (+ current (* delta scale)))
+               (define-modify-macro add-scaled-to-place (&key (delta 1) (scale 1))
+                 add-scaled-delta)
+               (let ((cell (list 10)))
+                 (list (add-scaled-to-place (car cell) :delta 2 :scale 3)
+                       (add-scaled-to-place (car cell) :scale 2)
+                       cell)))",
+        )
+        .to_string(),
+        "(16 18 (18))"
+    );
 }
 
 #[test]
@@ -3593,6 +5156,10 @@ fn evaluates_symbol_properties_and_setf_get() {
                   (setf (get symbol :answer) 11)
                   (get symbol :answer)
                   (symbol-plist symbol)
+                  (setf (symbol-plist symbol) (list :left 1 :right 2))
+                  (symbol-plist symbol)
+                  (get symbol :left)
+                  (get symbol :answer :missing)
                   (get other :answer)
                   (remprop symbol :answer)
                   (get symbol :answer :default)
@@ -3600,7 +5167,7 @@ fn evaluates_symbol_properties_and_setf_get() {
                   (symbol-plist symbol)))"#,
         )
         .to_string(),
-        "(NIL :DEFAULT 10 10 11 11 (:ANSWER 11) NIL T :DEFAULT NIL NIL)",
+        "(NIL :DEFAULT 10 10 11 11 (:ANSWER 11) (:LEFT 1 :RIGHT 2) (:LEFT 1 :RIGHT 2) 1 :MISSING NIL NIL :DEFAULT NIL (:LEFT 1 :RIGHT 2))",
     );
 }
 
@@ -3626,6 +5193,79 @@ fn evaluates_incf_and_decf_generalized_places() {
         .to_string(),
         "(12 (12) 11 (11))"
     );
+    assert_eq!(
+        evaluate(
+            "(let ((vector (make-array 4
+                                      :initial-contents '(1 2 3 4)
+                                      :fill-pointer 2)))
+               (list (incf (fill-pointer vector))
+                     (fill-pointer vector)
+                     (decf (fill-pointer vector))
+                     (fill-pointer vector)))",
+        )
+        .to_string(),
+        "(3 3 2 2)"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2 3 4))) (list (setf (third xs) 9) xs))").to_string(),
+        "(9 (1 2 9 4))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2 3 4))) (list (incf (fourth xs) 2) xs))").to_string(),
+        "(6 (1 2 3 6))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 1 2 3 4)))
+               (list (setf (third xs) 9)
+                     xs
+                     (incf (fourth xs) 2)
+                     xs))",
+        )
+        .to_string(),
+        "(9 (1 2 9 4) 6 (1 2 9 6))"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(let ((symbol (make-symbol "counter"))
+                     (plist (list :count 10)))
+                 (setf (get symbol :count) 10)
+                 (list (incf (get symbol :count) 2)
+                       (get symbol :count)
+                       (decf (get symbol :count))
+                       (get symbol :count)
+                       (incf (getf plist :count) 3)
+                       plist
+                       (decf (getf plist :count) 2)
+                       plist))"#,
+        )
+        .to_string(),
+        "(12 12 11 11 13 (:COUNT 13) 11 (:COUNT 11))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((count 0)
+                   (vector (make-array 1 :initial-contents '(10))))
+               (list (incf (aref vector (progn (incf count) 0)) 2)
+                     count
+                     (decf (aref vector (progn (incf count) 0)))
+                     count
+                     (aref vector 0)))",
+        )
+        .to_string(),
+        "(12 1 11 2 11)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((bits 2))
+               (list (incf (ldb (byte 3 1) bits) 2)
+                     bits
+                     (decf (ldb (byte 3 1) bits))
+                     bits))",
+        )
+        .to_string(),
+        "(3 6 2 4)"
+    );
 }
 
 #[test]
@@ -3645,6 +5285,63 @@ fn evaluates_rotatef_and_shiftf() {
         )
         .to_string(),
         "(1 (2 9))"
+    );
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *rotatef-expander-a* 1)
+               (defparameter *rotatef-expander-b* 2)
+               (define-setf-expander rotatef-expander-a ()
+                 (values nil nil '(new-value)
+                         '(progn (setq *rotatef-expander-a* new-value) new-value)
+                         '*rotatef-expander-a*))
+               (define-setf-expander rotatef-expander-b ()
+                 (values nil nil '(new-value)
+                         '(progn (setq *rotatef-expander-b* new-value) new-value)
+                         '*rotatef-expander-b*))
+               (list (rotatef (rotatef-expander-a) (rotatef-expander-b))
+                     *rotatef-expander-a*
+                     *rotatef-expander-b*))",
+        )
+        .to_string(),
+        "(NIL 2 1)"
+    );
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *shiftf-expander-a* 1)
+               (defparameter *shiftf-expander-b* 2)
+               (define-setf-expander shiftf-expander-a ()
+                 (values nil nil '(new-value)
+                         '(progn (setq *shiftf-expander-a* new-value) new-value)
+                         '*shiftf-expander-a*))
+               (define-setf-expander shiftf-expander-b ()
+                 (values nil nil '(new-value)
+                         '(progn (setq *shiftf-expander-b* new-value) new-value)
+                         '*shiftf-expander-b*))
+               (list (shiftf (shiftf-expander-a) (shiftf-expander-b) 9)
+                     *shiftf-expander-a*
+                     *shiftf-expander-b*))",
+        )
+        .to_string(),
+        "(1 2 9)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((count 0)
+                   (vector (make-array 2 :initial-contents '(1 2))))
+               (list (rotatef (aref vector (progn (incf count) 0))
+                              (aref vector (progn (incf count) 1)))
+                     count
+                     (coerce vector 'list)
+                     (shiftf (aref vector (progn (incf count) 0))
+                             (aref vector (progn (incf count) 1))
+                             9)
+                     count
+                     (coerce vector 'list)))",
+        )
+        .to_string(),
+        "(NIL 2 (2 1) 2 4 (1 9))"
     );
 }
 
@@ -4262,6 +5959,18 @@ fn evaluates_do_with_implicit_block_and_tagbody() {
 }
 
 #[test]
+fn rejects_malformed_do_forms() {
+    assert!(matches!(
+        Runtime::new().eval_source("(do 1 ((= 1 1)) 42)"),
+        Err(RuntimeError::InvalidForm { .. }),
+    ));
+    assert!(matches!(
+        Runtime::new().eval_source("(do ((i 0)) 1 42)"),
+        Err(RuntimeError::InvalidForm { .. }),
+    ));
+}
+
+#[test]
 fn evaluates_prog_and_prog_star_with_parallel_and_sequential_bindings() {
     assert_eq!(
         evaluate(
@@ -4275,6 +5984,304 @@ fn evaluates_prog_and_prog_star_with_parallel_and_sequential_bindings() {
         .to_string(),
         "((1 9) (1 1) NIL)"
     );
+}
+
+#[test]
+fn rejects_malformed_prog_forms() {
+    assert!(matches!(
+        Runtime::new().eval_source("(prog 1 42)"),
+        Err(RuntimeError::InvalidForm { .. }),
+    ));
+    assert!(matches!(
+        Runtime::new().eval_source("(prog ((1 0)) 42)"),
+        Err(RuntimeError::InvalidForm { .. }),
+    ));
+}
+
+#[test]
+fn rejects_if_with_too_many_forms() {
+    let error = Runtime::new().eval_source("(if t 1 2 3)").unwrap_err();
+    assert!(matches!(
+        error,
+        RuntimeError::Arity {
+            function,
+            expected,
+            actual: 4,
+        } if function == "if" && expected == "two or three"
+    ));
+}
+
+#[test]
+fn rejects_let_and_local_function_forms_without_required_bindings() {
+    for (source, function) in [
+        ("(let)", "let"),
+        ("(let*)", "let*"),
+        ("(flet)", "flet"),
+        ("(labels)", "labels"),
+    ] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::Arity {
+                expected,
+                actual: 0,
+                function: ref actual_function,
+            } if actual_function == function && expected == "at least one"
+        ));
+    }
+}
+
+#[test]
+fn rejects_when_and_unless_without_required_condition() {
+    for (source, function) in [("(when)", "when"), ("(unless)", "unless")] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::Arity {
+                expected,
+                actual: 0,
+                function: ref actual_function,
+            } if actual_function == function && expected == "at least one"
+        ));
+    }
+}
+
+#[test]
+fn rejects_non_list_let_and_local_function_bindings() {
+    for (source, message) in [
+        ("(let 1 42)", "let bindings must be a list"),
+        ("(let (1) 42)", "let binding must be a list"),
+        ("(flet 1 42)", "local function bindings must be a list"),
+        ("(flet (1) 42)", "local function binding must be a list"),
+        ("(labels 1 42)", "local function bindings must be a list"),
+        ("(labels (1) 42)", "local function binding must be a list"),
+    ] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm {
+                message: ref actual_message,
+                ..
+            } if actual_message == message
+        ));
+    }
+}
+
+#[test]
+fn rejects_non_list_handler_restart_and_eval_when_forms() {
+    for (source, message) in [
+        (
+            "(handler-bind 1 42)",
+            "handler-bind handler list must be a list",
+        ),
+        (
+            "(restart-bind 1 42)",
+            "restart-bind binding list must be a list",
+        ),
+        ("(eval-when 1 42)", "eval-when situations must be a list"),
+    ] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm {
+                message: ref actual_message,
+                ..
+            } if actual_message == message
+        ));
+    }
+}
+
+#[test]
+fn rejects_invalid_multiple_value_variable_forms() {
+    for (source, message) in [
+        (
+            "(multiple-value-bind 1 (values 1) 42)",
+            "multiple-value-bind variables must be a list",
+        ),
+        (
+            "(multiple-value-bind (1) (values 1) 42)",
+            "multiple-value-bind variable must be a symbol",
+        ),
+        (
+            "(multiple-value-setq 1 (values 1))",
+            "multiple-value-setq variables must be a list",
+        ),
+        (
+            "(multiple-value-setq (1) (values 1))",
+            "multiple-value-setq variable must be a symbol",
+        ),
+    ] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm {
+                message: ref actual_message,
+                ..
+            } if actual_message == message
+        ));
+    }
+}
+
+#[test]
+fn rejects_invalid_with_stream_binding_forms() {
+    for (source, message) in [
+        (
+            "(with-open-file 1 42)",
+            "with-open-file binding must be a list",
+        ),
+        (
+            "(with-open-file (1 \"file\") 42)",
+            "with-open-file stream variable must be a symbol",
+        ),
+        (
+            "(with-output-to-string 1 42)",
+            "with-output-to-string binding must be a list",
+        ),
+        (
+            "(with-output-to-string (1) 42)",
+            "with-output-to-string stream variable must be a symbol",
+        ),
+        (
+            "(with-input-from-string 1 42)",
+            "with-input-from-string binding must be a list",
+        ),
+        (
+            "(with-input-from-string (1 \"abc\") 42)",
+            "with-input-from-string stream variable must be a symbol",
+        ),
+    ] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm {
+                message: ref actual_message,
+                ..
+            } if actual_message == message
+        ));
+    }
+}
+
+#[test]
+fn rejects_invalid_handler_restart_and_conditional_clauses() {
+    for (source, message) in [
+        ("(handler-case 1 2)", "handler-case clause must be a list"),
+        (
+            "(handler-case 1 (error 2))",
+            "handler-case variable list must be a list",
+        ),
+        (
+            "(handler-case 1 (1 () 42))",
+            "condition name must be a symbol",
+        ),
+        (
+            "(handler-bind (1) 42)",
+            "handler-bind clause must be a list",
+        ),
+        (
+            "(handler-bind ((error)) 42)",
+            "handler-bind clause needs a condition and function",
+        ),
+        (
+            "(handler-bind ((1 (lambda (condition) condition))) 42)",
+            "condition name must be a symbol",
+        ),
+        (
+            "(restart-bind (1) 42)",
+            "restart-bind clause must be a list",
+        ),
+        (
+            "(restart-bind ((1 (lambda () 42))) 42)",
+            "restart name must be a symbol",
+        ),
+        (
+            "(with-simple-restart 1 42)",
+            "with-simple-restart restart clause must be a list",
+        ),
+        (
+            "(with-simple-restart (1 \"nope\") 42)",
+            "restart name must be a symbol",
+        ),
+        ("(restart-case 1 2)", "restart-case clause must be a list"),
+        ("(restart-case 1 (1 () 2))", "restart name must be a symbol"),
+        ("(cond 1)", "cond clauses must be lists"),
+        ("(case 1 2)", "case clauses must be lists"),
+        ("(typecase 1 2)", "typecase clauses must be lists"),
+    ] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm {
+                message: ref actual_message,
+                ..
+            } if actual_message == message
+        ));
+    }
+}
+
+#[test]
+fn rejects_invalid_block_names() {
+    for source in ["(block 1 42)", "(return-from 1 42)"] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { ref message, .. }
+                if message == "block name must be a symbol"
+        ));
+    }
+}
+
+#[test]
+fn rejects_invalid_iteration_eval_when_and_stream_binding_forms() {
+    for (source, message) in [
+        ("(prog 1)", "prog bindings must be a list"),
+        ("(prog ((1)) nil)", "prog binding name must be a symbol"),
+        ("(do 1 (t))", "do bindings must be a list"),
+        ("(do ((1)) (t))", "do binding name must be a symbol"),
+        ("(dotimes 1 42)", "dotimes binding must be a list"),
+        (
+            "(dotimes (1 3) 42)",
+            "dotimes binding name must be a symbol",
+        ),
+        ("(dolist 1 42)", "dolist binding must be a list"),
+        (
+            "(dolist (1 '(1)) 42)",
+            "dolist binding name must be a symbol",
+        ),
+        ("(eval-when 1 42)", "eval-when situations must be a list"),
+        (
+            "(eval-when (1) 42)",
+            "eval-when situations must contain symbols",
+        ),
+        (
+            "(with-open-file (stream) 42)",
+            "with-open-file binding needs a stream variable and pathname",
+        ),
+        (
+            "(with-output-to-string () 42)",
+            "with-output-to-string binding needs a stream variable and optional string place",
+        ),
+        (
+            "(with-input-from-string (stream \"abc\" :start) 42)",
+            "with-input-from-string options need keyword/value pairs",
+        ),
+        (
+            "(with-input-from-string (stream \"abc\" 1 2) 42)",
+            "with-input-from-string option must be a keyword",
+        ),
+        (
+            "(with-input-from-string (stream \"abc\" :index x :index y) 42)",
+            "with-input-from-string :index may appear only once",
+        ),
+    ] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm {
+                message: ref actual_message,
+                ..
+            } if actual_message == message
+        ));
+    }
 }
 
 #[test]
@@ -4384,6 +6391,48 @@ fn evaluates_destructuring_bind_lambda_list_parameters() {
         .to_string(),
         "(3 (4 5) 2)",
     );
+    assert_eq!(
+        evaluate(
+            "(destructuring-bind ((&whole whole name &body forms))
+               (list (list 'when '(print 1) '(print 2)))
+               (list name forms whole))",
+        )
+        .to_string(),
+        "(WHEN ((PRINT 1) (PRINT 2)) (WHEN (PRINT 1) (PRINT 2)))",
+    );
+    assert_eq!(
+        evaluate(
+            "(destructuring-bind ((first &optional (second (+ first 1) second-p))
+                                  (&key (scale 2 scale-p) &allow-other-keys))
+               (list (list 3) (list :scale 4 :ignored 9))
+               (list first second second-p scale scale-p))",
+        )
+        .to_string(),
+        "(3 4 NIL 4 T)",
+    );
+}
+
+#[test]
+fn rejects_invalid_destructuring_bind_parameter_names() {
+    for (source, message) in [
+        (
+            "(destructuring-bind (&optional (value nil \"oops\")) nil value)",
+            "destructuring supplied-p name must be a symbol",
+        ),
+        (
+            "(destructuring-bind (&key (((quote :name) value))) nil value)",
+            "destructuring keyword designator must be a symbol",
+        ),
+    ] {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm {
+                message: ref actual_message,
+                ..
+            } if actual_message == message
+        ));
+    }
 }
 
 #[test]
@@ -4397,7 +6446,6 @@ fn destructuring_bind_binds_environment_parameter() {
                    (macroexpand '(local) environment))))",
         )
         .unwrap();
-
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "((QUOTE LOCAL) (QUOTE LOCAL))");
 }

@@ -31,6 +31,11 @@ The language also supports multiple values, so operations such as
 <code>values</code>, <code>gethash</code>, <code>intern</code>, and
 <code>find-symbol</code> can return more than one result.
 
+<code>nth-value</code> selects one value from a multiple-value result. In the
+compiled route, the compiler lowers it to a native VM instruction; the
+remaining compiled-language boundary is described in the
+[compatibility reference](../reference/compatibility.md).
+
 ## Interpreted and compiled evaluation
 
 The normal evaluator executes forms directly in the caller's runtime. The

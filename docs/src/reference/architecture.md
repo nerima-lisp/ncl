@@ -61,6 +61,13 @@ keeps the public compiler API and shared entry points. This keeps reusable data
 definitions separate from stateful compilation logic without changing the
 public compiler API.
 
+The stream lowering module expands <code>with-open-file</code>,
+<code>with-output-to-string</code>, and <code>with-input-from-string</code> into
+ordinary lexical bindings, cleanup boundaries, and stream operations before
+emitting bytecode. Its direct compiler tests cover binding validation, option
+selection, duplicate options, and destination/index places; runtime stream
+tests separately verify the resulting behavior.
+
 ## Runtime source organization
 
 The evaluator and builtin implementations are split by responsibility while

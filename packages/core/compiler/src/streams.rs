@@ -10,9 +10,7 @@ impl CompileState {
         if items.len() < 2 {
             return Err(self.arity_error(items, "WITH-OPEN-FILE", "at least one", span));
         }
-        let binding_form = items.get(1).ok_or_else(|| {
-            self.internal_error(span, "missing WITH-OPEN-FILE binding after arity check")
-        })?;
+        let binding_form = &items[1];
         let FormKind::List(binding) = &binding_form.kind else {
             return Err(CompileError::new(
                 CompileErrorKind::ExpectedList {
@@ -72,12 +70,7 @@ impl CompileState {
         if items.len() < 2 {
             return Err(self.arity_error(items, "WITH-OUTPUT-TO-STRING", "at least one", span));
         }
-        let binding_form = items.get(1).ok_or_else(|| {
-            self.internal_error(
-                span,
-                "missing WITH-OUTPUT-TO-STRING binding after arity check",
-            )
-        })?;
+        let binding_form = &items[1];
         let FormKind::List(binding) = &binding_form.kind else {
             return Err(CompileError::new(
                 CompileErrorKind::ExpectedList {
@@ -168,12 +161,7 @@ impl CompileState {
         if items.len() < 2 {
             return Err(self.arity_error(items, "WITH-INPUT-FROM-STRING", "at least one", span));
         }
-        let binding_form = items.get(1).ok_or_else(|| {
-            self.internal_error(
-                span,
-                "missing WITH-INPUT-FROM-STRING binding after arity check",
-            )
-        })?;
+        let binding_form = &items[1];
         let FormKind::List(binding) = &binding_form.kind else {
             return Err(CompileError::new(
                 CompileErrorKind::ExpectedList {

@@ -51,9 +51,15 @@ The compiler keeps its bytecode and error data model in
 <code>packages/core/compiler/src/model.rs</code>. <code>Instruction</code>,
 <code>Program</code>, <code>FunctionCode</code>, compile errors, and the
 destructuring metadata types are defined there and re-exported by the compiler
-crate. <code>lib.rs</code> owns compiler state and syntax-to-bytecode lowering.
-This keeps reusable data definitions separate from the stateful compilation
-logic without changing the public compiler API.
+crate. <code>state.rs</code> owns mutable compiler state, while the
+concern-specific modules <code>expressions.rs</code>, <code>conditions.rs</code>,
+<code>control_flow.rs</code>, <code>conditionals.rs</code>,
+<code>definitions.rs</code>, <code>iteration.rs</code>,
+<code>destructuring.rs</code>, <code>bindings.rs</code>, and
+<code>streams.rs</code> own syntax-to-bytecode lowering. <code>lib.rs</code>
+keeps the public compiler API and shared entry points. This keeps reusable data
+definitions separate from stateful compilation logic without changing the
+public compiler API.
 
 ## Runtime source organization
 

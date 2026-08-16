@@ -99,9 +99,12 @@ development shell:
 nix develop path:. --command cargo fmt --all -- --check
 ~~~
 
-GitHub Actions runs the Rust formatter, locked workspace build, test, and
-Clippy gates with the pinned toolchain from
-[.github/workflows/ci.yml](.github/workflows/ci.yml).
+GitHub Actions runs the Rust formatter, locked workspace build, test, Clippy,
+and complete Nix flake gates from
+[.github/workflows/ci.yml](.github/workflows/ci.yml). The Nix job uses the
+[Determinate Nix Action](https://github.com/determinatesystems/determinate-nix-action)
+and [Magic Nix Cache](https://github.com/marketplace/actions/magic-nix-cache)
+to provide a reproducible CI environment.
 
 The Nix flake adds repository-level checks for the Lisp test suite, Paredit
 syntax validation, strict MkDocs builds, and the Lisp coverage report. Run

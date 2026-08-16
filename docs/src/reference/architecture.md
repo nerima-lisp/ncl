@@ -75,6 +75,15 @@ Each directory has a <code>mod.rs</code> that assembles its responsibility
 fragments into the same module boundary. This keeps private invariants local
 without introducing a compatibility layer or changing the public runtime API.
 
+The VM execution loop follows the same boundary. <code>vm/execution.rs</code>
+owns the instruction-pointer loop and shared execution state, while the private
+handlers in <code>vm/execution/</code> separate state and stack operations
+(<code>state.rs</code>), condition and restart flow
+(<code>conditions.rs</code>), dynamic control transfer
+(<code>dynamic.rs</code>), and calls and returns (<code>calls.rs</code>). The
+handlers return a small outcome enum, so dispatch remains explicit without a
+compatibility adapter.
+
 ## Evaluation boundary
 
 The syntax crate turns source text into span-aware forms. The runtime evaluates

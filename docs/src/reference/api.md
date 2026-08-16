@@ -231,10 +231,18 @@ multiple values.
 ### Package operations
 
 <code>package-name</code>, <code>package-use-list</code>,
-<code>list-all-packages</code>, <code>use-package</code>,
+<code>list-all-packages</code>, <code>make-package</code>,
+<code>delete-package</code>, <code>rename-package</code>,
+<code>package-nicknames</code>, <code>package-shadowing-symbols</code>,
+<code>package-used-by-list</code>, <code>use-package</code>,
 <code>unuse-package</code>, <code>export</code>, <code>unexport</code>,
 <code>import</code>, <code>unintern</code>, <code>shadow</code>, and
 <code>shadowing-import</code> provide the current package-management surface.
+
+<code>make-package</code> accepts <code>:nicknames</code> and
+<code>:use</code> options. <code>rename-package</code> updates the package name
+and optional nicknames, while the metadata operations expose the current
+package model's nicknames, shadowing symbols, and users.
 
 ### Variable operations
 

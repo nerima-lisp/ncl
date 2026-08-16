@@ -29,4 +29,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - name: Rust coverage
+        run: timeout --signal=TERM 600s nix run --no-write-lock-file .#rust-coverage -- --summary-only
       - run: nix flake check --no-write-lock-file

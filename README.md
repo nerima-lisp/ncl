@@ -56,6 +56,7 @@ nix develop path:.
 nix run path:. -- --eval '(+ 1 2)'
 nix run path:.#test
 nix run path:.#coverage
+nix run path:.#rust-coverage -- --summary-only
 ~~~
 
 The source declaration is [ncl.asd](ncl.asd). The CLI and standalone test
@@ -66,6 +67,11 @@ directory. The `test` and `coverage` apps default to one worker and a 5000 ms
 per-test timeout; pass additional cl-weave options after the app name. The direct core's
 source boundaries and extension points are described in the
 [Common Lisp core guide](docs/src/guide/common-lisp-core.md).
+
+The `rust-coverage` app runs every Rust workspace target with LLVM coverage.
+It enforces the current ratchet floors of 75% line, 78% function, and 75%
+region coverage; the long-term target is 100% for each metric. Pass `--html`
+and `--output-dir artifacts/rust-coverage` to produce a browsable report.
 
 The Common Lisp tests use [cl-weave](https://github.com/nerima-lisp/cl-weave),
 and source formatting and structural checks use
@@ -87,6 +93,7 @@ cargo check --workspace --all-targets --locked
 cargo test --workspace --all-targets --locked
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo fmt --all -- --check
+nix run path:.#rust-coverage -- --summary-only
 nix flake check path:.
 nix flake check --no-build --all-systems path:.
 mkdocs build --strict --config-file docs/mkdocs.yml
@@ -107,8 +114,9 @@ and [Magic Nix Cache](https://github.com/marketplace/actions/magic-nix-cache)
 to provide a reproducible CI environment.
 
 The Nix flake adds repository-level checks for the Lisp test suite, Paredit
-syntax validation, strict MkDocs builds, and the Lisp coverage report. Run
-`nix flake check path:.` to execute the complete local check set.
+syntax validation, strict MkDocs builds, and the Lisp coverage report. CI also
+runs the Rust LLVM coverage ratchet. Run `nix flake check path:.` and the
+`rust-coverage` app to execute the complete local check set.
 
 ## Contributing
 

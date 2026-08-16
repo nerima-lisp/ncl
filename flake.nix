@@ -110,6 +110,28 @@
                   --coverage-report-directory "$coverage_dir/report/" "$@"
             '';
           };
+          rustCoverage = pkgs.writeShellApplication {
+            name = "ncl-rust-coverage";
+            runtimeInputs = [
+              pkgs.cargo
+              pkgs.rustc
+              pkgs.cargo-llvm-cov
+              pkgs.llvmPackages.llvm
+            ];
+            text = ''
+              export LLVM_COV="${pkgs.llvmPackages.llvm}/bin/llvm-cov"
+              export LLVM_PROFDATA="${pkgs.llvmPackages.llvm}/bin/llvm-profdata"
+              exec cargo llvm-cov \
+                --workspace \
+                --all-targets \
+                --all-features \
+                --locked \
+                "$@" \
+                --fail-under-lines 75 \
+                --fail-under-functions 78 \
+                --fail-under-regions 75
+            '';
+          };
         in
         {
           default = {
@@ -138,6 +160,13 @@
             program = "${coverage}/bin/ncl-coverage";
             meta = {
               description = "Run NCL tests with cl-weave coverage";
+            };
+          };
+          rust-coverage = {
+            type = "app";
+            program = "${rustCoverage}/bin/ncl-rust-coverage";
+            meta = {
+              description = "Run Rust tests with LLVM coverage";
             };
           };
         }
@@ -277,12 +306,18 @@
               pkgs.cargo
               pkgs.rustfmt
               pkgs.clippy
+              pkgs.cargo-llvm-cov
+              pkgs.llvmPackages.llvm
               pkgs.sbcl
               cl-weave.packages.${system}.default
               paredit-cli.packages.${system}.default
               pkgs.nixfmt
               pkgs.python3Packages.mkdocs-material
             ];
+            shellHook = ''
+              export LLVM_COV="${pkgs.llvmPackages.llvm}/bin/llvm-cov"
+              export LLVM_PROFDATA="${pkgs.llvmPackages.llvm}/bin/llvm-profdata"
+            '';
           };
         }
       );

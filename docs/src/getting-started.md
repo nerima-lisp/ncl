@@ -117,3 +117,16 @@ this keeps the command-line and test paths aligned.
 The coverage command writes an HTML report and coverage data below
 `artifacts/ncl-coverage/` by default. Set `NCL_COVERAGE_DIR` to write those
 artifacts elsewhere.
+
+## Rust coverage
+
+Run the Rust workspace tests with LLVM coverage and the current ratchet floors:
+
+~~~sh
+nix run path:.#rust-coverage -- --summary-only
+~~~
+
+The command requires at least 75% line, 78% function, and 75% region coverage.
+The target is 100% for every metric. Pass `--html --output-dir
+artifacts/rust-coverage` instead of `--summary-only` to write a browsable HTML
+report.

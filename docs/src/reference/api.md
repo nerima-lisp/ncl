@@ -22,6 +22,18 @@ If no expression, file, or explicit REPL option is supplied, the CLI starts a
 REPL. Exit status 0 means success, 1 means an evaluation or file error, and 2
 means a command-line usage error.
 
+## Loading source files
+
+<code>load</code> accepts a string or adjustable character-string pathname
+designator and evaluates every form in the file. The supported keyword
+arguments are <code>:verbose</code>, <code>:print</code>,
+<code>:if-does-not-exist</code>, and <code>:external-format</code>;
+<code>:if-does-not-exist nil</code> returns <code>NIL</code> for a missing
+file. <code>:verbose</code> and <code>:print</code> are accepted for source
+compatibility but do not produce output. The current file reader decodes
+source as UTF-8; <code>:external-format</code> accepts
+<code>:default</code> and <code>:utf-8</code>.
+
 ## Reader
 
 The reader supports:
@@ -56,9 +68,24 @@ conditional and sequential evaluation.
 ### Bindings and iteration
 
 <code>let</code>, <code>let*</code>, <code>flet</code>, <code>labels</code>,
-<code>dotimes</code>, <code>dolist</code>, <code>do</code>, and <code>do*</code>
-provide lexical variable, local function, and iteration bindings. The
-ordinary lambda-list implementation supports required parameters and bounded
+<code>dotimes</code>, <code>dolist</code>, <code>do</code>, <code>do*</code>, and
+<code>loop</code> provide lexical variable, local function, and iteration
+bindings. The supported bounded <code>loop</code> surface includes
+<code>with</code>, <code>for</code>/<code>as</code> with numeric, list, vector,
+and hash-table iteration, <code>while</code>/<code>until</code>, accumulation
+with <code>collect</code>/<code>append</code>/<code>sum</code>/<code>count</code>,
+<code>do</code>, and <code>finally return</code>. Hash-table iteration accepts
+<code>being the hash-keys</code>/<code>hash-values</code> clauses with the
+corresponding <code>using</code> binding. The
+<code>do-symbols</code>, <code>do-external-symbols</code>, and
+<code>do-all-symbols</code> forms provide snapshot-based iteration over the
+current package's accessible symbols, a package's external symbols, or all
+known package symbols. Their package and symbol identity semantics are bounded
+by the package model described below.
+<code>with-package-iterator</code> provides a local iterator function that
+returns the next symbol, its <code>:internal</code>/<code>:external</code>/
+<code>:inherited</code> status, and the package being traversed.
+The ordinary lambda-list implementation supports required parameters and bounded
 <code>&amp;optional</code>, <code>&amp;rest</code>, <code>&amp;key</code>,
 <code>&amp;aux</code>, and <code>&amp;allow-other-keys</code> behavior.
 
@@ -78,7 +105,8 @@ applies a lambda-list pattern to a value.
 
 ### Conditions and non-local control
 
-<code>error</code> (one message argument), <code>ignore-errors</code>,
+<code>error</code> (one message argument), <code>assert</code>, <code>ccase</code>,
+<code>ctypecase</code>, <code>check-type</code>, <code>ignore-errors</code>,
 <code>handler-case</code>,
 <code>handler-bind</code>, <code>with-simple-restart</code>, <code>restart-bind</code>,
 <code>restart-case</code>, <code>with-condition-restarts</code>,
@@ -88,6 +116,19 @@ condition and restart handling. Restart introspection returns restart objects
 and can filter them by an associated condition. <code>error</code> signals a
 <code>SIMPLE-ERROR</code> that can be caught by the existing condition
 handlers.
+
+<code>assert</code> evaluates its test form and signals a correctable condition
+when the result is false. A handler that invokes the dynamic <code>CONTINUE</code>
+restart causes the test to be evaluated again; place forms are evaluated on
+each failure, and the datum and format arguments are re-evaluated on each
+failure. Place values are currently evaluated for their side effects, but are
+not exposed as debugger-editable generalized references.
+
+<code>ccase</code> and <code>ctypecase</code> signal a bounded <code>TYPE-ERROR</code>
+when no clause matches; handlers can invoke <code>STORE-VALUE</code> or
+<code>USE-VALUE</code> to retry with a replacement value. <code>check-type</code>
+uses the same replacement restarts and stores a value into its supported place
+after the replacement satisfies the requested type.
 
 <code>catch</code>, <code>throw</code>, <code>block</code>,
 <code>return-from</code>, <code>return</code>, <code>tagbody</code>,
@@ -121,7 +162,7 @@ queries supported by the runtime.
 ## Numeric functions
 
 The runtime currently provides integers, floating-point values, rational values,
-and complex values. The numeric function surface includes:
+and bounded complex values. The numeric function surface includes:
 
 <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>,
 <code>expt</code>, <code>sqrt</code>, <code>signum</code>, <code>float</code>,
@@ -144,8 +185,9 @@ number accessors are also available through <code>sin</code>, <code>cos</code>,
 <code>acosh</code>, <code>atanh</code>, <code>exp</code>, <code>log</code>,
 <code>complex</code>, <code>conjugate</code>, <code>phase</code>,
 <code>realpart</code>, and <code>imagpart</code>. <code>coerce</code> covers
-the currently supported numeric and sequence coercions.
-
+the currently supported numeric and sequence coercions. Numeric conversions
+cover integers, rationals, real values, floats, numbers, and complex values;
+the float family is represented by the runtime's single floating-point format.
 ## Lists, sequences, arrays, and hash tables
 
 ### Lists and sequences
@@ -166,7 +208,25 @@ and <code>getf</code> operate on list and sequence values.
 <code>adjustable-array-p</code>, <code>array-displacement</code>,
 <code>simple-array-p</code>, <code>adjust-array</code>, and
 <code>fill-pointer</code> provide simple, multidimensional, adjustable,
-displaced, and fill-pointer array operations.
+displaced, and fill-pointer array operations. <code>make-array</code> accepts
+<code>:fill-pointer</code> only for the rank-1 path and accepts
+<code>:adjustable</code> for vectors and multidimensional general arrays;
+<code>fill-pointer</code>, <code>vector-push</code>,
+<code>vector-push-extend</code>, and <code>adjust-array</code> operate on them.
+Adjustable character strings are supported as string designators, mutable
+<code>WITH-OUTPUT-TO-STRING</code> destinations, and character containers for
+<code>aref</code>/<code>row-major-aref</code>. Displacement through
+<code>:displaced-to</code> and <code>:displaced-index-offset</code> is supported
+for the tested array paths and preserves aliasing through array access.
+<code>make-array</code> accepts <code>:fill-pointer</code> only for the rank-1
+path. The implementation retains element-type metadata for <code>T</code>,
+<code>BIT</code>, <code>CHARACTER</code>,
+<code>BASE-CHAR</code>, <code>FIXNUM</code>, <code>SINGLE-FLOAT</code>, and
+<code>DOUBLE-FLOAT</code> where the runtime can represent the upgraded type,
+and validates initial values and writes for those specialized types. General
+compound element types currently upgrade to <code>T</code>; multidimensional
+fill pointers and combinations outside the tested displacement, adjustment,
+and element-type paths remain bounded.
 
 ### Hash tables
 
@@ -175,10 +235,13 @@ displaced, and fill-pointer array operations.
 and <code>hash-table-test</code> provide hash-table creation, lookup,
 mutation, and metadata. Supported tests are <code>eql</code>, <code>eq</code>,
 <code>equal</code>, and <code>equalp</code>. <code>gethash</code> returns a
-value and a found-status as multiple values.
+value and a found-status as multiple values. <code>maphash</code> and
+<code>with-hash-table-iterator</code> provide bounded callback and iterator
+access; iteration order is implementation-defined.
 
-Hash-table iteration helpers such as <code>maphash</code> and
-<code>with-hash-table-iterator</code> are not part of the current API surface.
+Hash-table iteration helpers are bounded by the current callback and iterator
+protocol; mutation during iteration and iteration order remain
+implementation-defined.
 
 ## Characters, strings, streams, and I/O
 
@@ -200,12 +263,24 @@ string comparison and case conversion.
 
 <code>make-string-input-stream</code>, <code>make-string-output-stream</code>,
 <code>get-output-stream-string</code>, <code>open</code>,
-<code>with-open-file</code>, <code>read-char</code>, <code>peek-char</code>,
-<code>unread-char</code>, <code>read-line</code>, <code>write-char</code>,
-<code>write-string</code>, <code>terpri</code>, <code>fresh-line</code>,
-<code>write-line</code>, <code>close</code>, <code>streamp</code>,
-<code>input-stream-p</code>, and <code>output-stream-p</code> implement the
-current string/file-stream and stream predicate surface. The pathname
+<code>with-open-file</code>, <code>with-open-stream</code>,
+<code>with-input-from-string</code>, <code>with-output-to-string</code>,
+<code>read-char</code>, <code>read-char-no-hang</code>, <code>listen</code>,
+<code>clear-input</code>, <code>peek-char</code>, <code>unread-char</code>,
+<code>read-line</code>, <code>write-char</code>, <code>write-string</code>,
+<code>write-sequence</code>, <code>terpri</code>, <code>fresh-line</code>, <code>write-line</code>,
+<code>force-output</code>, <code>finish-output</code>, <code>clear-output</code>,
+<code>close</code>, <code>streamp</code>, <code>input-stream-p</code>,
+<code>output-stream-p</code>, <code>open-stream-p</code>,
+<code>file-position</code> queries and, with an integer,
+<code>:start</code>, or <code>:end</code>, repositions the current
+character-stream position; <code>file-length</code> reports the current
+character length of an open file stream. <code>stream-element-type</code> and
+<code>stream-external-format</code> implement the current string/file-stream,
+predicate, and metadata surface. <code>listen</code> reports modeled character
+availability, <code>read-char-no-hang</code> performs the corresponding
+non-blocking read, and <code>clear-input</code> consumes buffered file input.
+The pathname
 operations <code>probe-file</code>, <code>delete-file</code>,
 <code>rename-file</code>, <code>file-write-date</code>, and
 <code>truename</code> cover the current file-management surface. File
@@ -216,7 +291,9 @@ overwrites and append-mode writes.
 
 <code>print</code>, <code>princ</code>, <code>prin1</code>,
 <code>write-to-string</code>, and <code>format</code> provide output
-operations. <code>format</code> currently supports <code>~A</code>,
+operations. <code>force-output</code> and <code>finish-output</code> flush the current file or host output buffer;
+<code>clear-output</code> validates an output stream and is bounded by the current
+in-memory stream model. <code>format</code> currently supports <code>~A</code>,
 <code>~S</code>, <code>~D</code>, <code>~B</code>, <code>~O</code>,
 <code>~X</code>, <code>~C</code>, <code>~%</code>, <code>~&amp;</code>,
 <code>~~</code>, <code>~*</code>, and <code>~?</code> with bounded
@@ -255,6 +332,9 @@ multiple values.
 <code>unuse-package</code>, <code>export</code>, <code>unexport</code>,
 <code>import</code>, <code>unintern</code>, <code>shadow</code>, and
 <code>shadowing-import</code> provide the current package-management surface.
+The symbol iteration forms are implemented for this package model, with
+deterministic traversal order in the runtime rather than implementation-native
+hash-table order.
 
 <code>make-package</code> accepts <code>:nicknames</code> and
 <code>:use</code> options. <code>rename-package</code> updates the package name

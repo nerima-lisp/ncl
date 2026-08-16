@@ -133,6 +133,8 @@
         let
           pkgs = import nixpkgs { inherit system; };
           weave = cl-weave.packages.${system}.default;
+          paredit = paredit-cli.packages.${system}.default;
+          mkdocs = pkgs.python3Packages.mkdocs-material;
         in
         {
           ncl-rust = self.packages.${system}.ncl;
@@ -152,6 +154,98 @@
                   --fail-with-no-tests \
                   --max-workers 1 \
                   --test-timeout-ms 5000
+                touch "$out"
+              '';
+          ncl-paredit =
+            pkgs.runCommand "ncl-paredit"
+              {
+                nativeBuildInputs = [
+                  paredit
+                  pkgs.ripgrep
+                ];
+              }
+              ''
+                files="$(${pkgs.ripgrep}/bin/rg --files ${self} \
+                  -g '*.lisp' \
+                  -g '*.asd' \
+                  -g 'run.lisp' \
+                  -g 'run-tests.lisp')"
+                test -n "$files"
+                while IFS= read -r file; do
+                  paredit inspect check --file "$file"
+                done <<< "$files"
+                touch "$out"
+              '';
+          ncl-docs =
+            pkgs.runCommand "ncl-docs"
+              {
+                nativeBuildInputs = [ mkdocs ];
+              }
+              ''
+                mkdocs build --strict \
+                  --config-file ${self}/docs/mkdocs.yml \
+                  --site-dir "$out"
+              '';
+          ncl-coverage =
+            pkgs.runCommand "ncl-coverage"
+              {
+                nativeBuildInputs = [
+                  weave
+                  pkgs.coreutils
+                  pkgs.python3
+                ];
+              }
+              ''
+                export HOME="$TMPDIR/home"
+                export XDG_CACHE_HOME="$TMPDIR/cache"
+                mkdir -p "$HOME" "$XDG_CACHE_HOME"
+                coverage_dir="$TMPDIR/coverage"
+                mkdir -p "$coverage_dir/report"
+                ${weave}/bin/cl-weave run ncl \
+                  --load ${self}/ncl.asd \
+                  --load ${self}/test/package.lisp \
+                  --load ${self}/test/support.lisp \
+                  --load ${self}/test/core.lisp \
+                  --reporter spec \
+                  --fail-with-no-tests \
+                  --max-workers 1 \
+                  --test-timeout-ms 5000 \
+                  --coverage \
+                  --coverage-system ncl \
+                  --coverage-exclude ${self}/lisp/package.lisp \
+                  --coverage-exclude ${self}/lisp/constants.lisp \
+                  --coverage-exclude ${self}/lisp/cps-macros.lisp \
+                  --coverage-exclude ${self}/lisp/conditions-base.lisp \
+                  --coverage-output "$coverage_dir/ncl.coverage" \
+                  --coverage-report-directory "$coverage_dir/report/"
+                coverage_index="$coverage_dir/report/cover-index.html"
+                test -s "$coverage_index"
+                ${pkgs.python3}/bin/python3 - "$coverage_index" <<'PY'
+                import re
+                import sys
+
+                html = open(sys.argv[1], encoding="utf-8").read()
+                rows = re.findall(r"<tr[^>]*>.*?</tr>", html, flags=re.S)
+                source_rows = []
+                for row in rows:
+                    cells = [
+                        re.sub(r"<[^>]+>", "", cell).strip()
+                        for cell in re.findall(r"<td[^>]*>(.*?)</td>", row, flags=re.S)
+                    ]
+                    if len(cells) >= 7 and cells[0].endswith(".lisp"):
+                        source_rows.append(cells)
+                if not source_rows:
+                    raise SystemExit("coverage report contains no source rows")
+                for cells in source_rows:
+                    if cells[3] != "100.0":
+                        raise SystemExit(
+                            f"expression coverage is {cells[3]}% for {cells[0]}"
+                        )
+                    if cells[6] not in {"100.0", "-"}:
+                        raise SystemExit(
+                            f"branch coverage is {cells[6]}% for {cells[0]}"
+                        )
+                PY
                 touch "$out"
               '';
         }

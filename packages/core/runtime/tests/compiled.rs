@@ -1,13 +1,9 @@
-use ncl_compiler::Instruction;
-use ncl_runtime::{Runtime, RuntimeError, Value};
+#[path = "common/evaluate_compiled.rs"]
+mod common;
 
-fn evaluate(source: &str) -> Value {
-    Runtime::new()
-        .eval_compiled_source(source)
-        .unwrap()
-        .pop()
-        .unwrap()
-}
+use common::evaluate_compiled as evaluate;
+use ncl_compiler::Instruction;
+use ncl_runtime::{Runtime, RuntimeError};
 
 #[test]
 fn compile_source_returns_artifacts_without_running_runtime_forms() {

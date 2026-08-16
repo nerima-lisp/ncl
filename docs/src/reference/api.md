@@ -120,8 +120,8 @@ queries supported by the runtime.
 
 ## Numeric functions
 
-The runtime currently provides integers, floating-point values, and rational
-values. The numeric function surface includes:
+The runtime currently provides integers, floating-point values, rational values,
+and complex values. The numeric function surface includes:
 
 <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>,
 <code>expt</code>, <code>sqrt</code>, <code>signum</code>, <code>float</code>,
@@ -137,6 +137,15 @@ values. The numeric function surface includes:
 <code>lognot</code>, <code>logtest</code>, <code>logcount</code>, and
 <code>integer-length</code>.
 
+Trigonometric and hyperbolic functions, exponentials, logarithms, and complex
+number accessors are also available through <code>sin</code>, <code>cos</code>,
+<code>tan</code>, <code>asin</code>, <code>acos</code>, <code>atan</code>,
+<code>sinh</code>, <code>cosh</code>, <code>tanh</code>, <code>asinh</code>,
+<code>acosh</code>, <code>atanh</code>, <code>exp</code>, <code>log</code>,
+<code>complex</code>, <code>conjugate</code>, <code>phase</code>,
+<code>realpart</code>, and <code>imagpart</code>. <code>coerce</code> covers
+the currently supported numeric and sequence coercions.
+
 ## Lists, sequences, arrays, and hash tables
 
 ### Lists and sequences
@@ -150,9 +159,14 @@ and <code>getf</code> operate on list and sequence values.
 ### Arrays
 
 <code>make-array</code>, <code>aref</code>, <code>row-major-aref</code>,
-<code>arrayp</code>, <code>array-rank</code>, <code>array-dimensions</code>,
-<code>array-dimension</code>, and <code>array-total-size</code> provide simple
-and multidimensional array operations.
+<code>array-row-major-index</code>, <code>array-in-bounds-p</code>,
+<code>array-element-type</code>, <code>arrayp</code>, <code>array-rank</code>,
+<code>array-dimensions</code>, <code>array-dimension</code>,
+<code>array-total-size</code>, <code>array-has-fill-pointer-p</code>,
+<code>adjustable-array-p</code>, <code>array-displacement</code>,
+<code>simple-array-p</code>, <code>adjust-array</code>, and
+<code>fill-pointer</code> provide simple, multidimensional, adjustable,
+displaced, and fill-pointer array operations.
 
 ### Hash tables
 
@@ -162,6 +176,9 @@ and <code>hash-table-test</code> provide hash-table creation, lookup,
 mutation, and metadata. Supported tests are <code>eql</code>, <code>eq</code>,
 <code>equal</code>, and <code>equalp</code>. <code>gethash</code> returns a
 value and a found-status as multiple values.
+
+Hash-table iteration helpers such as <code>maphash</code> and
+<code>with-hash-table-iterator</code> are not part of the current API surface.
 
 ## Characters, strings, streams, and I/O
 
@@ -258,6 +275,15 @@ package model's nicknames, shadowing symbols, and users.
 <code>maplist</code>, <code>mapcan</code>, and <code>mapcon</code> provide the
 currently registered mapping operations; list mapping stops at the shortest
 proper input list where applicable.
+
+Sequence traversal and transformation also include <code>map-into</code>,
+<code>remove</code>, <code>delete</code>, <code>remove-duplicates</code>,
+<code>delete-duplicates</code>, <code>substitute</code>, <code>nsubstitute</code>,
+<code>find</code>, <code>position</code>, <code>count</code>,
+<code>search</code>, <code>mismatch</code>, <code>sort</code>,
+<code>stable-sort</code>, <code>merge</code>, and the predicate traversal
+operations <code>every</code>, <code>some</code>, <code>notany</code>, and
+<code>notevery</code>.
 
 ## Runtime API boundary
 

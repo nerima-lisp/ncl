@@ -45,6 +45,16 @@ builtin, and VM modules own evaluation, dispatch, and control flow. Small
 invocation-context structs make data passed between those operations explicit,
 while preserving the existing execution semantics.
 
+## Compiler source organization
+
+The compiler keeps its bytecode and error data model in
+<code>packages/core/compiler/src/model.rs</code>. <code>Instruction</code>,
+<code>Program</code>, <code>FunctionCode</code>, compile errors, and the
+destructuring metadata types are defined there and re-exported by the compiler
+crate. <code>lib.rs</code> owns compiler state and syntax-to-bytecode lowering.
+This keeps reusable data definitions separate from the stateful compilation
+logic without changing the public compiler API.
+
 ## Runtime source organization
 
 The evaluator and builtin implementations are split by responsibility while

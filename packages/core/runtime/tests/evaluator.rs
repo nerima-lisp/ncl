@@ -1,8 +1,8 @@
-use ncl_runtime::{Runtime, RuntimeError, Value};
+#[path = "common/evaluate.rs"]
+mod common;
 
-fn evaluate(source: &str) -> Value {
-    Runtime::new().eval_source(source).unwrap().pop().unwrap()
-}
+use common::evaluate;
+use ncl_runtime::{Runtime, RuntimeError};
 
 #[test]
 fn supports_uninterned_symbols_and_gensym() {

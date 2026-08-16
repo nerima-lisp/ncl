@@ -103,6 +103,10 @@ GitHub Actions runs the Rust formatter, locked workspace build, test, and
 Clippy gates with the pinned toolchain from
 [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
+The Nix flake adds repository-level checks for the Lisp test suite, Paredit
+syntax validation, strict MkDocs builds, and the Lisp coverage report. Run
+`nix flake check path:.` to execute the complete local check set.
+
 ## Contributing
 
 Keep changes focused, add executable tests for behavior changes, and update

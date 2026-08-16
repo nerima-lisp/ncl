@@ -1,22 +1,36 @@
-use crate::{
-    parse_symbol_token, Form, FormKind, ReadError, ReadErrorKind, Span, SymbolTokenKind,
-};
+use std::collections::HashSet;
+
+use crate::{Form, FormKind, ReadError, ReadErrorKind, Span, SymbolTokenKind, parse_symbol_token};
 
 // Keep the recursive first reader below the platform stack limit.
 pub const MAX_NESTING_DEPTH: usize = 256;
+pub const DEFAULT_FEATURES: &[&str] = &["NCL", "COMMON-LISP"];
 
 pub struct Reader<'source> {
     source: &'source str,
     position: usize,
     nesting_depth: usize,
+    features: HashSet<String>,
+}
+
+fn normalize_feature_name(feature: &str) -> String {
+    feature.trim_start_matches(':').to_ascii_uppercase()
 }
 
 impl<'source> Reader<'source> {
     pub fn new(source: &'source str) -> Self {
+        Self::with_features(source, &[])
+    }
+
+    pub fn with_features(source: &'source str, features: &[&str]) -> Self {
         Self {
             source,
             position: 0,
             nesting_depth: 0,
+            features: features
+                .iter()
+                .map(|feature| normalize_feature_name(feature))
+                .collect(),
         }
     }
 
@@ -117,9 +131,6 @@ impl<'source> Reader<'source> {
                 Span::new(start, self.position),
             ));
         };
-        if character.is_ascii_digit() {
-            return self.parse_numeric_dispatch(start).map(Some);
-        }
         match character {
             ';' => {
                 self.position += 1;
@@ -133,13 +144,13 @@ impl<'source> Reader<'source> {
                 };
                 self.parse_form()
             }
+            '+' => self.parse_conditional(start, true),
+            '-' => self.parse_conditional(start, false),
             '(' => self.parse_sequence(true, start).map(Some),
             '*' => self.parse_bit_vector(start).map(Some),
             'b' | 'B' => self.parse_radix_integer(start, 2).map(Some),
-            'o' | 'O' => self.parse_radix_integer(start, 8).map(Some),
-            'x' | 'X' => self.parse_radix_integer(start, 16).map(Some),
             'c' | 'C' => self.parse_complex_literal(start).map(Some),
-            's' | 'S' => self.parse_structure_literal(start).map(Some),
+            'o' | 'O' => self.parse_radix_integer(start, 8).map(Some),
             'p' | 'P' => self.parse_pathname_literal(start).map(Some),
             '\'' => {
                 self.position += 1;
@@ -147,6 +158,7 @@ impl<'source> Reader<'source> {
             }
             '\\' => self.parse_character(start).map(Some),
             ':' => self.parse_uninterned_symbol(start).map(Some),
+            's' | 'S' => self.parse_structure_literal(start).map(Some),
             't' | 'T' => {
                 self.position += 1;
                 self.ensure_dispatch_boundary(start)?;
@@ -157,6 +169,8 @@ impl<'source> Reader<'source> {
                 self.ensure_dispatch_boundary(start)?;
                 Ok(Some(Form::atom("#f", Span::new(start, self.position))))
             }
+            'x' | 'X' => self.parse_radix_integer(start, 16).map(Some),
+            character if character.is_ascii_digit() => self.parse_numeric_dispatch(start).map(Some),
             _ => Err(self.error(ReadErrorKind::InvalidDispatch, Span::new(start, start + 1))),
         }
     }
@@ -167,11 +181,33 @@ impl<'source> Reader<'source> {
             self.position += 1;
         }
 
-        let rank = self.source[digits_start..self.position]
-            .parse::<usize>()
-            .map_err(|_| self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position)))?;
+        let radix_or_rank = &self.source[digits_start..self.position];
         match self.peek_char() {
-            Some('a') | Some('A') => self.parse_array_literal(start, rank),
+            Some('a') | Some('A') => {
+                let rank = radix_or_rank.parse::<usize>().map_err(|_| {
+                    self.error(
+                        ReadErrorKind::InvalidDispatch,
+                        Span::new(start, self.position),
+                    )
+                })?;
+                self.parse_array_literal(start, rank)
+            }
+            Some('r') | Some('R') => {
+                let radix = radix_or_rank.parse::<u32>().map_err(|_| {
+                    self.error(
+                        ReadErrorKind::InvalidDispatch,
+                        Span::new(start, self.position),
+                    )
+                })?;
+                self.position += 1;
+                if !(2..=36).contains(&radix) {
+                    return Err(self.error(
+                        ReadErrorKind::InvalidDispatch,
+                        Span::new(start, self.position),
+                    ));
+                }
+                self.parse_radix_digits(start, radix)
+            }
             _ => Err(self.error(
                 ReadErrorKind::InvalidDispatch,
                 Span::new(start, self.position),
@@ -179,6 +215,147 @@ impl<'source> Reader<'source> {
         }
     }
 
+    fn parse_radix_integer(&mut self, start: usize, radix: u32) -> Result<Form, ReadError> {
+        self.position += 1;
+        self.parse_radix_digits(start, radix)
+    }
+
+    fn parse_radix_digits(&mut self, start: usize, radix: u32) -> Result<Form, ReadError> {
+        let token_start = self.position;
+        self.scan_symbol_token(token_start)?;
+        self.ensure_dispatch_boundary(start)?;
+
+        let token = &self.source[token_start..self.position];
+        let (negative, digits) = match token.chars().next() {
+            Some('+') => (false, &token['+'.len_utf8()..]),
+            Some('-') => (true, &token['-'.len_utf8()..]),
+            Some(_) => (false, token),
+            None => {
+                return Err(self.error(
+                    ReadErrorKind::InvalidDispatch,
+                    Span::new(start, self.position),
+                ));
+            }
+        };
+
+        if digits.is_empty() {
+            return Err(self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            ));
+        }
+
+        let mut value = 0_i128;
+        for character in digits.chars() {
+            let Some(digit) = character.to_digit(radix) else {
+                return Err(self.error(
+                    ReadErrorKind::InvalidDispatch,
+                    Span::new(start, self.position),
+                ));
+            };
+            value = value
+                .checked_mul(i128::from(radix))
+                .and_then(|value| value.checked_add(i128::from(digit)))
+                .ok_or_else(|| {
+                    self.error(
+                        ReadErrorKind::InvalidDispatch,
+                        Span::new(start, self.position),
+                    )
+                })?;
+        }
+
+        let value = if negative { -value } else { value };
+        let value = i64::try_from(value).map_err(|_| {
+            self.error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            )
+        })?;
+        Ok(Form::atom(
+            value.to_string(),
+            Span::new(start, self.position),
+        ))
+    }
+
+    fn parse_conditional(
+        &mut self,
+        start: usize,
+        include_when_present: bool,
+    ) -> Result<Option<Form>, ReadError> {
+        self.position += 1;
+        let feature = self.parse_form()?.ok_or_else(|| {
+            self.error(
+                ReadErrorKind::UnexpectedEnd {
+                    context: "feature expression",
+                },
+                Span::new(start, self.position),
+            )
+        })?;
+        let enabled = self.feature_expression_enabled(&feature)?;
+        let branch = self.parse_form()?.ok_or_else(|| {
+            self.error(
+                ReadErrorKind::UnexpectedEnd {
+                    context: "conditional form",
+                },
+                Span::new(start, self.position),
+            )
+        })?;
+        if enabled == include_when_present {
+            Ok(Some(branch))
+        } else {
+            self.parse_form()
+        }
+    }
+
+    fn feature_expression_enabled(&self, form: &Form) -> Result<bool, ReadError> {
+        match &form.kind {
+            FormKind::Atom(name) => self.feature_atom_enabled(name, form.span),
+            FormKind::List(items) => {
+                let Some(operator_form) = items.first() else {
+                    return Err(self.error(ReadErrorKind::InvalidDispatch, form.span));
+                };
+                let FormKind::Atom(operator) = &operator_form.kind else {
+                    return Err(self.error(ReadErrorKind::InvalidDispatch, operator_form.span));
+                };
+                let token = parse_symbol_token(operator)
+                    .map_err(|_| self.error(ReadErrorKind::InvalidDispatch, operator_form.span))?;
+                if token.package.is_some() || matches!(&token.kind, SymbolTokenKind::Uninterned) {
+                    return Err(self.error(ReadErrorKind::InvalidDispatch, operator_form.span));
+                }
+                match token.name.to_ascii_uppercase().as_str() {
+                    "AND" => {
+                        let mut enabled = true;
+                        for item in &items[1..] {
+                            enabled = enabled && self.feature_expression_enabled(item)?;
+                        }
+                        Ok(enabled)
+                    }
+                    "OR" => {
+                        let mut enabled = false;
+                        for item in &items[1..] {
+                            enabled = enabled || self.feature_expression_enabled(item)?;
+                        }
+                        Ok(enabled)
+                    }
+                    "NOT" if items.len() == 2 => {
+                        let enabled = self.feature_expression_enabled(&items[1])?;
+                        Ok(!enabled)
+                    }
+                    _ => Err(self.error(ReadErrorKind::InvalidDispatch, operator_form.span)),
+                }
+            }
+            _ => Err(self.error(ReadErrorKind::InvalidDispatch, form.span)),
+        }
+    }
+
+    fn feature_atom_enabled(&self, name: &str, span: Span) -> Result<bool, ReadError> {
+        let token = parse_symbol_token(name)
+            .map_err(|_| self.error(ReadErrorKind::InvalidDispatch, span))?;
+        if token.package.is_some() || matches!(&token.kind, SymbolTokenKind::Uninterned) {
+            return Err(self.error(ReadErrorKind::InvalidDispatch, span));
+        }
+        Ok(self.features.contains(&normalize_feature_name(&token.name)))
+    }
     fn parse_uninterned_symbol(&mut self, start: usize) -> Result<Form, ReadError> {
         self.position += 1;
         self.scan_symbol_token(start)?;
@@ -216,56 +393,18 @@ impl<'source> Reader<'source> {
                     Span::new(item_start, self.position),
                 )),
                 _ => {
-                    return Err(
-                        self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position))
-                    );
+                    return Err(self.error(
+                        ReadErrorKind::InvalidDispatch,
+                        Span::new(start, self.position),
+                    ));
                 }
             }
         }
 
-        Ok(Form::new(FormKind::Vector(items), Span::new(start, self.position)))
-    }
-
-    fn parse_radix_integer(&mut self, start: usize, radix: u32) -> Result<Form, ReadError> {
-        self.position += 1;
-        let digits_start = self.position;
-
-        if matches!(self.peek_char(), Some('+') | Some('-')) {
-            self.position += 1;
-        }
-
-        let mut saw_digit = false;
-        while let Some(character) = self.peek_char() {
-            if self.is_delimiter(character) {
-                break;
-            }
-
-            self.position += character.len_utf8();
-            if character.to_digit(radix).is_some() {
-                saw_digit = true;
-                continue;
-            }
-
-            return Err(self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position)));
-        }
-
-        if !saw_digit || self.position == digits_start {
-            return Err(self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position)));
-        }
-
-        let token = &self.source[digits_start..self.position];
-        let value = i64::from_str_radix(
-            token.strip_prefix('+').or_else(|| token.strip_prefix('-')).unwrap_or(token),
-            radix,
-        )
-        .map_err(|_| self.error(ReadErrorKind::InvalidDispatch, Span::new(start, self.position)))?;
-        let normalized = if token.starts_with('-') {
-            format!("-{value}")
-        } else {
-            value.to_string()
-        };
-
-        Ok(Form::atom(&normalized, Span::new(start, self.position)))
+        Ok(Form::new(
+            FormKind::Vector(items),
+            Span::new(start, self.position),
+        ))
     }
 
     fn parse_structure_literal(&mut self, start: usize) -> Result<Form, ReadError> {
@@ -764,5 +903,9 @@ impl<'source> Reader<'source> {
 }
 
 pub fn read(source: &str) -> Result<Vec<Form>, ReadError> {
-    Reader::new(source).read_all()
+    Reader::with_features(source, DEFAULT_FEATURES).read_all()
+}
+
+pub fn read_with_features(source: &str, features: &[&str]) -> Result<Vec<Form>, ReadError> {
+    Reader::with_features(source, features).read_all()
 }

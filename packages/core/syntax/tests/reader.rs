@@ -1,4 +1,4 @@
-use ncl_syntax::{FormKind, MAX_NESTING_DEPTH, ReadErrorKind, read};
+use ncl_syntax::{FormKind, MAX_NESTING_DEPTH, ReadErrorKind, read, read_with_features};
 
 #[test]
 fn reads_lists_prefixes_and_literals() {
@@ -8,6 +8,60 @@ fn reads_lists_prefixes_and_literals() {
     assert!(matches!(forms[0].kind, FormKind::List(_)));
     assert!(matches!(forms[1].kind, FormKind::List(_)));
     assert!(matches!(forms[2].kind, FormKind::Vector(_)));
+}
+
+#[test]
+fn reads_complex_dispatch_as_constructor_form() {
+    let forms = read("#C(1 2) #c(-3 4)").unwrap();
+
+    assert_eq!(forms.len(), 2);
+    assert_eq!(forms[0].to_string(), "(complex 1 2)");
+    assert_eq!(forms[1].to_string(), "(complex -3 4)");
+
+    let error = read("#C(1)").unwrap_err();
+    assert!(matches!(error.kind, ReadErrorKind::InvalidDispatch));
+}
+
+#[test]
+fn reads_radix_integer_dispatches_as_decimal_atoms() {
+    let forms = read("#b101101 #o55 #x2d #X+2D #b-101").unwrap();
+
+    assert_eq!(
+        forms.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        ["45", "45", "45", "45", "-5"]
+    );
+    assert_eq!(forms[0].span.start, 0);
+    assert_eq!(forms[0].span.end, 8);
+    assert_eq!(forms[4].span.start, 25);
+    assert_eq!(forms[4].span.end, 31);
+
+    for source in ["#b", "#b+", "#b102", "#xG"] {
+        assert!(matches!(
+            read(source).unwrap_err().kind,
+            ReadErrorKind::InvalidDispatch
+        ));
+    }
+}
+
+#[test]
+fn reads_explicit_radix_integer_dispatches() {
+    let forms = read("#2r101 #36rZ #36r-z #10r+42 #10r-42").unwrap();
+
+    assert_eq!(
+        forms.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        ["5", "35", "-35", "42", "-42"]
+    );
+    assert_eq!(forms[0].span.start, 0);
+    assert_eq!(forms[0].span.end, 6);
+    assert_eq!(forms[4].span.start, 28);
+    assert_eq!(forms[4].span.end, 35);
+
+    for source in ["#2r", "#2r102", "#1r0", "#37r0", "#2q1"] {
+        assert!(matches!(
+            read(source).unwrap_err().kind,
+            ReadErrorKind::InvalidDispatch
+        ));
+    }
 }
 
 #[test]
@@ -62,6 +116,49 @@ fn discarded_forms_are_not_returned() {
     assert!(matches!(
         &forms[0].kind,
         FormKind::Atom(atom) if atom == "42"
+    ));
+}
+
+#[test]
+fn reader_conditionals_select_and_discard_forms() {
+    let enabled = read_with_features("#+:ncl 1 #-:ncl 2", &["ncl"]).unwrap();
+    assert_eq!(enabled.len(), 1);
+    assert!(matches!(&enabled[0].kind, FormKind::Atom(value) if value == "1"));
+
+    let disabled = read_with_features("#+:ncl 1 #-:ncl 2", &[]).unwrap();
+    assert_eq!(disabled.len(), 1);
+    assert!(matches!(&disabled[0].kind, FormKind::Atom(value) if value == "2"));
+}
+
+#[test]
+fn default_reader_features_enable_ncl() {
+    let forms = read("#+:ncl 1 #-:ncl 2").unwrap();
+
+    assert_eq!(forms.len(), 1);
+    assert!(matches!(&forms[0].kind, FormKind::Atom(value) if value == "1"));
+}
+
+#[test]
+fn reader_conditionals_support_logical_feature_expressions() {
+    let forms =
+        read_with_features("#+(and :ncl (not :sbcl)) 11 #+(or :sbcl :ncl) 22", &["ncl"]).unwrap();
+
+    assert_eq!(forms.len(), 2);
+    assert!(matches!(&forms[0].kind, FormKind::Atom(value) if value == "11"));
+    assert!(matches!(&forms[1].kind, FormKind::Atom(value) if value == "22"));
+}
+
+#[test]
+fn invalid_reader_conditionals_report_typed_errors() {
+    let invalid = read_with_features("#+(xor :ncl) 1", &["ncl"]).unwrap_err();
+    assert!(matches!(invalid.kind, ReadErrorKind::InvalidDispatch));
+
+    let missing = read_with_features("#+:ncl", &["ncl"]).unwrap_err();
+    assert!(matches!(
+        missing.kind,
+        ReadErrorKind::UnexpectedEnd {
+            context: "conditional form"
+        }
     ));
 }
 

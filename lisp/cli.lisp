@@ -1,8 +1,3 @@
-(in-package #:ncl)
-
-(defparameter *version*
-  "0.1.0")
-
 (defun print-result (value stream)
   (format stream "~S~%" value)
   value)

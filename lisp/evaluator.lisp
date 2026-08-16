@@ -1,8 +1,3 @@
-(in-package #:ncl)
-
-(defparameter *max-macro-expansions*
-  100)
-
 (defun proper-list-p (value)
   (labels ((walk (tail seen)
              (cond

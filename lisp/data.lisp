@@ -1,5 +1,3 @@
-(in-package #:ncl)
-
 (defstruct (environment (:constructor %make-environment (parent)))
   parent
   (values (make-hash-table :test #'eq))

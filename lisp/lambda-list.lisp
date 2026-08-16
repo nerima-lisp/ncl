@@ -1,5 +1,3 @@
-(in-package #:ncl)
-
 (define-condition unknown-keyword-error
   (ncl-error)
   ((name :initarg :name :reader unknown-keyword-name))

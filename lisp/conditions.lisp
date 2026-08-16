@@ -1,9 +1,3 @@
-(in-package #:ncl)
-
-(define-condition ncl-error
-  (error)
-  ())
-
 (define-condition invalid-form-error
   (ncl-error)
   ((form :initarg :form :reader invalid-form))

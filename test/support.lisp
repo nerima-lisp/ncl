@@ -15,3 +15,10 @@
         t))
     :to-be
     t))
+
+(defmacro expect-invalid-sources (&body sources)
+  `(progn
+     ,@(mapcar (lambda (source)
+                 `(expect-condition ncl:invalid-form-error
+                                    (ncl:evaluate-source ,source)))
+               sources)))

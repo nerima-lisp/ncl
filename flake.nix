@@ -87,6 +87,10 @@
                 --test-timeout-ms 5000 \
                 --coverage \
                 --coverage-system ncl \
+                --coverage-exclude ${self}/lisp/package.lisp \
+                --coverage-exclude ${self}/lisp/constants.lisp \
+                --coverage-exclude ${self}/lisp/cps-macros.lisp \
+                --coverage-exclude ${self}/lisp/conditions-base.lisp \
                 --coverage-output "$coverage_dir/ncl.coverage" \
                 --coverage-report-directory "$coverage_dir/report/" "$@"
             '';

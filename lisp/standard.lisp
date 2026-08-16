@@ -1,5 +1,3 @@
-(in-package #:ncl)
-
 (defun install-standard-function (environment name function)
   (define-function environment name function)
   environment)

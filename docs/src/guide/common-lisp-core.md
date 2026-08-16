@@ -12,8 +12,11 @@ The implementation follows the data/logic split:
 | File | Responsibility |
 | --- | --- |
 | `lisp/package.lisp` | Package boundary and public API |
+| `lisp/constants.lisp` | Runtime configuration constants |
 | `lisp/data.lisp` | Environments, bindings, and closures |
-| `lisp/logic.lisp` | CPS combinators and sequencing macros |
+| `lisp/logic.lisp` | CPS combinators |
+| `lisp/cps-macros.lisp` | CPS sequencing macros |
+| `lisp/conditions-base.lisp` | Base condition type |
 | `lisp/reader.lisp` | Reading a source string into forms |
 | `lisp/conditions.lisp` | Public NCL condition types and reports |
 | `lisp/evaluator.lisp` | Macro expansion, special forms, and CPS evaluation |
@@ -25,6 +28,11 @@ The evaluator expands macros to a fixed point before dispatching special forms
 or function calls. User functions are closures over an environment, and
 function invocation passes through the same CPS continuation boundary as
 special-form evaluation.
+
+The ASDF system is serial. `lisp/package.lisp` establishes the package first;
+the remaining components are compiled with `*package*` bound to `NCL`. This
+keeps package declarations at the build boundary and lets implementation files
+focus on their data or execution responsibilities.
 
 ## Direct execution
 
@@ -58,6 +66,13 @@ coverage artifact plus a report directory under `artifacts/ncl-coverage/`.
 Set `NCL_COVERAGE_DIR` when the output should live elsewhere.
 The test and coverage apps use one worker and a 5000 ms per-test timeout by
 default; additional cl-weave options can be passed after the app name.
+
+Coverage is measured for executable implementation paths. The package,
+constant, CPS-macro, and base-condition files are load-time declarations and
+are excluded from the instrumented source set; macro expansions and condition
+behavior remain covered through the tests that use them. The report shows
+expression coverage for every instrumented file and branch coverage where a
+file has branch points.
 
 ## Editing workflow
 

@@ -239,7 +239,9 @@
               (expect-condition error
                                 (ncl:read-forms "ready" "missing-package"))
               (expect-condition error
-                                (ncl:read-forms "ready" 'missing-package)))
+                                (ncl:read-forms "ready" 'missing-package))
+              (expect-condition error
+                                (ncl:read-forms "ready" 42)))
           (it "evaluates literals, branching, sequential bindings, and forms"
               (expect-value "nil" nil)
               (expect-value "t" t)
@@ -274,52 +276,31 @@
                                         (ncl:make-standard-environment)))
                :to-be
                4)
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(if . t)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(if t)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(if t 1 2 3)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(quote)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(quote one two)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(setq x)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(let ((x 1 2)) x)"))
+              (expect-invalid-sources
+                "(if . t)"
+                "(if t)"
+                "(if t 1 2 3)"
+                "(quote)"
+                "(quote one two)"
+                "(setq x)"
+                "(let ((x 1 2)) x)")
               (expect-value "(let (x) x)" nil)
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(let)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(let* )"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(setq 1 2)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(let (x . y) x)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(let* (x . y) x)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "((lambda (x . y) nil))"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(lambda)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(defun one)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(defun 1 () nil)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(defun one (x . y) nil)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(defmacro one)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(defmacro 1 () nil)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source
-                                 "(defmacro one (x . y) nil)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(function)"))
-              (expect-condition ncl:invalid-form-error
-                                (ncl:evaluate-source "(function one two)"))
+              (expect-invalid-sources
+                "(let)"
+                "(let* )"
+                "(setq 1 2)"
+                "(let (x . y) x)"
+                "(let* (x . y) x)"
+                "((lambda (x . y) nil))"
+                "(lambda)"
+                "(defun one)"
+                "(defun 1 () nil)"
+                "(defun one (x . y) nil)"
+                "(defmacro one)"
+                "(defmacro 1 () nil)"
+                "(defmacro one (x . y) nil)"
+                "(function)"
+                "(function one two)")
               (expect-condition ncl:undefined-function-error
                                 (ncl:evaluate-source "(function missing-function)"))
               (expect-condition ncl:undefined-function-error

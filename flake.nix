@@ -15,11 +15,35 @@
       paredit-cli,
     }:
     let
+      lib = nixpkgs.lib;
       systems = [
         "aarch64-darwin"
         "x86_64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
+      weaveTestArguments = [
+        "--reporter"
+        "spec"
+        "--fail-with-no-tests"
+        "--max-workers"
+        "1"
+        "--test-timeout-ms"
+        "5000"
+      ];
+      weaveTestArgumentsShell = lib.escapeShellArgs weaveTestArguments;
+      coverageExcludePaths = [
+        "lisp/package.lisp"
+        "lisp/constants.lisp"
+        "lisp/cps-macros.lisp"
+        "lisp/conditions-base.lisp"
+      ];
+      coverageExcludeArguments = lib.concatMapStringsSep " " (
+        path:
+        lib.escapeShellArgs [
+          "--coverage-exclude"
+          "${self}/${path}"
+        ]
+      ) coverageExcludePaths;
     in
     {
       packages = forAllSystems (
@@ -60,10 +84,7 @@
             text = ''
               exec ${weave}/bin/cl-weave run \
                 --load ${self}/run-tests.lisp \
-                --reporter spec \
-                --fail-with-no-tests \
-                --max-workers 1 \
-                --test-timeout-ms 5000 "$@"
+                ${weaveTestArgumentsShell} "$@"
             '';
           };
           coverage = pkgs.writeShellApplication {
@@ -76,23 +97,17 @@
               coverage_dir="''${NCL_COVERAGE_DIR:-artifacts/ncl-coverage}"
               mkdir -p "$coverage_dir"
               mkdir -p "$coverage_dir/report"
-              exec ${weave}/bin/cl-weave run ncl \
-                --load ${self}/ncl.asd \
-                --load ${self}/test/package.lisp \
-                --load ${self}/test/support.lisp \
-                --load ${self}/test/core.lisp \
-                --reporter spec \
-                --fail-with-no-tests \
-                --max-workers 1 \
-                --test-timeout-ms 5000 \
-                --coverage \
-                --coverage-system ncl \
-                --coverage-exclude ${self}/lisp/package.lisp \
-                --coverage-exclude ${self}/lisp/constants.lisp \
-                --coverage-exclude ${self}/lisp/cps-macros.lisp \
-                --coverage-exclude ${self}/lisp/conditions-base.lisp \
-                --coverage-output "$coverage_dir/ncl.coverage" \
-                --coverage-report-directory "$coverage_dir/report/" "$@"
+                exec ${weave}/bin/cl-weave run ncl \
+                  --load ${self}/ncl.asd \
+                  --load ${self}/test/package.lisp \
+                  --load ${self}/test/support.lisp \
+                  --load ${self}/test/core.lisp \
+                  ${weaveTestArgumentsShell} \
+                  --coverage \
+                  --coverage-system ncl \
+                  ${coverageExcludeArguments} \
+                  --coverage-output "$coverage_dir/ncl.coverage" \
+                  --coverage-report-directory "$coverage_dir/report/" "$@"
             '';
           };
         in
@@ -150,10 +165,7 @@
                 mkdir -p "$XDG_CACHE_HOME"
                 ${weave}/bin/cl-weave run \
                   --load ${self}/run-tests.lisp \
-                  --reporter spec \
-                  --fail-with-no-tests \
-                  --max-workers 1 \
-                  --test-timeout-ms 5000
+                  ${weaveTestArgumentsShell}
                 touch "$out"
               '';
           ncl-paredit =
@@ -206,16 +218,10 @@
                   --load ${self}/test/package.lisp \
                   --load ${self}/test/support.lisp \
                   --load ${self}/test/core.lisp \
-                  --reporter spec \
-                  --fail-with-no-tests \
-                  --max-workers 1 \
-                  --test-timeout-ms 5000 \
+                  ${weaveTestArgumentsShell} \
                   --coverage \
                   --coverage-system ncl \
-                  --coverage-exclude ${self}/lisp/package.lisp \
-                  --coverage-exclude ${self}/lisp/constants.lisp \
-                  --coverage-exclude ${self}/lisp/cps-macros.lisp \
-                  --coverage-exclude ${self}/lisp/conditions-base.lisp \
+                  ${coverageExcludeArguments} \
                   --coverage-output "$coverage_dir/ncl.coverage" \
                   --coverage-report-directory "$coverage_dir/report/"
                 coverage_index="$coverage_dir/report/cover-index.html"

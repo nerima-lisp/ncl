@@ -45,6 +45,20 @@ builtin, and VM modules own evaluation, dispatch, and control flow. Small
 invocation-context structs make data passed between those operations explicit,
 while preserving the existing execution semantics.
 
+## Runtime source organization
+
+The evaluator and builtin implementations are split by responsibility while
+remaining private to their owning runtime modules:
+
+| Directory | Responsibilities |
+| --- | --- |
+| <code>packages/core/runtime/src/evaluator</code> | Evaluation, compilation, special forms, definitions, macros, packages, sequences, conditions, primitives, generic functions, lambdas, and runtime helpers. |
+| <code>packages/core/runtime/src/builtins</code> | Numeric, bitwise, collection, character, string, type, array, predicate, stream, and format builtins. |
+
+Each directory has a <code>mod.rs</code> that assembles its responsibility
+fragments into the same module boundary. This keeps private invariants local
+without introducing a compatibility layer or changing the public runtime API.
+
 ## Evaluation boundary
 
 The syntax crate turns source text into span-aware forms. The runtime evaluates

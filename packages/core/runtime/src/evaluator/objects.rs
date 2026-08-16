@@ -1,5 +1,4 @@
-macro_rules! evaluator_objects {
-    () => {
+impl Runtime {
     fn make_instance(
         &self,
         arguments: &[Value],
@@ -608,5 +607,4 @@ macro_rules! evaluator_objects {
     }
 
 
-    };
 }

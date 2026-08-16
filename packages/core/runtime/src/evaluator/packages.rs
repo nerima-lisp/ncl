@@ -1,5 +1,4 @@
-macro_rules! evaluator_packages {
-    () => {
+impl Runtime {
     fn special_defpackage(&self, items: &[Form]) -> Result<Value, RuntimeError> {
         if items.len() < 2 {
             return Err(self.arity("defpackage", "at least one", items.len().saturating_sub(1)));
@@ -492,5 +491,4 @@ macro_rules! evaluator_packages {
     }
 
 
-    };
 }

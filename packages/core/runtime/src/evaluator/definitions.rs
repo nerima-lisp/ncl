@@ -1,5 +1,4 @@
-macro_rules! evaluator_definitions {
-    () => {
+impl Runtime {
     fn setf_index(&self, value: Value, span: Span) -> Result<usize, RuntimeError> {
         match value {
             Value::Integer(index) if index >= 0 => {
@@ -1783,5 +1782,4 @@ macro_rules! evaluator_definitions {
     }
 
 
-    };
 }

@@ -1,5 +1,4 @@
-macro_rules! evaluator_evaluation_helpers {
-    () => {
+impl Runtime {
     fn eval_sequence_values(
         &self,
         forms: &[Form],
@@ -101,5 +100,4 @@ macro_rules! evaluator_evaluation_helpers {
     }
 
 
-    };
 }

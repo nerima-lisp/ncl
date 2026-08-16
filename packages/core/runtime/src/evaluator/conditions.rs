@@ -1,5 +1,4 @@
-macro_rules! evaluator_conditions {
-    () => {
+impl Runtime {
     fn load_file(&self, arguments: &[Value], span: Span) -> Result<Value, RuntimeError> {
         if arguments.len() != 1 {
             return Err(self.arity("load", "one", arguments.len()));
@@ -355,5 +354,4 @@ macro_rules! evaluator_conditions {
     }
 
 
-    };
 }

@@ -1,5 +1,4 @@
-macro_rules! evaluator_setf {
-    () => {
+impl Runtime {
     fn setf_place_uses_multiple_values(place: &Form) -> bool {
         let FormKind::List(items) = &place.kind else {
             return false;
@@ -2180,5 +2179,4 @@ macro_rules! evaluator_setf {
     }
 
 
-    };
 }

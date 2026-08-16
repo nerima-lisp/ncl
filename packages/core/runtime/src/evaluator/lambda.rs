@@ -1,5 +1,4 @@
-macro_rules! evaluator_lambda {
-    () => {
+impl Runtime {
     fn parameters(&self, form: &Form) -> Result<OrdinaryLambdaList, RuntimeError> {
         parse_ordinary_lambda_list(form).map_err(|error| {
             let message = error.kind.to_string();
@@ -527,5 +526,4 @@ macro_rules! evaluator_lambda {
     }
 
 
-    };
 }

@@ -1,5 +1,4 @@
-macro_rules! evaluator_evaluation {
-    () => {
+impl Runtime {
     pub(crate) fn eval_in(
         &self,
         form: &Form,
@@ -260,5 +259,4 @@ macro_rules! evaluator_evaluation {
     }
 
 
-    };
 }

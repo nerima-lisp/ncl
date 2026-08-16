@@ -1,5 +1,3 @@
-macro_rules! evaluator_helpers {
-    () => {
 fn atom_name(form: &Form) -> Option<&str> {
     match &form.kind {
         FormKind::Atom(value) => Some(value),
@@ -486,7 +484,4 @@ fn resolved_symbol(atom: &str) -> (String, bool) {
             (resolved, token.escaped)
         }
     }
-}
-
-    };
 }

@@ -1,5 +1,4 @@
-macro_rules! evaluator_errors {
-    () => {
+impl Runtime {
     fn arity(&self, function: &str, expected: &str, actual: usize) -> RuntimeError {
         RuntimeError::Arity {
             function: function.to_string(),
@@ -156,5 +155,4 @@ macro_rules! evaluator_errors {
         }
     }
 
-    };
 }

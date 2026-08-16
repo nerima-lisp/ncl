@@ -315,25 +315,3 @@ include!("evaluation_helpers.rs");
 include!("errors.rs");
 include!("default.rs");
 include!("helpers.rs");
-
-impl Runtime {
-    evaluator_runtime_core!();
-    evaluator_compiler!();
-    evaluator_evaluation!();
-    evaluator_macros!();
-    evaluator_special_forms!();
-    evaluator_setf!();
-    evaluator_definitions!();
-    evaluator_packages!();
-    evaluator_sequences!();
-    evaluator_objects!();
-    evaluator_conditions!();
-    evaluator_primitives!();
-    evaluator_generic!();
-    evaluator_lambda!();
-    evaluator_evaluation_helpers!();
-    evaluator_errors!();
-}
-
-evaluator_default!();
-evaluator_helpers!();

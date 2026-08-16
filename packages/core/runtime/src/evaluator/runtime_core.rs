@@ -1,5 +1,4 @@
-macro_rules! evaluator_runtime_core {
-    () => {
+impl Runtime {
     pub fn new() -> Self {
         let global = Environment::new();
         builtins::install(&global);
@@ -800,5 +799,4 @@ macro_rules! evaluator_runtime_core {
     }
 
 
-    };
 }

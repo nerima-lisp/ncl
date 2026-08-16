@@ -1,5 +1,4 @@
-macro_rules! evaluator_macros {
-    () => {
+impl Runtime {
     fn expand_macros(&self, form: Form, environment: &Environment) -> Result<Form, RuntimeError> {
         self.expand_macros_with_flag(form, environment)
             .map(|(form, _)| form)
@@ -1088,5 +1087,4 @@ macro_rules! evaluator_macros {
     }
 
 
-    };
 }

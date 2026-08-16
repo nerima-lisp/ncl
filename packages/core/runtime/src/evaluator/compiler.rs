@@ -1,5 +1,4 @@
-macro_rules! evaluator_compiler {
-    () => {
+impl Runtime {
     fn prepare_compiled_form(
         &self,
         form: &Form,
@@ -1110,5 +1109,4 @@ macro_rules! evaluator_compiler {
     }
 
 
-    };
 }

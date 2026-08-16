@@ -1,5 +1,4 @@
-macro_rules! evaluator_special_forms {
-    () => {
+impl Runtime {
     fn special_quote(&self, items: &[Form], span: Span) -> Result<Value, RuntimeError> {
         if items.len() != 2 {
             return Err(self.arity("quote", "one", items.len().saturating_sub(1)));
@@ -2309,5 +2308,4 @@ macro_rules! evaluator_special_forms {
     }
 
 
-    };
 }

@@ -1,5 +1,4 @@
-macro_rules! evaluator_generic {
-    () => {
+impl Runtime {
     fn method_score(&self, method: &MethodDefinition, arguments: &[Value]) -> Option<Vec<usize>> {
         let required_count = method.specializers.len();
         if arguments.len() < required_count {
@@ -1082,5 +1081,4 @@ macro_rules! evaluator_generic {
     }
 
 
-    };
 }

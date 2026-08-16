@@ -1,5 +1,4 @@
-macro_rules! evaluator_primitives {
-    () => {
+impl Runtime {
     fn apply_primitive(
         &self,
         name: &str,
@@ -1502,5 +1501,4 @@ macro_rules! evaluator_primitives {
     }
 
 
-    };
 }

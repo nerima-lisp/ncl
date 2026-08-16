@@ -1,5 +1,4 @@
-macro_rules! evaluator_sequences {
-    () => {
+impl Runtime {
     fn special_funcall(
         &self,
         items: &[Form],
@@ -2356,5 +2355,4 @@ macro_rules! evaluator_sequences {
     }
 
 
-    };
 }

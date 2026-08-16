@@ -5,9 +5,9 @@ use std::rc::Rc;
 
 use ncl_compiler::{Compiler, Program};
 use ncl_syntax::{
-    parse_ordinary_lambda_list, parse_symbol_token, read, Form, FormKind,
-    LambdaListAuxiliaryParameter, LambdaListKeywordParameter, LambdaListOptionalParameter,
-    OrdinaryLambdaList, Span, SymbolTokenKind,
+    Form, FormKind, LambdaListAuxiliaryParameter, LambdaListKeywordParameter,
+    LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind,
+    parse_ordinary_lambda_list, parse_symbol_token, read,
 };
 
 use crate::builtins;
@@ -8742,10 +8742,9 @@ impl Runtime {
                                 class_value = None;
                             }
                             _ => {
-                                return Err(self.invalid(
-                                    "unsupported defclass allocation",
-                                    option[1].span,
-                                ));
+                                return Err(
+                                    self.invalid("unsupported defclass allocation", option[1].span)
+                                );
                             }
                         }
                     }
@@ -10102,6 +10101,76 @@ impl Runtime {
             return Err(self.package_error("invalid package name", span));
         }
         Ok(name)
+    }
+
+    fn package_keyword_name(&self, value: &Value, span: Span) -> Result<String, RuntimeError> {
+        let raw = match value {
+            Value::Keyword(name) | Value::KeywordExact(name) => name.as_ref(),
+            _ => {
+                return Err(self.invalid("make-package options must use keyword names", span));
+            }
+        };
+        Ok(normalize_name(raw).trim_start_matches(':').to_string())
+    }
+
+    fn make_package_from_arguments(
+        &self,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() || arguments[1..].len() % 2 != 0 {
+            return Err(self.invalid("make-package requires a name and keyword/value pairs", span));
+        }
+        let name = self.package_designator_name(&arguments[0], span)?;
+        let mut nicknames = Vec::new();
+        let mut use_packages = Vec::new();
+        let mut supplied = HashSet::new();
+        for pair in arguments[1..].chunks_exact(2) {
+            let keyword = self.package_keyword_name(&pair[0], span)?;
+            if !supplied.insert(keyword.clone()) {
+                return Err(
+                    self.package_error(&format!("duplicate make-package keyword :{keyword}"), span)
+                );
+            }
+            match keyword.as_str() {
+                "NICKNAMES" => {
+                    let values = pair[1].list_items().ok_or_else(|| {
+                        self.invalid("package nicknames must be a proper list", span)
+                    })?;
+                    nicknames = values
+                        .iter()
+                        .map(|value| self.name_designator_from_value(value, span))
+                        .collect::<Result<Vec<_>, _>>()?;
+                }
+                "USE" => {
+                    use_packages = self.package_names_from_value(&pair[1], span)?;
+                }
+                _ => {
+                    return Err(self
+                        .package_error(&format!("unknown make-package keyword :{keyword}"), span));
+                }
+            }
+        }
+        let name = self
+            .packages
+            .borrow_mut()
+            .make_package(name, nicknames, use_packages, None)
+            .map_err(|message| self.package_error(&message, span))?;
+        Ok(Value::package(name))
+    }
+
+    fn package_nicknames_from_value(
+        &self,
+        value: &Value,
+        span: Span,
+    ) -> Result<Vec<String>, RuntimeError> {
+        let values = value
+            .list_items()
+            .ok_or_else(|| self.invalid("package nicknames must be a proper list", span))?;
+        values
+            .iter()
+            .map(|value| self.name_designator_from_value(value, span))
+            .collect()
     }
 
     fn package_name_from_value(&self, value: &Value, span: Span) -> Result<String, RuntimeError> {
@@ -14017,6 +14086,7 @@ impl Runtime {
                 self.gensym_counter.set(counter.wrapping_add(1));
                 Ok(Value::uninterned_symbol(format!("{prefix}{counter}")))
             }
+            "MAKE-PACKAGE" => self.make_package_from_arguments(arguments, span),
             "INTERN" => {
                 if !(1..=2).contains(&arguments.len()) {
                     return Err(self.arity("intern", "one or two", arguments.len()));
@@ -14082,6 +14152,36 @@ impl Runtime {
                     Ok(Value::Nil)
                 }
             }
+            "DELETE-PACKAGE" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("delete-package", "one", arguments.len()));
+                }
+                let package = self.package_name_from_value(&arguments[0], span)?;
+                let deleted = self
+                    .packages
+                    .borrow_mut()
+                    .delete_package(&package)
+                    .map_err(|message| self.package_error(&message, span))?;
+                Ok(Value::boolean(deleted))
+            }
+            "RENAME-PACKAGE" => {
+                if !(2..=3).contains(&arguments.len()) {
+                    return Err(self.arity("rename-package", "two or three", arguments.len()));
+                }
+                let package = self.package_name_from_value(&arguments[0], span)?;
+                let new_name = self.name_designator_from_value(&arguments[1], span)?;
+                let nicknames = arguments
+                    .get(2)
+                    .map(|value| self.package_nicknames_from_value(value, span))
+                    .transpose()?
+                    .unwrap_or_default();
+                let name = self
+                    .packages
+                    .borrow_mut()
+                    .rename_package(&package, new_name, nicknames)
+                    .map_err(|message| self.package_error(&message, span))?;
+                Ok(Value::package(name))
+            }
             "PACKAGE-NAME" => {
                 if arguments.len() != 1 {
                     return Err(self.arity("package-name", "one", arguments.len()));
@@ -14103,6 +14203,66 @@ impl Runtime {
                     Value::Package(package) => {
                         let names = self.packages.borrow().use_packages_for(package);
                         Ok(Value::list(names.into_iter().map(Value::package).collect()))
+                    }
+                    other => Err(RuntimeError::Type {
+                        expected: "PACKAGE".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(span),
+                    }),
+                }
+            }
+            "PACKAGE-NICKNAMES" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("package-nicknames", "one", arguments.len()));
+                }
+                match &arguments[0] {
+                    Value::Package(package) => {
+                        let nicknames = self.packages.borrow().package_nicknames(package);
+                        Ok(Value::list(
+                            nicknames.into_iter().map(Value::string).collect(),
+                        ))
+                    }
+                    other => Err(RuntimeError::Type {
+                        expected: "PACKAGE".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(span),
+                    }),
+                }
+            }
+            "PACKAGE-SHADOWING-SYMBOLS" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("package-shadowing-symbols", "one", arguments.len()));
+                }
+                match &arguments[0] {
+                    Value::Package(package) => {
+                        let symbols = self
+                            .packages
+                            .borrow()
+                            .shadowing_symbols_for(package)
+                            .into_iter()
+                            .map(|symbol| {
+                                self.package_symbol_value(symbol.package(), symbol.name())
+                            })
+                            .collect();
+                        Ok(Value::list(symbols))
+                    }
+                    other => Err(RuntimeError::Type {
+                        expected: "PACKAGE".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(span),
+                    }),
+                }
+            }
+            "PACKAGE-USED-BY-LIST" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("package-used-by-list", "one", arguments.len()));
+                }
+                match &arguments[0] {
+                    Value::Package(package) => {
+                        let packages = self.packages.borrow().used_by_packages_for(package);
+                        Ok(Value::list(
+                            packages.into_iter().map(Value::package).collect(),
+                        ))
                     }
                     other => Err(RuntimeError::Type {
                         expected: "PACKAGE".to_string(),
@@ -14184,7 +14344,9 @@ impl Runtime {
                 }
                 let mut state = self.packages.borrow_mut();
                 for package in packages {
-                    state.use_package(&package, &target);
+                    state
+                        .use_package(&package, &target)
+                        .map_err(|message| self.package_error(&message, span))?;
                 }
                 Ok(Value::boolean(true))
             }
@@ -15338,7 +15500,15 @@ impl Runtime {
         if name.eq_ignore_ascii_case("CHANGE-CLASS") {
             return self.change_class(arguments, environment, span);
         }
-        self.apply_generic_with_default(function, name, methods, arguments, default, span, environment)
+        self.apply_generic_with_default(
+            function,
+            name,
+            methods,
+            arguments,
+            default,
+            span,
+            environment,
+        )
     }
 
     fn apply_generic_with_default(

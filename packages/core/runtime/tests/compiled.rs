@@ -30,7 +30,10 @@ fn compile_source_expands_macros_for_later_forms() {
 
     assert_eq!(compiled.len(), 2);
     assert!(compiled[1].instruction_count() > 0);
-    assert_eq!(runtime.eval_source("(twice 4)").unwrap()[0].to_string(), "8");
+    assert_eq!(
+        runtime.eval_source("(twice 4)").unwrap()[0].to_string(),
+        "8"
+    );
 }
 
 #[test]
@@ -233,15 +236,21 @@ fn compiled_evaluates_defconstant_and_constantp() {
         "(42 T T T NIL T T)"
     );
 
-    assert!(Runtime::new()
-        .eval_compiled_source("(defconstant +answer+ 42) (setq +answer+ 7)")
-        .is_err());
-    assert!(Runtime::new()
-        .eval_compiled_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
-        .is_err());
-    assert!(Runtime::new()
-        .eval_compiled_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
-        .is_err());
+    assert!(
+        Runtime::new()
+            .eval_compiled_source("(defconstant +answer+ 42) (setq +answer+ 7)")
+            .is_err()
+    );
+    assert!(
+        Runtime::new()
+            .eval_compiled_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
+            .is_err()
+    );
+    assert!(
+        Runtime::new()
+            .eval_compiled_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
+            .is_err()
+    );
 }
 
 #[test]
@@ -1784,12 +1793,16 @@ fn compiled_lowers_simple_push_and_pop_without_eval() {
         .flat_map(|function| function.instructions.iter())
         .collect::<Vec<_>>();
 
-    assert!(instructions.iter().any(|instruction| {
-        matches!(instruction, Instruction::Setf(_))
-    }));
-    assert!(!instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Eval(_))));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::Setf(_)) })
+    );
+    assert!(
+        !instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
+    );
 }
 
 #[test]
@@ -2884,9 +2897,11 @@ fn compiled_evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(runtime
-        .eval_compiled_source("(with-accessors (x) object x)")
-        .is_err());
+    assert!(
+        runtime
+            .eval_compiled_source("(with-accessors (x) object x)")
+            .is_err()
+    );
 }
 
 #[test]
@@ -2948,7 +2963,11 @@ fn compiled_rejects_unsupported_defclass_slot_allocation() {
         )
         .expect_err("unsupported defclass slot allocation should fail");
 
-    assert!(error.to_string().contains("unsupported defclass allocation"));
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported defclass allocation")
+    );
 }
 
 #[test]
@@ -3726,7 +3745,8 @@ fn compiled_evaluates_clos_reinitialize_instance_updates_initargs_and_runs_metho
 }
 
 #[test]
-fn compiled_evaluates_clos_reinitialize_instance_before_method_runs_before_standard_reinitialization() {
+fn compiled_evaluates_clos_reinitialize_instance_before_method_runs_before_standard_reinitialization()
+ {
     let values = Runtime::new()
         .eval_compiled_source(
             r#"(progn
@@ -6207,6 +6227,66 @@ fn compiled_package_objects_support_standard_introspection() {
     assert_eq!(
         values.last().unwrap().to_string(),
         r#"(T T "PACKAGE-INSPECT-COMPILED" T NIL "COMMON-LISP" T)"#
+    );
+}
+
+#[test]
+fn compiled_package_metadata_lists_nicknames_shadowing_symbols_and_users() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_compiled_source(
+            r#"(defpackage :package-metadata-owner-compiled
+                 (:use :common-lisp)
+                 (:nicknames :package-metadata-alias-compiled)
+                 (:shadow :local-shadow))
+               (defpackage :package-metadata-user-compiled
+                 (:use :common-lisp :package-metadata-owner-compiled))
+               (let ((owner (find-package :package-metadata-owner-compiled)))
+                 (list (package-nicknames owner)
+                       (symbol-name (car (package-shadowing-symbols owner)))
+                       (package-name (car (package-used-by-list owner)))))"#,
+        )
+        .unwrap();
+
+    assert_eq!(
+        values.last().unwrap().to_string(),
+        r#"(("PACKAGE-METADATA-ALIAS-COMPILED") "LOCAL-SHADOW" "PACKAGE-METADATA-USER-COMPILED")"#
+    );
+}
+
+#[test]
+fn compiled_package_lifecycle_operations_work() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_compiled_source(
+            r#"(defpackage :package-lifecycle-use-compiled (:use :common-lisp))
+               (let ((package (make-package
+                                :package-lifecycle-made-compiled
+                                :nicknames '(:package-lifecycle-nickname-compiled)
+                                :use '(:package-lifecycle-use-compiled))))
+                 (let ((before (list (package-name package)
+                                     (package-nicknames package)
+                                     (mapcar #'package-name
+                                             (package-use-list package)))))
+                   (let ((renamed (rename-package
+                                    package
+                                    :package-lifecycle-renamed-compiled
+                                    '(:package-lifecycle-renamed-nickname-compiled))))
+                     (list before
+                           (package-name renamed)
+                           (package-nicknames renamed)
+                           (package-name
+                            (find-package :package-lifecycle-renamed-nickname-compiled))
+                           (find-package :package-lifecycle-made-compiled)
+                           (delete-package renamed)
+                           (find-package :package-lifecycle-renamed-compiled)
+                           (find-package :package-lifecycle-renamed-nickname-compiled)))))"#,
+        )
+        .unwrap();
+
+    assert_eq!(
+        values.last().unwrap().to_string(),
+        r#"(("PACKAGE-LIFECYCLE-MADE-COMPILED" ("PACKAGE-LIFECYCLE-NICKNAME-COMPILED") ("PACKAGE-LIFECYCLE-USE-COMPILED")) "PACKAGE-LIFECYCLE-RENAMED-COMPILED" ("PACKAGE-LIFECYCLE-RENAMED-NICKNAME-COMPILED") "PACKAGE-LIFECYCLE-RENAMED-COMPILED" NIL T NIL NIL)"#
     );
 }
 

@@ -371,11 +371,17 @@ pub fn install(environment: &Environment) {
         "MAPCON",
         "MAKE-SYMBOL",
         "GENSYM",
+        "MAKE-PACKAGE",
         "INTERN",
         "FIND-SYMBOL",
         "FIND-PACKAGE",
+        "DELETE-PACKAGE",
+        "RENAME-PACKAGE",
         "PACKAGE-NAME",
         "PACKAGE-USE-LIST",
+        "PACKAGE-NICKNAMES",
+        "PACKAGE-SHADOWING-SYMBOLS",
+        "PACKAGE-USED-BY-LIST",
         "DOCUMENTATION",
         "LIST-ALL-PACKAGES",
         "USE-PACKAGE",
@@ -1644,11 +1650,7 @@ fn arithmetic_shift(arguments: &[Value]) -> Result<Value, RuntimeError> {
         (-count) as u64
     };
     Ok(Value::Integer(if shift >= 64 {
-        if value < 0 {
-            -1
-        } else {
-            0
-        }
+        if value < 0 { -1 } else { 0 }
     } else {
         value >> shift as u32
     }))

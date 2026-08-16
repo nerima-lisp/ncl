@@ -239,14 +239,93 @@ impl PackageState {
             .unwrap_or_default()
     }
 
-    pub(crate) fn use_package(&mut self, package: &str, target: &str) {
+    pub(crate) fn package_nicknames(&self, name: &str) -> Vec<String> {
+        let name = self.canonical_package_name(name);
+        let mut nicknames = self
+            .nicknames
+            .iter()
+            .filter_map(|(nickname, package)| (package == &name).then_some(nickname.clone()))
+            .collect::<Vec<_>>();
+        nicknames.sort();
+        nicknames
+    }
+
+    pub(crate) fn shadowing_symbols_for(&self, name: &str) -> Vec<SymbolReference> {
+        let name = self.canonical_package_name(name);
+        let mut symbols = self
+            .packages
+            .get(&name)
+            .map(|package| {
+                package
+                    .shadows
+                    .iter()
+                    .map(|symbol| SymbolReference::new(name.clone(), symbol.clone()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        symbols.sort_by_key(SymbolReference::canonical_name);
+        symbols
+    }
+
+    pub(crate) fn used_by_packages_for(&self, name: &str) -> Vec<String> {
+        let name = self.canonical_package_name(name);
+        let mut packages = self
+            .packages
+            .iter()
+            .filter_map(|(package, entry)| {
+                entry
+                    .use_packages
+                    .iter()
+                    .any(|used| used == &name)
+                    .then_some(package.clone())
+            })
+            .collect::<Vec<_>>();
+        packages.sort();
+        packages
+    }
+
+    pub(crate) fn use_package(&mut self, package: &str, target: &str) -> Result<(), String> {
         let package = self.canonical_package_name(package);
         let target = self.canonical_package_name(target);
-        if let Some(entry) = self.packages.get_mut(&target) {
-            if !entry.use_packages.iter().any(|used| used == &package) {
-                entry.use_packages.push(package);
+        if !self.package_exists(&package) {
+            return Err(format!("unknown package {package}"));
+        }
+        if !self.package_exists(&target) {
+            return Err(format!("unknown package {target}"));
+        }
+        let Some(target_entry) = self.packages.get(&target) else {
+            return Err(format!("unknown package {target}"));
+        };
+        if target_entry
+            .use_packages
+            .iter()
+            .any(|used| used == &package)
+        {
+            return Ok(());
+        }
+        let target_shadows = target_entry.shadows.clone();
+        let target_use_packages = target_entry.use_packages.clone();
+        let mut accessible = self.package_symbol_references(&target, false);
+        for used_package in target_use_packages {
+            accessible.extend(self.package_symbol_references(&used_package, true));
+        }
+        for source_reference in self.package_symbol_references(&package, true) {
+            if target_shadows.contains(source_reference.name()) {
+                continue;
+            }
+            if accessible.iter().any(|existing| {
+                existing.name() == source_reference.name() && existing != &source_reference
+            }) {
+                return Err(format!(
+                    "name conflict while using {package} in {target}: {}",
+                    source_reference.name()
+                ));
             }
         }
+        if let Some(entry) = self.packages.get_mut(&target) {
+            entry.use_packages.push(package);
+        }
+        Ok(())
     }
 
     pub(crate) fn unuse_package(&mut self, package: &str, target: &str) {
@@ -355,6 +434,171 @@ impl PackageState {
         let mut names = self.packages.keys().cloned().collect::<Vec<_>>();
         names.sort();
         names
+    }
+
+    fn package_symbol_references(&self, name: &str, external_only: bool) -> Vec<SymbolReference> {
+        let name = self.canonical_package_name(name);
+        let Some(entry) = self.packages.get(&name) else {
+            return Vec::new();
+        };
+        let mut references = entry
+            .symbols
+            .iter()
+            .filter(|symbol| {
+                !external_only
+                    || name == COMMON_LISP_PACKAGE
+                    || name == KEYWORD_PACKAGE
+                    || entry.exports.contains(*symbol)
+            })
+            .map(|symbol| {
+                entry
+                    .imports
+                    .get(symbol)
+                    .and_then(|source| split_symbol(source))
+                    .map(|(package, name, _)| {
+                        SymbolReference::new(
+                            self.canonical_package_name(package),
+                            normalize_symbol_name(name),
+                        )
+                    })
+                    .unwrap_or_else(|| SymbolReference::new(name.clone(), symbol.clone()))
+            })
+            .collect::<Vec<_>>();
+        references.sort_by_key(SymbolReference::canonical_name);
+        references.dedup();
+        references
+    }
+
+    pub(crate) fn make_package(
+        &mut self,
+        name: String,
+        nicknames: Vec<String>,
+        use_packages: Vec<String>,
+        documentation: Option<String>,
+    ) -> Result<String, String> {
+        let name = normalize_package_name(&name);
+        if name.is_empty() {
+            return Err("package name must not be empty".to_string());
+        }
+        if self.package_exists(&name) || self.nicknames.contains_key(&name) {
+            return Err(format!("package {name} already exists"));
+        }
+        for package in &use_packages {
+            let package = self.canonical_package_name(package);
+            if !self.package_exists(&package) {
+                return Err(format!("unknown package {package}"));
+            }
+        }
+        self.define_package(
+            name.clone(),
+            nicknames,
+            use_packages,
+            HashSet::new(),
+            documentation,
+            HashMap::new(),
+        )?;
+        Ok(name)
+    }
+
+    pub(crate) fn delete_package(&mut self, name: &str) -> Result<bool, String> {
+        let name = self.canonical_package_name(name);
+        if name == COMMON_LISP_PACKAGE || name == KEYWORD_PACKAGE {
+            return Err(format!("cannot delete package {name}"));
+        }
+        if self.packages.remove(&name).is_none() {
+            return Err(format!("unknown package {name}"));
+        }
+        self.nicknames.retain(|_, package| package != &name);
+        for package in self.packages.values_mut() {
+            package.use_packages.retain(|used| used != &name);
+            package.local_nicknames.retain(|_, target| target != &name);
+            package
+                .imports
+                .retain(|_, source| !source.strip_prefix(&format!("{name}::")).is_some());
+        }
+        if self.current == name {
+            self.current = if self.packages.contains_key(DEFAULT_PACKAGE) {
+                DEFAULT_PACKAGE.to_string()
+            } else {
+                COMMON_LISP_PACKAGE.to_string()
+            };
+        }
+        Ok(true)
+    }
+
+    pub(crate) fn rename_package(
+        &mut self,
+        name: &str,
+        new_name: String,
+        nicknames: Vec<String>,
+    ) -> Result<String, String> {
+        let old_name = self.canonical_package_name(name);
+        if old_name == COMMON_LISP_PACKAGE || old_name == KEYWORD_PACKAGE {
+            return Err(format!("cannot rename package {old_name}"));
+        }
+        let new_name = normalize_package_name(&new_name);
+        if new_name.is_empty() {
+            return Err("package name must not be empty".to_string());
+        }
+        if new_name != old_name
+            && (self.packages.contains_key(&new_name) || self.nicknames.contains_key(&new_name))
+        {
+            return Err(format!("package {new_name} already exists"));
+        }
+        let mut normalized_nicknames = Vec::new();
+        for nickname in nicknames {
+            let nickname = normalize_package_name(&nickname);
+            if nickname.is_empty() || nickname == new_name {
+                return Err(format!("invalid package nickname {nickname}"));
+            }
+            if self.packages.contains_key(&nickname) && nickname != old_name {
+                return Err(format!(
+                    "package nickname {nickname} conflicts with an existing package"
+                ));
+            }
+            if let Some(existing) = self.nicknames.get(&nickname)
+                && existing != &old_name
+            {
+                return Err(format!("package nickname {nickname} is already in use"));
+            }
+            if !normalized_nicknames.contains(&nickname) {
+                normalized_nicknames.push(nickname);
+            }
+        }
+        let Some(mut package) = self.packages.remove(&old_name) else {
+            return Err(format!("unknown package {old_name}"));
+        };
+        self.nicknames.retain(|_, package| package != &old_name);
+        for entry in self.packages.values_mut() {
+            for used in &mut entry.use_packages {
+                if used == &old_name {
+                    *used = new_name.clone();
+                }
+            }
+            for target in entry.local_nicknames.values_mut() {
+                if target == &old_name {
+                    *target = new_name.clone();
+                }
+            }
+            for source in entry.imports.values_mut() {
+                if source.starts_with(&format!("{old_name}::")) {
+                    *source = source.replacen(&old_name, &new_name, 1);
+                }
+            }
+        }
+        package.use_packages = package
+            .use_packages
+            .into_iter()
+            .map(|used| (used == old_name).then(|| new_name.clone()).unwrap_or(used))
+            .collect();
+        self.packages.insert(new_name.clone(), package);
+        for nickname in normalized_nicknames {
+            self.nicknames.insert(nickname, new_name.clone());
+        }
+        if self.current == old_name {
+            self.current = new_name.clone();
+        }
+        Ok(new_name)
     }
 
     pub(crate) fn define_package(

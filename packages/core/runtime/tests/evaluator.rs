@@ -815,15 +815,21 @@ fn evaluates_defconstant_and_constantp() {
         "(42 T T T NIL T T)"
     );
 
-    assert!(Runtime::new()
-        .eval_source("(defconstant +answer+ 42) (setq +answer+ 7)")
-        .is_err());
-    assert!(Runtime::new()
-        .eval_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
-        .is_err());
-    assert!(Runtime::new()
-        .eval_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
-        .is_err());
+    assert!(
+        Runtime::new()
+            .eval_source("(defconstant +answer+ 42) (setq +answer+ 7)")
+            .is_err()
+    );
+    assert!(
+        Runtime::new()
+            .eval_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
+            .is_err()
+    );
+    assert!(
+        Runtime::new()
+            .eval_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
+            .is_err()
+    );
 }
 
 #[test]
@@ -2835,9 +2841,11 @@ fn evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(runtime
-        .eval_source("(with-accessors (x) object x)")
-        .is_err());
+    assert!(
+        runtime
+            .eval_source("(with-accessors (x) object x)")
+            .is_err()
+    );
 }
 
 #[test]
@@ -2899,7 +2907,11 @@ fn rejects_unsupported_defclass_slot_allocation() {
         )
         .expect_err("unsupported defclass slot allocation should fail");
 
-    assert!(error.to_string().contains("unsupported defclass allocation"));
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported defclass allocation")
+    );
 }
 
 #[test]
@@ -5463,6 +5475,66 @@ fn package_objects_support_standard_introspection() {
     assert_eq!(
         values.last().unwrap().to_string(),
         r#"(T T "PACKAGE-INSPECT-EVAL" T NIL "COMMON-LISP" T)"#
+    );
+}
+
+#[test]
+fn package_metadata_lists_nicknames_shadowing_symbols_and_users() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_source(
+            r#"(defpackage :package-metadata-owner-eval
+                 (:use :common-lisp)
+                 (:nicknames :package-metadata-alias-eval)
+                 (:shadow :local-shadow))
+               (defpackage :package-metadata-user-eval
+                 (:use :common-lisp :package-metadata-owner-eval))
+               (let ((owner (find-package :package-metadata-owner-eval)))
+                 (list (package-nicknames owner)
+                       (symbol-name (car (package-shadowing-symbols owner)))
+                       (package-name (car (package-used-by-list owner)))))"#,
+        )
+        .unwrap();
+
+    assert_eq!(
+        values.last().unwrap().to_string(),
+        r#"(("PACKAGE-METADATA-ALIAS-EVAL") "LOCAL-SHADOW" "PACKAGE-METADATA-USER-EVAL")"#
+    );
+}
+
+#[test]
+fn package_lifecycle_operations_work() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_source(
+            r#"(defpackage :package-lifecycle-use-eval (:use :common-lisp))
+               (let ((package (make-package
+                                :package-lifecycle-made-eval
+                                :nicknames '(:package-lifecycle-nickname-eval)
+                                :use '(:package-lifecycle-use-eval))))
+                 (let ((before (list (package-name package)
+                                     (package-nicknames package)
+                                     (mapcar #'package-name
+                                             (package-use-list package)))))
+                   (let ((renamed (rename-package
+                                    package
+                                    :package-lifecycle-renamed-eval
+                                    '(:package-lifecycle-renamed-nickname-eval))))
+                     (list before
+                           (package-name renamed)
+                           (package-nicknames renamed)
+                           (package-name
+                            (find-package :package-lifecycle-renamed-nickname-eval))
+                           (find-package :package-lifecycle-made-eval)
+                           (delete-package renamed)
+                           (find-package :package-lifecycle-renamed-eval)
+                           (find-package :package-lifecycle-renamed-nickname-eval)))))"#,
+        )
+        .unwrap();
+
+    assert_eq!(
+        values.last().unwrap().to_string(),
+        r#"(("PACKAGE-LIFECYCLE-MADE-EVAL" ("PACKAGE-LIFECYCLE-NICKNAME-EVAL") ("PACKAGE-LIFECYCLE-USE-EVAL")) "PACKAGE-LIFECYCLE-RENAMED-EVAL" ("PACKAGE-LIFECYCLE-RENAMED-NICKNAME-EVAL") "PACKAGE-LIFECYCLE-RENAMED-EVAL" NIL T NIL NIL)"#
     );
 }
 

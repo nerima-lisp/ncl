@@ -107,7 +107,7 @@ fn run_inner() -> Result<(), CliError> {
         }
     }
     if let Some(ref path) = file {
-        let source = fs::read_to_string(&path)
+        let source = fs::read_to_string(path)
             .map_err(|error| CliError::Io(format!("cannot read {path}: {error}")))?;
         if compile_only {
             print_compilation(&runtime, &source, quiet)?;

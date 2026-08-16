@@ -7,15 +7,15 @@ use ncl_syntax::{ReadError, Span};
 use crate::Value;
 
 #[derive(Clone, Debug)]
-pub struct ReturnValue(Value);
+pub struct ReturnValue(Box<Value>);
 
 impl ReturnValue {
     pub fn new(value: Value) -> Self {
-        Self(value)
+        Self(Box::new(value))
     }
 
     pub fn into_value(self) -> Value {
-        self.0
+        *self.0
     }
 }
 
@@ -28,11 +28,11 @@ impl PartialEq for ReturnValue {
 impl Eq for ReturnValue {}
 
 #[derive(Clone, Debug)]
-pub struct ThrowTag(Value);
+pub struct ThrowTag(Box<Value>);
 
 impl ThrowTag {
     pub(crate) fn new(value: Value) -> Self {
-        Self(value)
+        Self(Box::new(value))
     }
 
     pub(crate) fn matches(&self, value: &Value) -> bool {
@@ -82,10 +82,10 @@ pub enum RuntimeError {
     },
     Signaled {
         condition: String,
-        condition_types: Vec<String>,
+        condition_types: Box<Vec<String>>,
         message: String,
         format_control: Option<String>,
-        format_arguments: Vec<ReturnValue>,
+        format_arguments: Box<Vec<ReturnValue>>,
         warning: bool,
         span: Option<Span>,
     },
@@ -315,9 +315,9 @@ impl From<CompileError> for RuntimeError {
             ) =>
             {
                 Self::Arity {
-                function: operator.to_ascii_lowercase(),
-                expected,
-                actual,
+                    function: operator.to_ascii_lowercase(),
+                    expected,
+                    actual,
                 }
             }
             CompileErrorKind::ExpectedList { context }
@@ -367,9 +367,7 @@ impl From<CompileError> for RuntimeError {
                     "MULTIPLE-VALUE-SETQ variables" => {
                         "multiple-value-setq variables must be a list".to_string()
                     }
-                    "WITH-OPEN-FILE binding" => {
-                        "with-open-file binding must be a list".to_string()
-                    }
+                    "WITH-OPEN-FILE binding" => "with-open-file binding must be a list".to_string(),
                     "WITH-OUTPUT-TO-STRING binding" => {
                         "with-output-to-string binding must be a list".to_string()
                     }
@@ -423,9 +421,7 @@ impl From<CompileError> for RuntimeError {
                 ) =>
             {
                 let message = match context.as_str() {
-                    "BLOCK name" | "RETURN-FROM name" => {
-                        "block name must be a symbol".to_string()
-                    }
+                    "BLOCK name" | "RETURN-FROM name" => "block name must be a symbol".to_string(),
                     "PROG binding name" => "prog binding name must be a symbol".to_string(),
                     "DO binding name" => "do binding name must be a symbol".to_string(),
                     "DOTIMES variable" => "dotimes binding name must be a symbol".to_string(),
@@ -435,9 +431,7 @@ impl From<CompileError> for RuntimeError {
                     }
                     "RESTART-BIND restart name"
                     | "WITH-SIMPLE-RESTART name"
-                    | "RESTART-CASE restart name" => {
-                        "restart name must be a symbol".to_string()
-                    }
+                    | "RESTART-CASE restart name" => "restart name must be a symbol".to_string(),
                     "EVAL-WHEN situation" => {
                         "eval-when situations must contain symbols".to_string()
                     }
@@ -475,12 +469,14 @@ impl From<CompileError> for RuntimeError {
                     || message == "DO termination needs an end test"
                     || message == "DO binding needs a name, optional init, and optional step"
                     || message == "DO binding names must be unique"
-                    || message == "DOTIMES binding needs a variable, count, and optional result"
+                    || message
+                        == "DOTIMES binding needs a variable, count, and optional result"
                     || message == "DOLIST binding needs a variable, list, and optional result"
                     || message == "WITH-OPEN-FILE binding needs a stream variable and pathname"
                     || message
                         == "WITH-OUTPUT-TO-STRING binding needs a stream variable and optional string place"
-                    || message == "WITH-INPUT-FROM-STRING binding needs a stream variable and string"
+                    || message
+                        == "WITH-INPUT-FROM-STRING binding needs a stream variable and string"
                     || message == "WITH-INPUT-FROM-STRING options need keyword/value pairs"
                     || message == "WITH-INPUT-FROM-STRING option must be a keyword"
                     || message == "WITH-INPUT-FROM-STRING :start may appear only once"
@@ -489,7 +485,8 @@ impl From<CompileError> for RuntimeError {
                     || message == "WITH-INPUT-FROM-STRING option is not supported"
                     || message == "handler-case clause needs a condition and variable list"
                     || message == "handler-bind clause needs a condition and handler"
-                    || message == "WITH-SIMPLE-RESTART restart clause needs a name and report format"
+                    || message
+                        == "WITH-SIMPLE-RESTART restart clause needs a name and report format"
                     || message == "restart-bind clause needs a name and function"
                     || message == "restart-case clause needs a name, lambda list, and body"
                     || message == "cond clause cannot be empty"
@@ -511,17 +508,12 @@ impl From<CompileError> for RuntimeError {
                     "do binding needs a name, optional init, and optional step".to_string()
                 } else if message == "DO binding names must be unique" {
                     "do binding names must be unique".to_string()
-                } else if message
-                    == "DOTIMES binding needs a variable, count, and optional result"
+                } else if message == "DOTIMES binding needs a variable, count, and optional result"
                 {
                     "dotimes binding needs a name, count, and optional result".to_string()
-                } else if message
-                    == "DOLIST binding needs a variable, list, and optional result"
-                {
+                } else if message == "DOLIST binding needs a variable, list, and optional result" {
                     "dolist binding needs a name, list, and optional result".to_string()
-                } else if message
-                    == "WITH-OPEN-FILE binding needs a stream variable and pathname"
-                {
+                } else if message == "WITH-OPEN-FILE binding needs a stream variable and pathname" {
                     "with-open-file binding needs a stream variable and pathname".to_string()
                 } else if message
                     == "WITH-OUTPUT-TO-STRING binding needs a stream variable and optional string place"
@@ -531,11 +523,8 @@ impl From<CompileError> for RuntimeError {
                 } else if message
                     == "WITH-INPUT-FROM-STRING binding needs a stream variable and string"
                 {
-                    "with-input-from-string binding needs a stream variable and string"
-                        .to_string()
-                } else if message
-                    == "WITH-INPUT-FROM-STRING options need keyword/value pairs"
-                {
+                    "with-input-from-string binding needs a stream variable and string".to_string()
+                } else if message == "WITH-INPUT-FROM-STRING options need keyword/value pairs" {
                     "with-input-from-string options need keyword/value pairs".to_string()
                 } else if message == "WITH-INPUT-FROM-STRING option must be a keyword" {
                     "with-input-from-string option must be a keyword".to_string()
@@ -554,8 +543,7 @@ impl From<CompileError> for RuntimeError {
                 } else if message
                     == "WITH-SIMPLE-RESTART restart clause needs a name and report format"
                 {
-                    "with-simple-restart restart clause needs a name and report format"
-                        .to_string()
+                    "with-simple-restart restart clause needs a name and report format".to_string()
                 } else {
                     message
                 };

@@ -9,8 +9,13 @@ The repository is a Cargo workspace:
 | <code>src</code> | Root crate, public re-exports, and CLI entry point. |
 | <code>packages/core/syntax</code> | Reader, forms, spans, symbols, and lambda-list parsing. |
 | <code>packages/core/compiler</code> | Bytecode instruction definitions, compiler, and VM support. |
-| <code>packages/core/runtime</code> | Values, environments, evaluator, builtins, packages, conditions, and control flow. |
+| <code>packages/core/runtime</code> | Runtime data types, environments, evaluator, builtins, packages, conditions, and control flow. |
 | <code>tests</code> | Workspace-level integration coverage. |
+
+The workspace uses Rust edition 2024, declares Rust 1.97 as its minimum
+version, and pins Rust 1.97.1 through `rust-toolchain.toml`. Workspace lints
+forbid unsafe Rust. The required formatter, build, test, and Clippy checks are
+also run by [.github/workflows/ci.yml](https://github.com/nerima-lisp/ncl/blob/main/.github/workflows/ci.yml).
 
 ## Dependency graph
 
@@ -30,6 +35,15 @@ This is a dependency graph, not an evaluation pipeline. At runtime, the CLI
 reads source through the syntax crate and selects either the interpreter or the
 compiler and VM. The runtime owns the execution environment and builtins, so
 the CLI does not contain language semantics.
+
+## Data and logic boundaries
+
+The runtime keeps data-facing types and execution logic separate where the
+language model permits it. `value.rs`, `error.rs`, `environment.rs`, and
+`package.rs` define the principal runtime state and boundary types; evaluator,
+builtin, and VM modules own evaluation, dispatch, and control flow. Small
+invocation-context structs make data passed between those operations explicit,
+while preserving the existing execution semantics.
 
 ## Evaluation boundary
 

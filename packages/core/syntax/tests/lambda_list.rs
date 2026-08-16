@@ -1,4 +1,4 @@
-use ncl_syntax::{parse_ordinary_lambda_list, read, FormKind, LambdaListErrorKind};
+use ncl_syntax::{FormKind, LambdaListErrorKind, parse_ordinary_lambda_list, read};
 
 fn parse(source: &str) -> ncl_syntax::OrdinaryLambdaList {
     let form = &read(source).expect("lambda list should parse")[0];

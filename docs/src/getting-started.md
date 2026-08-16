@@ -2,8 +2,9 @@
 
 ## Rust runtime requirements
 
-Install Rust 1.85 or newer. The repository is a Cargo workspace, so all
-commands below are run from its root.
+The workspace requires Rust 1.97 or newer and pins Rust 1.97.1 in
+`rust-toolchain.toml`. It is a Cargo workspace, so all commands below are run
+from its root.
 
 ## Evaluate an expression
 
@@ -74,11 +75,12 @@ and 2 for command-line usage errors.
 
 ## Using Nix
 
-When Rust is supplied by Nix, run Cargo and the formatter from a shell that
-contains the required tools:
+The Nix development shell provides `rustc`, Cargo, `rustfmt`, Clippy, and the
+Common Lisp and documentation tools used by the project:
 
 ~~~sh
-nix shell nixpkgs#rustc nixpkgs#rustfmt --command cargo run -- --eval '(+ 1 2)'
+nix develop path:.
+cargo run -- --eval '(+ 1 2)'
 ~~~
 
 ## Common Lisp core
@@ -111,3 +113,7 @@ nix run path:.#coverage
 The implementation and test systems are declared in `ncl.asd`. The direct
 entry points read that declaration and load source files in its serial order;
 this keeps the command-line and test paths aligned.
+
+The coverage command writes an HTML report and coverage data below
+`artifacts/ncl-coverage/` by default. Set `NCL_COVERAGE_DIR` to write those
+artifacts elsewhere.

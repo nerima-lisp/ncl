@@ -11,6 +11,12 @@ use crate::evaluator::quoted_form_value;
 use crate::package::{self, COMMON_LISP_PACKAGE, KEYWORD_PACKAGE};
 use crate::{Environment, Function, Rational, RuntimeError, Stream, Value};
 
+struct DisplacedArray {
+    displaced_to: Option<Value>,
+    displaced_index_offset: usize,
+    storage: Rc<RefCell<Vec<Value>>>,
+}
+
 pub fn install(environment: &Environment) {
     for (name, function) in [
         ("+", add as _),
@@ -537,12 +543,11 @@ fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let exponent = numeric_argument("expt", &arguments[1])?;
 
     if let (Numeric::Real(base), Numeric::Real(exponent)) = (base, exponent) {
-        if !base.is_float() {
-            if let Some((exponent_numerator, exponent_denominator)) = exponent.exact_parts() {
-                if exponent_denominator == 1 {
-                    return number_to_value(exact_power(base, exponent_numerator)?);
-                }
-            }
+        if !base.is_float()
+            && let Some((exponent_numerator, exponent_denominator)) = exponent.exact_parts()
+            && exponent_denominator == 1
+        {
+            return number_to_value(exact_power(base, exponent_numerator)?);
         }
 
         if base.as_float() >= 0.0 || float_is_integer(exponent.as_float()) {
@@ -900,10 +905,11 @@ fn zero_power(exponent_real: Number, exponent_imag: Number) -> Result<Value, Run
         return Err(RuntimeError::DivisionByZero);
     }
 
-    if let Some((exponent_numerator, exponent_denominator)) = exponent_real.exact_parts() {
-        if exponent_numerator > 0 && exponent_denominator == 1 {
-            return Ok(Value::Integer(0));
-        }
+    if let Some((exponent_numerator, exponent_denominator)) = exponent_real.exact_parts()
+        && exponent_numerator > 0
+        && exponent_denominator == 1
+    {
+        return Ok(Value::Integer(0));
     }
 
     Ok(Value::Float(0.0))
@@ -1050,10 +1056,10 @@ fn float_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
         return Err(arity("float", "1 to 2", arguments.len()));
     }
     let number = number_argument("float", &arguments[0])?;
-    if let Some(prototype) = arguments.get(1) {
-        if !matches!(prototype, Value::Float(_)) {
-            return Err(type_error("float", "a float prototype", prototype));
-        }
+    if let Some(prototype) = arguments.get(1)
+        && !matches!(prototype, Value::Float(_))
+    {
+        return Err(type_error("float", "a float prototype", prototype));
     }
     Ok(Value::Float(number.as_float()))
 }
@@ -1883,7 +1889,7 @@ fn integer_length(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 fn parse_integer(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    if arguments.is_empty() || (arguments.len() - 1) % 2 != 0 {
+    if arguments.is_empty() || !(arguments.len() - 1).is_multiple_of(2) {
         return Err(arity(
             "parse-integer",
             "a string and keyword/value pairs",
@@ -2039,7 +2045,7 @@ fn make_list(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("make-list", "at least one", 0));
     }
-    if (arguments.len() - 1) % 2 != 0 {
+    if !(arguments.len() - 1).is_multiple_of(2) {
         return Err(arity(
             "make-list",
             "a size and keyword/value pairs",
@@ -2386,7 +2392,7 @@ fn make_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
             initial = character_argument("make-string", value)?;
         }
         Some(_) => {
-            if (arguments.len() - 1) % 2 != 0 {
+            if !(arguments.len() - 1).is_multiple_of(2) {
                 return Err(arity(
                     "make-string",
                     "a size and keyword/value pairs",
@@ -2410,7 +2416,7 @@ fn make_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
         }
     }
     Ok(Value::string(
-        std::iter::repeat(initial).take(length).collect::<String>(),
+        std::iter::repeat_n(initial, length).collect::<String>(),
     ))
 }
 
@@ -2878,7 +2884,7 @@ fn string_case_transform(
     function: &str,
     case: StringCase,
 ) -> Result<Value, RuntimeError> {
-    if !(1..=5).contains(&arguments.len()) || (arguments.len() - 1) % 2 != 0 {
+    if !(1..=5).contains(&arguments.len()) || !(arguments.len() - 1).is_multiple_of(2) {
         return Err(arity(function, "1, 3, or 5", arguments.len()));
     }
     let value = string_designator(function, &arguments[0])?;
@@ -3053,7 +3059,7 @@ fn fill(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() < 2 {
         return Err(arity("fill", "at least two", arguments.len()));
     }
-    if (arguments.len() - 2) % 2 != 0 {
+    if !(arguments.len() - 2).is_multiple_of(2) {
         return Err(arity(
             "fill",
             "an item, a sequence, and keyword/value pairs",
@@ -3081,7 +3087,7 @@ fn replace(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() < 2 {
         return Err(arity("replace", "at least two", arguments.len()));
     }
-    if (arguments.len() - 2) % 2 != 0 {
+    if !(arguments.len() - 2).is_multiple_of(2) {
         return Err(arity(
             "replace",
             "two sequences and keyword/value pairs",
@@ -3108,9 +3114,7 @@ fn replace(arguments: &[Value]) -> Result<Value, RuntimeError> {
             &arguments[1],
         ));
     }
-    for offset in 0..count {
-        result[start1 + offset] = source[start2 + offset].clone();
-    }
+    result[start1..(count + start1)].clone_from_slice(&source[start2..(count + start2)]);
     rebuild_sequence("replace", &arguments[0], result)
 }
 
@@ -3156,7 +3160,7 @@ fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    if arguments.len() < 2 || (arguments.len() - 2) % 2 != 0 {
+    if arguments.len() < 2 || !(arguments.len() - 2).is_multiple_of(2) {
         return Err(arity(
             "make-sequence",
             "a result type, a size, and keyword/value pairs",
@@ -3183,7 +3187,7 @@ fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
         "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => {
             let initial = character_argument("make-sequence", &initial_element)?;
             Ok(Value::string(
-                std::iter::repeat(initial).take(size).collect::<String>(),
+                std::iter::repeat_n(initial, size).collect::<String>(),
             ))
         }
         _ => Err(RuntimeError::InvalidForm {
@@ -3838,10 +3842,10 @@ fn subtype_relation(
                 return Ok(if unknown { None } else { Some(true) });
             }
             "INTEGER" => {
-                if let Some((super_operator, super_arguments)) = compound_type_parts(supertype) {
-                    if super_operator == "INTEGER" {
-                        return Ok(Some(integer_spec_is_subtype(arguments, super_arguments)?));
-                    }
+                if let Some((super_operator, super_arguments)) = compound_type_parts(supertype)
+                    && super_operator == "INTEGER"
+                {
+                    return Ok(Some(integer_spec_is_subtype(arguments, super_arguments)?));
                 }
                 if let Some(super_name) = atomic_type_name(supertype) {
                     return Ok(Some(compound_subtype_named(&operator, &super_name)));
@@ -4094,33 +4098,30 @@ fn named_subtype_relation(
         return Some(true);
     }
 
-    if let Some(class) = environment.lookup_class(subtype_name) {
-        if class
+    if let Some(class) = environment.lookup_class(subtype_name)
+        && class
             .precedence
             .iter()
             .any(|name| name.eq_ignore_ascii_case(supertype_name))
-        {
-            return Some(true);
-        }
+    {
+        return Some(true);
     }
-    if let Some(condition) = environment.lookup_condition(subtype_name) {
-        if condition
+    if let Some(condition) = environment.lookup_condition(subtype_name)
+        && condition
             .precedence
             .iter()
             .any(|name| name.eq_ignore_ascii_case(supertype_name))
-        {
-            return Some(true);
-        }
+    {
+        return Some(true);
     }
-    if let Some(structure) = environment.lookup_structure(subtype_name) {
-        if supertype_name == "STRUCTURE"
+    if let Some(structure) = environment.lookup_structure(subtype_name)
+        && (supertype_name == "STRUCTURE"
             || structure
                 .type_names
                 .iter()
-                .any(|name| name.eq_ignore_ascii_case(supertype_name))
-        {
-            return Some(true);
-        }
+                .any(|name| name.eq_ignore_ascii_case(supertype_name)))
+    {
+        return Some(true);
     }
 
     if known_type_name(subtype_name, environment) && known_type_name(supertype_name, environment) {
@@ -4402,10 +4403,7 @@ fn integer_type_matches(
     let Value::Integer(number) = value else {
         return Ok(false);
     };
-    Ok(
-        lower.map_or(true, |bound| *number >= bound)
-            && upper.map_or(true, |bound| *number <= bound),
-    )
+    Ok(lower.is_none_or(|bound| *number >= bound) && upper.is_none_or(|bound| *number <= bound))
 }
 
 fn integer_type_bound(function: &str, value: &Value) -> Result<Option<i64>, RuntimeError> {
@@ -4517,15 +4515,15 @@ fn cons_type_matches(
     let Some((car, cdr)) = cons_parts(value) else {
         return Ok(false);
     };
-    if let Some(car_type) = arguments.first() {
-        if !type_matches_designator(function, &car, car_type, environment)? {
-            return Ok(false);
-        }
+    if let Some(car_type) = arguments.first()
+        && !type_matches_designator(function, &car, car_type, environment)?
+    {
+        return Ok(false);
     }
-    if let Some(cdr_type) = arguments.get(1) {
-        if !type_matches_designator(function, &cdr, cdr_type, environment)? {
-            return Ok(false);
-        }
+    if let Some(cdr_type) = arguments.get(1)
+        && !type_matches_designator(function, &cdr, cdr_type, environment)?
+    {
+        return Ok(false);
     }
     Ok(true)
 }
@@ -4563,7 +4561,7 @@ fn vector_type_matches(
     let Some(items) = value.vector_items() else {
         return Ok(false);
     };
-    if expected_size.map_or(false, |size| size != items.len()) {
+    if expected_size.is_some_and(|size| size != items.len()) {
         return Ok(false);
     }
     if let Some(element_type) = arguments.first() {
@@ -4590,7 +4588,7 @@ fn simple_vector_type_matches(
     let Some(items) = value.vector_items() else {
         return Ok(false);
     };
-    Ok(expected_size.map_or(true, |size| size == items.len()))
+    Ok(expected_size.is_none_or(|size| size == items.len()))
 }
 
 fn bit_vector_type_matches(
@@ -4607,7 +4605,7 @@ fn bit_vector_type_matches(
     let Some(items) = value.vector_items() else {
         return Ok(false);
     };
-    if expected_size.map_or(false, |size| size != items.len()) {
+    if expected_size.is_some_and(|size| size != items.len()) {
         return Ok(false);
     }
     Ok(items.iter().all(is_bit_value))
@@ -4634,10 +4632,10 @@ fn array_type_matches(
     let Some(actual_dimensions) = dimensions_for_array(value) else {
         return Ok(false);
     };
-    if let Some(expected_dimensions) = arguments.get(1) {
-        if !array_dimensions_match(function, expected_dimensions, &actual_dimensions)? {
-            return Ok(false);
-        }
+    if let Some(expected_dimensions) = arguments.get(1)
+        && !array_dimensions_match(function, expected_dimensions, &actual_dimensions)?
+    {
+        return Ok(false);
     }
     let Some(elements) = array_elements(value) else {
         return Ok(false);
@@ -4930,7 +4928,7 @@ fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut adjustable = false;
     let mut displaced_to = None;
     let mut displaced_index_offset = None;
-    if (arguments.len() - 1) % 2 != 0 {
+    if !(arguments.len() - 1).is_multiple_of(2) {
         return Err(arity(
             "make-array",
             "one dimension and keyword/value pairs",
@@ -4990,8 +4988,13 @@ fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )?;
     let logical_length = dimensions[0];
     let (displaced_to, displaced_index_offset, storage, elements) =
-        if let Some((displaced_to, displaced_index_offset, storage)) = displacement {
-            (displaced_to, displaced_index_offset, Some(storage), None)
+        if let Some(displacement) = displacement {
+            (
+                displacement.displaced_to,
+                displacement.displaced_index_offset,
+                Some(displacement.storage),
+                None,
+            )
         } else if let Some(contents) = initial_contents {
             let mut elements = Vec::with_capacity(total_size);
             flatten_array_contents("make-array", &contents, &dimensions, &mut elements)?;
@@ -5075,7 +5078,7 @@ fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut element_type = None;
     let mut displaced_to = None;
     let mut displaced_index_offset = None;
-    if (arguments.len() - 2) % 2 != 0 {
+    if !(arguments.len() - 2).is_multiple_of(2) {
         return Err(arity(
             "adjust-array",
             "array, dimensions, and keyword/value pairs",
@@ -5136,8 +5139,13 @@ fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )?;
     let logical_length = dimensions[0];
     let (displaced_to, displaced_index_offset, storage, elements) =
-        if let Some((displaced_to, displaced_index_offset, storage)) = displacement {
-            (displaced_to, displaced_index_offset, Some(storage), None)
+        if let Some(displacement) = displacement {
+            (
+                displacement.displaced_to,
+                displacement.displaced_index_offset,
+                Some(displacement.storage),
+                None,
+            )
         } else if let Some(contents) = initial_contents {
             let mut elements = Vec::with_capacity(total_size);
             flatten_array_contents("adjust-array", &contents, &dimensions, &mut elements)?;
@@ -5431,7 +5439,7 @@ fn array_total_size(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 fn make_hash_table(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    if arguments.len() % 2 != 0 {
+    if !arguments.len().is_multiple_of(2) {
         return Err(arity(
             "make-hash-table",
             "keyword/value pairs",
@@ -5769,7 +5777,7 @@ fn displaced_array_arguments(
     dimensions: &[usize],
     displaced_to: Option<Value>,
     displaced_index_offset: Option<Value>,
-) -> Result<Option<(Option<Value>, usize, Rc<RefCell<Vec<Value>>>)>, RuntimeError> {
+) -> Result<Option<DisplacedArray>, RuntimeError> {
     match displaced_to {
         Some(displaced_to) => {
             dimensions_for_array(&displaced_to)
@@ -5807,7 +5815,11 @@ fn displaced_array_arguments(
                     span: None,
                 });
             }
-            Ok(Some((Some(displaced_to), effective_offset, source_storage)))
+            Ok(Some(DisplacedArray {
+                displaced_to: Some(displaced_to),
+                displaced_index_offset: effective_offset,
+                storage: source_storage,
+            }))
         }
         None => {
             if displaced_index_offset.is_some() {
@@ -6046,9 +6058,7 @@ fn equalp_value(left: &Value, right: &Value) -> bool {
     }
     match (left, right) {
         (Value::String(left), Value::String(right)) => left.eq_ignore_ascii_case(right),
-        (Value::Character(left), Value::Character(right)) => {
-            left.to_ascii_uppercase() == right.to_ascii_uppercase()
-        }
+        (Value::Character(left), Value::Character(right)) => left.eq_ignore_ascii_case(right),
         (Value::List(left), Value::List(right)) => {
             left.len() == right.len()
                 && left
@@ -6213,7 +6223,7 @@ fn parse_print_options(
     options: &[Value],
     allow_stream: bool,
 ) -> Result<(bool, Option<Value>), RuntimeError> {
-    if options.len() % 2 != 0 {
+    if !options.len().is_multiple_of(2) {
         return Err(RuntimeError::InvalidForm {
             message: format!("{function} requires keyword/value pairs"),
             span: None,
@@ -6286,14 +6296,14 @@ fn printed_value(value: &Value, escape: bool) -> String {
 }
 
 fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    if arguments.len() < 1 {
+    if arguments.is_empty() {
         return Err(arity("read-from-string", "at least 1", arguments.len()));
     }
     let source = match &arguments[0] {
         Value::String(value) => value.as_ref(),
         value => return Err(type_error("read-from-string", "a string", value)),
     };
-    let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
+    let eof_error_p = arguments.get(1).is_none_or(Value::is_truthy);
     let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let source_length = source.chars().count();
     let mut start = 0;
@@ -6394,7 +6404,7 @@ fn read_stream_form(
         }
         Some(value) => return Err(type_error(function, "an input stream", value)),
     };
-    let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
+    let eof_error_p = arguments.get(1).is_none_or(Value::is_truthy);
     let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let source = {
         let stream = stream.borrow();
@@ -6515,7 +6525,7 @@ fn open_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("open", "at least 1", arguments.len()));
     }
-    if (arguments.len() - 1) % 2 != 0 {
+    if !(arguments.len() - 1).is_multiple_of(2) {
         return Err(RuntimeError::InvalidForm {
             message: "open requires keyword/value pairs after the pathname".to_string(),
             span: None,
@@ -6903,7 +6913,7 @@ fn append_output_to_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
             return Err(type_error(
                 "__ncl_append_output_to_string",
                 "characters in vector with fill pointer",
-                &item,
+                item,
             ));
         };
         combined.push(item.clone());
@@ -6931,7 +6941,7 @@ fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
         return Err(arity("read-char", "0 to 4", arguments.len()));
     }
     let stream = input_stream_reference("read-char", arguments.first())?;
-    let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
+    let eof_error_p = arguments.get(1).is_none_or(Value::is_truthy);
     let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let mut stream = stream.borrow_mut();
     if !stream.is_input() {
@@ -6955,7 +6965,7 @@ fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
             (arguments.first(), arguments.get(1), 2)
         };
     let stream = input_stream_reference("peek-char", stream_value)?;
-    let eof_error_p = arguments.get(optional_index).map_or(true, Value::is_truthy);
+    let eof_error_p = arguments.get(optional_index).is_none_or(Value::is_truthy);
     let eof_value = arguments
         .get(optional_index + 1)
         .cloned()
@@ -6998,7 +7008,7 @@ fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
         return Err(arity("read-line", "0 to 4", arguments.len()));
     }
     let stream = input_stream_reference("read-line", arguments.first())?;
-    let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
+    let eof_error_p = arguments.get(1).is_none_or(Value::is_truthy);
     let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let mut stream = stream.borrow_mut();
     if !stream.is_input() {
@@ -7679,7 +7689,7 @@ fn format_control_characters(
                     let nested_arguments = nested_arguments.list_items().ok_or_else(|| {
                         type_error("format", "a list of arguments for ~?", nested_arguments)
                     })?;
-                    output.push_str(&format_control(&nested_control, &nested_arguments)?);
+                    output.push_str(&format_control(nested_control, &nested_arguments)?);
                 }
             }
             '^' => {
@@ -7803,18 +7813,19 @@ fn format_control_characters(
                     if let Some(termination) = termination {
                         return Ok((output, argument_index, Some(termination)));
                     }
-                } else if !colon_modifier && !at_sign_modifier {
-                    if let Some((clause, _)) = clauses.iter().find(|(_, default)| *default) {
-                        let (formatted, consumed, termination) = format_control_characters(
-                            clause,
-                            &arguments[argument_index..],
-                            colon_iteration_last,
-                        )?;
-                        output.push_str(&formatted);
-                        argument_index += consumed;
-                        if let Some(termination) = termination {
-                            return Ok((output, argument_index, Some(termination)));
-                        }
+                } else if !colon_modifier
+                    && !at_sign_modifier
+                    && let Some((clause, _)) = clauses.iter().find(|(_, default)| *default)
+                {
+                    let (formatted, consumed, termination) = format_control_characters(
+                        clause,
+                        &arguments[argument_index..],
+                        colon_iteration_last,
+                    )?;
+                    output.push_str(&formatted);
+                    argument_index += consumed;
+                    if let Some(termination) = termination {
+                        return Ok((output, argument_index, Some(termination)));
                     }
                 }
             }
@@ -7875,7 +7886,7 @@ fn format_control_characters(
                     } else {
                         increment - ((current_column - column) % increment)
                     };
-                    output.extend(std::iter::repeat(' ').take(spaces));
+                    output.extend(std::iter::repeat_n(' ', spaces));
                 }
             }
             'W' => {
@@ -7971,7 +7982,7 @@ fn format_directive_end(
     })
 }
 
-fn format_choice_clauses<'a>(body: &'a [char]) -> Result<Vec<(&'a [char], bool)>, RuntimeError> {
+fn format_choice_clauses(body: &[char]) -> Result<Vec<(&[char], bool)>, RuntimeError> {
     let mut clauses = Vec::new();
     let mut clause_start = 0;
     let mut default_clause = false;
@@ -8030,7 +8041,7 @@ fn format_choice_clauses<'a>(body: &'a [char]) -> Result<Vec<(&'a [char], bool)>
     Ok(clauses)
 }
 
-fn format_justification_clauses<'a>(body: &'a [char]) -> Result<Vec<&'a [char]>, RuntimeError> {
+fn format_justification_clauses(body: &[char]) -> Result<Vec<&[char]>, RuntimeError> {
     let mut clauses = Vec::new();
     let mut clause_start = 0;
     let mut stack = Vec::new();
@@ -8160,16 +8171,12 @@ fn format_justification(
         .saturating_add(between_count)
         .saturating_add(if trailing_gap { 1usize } else { 0usize });
     let distributed_padding = total_padding.saturating_sub(base_between_padding);
-    let base_padding = if gap_count == 0 {
-        0
-    } else {
-        distributed_padding / gap_count
-    };
-    let remainder = if gap_count == 0 {
-        0
-    } else {
-        distributed_padding % gap_count
-    };
+    let base_padding = distributed_padding
+        .checked_div(gap_count)
+        .unwrap_or_default();
+    let remainder = distributed_padding
+        .checked_rem(gap_count)
+        .unwrap_or_default();
     let mut gaps = vec![0usize; gap_count];
     for (index, gap) in gaps.iter_mut().enumerate() {
         *gap = base_padding.saturating_add(usize::from(index >= gap_count - remainder));
@@ -8186,7 +8193,7 @@ fn format_justification(
 
     let mut output = String::new();
     let append_padding = |output: &mut String, count: usize| {
-        output.extend(std::iter::repeat(pad_character).take(count));
+        output.extend(std::iter::repeat_n(pad_character, count));
     };
     gap_index = 0;
     if leading_gap {
@@ -8308,7 +8315,7 @@ fn format_iteration(
     let mut output = String::new();
     let mut argument_index = 0;
     let mut repetitions = 0;
-    while argument_index < arguments.len() && limit.map_or(true, |limit| repetitions < limit) {
+    while argument_index < arguments.len() && limit.is_none_or(|limit| repetitions < limit) {
         let (consumed, termination) = if colon_modifier {
             let nested_arguments = arguments[argument_index].list_items().ok_or_else(|| {
                 type_error(
@@ -8427,11 +8434,11 @@ fn format_text_field(
     let padding = target.saturating_sub(width);
     let mut formatted = String::new();
     if at_sign_modifier {
-        formatted.extend(std::iter::repeat(padding_character).take(padding));
+        formatted.extend(std::iter::repeat_n(padding_character, padding));
         formatted.push_str(&text);
     } else {
         formatted.push_str(&text);
-        formatted.extend(std::iter::repeat(padding_character).take(padding));
+        formatted.extend(std::iter::repeat_n(padding_character, padding));
     }
     Ok(formatted)
 }
@@ -8467,7 +8474,7 @@ fn format_integer_directive(
     formatted.push_str(&digits);
     let padding = minimum_column.saturating_sub(formatted.chars().count());
     let mut result = String::new();
-    result.extend(std::iter::repeat(padding_character).take(padding));
+    result.extend(std::iter::repeat_n(padding_character, padding));
     result.push_str(&formatted);
     Ok(result)
 }
@@ -8542,10 +8549,11 @@ fn format_fixed_float_directive(
         }
         digits
     };
-    if let Some(fractional_digits) = fractional_digits {
-        if minimum_column == fractional_digits.saturating_add(1) && digits.starts_with("0.") {
-            digits.remove(0);
-        }
+    if let Some(fractional_digits) = fractional_digits
+        && minimum_column == fractional_digits.saturating_add(1)
+        && digits.starts_with("0.")
+    {
+        digits.remove(0);
     }
 
     let mut formatted = String::new();
@@ -8559,15 +8567,13 @@ fn format_fixed_float_directive(
     let width = formatted.chars().count();
     if minimum_column > 0 && width > minimum_column {
         if let Some(overflow_character) = overflow_character {
-            return Ok(std::iter::repeat(overflow_character)
-                .take(minimum_column)
-                .collect());
+            return Ok(std::iter::repeat_n(overflow_character, minimum_column).collect());
         }
         return Ok(formatted);
     }
     let padding = minimum_column.saturating_sub(width);
     let mut result = String::new();
-    result.extend(std::iter::repeat(padding_character).take(padding));
+    result.extend(std::iter::repeat_n(padding_character, padding));
     result.push_str(&formatted);
     Ok(result)
 }
@@ -8659,7 +8665,7 @@ fn format_general_float_directive(
     let exponent = general_float_decimal_exponent(value);
     let fractional_digits = requested_fractional_digits.unwrap_or_else(|| {
         let q = general_float_default_fractional_digits(value, exponent);
-        let minimum = usize::try_from(exponent.min(7).max(0)).unwrap_or(0);
+        let minimum = usize::try_from(exponent.clamp(0, 7)).unwrap_or(0);
         q.max(minimum).max(1)
     });
     let fixed_point =
@@ -8697,8 +8703,10 @@ fn format_general_float_directive(
         ];
         let mut formatted =
             format_fixed_float_directive(value, &fixed_parameters, false, at_sign_modifier)?;
-        formatted
-            .extend(std::iter::repeat(' ').take(usize::try_from(exponent_padding).unwrap_or(0)));
+        formatted.extend(std::iter::repeat_n(
+            ' ',
+            usize::try_from(exponent_padding).unwrap_or(0),
+        ));
         return Ok(formatted);
     }
 
@@ -8782,10 +8790,10 @@ fn format_dollar_float_directive(
             })?;
 
     let mut numeric = String::new();
-    numeric.extend(
-        std::iter::repeat('0')
-            .take(minimum_integer_digits.saturating_sub(integer_part.chars().count())),
-    );
+    numeric.extend(std::iter::repeat_n(
+        '0',
+        minimum_integer_digits.saturating_sub(integer_part.chars().count()),
+    ));
     numeric.push_str(integer_part);
     numeric.push('.');
     numeric.push_str(fractional_part);
@@ -8804,9 +8812,9 @@ fn format_dollar_float_directive(
         if let Some(sign) = sign {
             result.push(sign);
         }
-        result.extend(std::iter::repeat(padding_character).take(padding));
+        result.extend(std::iter::repeat_n(padding_character, padding));
     } else {
-        result.extend(std::iter::repeat(padding_character).take(padding));
+        result.extend(std::iter::repeat_n(padding_character, padding));
         if let Some(sign) = sign {
             result.push(sign);
         }
@@ -8931,15 +8939,13 @@ fn format_exponential_float_directive(
         let width = formatted.chars().count();
         if minimum_column > 0 && width > minimum_column {
             if let Some(overflow_character) = overflow_character {
-                return Ok(std::iter::repeat(overflow_character)
-                    .take(minimum_column)
-                    .collect());
+                return Ok(std::iter::repeat_n(overflow_character, minimum_column).collect());
             }
             return Ok(formatted);
         }
         let padding = minimum_column.saturating_sub(width);
         let mut result = String::new();
-        result.extend(std::iter::repeat(padding_character).take(padding));
+        result.extend(std::iter::repeat_n(padding_character, padding));
         result.push_str(&formatted);
         Ok(result)
     };
@@ -8996,18 +9002,18 @@ fn format_exponential_float_directive(
         }
     } else {
         mantissa.push_str("0.");
-        mantissa.extend(std::iter::repeat('0').take(scale.unsigned_abs() as usize));
+        mantissa.extend(std::iter::repeat_n('0', scale.unsigned_abs() as usize));
         let significant_fractional_digits =
             fractional_digits.saturating_sub(scale.unsigned_abs() as usize);
         for index in 0..significant_fractional_digits {
             mantissa.push(*digits.get(index).unwrap_or(&'0'));
         }
     }
-    if requested_fractional_digits.is_none() {
-        if let Some(decimal_index) = mantissa.find('.') {
-            while mantissa.len() > decimal_index + 2 && mantissa.ends_with('0') {
-                mantissa.pop();
-            }
+    if requested_fractional_digits.is_none()
+        && let Some(decimal_index) = mantissa.find('.')
+    {
+        while mantissa.len() > decimal_index + 2 && mantissa.ends_with('0') {
+            mantissa.pop();
         }
     }
 
@@ -9032,10 +9038,10 @@ fn format_exponential_float_directive(
     }
     let exponent_magnitude = exponent.unsigned_abs().to_string();
     if let Some(exponent_width) = requested_exponent_digits {
-        formatted.extend(
-            std::iter::repeat('0')
-                .take(exponent_width.saturating_sub(exponent_magnitude.chars().count())),
-        );
+        formatted.extend(std::iter::repeat_n(
+            '0',
+            exponent_width.saturating_sub(exponent_magnitude.chars().count()),
+        ));
     }
     formatted.push_str(&exponent_magnitude);
     apply_field(formatted)
@@ -9047,7 +9053,7 @@ fn format_grouped_digits(digits: &str, separator: char, interval: usize) -> Stri
     }
     let mut grouped = String::new();
     for (index, character) in digits.chars().enumerate() {
-        if index != 0 && (digits.chars().count() - index) % interval == 0 {
+        if index != 0 && (digits.chars().count() - index).is_multiple_of(interval) {
             grouped.push(separator);
         }
         grouped.push(character);
@@ -9093,37 +9099,31 @@ fn format_radix_directive(
     colon_modifier: bool,
     at_sign_modifier: bool,
 ) -> Result<String, RuntimeError> {
-    if let Some(parameter) = parameters.first().copied() {
-        if !matches!(parameter, FormatParameter::Missing) {
-            let radix = match parameter {
-                FormatParameter::Number(value) => {
-                    u32::try_from(value).map_err(|_| RuntimeError::InvalidForm {
-                        message: "format radix must be between 2 and 36".to_string(),
-                        span: None,
-                    })?
-                }
-                FormatParameter::Missing => unreachable!(),
-                FormatParameter::Character(_) => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: "format radix must be numeric".to_string(),
-                        span: None,
-                    });
-                }
-            };
-            if !(2..=36).contains(&radix) {
-                return Err(RuntimeError::InvalidForm {
+    if let Some(parameter) = parameters.first().copied()
+        && !matches!(parameter, FormatParameter::Missing)
+    {
+        let radix = match parameter {
+            FormatParameter::Number(value) => {
+                u32::try_from(value).map_err(|_| RuntimeError::InvalidForm {
                     message: "format radix must be between 2 and 36".to_string(),
+                    span: None,
+                })?
+            }
+            FormatParameter::Missing => unreachable!(),
+            FormatParameter::Character(_) => {
+                return Err(RuntimeError::InvalidForm {
+                    message: "format radix must be numeric".to_string(),
                     span: None,
                 });
             }
-            return format_integer_directive(
-                value,
-                radix,
-                &parameters[1..],
-                false,
-                at_sign_modifier,
-            );
+        };
+        if !(2..=36).contains(&radix) {
+            return Err(RuntimeError::InvalidForm {
+                message: "format radix must be between 2 and 36".to_string(),
+                span: None,
+            });
         }
+        return format_integer_directive(value, radix, &parameters[1..], false, at_sign_modifier);
     }
     if at_sign_modifier {
         Ok(format_roman_number(value, colon_modifier))

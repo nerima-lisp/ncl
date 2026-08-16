@@ -26,15 +26,24 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-        in
-        {
-          default = pkgs.writeShellApplication {
-            name = "ncl";
+          ncl = pkgs.rustPlatform.buildRustPackage {
+            pname = "ncl";
+            version = "0.1.0";
+            src = self;
+            cargoLock.lockFile = ./Cargo.lock;
+            doCheck = true;
+          };
+          lisp = pkgs.writeShellApplication {
+            name = "ncl-lisp";
             runtimeInputs = [ pkgs.sbcl ];
             text = ''
               exec ${pkgs.sbcl}/bin/sbcl --script ${self}/run.lisp "$@"
             '';
           };
+        in
+        {
+          default = ncl;
+          inherit lisp ncl;
         }
       );
 
@@ -42,7 +51,8 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          ncl = self.packages.${system}.default;
+          ncl = self.packages.${system}.ncl;
+          lisp = self.packages.${system}.lisp;
           weave = cl-weave.packages.${system}.default;
           test = pkgs.writeShellApplication {
             name = "ncl-test";
@@ -87,6 +97,13 @@
             type = "app";
             program = "${ncl}/bin/ncl";
             meta = {
+              description = "Run the NCL Rust runtime";
+            };
+          };
+          lisp = {
+            type = "app";
+            program = "${lisp}/bin/ncl-lisp";
+            meta = {
               description = "Run the NCL Common Lisp core";
             };
           };
@@ -114,13 +131,16 @@
           weave = cl-weave.packages.${system}.default;
         in
         {
+          ncl-rust = self.packages.${system}.ncl;
           ncl-tests =
             pkgs.runCommand "ncl-tests"
               {
                 nativeBuildInputs = [ weave ];
               }
               ''
+                export HOME="$TMPDIR/home"
                 export XDG_CACHE_HOME="$TMPDIR/cache"
+                mkdir -p "$HOME"
                 mkdir -p "$XDG_CACHE_HOME"
                 ${weave}/bin/cl-weave run \
                   --load ${self}/run-tests.lisp \
@@ -149,6 +169,10 @@
         {
           default = pkgs.mkShell {
             packages = [
+              pkgs.rustc
+              pkgs.cargo
+              pkgs.rustfmt
+              pkgs.clippy
               pkgs.sbcl
               cl-weave.packages.${system}.default
               paredit-cli.packages.${system}.default

@@ -14,6 +14,21 @@ use crate::environment::Environment;
 use crate::error::{ReturnValue, RuntimeError};
 
 pub type Builtin = fn(&[Value]) -> Result<Value, RuntimeError>;
+type SlotStorage = Rc<RefCell<Vec<(Rc<str>, Value)>>>;
+
+pub(crate) struct ClosureData {
+    pub(crate) parameters: Vec<String>,
+    pub(crate) required_escaped: Vec<bool>,
+    pub(crate) optional: Vec<LambdaListOptionalParameter>,
+    pub(crate) rest: Option<String>,
+    pub(crate) rest_escaped: bool,
+    pub(crate) keywords: Vec<LambdaListKeywordParameter>,
+    pub(crate) has_keyword_section: bool,
+    pub(crate) allow_other_keys: bool,
+    pub(crate) auxiliary: Vec<LambdaListAuxiliaryParameter>,
+    pub(crate) body: Vec<Form>,
+    pub(crate) environment: Environment,
+}
 
 #[derive(Clone)]
 pub(crate) enum MacroPattern {
@@ -48,7 +63,7 @@ pub(crate) struct MacroAuxiliaryParameter {
 }
 
 #[derive(Clone)]
-pub(crate) struct MacroLambdaList {
+pub struct MacroLambdaList {
     pub(crate) whole: Option<String>,
     pub(crate) environment: Option<String>,
     pub(crate) required: Vec<MacroPattern>,
@@ -61,7 +76,7 @@ pub(crate) struct MacroLambdaList {
 }
 
 #[derive(Clone)]
-pub(crate) struct StructureSlot {
+pub struct StructureSlot {
     pub(crate) name: String,
     pub(crate) init_form: Option<Form>,
     pub(crate) read_only: bool,
@@ -84,8 +99,6 @@ pub(crate) struct ConditionSlot {
 
 #[derive(Clone)]
 pub(crate) struct ConditionDefinition {
-    pub(crate) name: String,
-    pub(crate) direct_superclasses: Vec<String>,
     pub(crate) precedence: Vec<String>,
     pub(crate) slots: Vec<ConditionSlot>,
     pub(crate) report: Option<String>,
@@ -100,9 +113,8 @@ pub(crate) struct ClassSlot {
 }
 
 #[derive(Clone)]
-pub(crate) struct ClassDefinition {
+pub struct ClassDefinition {
     pub(crate) name: String,
-    pub(crate) direct_superclasses: Vec<String>,
     pub(crate) precedence: Vec<String>,
     pub(crate) slots: Vec<ClassSlot>,
     pub(crate) default_initargs: Vec<(String, Form)>,
@@ -126,9 +138,9 @@ pub struct MethodDefinition {
 }
 
 #[derive(Clone)]
-pub(crate) struct Instance {
+pub struct Instance {
     pub(crate) class: Rc<RefCell<Rc<ClassDefinition>>>,
-    pub(crate) slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
+    pub(crate) slots: SlotStorage,
 }
 
 #[derive(Clone)]
@@ -730,10 +742,10 @@ impl Stream {
 }
 
 #[derive(Clone)]
-pub(crate) struct ConditionData {
+pub struct ConditionData {
     actual_type: String,
     type_names: Rc<Vec<String>>,
-    slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
+    slots: SlotStorage,
     message: Rc<str>,
     format_control: Option<Rc<str>>,
     format_arguments: Vec<Value>,
@@ -765,7 +777,7 @@ impl ConditionData {
 }
 
 #[derive(Clone)]
-pub(crate) struct RestartData {
+pub struct RestartData {
     name: Rc<str>,
 }
 
@@ -823,7 +835,7 @@ pub enum Value {
     Structure {
         name: Rc<str>,
         types: Rc<Vec<Rc<str>>>,
-        slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
+        slots: SlotStorage,
     },
     Class(Rc<ClassDefinition>),
     Instance(Instance),
@@ -1120,7 +1132,7 @@ impl Value {
                 if condition_types.is_empty() {
                     vec![condition.clone()]
                 } else {
-                    condition_types.clone()
+                    condition_types.to_vec()
                 },
                 message.clone(),
                 format_control.clone(),
@@ -1265,15 +1277,6 @@ impl Value {
         Self::closure_with_optional(parameters, Vec::new(), None, body, environment)
     }
 
-    pub(crate) fn closure_with_rest(
-        parameters: Vec<String>,
-        rest: Option<String>,
-        body: Vec<Form>,
-        environment: Environment,
-    ) -> Self {
-        Self::closure_with_optional(parameters, Vec::new(), rest, body, environment)
-    }
-
     pub(crate) fn closure_with_optional(
         parameters: Vec<String>,
         optional: Vec<LambdaListOptionalParameter>,
@@ -1293,34 +1296,35 @@ impl Value {
         environment: Environment,
     ) -> Self {
         let required_escaped = vec![false; parameters.len()];
-        Self::closure_with_keywords(
+        Self::closure_with_keywords(ClosureData {
             parameters,
             required_escaped,
             optional,
             rest,
-            false,
-            Vec::new(),
-            false,
-            false,
+            rest_escaped: false,
+            keywords: Vec::new(),
+            has_keyword_section: false,
+            allow_other_keys: false,
             auxiliary,
             body,
             environment,
-        )
+        })
     }
 
-    pub(crate) fn closure_with_keywords(
-        parameters: Vec<String>,
-        required_escaped: Vec<bool>,
-        optional: Vec<LambdaListOptionalParameter>,
-        rest: Option<String>,
-        rest_escaped: bool,
-        keywords: Vec<LambdaListKeywordParameter>,
-        has_keyword_section: bool,
-        allow_other_keys: bool,
-        auxiliary: Vec<LambdaListAuxiliaryParameter>,
-        body: Vec<Form>,
-        environment: Environment,
-    ) -> Self {
+    pub(crate) fn closure_with_keywords(data: ClosureData) -> Self {
+        let ClosureData {
+            parameters,
+            required_escaped,
+            optional,
+            rest,
+            rest_escaped,
+            keywords,
+            has_keyword_section,
+            allow_other_keys,
+            auxiliary,
+            body,
+            environment,
+        } = data;
         Self::Function(Rc::new(Function::Closure {
             parameters,
             required_escaped,
@@ -1386,11 +1390,6 @@ impl Value {
         }))
     }
 
-    pub(crate) fn structure(name: impl AsRef<str>, slots: Vec<(String, Value)>) -> Self {
-        let name = name.as_ref().to_string();
-        Self::structure_with_types(name.clone(), slots, vec![name])
-    }
-
     pub(crate) fn structure_with_types(
         name: impl AsRef<str>,
         slots: Vec<(String, Value)>,
@@ -1429,13 +1428,6 @@ impl Value {
                     .collect(),
             )),
         })
-    }
-
-    pub(crate) fn class_definition(&self) -> Option<Rc<ClassDefinition>> {
-        match self {
-            Self::Class(definition) => Some(definition.clone()),
-            _ => None,
-        }
     }
 
     pub(crate) fn instance_class_definition(&self) -> Option<Rc<ClassDefinition>> {
@@ -1482,10 +1474,9 @@ impl Value {
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+            && let Some(class_value) = &slot.class_value
         {
-            if let Some(class_value) = &slot.class_value {
-                return Some(class_value.borrow().clone());
-            }
+            return Some(class_value.borrow().clone());
         }
         instance
             .slots
@@ -1528,11 +1519,10 @@ impl Value {
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+            && let Some(class_value) = &slot.class_value
         {
-            if let Some(class_value) = &slot.class_value {
-                *class_value.borrow_mut() = value;
-                return true;
-            }
+            *class_value.borrow_mut() = value;
+            return true;
         }
         let mut slots = instance.slots.borrow_mut();
         let Some((_, slot_value)) = slots
@@ -1898,7 +1888,11 @@ impl Value {
         }
     }
 
-    pub fn with_array_displacement(self, displaced_to: Option<Self>, displaced_index_offset: usize) -> Self {
+    pub fn with_array_displacement(
+        self,
+        displaced_to: Option<Self>,
+        displaced_index_offset: usize,
+    ) -> Self {
         match self {
             Self::Vector {
                 elements,
@@ -2012,9 +2006,7 @@ impl Value {
             (Self::UninternedSymbol(left), Self::UninternedSymbol(right)) => {
                 Rc::ptr_eq(left, right)
             }
-            (Self::List(left), Self::List(right)) => {
-                Rc::ptr_eq(left, right)
-            }
+            (Self::List(left), Self::List(right)) => Rc::ptr_eq(left, right),
             (
                 Self::Vector {
                     elements: left_elements,
@@ -2425,9 +2417,7 @@ impl fmt::Display for Value {
                 }
                 Function::Macro { .. }
                 | Function::LongDefsetf { .. }
-                | Function::ModifyMacro { .. } => {
-                    formatter.write_str("#<MACRO>")
-                }
+                | Function::ModifyMacro { .. } => formatter.write_str("#<MACRO>"),
             },
         }
     }

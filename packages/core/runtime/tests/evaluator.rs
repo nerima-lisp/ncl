@@ -2998,7 +2998,7 @@ fn rejects_unsupported_defclass_metaclass_option() {
 
 #[test]
 fn rejects_unknown_defclass_option() {
-    let mut runtime = Runtime::default();
+    let runtime = Runtime::default();
     let values = runtime
         .eval_source(
             r#"(not

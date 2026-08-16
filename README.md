@@ -16,7 +16,8 @@ string stream forms such as <code>with-input-from-string</code> and
 
 ## Quick Start
 
-NCL requires Rust 1.85 or newer.
+The workspace requires Rust 1.97 or newer and pins Rust 1.97.1 in
+`rust-toolchain.toml`.
 
 ~~~sh
 cargo run -- --eval '(+ 1 2)'
@@ -47,7 +48,8 @@ The project does not currently publish a package or prebuilt binary.
 
 ## Common Lisp core
 
-The Nix flake provides SBCL, cl-weave, paredit-cli, and documentation tooling:
+The Nix flake provides Rust, rustfmt, Clippy, SBCL, cl-weave, paredit-cli, and
+documentation tooling:
 
 ~~~sh
 nix develop path:.
@@ -81,18 +83,25 @@ mkdocs build --strict --config-file docs/mkdocs.yml
 ## Development
 
 ~~~sh
-cargo check --workspace --all-targets
-cargo test --workspace --all-targets
+cargo check --workspace --all-targets --locked
+cargo test --workspace --all-targets --locked
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo fmt --all -- --check
 nix flake check path:.
 nix flake check --no-build --all-systems path:.
+mkdocs build --strict --config-file docs/mkdocs.yml
 ~~~
 
-If Rust is provided through Nix, the equivalent formatter check is:
+If Rust is provided through Nix, run the formatter check from the project
+development shell:
 
 ~~~sh
-nix shell nixpkgs#rustc nixpkgs#rustfmt --command cargo fmt --all -- --check
+nix develop path:. --command cargo fmt --all -- --check
 ~~~
+
+GitHub Actions runs the Rust formatter, locked workspace build, test, and
+Clippy gates with the pinned toolchain from
+[.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ## Contributing
 

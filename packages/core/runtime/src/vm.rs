@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use ncl_compiler::{
-    Constant, DestructureLambdaList, DestructurePattern, DestructureSpec, FunctionCode,
-    FunctionId, Instruction, Program,
+    Constant, DestructureLambdaList, DestructurePattern, DestructureSpec, FunctionCode, FunctionId,
+    Instruction, Program,
 };
 use ncl_syntax::{Form, FormKind, Span};
 
@@ -165,7 +165,7 @@ pub(crate) fn run(
     }
     if function.has_keyword_section {
         let keyword_arguments = &arguments[key_start..];
-        if keyword_arguments.len() % 2 != 0 {
+        if !keyword_arguments.len().is_multiple_of(2) {
             return Err(RuntimeError::InvalidForm {
                 message: "keyword arguments must be supplied in pairs".to_string(),
                 span: Some(span),
@@ -1417,7 +1417,9 @@ fn destructure_specification(
     span: Span,
 ) -> Result<(), RuntimeError> {
     match specification {
-        DestructureSpec::Pattern(pattern) => destructure_value(pattern, value, runtime, program, environment, span),
+        DestructureSpec::Pattern(pattern) => {
+            destructure_value(pattern, value, runtime, program, environment, span)
+        }
         DestructureSpec::LambdaList(lambda_list) => {
             destructure_lambda_list(lambda_list, value, runtime, program, environment, span)
         }
@@ -1497,7 +1499,8 @@ fn destructure_lambda_list(
         destructure_value(pattern, argument, runtime, program, environment, span)?;
     }
     for (index, parameter) in lambda_list.optional.iter().enumerate() {
-        let supplied = (index < optional_supplied_count).then(|| arguments[required_count + index].clone());
+        let supplied =
+            (index < optional_supplied_count).then(|| arguments[required_count + index].clone());
         let value = if let Some(argument) = supplied.as_ref() {
             argument.clone()
         } else {
@@ -1519,7 +1522,14 @@ fn destructure_lambda_list(
             )?
             .primary_value()
         };
-        destructure_value(&parameter.pattern, value, runtime, program, environment, span)?;
+        destructure_value(
+            &parameter.pattern,
+            value,
+            runtime,
+            program,
+            environment,
+            span,
+        )?;
         if let Some(supplied_p) = &parameter.supplied_p {
             runtime.define_in(supplied_p, Value::boolean(supplied.is_some()), environment);
         }
@@ -1587,13 +1597,16 @@ fn destructure_lambda_list(
                 )?
                 .primary_value()
             };
-            destructure_value(&parameter.pattern, value, runtime, program, environment, span)?;
+            destructure_value(
+                &parameter.pattern,
+                value,
+                runtime,
+                program,
+                environment,
+                span,
+            )?;
             if let Some(supplied_p) = &parameter.supplied_p {
-                runtime.define_in(
-                    supplied_p,
-                    Value::boolean(supplied.is_some()),
-                    environment,
-                );
+                runtime.define_in(supplied_p, Value::boolean(supplied.is_some()), environment);
             }
         }
     }

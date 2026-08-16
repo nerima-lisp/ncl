@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use ncl_syntax::Form;
 
-use crate::value::{ClassDefinition, ConditionDefinition, StructureDefinition};
 use crate::Value;
+use crate::value::{ClassDefinition, ConditionDefinition, StructureDefinition};
 
 #[derive(Clone)]
 pub struct Environment(Rc<RefCell<Frame>>);

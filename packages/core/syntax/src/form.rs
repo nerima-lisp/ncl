@@ -14,6 +14,10 @@ impl Span {
     pub const fn len(self) -> usize {
         self.end.saturating_sub(self.start)
     }
+
+    pub const fn is_empty(self) -> bool {
+        self.start >= self.end
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

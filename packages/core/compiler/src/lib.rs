@@ -3,9 +3,9 @@ use std::error::Error;
 use std::fmt;
 
 use ncl_syntax::{
-    parse_ordinary_lambda_list, parse_symbol_token, Form, FormKind, LambdaListAuxiliaryParameter,
-    LambdaListErrorKind, LambdaListKeywordParameter, LambdaListOptionalParameter,
-    OrdinaryLambdaList, Span, SymbolTokenKind,
+    Form, FormKind, LambdaListAuxiliaryParameter, LambdaListErrorKind, LambdaListKeywordParameter,
+    LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind,
+    parse_ordinary_lambda_list, parse_symbol_token,
 };
 
 /// A literal value embedded directly in bytecode.
@@ -2911,7 +2911,7 @@ impl CompileState {
         span: Span,
         items: &[Form],
     ) -> Result<(), CompileError> {
-        if items.len() < 3 || items.len() % 2 == 0 {
+        if items.len() < 3 || items.len().is_multiple_of(2) {
             return Err(CompileError::new(
                 CompileErrorKind::InvalidForm {
                     message: "setq needs variable/value pairs".to_string(),
@@ -2949,7 +2949,7 @@ impl CompileState {
         span: Span,
         items: &[Form],
     ) -> Result<(), CompileError> {
-        if items.len() < 3 || items.len() % 2 == 0 {
+        if items.len() < 3 || items.len().is_multiple_of(2) {
             return Err(CompileError::new(
                 CompileErrorKind::InvalidForm {
                     message: "psetq needs variable/value pairs".to_string(),
@@ -3023,7 +3023,7 @@ impl CompileState {
         span: Span,
         items: &[Form],
     ) -> Result<(), CompileError> {
-        if items.len() < 3 || items.len() % 2 == 0 {
+        if items.len() < 3 || items.len().is_multiple_of(2) {
             return Err(CompileError::new(
                 CompileErrorKind::InvalidForm {
                     message: "setf needs place/value pairs".to_string(),
@@ -3071,7 +3071,11 @@ impl CompileState {
         self.emit(function, Instruction::Define(item_name.clone()), item.span)?;
         self.emit(function, Instruction::Pop, item.span)?;
         self.compile_expression(function, place)?;
-        self.emit(function, Instruction::Define(place_name.clone()), place.span)?;
+        self.emit(
+            function,
+            Instruction::Define(place_name.clone()),
+            place.span,
+        )?;
         self.emit(function, Instruction::Pop, place.span)?;
 
         self.emit(
@@ -3112,7 +3116,11 @@ impl CompileState {
         let value_name = self.fresh_name("POP_VALUE");
         self.emit(function, Instruction::EnterScope, span)?;
         self.compile_expression(function, place)?;
-        self.emit(function, Instruction::Define(place_name.clone()), place.span)?;
+        self.emit(
+            function,
+            Instruction::Define(place_name.clone()),
+            place.span,
+        )?;
         self.emit(function, Instruction::Pop, place.span)?;
 
         self.emit(
@@ -3131,7 +3139,11 @@ impl CompileState {
         )?;
         self.emit(function, Instruction::Load(place_name.clone()), place.span)?;
         self.emit(function, Instruction::Call(1), place.span)?;
-        self.emit(function, Instruction::Define(value_name.clone()), place.span)?;
+        self.emit(
+            function,
+            Instruction::Define(value_name.clone()),
+            place.span,
+        )?;
         self.emit(function, Instruction::Pop, place.span)?;
 
         self.emit(
@@ -4245,7 +4257,7 @@ impl CompileState {
     fn compile_destructuring_lambda_list_with_seen(
         &mut self,
         form: &Form,
-        mut seen: &mut HashSet<String>,
+        seen: &mut HashSet<String>,
     ) -> Result<DestructureLambdaList, CompileError> {
         let FormKind::List(parameters) = &form.kind else {
             return Err(CompileError::new(
@@ -4289,7 +4301,7 @@ impl CompileState {
                         }
                         lambda_list.whole = Some(self.compile_destructuring_binding_name(
                             &parameters[index + 1],
-                            &mut seen,
+                            seen,
                             "destructuring whole parameter name",
                         )?);
                         index += 2;
@@ -4328,7 +4340,7 @@ impl CompileState {
                         }
                         lambda_list.rest = Some(self.compile_destructuring_binding_name(
                             &parameters[index + 1],
-                            &mut seen,
+                            seen,
                             "destructuring rest parameter name",
                         )?);
                         section = DestructureLambdaListSection::Rest;
@@ -4386,16 +4398,15 @@ impl CompileState {
                         if lambda_list.environment.is_some() || index + 1 >= parameters.len() {
                             return Err(CompileError::new(
                                 CompileErrorKind::InvalidForm {
-                                    message:
-                                        "&environment must be followed by one parameter"
-                                            .to_string(),
+                                    message: "&environment must be followed by one parameter"
+                                        .to_string(),
                                 },
                                 parameter.span,
                             ));
                         }
                         lambda_list.environment = Some(self.compile_destructuring_binding_name(
                             &parameters[index + 1],
-                            &mut seen,
+                            seen,
                             "destructuring environment parameter name",
                         )?);
                         index += 2;
@@ -4422,11 +4433,9 @@ impl CompileState {
                         match section {
                             DestructureLambdaListSection::Required => lambda_list
                                 .required
-                                .push(self.compile_destructuring_pattern(parameter, &mut seen)?),
+                                .push(self.compile_destructuring_pattern(parameter, seen)?),
                             DestructureLambdaListSection::Optional => lambda_list.optional.push(
-                                self.compile_destructuring_optional_parameter(
-                                    parameter, &mut seen,
-                                )?,
+                                self.compile_destructuring_optional_parameter(parameter, seen)?,
                             ),
                             DestructureLambdaListSection::Keyword => {
                                 if lambda_list.allow_other_keys {
@@ -4438,9 +4447,8 @@ impl CompileState {
                                         parameter.span,
                                     ));
                                 }
-                                let specification = self.compile_destructuring_keyword_parameter(
-                                    parameter, &mut seen,
-                                )?;
+                                let specification =
+                                    self.compile_destructuring_keyword_parameter(parameter, seen)?;
                                 if lambda_list
                                     .keywords
                                     .iter()
@@ -4457,9 +4465,7 @@ impl CompileState {
                                 lambda_list.keywords.push(specification);
                             }
                             DestructureLambdaListSection::Auxiliary => lambda_list.auxiliary.push(
-                                self.compile_destructuring_auxiliary_parameter(
-                                    parameter, &mut seen,
-                                )?,
+                                self.compile_destructuring_auxiliary_parameter(parameter, seen)?,
                             ),
                             DestructureLambdaListSection::Rest => unreachable!(),
                         }
@@ -4481,10 +4487,10 @@ impl CompileState {
             match section {
                 DestructureLambdaListSection::Required => lambda_list
                     .required
-                    .push(self.compile_destructuring_pattern(parameter, &mut seen)?),
+                    .push(self.compile_destructuring_pattern(parameter, seen)?),
                 DestructureLambdaListSection::Optional => lambda_list
                     .optional
-                    .push(self.compile_destructuring_optional_parameter(parameter, &mut seen)?),
+                    .push(self.compile_destructuring_optional_parameter(parameter, seen)?),
                 DestructureLambdaListSection::Keyword => {
                     if lambda_list.allow_other_keys {
                         return Err(CompileError::new(
@@ -4496,7 +4502,7 @@ impl CompileState {
                         ));
                     }
                     let specification =
-                        self.compile_destructuring_keyword_parameter(parameter, &mut seen)?;
+                        self.compile_destructuring_keyword_parameter(parameter, seen)?;
                     if lambda_list
                         .keywords
                         .iter()
@@ -4513,7 +4519,7 @@ impl CompileState {
                 }
                 DestructureLambdaListSection::Auxiliary => lambda_list
                     .auxiliary
-                    .push(self.compile_destructuring_auxiliary_parameter(parameter, &mut seen)?),
+                    .push(self.compile_destructuring_auxiliary_parameter(parameter, seen)?),
                 DestructureLambdaListSection::Rest => unreachable!(),
             }
             index += 1;

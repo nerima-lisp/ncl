@@ -1,5 +1,5 @@
 use ncl_compiler::{CompileErrorKind, Compiler, Constant, Instruction};
-use ncl_syntax::{read, Form, FormKind, Span};
+use ncl_syntax::{Form, FormKind, Span, read};
 
 fn compile(source: &str) -> ncl_compiler::Program {
     let forms = read(source).expect("test source should parse");
@@ -443,7 +443,10 @@ fn emits_radix_integer_literals_as_numbers() {
 
     assert_eq!(
         program.functions[0].instructions,
-        vec![Instruction::Constant(Constant::Integer(255)), Instruction::Return]
+        vec![
+            Instruction::Constant(Constant::Integer(255)),
+            Instruction::Return
+        ]
     );
 }
 
@@ -460,12 +463,16 @@ fn emits_control_flow_and_dynamic_binding_instructions() {
     assert!(instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::IsBound(name) if name == "ANSWER")
     }));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Set(name) if name == "ANSWER")));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_))));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Set(name) if name == "ANSWER"))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
+    );
 }
 
 #[test]
@@ -482,12 +489,16 @@ fn lowers_case_to_eql_comparisons_and_jumps() {
     assert!(instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::Quote(form) if matches!(&form.kind, FormKind::Atom(atom) if atom == "1"))
     }));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_))));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::ExitScope)));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::ExitScope))
+    );
 }
 
 #[test]
@@ -504,12 +515,16 @@ fn lowers_typecase_to_typep_comparisons_and_jumps() {
     assert!(instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::Quote(form) if matches!(&form.kind, FormKind::Atom(atom) if atom == "INTEGER"))
     }));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_))));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::ExitScope)));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::ExitScope))
+    );
 }
 
 #[test]
@@ -539,10 +554,12 @@ fn emits_quasiquote_and_apply_instructions() {
     ));
 
     let apply = compile("(apply + 1 '(2))");
-    assert!(apply.functions[0]
-        .instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Apply(2))));
+    assert!(
+        apply.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Apply(2)))
+    );
 }
 
 #[test]
@@ -558,10 +575,12 @@ fn emits_eval_and_mapcar_instructions() {
     ));
 
     let mapcar = compile("(mapcar + '(1 2) '(10 20))");
-    assert!(mapcar.functions[0]
-        .instructions
-        .iter()
-        .any(|instruction| { matches!(instruction, Instruction::MapCar(2)) }));
+    assert!(
+        mapcar.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::MapCar(2)) })
+    );
 }
 
 #[test]
@@ -713,19 +732,22 @@ fn lowers_do_with_implicit_block_parallel_steps_and_tagbody() {
         )
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::TagBody { .. })
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::TagBody { .. }))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::JumpIfFalse(_))
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::Set(name) if name == "I")
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Set(name) if name == "I"))
     }));
 }
 
@@ -740,19 +762,22 @@ fn lowers_prog_with_implicit_block_and_tagbody() {
         )
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::TagBody { .. })
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::TagBody { .. }))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::Go { tag } if tag == "DONE")
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Go { tag } if tag == "DONE"))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::Define(name) if name == "I")
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Define(name) if name == "I"))
     }));
 }
 

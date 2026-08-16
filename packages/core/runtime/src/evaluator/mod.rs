@@ -298,7 +298,9 @@ impl CompiledForm {
 }
 
 include!("runtime_core.rs");
-include!("compiler.rs");
+include!("compiler/expansion.rs");
+include!("compiler/bindings.rs");
+include!("compiler/control.rs");
 include!("evaluation.rs");
 include!("macros.rs");
 include!("special_forms.rs");

@@ -91,6 +91,13 @@ place updates are grouped into the private fragments
 updates the corresponding runtime data, while the dispatcher preserves the
 single <code>Runtime::set_place</code> entry point.
 
+Numeric format directives follow the same dispatcher-and-fragments pattern in
+<code>builtins/format/numeric.rs</code>. The dispatcher assembles the private
+<code>numeric/integer.rs</code>, <code>numeric/floating.rs</code>,
+<code>numeric/characters.rs</code>, and <code>numeric/radix.rs</code> fragments;
+each fragment owns one numeric representation or directive family while the
+format module keeps the runtime-facing entry points unchanged.
+
 The VM execution loop follows the same boundary. <code>vm/execution.rs</code>
 owns the instruction-pointer loop and shared execution state, while the private
 handlers in <code>vm/execution/</code> separate state and stack operations

@@ -112,12 +112,16 @@ assembled by <code>evaluator/runtime_core.rs</code> into the same
 <code>Runtime</code> implementation, so the split improves navigation without
 adding a compatibility layer.
 
-Generic dispatch and general callable application remain in the private
-<code>evaluator/generic.rs</code> fragment. Structure constructor argument
-binding is isolated in <code>evaluator/structure_constructors.rs</code>;
-the <code>Function::StructureConstructor</code> dispatch path stays in the
-generic fragment while BOA and keyword binding, defaults, and slot assembly
-are owned by the constructor fragment.
+Generic dispatch and general callable application use private fragments under
+<code>evaluator/generic/</code>. The <code>dispatch.rs</code> fragment owns method
+ordering, hooks, continuations, and generic invocation, while
+<code>application.rs</code> owns application of each callable function kind.
+<code>evaluator/generic.rs</code> assembles both fragments into the same
+<code>Runtime</code> implementation. Structure constructor argument binding is
+isolated in <code>evaluator/structure_constructors.rs</code>; the
+<code>Function::StructureConstructor</code> application path stays in the
+application fragment while BOA and keyword binding, defaults, and slot
+assembly are owned by the constructor fragment.
 
 Sequence aggregation follows the same boundary in
 <code>evaluator/sequences/aggregation/</code>. The private

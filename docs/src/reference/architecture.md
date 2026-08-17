@@ -103,6 +103,15 @@ module uses <code>package.rs</code>; each assembles its responsibility fragments
 into the same module boundary. This keeps private invariants local without
 introducing a compatibility layer or changing the public runtime API.
 
+The evaluator's core runtime state follows the same boundary in
+<code>evaluator/runtime_core/</code>. The private fragments separate runtime
+construction and form resolution, environment lookup and mutation,
+condition/restart and dynamic-stack management, special and constant values,
+and symbol cleanup, package candidates, and symbol-macro expansion. They are
+assembled by <code>evaluator/runtime_core.rs</code> into the same
+<code>Runtime</code> implementation, so the split improves navigation without
+adding a compatibility layer.
+
 Generic dispatch and general callable application remain in the private
 <code>evaluator/generic.rs</code> fragment. Structure constructor argument
 binding is isolated in <code>evaluator/structure_constructors.rs</code>;

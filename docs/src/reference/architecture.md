@@ -82,6 +82,15 @@ Each directory has a <code>mod.rs</code> that assembles its responsibility
 fragments into the same module boundary. This keeps private invariants local
 without introducing a compatibility layer or changing the public runtime API.
 
+The generalized-place dispatcher follows the same data/logic boundary in
+<code>evaluator/setf/places.rs</code>. It owns expansion and dispatch only;
+place updates are grouped into the private fragments
+<code>places/accessors.rs</code>, <code>places/sequences.rs</code>,
+<code>places/arrays.rs</code>, <code>places/objects.rs</code>, and
+<code>places/symbols.rs</code>. Each fragment evaluates its place arguments and
+updates the corresponding runtime data, while the dispatcher preserves the
+single <code>Runtime::set_place</code> entry point.
+
 The VM execution loop follows the same boundary. <code>vm/execution.rs</code>
 owns the instruction-pointer loop and shared execution state, while the private
 handlers in <code>vm/execution/</code> separate state and stack operations

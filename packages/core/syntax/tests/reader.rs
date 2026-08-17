@@ -1,5 +1,12 @@
 use ncl_syntax::{FormKind, MAX_NESTING_DEPTH, ReadErrorKind, read, read_with_features};
 
+fn assert_single_form_display(source: &str, expected: &str) {
+    let forms = read(source).unwrap_or_else(|error| panic!("{source:?}: {error}"));
+
+    assert_eq!(forms.len(), 1, "{source:?}");
+    assert_eq!(forms[0].to_string(), expected, "{source:?}");
+}
+
 #[test]
 fn reads_lists_prefixes_and_literals() {
     let forms = read("(+ 1 2) '(a . b) #(\"x\" #\\Space #t)").unwrap();
@@ -8,6 +15,20 @@ fn reads_lists_prefixes_and_literals() {
     assert!(matches!(forms[0].kind, FormKind::List(_)));
     assert!(matches!(forms[1].kind, FormKind::List(_)));
     assert!(matches!(forms[2].kind, FormKind::Vector(_)));
+}
+
+#[test]
+fn reads_dispatch_forms_from_table() {
+    let cases = [
+        ("#b1010", "10"),
+        ("#o17", "15"),
+        ("#xff", "255"),
+        ("#C(1 2)", "(complex 1 2)"),
+    ];
+
+    for (source, expected) in cases {
+        assert_single_form_display(source, expected);
+    }
 }
 
 #[test]

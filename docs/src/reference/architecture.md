@@ -68,6 +68,17 @@ emitting bytecode. Its direct compiler tests cover binding validation, option
 selection, duplicate options, and destination/index places; runtime stream
 tests separately verify the resulting behavior.
 
+## Syntax reader organization
+
+The syntax reader keeps its public lifecycle and source-position state in
+<code>packages/core/syntax/src/reader.rs</code>. Private implementation modules
+under <code>reader/</code> separate core form parsing, dispatch directives,
+feature conditionals, literals, sequences, atoms, and comments. The fragments
+share the same <code>Reader</code> state and preserve the crate's existing
+<code>read</code> and <code>read_with_features</code> entry points, so parsing
+logic can be read and tested by responsibility without adding a compatibility
+layer.
+
 ## Runtime source organization
 
 The evaluator and builtin implementations are split by responsibility while

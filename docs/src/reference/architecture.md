@@ -163,6 +163,17 @@ handlers in <code>vm/execution/</code> separate state and stack operations
 handlers return a small outcome enum, so dispatch remains explicit without a
 compatibility adapter.
 
+## Runtime test organization
+
+The runtime keeps interpreter and compiled execution as separate integration
+test roots in <code>tests/evaluator.rs</code> and <code>tests/compiled.rs</code>.
+Scenarios with identical language-level expectations are defined once under
+<code>tests/common/</code> and loaded by both roots. The roots provide only the
+execution-specific helpers, such as reporting whether a source form fails in
+the interpreter or compiled path. Scenarios that exercise a mode-specific
+implementation remain in their corresponding <code>evaluator/</code> or
+<code>compiled/</code> directory.
+
 ## Evaluation boundary
 
 The syntax crate turns source text into span-aware forms. The runtime evaluates

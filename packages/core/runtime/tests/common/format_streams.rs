@@ -1,7 +1,7 @@
-use super::{Runtime, evaluate};
+use super::{evaluate, evaluation_fails};
 
 #[test]
-fn compiled_evaluates_basic_format_directives() {
+fn evaluates_basic_format_directives() {
     assert_eq!(
         evaluate(r#"(format nil "~A/~S" "text" "text")"#).to_string(),
         r#""text/\"text\"""#,
@@ -41,7 +41,7 @@ fn compiled_evaluates_basic_format_directives() {
 }
 
 #[test]
-fn compiled_evaluates_plural_format_directive() {
+fn evaluates_plural_format_directive() {
     assert_eq!(
         evaluate(r#"(format nil "~P|~P|~@P|~@P" 1 2 1 2)"#).to_string(),
         r#""|s|y|ies""#,
@@ -53,7 +53,7 @@ fn compiled_evaluates_plural_format_directive() {
 }
 
 #[test]
-fn compiled_evaluates_dollar_float_format_directive() {
+fn evaluates_dollar_float_format_directive() {
     assert_eq!(
         evaluate(r#"(format nil "~$|~,3$|~,,8$|~2,4,10,'*$|~@$|~,,10:@$" 12.3456 12.3456 12.3 12.3 12.3 12.3)"#)
             .to_string(),
@@ -66,7 +66,7 @@ fn compiled_evaluates_dollar_float_format_directive() {
 }
 
 #[test]
-fn compiled_evaluates_general_float_format_directive() {
+fn evaluates_general_float_format_directive() {
     assert_eq!(
         evaluate(r#"(format nil "~G|~,3G|~10,3G|~10,3G|~10,3,0G|~10,3,1G|~10,3,2G|~@G" 12.3456 1.25 12.3456 0.0123456 12.3456 12.3456 12.3456 1.25)"#)
             .to_string(),
@@ -75,7 +75,7 @@ fn compiled_evaluates_general_float_format_directive() {
 }
 
 #[test]
-fn compiled_evaluates_format_tabulation_modifiers() {
+fn evaluates_format_tabulation_modifiers() {
     assert_eq!(
         evaluate(
             r#"(list (format nil "x~T|")
@@ -93,7 +93,7 @@ fn compiled_evaluates_format_tabulation_modifiers() {
 }
 
 #[test]
-fn compiled_evaluates_format_write_directive() {
+fn evaluates_format_write_directive() {
     assert_eq!(
         evaluate(
             r#"(list (format nil "~W" '("abc"))
@@ -107,7 +107,7 @@ fn compiled_evaluates_format_write_directive() {
 }
 
 #[test]
-fn compiled_evaluates_fixed_float_format_directive() {
+fn evaluates_fixed_float_format_directive() {
     assert_eq!(
         evaluate(r#"(format nil "~F|~,2F|~10,2F|~@F|~4,2,,'*F" 1.25 1.25 1.25 1.25 123.4)"#)
             .to_string(),
@@ -121,7 +121,7 @@ fn compiled_evaluates_fixed_float_format_directive() {
 }
 
 #[test]
-fn compiled_evaluates_exponential_float_format_directive() {
+fn evaluates_exponential_float_format_directive() {
     assert_eq!(
         evaluate(r#"(format nil "~E|~,2E|~10,2E|~@E" 1.25 1.25 1.25 1.25)"#).to_string(),
         r#""1.25E+0|1.25E+0|   1.25E+0|+1.25E+0""#,
@@ -137,7 +137,7 @@ fn compiled_evaluates_exponential_float_format_directive() {
 }
 
 #[test]
-fn compiled_evaluates_parameterized_format_directives() {
+fn evaluates_parameterized_format_directives() {
     assert_eq!(
         evaluate(r#"(format nil "~10A|~10@A|~10,'0D|~:D|~@D" "x" "y" 42 1234567 8)"#).to_string(),
         r#""x         |         y|0000000042|1,234,567|+8""#,
@@ -165,7 +165,7 @@ fn compiled_evaluates_parameterized_format_directives() {
 }
 
 #[test]
-fn compiled_evaluates_format_iteration_directives() {
+fn evaluates_format_iteration_directives() {
     assert_eq!(
         evaluate(r#"(format nil "~{~A/~A~}" '(one 1 two 2))"#).to_string(),
         r#""ONE/1TWO/2""#,
@@ -185,7 +185,7 @@ fn compiled_evaluates_format_iteration_directives() {
 }
 
 #[test]
-fn compiled_evaluates_format_recursive_processing_directive() {
+fn evaluates_format_recursive_processing_directive() {
     assert_eq!(
         evaluate(
             r#"(list (format nil "~? ~D" "<~A ~D>" '("Foo" 5) 7)
@@ -202,7 +202,7 @@ fn compiled_evaluates_format_recursive_processing_directive() {
 }
 
 #[test]
-fn compiled_evaluates_format_justification_directive() {
+fn evaluates_format_justification_directive() {
     assert_eq!(
         evaluate(
             r#"(list (format nil "~15<~S~;~^~S~;~^~S~>" 'foo)
@@ -221,7 +221,7 @@ fn compiled_evaluates_format_justification_directive() {
 }
 
 #[test]
-fn compiled_evaluates_format_conditional_newline_directive() {
+fn evaluates_format_conditional_newline_directive() {
     assert_eq!(
         evaluate(
             r#"(list (format nil "a~_b")
@@ -236,7 +236,7 @@ fn compiled_evaluates_format_conditional_newline_directive() {
 }
 
 #[test]
-fn compiled_evaluates_format_indentation_directive() {
+fn evaluates_format_indentation_directive() {
     assert_eq!(
         evaluate(
             r#"(list (format nil "a~I b")
@@ -255,15 +255,12 @@ fn compiled_evaluates_format_indentation_directive() {
         r#"(format nil "~:*~A" 1)"#,
         r#"(format nil "~:@*~A" 1)"#,
     ] {
-        assert!(
-            Runtime::new().eval_compiled_source(source).is_err(),
-            "{source}"
-        );
+        assert!(evaluation_fails(source), "{source}");
     }
 }
 
 #[test]
-fn compiled_evaluates_format_case_conversion_directive() {
+fn evaluates_format_case_conversion_directive() {
     assert_eq!(
         evaluate(
             r#"(list (format nil "~(~A~)" "MiXeD Words")
@@ -280,7 +277,7 @@ fn compiled_evaluates_format_case_conversion_directive() {
 }
 
 #[test]
-fn compiled_evaluates_format_escape_upward_directive() {
+fn evaluates_format_escape_upward_directive() {
     assert_eq!(
         evaluate(r#"(format nil "~{~A~^, ~}" '(one two three))"#).to_string(),
         r#""ONE, TWO, THREE""#,
@@ -302,7 +299,7 @@ fn compiled_evaluates_format_escape_upward_directive() {
 }
 
 #[test]
-fn compiled_evaluates_format_choice_directives() {
+fn evaluates_format_choice_directives() {
     assert_eq!(
         evaluate(r#"(format nil "~[zero~;one~;two~]" 1)"#).to_string(),
         r#""one""#,
@@ -353,7 +350,7 @@ fn compiled_evaluates_format_choice_directives() {
 }
 
 #[test]
-fn compiled_evaluates_format_choice_parameters() {
+fn evaluates_format_choice_parameters() {
     assert_eq!(
         evaluate(
             r#"(list (format nil "~2[zero~;one~;two~]~A" 'x)
@@ -366,7 +363,7 @@ fn compiled_evaluates_format_choice_parameters() {
 }
 
 #[test]
-fn compiled_evaluates_write_to_string() {
+fn evaluates_write_to_string() {
     assert_eq!(
         evaluate("(write-to-string '(a 1))").to_string(),
         r#""(A 1)""#,
@@ -382,7 +379,7 @@ fn compiled_evaluates_write_to_string() {
 }
 
 #[test]
-fn compiled_evaluates_write_escape_options() {
+fn evaluates_write_escape_options() {
     assert_eq!(
         evaluate(
             r#"(list (write-to-string "abc")
@@ -395,7 +392,7 @@ fn compiled_evaluates_write_escape_options() {
 }
 
 #[test]
-fn compiled_evaluates_print_variants_to_string_stream() {
+fn evaluates_print_variants_to_string_stream() {
     assert_eq!(
         evaluate(
             r#"(let ((output (make-string-output-stream)))
@@ -410,7 +407,7 @@ fn compiled_evaluates_print_variants_to_string_stream() {
 }
 
 #[test]
-fn compiled_evaluates_write_to_stream() {
+fn evaluates_write_to_stream() {
     assert_eq!(
         evaluate(
             r#"(let ((output (make-string-output-stream)))
@@ -426,7 +423,7 @@ fn compiled_evaluates_write_to_stream() {
 }
 
 #[test]
-fn compiled_evaluates_read_from_string() {
+fn evaluates_read_from_string() {
     assert_eq!(
         evaluate(
             r#"(multiple-value-bind (value position)
@@ -457,7 +454,7 @@ fn compiled_evaluates_read_from_string() {
 }
 
 #[test]
-fn compiled_evaluates_read_from_string_options() {
+fn evaluates_read_from_string_options() {
     assert_eq!(
         evaluate(
             r#"(list
@@ -478,7 +475,7 @@ fn compiled_evaluates_read_from_string_options() {
 }
 
 #[test]
-fn compiled_evaluates_read_from_string_stream() {
+fn evaluates_read_from_string_stream() {
     assert_eq!(
         evaluate(
             r#"(let ((input (make-string-input-stream "  (a 1) 42  ")))
@@ -493,7 +490,7 @@ fn compiled_evaluates_read_from_string_stream() {
 }
 
 #[test]
-fn compiled_evaluates_read_whitespace_consumption() {
+fn evaluates_read_whitespace_consumption() {
     assert_eq!(
         evaluate(
             r#"(let ((read-input (make-string-input-stream "(a)  b"))
@@ -511,7 +508,7 @@ fn compiled_evaluates_read_whitespace_consumption() {
 }
 
 #[test]
-fn compiled_evaluates_character_stream_options_and_eof() {
+fn evaluates_character_stream_options_and_eof() {
     assert_eq!(
         evaluate(
             r#"(list

@@ -5,13 +5,17 @@ use common::evaluate_compiled as evaluate;
 use ncl_compiler::Instruction;
 use ncl_runtime::{Runtime, RuntimeError};
 
+fn evaluation_fails(source: &str) -> bool {
+    Runtime::new().eval_compiled_source(source).is_err()
+}
+
 #[path = "compiled/clos.rs"]
 mod clos;
-#[path = "compiled/conditions.rs"]
+#[path = "common/conditions.rs"]
 mod conditions;
 #[path = "compiled/control.rs"]
 mod control;
-#[path = "compiled/format_streams.rs"]
+#[path = "common/format_streams.rs"]
 mod format_streams;
 #[path = "compiled/iteration.rs"]
 mod iteration;

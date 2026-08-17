@@ -1,9 +1,9 @@
-use super::{Runtime, evaluate};
+use super::{TestRuntime, evaluate};
 
 #[test]
 fn evaluates_basic_clos_instances_and_accessors() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x)
@@ -27,9 +27,9 @@ fn evaluates_basic_clos_instances_and_accessors() {
 
 #[test]
 fn evaluates_clos_with_slots_and_accessors() {
-    let runtime = Runtime::new();
+    let runtime = TestRuntime::new();
     let values = runtime
-        .eval_source(
+        .evaluate(
             r#"(progn
                  (defclass ws-point ()
                    ((x :initarg :x :accessor ws-point-x)
@@ -47,17 +47,13 @@ fn evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(
-        runtime
-            .eval_source("(with-accessors (x) object x)")
-            .is_err()
-    );
+    assert!(runtime.evaluate("(with-accessors (x) object x)").is_err());
 }
 
 #[test]
 fn evaluates_clos_slot_initialization_options() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass defaults ()
                    ((x :initform 7 :reader defaults-x)
@@ -78,8 +74,8 @@ fn evaluates_clos_slot_initialization_options() {
 
 #[test]
 fn evaluates_clos_class_allocated_slots() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass counter ()
                    ((value :allocation :class :initarg :value
@@ -104,8 +100,8 @@ fn evaluates_clos_class_allocated_slots() {
 
 #[test]
 fn rejects_unsupported_defclass_slot_allocation() {
-    let error = Runtime::default()
-        .eval_source(
+    let error = TestRuntime::default()
+        .evaluate(
             r#"(progn
                  (defclass invalid-allocation-point ()
                    ((x :allocation :bogus)))
@@ -122,8 +118,8 @@ fn rejects_unsupported_defclass_slot_allocation() {
 
 #[test]
 fn rejects_duplicate_defclass_slot_names() {
-    let error = Runtime::default()
-        .eval_source(
+    let error = TestRuntime::default()
+        .evaluate(
             r#"(progn
                  (defclass duplicate-slot-point ()
                    ((x :initarg :x :initform 1)
@@ -137,8 +133,8 @@ fn rejects_duplicate_defclass_slot_names() {
 
 #[test]
 fn rejects_duplicate_defclass_superclasses() {
-    let error = Runtime::default()
-        .eval_source(
+    let error = TestRuntime::default()
+        .evaluate(
             r#"(progn
                  (defclass duplicate-superclass-point (standard-object standard-object) ())
                  t)"#,
@@ -150,8 +146,8 @@ fn rejects_duplicate_defclass_superclasses() {
 
 #[test]
 fn evaluates_clos_default_initargs() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass defaults ()
                    ((value :initarg :value :initform 1))
@@ -171,8 +167,8 @@ fn evaluates_clos_default_initargs() {
 
 #[test]
 fn evaluates_defclass_standard_class_metaclass_option() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass metaclass-point ()
                    ((x :initarg :x))
@@ -189,8 +185,8 @@ fn evaluates_defclass_standard_class_metaclass_option() {
 
 #[test]
 fn rejects_unsupported_defclass_metaclass_option() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(not
                 (ignore-errors
                   (defclass unsupported-metaclass-point ()
@@ -204,9 +200,9 @@ fn rejects_unsupported_defclass_metaclass_option() {
 
 #[test]
 fn rejects_unknown_defclass_option() {
-    let runtime = Runtime::default();
+    let runtime = TestRuntime::default();
     let values = runtime
-        .eval_source(
+        .evaluate(
             r#"(not
                 (ignore-errors
                   (defclass unknown-option-point () ()
@@ -220,8 +216,8 @@ fn rejects_unknown_defclass_option() {
 
 #[test]
 fn evaluates_function_documentation() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defun documented-function (value)
                    "function doc"
@@ -245,8 +241,8 @@ fn evaluates_function_documentation() {
 
 #[test]
 fn evaluates_variable_documentation() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defvar *documented-variable* 1 "variable doc")
                  (defvar *documented-variable* 2 "updated variable doc")
@@ -266,8 +262,8 @@ fn evaluates_variable_documentation() {
 
 #[test]
 fn evaluates_setf_function_documentation() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defun setf-documented-function (value)
                    value)
@@ -290,8 +286,8 @@ fn evaluates_setf_function_documentation() {
 
 #[test]
 fn evaluates_setf_variable_documentation() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defvar *setf-documented-variable* 1)
                  (list (setf (documentation '*setf-documented-variable* 'variable) "variable doc")
@@ -309,8 +305,8 @@ fn evaluates_setf_variable_documentation() {
 
 #[test]
 fn evaluates_setf_class_and_package_documentation() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass setf-doc-class () ())
                  (defpackage :setf-doc-package)
@@ -335,8 +331,8 @@ fn evaluates_setf_class_and_package_documentation() {
 
 #[test]
 fn evaluates_clos_defgeneric_method_options() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass generic-option-point ()
                    ((x :initarg :x :accessor generic-option-point-x)))
@@ -357,8 +353,8 @@ fn evaluates_clos_defgeneric_method_options() {
 
 #[test]
 fn evaluates_clos_ensure_generic_function() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (ensure-generic-function 'ensured-value :lambda-list '(object))
                  (ensure-generic-function 'ensured-extra
@@ -386,8 +382,8 @@ fn evaluates_clos_ensure_generic_function() {
 
 #[test]
 fn evaluates_clos_find_method() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass find-method-point () ())
                  (defgeneric find-method-value (object))
@@ -412,8 +408,8 @@ fn evaluates_clos_find_method() {
 
 #[test]
 fn evaluates_clos_method_accessors() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass method-accessor-point () ())
                  (defgeneric method-accessor-value (object tag))
@@ -442,8 +438,8 @@ fn evaluates_clos_method_accessors() {
 
 #[test]
 fn evaluates_clos_compute_applicable_methods() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass applicable-parent () ())
                  (defclass applicable-child (applicable-parent) ())
@@ -476,8 +472,8 @@ fn evaluates_clos_compute_applicable_methods() {
 
 #[test]
 fn evaluates_clos_generic_function_accessors() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass generic-accessor-parent () ())
                  (defclass generic-accessor-child (generic-accessor-parent) ())
@@ -536,8 +532,8 @@ fn evaluates_clos_generic_function_accessors() {
 
 #[test]
 fn evaluates_clos_setf_and_generic_methods() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x)
@@ -558,8 +554,8 @@ fn evaluates_clos_setf_and_generic_methods() {
 
 #[test]
 fn evaluates_clos_methods_with_ordinary_lambda_lists() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point () ())
                  (defgeneric describe-point (object &optional prefix &key suffix))
@@ -586,8 +582,8 @@ fn evaluates_clos_methods_with_ordinary_lambda_lists() {
 
 #[test]
 fn rejects_non_congruent_clos_method_lambda_lists() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(list
                  (not
                    (ignore-errors
@@ -618,8 +614,8 @@ fn rejects_non_congruent_clos_method_lambda_lists() {
 
 #[test]
 fn evaluates_clos_inheritance_and_specialization() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x)))
@@ -642,8 +638,8 @@ fn evaluates_clos_inheritance_and_specialization() {
 
 #[test]
 fn evaluates_clos_c3_precedence_and_leftmost_method_order() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass root () ())
                  (defclass left (root) ())
@@ -666,8 +662,8 @@ fn evaluates_clos_c3_precedence_and_leftmost_method_order() {
 
 #[test]
 fn evaluates_clos_eql_specializer() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defgeneric choose-number (value))
                  (defmethod choose-number ((value t)) :default)
@@ -681,8 +677,8 @@ fn evaluates_clos_eql_specializer() {
 
 #[test]
 fn evaluates_clos_unbound_slots() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x)))
@@ -705,8 +701,8 @@ fn evaluates_clos_unbound_slots() {
 
 #[test]
 fn evaluates_clos_method_combination() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point () ((x :initarg :x)))
                  (let ((events nil))
@@ -739,8 +735,8 @@ fn evaluates_clos_method_combination() {
 
 #[test]
 fn rejects_call_next_method_arguments_that_change_ordered_applicable_methods() {
-    let error = Runtime::new()
-        .eval_source(
+    let error = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point () ())
                  (defgeneric point-value (object))
@@ -761,8 +757,8 @@ fn rejects_call_next_method_arguments_that_change_ordered_applicable_methods() {
 
 #[test]
 fn evaluates_clos_no_applicable_method_hook() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defgeneric no-applicable-method (generic-function &rest arguments))
                  (defmethod no-applicable-method ((generic-function t) &rest arguments)
@@ -777,8 +773,8 @@ fn evaluates_clos_no_applicable_method_hook() {
 
 #[test]
 fn evaluates_clos_no_next_method_hook() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defgeneric no-next-method (generic-function method &rest arguments))
                  (defmethod no-next-method ((generic-function t) (method t) &rest arguments)
@@ -799,8 +795,8 @@ fn evaluates_clos_no_next_method_hook() {
 
 #[test]
 fn evaluates_clos_defmethod_redefinition_replaces_existing_method() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point () ())
                  (defgeneric point-value (object))
@@ -815,8 +811,8 @@ fn evaluates_clos_defmethod_redefinition_replaces_existing_method() {
 
 #[test]
 fn evaluates_clos_initialize_instance_after_method_without_primary() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x)))
@@ -831,8 +827,8 @@ fn evaluates_clos_initialize_instance_after_method_without_primary() {
 
 #[test]
 fn evaluates_clos_initialize_instance_before_method_runs_before_standard_initialization() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defparameter *seen* nil)
                  (defclass point ()
@@ -849,8 +845,8 @@ fn evaluates_clos_initialize_instance_before_method_runs_before_standard_initial
 
 #[test]
 fn evaluates_clos_shared_initialize_reinitializes_requested_slots() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x :initform 1)
@@ -870,8 +866,8 @@ fn evaluates_clos_shared_initialize_reinitializes_requested_slots() {
 
 #[test]
 fn evaluates_clos_reinitialize_instance_updates_initargs_and_runs_methods() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x :initform 1)
@@ -896,8 +892,8 @@ fn evaluates_clos_reinitialize_instance_updates_initargs_and_runs_methods() {
 
 #[test]
 fn evaluates_clos_reinitialize_instance_before_method_runs_before_standard_reinitialization() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defparameter *seen* nil)
                  (defclass point ()
@@ -923,8 +919,8 @@ fn evaluates_clos_reinitialize_instance_before_method_runs_before_standard_reini
 
 #[test]
 fn evaluates_clos_change_class_preserves_shared_slots_and_reinitializes_new_ones() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x)
@@ -947,8 +943,8 @@ fn evaluates_clos_change_class_preserves_shared_slots_and_reinitializes_new_ones
 
 #[test]
 fn evaluates_clos_change_class_invokes_update_instance_for_different_class() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x)
@@ -975,8 +971,8 @@ fn evaluates_clos_change_class_invokes_update_instance_for_different_class() {
 
 #[test]
 fn evaluates_clos_slot_missing_and_slot_unbound_hooks() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defparameter *slot-events* nil)
                  (defclass point ()
@@ -1008,8 +1004,8 @@ fn evaluates_clos_slot_missing_and_slot_unbound_hooks() {
 
 #[test]
 fn evaluates_clos_allocate_instance_returns_uninitialized_standard_object() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x :initform 1)
@@ -1084,8 +1080,8 @@ fn evaluates_with_compilation_unit() {
 
 #[test]
 fn evaluates_defstruct_constructors_accessors_and_copies() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defstruct person name (age 21))
                  (let ((person (make-person :name "Ada")))
@@ -1111,8 +1107,8 @@ fn evaluates_defstruct_constructors_accessors_and_copies() {
 
 #[test]
 fn evaluates_structure_literal_dispatch() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defstruct person name (age 21))
                  (let ((person #S(person :name "Ada" :age 42)))
@@ -1131,8 +1127,8 @@ fn evaluates_structure_literal_dispatch() {
 
 #[test]
 fn evaluates_pathname_literal_dispatch() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(list (stringp #P"/tmp/demo.txt")
                      (equal #P"/tmp/demo.txt" "/tmp/demo.txt"))"#,
         )
@@ -1143,8 +1139,8 @@ fn evaluates_pathname_literal_dispatch() {
 
 #[test]
 fn evaluates_defstruct_name_and_options() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defstruct
                    (account
@@ -1198,8 +1194,8 @@ fn evaluates_defstruct_name_and_options() {
 
 #[test]
 fn evaluates_defstruct_read_only_slots() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defstruct record
                    (id 0 t)
@@ -1213,8 +1209,8 @@ fn evaluates_defstruct_read_only_slots() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), r#"(7 "after")"#);
 
-    let error = Runtime::new()
-        .eval_source(
+    let error = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defstruct immutable (id 0 t))
                  (let ((record (make-immutable :id 1)))
@@ -1230,8 +1226,8 @@ fn evaluates_defstruct_read_only_slots() {
 
 #[test]
 fn evaluates_defstruct_included_slots_and_type_hierarchy() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defstruct
                    (person (:constructor nil))
@@ -1265,8 +1261,8 @@ fn evaluates_defstruct_included_slots_and_type_hierarchy() {
 
 #[test]
 fn evaluates_defstruct_boa_constructors() {
-    let values = Runtime::new()
-        .eval_source(
+    let values = TestRuntime::new()
+        .evaluate(
             r#"(progn
                  (defstruct
                    (boa

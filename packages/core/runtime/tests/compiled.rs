@@ -1,9 +1,21 @@
 #[path = "common/evaluate_compiled.rs"]
 mod common;
+#[path = "common/evaluation.rs"]
+mod evaluation;
 
 use common::evaluate_compiled as evaluate;
 use ncl_compiler::Instruction;
-use ncl_runtime::{Runtime, RuntimeError};
+use ncl_runtime::{Runtime, RuntimeError, Value};
+
+struct CompiledMode;
+
+impl evaluation::EvaluationMode for CompiledMode {
+    fn evaluate(runtime: &Runtime, source: &str) -> Result<Vec<Value>, RuntimeError> {
+        runtime.eval_compiled_source(source)
+    }
+}
+
+type TestRuntime = evaluation::TestRuntime<CompiledMode>;
 
 fn evaluation_fails(source: &str) -> bool {
     Runtime::new().eval_compiled_source(source).is_err()

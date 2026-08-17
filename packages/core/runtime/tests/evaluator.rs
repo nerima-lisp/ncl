@@ -1,8 +1,20 @@
 #[path = "common/evaluate.rs"]
 mod common;
+#[path = "common/evaluation.rs"]
+mod evaluation;
 
 use common::evaluate;
-use ncl_runtime::{Runtime, RuntimeError};
+use ncl_runtime::{Runtime, RuntimeError, Value};
+
+struct InterpretedMode;
+
+impl evaluation::EvaluationMode for InterpretedMode {
+    fn evaluate(runtime: &Runtime, source: &str) -> Result<Vec<Value>, RuntimeError> {
+        runtime.eval_source(source)
+    }
+}
+
+type TestRuntime = evaluation::TestRuntime<InterpretedMode>;
 
 fn evaluation_fails(source: &str) -> bool {
     Runtime::new().eval_source(source).is_err()

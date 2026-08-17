@@ -101,3 +101,6 @@ include!("predicates.rs");
 include!("collections.rs");
 include!("identity.rs");
 include!("formatting.rs");
+
+#[cfg(test)]
+mod tests;

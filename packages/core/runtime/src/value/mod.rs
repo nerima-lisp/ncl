@@ -105,4 +105,6 @@ include!("formatting.rs");
 #[cfg(test)]
 mod formatting_tests;
 #[cfg(test)]
+mod predicates_tests;
+#[cfg(test)]
 mod tests;

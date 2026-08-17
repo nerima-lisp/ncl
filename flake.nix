@@ -21,6 +21,8 @@
         "x86_64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
+      cargoManifest = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+      projectVersion = cargoManifest.workspace.package.version;
       weaveTestArguments = [
         "--reporter"
         "spec"
@@ -31,6 +33,22 @@
         "5000"
       ];
       weaveTestArgumentsShell = lib.escapeShellArgs weaveTestArguments;
+      rustCoverageBaseArguments = [
+        "--workspace"
+        "--all-targets"
+        "--all-features"
+        "--locked"
+      ];
+      rustCoverageThresholdArguments = [
+        "--fail-under-lines"
+        "75"
+        "--fail-under-functions"
+        "78"
+        "--fail-under-regions"
+        "75"
+      ];
+      rustCoverageBaseArgumentsShell = lib.escapeShellArgs rustCoverageBaseArguments;
+      rustCoverageThresholdArgumentsShell = lib.escapeShellArgs rustCoverageThresholdArguments;
       coverageExcludePaths = [
         "lisp/package.lisp"
         "lisp/constants.lisp"
@@ -52,7 +70,7 @@
           pkgs = import nixpkgs { inherit system; };
           ncl = pkgs.rustPlatform.buildRustPackage {
             pname = "ncl";
-            version = "0.1.0";
+            version = projectVersion;
             src = self;
             cargoLock.lockFile = ./Cargo.lock;
             doCheck = true;
@@ -113,6 +131,7 @@
           rustCoverage = pkgs.writeShellApplication {
             name = "ncl-rust-coverage";
             runtimeInputs = [
+              pkgs.stdenv.cc
               pkgs.cargo
               pkgs.rustc
               pkgs.cargo-llvm-cov
@@ -122,14 +141,9 @@
               export LLVM_COV="${pkgs.llvmPackages.llvm}/bin/llvm-cov"
               export LLVM_PROFDATA="${pkgs.llvmPackages.llvm}/bin/llvm-profdata"
               exec cargo llvm-cov \
-                --workspace \
-                --all-targets \
-                --all-features \
-                --locked \
+                ${rustCoverageBaseArgumentsShell} \
                 "$@" \
-                --fail-under-lines 75 \
-                --fail-under-functions 78 \
-                --fail-under-regions 75
+                ${rustCoverageThresholdArgumentsShell}
             '';
           };
         in
@@ -182,6 +196,28 @@
         in
         {
           ncl-rust = self.packages.${system}.ncl;
+          ncl-rust-coverage =
+            pkgs.runCommand "ncl-rust-coverage"
+              {
+                nativeBuildInputs = [
+                  pkgs.stdenv.cc
+                  pkgs.cargo
+                  pkgs.rustc
+                  pkgs.cargo-llvm-cov
+                  pkgs.llvmPackages.llvm
+                ];
+              }
+              ''
+                export LLVM_COV="${pkgs.llvmPackages.llvm}/bin/llvm-cov"
+                export LLVM_PROFDATA="${pkgs.llvmPackages.llvm}/bin/llvm-profdata"
+                export CARGO_TARGET_DIR="$TMPDIR/target"
+                cd ${self}
+                cargo llvm-cov \
+                  ${rustCoverageBaseArgumentsShell} \
+                  ${rustCoverageThresholdArgumentsShell} \
+                  --summary-only
+                touch "$out"
+              '';
           ncl-tests =
             pkgs.runCommand "ncl-tests"
               {
@@ -302,6 +338,7 @@
         {
           default = pkgs.mkShell {
             packages = [
+              pkgs.stdenv.cc
               pkgs.rustc
               pkgs.cargo
               pkgs.rustfmt

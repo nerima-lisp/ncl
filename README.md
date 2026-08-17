@@ -19,6 +19,9 @@ string stream forms such as <code>with-input-from-string</code> and
 The workspace requires Rust 1.97 or newer and pins Rust 1.97.1 in
 `rust-toolchain.toml`.
 
+The flake reads the package version from the `[workspace.package]` section of
+`Cargo.toml`, so release version changes have one source of truth.
+
 ~~~sh
 cargo run -- --eval '(+ 1 2)'
 cargo run -- --compiled --eval '(+ 1 2)'
@@ -71,7 +74,8 @@ source boundaries and extension points are described in the
 The `rust-coverage` app runs every Rust workspace target with LLVM coverage.
 It enforces the current ratchet floors of 75% line, 78% function, and 75%
 region coverage; the long-term target is 100% for each metric. Pass `--html`
-and `--output-dir artifacts/rust-coverage` to produce a browsable report.
+and `--output-dir artifacts/rust-coverage` to produce a browsable report. The
+same floors are enforced by the `ncl-rust-coverage` flake check.
 
 The Common Lisp tests use [cl-weave](https://github.com/nerima-lisp/cl-weave),
 and source formatting and structural checks use
@@ -114,9 +118,9 @@ and [Magic Nix Cache](https://github.com/marketplace/actions/magic-nix-cache)
 to provide a reproducible CI environment.
 
 The Nix flake adds repository-level checks for the Lisp test suite, Paredit
-syntax validation, strict MkDocs builds, and the Lisp coverage report. CI also
-runs the Rust LLVM coverage ratchet. Run `nix flake check path:.` and the
-`rust-coverage` app to execute the complete local check set.
+syntax validation, strict MkDocs builds, Lisp coverage, and the Rust LLVM
+coverage ratchet. Run `nix flake check path:.` and the `rust-coverage` app to
+execute the complete local check set.
 
 ## Contributing
 

@@ -129,4 +129,5 @@ nix run path:.#rust-coverage -- --summary-only
 The command requires at least 75% line, 78% function, and 75% region coverage.
 The target is 100% for every metric. Pass `--html --output-dir
 artifacts/rust-coverage` instead of `--summary-only` to write a browsable HTML
-report.
+report. The same ratchet is enforced by the `ncl-rust-coverage` flake check;
+run `nix flake check path:.` to include it in the repository-wide gates.

@@ -14,8 +14,10 @@ The repository is a Cargo workspace:
 
 The workspace uses Rust edition 2024, declares Rust 1.97 as its minimum
 version, and pins Rust 1.97.1 through `rust-toolchain.toml`. Workspace lints
-forbid unsafe Rust. The required formatter, build, test, and Clippy checks are
-also run by [.github/workflows/ci.yml](https://github.com/nerima-lisp/ncl/blob/main/.github/workflows/ci.yml).
+forbid unsafe Rust. The flake derives the package version from the workspace
+Cargo manifest and runs the Rust coverage ratchet as `ncl-rust-coverage`; the
+required formatter, build, test, and Clippy checks are also run by
+[.github/workflows/ci.yml](https://github.com/nerima-lisp/ncl/blob/main/.github/workflows/ci.yml).
 
 ## Dependency graph
 

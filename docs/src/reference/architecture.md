@@ -174,6 +174,14 @@ the interpreter or compiled path. Scenarios that exercise a mode-specific
 implementation remain in their corresponding <code>evaluator/</code> or
 <code>compiled/</code> directory.
 
+Unit tests for value-level invariants live beside the implementation under
+<code>packages/core/runtime/src/value/</code>. The predicate test module covers
+every <code>Value</code> type-name variant, primary multiple-value truthiness,
+condition hierarchy matching, condition slots, and simple-condition formatting
+metadata. These tests keep data-facing invariants close to their implementation;
+the interpreter and compiled integration roots continue to verify language-level
+behavior.
+
 ## Common Lisp evaluator organization
 
 The Common Lisp evaluator keeps shared validation, macro expansion, CPS

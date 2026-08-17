@@ -22,6 +22,7 @@
                (:file "reader")
                (:file "conditions")
                (:file "evaluator")
+               (:file "evaluator-dispatch")
                (:file "lambda-list")
                (:file "standard")
                (:file "cli")))

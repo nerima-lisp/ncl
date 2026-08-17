@@ -174,6 +174,15 @@ the interpreter or compiled path. Scenarios that exercise a mode-specific
 implementation remain in their corresponding <code>evaluator/</code> or
 <code>compiled/</code> directory.
 
+## Common Lisp evaluator organization
+
+The Common Lisp evaluator keeps shared validation, macro expansion, CPS
+stepping, callable invocation, and binding operations in
+<code>lisp/evaluator.lisp</code>. Special-form dispatch and the public
+<code>evaluate</code> entry points live in <code>lisp/evaluator-dispatch.lisp</code>.
+The ASDF component order loads these implementation layers before the
+lambda-list and standard-library layers that depend on them.
+
 ## Evaluation boundary
 
 The syntax crate turns source text into span-aware forms. The runtime evaluates

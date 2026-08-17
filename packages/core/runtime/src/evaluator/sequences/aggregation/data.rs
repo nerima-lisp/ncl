@@ -34,4 +34,38 @@ impl SequenceItems {
 
         Ok(Self { kind, values })
     }
+
+    fn into_value(self, template: &Value, span: Span) -> Result<Value, RuntimeError> {
+        match self.kind {
+            SequenceKind::List => Ok(Value::list(self.values)),
+            SequenceKind::Vector => match template {
+                Value::Vector {
+                    fill_pointer,
+                    element_type,
+                    adjustable,
+                    ..
+                } => Ok(Value::vector_with_fill_pointer_element_type_and_adjustable(
+                    self.values,
+                    *fill_pointer,
+                    element_type.as_ref().clone(),
+                    *adjustable,
+                )),
+                _ => Ok(Value::vector(self.values)),
+            },
+            SequenceKind::String => {
+                let mut value = String::new();
+                for item in self.values {
+                    let Value::Character(character) = item else {
+                        return Err(RuntimeError::Type {
+                            expected: "CHARACTER".to_string(),
+                            actual: item.type_name().to_string(),
+                            span: Some(span),
+                        });
+                    };
+                    value.push(character);
+                }
+                Ok(Value::string(value))
+            }
+        }
+    }
 }

@@ -118,6 +118,13 @@ Sequence aggregation follows the same boundary in
 contain the operation-specific logic. The surrounding evaluator entry points
 remain unchanged.
 
+Sequence mutation uses the same split in
+<code>evaluator/sequences/mutation/</code>. The private fragments separate
+removal, substitution, <code>MAP-INTO</code>, and vector storage updates;
+sequence conversion is shared through <code>SequenceItems</code> so each
+operation keeps its algorithmic logic separate from list, vector, and string
+representation details.
+
 The generalized-place dispatcher follows the same data/logic boundary in
 <code>evaluator/setf/places.rs</code>. It owns expansion and dispatch only;
 place updates are grouped into the private fragments

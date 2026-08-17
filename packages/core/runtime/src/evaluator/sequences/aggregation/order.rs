@@ -88,25 +88,12 @@ impl Runtime {
 
         let result = sorted.into_iter().map(|(item, _)| item).collect::<Vec<_>>();
         match kind {
-            SequenceKind::List => Ok(Value::list(result)),
-            SequenceKind::Vector => match sequence {
-                Value::Vector { .. } => self.rewrite_vector_contents(sequence, result, None, span),
-                _ => unreachable!("validated SORT vector sequence"),
-            },
-            SequenceKind::String => {
-                let mut value = String::new();
-                for item in result {
-                    let Value::Character(character) = item else {
-                        return Err(RuntimeError::Type {
-                            expected: "CHARACTER".to_string(),
-                            actual: item.type_name().to_string(),
-                            span: Some(span),
-                        });
-                    };
-                    value.push(character);
-                }
-                Ok(Value::string(value))
+            SequenceKind::Vector => self.rewrite_vector_contents(sequence, result, None, span),
+            kind => SequenceItems {
+                kind,
+                values: result,
             }
+            .into_value(sequence, span),
         }
     }
 

@@ -123,6 +123,15 @@ isolated in <code>evaluator/structure_constructors.rs</code>; the
 application fragment while BOA and keyword binding, defaults, and slot
 assembly are owned by the constructor fragment.
 
+Generic-function definition and method-dispatch responsibilities are also
+separated under <code>evaluator/definitions/</code>. The
+<code>generic_definition.rs</code> fragment validates and constructs
+<code>defgeneric</code> definitions, while <code>generic.rs</code> retains method
+lookup, applicability, and invocation support. The parent
+<code>definitions.rs</code> assembles these fragments into the same
+<code>Runtime</code> implementation, so the split changes navigation and review
+boundaries without changing the evaluator API.
+
 Sequence aggregation follows the same boundary in
 <code>evaluator/sequences/aggregation/</code>. The private
 <code>data.rs</code> fragment converts supported sequence values into the shared

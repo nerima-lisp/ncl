@@ -93,6 +93,13 @@ Each directory has a <code>mod.rs</code> that assembles its responsibility
 fragments into the same module boundary. This keeps private invariants local
 without introducing a compatibility layer or changing the public runtime API.
 
+Generic dispatch and general callable application remain in the private
+<code>evaluator/generic.rs</code> fragment. Structure constructor argument
+binding is isolated in <code>evaluator/structure_constructors.rs</code>;
+the <code>Function::StructureConstructor</code> dispatch path stays in the
+generic fragment while BOA and keyword binding, defaults, and slot assembly
+are owned by the constructor fragment.
+
 The generalized-place dispatcher follows the same data/logic boundary in
 <code>evaluator/setf/places.rs</code>. It owns expansion and dispatch only;
 place updates are grouped into the private fragments

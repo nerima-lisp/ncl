@@ -110,6 +110,14 @@ the <code>Function::StructureConstructor</code> dispatch path stays in the
 generic fragment while BOA and keyword binding, defaults, and slot assembly
 are owned by the constructor fragment.
 
+Sequence aggregation follows the same boundary in
+<code>evaluator/sequences/aggregation/</code>. The private
+<code>data.rs</code> fragment converts supported sequence values into the shared
+<code>SequenceItems</code> representation, while <code>reduce.rs</code>,
+<code>search.rs</code>, <code>order.rs</code>, and <code>quantifiers.rs</code>
+contain the operation-specific logic. The surrounding evaluator entry points
+remain unchanged.
+
 The generalized-place dispatcher follows the same data/logic boundary in
 <code>evaluator/setf/places.rs</code>. It owns expansion and dispatch only;
 place updates are grouped into the private fragments

@@ -45,6 +45,12 @@ builtin, and VM modules own evaluation, dispatch, and control flow. Small
 invocation-context structs make data passed between those operations explicit,
 while preserving the existing execution semantics.
 
+The package state module assembles its data model and operations from private
+fragments under <code>packages/core/runtime/src/package</code>: queries,
+symbols, package relationships, lifecycle operations, and name normalization
+are kept in separate files while remaining inside the same runtime module
+boundary.
+
 ## Compiler source organization
 
 The compiler keeps its bytecode and error data model in
@@ -88,10 +94,12 @@ remaining private to their owning runtime modules:
 | --- | --- |
 | <code>packages/core/runtime/src/evaluator</code> | Evaluation, compilation, special forms, definitions, macros, packages, sequences, conditions, primitives, generic functions, lambdas, and runtime helpers. |
 | <code>packages/core/runtime/src/builtins</code> | Numeric, bitwise, collection, character, string, type, array, predicate, stream, and format builtins. |
+| <code>packages/core/runtime/src/package</code> | Package state model, queries, symbol operations, package relationships, lifecycle operations, and name normalization. |
 
-Each directory has a <code>mod.rs</code> that assembles its responsibility
-fragments into the same module boundary. This keeps private invariants local
-without introducing a compatibility layer or changing the public runtime API.
+The evaluator and builtin directories use <code>mod.rs</code>, while the package
+module uses <code>package.rs</code>; each assembles its responsibility fragments
+into the same module boundary. This keeps private invariants local without
+introducing a compatibility layer or changing the public runtime API.
 
 Generic dispatch and general callable application remain in the private
 <code>evaluator/generic.rs</code> fragment. Structure constructor argument

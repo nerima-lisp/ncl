@@ -10,5 +10,5 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-ncl-compiler = { path = "../compiler" }
-ncl-syntax = { path = "../syntax" }
+ncl-compiler.workspace = true
+ncl-syntax.workspace = true

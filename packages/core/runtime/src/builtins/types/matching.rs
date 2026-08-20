@@ -297,6 +297,9 @@ fn vector_type_matches(
         .map(|size| type_spec_size(function, size))
         .transpose()?
         .flatten();
+    if !value.is_simple_vector() {
+        return Ok(false);
+    }
     let Some(items) = value.vector_items() else {
         return Ok(false);
     };
@@ -508,7 +511,8 @@ fn type_matches(
             matches!(value, Value::Nil | Value::Boolean(false)) || value.list_items().is_some()
         }
         "ATOM" => cons_parts(value).is_none(),
-        "VECTOR" | "SIMPLE-VECTOR" => value.vector_items().is_some(),
+        "VECTOR" => value.vector_items().is_some(),
+        "SIMPLE-VECTOR" => value.is_simple_vector(),
         "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => is_bit_vector_value(value),
         "ARRAY" => dimensions_for_array(value).is_some(),
         "SIMPLE-ARRAY" => simple_array_value(value),

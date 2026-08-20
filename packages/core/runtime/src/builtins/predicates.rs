@@ -16,7 +16,9 @@ fn atom(arguments: &[Value]) -> Result<Value, RuntimeError> {
 fn consp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "consp", 1)?;
     Ok(Value::boolean(
-        arguments[0].list_items().is_some()
+        arguments[0]
+            .list_items()
+            .is_some_and(|items| !items.is_empty())
             || matches!(&arguments[0], Value::DottedList { .. }),
     ))
 }

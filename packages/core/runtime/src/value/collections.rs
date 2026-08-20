@@ -62,6 +62,9 @@ impl Value {
                 adjustable: false,
                 displaced_to: None,
                 ..
+            } | Self::Structure {
+                representation: StructureRepresentation::Vector { .. },
+                ..
             }
         )
     }

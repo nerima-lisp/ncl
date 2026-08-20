@@ -20,6 +20,9 @@ fn aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
 fn svref(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "svref", 2)?;
     let index = index_argument("svref", &arguments[1])?;
+    if !arguments[0].is_simple_vector() {
+        return Err(type_error("svref", "simple-vector", &arguments[0]));
+    }
     let items = arguments[0]
         .vector_items()
         .ok_or_else(|| type_error("svref", "simple-vector", &arguments[0]))?;

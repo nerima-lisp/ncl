@@ -687,7 +687,7 @@ fn vectorp(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-vector-p", 1)?;
-    Ok(Value::boolean(arguments[0].vector_items().is_some()))
+    Ok(Value::boolean(arguments[0].is_simple_vector()))
 }
 
 fn fill_pointer(arguments: &[Value]) -> Result<Value, RuntimeError> {

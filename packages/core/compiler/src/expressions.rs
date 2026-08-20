@@ -97,9 +97,7 @@ impl CompileState {
                 "LOCALLY" => return self.compile_progn(function, items),
                 "WITH-COMPILATION-UNIT" => return self.compile_progn(function, items),
                 "EVAL-WHEN" => return self.compile_eval_when(function, span, items),
-                "LOAD-TIME-VALUE" => {
-                    return self.compile_runtime_definition(function, span, items);
-                }
+                "LOAD-TIME-VALUE" => return self.compile_load_time_value(function, span, items),
                 "NTH-VALUE" => {
                     return self.compile_nth_value(function, span, items);
                 }
@@ -218,7 +216,7 @@ impl CompileState {
                 }
                 "DEFVAR" => return self.compile_defvar(function, span, items, false),
                 "DEFPARAMETER" => return self.compile_defvar(function, span, items, true),
-                "DEFCONSTANT" => return self.compile_runtime_definition(function, span, items),
+                "DEFCONSTANT" => return self.compile_defconstant(function, span, items),
                 "DEFSTRUCT" => return self.compile_defstruct(function, span, items),
                 "DEFINE-CONDITION" => {
                     return self.compile_runtime_definition(function, span, items);
@@ -665,6 +663,30 @@ impl CompileState {
         self.compile_expression(function, index_form)?;
         self.compile_expression(function, value_form)?;
         self.emit(function, Instruction::NthValue(index_form.span), span)?;
+        Ok(())
+    }
+
+    pub(super) fn compile_load_time_value(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if !(items.len() == 2 || items.len() == 3) {
+            return Err(self.arity_error(items, "LOAD-TIME-VALUE", "one or two", span));
+        }
+        let Some(value_form) = items.get(1) else {
+            return Err(self.internal_error(
+                span,
+                "missing LOAD-TIME-VALUE value form after arity check",
+            ));
+        };
+        self.compile_expression(function, value_form)?;
+        if let Some(read_only_form) = items.get(2) {
+            self.compile_expression(function, read_only_form)?;
+            self.emit(function, Instruction::Pop, read_only_form.span)?;
+        }
+        self.emit(function, Instruction::LoadTimeValue, span)?;
         Ok(())
     }
 

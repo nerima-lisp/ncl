@@ -162,6 +162,42 @@ fn execute_state_instruction(
                     value;
                 *program_counter += 1;
             }
+            Instruction::CheckConstant(name) => {
+                if runtime.is_constant_in(name) {
+                    return Err(runtime.constant_modification_error(name, span));
+                }
+                *program_counter += 1;
+            }
+            Instruction::CheckConstantExact(name) => {
+                if runtime.is_constant_exact_in(name) {
+                    return Err(runtime.constant_modification_error(name, span));
+                }
+                *program_counter += 1;
+            }
+            Instruction::DefineConstant(name) => {
+                let value = stack
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| invalid("define-constant has no value on the stack", span))?;
+                let value = runtime.define_constant_value(name, value.primary_value());
+                *stack
+                    .last_mut()
+                    .ok_or_else(|| invalid("define-constant has no value on the stack", span))? =
+                    value;
+                *program_counter += 1;
+            }
+            Instruction::DefineConstantExact(name) => {
+                let value = stack
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| invalid("define-constant has no value on the stack", span))?;
+                let value = runtime.define_constant_value_exact(name, value.primary_value());
+                *stack
+                    .last_mut()
+                    .ok_or_else(|| invalid("define-constant has no value on the stack", span))? =
+                    value;
+                *program_counter += 1;
+            }
             Instruction::DefineValues(name) => {
                 let value = stack
                     .last()
@@ -353,6 +389,12 @@ fn execute_state_instruction(
                         .cloned()
                         .unwrap_or(Value::Nil),
                 );
+                *program_counter += 1;
+            }
+            Instruction::LoadTimeValue => {
+                if stack.is_empty() {
+                    return Err(invalid("load-time-value has no value on the stack", span));
+                }
                 *program_counter += 1;
             }
             Instruction::MultipleValueList => {

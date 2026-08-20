@@ -416,15 +416,21 @@ fn lowers_defconstant_without_runtime_eval_fallback() {
     let program = compile("(defconstant +answer+ 42)");
     let instructions = &program.functions[0].instructions;
 
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::CheckConstant(_))));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::DefineConstant(_))));
-    assert!(!instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Eval(_))));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::CheckConstant(_)))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::DefineConstant(_)))
+    );
+    assert!(
+        !instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
+    );
 }
 
 #[test]
@@ -432,12 +438,16 @@ fn lowers_nth_value_to_native_multiple_value_selection() {
     let program = compile("(nth-value 1 (values 10 20))");
     let instructions = &program.functions[0].instructions;
 
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::NthValue(_))));
-    assert!(!instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Eval(_))));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::NthValue(_)))
+    );
+    assert!(
+        !instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
+    );
 }
 
 #[test]
@@ -445,12 +455,16 @@ fn lowers_load_time_value_without_runtime_eval_fallback() {
     let program = compile("(load-time-value (values 10 20) (progn 1))");
     let instructions = &program.functions[0].instructions;
 
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::LoadTimeValue)));
-    assert!(!instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Eval(_))));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::LoadTimeValue))
+    );
+    assert!(
+        !instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
+    );
 }
 
 #[test]

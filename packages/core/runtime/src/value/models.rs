@@ -90,7 +90,10 @@ impl StructureRepresentation {
     }
 
     pub(crate) fn is_named(self) -> bool {
-        matches!(self, Self::List { named: true } | Self::Vector { named: true })
+        matches!(
+            self,
+            Self::List { named: true } | Self::Vector { named: true }
+        )
     }
 }
 

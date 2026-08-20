@@ -622,16 +622,10 @@ impl CompileState {
             return Err(self.arity_error(items, "DEFCONSTANT", "two or three", span));
         }
         let Some(name_form) = items.get(1) else {
-            return Err(self.internal_error(
-                span,
-                "missing DEFCONSTANT name after arity check",
-            ));
+            return Err(self.internal_error(span, "missing DEFCONSTANT name after arity check"));
         };
         let Some(value_form) = items.get(2) else {
-            return Err(self.internal_error(
-                span,
-                "missing DEFCONSTANT value after arity check",
-            ));
+            return Err(self.internal_error(span, "missing DEFCONSTANT value after arity check"));
         };
         let (name, escaped) = self.symbol_name_info(name_form, "DEFCONSTANT name")?;
         self.emit(

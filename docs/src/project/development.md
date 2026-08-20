@@ -19,6 +19,34 @@ change is represented by a tested commit on `main`, remove its source worktree
 and delete its branch. Keep a worktree that conflicts with the current `main`
 separate until its changes have been reviewed as an independent work unit.
 
+### Porting work from a stale worktree
+
+When a detached worktree was started from an older `main`, inspect its changes
+before integrating them. Do not overlay the whole snapshot onto the current
+tree: split the diff by behavior, tests, and the files that implement each
+behavior, then apply one work unit at a time in a temporary worktree based on
+the current `main`:
+
+~~~sh
+git -C <source-worktree> status --short
+git -C <source-worktree> diff --check
+git -C <source-worktree> diff --name-status
+git worktree add --detach <integration-worktree> main
+~~~
+
+Run the focused regression test for each work unit before committing it, then
+run the workspace checks from the integration worktree. Move `main` to the
+tested tip only after verifying that the expected old `main` ref is unchanged:
+
+~~~sh
+git update-ref refs/heads/main <tested-tip> <expected-old-main>
+~~~
+
+After integration, remove a source worktree only when it is clean or its
+remaining changes have been explicitly shown to be represented by tested
+commits. Inspect a dirty worktree before using `git worktree remove --force`;
+keep active or unresolved worktrees and branches for their owners.
+
 ## Rust workspace
 
 The workspace requires Rust 1.97 or newer and pins Rust 1.97.1 in

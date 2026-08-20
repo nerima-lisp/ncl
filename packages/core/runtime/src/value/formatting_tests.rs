@@ -8,7 +8,9 @@ use ncl_syntax::{Form, OrdinaryLambdaList, Span};
 use crate::environment::Environment;
 use crate::error::RuntimeError;
 
-use super::{ClassDefinition, Function, MacroLambdaList, MethodDefinition, Value};
+use super::{
+    ClassDefinition, Function, MacroLambdaList, MethodDefinition, StructureRepresentation, Value,
+};
 
 fn assert_display_cases(cases: impl IntoIterator<Item = (&'static str, Value, &'static str)>) {
     for (name, value, expected) in cases {
@@ -205,6 +207,7 @@ fn display_cases() -> Vec<(&'static str, Value, &'static str)> {
                 name: "MAKE-POINT".to_string(),
                 slots: Vec::new(),
                 structure_types: vec!["POINT".to_string()],
+                representation: StructureRepresentation::Record,
                 constructor_lambda_list: None,
                 environment: Environment::new(),
             })),

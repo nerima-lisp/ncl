@@ -27,7 +27,7 @@ pub use streams::Stream;
 pub(crate) use models::{
     ClassSlot, ClosureData, ConditionDefinition, ConditionSlot, MacroAuxiliaryParameter,
     MacroKeywordParameter, MacroOptionalParameter, MacroPattern, MethodSpecializer,
-    StructureDefinition,
+    StructureDefinition, StructureRepresentation,
 };
 
 pub type Builtin = fn(&[Value]) -> Result<Value, RuntimeError>;
@@ -87,6 +87,7 @@ pub enum Value {
     Structure {
         name: Rc<str>,
         types: Rc<Vec<Rc<str>>>,
+        representation: StructureRepresentation,
         slots: SlotStorage,
     },
     Class(Rc<ClassDefinition>),

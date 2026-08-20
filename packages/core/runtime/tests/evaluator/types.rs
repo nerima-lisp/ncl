@@ -13,6 +13,75 @@ fn evaluates_sequence_operations_and_type_predicates() {
 }
 
 #[test]
+fn evaluates_typed_defstructs_as_sequences() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defstruct (pair (:type list)) first second)
+                 (defstruct (named-pair (:type list) :named) first second)
+                 (defstruct (point (:type vector)) x y)
+                 (defstruct (named-point (:type vector) :named) x y)
+                 (let ((pair (make-pair :first 1 :second 2))
+                       (named-pair (make-named-pair :first 3 :second 4))
+                       (point (make-point :x 5 :y 6))
+                       (named-point (make-named-point :x 7 :y 8)))
+                   (list pair
+                         (listp pair)
+                         (consp pair)
+                         (car pair)
+                         (cdr pair)
+                         (length pair)
+                         (elt pair 1)
+                         (subseq pair 1)
+                         (typep pair 'list)
+                         named-pair
+                         (typep named-pair 'named-pair)
+                         (type-of named-pair)
+                         point
+                         (vectorp point)
+                         (length point)
+                         (elt point 0)
+                         (subseq point 1)
+                         (typep point 'vector)
+                         named-point
+                         (typep named-point 'named-point)
+                         (type-of named-point))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "((1 2) T T 1 (2) 2 2 (2) T (NAMED-PAIR 3 4) T NAMED-PAIR #(5 6) T 2 5 #(6) T #(NAMED-POINT 7 8) T NAMED-POINT)",
+    );
+}
+
+#[test]
+fn evaluates_typed_sequence_edge_operations() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defstruct (pair (:type list)) first second)
+                 (defstruct (point (:type vector)) x y)
+                 (defstruct (text (:type list)) value)
+                 (let ((pair (make-pair :first 1 :second 2))
+                       (point (make-point :x 5 :y 6))
+                       (text (make-text :value "Ada")))
+                   (list (list* 0 pair)
+                         (endp pair)
+                         (svref point 1)
+                         (write-to-string pair)
+                         (write-to-string point)
+                         (write-to-string text :escape nil))))"#,
+        )
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r##"((0 1 2) NIL 6 "(1 2)" "#(5 6)" "(Ada)")"##,
+    );
+}
+
+#[test]
 fn evaluates_compound_type_designators() {
     assert_eq!(
         evaluate(

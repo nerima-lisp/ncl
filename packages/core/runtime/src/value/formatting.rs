@@ -68,13 +68,40 @@ impl fmt::Display for Value {
             }
             Self::Condition(condition) => write!(formatter, "#<CONDITION {}>", condition.message),
             Self::Restart(restart) => write!(formatter, "#<RESTART {}>", restart.name()),
-            Self::Structure { name, slots, .. } => {
-                write!(formatter, "#S({name}")?;
-                for (slot_name, value) in slots.borrow().iter() {
-                    write!(formatter, " :{slot_name} {value}")?;
+            Self::Structure {
+                name,
+                representation,
+                slots,
+                ..
+            } => match representation {
+                StructureRepresentation::Record => {
+                    write!(formatter, "#S({name}")?;
+                    for (slot_name, value) in slots.borrow().iter() {
+                        write!(formatter, " :{slot_name} {value}")?;
+                    }
+                    formatter.write_char(')')
                 }
-                formatter.write_char(')')
-            }
+                StructureRepresentation::List { .. } => {
+                    formatter.write_char('(')?;
+                    write_sequence(
+                        formatter,
+                        &self
+                            .structure_sequence_items()
+                            .expect("typed list structure has sequence items"),
+                    )?;
+                    formatter.write_char(')')
+                }
+                StructureRepresentation::Vector { .. } => {
+                    formatter.write_str("#(")?;
+                    write_sequence(
+                        formatter,
+                        &self
+                            .structure_sequence_items()
+                            .expect("typed vector structure has sequence items"),
+                    )?;
+                    formatter.write_char(')')
+                }
+            },
             Self::Class(definition) => write!(formatter, "#<CLASS {}>", definition.name),
             Self::Instance(instance) => {
                 let class = instance.class.borrow();

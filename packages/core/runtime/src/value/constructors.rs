@@ -545,10 +545,25 @@ impl Value {
         }))
     }
 
+    #[cfg(test)]
     pub(crate) fn structure_with_types(
         name: impl AsRef<str>,
         slots: Vec<(String, Value)>,
+        type_names: Vec<String>,
+    ) -> Self {
+        Self::structure_with_types_and_representation(
+            name,
+            slots,
+            type_names,
+            StructureRepresentation::Record,
+        )
+    }
+
+    pub(crate) fn structure_with_types_and_representation(
+        name: impl AsRef<str>,
+        slots: Vec<(String, Value)>,
         mut type_names: Vec<String>,
+        representation: StructureRepresentation,
     ) -> Self {
         let name = name.as_ref().to_string();
         if !type_names
@@ -560,6 +575,7 @@ impl Value {
         Self::Structure {
             name: Rc::from(name),
             types: Rc::new(type_names.into_iter().map(Rc::<str>::from).collect()),
+            representation,
             slots: Rc::new(RefCell::new(
                 slots
                     .into_iter()

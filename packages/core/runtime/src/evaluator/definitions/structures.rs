@@ -28,9 +28,19 @@ impl Runtime {
         let mut constructor_options: Vec<(Option<String>, Option<OrdinaryLambdaList>)> = Vec::new();
         let mut seen_options = HashSet::new();
         let mut included_structure: Option<(StructureDefinition, Vec<Form>)> = None;
+        let mut type_option = None;
+        let mut named_option = false;
+        let mut predicate_option_specified = false;
         for option_form in option_forms {
-            let FormKind::List(option_items) = &option_form.kind else {
-                return Err(self.invalid("defstruct option must be a list", option_form.span));
+            let option_items: &[Form] = match &option_form.kind {
+                FormKind::List(option_items) => option_items,
+                FormKind::Atom(_) => std::slice::from_ref(option_form),
+                _ => {
+                    return Err(self.invalid(
+                        "defstruct option must be a symbol or list",
+                        option_form.span,
+                    ));
+                }
             };
             let Some(option_name) = option_items.first().and_then(atom_name) else {
                 return Err(self.invalid("defstruct option needs a name", option_form.span));
@@ -52,12 +62,36 @@ impl Runtime {
                         .unwrap_or_default();
                 }
                 "PREDICATE" => {
+                    predicate_option_specified = true;
                     predicate_name = self.defstruct_name_option(
                         option_form,
                         option_items,
                         format!("{structure_name}-P"),
                         "defstruct :predicate must name a symbol or NIL",
                     )?;
+                }
+                "TYPE" => {
+                    if option_items.len() != 2 {
+                        return Err(self.invalid(
+                            "defstruct :type needs LIST or VECTOR",
+                            option_form.span,
+                        ));
+                    }
+                    let (raw_type, _) = self.variable_name_info(
+                        &option_items[1],
+                        "defstruct :type must name LIST or VECTOR",
+                    )?;
+                    let type_name = normalize_name(&unqualified_name(&raw_type));
+                    type_option = Some(match type_name.as_str() {
+                        "LIST" => StructureRepresentation::List { named: false },
+                        "VECTOR" => StructureRepresentation::Vector { named: false },
+                        _ => {
+                            return Err(self.invalid(
+                                "defstruct :type must name LIST or VECTOR",
+                                option_items[1].span,
+                            ));
+                        }
+                    });
                 }
                 "COPIER" => {
                     copier_name = self.defstruct_name_option(
@@ -70,10 +104,11 @@ impl Runtime {
                 "NAMED" => {
                     if option_items.len() != 1 {
                         return Err(self.invalid(
-                            "defstruct :named does not accept arguments",
+                            "defstruct :named does not take a value",
                             option_form.span,
                         ));
                     }
+                    named_option = true;
                 }
                 "INCLUDE" => {
                     if option_items.len() < 2 {
@@ -115,6 +150,40 @@ impl Runtime {
                     return Err(self.invalid("unsupported defstruct option", option_items[0].span));
                 }
             }
+        }
+        let inherited_representation = included_structure
+            .as_ref()
+            .map(|(parent, _)| parent.representation);
+        let representation = match type_option {
+            Some(StructureRepresentation::List { .. }) => {
+                StructureRepresentation::List {
+                    named: named_option,
+                }
+            }
+            Some(StructureRepresentation::Vector { .. }) => {
+                StructureRepresentation::Vector {
+                    named: named_option,
+                }
+            }
+            Some(StructureRepresentation::Record) => StructureRepresentation::Record,
+            None => inherited_representation.unwrap_or(StructureRepresentation::Record),
+        };
+        if let Some(parent_representation) = inherited_representation {
+            if (type_option.is_some() || named_option) && parent_representation != representation {
+                return Err(self.invalid(
+                    "defstruct :include must preserve the included structure representation",
+                    items[1].span,
+                ));
+            }
+        }
+        if representation.is_typed() && !representation.is_named() {
+            if predicate_option_specified && predicate_name.is_some() {
+                return Err(self.invalid(
+                    "defstruct :predicate is unavailable for unnamed typed structures",
+                    items[1].span,
+                ));
+            }
+            predicate_name = None;
         }
         let mut structure_types = vec![structure_name.clone()];
         let mut slots = Vec::new();
@@ -169,6 +238,7 @@ impl Runtime {
             StructureDefinition {
                 slots: slots.clone(),
                 type_names: structure_types.clone(),
+                representation,
             },
         );
         if constructor_options.is_empty() {
@@ -182,6 +252,7 @@ impl Runtime {
                         name: structure_name.clone(),
                         slots: slots.clone(),
                         structure_types: structure_types.clone(),
+                        representation,
                         constructor_lambda_list,
                         environment: environment.clone(),
                     })),

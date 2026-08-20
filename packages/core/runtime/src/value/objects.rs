@@ -111,13 +111,75 @@ impl Value {
         }
     }
 
-    pub(crate) fn structure_is_type(&self, expected: &str) -> bool {
+    pub(crate) fn structure_representation(&self) -> Option<StructureRepresentation> {
         match self {
-            Self::Structure { types, .. } => types
-                .iter()
-                .any(|type_name| type_name.eq_ignore_ascii_case(expected)),
+            Self::Structure { representation, .. } => Some(*representation),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn is_record_structure(&self) -> bool {
+        matches!(
+            self,
+            Self::Structure {
+                representation: StructureRepresentation::Record,
+                ..
+            }
+        )
+    }
+
+    pub(crate) fn structure_matches_definition(&self, expected: &str) -> bool {
+        match self {
+            Self::Structure { name, types, .. } => {
+                name.eq_ignore_ascii_case(expected)
+                    || types
+                        .iter()
+                        .any(|type_name| type_name.eq_ignore_ascii_case(expected))
+            }
             _ => false,
         }
+    }
+
+    pub(crate) fn structure_is_type(&self, expected: &str) -> bool {
+        match self {
+            Self::Structure {
+                representation,
+                types,
+                ..
+            } => {
+                if representation.is_typed() && !representation.is_named() {
+                    return false;
+                }
+                types
+                    .iter()
+                    .any(|type_name| type_name.eq_ignore_ascii_case(expected))
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn structure_sequence_items(&self) -> Option<Vec<Value>> {
+        let Self::Structure {
+            name,
+            representation,
+            slots,
+            ..
+        } = self
+        else {
+            return None;
+        };
+        if !representation.is_typed() {
+            return None;
+        }
+        let mut items: Vec<Value> = slots
+            .borrow()
+            .iter()
+            .map(|(_, value)| value.clone())
+            .collect();
+        if representation.is_named() {
+            items.insert(0, Self::symbol(name.as_ref()));
+        }
+        Some(items)
     }
 
     pub(crate) fn structure_slot(&self, index: usize) -> Option<Value> {
@@ -138,7 +200,7 @@ impl Value {
         let Self::Structure { slots, .. } = self else {
             return false;
         };
-        if !self.structure_is_type(structure_name) {
+        if !self.structure_matches_definition(structure_name) {
             return false;
         }
         let mut slots = slots.borrow_mut();
@@ -150,12 +212,19 @@ impl Value {
     }
 
     pub(crate) fn copy_structure(&self) -> Option<Self> {
-        let Self::Structure { name, types, slots } = self else {
+        let Self::Structure {
+            name,
+            types,
+            representation,
+            slots,
+        } = self
+        else {
             return None;
         };
         Some(Self::Structure {
             name: name.clone(),
             types: types.clone(),
+            representation: *representation,
             slots: Rc::new(RefCell::new(slots.borrow().clone())),
         })
     }

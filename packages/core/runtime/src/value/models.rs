@@ -77,10 +77,28 @@ pub struct StructureSlot {
     pub(crate) read_only: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StructureRepresentation {
+    Record,
+    List { named: bool },
+    Vector { named: bool },
+}
+
+impl StructureRepresentation {
+    pub(crate) fn is_typed(self) -> bool {
+        !matches!(self, Self::Record)
+    }
+
+    pub(crate) fn is_named(self) -> bool {
+        matches!(self, Self::List { named: true } | Self::Vector { named: true })
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct StructureDefinition {
     pub(crate) slots: Vec<StructureSlot>,
     pub(crate) type_names: Vec<String>,
+    pub(crate) representation: StructureRepresentation,
 }
 
 #[derive(Clone)]
@@ -151,6 +169,7 @@ pub enum Function {
         name: String,
         slots: Vec<StructureSlot>,
         structure_types: Vec<String>,
+        representation: StructureRepresentation,
         constructor_lambda_list: Option<OrdinaryLambdaList>,
         environment: Environment,
     },

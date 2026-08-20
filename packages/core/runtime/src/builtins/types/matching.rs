@@ -266,16 +266,18 @@ fn cons_type_matches(
 }
 
 fn cons_parts(value: &Value) -> Option<(Value, Value)> {
-    match value {
-        Value::List(items) if !items.is_empty() => {
-            let items = items.as_ref();
-            let tail = if items.len() == 1 {
-                Value::Nil
-            } else {
-                Value::list(items[1..].to_vec())
-            };
-            Some((items[0].clone(), tail))
+    if let Some(items) = value.list_items() {
+        if items.is_empty() {
+            return None;
         }
+        let tail = if items.len() == 1 {
+            Value::Nil
+        } else {
+            Value::list(items[1..].to_vec())
+        };
+        return Some((items[0].clone(), tail));
+    }
+    match value {
         Value::DottedList { items, tail } if !items.is_empty() => {
             Some((items[0].clone(), (*tail).as_ref().clone()))
         }
@@ -501,11 +503,12 @@ fn type_matches(
         "PACKAGE" => matches!(value, Value::Package(_)),
         "ENVIRONMENT" => matches!(value, Value::Environment(_)),
         "KEYWORD" => matches!(value, Value::Keyword(_) | Value::KeywordExact(_)),
-        "CONS" => matches!(value, Value::List(_) | Value::DottedList { .. }),
-        "LIST" => matches!(value, Value::Nil | Value::Boolean(false) | Value::List(_)),
-        "ATOM" => !matches!(value, Value::List(_) | Value::DottedList { .. }),
-        "VECTOR" => value.vector_items().is_some(),
-        "SIMPLE-VECTOR" => value.is_simple_vector(),
+        "CONS" => cons_parts(value).is_some(),
+        "LIST" => {
+            matches!(value, Value::Nil | Value::Boolean(false)) || value.list_items().is_some()
+        }
+        "ATOM" => cons_parts(value).is_none(),
+        "VECTOR" | "SIMPLE-VECTOR" => value.vector_items().is_some(),
         "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => is_bit_vector_value(value),
         "ARRAY" => dimensions_for_array(value).is_some(),
         "SIMPLE-ARRAY" => simple_array_value(value),
@@ -516,7 +519,12 @@ fn type_matches(
         | "SIMPLE-WARNING" | "ARITHMETIC-ERROR" | "DIVISION-BY-ZERO" | "TYPE-ERROR"
         | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR" | "COMPILER-ERROR" | "FILE-ERROR"
         | "UNBOUND-VARIABLE" | "CONTROL-ERROR" => value.condition_is_type(type_name),
-        "STRUCTURE" => value.structure_name().is_some(),
+        "STRUCTURE" => {
+            value.is_record_structure()
+                || value
+                    .structure_representation()
+                    .is_some_and(|representation| representation.is_named())
+        }
         "SEQUENCE" => matches!(value, Value::Boolean(false)) || sequence_length(value).is_some(),
         "FUNCTION" | "COMPILED-FUNCTION" => matches!(value, Value::Function(_)),
         "GENERIC-FUNCTION" | "STANDARD-GENERIC-FUNCTION" => matches!(

@@ -137,14 +137,11 @@ fn list_star(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 
     let mut values = arguments[..arguments.len() - 1].to_vec();
+    if let Some(items) = arguments.last().and_then(Value::list_items) {
+        values.extend(items);
+        return Ok(Value::list(values));
+    }
     match arguments.last().expect("arguments is non-empty") {
-        Value::Nil | Value::List(_) => {
-            let Some(items) = arguments.last().and_then(Value::list_items) else {
-                unreachable!();
-            };
-            values.extend(items);
-            Ok(Value::list(values))
-        }
         Value::DottedList { items, tail } => {
             values.extend(items.iter().cloned());
             Ok(Value::dotted_list(values, tail.as_ref().clone()))
@@ -191,20 +188,20 @@ fn values_list(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn list_length(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "list-length", 1)?;
-    let length = match &arguments[0] {
-        Value::Nil => 0,
-        Value::List(items) => items.len(),
-        value => return Err(type_error("list-length", "proper list", value)),
+    let Some(items) = arguments[0].list_items() else {
+        return Err(type_error("list-length", "proper list", &arguments[0]));
     };
+    let length = items.len();
     Ok(Value::Integer(length as i64))
 }
 
 fn nthcdr(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "nthcdr", 2)?;
     let index = index_argument("nthcdr", &arguments[0])?;
+    if let Some(items) = arguments[1].list_items() {
+        return Ok(Value::list(items.into_iter().skip(index).collect()));
+    }
     match &arguments[1] {
-        Value::Nil => Ok(Value::Nil),
-        Value::List(items) => Ok(Value::list(items.iter().skip(index).cloned().collect())),
         Value::DottedList { items, tail } if index < items.len() => Ok(Value::dotted_list(
             items.iter().skip(index).cloned().collect(),
             tail.as_ref().clone(),
@@ -259,14 +256,13 @@ fn pairlis(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn cons(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "cons", 2)?;
+    if let Some(items) = arguments[1].list_items() {
+        let mut values = Vec::with_capacity(items.len() + 1);
+        values.push(arguments[0].clone());
+        values.extend(items);
+        return Ok(Value::list(values));
+    }
     match &arguments[1] {
-        Value::Nil => Ok(Value::list(vec![arguments[0].clone()])),
-        Value::List(items) => {
-            let mut values = Vec::with_capacity(items.len() + 1);
-            values.push(arguments[0].clone());
-            values.extend(items.iter().cloned());
-            Ok(Value::list(values))
-        }
         Value::DottedList { items, tail } => {
             let mut values = Vec::with_capacity(items.len() + 1);
             values.push(arguments[0].clone());
@@ -282,12 +278,10 @@ fn cons(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn car(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "car", 1)?;
+    if let Some(items) = arguments[0].list_items() {
+        return Ok(items.first().cloned().unwrap_or(Value::Nil));
+    }
     match &arguments[0] {
-        Value::Nil => Ok(Value::Nil),
-        Value::List(items) => items
-            .first()
-            .cloned()
-            .ok_or_else(|| type_error("car", "non-empty list", &arguments[0])),
         Value::DottedList { items, .. } => items
             .first()
             .cloned()
@@ -298,9 +292,10 @@ fn car(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn cdr(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "cdr", 1)?;
+    if let Some(items) = arguments[0].list_items() {
+        return Ok(Value::list(items.into_iter().skip(1).collect()));
+    }
     match &arguments[0] {
-        Value::Nil => Ok(Value::Nil),
-        Value::List(items) => Ok(Value::list(items.iter().skip(1).cloned().collect())),
         Value::DottedList { items, tail } if items.len() > 1 => Ok(Value::dotted_list(
             items.iter().skip(1).cloned().collect(),
             tail.as_ref().clone(),
@@ -378,10 +373,8 @@ fn append_lists(function: &str, arguments: &[Value]) -> Result<Value, RuntimeErr
         values.extend(items);
     }
     match arguments.last().expect("arguments is non-empty") {
-        Value::Nil | Value::List(_) => {
-            let Some(items) = arguments.last().and_then(Value::list_items) else {
-                unreachable!();
-            };
+        tail if tail.list_items().is_some() => {
+            let items = tail.list_items().expect("list has list items");
             values.extend(items);
             Ok(Value::list(values))
         }
@@ -421,17 +414,8 @@ fn revappend_like(function: &str, arguments: &[Value]) -> Result<Value, RuntimeE
 
 fn length(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "length", 1)?;
-    let length = match &arguments[0] {
-        Value::Nil => 0,
-        Value::List(items) => items.len(),
-        value if value.vector_items().is_some() => {
-            value.vector_items().expect("vector has vector items").len()
-        }
-        Value::String(value) => value.chars().count(),
-        _ => {
-            return Err(type_error("length", "sequence", &arguments[0]));
-        }
-    };
+    let length = sequence_length(&arguments[0])
+        .ok_or_else(|| type_error("length", "sequence", &arguments[0]))?;
     Ok(Value::Integer(length as i64))
 }
 
@@ -447,28 +431,11 @@ fn nth(arguments: &[Value]) -> Result<Value, RuntimeError> {
 fn elt(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "elt", 2)?;
     let index = index_argument("elt", &arguments[1])?;
-    match &arguments[0] {
-        Value::Nil => Err(out_of_bounds("elt", index)),
-        Value::List(items) => items
-            .get(index)
-            .cloned()
-            .ok_or_else(|| out_of_bounds("elt", index)),
-        Value::String(value) => value
-            .chars()
-            .nth(index)
-            .map(Value::Character)
-            .ok_or_else(|| out_of_bounds("elt", index)),
-        value => value
-            .vector_items()
-            .and_then(|items| items.get(index).cloned())
-            .ok_or_else(|| {
-                if value.vector_items().is_some() {
-                    out_of_bounds("elt", index)
-                } else {
-                    type_error("elt", "sequence", value)
-                }
-            }),
-    }
+    let items = sequence_elements("elt", &arguments[0])?;
+    items
+        .get(index)
+        .cloned()
+        .ok_or_else(|| out_of_bounds("elt", index))
 }
 
 

@@ -259,34 +259,8 @@ fn subseq(arguments: &[Value]) -> Result<Value, RuntimeError> {
             span: None,
         });
     }
-    match &arguments[0] {
-        Value::Nil => Ok(Value::Nil),
-        Value::List(items) => Ok(Value::list(items[start..end].to_vec())),
-        Value::Vector {
-            fill_pointer,
-            element_type,
-            adjustable,
-            ..
-        } => {
-            let items = arguments[0].vector_items().expect("vector items");
-            let slice = items[start..end].to_vec();
-            Ok(Value::vector_with_fill_pointer_element_type_and_adjustable(
-                slice,
-                *fill_pointer,
-                element_type.as_ref().clone(),
-                *adjustable,
-            ))
-        }
-        Value::String(value) => {
-            let result = value
-                .chars()
-                .skip(start)
-                .take(end - start)
-                .collect::<String>();
-            Ok(Value::string(result))
-        }
-        _ => Err(type_error("subseq", "sequence", &arguments[0])),
-    }
+    let items = sequence_elements("subseq", &arguments[0])?;
+    rebuild_sequence("subseq", &arguments[0], items[start..end].to_vec())
 }
 
 fn fill(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -459,12 +433,13 @@ fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
             };
             Ok(Value::string(result))
         }
-        "SEQUENCE" => match &arguments[0] {
-            Value::Nil | Value::List(_) | Value::Vector { .. } | Value::String(_) => {
+        "SEQUENCE" => {
+            if sequence_length(&arguments[0]).is_some() {
                 Ok(arguments[0].clone())
+            } else {
+                Err(type_error("coerce", "a sequence", &arguments[0]))
             }
-            value => Err(type_error("coerce", "a sequence", value)),
-        },
+        }
         "CHARACTER" => match &arguments[0] {
             Value::Character(_) => Ok(arguments[0].clone()),
             value => Err(type_error("coerce", "a character", value)),
@@ -538,12 +513,10 @@ fn replace_bounds(
 }
 
 fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Value>, RuntimeError> {
+    if let Some(items) = sequence_items(value) {
+        return Ok(items);
+    }
     match value {
-        Value::Nil => Ok(Vec::new()),
-        Value::List(items) => Ok(items.as_ref().clone()),
-        value if value.vector_items().is_some() => {
-            Ok(value.vector_items().expect("vector has vector items"))
-        }
         Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
         _ => Err(type_error(function, "sequence", value)),
     }
@@ -555,18 +528,6 @@ fn rebuild_sequence(
     items: Vec<Value>,
 ) -> Result<Value, RuntimeError> {
     match template {
-        Value::Nil | Value::List(_) => Ok(Value::list(items)),
-        Value::Vector {
-            fill_pointer,
-            element_type,
-            adjustable,
-            ..
-        } => Ok(Value::vector_with_fill_pointer_element_type_and_adjustable(
-            items,
-            *fill_pointer,
-            element_type.as_ref().clone(),
-            *adjustable,
-        )),
         Value::String(_) => {
             let mut result = String::new();
             for item in items {
@@ -581,6 +542,8 @@ fn rebuild_sequence(
             }
             Ok(Value::string(result))
         }
+        value if value.list_items().is_some() => Ok(Value::list(items)),
+        value if value.vector_items().is_some() => Ok(Value::vector(items)),
         value => Err(type_error(function, "sequence", value)),
     }
 }
@@ -636,12 +599,10 @@ fn get_properties(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 fn sequence_length(value: &Value) -> Option<usize> {
+    if let Some(items) = sequence_items(value) {
+        return Some(items.len());
+    }
     match value {
-        Value::Nil => Some(0),
-        Value::List(items) => Some(items.len()),
-        value if value.vector_items().is_some() => {
-            Some(value.vector_items().expect("vector has vector items").len())
-        }
         Value::String(value) => Some(value.chars().count()),
         _ => None,
     }
@@ -666,7 +627,7 @@ fn endp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "endp", 1)?;
     match &arguments[0] {
         Value::Nil => Ok(Value::boolean(true)),
-        Value::List(_) => Ok(Value::boolean(false)),
+        value if value.list_items().is_some() => Ok(Value::boolean(false)),
         value => Err(type_error("endp", "list", value)),
     }
 }
@@ -726,7 +687,7 @@ fn vectorp(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-vector-p", 1)?;
-    Ok(Value::boolean(arguments[0].is_simple_vector()))
+    Ok(Value::boolean(arguments[0].vector_items().is_some()))
 }
 
 fn fill_pointer(arguments: &[Value]) -> Result<Value, RuntimeError> {

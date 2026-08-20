@@ -26,7 +26,11 @@ impl Value {
             Self::Values(_) => "VALUES",
             Self::Condition(_) => "CONDITION",
             Self::Restart(_) => "RESTART",
-            Self::Structure { .. } => "STRUCTURE",
+            Self::Structure { representation, .. } => match representation {
+                StructureRepresentation::Record => "STRUCTURE",
+                StructureRepresentation::List { .. } => "LIST",
+                StructureRepresentation::Vector { .. } => "VECTOR",
+            },
             Self::Class(_) => "CLASS",
             Self::Instance(_) => "STANDARD-OBJECT",
             Self::Method(_) => "METHOD",

@@ -17,7 +17,8 @@ use crate::package::{self, PackageState};
 use crate::value::{
     ClassDefinition, ClassSlot, ClosureData, ConditionDefinition, ConditionSlot,
     MacroAuxiliaryParameter, MacroKeywordParameter, MacroLambdaList, MacroOptionalParameter,
-    MacroPattern, MethodDefinition, MethodSpecializer, StructureDefinition, StructureSlot,
+    MacroPattern, MethodDefinition, MethodSpecializer, StructureDefinition,
+    StructureRepresentation, StructureSlot,
 };
 use crate::{Environment, ReturnValue, RuntimeError, Value};
 
@@ -126,6 +127,7 @@ struct StructureConstructorInvocation<'a> {
     name: &'a str,
     slots: &'a [StructureSlot],
     structure_types: &'a [String],
+    representation: StructureRepresentation,
     lambda_list: &'a OrdinaryLambdaList,
     definition_environment: &'a Environment,
     arguments: &'a [Value],

@@ -2,8 +2,8 @@ fn parse_array_dimensions(function: &str, value: &Value) -> Result<Vec<usize>, R
     match value {
         Value::Integer(_) => Ok(vec![index_argument(function, value)?]),
         Value::Nil => Ok(Vec::new()),
-        Value::List(_) | Value::Vector { .. } => {
-            let items = sequence_items(value).expect("list or vector has sequence items");
+        _ if sequence_items(value).is_some() => {
+            let items = sequence_items(value).expect("sequence has sequence items");
             items
                 .iter()
                 .map(|item| index_argument(function, item))
@@ -111,8 +111,10 @@ fn array_total_size_for(function: &str, dimensions: &[usize]) -> Result<usize, R
 }
 
 fn dimensions_for_array(value: &Value) -> Option<Vec<usize>> {
+    if let Some(items) = value.vector_items() {
+        return Some(vec![items.len()]);
+    }
     match value {
-        Value::Vector { .. } => Some(vec![value.vector_length().expect("vector length")]),
         Value::Array { dimensions, .. } => Some(dimensions.as_ref().clone()),
         _ => None,
     }

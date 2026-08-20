@@ -1,10 +1,16 @@
 fn type_of(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "type-of", 1)?;
-    Ok(Value::symbol(
-        arguments[0]
-            .structure_name()
-            .unwrap_or(arguments[0].type_name()),
-    ))
+    let type_name = match arguments[0].structure_representation() {
+        Some(representation)
+            if representation.is_named() || arguments[0].is_record_structure() =>
+        {
+            arguments[0]
+                .structure_name()
+                .unwrap_or(arguments[0].type_name())
+        }
+        _ => arguments[0].type_name(),
+    };
+    Ok(Value::symbol(type_name))
 }
 
 fn print_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -90,6 +96,15 @@ fn parse_print_options(
 }
 
 fn printed_value(value: &Value, escape: bool) -> String {
+    if let Some(values) = value.structure_sequence_items() {
+        let contents = values
+            .iter()
+            .map(|value| printed_value(value, escape))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let prefix = if value.vector_items().is_some() { "#(" } else { "(" };
+        return format!("{prefix}{contents})");
+    }
     match value {
         Value::String(value) if !escape => value.to_string(),
         Value::String(value) => format!("{value:?}"),

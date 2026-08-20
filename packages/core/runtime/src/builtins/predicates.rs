@@ -7,26 +7,26 @@ fn null(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 fn atom(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "atom", 1)?;
-    Ok(Value::boolean(!matches!(
-        &arguments[0],
-        Value::List(_) | Value::DottedList { .. }
-    )))
+    Ok(Value::boolean(
+        arguments[0].list_items().is_none()
+            && !matches!(&arguments[0], Value::DottedList { .. }),
+    ))
 }
 
 fn consp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "consp", 1)?;
-    Ok(Value::boolean(matches!(
-        &arguments[0],
-        Value::List(_) | Value::DottedList { .. }
-    )))
+    Ok(Value::boolean(
+        arguments[0].list_items().is_some()
+            || matches!(&arguments[0], Value::DottedList { .. }),
+    ))
 }
 
 fn listp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "listp", 1)?;
-    Ok(Value::boolean(matches!(
-        &arguments[0],
-        Value::Nil | Value::List(_)
-    )))
+    Ok(Value::boolean(
+        matches!(&arguments[0], Value::Nil | Value::Boolean(false))
+            || arguments[0].list_items().is_some(),
+    ))
 }
 
 fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {

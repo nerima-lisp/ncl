@@ -131,6 +131,7 @@ impl Runtime {
                 name,
                 slots,
                 structure_types,
+                representation,
                 constructor_lambda_list,
                 environment: definition_environment,
             } => {
@@ -139,6 +140,7 @@ impl Runtime {
                         name,
                         slots,
                         structure_types,
+                        representation: *representation,
                         lambda_list,
                         definition_environment,
                         arguments,
@@ -187,10 +189,11 @@ impl Runtime {
                         };
                         values.push((slot.name.clone(), value));
                     }
-                    Ok(Value::structure_with_types(
+                    Ok(Value::structure_with_types_and_representation(
                         name,
                         values,
                         structure_types.clone(),
+                        *representation,
                     ))
                 }
             }

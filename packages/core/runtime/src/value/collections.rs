@@ -3,6 +3,10 @@ impl Value {
         match self {
             Self::Nil => Some(Vec::new()),
             Self::List(items) => Some(items.as_ref().clone()),
+            Self::Structure {
+                representation: StructureRepresentation::List { .. },
+                ..
+            } => self.structure_sequence_items(),
             _ => None,
         }
     }
@@ -19,6 +23,10 @@ impl Value {
                 let end = displaced_index_offset.checked_add(*length)?;
                 Some(elements[*displaced_index_offset..end].to_vec())
             }
+            Self::Structure {
+                representation: StructureRepresentation::Vector { .. },
+                ..
+            } => self.structure_sequence_items(),
             _ => None,
         }
     }

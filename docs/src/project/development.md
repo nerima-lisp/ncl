@@ -3,6 +3,22 @@
 This page collects the local verification commands for the Rust workspace, the
 direct Common Lisp core, and the documentation site.
 
+## Isolated worktrees
+
+Keep independent changes in separate worktrees so that each work unit can be
+verified and integrated without changing another task's working tree:
+
+~~~sh
+git worktree list
+git status --short --branch
+git diff --check
+~~~
+
+Run the relevant checks from the worktree that contains the change. Once the
+change is represented by a tested commit on `main`, remove its source worktree
+and delete its branch. Keep a worktree that conflicts with the current `main`
+separate until its changes have been reviewed as an independent work unit.
+
 ## Rust workspace
 
 The workspace requires Rust 1.97 or newer and pins Rust 1.97.1 in

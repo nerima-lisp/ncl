@@ -37,6 +37,7 @@ pub enum ReadErrorKind {
     InvalidEscape,
     InvalidCharacterName,
     InvalidDispatch,
+    InvalidRadix { radix: u32 },
     NestingTooDeep { limit: usize },
 }
 
@@ -57,6 +58,9 @@ impl fmt::Display for ReadErrorKind {
             Self::InvalidEscape => formatter.write_str("invalid string escape"),
             Self::InvalidCharacterName => formatter.write_str("invalid character name"),
             Self::InvalidDispatch => formatter.write_str("invalid reader dispatch"),
+            Self::InvalidRadix { radix } => {
+                write!(formatter, "invalid base-{radix} integer")
+            }
             Self::NestingTooDeep { limit } => {
                 write!(formatter, "reader nesting exceeds limit {limit}")
             }

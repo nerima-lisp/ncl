@@ -6,6 +6,10 @@ use ncl_syntax::{ReadError, Span};
 
 use crate::Value;
 
+#[cfg(test)]
+#[path = "error_tests.rs"]
+mod error_tests;
+
 #[derive(Clone, Debug)]
 pub struct ReturnValue(Box<Value>);
 

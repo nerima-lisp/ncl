@@ -7,13 +7,13 @@ These examples use only the currently implemented runtime surface.
 Pass multiple expressions to one CLI invocation. They share the same runtime:
 
 ~~~sh
-cargo run -- --eval '(define twice (lambda (x) (* 2 x)))' --eval '(twice 21)'
+cargo run --locked -- --eval '(define twice (lambda (x) (* 2 x)))' --eval '(twice 21)'
 ~~~
 
 The same pattern works with <code>--compiled</code>:
 
 ~~~sh
-cargo run -- --compiled --eval '(defun cube (x) (* x x x))' --eval '(cube 3)'
+cargo run --locked -- --compiled --eval '(defun cube (x) (* x x x))' --eval '(cube 3)'
 ~~~
 
 ## Work with multiple values

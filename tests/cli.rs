@@ -1,6 +1,6 @@
-use std::process::Command;
+use std::process::{Command, Output};
 
-fn run(arguments: &[&str]) -> std::process::Output {
+fn run(arguments: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args(arguments)
         .output()
@@ -95,6 +95,15 @@ fn missing_file_is_a_runtime_error() {
 
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("cannot read"));
+}
+
+#[test]
+fn evaluation_runtime_errors_use_the_runtime_exit_status() {
+    let output = run(&["--eval", "(+ 1 \"bad\")"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires number"));
+    assert!(output.stdout.is_empty());
 }
 
 #[test]

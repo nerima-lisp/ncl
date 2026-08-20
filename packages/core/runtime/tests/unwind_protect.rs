@@ -1,61 +1,10 @@
-use ncl_runtime::Runtime;
+#[path = "support/errors.rs"]
+mod errors;
+#[path = "support/evaluation.rs"]
+mod evaluation;
 
-fn evaluate_interpreted(source: &str) -> Result<String, String> {
-    Runtime::new()
-        .eval_source(source)
-        .map_err(|error| error.to_string())
-        .and_then(|mut values| {
-            values
-                .pop()
-                .map(|value| value.to_string())
-                .ok_or_else(|| "evaluation returned no values".to_string())
-        })
-}
-
-fn evaluate_compiled(source: &str) -> Result<String, String> {
-    Runtime::new()
-        .eval_compiled_source(source)
-        .map_err(|error| error.to_string())
-        .and_then(|mut values| {
-            values
-                .pop()
-                .map(|value| value.to_string())
-                .ok_or_else(|| "compiled evaluation returned no values".to_string())
-        })
-}
-
-fn assert_interpreted_and_compiled(source: &str, expected: &str) {
-    assert_eq!(
-        evaluate_interpreted(source),
-        Ok(expected.to_string()),
-        "interpreted evaluation of {source:?}",
-    );
-    assert_eq!(
-        evaluate_compiled(source),
-        Ok(expected.to_string()),
-        "compiled evaluation of {source:?}",
-    );
-}
-
-fn assert_error_contains(source: &str, expected: &str) {
-    let interpreted = Runtime::new()
-        .eval_source(source)
-        .expect_err("interpreted evaluation should fail")
-        .to_string();
-    assert!(
-        interpreted.contains(expected),
-        "interpreted error {interpreted:?} should contain {expected:?}"
-    );
-
-    let compiled = Runtime::new()
-        .eval_compiled_source(source)
-        .expect_err("compiled evaluation should fail")
-        .to_string();
-    assert!(
-        compiled.contains(expected),
-        "compiled error {compiled:?} should contain {expected:?}"
-    );
-}
+use errors::assert_error_contains;
+use evaluation::assert_interpreted_and_compiled;
 
 #[test]
 fn normal_result_runs_cleanup_and_allows_no_cleanup_forms() {

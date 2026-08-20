@@ -11,21 +11,21 @@ from its root.
 Run one expression with the CLI:
 
 ~~~sh
-cargo run -- --eval '(+ 1 2)'
+cargo run --locked -- --eval '(+ 1 2)'
 ~~~
 
 The result is printed to standard output. Repeated <code>--eval</code> options
 share one runtime:
 
 ~~~sh
-cargo run -- --eval '(define square (lambda (x) (* x x)))' --eval '(square 5)'
+cargo run --locked -- --eval '(define square (lambda (x) (* x x)))' --eval '(square 5)'
 ~~~
 
 Use <code>--compiled</code> to send the evaluated source through the
 stack-bytecode compiler and VM:
 
 ~~~sh
-cargo run -- --compiled --eval '(+ 1 2)'
+cargo run --locked -- --compiled --eval '(+ 1 2)'
 ~~~
 
 Use <code>--compile</code> to build and inspect bytecode artifacts without
@@ -44,21 +44,21 @@ Runtime definitions and other runtime effects are not executed in this mode.
 Evaluate a Lisp file with an explicit path:
 
 ~~~sh
-cargo run -- --file path/to/program.lisp
+cargo run --locked -- --file path/to/program.lisp
 ~~~
 
 Start an interactive session with either of these forms:
 
 ~~~sh
-cargo run -- --repl
-cargo run
+cargo run --locked -- --repl
+cargo run --locked
 ~~~
 
 The second command starts the REPL because no file or expression was supplied.
 <code>--quiet</code> suppresses REPL prompts and normal value output:
 
 ~~~sh
-cargo run -- --quiet --repl
+cargo run --locked -- --quiet --repl
 ~~~
 
 ## Command-line help

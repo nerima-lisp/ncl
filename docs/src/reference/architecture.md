@@ -232,6 +232,20 @@ which preserves definitions and package operations across a source stream.
 This is a second execution route for the implemented surface, not a claim of
 compatibility with an external Lisp compiler.
 
+## Data and execution boundaries
+
+The compiler's bytecode and error data model is isolated in
+`packages/core/compiler/src/model.rs` and re-exported by `lib.rs`; the compiler
+implementation owns lowering and name resolution. Runtime value types and
+formatting remain together at the `packages/core/runtime/src/value` module
+boundary, whose private fragments separate conditions, models, numbers, and
+streams without changing the public value API.
+
+Cargo builds the Rust workspace, while `ncl.asd` describes the Common Lisp core
+and its test entry points. The Nix flake supplies the development and
+verification tools around both build graphs without duplicating their package
+dependency declarations.
+
 ## Public boundary
 
 The root crate exposes the common runtime and syntax types needed by an

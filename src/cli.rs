@@ -26,77 +26,28 @@ pub fn run() -> std::process::ExitCode {
 
 fn run_inner() -> Result<(), CliError> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
-    if arguments
-        .iter()
-        .any(|argument| argument == "--help" || argument == "-h")
-    {
-        print_help();
-        return Ok(());
-    }
-    if arguments
-        .iter()
-        .any(|argument| argument == "--version" || argument == "-V")
-    {
-        println!("ncl {VERSION}");
-        return Ok(());
-    }
-
-    let mut evaluations = Vec::new();
-    let mut file = None;
-    let mut repl = false;
-    let mut quiet = false;
-    let mut compiled = false;
-    let mut compile_only = false;
-    let mut index = 0;
-    while index < arguments.len() {
-        match arguments[index].as_str() {
-            "--eval" | "-e" => {
-                index += 1;
-                let Some(source) = arguments.get(index) else {
-                    return Err(CliError::Usage(
-                        "--eval requires a source string".to_string(),
-                    ));
-                };
-                evaluations.push(source.clone());
-            }
-            "--file" | "-f" => {
-                index += 1;
-                let Some(path) = arguments.get(index) else {
-                    return Err(CliError::Usage("--file requires a path".to_string()));
-                };
-                file = Some(path.clone());
-            }
-            "--repl" => repl = true,
-            "--compiled" => compiled = true,
-            "--compile" => compile_only = true,
-            "--quiet" | "-q" => quiet = true,
-            argument if argument.starts_with('-') => {
-                return Err(CliError::Usage(format!("unknown option {argument}")));
-            }
-            path => {
-                return Err(CliError::Usage(format!(
-                    "unexpected argument {path}; use --file"
-                )));
-            }
+    match parse_arguments(&arguments)? {
+        CliCommand::Help => {
+            print_help();
+            Ok(())
         }
-        index += 1;
+        CliCommand::Version => {
+            println!("ncl {VERSION}");
+            Ok(())
+        }
+        CliCommand::Run(options) => run_options(options),
     }
+}
 
-    if compile_only && compiled {
-        return Err(CliError::Usage(
-            "--compile cannot be combined with --compiled".to_string(),
-        ));
-    }
-    if compile_only && repl {
-        return Err(CliError::Usage(
-            "--compile cannot be combined with --repl".to_string(),
-        ));
-    }
-    if compile_only && evaluations.is_empty() && file.is_none() {
-        return Err(CliError::Usage(
-            "--compile requires --eval or --file".to_string(),
-        ));
-    }
+fn run_options(options: Options) -> Result<(), CliError> {
+    let Options {
+        evaluations,
+        file,
+        repl,
+        quiet,
+        compiled,
+        compile_only,
+    } = options;
 
     let runtime = Runtime::new();
     for source in &evaluations {
@@ -115,10 +66,103 @@ fn run_inner() -> Result<(), CliError> {
             print_values(&runtime, &source, quiet, compiled)?;
         }
     }
-    if repl || (evaluations.is_empty() && file.is_none()) {
+    if !compile_only && (repl || (evaluations.is_empty() && file.is_none())) {
         repl_loop(&runtime, quiet, compiled)?;
     }
     Ok(())
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct Options {
+    evaluations: Vec<String>,
+    file: Option<String>,
+    repl: bool,
+    quiet: bool,
+    compiled: bool,
+    compile_only: bool,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CliCommand {
+    Help,
+    Version,
+    Run(Options),
+}
+
+fn parse_arguments(arguments: &[String]) -> Result<CliCommand, CliError> {
+    if arguments
+        .iter()
+        .any(|argument| argument == "--help" || argument == "-h")
+    {
+        return Ok(CliCommand::Help);
+    }
+    if arguments
+        .iter()
+        .any(|argument| argument == "--version" || argument == "-V")
+    {
+        return Ok(CliCommand::Version);
+    }
+
+    let mut options = Options {
+        evaluations: Vec::new(),
+        file: None,
+        repl: false,
+        quiet: false,
+        compiled: false,
+        compile_only: false,
+    };
+    let mut index = 0;
+    while index < arguments.len() {
+        match arguments[index].as_str() {
+            "--eval" | "-e" => {
+                index += 1;
+                let Some(source) = arguments.get(index) else {
+                    return Err(CliError::Usage(
+                        "--eval requires a source string".to_string(),
+                    ));
+                };
+                options.evaluations.push(source.clone());
+            }
+            "--file" | "-f" => {
+                index += 1;
+                let Some(path) = arguments.get(index) else {
+                    return Err(CliError::Usage("--file requires a path".to_string()));
+                };
+                options.file = Some(path.clone());
+            }
+            "--repl" => options.repl = true,
+            "--compiled" => options.compiled = true,
+            "--compile" => options.compile_only = true,
+            "--quiet" | "-q" => options.quiet = true,
+            argument if argument.starts_with('-') => {
+                return Err(CliError::Usage(format!("unknown option {argument}")));
+            }
+            path => {
+                return Err(CliError::Usage(format!(
+                    "unexpected argument {path}; use --file"
+                )));
+            }
+        }
+        index += 1;
+    }
+
+    if options.compile_only && options.compiled {
+        return Err(CliError::Usage(
+            "--compile cannot be combined with --compiled".to_string(),
+        ));
+    }
+    if options.compile_only && options.repl {
+        return Err(CliError::Usage(
+            "--compile cannot be combined with --repl".to_string(),
+        ));
+    }
+    if options.compile_only && options.evaluations.is_empty() && options.file.is_none() {
+        return Err(CliError::Usage(
+            "--compile requires --eval or --file".to_string(),
+        ));
+    }
+
+    Ok(CliCommand::Run(options))
 }
 
 fn print_compilation(runtime: &Runtime, source: &str, quiet: bool) -> Result<(), CliError> {
@@ -224,8 +268,75 @@ Options:
     );
 }
 
+#[derive(Debug, Eq, PartialEq)]
 enum CliError {
     Usage(String),
     Runtime(RuntimeError),
     Io(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CliCommand, Options, parse_arguments};
+
+    fn arguments(values: &[&str]) -> Vec<String> {
+        values.iter().map(ToString::to_string).collect()
+    }
+
+    fn assert_usage(values: &[&str], expected: &str) {
+        assert_eq!(
+            parse_arguments(&arguments(values)),
+            Err(super::CliError::Usage(expected.to_string()))
+        );
+    }
+
+    #[test]
+    fn parses_execution_options_and_aliases() {
+        let command = parse_arguments(&arguments(&[
+            "-e",
+            "(+ 1 2)",
+            "--eval",
+            "(+ 3 4)",
+            "-f",
+            "program.ncl",
+            "--repl",
+            "--compiled",
+            "-q",
+        ]));
+
+        assert_eq!(
+            command,
+            Ok(CliCommand::Run(Options {
+                evaluations: vec!["(+ 1 2)".to_string(), "(+ 3 4)".to_string()],
+                file: Some("program.ncl".to_string()),
+                repl: true,
+                quiet: true,
+                compiled: true,
+                compile_only: false,
+            }))
+        );
+    }
+
+    #[test]
+    fn help_and_version_are_detected_before_other_arguments() {
+        assert_eq!(
+            parse_arguments(&arguments(&["--help", "--unknown"])),
+            Ok(CliCommand::Help)
+        );
+        assert_eq!(
+            parse_arguments(&arguments(&["--version", "--unknown"])),
+            Ok(CliCommand::Version)
+        );
+    }
+
+    #[test]
+    fn reports_missing_values_unknown_options_and_positional_paths() {
+        assert_usage(&["--eval"], "--eval requires a source string");
+        assert_usage(&["--file"], "--file requires a path");
+        assert_usage(&["--unknown"], "unknown option --unknown");
+        assert_usage(
+            &["program.ncl"],
+            "unexpected argument program.ncl; use --file",
+        );
+    }
 }

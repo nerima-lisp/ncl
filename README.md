@@ -22,6 +22,10 @@ The workspace requires Rust 1.97 or newer and pins Rust 1.97.1 in
 The flake reads the package version from the `[workspace.package]` section of
 `Cargo.toml`, so release version changes have one source of truth.
 
+With Nix installed, `nix develop` provides the project's complete development
+toolchain on the supported `aarch64-darwin`, `aarch64-linux`, and
+`x86_64-linux` systems.
+
 ~~~sh
 cargo run -- --eval '(+ 1 2)'
 cargo run -- --compiled --eval '(+ 1 2)'
@@ -43,7 +47,7 @@ should also execute through the bytecode VM.
 Build a release binary from a checkout:
 
 ~~~sh
-cargo build --release
+cargo build --locked --release
 ./target/release/ncl --eval '(+ 1 2)'
 ~~~
 
@@ -88,6 +92,7 @@ Build it locally with MkDocs:
 
 ~~~sh
 mkdocs build --strict --config-file docs/mkdocs.yml
+nix run .#docs
 ~~~
 
 ## Development

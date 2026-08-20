@@ -1,9 +1,17 @@
-use ncl_compiler::{CompileErrorKind, Compiler, Constant, Instruction};
+use ncl_compiler::{CompileErrorKind, Compiler, Constant, DestructureSpec, Instruction};
 use ncl_syntax::{Form, FormKind, Span, read};
 
 fn compile(source: &str) -> ncl_compiler::Program {
     let forms = read(source).expect("test source should parse");
     Compiler::compile_forms(&forms).expect("test source should compile")
+}
+
+fn compile_error_message(source: &str) -> String {
+    let forms = read(source).expect("test source should parse");
+    match Compiler::compile_forms(&forms) {
+        Ok(program) => panic!("test source should fail to compile: {source}: {program:?}"),
+        Err(error) => error.kind.to_string(),
+    }
 }
 
 #[test]
@@ -123,6 +131,161 @@ fn rejects_malformed_ordinary_lambda_parameters() {
             ),
             "{source}: {error:?}"
         );
+    }
+}
+
+#[test]
+fn compiles_destructuring_lambda_lists_and_rejects_malformed_sections() {
+    let program = compile(
+        "(destructuring-bind (&whole whole (first second)
+            &optional (third (+ first 1) third-p)
+            &rest rest
+            &key ((:scale scale) scale-value scale-p) (limit 10)
+            &allow-other-keys
+            &aux (total (+ first third)))
+            (list (list 1 2) 3 :scale 5 :extra 8)
+            (list whole first second third third-p rest scale-value scale-p limit total))",
+    );
+    let Some(Instruction::Destructure(DestructureSpec::LambdaList(lambda_list))) = program
+        .functions[0]
+        .instructions
+        .iter()
+        .find(|instruction| matches!(instruction, Instruction::Destructure(_)))
+    else {
+        panic!("destructuring-bind should emit a lambda-list instruction");
+    };
+    assert_eq!(lambda_list.whole.as_deref(), Some("WHOLE"));
+    assert_eq!(lambda_list.required.len(), 1);
+    assert_eq!(lambda_list.optional.len(), 1);
+    assert_eq!(
+        lambda_list.optional[0].supplied_p.as_deref(),
+        Some("THIRD-P")
+    );
+    assert_eq!(lambda_list.rest.as_deref(), Some("REST"));
+    assert_eq!(lambda_list.keywords.len(), 2);
+    assert_eq!(lambda_list.keywords[0].keyword_name, "SCALE");
+    assert_eq!(
+        lambda_list.keywords[0].supplied_p.as_deref(),
+        Some("SCALE-P")
+    );
+    assert!(lambda_list.allow_other_keys);
+    assert_eq!(lambda_list.auxiliary[0].name, "TOTAL");
+
+    for (source, expected) in [
+        (
+            "(destructuring-bind (first))",
+            "DESTRUCTURING-BIND expected two or more arguments, received 1",
+        ),
+        (
+            "(destructuring-bind (&whole) value body)",
+            "&whole must be the first marker followed by one parameter",
+        ),
+        (
+            "(destructuring-bind (first &whole whole) value body)",
+            "&whole must be the first marker followed by one parameter",
+        ),
+        (
+            "(destructuring-bind (first &optional second &optional third) value body)",
+            "&optional is out of order in destructuring lambda list",
+        ),
+        (
+            "(destructuring-bind (first &rest) value body)",
+            "&rest or &body must be followed by one parameter",
+        ),
+        (
+            "(destructuring-bind (first &rest 1) value body)",
+            "destructuring rest parameter name must be a symbol",
+        ),
+        (
+            "(destructuring-bind (first &rest rest another) value body)",
+            "destructuring rest parameter must be followed by a keyword or auxiliary section",
+        ),
+        (
+            "(destructuring-bind (first &rest rest &rest more) value body)",
+            "&rest or &body must be followed by one parameter",
+        ),
+        (
+            "(destructuring-bind (first &key &key other) value body)",
+            "&key is out of order or repeated in destructuring lambda list",
+        ),
+        (
+            "(destructuring-bind (first &allow-other-keys) value body)",
+            "&allow-other-keys requires a keyword section",
+        ),
+        (
+            "(destructuring-bind (first &key key &allow-other-keys other) value body)",
+            "&allow-other-keys must be the last keyword-list marker",
+        ),
+        (
+            "(destructuring-bind (first &aux x &aux y) value body)",
+            "&aux is repeated in destructuring lambda list",
+        ),
+        (
+            "(destructuring-bind (first &unknown x) value body)",
+            "unsupported marker in destructuring lambda list",
+        ),
+        (
+            "(destructuring-bind ((&unknown)) value body)",
+            "unsupported marker in destructuring lambda list",
+        ),
+        (
+            "(destructuring-bind (#(first)) value body)",
+            "destructuring pattern must be a symbol or list",
+        ),
+        (
+            "(destructuring-bind (first &optional (second 1 2 3)) value body)",
+            "destructuring optional parameter must contain one to three items",
+        ),
+        (
+            "(destructuring-bind (first &optional (second . third)) value body)",
+            "destructuring optional parameter must be a symbol or list",
+        ),
+        (
+            "(destructuring-bind (first &key ((:scale) scale-value)) value body)",
+            "destructuring keyword designator must contain a keyword and variable",
+        ),
+        (
+            "(destructuring-bind (first &key ((scale scale) scale-value)) value body)",
+            "destructuring keyword designator must start with a keyword",
+        ),
+        (
+            "(destructuring-bind (first &key (:scale)) value body)",
+            "destructuring keyword parameter needs a variable",
+        ),
+        (
+            "(destructuring-bind (first &key ((nested . value))) value body)",
+            "destructuring keyword parameter must have a variable name",
+        ),
+        (
+            "(destructuring-bind (first &key (scale 1 2 3)) value body)",
+            "destructuring keyword parameter contains too many items",
+        ),
+        (
+            "(destructuring-bind (first &key (scale 1 2)) value body)",
+            "destructuring supplied-p name must be a symbol",
+        ),
+        (
+            "(destructuring-bind (first &key (scale . rest)) value body)",
+            "destructuring keyword parameter must be a symbol or list",
+        ),
+        (
+            "(destructuring-bind (first &key ((:scale second) 1) ((:scale third) 2)) value body)",
+            "destructuring keyword names must be unique",
+        ),
+        (
+            "(destructuring-bind (first &aux (total 1 2)) value body)",
+            "destructuring auxiliary parameter must contain one or two items",
+        ),
+        (
+            "(destructuring-bind (first &aux (total . rest)) value body)",
+            "destructuring auxiliary parameter must be a symbol or list",
+        ),
+        (
+            "(destructuring-bind (first first) value body)",
+            "destructuring pattern names must be unique",
+        ),
+    ] {
+        assert_eq!(compile_error_message(source), expected, "{source}");
     }
 }
 

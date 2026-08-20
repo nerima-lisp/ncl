@@ -18,6 +18,7 @@ fn execute_condition_instruction(
                     Ok(value) => stack.push(value),
                     Err(error @ RuntimeError::ReturnFrom { .. }) => return Err(error),
                     Err(error @ RuntimeError::Go { .. }) => return Err(error),
+                    Err(error @ RuntimeError::Throw { .. }) => return Err(error),
                     Err(error @ RuntimeError::InvokeRestart { .. }) => return Err(error),
                     Err(error) => {
                         stack.push(Value::values(vec![Value::Nil, Value::condition(&error)]));

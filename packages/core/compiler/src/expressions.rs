@@ -438,7 +438,7 @@ impl CompileState {
 
         self.emit(function, Instruction::EnterScope, first.span)?;
         self.compile_expression(function, first)?;
-        self.emit(function, Instruction::Define(retained.clone()), first.span)?;
+        self.emit(function, Instruction::DefineValues(retained.clone()), first.span)?;
         self.emit(function, Instruction::Pop, first.span)?;
 
         let tail = items.get(2..).unwrap_or(&[]);
@@ -474,7 +474,7 @@ impl CompileState {
         self.compile_expression(function, first)?;
         self.emit(function, Instruction::Pop, first.span)?;
         self.compile_expression(function, second)?;
-        self.emit(function, Instruction::Define(retained.clone()), second.span)?;
+        self.emit(function, Instruction::DefineValues(retained.clone()), second.span)?;
         self.emit(function, Instruction::Pop, second.span)?;
 
         let tail = items.get(3..).unwrap_or(&[]);

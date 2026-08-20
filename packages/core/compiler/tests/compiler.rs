@@ -463,7 +463,7 @@ fn lowers_prog1_with_retained_value_and_ordered_tail_effects() {
             Instruction::EnterScope,
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Set("MARKER".to_string()),
-            Instruction::Define("__NCL_PROG1_VALUE_0".to_string()),
+            Instruction::DefineValues("__NCL_PROG1_VALUE_0".to_string()),
             Instruction::Pop,
             Instruction::Constant(Constant::Integer(2)),
             Instruction::Set("MARKER".to_string()),
@@ -489,7 +489,7 @@ fn lowers_prog2_with_discarded_first_value_and_empty_tail() {
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Pop,
             Instruction::Constant(Constant::Integer(2)),
-            Instruction::Define("__NCL_PROG2_VALUE_0".to_string()),
+            Instruction::DefineValues("__NCL_PROG2_VALUE_0".to_string()),
             Instruction::Pop,
             Instruction::Load("__NCL_PROG2_VALUE_0".to_string()),
             Instruction::ExitScope,
@@ -547,7 +547,7 @@ fn prog_temporary_names_avoid_source_collisions() {
     assert!(instructions.iter().any(|instruction| {
         matches!(
             instruction,
-            Instruction::Define(name) if name == "__NCL_PROG1_VALUE_1"
+            Instruction::DefineValues(name) if name == "__NCL_PROG1_VALUE_1"
         )
     }));
     assert!(instructions.iter().any(|instruction| {

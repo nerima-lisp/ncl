@@ -34,6 +34,7 @@ impl Runtime {
             Ok(value) => Ok(value),
             Err(error @ RuntimeError::ReturnFrom { .. }) => Err(error),
             Err(error @ RuntimeError::Go { .. }) => Err(error),
+            Err(error @ RuntimeError::Throw { .. }) => Err(error),
             Err(error @ RuntimeError::InvokeRestart { .. }) => Err(error),
             Err(error) => Ok(Value::values(vec![Value::Nil, Value::condition(&error)])),
         }

@@ -65,6 +65,16 @@ fn multiple_value_prog1_retains_values_and_evaluates_tail_forms_in_order() {
 }
 
 #[test]
+fn prog1_and_prog2_retain_multiple_values_in_both_execution_modes() {
+    assert_interpreted_and_compiled(
+        "(list
+           (multiple-value-call #'list (prog1 (values 1 2) 3))
+           (multiple-value-call #'list (prog2 0 (values 3 4) 5)))",
+        "((1 2) (3 4))",
+    );
+}
+
+#[test]
 fn zero_values_are_distinct_from_one_nil() {
     assert_interpreted_and_compiled(
         "(list
@@ -92,6 +102,11 @@ fn ignore_errors_preserves_successful_multiple_values_and_catches_errors() {
         "(multiple-value-bind (value condition) (ignore-errors (+ 1 \"x\")) (list value (type-of condition)))",
         "(NIL CONDITION)",
     );
+}
+
+#[test]
+fn ignore_errors_does_not_swallow_throw_in_either_execution_mode() {
+    assert_interpreted_and_compiled("(catch 'tag (ignore-errors (throw 'tag 42)))", "42");
 }
 
 #[test]

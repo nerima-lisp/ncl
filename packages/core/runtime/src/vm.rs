@@ -7,6 +7,7 @@ use ncl_compiler::{
 };
 use ncl_syntax::{Form, FormKind, Span};
 
+use crate::builtins::eql_value;
 use crate::environment::normalize_name;
 use crate::error::ThrowTag;
 use crate::evaluator::{ConditionHandlerBinding, RestartBinding};

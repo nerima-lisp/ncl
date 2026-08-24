@@ -451,6 +451,33 @@ fn lowers_nth_value_to_native_multiple_value_selection() {
 }
 
 #[test]
+fn lowers_symbol_push_pop_and_pushnew_without_evaluator_fallback() {
+    let push = compile("(push 1 cell)");
+    assert_eq!(
+        push.functions[0].instructions,
+        vec![
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::Push("CELL".to_string()),
+            Instruction::Return,
+        ]
+    );
+    let pop = compile("(pop cell)");
+    assert_eq!(
+        pop.functions[0].instructions,
+        vec![Instruction::PopPlace("CELL".to_string()), Instruction::Return]
+    );
+    let pushnew = compile("(pushnew 1 cell)");
+    assert_eq!(
+        pushnew.functions[0].instructions,
+        vec![
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::PushNew("CELL".to_string()),
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
 fn lowers_load_time_value_without_runtime_eval_fallback() {
     let program = compile("(load-time-value (values 10 20) (progn 1))");
     let instructions = &program.functions[0].instructions;

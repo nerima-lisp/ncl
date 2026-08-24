@@ -314,114 +314,86 @@ impl CompileState {
         Ok(())
     }
 
-    pub(super) fn compile_push_symbol(
+    pub(super) fn compile_push(
         &mut self,
         function: FunctionId,
         span: Span,
         items: &[Form],
     ) -> Result<(), CompileError> {
-        self.require_arity(items, "PUSH", "two", 2, span)?;
-        let item = items
-            .get(1)
-            .ok_or_else(|| self.internal_error(span, "missing PUSH item"))?;
+        if items.len() != 3 {
+            return self.compile_runtime_definition(function, span, items);
+        }
         let place = items
             .get(2)
             .ok_or_else(|| self.internal_error(span, "missing PUSH place"))?;
-        self.symbol_name_info(place, "PUSH place")?;
-
-        let item_name = self.fresh_name("PUSH_ITEM");
-        let place_name = self.fresh_name("PUSH_PLACE");
-        self.emit(function, Instruction::EnterScope, span)?;
-        self.compile_expression(function, item)?;
-        self.emit(function, Instruction::Define(item_name.clone()), item.span)?;
-        self.emit(function, Instruction::Pop, item.span)?;
-        self.compile_expression(function, place)?;
-        self.emit(
-            function,
-            Instruction::Define(place_name.clone()),
-            place.span,
-        )?;
-        self.emit(function, Instruction::Pop, place.span)?;
-
-        self.emit(
-            function,
-            Instruction::FunctionLoad("LIST-LENGTH".to_string()),
-            place.span,
-        )?;
-        self.emit(function, Instruction::Load(place_name.clone()), place.span)?;
-        self.emit(function, Instruction::Call(1), place.span)?;
-        self.emit(function, Instruction::Pop, place.span)?;
-
-        self.emit(
-            function,
-            Instruction::FunctionLoad("CONS".to_string()),
-            place.span,
-        )?;
-        self.emit(function, Instruction::Load(item_name), item.span)?;
-        self.emit(function, Instruction::Load(place_name), place.span)?;
-        self.emit(function, Instruction::Call(2), span)?;
-        self.emit(function, Instruction::Setf(place.clone()), place.span)?;
-        self.emit(function, Instruction::ExitScope, span)?;
+        if !matches!(&place.kind, FormKind::Atom(_)) {
+            return self.compile_runtime_definition(function, span, items);
+        }
+        let Ok((name, escaped)) = self.symbol_name_info(place, "push target") else {
+            return self.compile_runtime_definition(function, span, items);
+        };
+        self.compile_expression(function, &items[1])?;
+        let instruction = if escaped {
+            Instruction::PushExact(name)
+        } else {
+            Instruction::Push(name)
+        };
+        self.emit(function, instruction, span)?;
         Ok(())
     }
 
-    pub(super) fn compile_pop_symbol(
+    pub(super) fn compile_pop(
         &mut self,
         function: FunctionId,
         span: Span,
         items: &[Form],
     ) -> Result<(), CompileError> {
-        self.require_arity(items, "POP", "one", 1, span)?;
+        if items.len() != 2 {
+            return self.compile_runtime_definition(function, span, items);
+        }
         let place = items
             .get(1)
             .ok_or_else(|| self.internal_error(span, "missing POP place"))?;
-        self.symbol_name_info(place, "POP place")?;
+        if !matches!(&place.kind, FormKind::Atom(_)) {
+            return self.compile_runtime_definition(function, span, items);
+        }
+        let Ok((name, escaped)) = self.symbol_name_info(place, "pop target") else {
+            return self.compile_runtime_definition(function, span, items);
+        };
+        let instruction = if escaped {
+            Instruction::PopPlaceExact(name)
+        } else {
+            Instruction::PopPlace(name)
+        };
+        self.emit(function, instruction, span)?;
+        Ok(())
+    }
 
-        let place_name = self.fresh_name("POP_PLACE");
-        let value_name = self.fresh_name("POP_VALUE");
-        self.emit(function, Instruction::EnterScope, span)?;
-        self.compile_expression(function, place)?;
-        self.emit(
-            function,
-            Instruction::Define(place_name.clone()),
-            place.span,
-        )?;
-        self.emit(function, Instruction::Pop, place.span)?;
-
-        self.emit(
-            function,
-            Instruction::FunctionLoad("LIST-LENGTH".to_string()),
-            place.span,
-        )?;
-        self.emit(function, Instruction::Load(place_name.clone()), place.span)?;
-        self.emit(function, Instruction::Call(1), place.span)?;
-        self.emit(function, Instruction::Pop, place.span)?;
-
-        self.emit(
-            function,
-            Instruction::FunctionLoad("CAR".to_string()),
-            place.span,
-        )?;
-        self.emit(function, Instruction::Load(place_name.clone()), place.span)?;
-        self.emit(function, Instruction::Call(1), place.span)?;
-        self.emit(
-            function,
-            Instruction::Define(value_name.clone()),
-            place.span,
-        )?;
-        self.emit(function, Instruction::Pop, place.span)?;
-
-        self.emit(
-            function,
-            Instruction::FunctionLoad("CDR".to_string()),
-            place.span,
-        )?;
-        self.emit(function, Instruction::Load(place_name), place.span)?;
-        self.emit(function, Instruction::Call(1), place.span)?;
-        self.emit(function, Instruction::Setf(place.clone()), place.span)?;
-        self.emit(function, Instruction::Pop, place.span)?;
-        self.emit(function, Instruction::Load(value_name), place.span)?;
-        self.emit(function, Instruction::ExitScope, span)?;
+    pub(super) fn compile_pushnew(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() != 3 {
+            return self.compile_runtime_definition(function, span, items);
+        }
+        let place = items
+            .get(2)
+            .ok_or_else(|| self.internal_error(span, "missing PUSHNEW place"))?;
+        if !matches!(&place.kind, FormKind::Atom(_)) {
+            return self.compile_runtime_definition(function, span, items);
+        }
+        let Ok((name, escaped)) = self.symbol_name_info(place, "pushnew target") else {
+            return self.compile_runtime_definition(function, span, items);
+        };
+        self.compile_expression(function, &items[1])?;
+        let instruction = if escaped {
+            Instruction::PushNewExact(name)
+        } else {
+            Instruction::PushNew(name)
+        };
+        self.emit(function, instruction, span)?;
         Ok(())
     }
 

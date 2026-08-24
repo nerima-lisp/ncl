@@ -669,7 +669,12 @@ fn compiled_lowers_simple_push_and_pop_without_eval() {
     assert!(
         instructions
             .iter()
-            .any(|instruction| { matches!(instruction, Instruction::Setf(_)) })
+            .any(|instruction| { matches!(instruction, Instruction::Push(_)) })
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::PopPlace(_)) })
     );
     assert!(
         !instructions

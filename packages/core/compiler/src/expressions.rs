@@ -175,27 +175,12 @@ impl CompileState {
                     return self.compile_multiple_value_setq(function, span, items);
                 }
                 "SETF" => return self.compile_setf(function, span, items),
-                "PSETF" | "PUSHNEW" | "REMF" | "ROTATEF" | "SHIFTF" => {
+                "PSETF" | "REMF" | "ROTATEF" | "SHIFTF" => {
                     return self.compile_runtime_definition(function, span, items);
                 }
-                "PUSH" => {
-                    if matches!(
-                        items.get(2).map(|place| &place.kind),
-                        Some(FormKind::Atom(_)) | None
-                    ) {
-                        return self.compile_push_symbol(function, span, items);
-                    }
-                    return self.compile_runtime_definition(function, span, items);
-                }
-                "POP" => {
-                    if matches!(
-                        items.get(1).map(|place| &place.kind),
-                        Some(FormKind::Atom(_)) | None
-                    ) {
-                        return self.compile_pop_symbol(function, span, items);
-                    }
-                    return self.compile_runtime_definition(function, span, items);
-                }
+                "PUSH" => return self.compile_push(function, span, items),
+                "POP" => return self.compile_pop(function, span, items),
+                "PUSHNEW" => return self.compile_pushnew(function, span, items),
                 "INCF" => {
                     if matches!(
                         items.get(1).map(|place| &place.kind),

@@ -238,6 +238,122 @@ fn execute_state_instruction(
                     .ok_or_else(|| invalid("setq has no value on the stack", span))? = value;
                 *program_counter += 1;
             }
+            Instruction::Push(name) => {
+                let value = pop_value(stack, span, "push")?.primary_value();
+                let current = runtime.lookup_in(name, environment).ok_or_else(|| {
+                    RuntimeError::UnboundVariable {
+                        name: name.clone(),
+                        span: Some(span),
+                    }
+                })?;
+                let mut elements = current
+                    .list_items()
+                    .ok_or_else(|| invalid("PUSH place must contain a proper list", span))?;
+                elements.insert(0, value);
+                let result = Value::list(elements);
+                runtime.set_or_define_in(name, result.clone(), environment, span)?;
+                stack.push(result);
+                *program_counter += 1;
+            }
+            Instruction::PushExact(name) => {
+                let value = pop_value(stack, span, "push")?.primary_value();
+                let current = runtime.lookup_exact_in(name, environment).ok_or_else(|| {
+                    RuntimeError::UnboundVariable {
+                        name: name.clone(),
+                        span: Some(span),
+                    }
+                })?;
+                let mut elements = current
+                    .list_items()
+                    .ok_or_else(|| invalid("PUSH place must contain a proper list", span))?;
+                elements.insert(0, value);
+                let result = Value::list(elements);
+                runtime.set_or_define_exact_in(name, result.clone(), environment, span)?;
+                stack.push(result);
+                *program_counter += 1;
+            }
+            Instruction::PopPlace(name) => {
+                let current = runtime.lookup_in(name, environment).ok_or_else(|| {
+                    RuntimeError::UnboundVariable {
+                        name: name.clone(),
+                        span: Some(span),
+                    }
+                })?;
+                let mut elements = current
+                    .list_items()
+                    .ok_or_else(|| invalid("POP place must contain a proper list", span))?;
+                let popped = if elements.is_empty() {
+                    Value::Nil
+                } else {
+                    elements.remove(0)
+                };
+                let result = Value::list(elements);
+                runtime.set_or_define_in(name, result, environment, span)?;
+                stack.push(popped);
+                *program_counter += 1;
+            }
+            Instruction::PopPlaceExact(name) => {
+                let current = runtime.lookup_exact_in(name, environment).ok_or_else(|| {
+                    RuntimeError::UnboundVariable {
+                        name: name.clone(),
+                        span: Some(span),
+                    }
+                })?;
+                let mut elements = current
+                    .list_items()
+                    .ok_or_else(|| invalid("POP place must contain a proper list", span))?;
+                let popped = if elements.is_empty() {
+                    Value::Nil
+                } else {
+                    elements.remove(0)
+                };
+                let result = Value::list(elements);
+                runtime.set_or_define_exact_in(name, result, environment, span)?;
+                stack.push(popped);
+                *program_counter += 1;
+            }
+            Instruction::PushNew(name) => {
+                let value = pop_value(stack, span, "pushnew")?.primary_value();
+                let current = runtime.lookup_in(name, environment).ok_or_else(|| {
+                    RuntimeError::UnboundVariable {
+                        name: name.clone(),
+                        span: Some(span),
+                    }
+                })?;
+                let mut elements = current
+                    .list_items()
+                    .ok_or_else(|| invalid("PUSHNEW place must contain a proper list", span))?;
+                if elements.iter().any(|candidate| eql_value(&value, candidate)) {
+                    stack.push(current);
+                } else {
+                    elements.insert(0, value);
+                    let result = Value::list(elements);
+                    runtime.set_or_define_in(name, result.clone(), environment, span)?;
+                    stack.push(result);
+                }
+                *program_counter += 1;
+            }
+            Instruction::PushNewExact(name) => {
+                let value = pop_value(stack, span, "pushnew")?.primary_value();
+                let current = runtime.lookup_exact_in(name, environment).ok_or_else(|| {
+                    RuntimeError::UnboundVariable {
+                        name: name.clone(),
+                        span: Some(span),
+                    }
+                })?;
+                let mut elements = current
+                    .list_items()
+                    .ok_or_else(|| invalid("PUSHNEW place must contain a proper list", span))?;
+                if elements.iter().any(|candidate| eql_value(&value, candidate)) {
+                    stack.push(current);
+                } else {
+                    elements.insert(0, value);
+                    let result = Value::list(elements);
+                    runtime.set_or_define_exact_in(name, result.clone(), environment, span)?;
+                    stack.push(result);
+                }
+                *program_counter += 1;
+            }
             Instruction::Setf(place) => {
                 let value = stack
                     .last()

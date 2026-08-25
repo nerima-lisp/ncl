@@ -130,9 +130,7 @@ impl RuntimeError {
             Self::Arity { .. } => "PROGRAM-ERROR".to_owned(),
             Self::InvalidForm { .. } => "SIMPLE-ERROR".to_owned(),
             Self::Signaled {
-                condition,
-                warning,
-                ..
+                condition, warning, ..
             } => {
                 if *warning {
                     "SIMPLE-WARNING".to_owned()
@@ -163,7 +161,10 @@ impl RuntimeError {
         }
 
         let condition = normalize_condition_name(condition);
-        if matches!(condition.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION") {
+        if matches!(
+            condition.as_str(),
+            "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+        ) {
             return match self {
                 Self::Signaled {
                     condition: signaled,
@@ -176,21 +177,22 @@ impl RuntimeError {
                     } else if *warning {
                         false
                     } else {
-                        condition_types.iter().any(|type_name| {
-                            normalize_condition_name(type_name) == condition
-                        }) || matches!(
-                            normalize_condition_name(signaled).as_str(),
-                            "SIMPLE-ERROR"
-                                | "DIVISION-BY-ZERO"
-                                | "ARITHMETIC-ERROR"
-                                | "TYPE-ERROR"
-                                | "PROGRAM-ERROR"
-                                | "PACKAGE-ERROR"
-                                | "READER-ERROR"
-                                | "COMPILER-ERROR"
-                                | "FILE-ERROR"
-                                | "UNBOUND-VARIABLE"
-                        )
+                        condition_types
+                            .iter()
+                            .any(|type_name| normalize_condition_name(type_name) == condition)
+                            || matches!(
+                                normalize_condition_name(signaled).as_str(),
+                                "SIMPLE-ERROR"
+                                    | "DIVISION-BY-ZERO"
+                                    | "ARITHMETIC-ERROR"
+                                    | "TYPE-ERROR"
+                                    | "PROGRAM-ERROR"
+                                    | "PACKAGE-ERROR"
+                                    | "READER-ERROR"
+                                    | "COMPILER-ERROR"
+                                    | "FILE-ERROR"
+                                    | "UNBOUND-VARIABLE"
+                            )
                     }
                 }
                 _ => true,

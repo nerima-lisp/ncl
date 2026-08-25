@@ -5,22 +5,131 @@ use std::rc::Rc;
 
 use ncl_compiler::Compiler;
 use ncl_syntax::{
-    parse_ordinary_lambda_list, parse_symbol_token, read, Form, FormKind,
-    LambdaListKeywordParameter, OrdinaryLambdaList, Span, SymbolTokenKind,
+    parse_float_literal, parse_ordinary_lambda_list, parse_radix_integer_literal, parse_symbol_token,
+    read_with_features, Form, FormKind, LambdaListKeywordParameter, OrdinaryLambdaList, Span,
+    SymbolTokenKind,
 };
 
 use crate::builtins;
 use crate::environment::normalize_name;
 use crate::error::ThrowTag;
-use crate::package::{self, PackageState};
+use crate::package::{self, PackageState, COMMON_LISP_PACKAGE};
 use crate::value::{
-    ClassDefinition, ClassSlot, MacroAuxiliaryParameter, MacroKeywordParameter,
-    MacroLambdaList, MacroOptionalParameter, MacroPattern, MethodDefinition, StructureDefinition,
-    StructureSlot,
+    ArrayElementType, ClassDefinition, ClassSlot, DefsetfDefinition, MacroAuxiliaryParameter,
+    MacroBinding, MacroKeywordParameter, MacroLambdaList, MacroOptionalParameter, MacroPattern,
+    MethodDefinition, MethodSpecializer, RandomState, StructureDefinition,
+    StructureRepresentation, StructureSlot,
 };
 use crate::{Environment, ReturnValue, RuntimeError, Value};
 
+#[path = "evaluator/conditions.rs"]
+mod conditions;
+
+#[path = "evaluator/macros.rs"]
+mod macros;
+
+#[path = "evaluator/invocation.rs"]
+mod invocation;
+
+#[path = "evaluator/sequences.rs"]
+mod sequences;
+
 const MAX_MACRO_EXPANSIONS: usize = 64;
+
+const BOOLE_CONSTANTS: [(&str, i64); 16] = [
+    ("BOOLE-CLR", 0),
+    ("BOOLE-SET", 1),
+    ("BOOLE-1", 2),
+    ("BOOLE-2", 3),
+    ("BOOLE-C1", 4),
+    ("BOOLE-C2", 5),
+    ("BOOLE-AND", 6),
+    ("BOOLE-IOR", 7),
+    ("BOOLE-XOR", 8),
+    ("BOOLE-EQV", 9),
+    ("BOOLE-NAND", 10),
+    ("BOOLE-NOR", 11),
+    ("BOOLE-ANDC1", 12),
+    ("BOOLE-ANDC2", 13),
+    ("BOOLE-ORC1", 14),
+    ("BOOLE-ORC2", 15),
+];
+
+fn c3_class_precedence(
+    class_name: &str,
+    direct_superclasses: &[String],
+    environment: &Environment,
+) -> Result<Vec<String>, &'static str> {
+    let mut direct = Vec::with_capacity(direct_superclasses.len().max(1));
+    for superclass in direct_superclasses {
+        let superclass = match superclass.as_str() {
+            "OBJECT" | "STANDARD-OBJECT" => "STANDARD-OBJECT".to_owned(),
+            _ => superclass.clone(),
+        };
+        if direct.iter().any(|name| name == &superclass) {
+            return Err("duplicate defclass superclass");
+        }
+        direct.push(superclass);
+    }
+    if direct.is_empty() {
+        direct.push("STANDARD-OBJECT".to_owned());
+    }
+
+    let mut sequences = Vec::with_capacity(direct.len() + 1);
+    for superclass in &direct {
+        if superclass == "STANDARD-OBJECT" {
+            sequences.push(vec![superclass.clone()]);
+            continue;
+        }
+        let Some(definition) = environment.lookup_class(superclass) else {
+            return Err("unknown defclass superclass");
+        };
+        sequences.push(definition.precedence.clone());
+    }
+    sequences.push(direct);
+
+    let mut merged = Vec::new();
+    while sequences.iter().any(|sequence| !sequence.is_empty()) {
+        let mut candidate = None;
+        'candidate: for sequence in &sequences {
+            let Some(head) = sequence.first() else {
+                continue;
+            };
+            if sequences
+                .iter()
+                .any(|other| other.iter().skip(1).any(|name| name == head))
+            {
+                continue 'candidate;
+            }
+            candidate = Some(head.clone());
+            break;
+        }
+        let Some(candidate) = candidate else {
+            return Err("inconsistent defclass precedence");
+        };
+        if candidate == class_name {
+            return Err("cyclic defclass inheritance");
+        }
+        merged.push(candidate.clone());
+        for sequence in &mut sequences {
+            if sequence.first() == Some(&candidate) {
+                sequence.remove(0);
+            }
+        }
+    }
+
+    let mut precedence = Vec::with_capacity(merged.len() + 1);
+    precedence.push(class_name.to_owned());
+    precedence.extend(merged);
+    Ok(precedence)
+}
+
+fn split_documentation_body(forms: &[Form]) -> (Option<String>, &[Form]) {
+    match forms.first().map(|form| &form.kind) {
+        Some(FormKind::String(documentation)) => (Some(documentation.clone()), &forms[1..]),
+        _ => (None, forms),
+    }
+}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum MacroLambdaListSection {
@@ -35,6 +144,8 @@ enum MacroLambdaListSection {
 struct DynamicState {
     special_names: HashSet<String>,
     exact_special_names: HashSet<String>,
+    scoped_special_names: Vec<String>,
+    scoped_exact_special_names: Vec<String>,
     constants: HashSet<String>,
     exact_constants: HashSet<String>,
     globals: HashMap<String, Value>,
@@ -80,9 +191,10 @@ pub(crate) struct ConditionRestartBinding {
 struct SetfExpansion {
     temporaries: Vec<Form>,
     values: Vec<Form>,
-    store: Form,
+    stores: Vec<Form>,
     store_form: Form,
     access_form: Form,
+    current_place: Option<Form>,
 }
 
 pub(crate) struct DynamicGuard {
@@ -96,6 +208,20 @@ impl Drop for DynamicGuard {
         let mut state = self.state.borrow_mut();
         state.bindings.truncate(self.depth);
         state.exact_bindings.truncate(self.exact_depth);
+    }
+}
+
+pub(crate) struct SpecialGuard {
+    state: Rc<RefCell<DynamicState>>,
+    depth: usize,
+    exact_depth: usize,
+}
+
+impl Drop for SpecialGuard {
+    fn drop(&mut self) {
+        let mut state = self.state.borrow_mut();
+        state.scoped_special_names.truncate(self.depth);
+        state.scoped_exact_special_names.truncate(self.exact_depth);
     }
 }
 
@@ -184,20 +310,160 @@ pub struct Runtime {
     next_block_target: Cell<u64>,
     gensym_counter: Cell<u64>,
     method_context: RefCell<Vec<MethodContext>>,
+    reader_features: Vec<String>,
 }
 
 impl Runtime {
     pub fn new() -> Self {
         let global = Environment::new();
         builtins::install(&global);
+        let packages = Rc::new(RefCell::new(PackageState::new()));
+        let dynamic = Rc::new(RefCell::new(DynamicState::default()));
+        let current_package = packages.borrow().current().to_string();
+        let random_state = Rc::new(RefCell::new(RandomState::seeded()));
+        let mut dynamic_state = dynamic.borrow_mut();
+        dynamic_state
+            .globals
+            .insert("*PACKAGE*".to_string(), Value::package(&current_package));
+        dynamic_state.special_names.insert("*PACKAGE*".to_string());
+        dynamic_state.globals.insert(
+            "*STANDARD-INPUT*".to_string(),
+            Value::string_input_stream("", 0, 0),
+        );
+        dynamic_state
+            .special_names
+            .insert("*STANDARD-INPUT*".to_string());
+        for binding_name in [
+            "*RANDOM-STATE*".to_string(),
+            format!("{COMMON_LISP_PACKAGE}::*RANDOM-STATE*"),
+        ] {
+            dynamic_state.special_names.insert(binding_name.clone());
+            dynamic_state
+                .globals
+                .insert(binding_name, Value::random_state_value(Rc::clone(&random_state)));
+        }
+        for binding_name in [
+            "*FEATURES*".to_string(),
+            format!("{COMMON_LISP_PACKAGE}::*FEATURES*"),
+        ] {
+            dynamic_state.special_names.insert(binding_name.clone());
+            dynamic_state.globals.insert(binding_name, Value::Nil);
+        }
+        for (name, value) in BOOLE_CONSTANTS {
+            for binding_name in [name.to_string(), format!("{COMMON_LISP_PACKAGE}::{name}")] {
+                dynamic_state.special_names.insert(binding_name.clone());
+                dynamic_state.constants.insert(binding_name.clone());
+                dynamic_state
+                    .globals
+                    .insert(binding_name, Value::Integer(value));
+            }
+        }
+        drop(dynamic_state);
         Self {
             global,
-            packages: Rc::new(RefCell::new(PackageState::new())),
-            dynamic: Rc::new(RefCell::new(DynamicState::default())),
+            packages,
+            dynamic,
             next_block_target: Cell::new(1),
             gensym_counter: Cell::new(0),
             method_context: RefCell::new(Vec::new()),
+            reader_features: Vec::new(),
         }
+    }
+
+    pub fn with_reader_features<I, S>(mut self, features: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.reader_features = features
+            .into_iter()
+            .map(|feature| feature.as_ref().to_owned())
+            .collect();
+        let feature_value = Value::list(
+            self.reader_features
+                .iter()
+                .map(|feature| Value::keyword(feature))
+                .collect(),
+        );
+        let mut dynamic = self.dynamic.borrow_mut();
+        for binding_name in [
+            "*FEATURES*".to_string(),
+            format!("{COMMON_LISP_PACKAGE}::*FEATURES*"),
+        ] {
+            dynamic.special_names.insert(binding_name.clone());
+            dynamic.globals.insert(binding_name, feature_value.clone());
+        }
+        drop(dynamic);
+        self
+    }
+
+    fn random_state_for(
+        &self,
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Rc<RefCell<RandomState>>, RuntimeError> {
+        let value = self
+            .lookup_in("*RANDOM-STATE*", environment)
+            .ok_or_else(|| RuntimeError::UnboundVariable {
+                name: "*RANDOM-STATE*".to_string(),
+                span: Some(span),
+            })?;
+        let actual = value.type_name().to_string();
+        value.random_state_reference().ok_or(RuntimeError::Type {
+            expected: "RANDOM-STATE".to_string(),
+            actual,
+            span: Some(span),
+        })
+    }
+
+    fn reader_features_for(
+        &self,
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Vec<String>, RuntimeError> {
+        let feature_value = self
+            .lookup_symbol_value_in("*FEATURES*", environment)
+            .unwrap_or_else(|| {
+                Value::list(
+                    self.reader_features
+                        .iter()
+                        .map(|feature| Value::keyword(feature))
+                        .collect(),
+                )
+            });
+        let Some(features) = feature_value.list_items() else {
+            return Err(RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: feature_value.type_name().to_string(),
+                span: Some(span),
+            });
+        };
+        features
+            .into_iter()
+            .map(|feature| {
+                if !matches!(
+                    &feature,
+                    Value::Symbol(_)
+                        | Value::SymbolExact(_)
+                        | Value::QualifiedSymbolExact { .. }
+                        | Value::UninternedSymbol(_)
+                        | Value::Keyword(_)
+                        | Value::KeywordExact(_)
+                ) {
+                    return Err(RuntimeError::Type {
+                        expected: "SYMBOL".to_string(),
+                        actual: feature.type_name().to_string(),
+                        span: Some(span),
+                    });
+                }
+                let name = feature.symbol_name().ok_or_else(|| RuntimeError::Type {
+                    expected: "SYMBOL".to_string(),
+                    actual: feature.type_name().to_string(),
+                    span: Some(span),
+                })?;
+                Ok(name.to_owned())
+            })
+            .collect()
     }
 
     pub fn global_environment(&self) -> Environment {
@@ -206,6 +472,16 @@ impl Runtime {
 
     pub fn current_package(&self) -> String {
         self.packages.borrow().current().to_string()
+    }
+
+    fn active_package_name(&self) -> String {
+        match self.lookup_in("*PACKAGE*", &self.global) {
+            Some(Value::Package(package)) => self
+                .packages
+                .borrow()
+                .package_object_name(package.as_ref()),
+            _ => self.current_package(),
+        }
     }
 
     pub(crate) fn fresh_block_target(&self) -> u64 {
@@ -220,7 +496,10 @@ impl Runtime {
     }
 
     pub fn eval_source(&self, source: &str) -> Result<Vec<Value>, RuntimeError> {
-        read(source)?.iter().map(|form| self.eval(form)).collect()
+        read_with_features(source, self.reader_features.iter())?
+            .iter()
+            .map(|form| self.eval(form))
+            .collect()
     }
 
     pub fn eval_compiled(&self, form: &Form) -> Result<Value, RuntimeError> {
@@ -232,7 +511,7 @@ impl Runtime {
     }
 
     pub fn eval_compiled_source(&self, source: &str) -> Result<Vec<Value>, RuntimeError> {
-        read(source)?
+        read_with_features(source, self.reader_features.iter())?
             .iter()
             .map(|form| self.eval_compiled(form))
             .collect()
@@ -245,6 +524,12 @@ impl Runtime {
 
     fn resolve_form_in(&self, form: &Form, current: &str) -> Result<Form, RuntimeError> {
         let kind = match &form.kind {
+            FormKind::ReadTimeEval(inner) => {
+                let resolved_inner = self.resolve_form_in(inner, current)?;
+                let value = self.eval_in(&resolved_inner, &self.global)?;
+                let evaluated = self.form_from_value(&value, form.span)?;
+                return self.resolve_form_in(&evaluated, current);
+            }
             FormKind::Atom(atom) => {
                 let escaped = parse_symbol_token(atom)
                     .map(|token| token.escaped)
@@ -257,6 +542,10 @@ impl Runtime {
             }
             FormKind::String(value) => FormKind::String(value.clone()),
             FormKind::Character(value) => FormKind::Character(*value),
+            FormKind::Complex { real, imaginary } => FormKind::Complex {
+                real: Box::new(self.resolve_form_in(real, current)?),
+                imaginary: Box::new(self.resolve_form_in(imaginary, current)?),
+            },
             FormKind::List(items) => {
                 let mut resolved = Vec::with_capacity(items.len());
                 for (index, item) in items.iter().enumerate() {
@@ -278,6 +567,7 @@ impl Runtime {
                     .collect::<Result<Vec<_>, _>>()?,
                 tail: Box::new(self.resolve_form_in(tail, current)?),
             },
+            FormKind::BitVector(bits) => FormKind::BitVector(bits.clone()),
             FormKind::Vector(items) => FormKind::Vector(
                 items
                     .iter()
@@ -289,8 +579,8 @@ impl Runtime {
     }
 
     fn resolve_atom(&self, atom: &str, current: &str, span: Span) -> Result<String, RuntimeError> {
-        let token = parse_symbol_token(atom)
-            .map_err(|_| self.package_error("invalid symbol", span))?;
+        let token =
+            parse_symbol_token(atom).map_err(|_| self.package_error("invalid symbol", span))?;
         match token.kind {
             SymbolTokenKind::Uninterned => {
                 return Ok(format!("#:{}", token.name));
@@ -339,6 +629,9 @@ impl Runtime {
         }
 
         let normalized = normalize_name(&token.name);
+        if !token.escaped && self.dynamic.borrow().special_names.contains(&normalized) {
+            return Ok(normalized);
+        }
 
         let package_name = if current == package::DEFAULT_PACKAGE {
             package::DEFAULT_PACKAGE.to_string()
@@ -360,9 +653,8 @@ impl Runtime {
 
     pub(crate) fn lookup_in(&self, name: &str, environment: &Environment) -> Option<Value> {
         let candidates = self.dynamic_candidates(name);
-        if let Some(value) = self
-            .dynamic
-            .borrow()
+        let dynamic = self.dynamic.borrow();
+        if let Some(value) = dynamic
             .bindings
             .iter()
             .rev()
@@ -373,10 +665,20 @@ impl Runtime {
         }
         if let Some(value) = candidates
             .iter()
-            .find_map(|candidate| self.dynamic.borrow().globals.get(candidate).cloned())
+            .find_map(|candidate| dynamic.globals.get(candidate).cloned())
         {
             return Some(value);
         }
+        if candidates.iter().any(|candidate| {
+            dynamic.special_names.contains(candidate)
+                || dynamic
+                    .scoped_special_names
+                    .iter()
+                    .any(|special| special == candidate)
+        }) {
+            return None;
+        }
+        drop(dynamic);
         if let Some(value) = environment.lookup(name) {
             return Some(value);
         }
@@ -390,19 +692,26 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Option<Value> {
-        environment
-            .lookup_function(name)
-            .or_else(|| self.lookup_in(name, environment))
+        if let Some(value) = environment.lookup_function(name) {
+            return Some(value);
+        }
+        self.dynamic_candidates(name)
+            .into_iter()
+            .find_map(|candidate| environment.lookup_function(&candidate))
     }
 
-    pub(crate) fn lookup_exact_in(
+    pub(crate) fn lookup_callable_in(
         &self,
         name: &str,
         environment: &Environment,
     ) -> Option<Value> {
-        if let Some(value) = self
-            .dynamic
-            .borrow()
+        self.lookup_function_in(name, environment)
+            .or_else(|| self.lookup_in(name, environment))
+    }
+
+    pub(crate) fn lookup_exact_in(&self, name: &str, environment: &Environment) -> Option<Value> {
+        let dynamic = self.dynamic.borrow();
+        if let Some(value) = dynamic
             .exact_bindings
             .iter()
             .rev()
@@ -411,10 +720,86 @@ impl Runtime {
         {
             return Some(value);
         }
-        if let Some(value) = self.dynamic.borrow().exact_globals.get(name).cloned() {
+        if let Some(value) = dynamic.exact_globals.get(name).cloned() {
             return Some(value);
         }
+        if dynamic.exact_special_names.contains(name)
+            || dynamic
+                .scoped_exact_special_names
+                .iter()
+                .any(|special| special == name)
+        {
+            return None;
+        }
+        drop(dynamic);
         environment.lookup_exact(name)
+    }
+
+    pub(crate) fn lookup_symbol_value_in(
+        &self,
+        name: &str,
+        _environment: &Environment,
+    ) -> Option<Value> {
+        let candidates = self.dynamic_candidates(name);
+        let dynamic = self.dynamic.borrow();
+        if let Some(value) = dynamic
+            .bindings
+            .iter()
+            .rev()
+            .find(|(binding, _)| candidates.iter().any(|candidate| candidate == binding))
+            .map(|(_, value)| value.clone())
+        {
+            return Some(value);
+        }
+        if let Some(value) = candidates
+            .iter()
+            .find_map(|candidate| dynamic.globals.get(candidate).cloned())
+        {
+            return Some(value);
+        }
+        if candidates.iter().any(|candidate| {
+            dynamic.special_names.contains(candidate)
+                || dynamic
+                    .scoped_special_names
+                    .iter()
+                    .any(|special| special == candidate)
+        }) {
+            return None;
+        }
+        drop(dynamic);
+        candidates
+            .into_iter()
+            .find_map(|candidate| self.global.lookup(&candidate))
+    }
+
+    pub(crate) fn lookup_symbol_value_exact_in(
+        &self,
+        name: &str,
+        _environment: &Environment,
+    ) -> Option<Value> {
+        let dynamic = self.dynamic.borrow();
+        if let Some(value) = dynamic
+            .exact_bindings
+            .iter()
+            .rev()
+            .find(|(binding, _)| binding == name)
+            .map(|(_, value)| value.clone())
+        {
+            return Some(value);
+        }
+        if let Some(value) = dynamic.exact_globals.get(name).cloned() {
+            return Some(value);
+        }
+        if dynamic.exact_special_names.contains(name)
+            || dynamic
+                .scoped_exact_special_names
+                .iter()
+                .any(|special| special == name)
+        {
+            return None;
+        }
+        drop(dynamic);
+        self.global.lookup_exact(name)
     }
 
     pub(crate) fn lookup_function_exact_in(
@@ -422,24 +807,40 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Option<Value> {
-        environment
-            .lookup_function_exact(name)
+        environment.lookup_function_exact(name)
+    }
+
+    pub(crate) fn lookup_callable_exact_in(
+        &self,
+        name: &str,
+        environment: &Environment,
+    ) -> Option<Value> {
+        self.lookup_function_exact_in(name, environment)
             .or_else(|| self.lookup_exact_in(name, environment))
     }
 
     pub(crate) fn is_bound_in(&self, name: &str, environment: &Environment) -> bool {
-        self.lookup_in(name, environment).is_some()
+        self.lookup_symbol_value_in(name, environment).is_some()
     }
 
     pub(crate) fn is_bound_exact_in(&self, name: &str, environment: &Environment) -> bool {
-        self.lookup_exact_in(name, environment).is_some()
+        self.lookup_symbol_value_exact_in(name, environment)
+            .is_some()
     }
 
     pub(crate) fn define_in(&self, name: &str, value: Value, environment: &Environment) {
         let candidates = self.dynamic_candidates(name);
         if let Some(binding_name) = candidates
-            .into_iter()
-            .find(|candidate| self.dynamic.borrow().special_names.contains(candidate))
+            .iter()
+            .find(|candidate| {
+                let dynamic = self.dynamic.borrow();
+                dynamic.special_names.contains(*candidate)
+                    || dynamic
+                        .scoped_special_names
+                        .iter()
+                        .any(|special| special == *candidate)
+            })
+            .cloned()
         {
             self.dynamic
                 .borrow_mut()
@@ -454,11 +855,10 @@ impl Runtime {
         let candidates = self.dynamic_candidates(name);
         {
             let mut dynamic = self.dynamic.borrow_mut();
-            if let Some(index) = dynamic
-                .bindings
-                .iter()
-                .rev()
-                .position(|(binding, _)| candidates.iter().any(|candidate| candidate == binding))
+            if let Some(index) =
+                dynamic.bindings.iter().rev().position(|(binding, _)| {
+                    candidates.iter().any(|candidate| candidate == binding)
+                })
             {
                 let index = dynamic.bindings.len() - 1 - index;
                 let binding = dynamic.bindings[index].0.clone();
@@ -468,10 +868,13 @@ impl Runtime {
                 dynamic.bindings[index].1 = value;
                 return true;
             }
-            if let Some(candidate) = candidates
-                .iter()
-                .find(|candidate| dynamic.special_names.contains(*candidate))
-            {
+            if let Some(candidate) = candidates.iter().find(|candidate| {
+                dynamic.special_names.contains(*candidate)
+                    || dynamic
+                        .scoped_special_names
+                        .iter()
+                        .any(|special| special == *candidate)
+            }) {
                 if dynamic.constants.contains(candidate) {
                     return false;
                 }
@@ -487,18 +890,16 @@ impl Runtime {
             .any(|candidate| environment.set(&candidate, value.clone()))
     }
 
-    pub(crate) fn define_exact_in(
-        &self,
-        name: &str,
-        value: Value,
-        environment: &Environment,
-    ) {
-        if self
-            .dynamic
-            .borrow()
-            .exact_special_names
-            .contains(name)
-        {
+    pub(crate) fn define_exact_in(&self, name: &str, value: Value, environment: &Environment) {
+        let is_special = {
+            let dynamic = self.dynamic.borrow();
+            dynamic.exact_special_names.contains(name)
+                || dynamic
+                    .scoped_exact_special_names
+                    .iter()
+                    .any(|special| special == name)
+        };
+        if is_special {
             self.dynamic
                 .borrow_mut()
                 .exact_bindings
@@ -508,12 +909,7 @@ impl Runtime {
         environment.define_exact(name, value);
     }
 
-    pub(crate) fn set_exact_in(
-        &self,
-        name: &str,
-        value: Value,
-        environment: &Environment,
-    ) -> bool {
+    pub(crate) fn set_exact_in(&self, name: &str, value: Value, environment: &Environment) -> bool {
         {
             let mut dynamic = self.dynamic.borrow_mut();
             if let Some(index) = dynamic
@@ -530,7 +926,12 @@ impl Runtime {
                 dynamic.exact_bindings[index].1 = value;
                 return true;
             }
-            if dynamic.exact_special_names.contains(name) {
+            if dynamic.exact_special_names.contains(name)
+                || dynamic
+                    .scoped_exact_special_names
+                    .iter()
+                    .any(|special| special == name)
+            {
                 if dynamic.exact_constants.contains(name) {
                     return false;
                 }
@@ -546,6 +947,25 @@ impl Runtime {
             state: self.dynamic.clone(),
             depth: self.dynamic.borrow().bindings.len(),
             exact_depth: self.dynamic.borrow().exact_bindings.len(),
+        }
+    }
+
+    pub(crate) fn special_declaration_guard(
+        &self,
+        names: &[String],
+        exact_names: &[String],
+    ) -> SpecialGuard {
+        let mut state = self.dynamic.borrow_mut();
+        let depth = state.scoped_special_names.len();
+        let exact_depth = state.scoped_exact_special_names.len();
+        state.scoped_special_names.extend(names.iter().cloned());
+        state
+            .scoped_exact_special_names
+            .extend(exact_names.iter().cloned());
+        SpecialGuard {
+            state: self.dynamic.clone(),
+            depth,
+            exact_depth,
         }
     }
 
@@ -607,7 +1027,10 @@ impl Runtime {
         let depth = state.condition_restart_bindings.len();
         state
             .condition_restart_bindings
-            .push(ConditionRestartBinding { condition, restarts });
+            .push(ConditionRestartBinding {
+                condition,
+                restarts,
+            });
         ConditionRestartGuard {
             state: self.dynamic.clone(),
             depth,
@@ -676,6 +1099,22 @@ impl Runtime {
             .push((binding_name, value));
     }
 
+    pub(crate) fn define_dynamic_exact(&self, name: &str, value: Value) {
+        self.dynamic
+            .borrow_mut()
+            .exact_bindings
+            .push((name.to_string(), value));
+    }
+
+    pub(crate) fn declare_special(&self, name: &str, escaped: bool) {
+        let mut dynamic = self.dynamic.borrow_mut();
+        if escaped {
+            dynamic.exact_special_names.insert(name.to_string());
+        } else {
+            dynamic.special_names.insert(normalize_name(name));
+        }
+    }
+
     pub(crate) fn define_special_value(&self, name: &str, value: Value, force: bool) -> Value {
         let name = normalize_name(name);
         let mut dynamic = self.dynamic.borrow_mut();
@@ -702,7 +1141,9 @@ impl Runtime {
                 return existing.clone();
             }
         }
-        dynamic.exact_globals.insert(name.to_string(), value.clone());
+        dynamic
+            .exact_globals
+            .insert(name.to_string(), value.clone());
         value
     }
 
@@ -719,7 +1160,9 @@ impl Runtime {
         let mut dynamic = self.dynamic.borrow_mut();
         dynamic.exact_special_names.insert(name.to_string());
         dynamic.exact_constants.insert(name.to_string());
-        dynamic.exact_globals.insert(name.to_string(), value.clone());
+        dynamic
+            .exact_globals
+            .insert(name.to_string(), value.clone());
         value
     }
 
@@ -764,6 +1207,15 @@ impl Runtime {
                 name.eq_ignore_ascii_case("T")
                     || name.eq_ignore_ascii_case("NIL")
                     || self.is_constant_exact_in(name)
+            }
+            Value::QualifiedSymbolExact {
+                reference,
+                package_len,
+            } => {
+                let name = &reference[*package_len + 2..];
+                name.eq_ignore_ascii_case("T")
+                    || name.eq_ignore_ascii_case("NIL")
+                    || self.is_constant_exact_in(reference)
             }
             _ => false,
         }
@@ -844,7 +1296,9 @@ impl Runtime {
             return value;
         }
         dynamic.exact_special_names.insert(name.to_string());
-        dynamic.exact_globals.insert(name.to_string(), value.clone());
+        dynamic
+            .exact_globals
+            .insert(name.to_string(), value.clone());
         value
     }
 
@@ -938,7 +1392,7 @@ impl Runtime {
     ) -> Result<Option<Form>, RuntimeError> {
         let mut current = form.clone();
         let mut expanded = false;
-        let mut seen = HashSet::new();
+        let mut seen = HashSet::<String>::new();
 
         loop {
             let Some(atom) = atom_name(&current) else {
@@ -976,16 +1430,30 @@ impl Runtime {
             let expanded = self.expand_with_open_file(form)?;
             return self.prepare_compiled_form(&expanded, environment);
         }
+        if is_operator_form(form, "WITH-OPEN-STREAM") {
+            let expanded = self.expand_with_open_stream(form)?;
+            return self.prepare_compiled_form(&expanded, environment);
+        }
+        if is_operator_form(form, "WITH-OUTPUT-TO-STRING") {
+            let expanded = self.expand_with_output_to_string(form)?;
+            return self.prepare_compiled_form(&expanded, environment);
+        }
+        if is_operator_form(form, "WITH-INPUT-FROM-STRING") {
+            let expanded = self.expand_with_input_from_string(form)?;
+            return self.prepare_compiled_form(&expanded, environment);
+        }
+        if is_operator_form(form, "WITH-HASH-TABLE-ITERATOR") {
+            let expanded = self.expand_with_hash_table_iterator(form)?;
+            return self.prepare_compiled_form(&expanded, environment);
+        }
 
         if is_operator_form(form, "DEFMACRO")
             || is_operator_form(form, "DEFINE-MODIFY-MACRO")
             || is_operator_form(form, "DEFINE-SETF-EXPANDER")
             || is_operator_form(form, "DEFINE-SYMBOL-MACRO")
-            || is_operator_form(form, "MACROEXPAND-1")
-            || is_operator_form(form, "MACROEXPAND")
-            || is_operator_form(form, "LOAD-TIME-VALUE")
             || is_operator_form(form, "DEFPACKAGE")
             || is_operator_form(form, "IN-PACKAGE")
+            || Self::is_static_macroexpand_form(form)
         {
             let value = self.eval_values_in(form, environment)?;
             return self.quoted_value_form(&value, form.span);
@@ -998,21 +1466,93 @@ impl Runtime {
         }
     }
 
-    fn prepare_compiled_macrolet(
-        &self,
-        form: &Form,
-        environment: &Environment,
-    ) -> Result<Form, RuntimeError> {
+    fn is_static_macroexpand_form(form: &Form) -> bool {
         let FormKind::List(items) = &form.kind else {
-            return Ok(form.clone());
+            return false;
         };
-        if items.len() < 2 {
-            return Err(self.arity("macrolet", "at least one", items.len().saturating_sub(1)));
+        if !(2..=3).contains(&items.len()) {
+            return false;
         }
-        let FormKind::List(bindings) = &items[1].kind else {
-            return Err(self.invalid("local macro bindings must be a list", items[1].span));
+        let Some(operator) = items.first().and_then(atom_name) else {
+            return false;
         };
+        if !matches!(
+            normalize_name(operator).as_str(),
+            "MACROEXPAND" | "MACROEXPAND-1"
+        ) {
+            return false;
+        }
+        let FormKind::List(argument) = &items[1].kind else {
+            return false;
+        };
+        argument
+            .first()
+            .and_then(atom_name)
+            .is_some_and(|name| normalize_name(name) == "QUOTE")
+    }
 
+    fn inject_macrolet_environment(form: &Form, bindings: &Form) -> Form {
+        match &form.kind {
+            FormKind::Atom(_)
+            | FormKind::String(_)
+            | FormKind::Character(_)
+            | FormKind::Complex { .. }
+            | FormKind::BitVector(_)
+            | FormKind::ReadTimeEval(_) => form.clone(),
+            FormKind::List(items) => {
+                if let Some(operator) = items.first().and_then(atom_name) {
+                    let name = normalize_name(operator);
+                    if matches!(name.as_str(), "MACROEXPAND" | "MACROEXPAND-1" | "EVAL")
+                        && items.len() == 2
+                    {
+                        let environment_form = Form::list(
+                            vec![
+                                Form::atom("NCL-MACRO-ENVIRONMENT", form.span),
+                                bindings.clone(),
+                            ],
+                            form.span,
+                        );
+                        let mut rewritten = items.clone();
+                        rewritten.push(environment_form);
+                        return Form::list(rewritten, form.span);
+                    }
+                    if matches!(name.as_str(), "QUOTE" | "QUASIQUOTE") {
+                        return form.clone();
+                    }
+                }
+                Form::list(
+                    items
+                        .iter()
+                        .map(|item| Self::inject_macrolet_environment(item, bindings))
+                        .collect(),
+                    form.span,
+                )
+            }
+            FormKind::DottedList { items, tail } => Form::dotted_list(
+                items
+                    .iter()
+                    .map(|item| Self::inject_macrolet_environment(item, bindings))
+                    .collect(),
+                Self::inject_macrolet_environment(tail, bindings),
+                form.span,
+            ),
+            FormKind::Vector(items) => Form::new(
+                FormKind::Vector(
+                    items
+                        .iter()
+                        .map(|item| Self::inject_macrolet_environment(item, bindings))
+                        .collect(),
+                ),
+                form.span,
+            ),
+        }
+    }
+
+    pub(crate) fn make_macrolet_environment(
+        &self,
+        bindings: &[Form],
+        environment: &Environment,
+    ) -> Result<Environment, RuntimeError> {
         let local = environment.child();
         let captured = environment.clone();
         let mut names = HashSet::new();
@@ -1032,24 +1572,49 @@ impl Runtime {
                 return Err(self.invalid("local macro names must be unique", parts[0].span));
             }
             let lambda_list = self.macro_parameters(&parts[1])?;
-            let function = Value::macro_function(
-                lambda_list,
-                parts[2..].to_vec(),
-                captured.clone(),
-            );
+            let function =
+                Value::macro_function(lambda_list, parts[2..].to_vec(), captured.clone());
             if escaped {
-                local.define_exact(name, function);
+                local.define_function_exact(name, function);
             } else {
-                local.define(name, function);
+                local.define_function(name, function);
             }
         }
+        Ok(local)
+    }
+
+    fn prepare_compiled_macrolet(
+        &self,
+        form: &Form,
+        environment: &Environment,
+    ) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity("macrolet", "at least one", items.len().saturating_sub(1)));
+        }
+        let FormKind::List(bindings) = &items[1].kind else {
+            return Err(self.invalid("local macro bindings must be a list", items[1].span));
+        };
+
+        let local = self.make_macrolet_environment(bindings, environment)?;
 
         let mut prepared = Vec::with_capacity(items.len().saturating_sub(2) + 1);
         prepared.push(Form::atom("PROGN", form.span));
         for body_form in &items[2..] {
-            prepared.push(self.prepare_compiled_form(body_form, &local)?);
+            let prepared_form = self.prepare_compiled_form(body_form, &local)?;
+            prepared.push(Self::inject_macrolet_environment(&prepared_form, &items[1]));
         }
-        Ok(Form::list(prepared, form.span))
+        let body = Form::list(prepared, form.span);
+        Ok(Form::list(
+            vec![
+                Form::atom("NCL-MACROLET-ENVIRONMENT", form.span),
+                items[1].clone(),
+                body,
+            ],
+            form.span,
+        ))
     }
 
     fn prepare_compiled_symbol_macrolet(
@@ -1068,20 +1633,14 @@ impl Runtime {
             ));
         }
         let FormKind::List(bindings) = &items[1].kind else {
-            return Err(self.invalid(
-                "symbol macro bindings must be a list",
-                items[1].span,
-            ));
+            return Err(self.invalid("symbol macro bindings must be a list", items[1].span));
         };
 
         let local = environment.child();
         let mut names = HashSet::new();
         for binding in bindings {
             let FormKind::List(parts) = &binding.kind else {
-                return Err(self.invalid(
-                    "symbol macro binding must be a list",
-                    binding.span,
-                ));
+                return Err(self.invalid("symbol macro binding must be a list", binding.span));
             };
             if parts.len() != 2 {
                 return Err(self.invalid(
@@ -1089,15 +1648,10 @@ impl Runtime {
                     binding.span,
                 ));
             }
-            let (name, escaped) = self.variable_name_info(
-                &parts[0],
-                "symbol macro name must be a symbol",
-            )?;
+            let (name, escaped) =
+                self.variable_name_info(&parts[0], "symbol macro name must be a symbol")?;
             if !names.insert((name.clone(), escaped)) {
-                return Err(self.invalid(
-                    "symbol macro names must be unique",
-                    parts[0].span,
-                ));
+                return Err(self.invalid("symbol macro names must be unique", parts[0].span));
             }
             if escaped {
                 local.define_symbol_macro_exact(name, parts[1].clone());
@@ -1142,6 +1696,7 @@ impl Runtime {
             | "DEFMETHOD"
             | "DEFSETF"
             | "DEFINE-MODIFY-MACRO"
+            | "DEFINE-CONDITION"
             | "DEFCONSTANT" => return Ok(form.clone()),
             "THE" => {
                 self.prepare_tail(&mut prepared, 2, environment)?;
@@ -1233,19 +1788,14 @@ impl Runtime {
                 self.prepare_tail(&mut prepared, 3, environment)?;
             }
             "MULTIPLE-VALUE-SETQ" => {
-                return self.prepare_compiled_multiple_value_setq(
-                    form,
-                    &prepared,
-                    environment,
-                );
+                return self.prepare_compiled_multiple_value_setq(form, &prepared, environment);
             }
             "LAMBDA" => {
                 if prepared.len() > 1 {
                     let parameter_form = prepared[1].clone();
                     let local =
                         self.prepare_compiled_lambda_environment(&parameter_form, environment)?;
-                    prepared[1] =
-                        self.prepare_compiled_lambda_list(&parameter_form, &local)?;
+                    prepared[1] = self.prepare_compiled_lambda_list(&parameter_form, &local)?;
                     self.prepare_tail(&mut prepared, 2, &local)?;
                 } else {
                     self.prepare_tail(&mut prepared, 2, environment)?;
@@ -1256,8 +1806,7 @@ impl Runtime {
                     let parameter_form = prepared[2].clone();
                     let local =
                         self.prepare_compiled_lambda_environment(&parameter_form, environment)?;
-                    prepared[2] =
-                        self.prepare_compiled_lambda_list(&parameter_form, &local)?;
+                    prepared[2] = self.prepare_compiled_lambda_list(&parameter_form, &local)?;
                     self.prepare_tail(&mut prepared, 3, &local)?;
                 } else {
                     self.prepare_tail(&mut prepared, 3, environment)?;
@@ -1273,7 +1822,7 @@ impl Runtime {
                     *clause = self.prepare_cond_clause(clause, environment)?;
                 }
             }
-            "CASE" | "ECASE" | "TYPECASE" | "ETYPECASE" => {
+            "CASE" | "ECASE" | "CCASE" | "TYPECASE" | "ETYPECASE" | "CTYPECASE" => {
                 if prepared.len() > 1 {
                     prepared[1] = self.prepare_compiled_form(&items[1], environment)?;
                 }
@@ -1622,9 +2171,7 @@ impl Runtime {
         let temporaries = variable_forms
             .iter()
             .enumerate()
-            .map(|(index, variable)| {
-                self.symbol_macro_temporary(form, index, variable.span)
-            })
+            .map(|(index, variable)| self.symbol_macro_temporary(form, index, variable.span))
             .collect::<Vec<_>>();
         let mut body = Vec::with_capacity(variable_forms.len() + 1);
         for ((variable, expansion), temporary) in variable_forms
@@ -1636,7 +2183,11 @@ impl Runtime {
             let target = expansion.unwrap_or_else(|| variable.clone());
             let operator = if is_symbol_macro { "SETF" } else { "SETQ" };
             body.push(Form::list(
-                vec![Form::atom(operator, variable.span), target, temporary.clone()],
+                vec![
+                    Form::atom(operator, variable.span),
+                    target,
+                    temporary.clone(),
+                ],
                 variable.span,
             ));
         }
@@ -1714,12 +2265,11 @@ impl Runtime {
             let mut prepared_parts = parts.to_vec();
             if prepared_parts.len() > 1 {
                 let parameter_form = parts[1].clone();
-                let local = self.prepare_compiled_lambda_environment(&parameter_form, environment)?;
-                prepared_parts[1] =
-                    self.prepare_compiled_lambda_list(&parameter_form, &local)?;
+                let local =
+                    self.prepare_compiled_lambda_environment(&parameter_form, environment)?;
+                prepared_parts[1] = self.prepare_compiled_lambda_list(&parameter_form, &local)?;
                 for index in 2..prepared_parts.len() {
-                    prepared_parts[index] =
-                        self.prepare_compiled_form(&parts[index], &local)?;
+                    prepared_parts[index] = self.prepare_compiled_form(&parts[index], &local)?;
                 }
             } else {
                 for index in 2..prepared_parts.len() {
@@ -1964,6 +2514,18 @@ impl Runtime {
             }
             FormKind::String(value) => Ok(Value::string(value.clone())),
             FormKind::Character(value) => Ok(Value::Character(*value)),
+            FormKind::Complex { .. } => self.quoted_value(form),
+            FormKind::ReadTimeEval(_) => Err(self.invalid(
+                "read-time evaluation must be resolved before evaluation",
+                form.span,
+            )),
+            FormKind::BitVector(bits) => Ok(Value::array_with_element_type(
+                vec![bits.len()],
+                bits.iter()
+                    .map(|bit| Value::Integer(i64::from(*bit)))
+                    .collect(),
+                ArrayElementType::Bit,
+            )),
             FormKind::Vector(items) => Ok(Value::vector(
                 items
                     .iter()
@@ -1992,11 +2554,10 @@ impl Runtime {
         } else {
             self.lookup_in(&name, environment)
         };
-        value
-            .ok_or_else(|| RuntimeError::UnboundVariable {
-                name: normalize_name(&name),
-                span: Some(span),
-            })
+        value.ok_or_else(|| RuntimeError::UnboundVariable {
+            name: normalize_name(&name),
+            span: Some(span),
+        })
     }
 
     fn eval_list_values(
@@ -2027,136 +2588,162 @@ impl Runtime {
                 .unwrap_or(false);
             if !escaped {
                 match normalize_name(name).as_str() {
-                "QUOTE" => return self.special_quote(items, form.span),
-                "QUASIQUOTE" => return self.special_quasiquote(items, environment),
-                "DECLARE" => return Ok(Value::Nil),
-                "LOCALLY" => return self.special_locally(items, environment),
-                "EVAL-WHEN" => return self.special_eval_when(items, environment),
-                "DECLAIM" | "PROCLAIM" => return Ok(Value::Nil),
-                "THE" => return self.special_the(items, environment),
-                "LOAD-TIME-VALUE" => {
-                    return self.special_load_time_value(items, environment);
-                }
-                "NTH-VALUE" => return self.special_nth_value(items, environment),
-                "IF" => return self.special_if(items, environment),
-                "PROGN" => return self.special_progn(&items[1..], environment),
-                "PROG1" => return self.special_prog1(items, environment),
-                "PROG2" => return self.special_prog2(items, environment),
-                "PROG" => return self.special_prog(items, environment, false),
-                "PROG*" => return self.special_prog(items, environment, true),
-                "VALUES" => return self.special_values(items, environment),
-                "IGNORE-ERRORS" => return self.special_ignore_errors(items, environment),
-                "HANDLER-CASE" => return self.special_handler_case(items, environment),
-                "HANDLER-BIND" => return self.special_handler_bind(items, environment),
-                "RESTART-BIND" => return self.special_restart_bind(items, environment),
-                "CATCH" => return self.special_catch(items, environment),
-                "PROGV" => return self.special_progv(items, environment),
-                "THROW" => return self.special_throw(items, environment),
-                "WITH-CONDITION-RESTARTS" => {
-                    return self.special_with_condition_restarts(items, environment);
-                }
-                "WITH-SIMPLE-RESTART" => {
-                    return self.special_with_simple_restart(items, environment);
-                }
-                "WITH-OPEN-FILE" => {
-                    let expanded = self.expand_with_open_file(form)?;
-                    return self.eval_expanded_values(&expanded, environment);
-                }
-                "RESTART-CASE" => return self.special_restart_case(items, environment),
-                "UNWIND-PROTECT" => {
-                    return self.special_unwind_protect(items, environment);
-                }
-                "BLOCK" => return self.special_block(items, environment),
-                "RETURN" => return self.special_return(items, environment),
-                "RETURN-FROM" => return self.special_return_from(items, environment),
-                "TAGBODY" => return self.special_tagbody(items, environment),
-                "GO" => return self.special_go(items, environment),
-                "MULTIPLE-VALUE-BIND" => {
-                    return self.special_multiple_value_bind(items, environment);
-                }
-                "MULTIPLE-VALUE-CALL" => {
-                    return self.special_multiple_value_call(items, environment);
-                }
-                "MULTIPLE-VALUE-LIST" => {
-                    return self.special_multiple_value_list(items, environment);
-                }
-                "MULTIPLE-VALUE-PROG1" => {
-                    return self.special_multiple_value_prog1(items, environment);
-                }
-                "AND" => return self.special_and(&items[1..], environment),
-                "OR" => return self.special_or(&items[1..], environment),
-                "WHEN" => return self.special_when(items, environment, true),
-                "UNLESS" => return self.special_when(items, environment, false),
-                "COND" => return self.special_cond(&items[1..], environment),
-                "CASE" => return self.special_case(items, environment, false),
-                "ECASE" => return self.special_case(items, environment, true),
-                "TYPECASE" => return self.special_typecase(items, environment, false),
-                "ETYPECASE" => return self.special_typecase(items, environment, true),
-                "DESTRUCTURING-BIND" => {
-                    return self.special_destructuring_bind(items, environment);
-                }
-                "LET" => return self.special_let(items, environment, false),
-                "LET*" => return self.special_let(items, environment, true),
-                "FLET" => return self.special_flet(items, environment, false),
-                "LABELS" => return self.special_flet(items, environment, true),
-                "MACROLET" => return self.special_macrolet(items, environment),
-                "SYMBOL-MACROLET" => return self.special_symbol_macrolet(items, environment),
-                "DOTIMES" => return self.special_dotimes(items, environment),
-                "DOLIST" => return self.special_dolist(items, environment),
-                "DO" => return self.special_do(items, environment, false),
-                "DO*" => return self.special_do(items, environment, true),
-                "LAMBDA" => return self.special_lambda(items, environment),
-                "FUNCTION" => return self.special_function(items, environment),
-                "DEFUN" => return self.special_defun(items, environment),
-                "DEFMACRO" => return self.special_defmacro(items, environment),
-                "DEFINE-MODIFY-MACRO" => {
-                    return self.special_define_modify_macro(items, environment);
-                }
-                "MACROEXPAND-1" => return self.special_macroexpand_1(items, environment),
-                "MACROEXPAND" => return self.special_macroexpand(items, environment),
-                "DEFPACKAGE" => return self.special_defpackage(items),
-                "IN-PACKAGE" => return self.special_in_package(items),
-                "DEFINE" => return self.special_define(items, environment),
-                "DEFINE-SYMBOL-MACRO" => {
-                    return self.special_define_symbol_macro(items, environment);
-                }
-                "SETQ" => return self.special_setq(items, environment),
-                "PSETQ" => return self.special_psetq(items, environment),
-                "MULTIPLE-VALUE-SETQ" => {
-                    return self.special_multiple_value_setq(items, environment);
-                }
-                "SETF" => return self.special_setf(items, environment),
-                "PSETF" => return self.special_psetf(items, environment),
-                "PUSH" => return self.special_push(items, environment),
-                "POP" => return self.special_pop(items, environment),
-                "PUSHNEW" => return self.special_pushnew(items, environment),
-                "ROTATEF" => return self.special_rotatef(items, environment),
-                "SHIFTF" => return self.special_shiftf(items, environment),
-                "INCF" => {
-                    return self.special_modify_symbol(items, environment, "INCF", "+");
-                }
-                "DECF" => {
-                    return self.special_modify_symbol(items, environment, "DECF", "-");
-                }
-                "DEFSTRUCT" => return self.special_defstruct(items, environment),
-                "DEFCLASS" => return self.special_defclass(items, environment),
-                "DEFGENERIC" => return self.special_defgeneric(items, environment),
-                "DEFMETHOD" => return self.special_defmethod(items, environment),
-                "DEFSETF" => return self.special_defsetf(items, environment),
-                "DEFINE-SETF-EXPANDER" => {
-                    return self.special_define_setf_expander(items, environment);
-                }
-                "GET-SETF-EXPANSION" => {
-                    return self.special_get_setf_expansion(items, environment);
-                }
-                "DEFVAR" => return self.special_defvar(items, environment, false),
-                "DEFPARAMETER" => return self.special_defvar(items, environment, true),
-                "DEFCONSTANT" => return self.special_defconstant(items, environment),
-                "EVAL" => return self.special_eval(items, environment),
-                "FUNCALL" => return self.special_funcall(items, environment),
-                "APPLY" => return self.special_apply(items, environment),
-                "MAP-INTO" => return self.special_map_into(items, environment),
-                "MAPCAR" => return self.special_mapcar(items, environment),
+                    "QUOTE" => return self.special_quote(items, form.span),
+                    "QUASIQUOTE" => return self.special_quasiquote(items, environment),
+                    "DECLARE" => return Ok(Value::Nil),
+                    "LOCALLY" => return self.special_locally(items, environment),
+                    "EVAL-WHEN" => return self.special_eval_when(items, environment),
+                    "DECLAIM" => return self.special_global_declaration(items, environment, false),
+                    "PROCLAIM" => return self.special_global_declaration(items, environment, true),
+                    "THE" => return self.special_the(items, environment),
+                    "LOAD-TIME-VALUE" => {
+                        return self.special_load_time_value(items, environment);
+                    }
+                    "NTH-VALUE" => return self.special_nth_value(items, environment),
+                    "IF" => return self.special_if(items, environment),
+                    "PROGN" => return self.special_progn(&items[1..], environment),
+                    "PROG1" => return self.special_prog1(items, environment),
+                    "PROG2" => return self.special_prog2(items, environment),
+                    "PROG" => return self.special_prog(items, environment, false),
+                    "PROG*" => return self.special_prog(items, environment, true),
+                    "VALUES" => return self.special_values(items, environment),
+                    "IGNORE-ERRORS" => return self.special_ignore_errors(items, environment),
+                    "HANDLER-CASE" => return self.special_handler_case(items, environment),
+                    "HANDLER-BIND" => return self.special_handler_bind(items, environment),
+                    "RESTART-BIND" => return self.special_restart_bind(items, environment),
+                    "CATCH" => return self.special_catch(items, environment),
+                    "PROGV" => return self.special_progv(items, environment),
+                    "THROW" => return self.special_throw(items, environment),
+                    "WITH-CONDITION-RESTARTS" => {
+                        return self.special_with_condition_restarts(items, environment);
+                    }
+                    "WITH-SIMPLE-RESTART" => {
+                        return self.special_with_simple_restart(items, environment);
+                    }
+                    "WITH-OPEN-FILE" => {
+                        let expanded = self.expand_with_open_file(form)?;
+                        return self.eval_expanded_values(&expanded, environment);
+                    }
+                    "WITH-OPEN-STREAM" => {
+                        let expanded = self.expand_with_open_stream(form)?;
+                        return self.eval_expanded_values(&expanded, environment);
+                    }
+                    "WITH-OUTPUT-TO-STRING" => {
+                        let expanded = self.expand_with_output_to_string(form)?;
+                        return self.eval_expanded_values(&expanded, environment);
+                    }
+                    "WITH-INPUT-FROM-STRING" => {
+                        let expanded = self.expand_with_input_from_string(form)?;
+                        return self.eval_expanded_values(&expanded, environment);
+                    }
+                    "WITH-HASH-TABLE-ITERATOR" => {
+                        let expanded = self.expand_with_hash_table_iterator(form)?;
+                        return self.eval_expanded_values(&expanded, environment);
+                    }
+                    "RESTART-CASE" => return self.special_restart_case(items, environment),
+                    "UNWIND-PROTECT" => {
+                        return self.special_unwind_protect(items, environment);
+                    }
+                    "BLOCK" => return self.special_block(items, environment),
+                    "RETURN" => return self.special_return(items, environment),
+                    "RETURN-FROM" => return self.special_return_from(items, environment),
+                    "TAGBODY" => return self.special_tagbody(items, environment),
+                    "GO" => return self.special_go(items, environment),
+                    "MULTIPLE-VALUE-BIND" => {
+                        return self.special_multiple_value_bind(items, environment);
+                    }
+                    "MULTIPLE-VALUE-CALL" => {
+                        return self.special_multiple_value_call(items, environment);
+                    }
+                    "MULTIPLE-VALUE-LIST" => {
+                        return self.special_multiple_value_list(items, environment);
+                    }
+                    "MULTIPLE-VALUE-PROG1" => {
+                        return self.special_multiple_value_prog1(items, environment);
+                    }
+                    "AND" => return self.special_and(&items[1..], environment),
+                    "OR" => return self.special_or(&items[1..], environment),
+                    "WHEN" => return self.special_when(items, environment, true),
+                    "UNLESS" => return self.special_when(items, environment, false),
+                    "COND" => return self.special_cond(&items[1..], environment),
+                    "CASE" => return self.special_case(items, environment, false),
+                    "ECASE" => return self.special_case(items, environment, true),
+                    "CCASE" => return self.special_change_case(items, environment, false),
+                    "TYPECASE" => return self.special_typecase(items, environment, false),
+                    "ETYPECASE" => return self.special_typecase(items, environment, true),
+                    "CTYPECASE" => return self.special_change_case(items, environment, true),
+                    "DESTRUCTURING-BIND" => {
+                        return self.special_destructuring_bind(items, environment);
+                    }
+                    "LET" => return self.special_let(items, environment, false),
+                    "LET*" => return self.special_let(items, environment, true),
+                    "FLET" => return self.special_flet(items, environment, false),
+                    "LABELS" => return self.special_flet(items, environment, true),
+                    "MACROLET" => return self.special_macrolet(items, environment),
+                    "SYMBOL-MACROLET" => return self.special_symbol_macrolet(items, environment),
+                    "NCL-MACRO-ENVIRONMENT" => {
+                        return self.special_macrolet_environment(items, environment);
+                    }
+                    "DOTIMES" => return self.special_dotimes(items, environment),
+                    "DOLIST" => return self.special_dolist(items, environment),
+                    "DO" => return self.special_do(items, environment, false),
+                    "DO*" => return self.special_do(items, environment, true),
+                    "LAMBDA" => return self.special_lambda(items, environment),
+                    "FUNCTION" => return self.special_function(items, environment),
+                    "DEFUN" => return self.special_defun(items, environment),
+                    "DEFMACRO" => return self.special_defmacro(items, environment),
+                    "DEFINE-MODIFY-MACRO" => {
+                        return self.special_define_modify_macro(items, environment);
+                    }
+                    "MACROEXPAND-1" => return self.special_macroexpand_1(items, environment),
+                    "MACROEXPAND" => return self.special_macroexpand(items, environment),
+                    "DEFPACKAGE" => return self.special_defpackage(items),
+                    "IN-PACKAGE" => return self.special_in_package(items),
+                    "DEFINE" => return self.special_define(items, environment),
+                    "DEFINE-SYMBOL-MACRO" => {
+                        return self.special_define_symbol_macro(items, environment);
+                    }
+                    "SETQ" => return self.special_setq(items, environment),
+                    "PSETQ" => return self.special_psetq(items, environment),
+                    "MULTIPLE-VALUE-SETQ" => {
+                        return self.special_multiple_value_setq(items, environment);
+                    }
+                    "SETF" => return self.special_setf(items, environment),
+                    "PSETF" => return self.special_psetf(items, environment),
+                    "PUSH" => return self.special_push(items, environment),
+                    "POP" => return self.special_pop(items, environment),
+                    "PUSHNEW" => return self.special_pushnew(items, environment),
+                    "ROTATEF" => return self.special_rotatef(items, environment),
+                    "SHIFTF" => return self.special_shiftf(items, environment),
+                    "INCF" => {
+                        return self.special_modify_symbol(items, environment, "INCF", "+");
+                    }
+                    "DECF" => {
+                        return self.special_modify_symbol(items, environment, "DECF", "-");
+                    }
+                    "DEFSTRUCT" => return self.special_defstruct(items, environment),
+                    "DEFCLASS" => return self.special_defclass(items, environment),
+                    "DEFINE-CONDITION" => {
+                        return conditions::define_condition(self, items, environment);
+                    }
+                    "DEFGENERIC" => return self.special_defgeneric(items, environment),
+                    "DEFMETHOD" => return self.special_defmethod(items, environment),
+                    "DEFSETF" => return self.special_defsetf(items, environment),
+                    "DEFINE-SETF-EXPANDER" => {
+                        return self.special_define_setf_expander(items, environment);
+                    }
+                    "GET-SETF-EXPANSION" => {
+                        return self.special_get_setf_expansion(items, environment);
+                    }
+                    "DEFVAR" => return self.special_defvar(items, environment, false),
+                    "DEFPARAMETER" => return self.special_defvar(items, environment, true),
+                    "DEFCONSTANT" => return self.special_defconstant(items, environment),
+                    "EVAL" => return self.special_eval(items, environment),
+                    "FUNCALL" => return self.special_funcall(items, environment),
+                    "APPLY" => return self.special_apply(items, environment),
+                    "MAP-INTO" => return self.special_map_into(items, environment),
+                    "MAPHASH" => return self.special_maphash(items, environment),
+                    "MAPCAR" => return self.special_mapcar(items, environment),
                     _ => {}
                 }
             }
@@ -2165,19 +2752,17 @@ impl Runtime {
         let function = if let Some(name) = atom_name(operator) {
             let (resolved_name, escaped) = resolved_symbol(name);
             let function = if escaped {
-                self.lookup_function_exact_in(&resolved_name, environment)
+                self.lookup_callable_exact_in(&resolved_name, environment)
             } else {
-                self.lookup_function_in(&resolved_name, environment)
+                self.lookup_callable_in(&resolved_name, environment)
             };
-            function.ok_or_else(|| {
-                RuntimeError::UnboundVariable {
-                    name: if escaped {
-                        resolved_name
-                    } else {
-                        normalize_name(&resolved_name)
-                    },
-                    span: Some(operator.span),
-                }
+            function.ok_or_else(|| RuntimeError::UnboundVariable {
+                name: if escaped {
+                    resolved_name
+                } else {
+                    normalize_name(&resolved_name)
+                },
+                span: Some(operator.span),
             })?
         } else {
             self.eval_in(operator, environment)?
@@ -2228,20 +2813,16 @@ impl Runtime {
         let function = if escaped {
             self.lookup_function_exact_in(&resolved_name, environment)
         } else {
-            self.lookup_in(&resolved_name, environment)
+            self.lookup_function_in(&resolved_name, environment)
         };
         let Some(function) = function else {
             if !escaped {
                 match normalize_name(&resolved_name).as_str() {
                     "WITH-SLOTS" => {
-                        return self
-                            .expand_builtin_with_slots(form, false)
-                            .map(Some);
+                        return self.expand_builtin_with_slots(form, false).map(Some);
                     }
                     "WITH-ACCESSORS" => {
-                        return self
-                            .expand_builtin_with_slots(form, true)
-                            .map(Some);
+                        return self.expand_builtin_with_slots(form, true).map(Some);
                     }
                     _ => {}
                 }
@@ -2357,27 +2938,41 @@ impl Runtime {
             if keyword_arguments.len() % 2 != 0 {
                 return Err(self.invalid("keyword arguments must be supplied in pairs", form.span));
             }
-            let mut supplied = HashMap::new();
+            let mut supplied = Vec::new();
             let mut accepts_unknown_keywords = lambda_list.allow_other_keys;
             for pair in keyword_arguments.chunks_exact(2) {
-                let Some(keyword_name) = macro_keyword_name(&pair[0]) else {
+                let Some((keyword_name, keyword_name_escaped)) = macro_keyword_name(&pair[0])
+                else {
                     return Err(
                         self.invalid("keyword argument name must be a keyword", pair[0].span)
                     );
                 };
-                if keyword_name == "ALLOW-OTHER-KEYS" && self.quoted_value(&pair[1])?.is_truthy() {
+                if macro_keyword_matches(
+                    "ALLOW-OTHER-KEYS",
+                    false,
+                    &keyword_name,
+                    keyword_name_escaped,
+                ) && self.quoted_value(&pair[1])?.is_truthy()
+                {
                     accepts_unknown_keywords = true;
                 }
-                supplied.insert(keyword_name, pair[1].clone());
+                supplied.push((keyword_name, keyword_name_escaped, pair[1].clone()));
             }
             if !accepts_unknown_keywords {
-                for keyword_name in supplied.keys() {
-                    if keyword_name != "ALLOW-OTHER-KEYS"
-                        && !lambda_list
-                            .keywords
-                            .iter()
-                            .any(|specification| specification.keyword_name == *keyword_name)
-                    {
+                for (keyword_name, keyword_name_escaped, _) in &supplied {
+                    if !macro_keyword_matches(
+                        "ALLOW-OTHER-KEYS",
+                        false,
+                        keyword_name,
+                        *keyword_name_escaped,
+                    ) && !lambda_list.keywords.iter().any(|specification| {
+                        macro_keyword_matches(
+                            &specification.keyword_name,
+                            specification.keyword_name_escaped,
+                            keyword_name,
+                            *keyword_name_escaped,
+                        )
+                    }) {
                         return Err(RuntimeError::InvalidForm {
                             message: format!("unknown keyword :{keyword_name}"),
                             span: Some(form.span),
@@ -2392,10 +2987,14 @@ impl Runtime {
 
         let local = macro_environment.child();
         if let Some(environment_name) = &lambda_list.environment {
-            local.define(environment_name, Value::environment(environment.clone()));
+            self.define_macro_binding_in(
+                environment_name,
+                Value::environment(environment.clone()),
+                &local,
+            );
         }
         if let Some(whole) = &lambda_list.whole {
-            local.define(whole, self.quoted_value(form)?);
+            self.define_macro_binding_in(whole, self.quoted_value(form)?, &local);
         }
         for (pattern, argument) in lambda_list
             .required
@@ -2413,7 +3012,11 @@ impl Runtime {
             };
             self.bind_macro_pattern(&specification.pattern, value, &local, form.span)?;
             if let Some(supplied_p) = &specification.supplied_p {
-                local.define(supplied_p, Value::boolean(supplied.is_some()));
+                self.define_macro_binding_in(
+                    supplied_p,
+                    Value::boolean(supplied.is_some()),
+                    &local,
+                );
             }
         }
         if let Some(rest_name) = &lambda_list.rest {
@@ -2421,25 +3024,39 @@ impl Runtime {
                 .iter()
                 .map(|argument| self.quoted_value(argument))
                 .collect::<Result<Vec<_>, _>>()?;
-            local.define(rest_name, Value::list(rest_values));
+            self.define_macro_binding_in(rest_name, Value::list(rest_values), &local);
         }
 
         if let Some(supplied_keywords) = keyword_arguments {
             for specification in &lambda_list.keywords {
-                let supplied = supplied_keywords.get(&specification.keyword_name);
+                let supplied = supplied_keywords
+                    .iter()
+                    .find(|(keyword_name, keyword_name_escaped, _)| {
+                        macro_keyword_matches(
+                            &specification.keyword_name,
+                            specification.keyword_name_escaped,
+                            keyword_name,
+                            *keyword_name_escaped,
+                        )
+                    })
+                    .map(|(_, _, argument)| argument);
                 let value = match supplied {
                     Some(argument) => self.quoted_value(argument)?,
                     None => self.eval_in(&specification.init_form, &local)?,
                 };
                 self.bind_macro_pattern(&specification.pattern, value, &local, form.span)?;
                 if let Some(supplied_p) = &specification.supplied_p {
-                    local.define(supplied_p, Value::boolean(supplied.is_some()));
+                    self.define_macro_binding_in(
+                        supplied_p,
+                        Value::boolean(supplied.is_some()),
+                        &local,
+                    );
                 }
             }
         }
         for specification in &lambda_list.auxiliary {
             let value = self.eval_in(&specification.init_form, &local)?;
-            local.define(&specification.name, value);
+            self.define_macro_binding_in(&specification.name, value, &local);
         }
 
         Ok(local)
@@ -2464,17 +3081,16 @@ impl Runtime {
             environment,
         )?;
         let Some(MacroPattern::Name(place_name)) = lambda_list.required.first() else {
-            return Err(self.invalid(
-                "define-modify-macro requires a place parameter",
-                form.span,
-            ));
+            return Err(self.invalid("define-modify-macro requires a place parameter", form.span));
         };
-        let place_value = self.lookup_in(place_name, &local).ok_or_else(|| {
-            self.invalid(
-                "define-modify-macro could not bind its place parameter",
-                form.span,
-            )
-        })?;
+        let place_value = self
+            .lookup_macro_binding_in(place_name, &local)
+            .ok_or_else(|| {
+                self.invalid(
+                    "define-modify-macro could not bind its place parameter",
+                    form.span,
+                )
+            })?;
         let place = self.form_from_value(&place_value, form.span)?;
         let expansion = self.get_modify_macro_setf_expansion(&place, environment)?;
 
@@ -2498,7 +3114,7 @@ impl Runtime {
                     form.span,
                 ));
             };
-            let value = self.lookup_in(name, &local).ok_or_else(|| {
+            let value = self.lookup_macro_binding_in(name, &local).ok_or_else(|| {
                 self.invalid("define-modify-macro parameter is unbound", form.span)
             })?;
             call_items.push(self.form_from_value(&value, form.span)?);
@@ -2510,15 +3126,17 @@ impl Runtime {
                     form.span,
                 ));
             };
-            let value = self.lookup_in(name, &local).ok_or_else(|| {
+            let value = self.lookup_macro_binding_in(name, &local).ok_or_else(|| {
                 self.invalid("define-modify-macro parameter is unbound", form.span)
             })?;
             call_items.push(self.form_from_value(&value, form.span)?);
         }
         if let Some(rest_name) = &lambda_list.rest {
-            let rest_value = self.lookup_in(rest_name, &local).ok_or_else(|| {
-                self.invalid("define-modify-macro rest parameter is unbound", form.span)
-            })?;
+            let rest_value = self
+                .lookup_macro_binding_in(rest_name, &local)
+                .ok_or_else(|| {
+                    self.invalid("define-modify-macro rest parameter is unbound", form.span)
+                })?;
             let rest_values = rest_value.list_items().ok_or_else(|| {
                 self.invalid(
                     "define-modify-macro rest parameter is not a list",
@@ -2536,30 +3154,38 @@ impl Runtime {
                         form.span,
                     ));
                 };
-                let value = self.lookup_in(name, &local).ok_or_else(|| {
-                    self.invalid("define-modify-macro keyword parameter is unbound", form.span)
+                let value = self.lookup_macro_binding_in(name, &local).ok_or_else(|| {
+                    self.invalid(
+                        "define-modify-macro keyword parameter is unbound",
+                        form.span,
+                    )
                 })?;
-                call_items.push(Form::atom(
-                    format!(":{}", specification.keyword_name),
-                    form.span,
-                ));
+                let keyword = if specification.keyword_name_escaped {
+                    format!(":{}", escaped_symbol_atom(&specification.keyword_name))
+                } else {
+                    format!(":{}", specification.keyword_name)
+                };
+                call_items.push(Form::atom(keyword, form.span));
                 call_items.push(self.form_from_value(&value, form.span)?);
             }
         }
         let call = Form::list(call_items, form.span);
-        let store_binding = Form::list(
-            vec![expansion.store.clone(), call],
-            form.span,
-        );
+        if expansion.stores.is_empty() {
+            return Err(self.invalid(
+                "SETF expansion must provide at least one store variable",
+                form.span,
+            ));
+        }
         let update = Form::list(
             vec![
-                Form::atom("LET", form.span),
-                Form::list(vec![store_binding], form.span),
+                Form::atom("MULTIPLE-VALUE-BIND", form.span),
+                Form::list(expansion.stores.clone(), form.span),
+                call,
                 Form::list(
                     vec![
                         Form::atom("PROGN", form.span),
                         expansion.store_form.clone(),
-                        expansion.store.clone(),
+                        expansion.stores[0].clone(),
                     ],
                     form.span,
                 ),
@@ -2570,9 +3196,7 @@ impl Runtime {
             .temporaries
             .iter()
             .zip(expansion.values.iter())
-            .map(|(temporary, value)| {
-                Form::list(vec![temporary.clone(), value.clone()], form.span)
-            })
+            .map(|(temporary, value)| Form::list(vec![temporary.clone(), value.clone()], form.span))
             .collect();
         Ok(Form::list(
             vec![
@@ -2645,17 +3269,11 @@ impl Runtime {
                         entry.span,
                     ));
                 }
-                self.variable_name_info(
-                    &parts[0],
-                    "with-accessors variable must be a symbol",
-                )?;
+                self.variable_name_info(&parts[0], "with-accessors variable must be a symbol")?;
                 validate_symbol(&parts[1], "with-accessors accessor must be a symbol")?;
                 (
                     parts[0].clone(),
-                    Form::list(
-                        vec![parts[1].clone(), temporary.clone()],
-                        entry.span,
-                    ),
+                    Form::list(vec![parts[1].clone(), temporary.clone()], entry.span),
                 )
             } else {
                 let (slot, variable) = match &entry.kind {
@@ -2672,10 +3290,8 @@ impl Runtime {
                 };
                 validate_symbol(&slot, "with-slots slot must be a symbol")?;
                 self.variable_name_info(&variable, "with-slots variable must be a symbol")?;
-                let quoted_slot = Form::list(
-                    vec![Form::atom("QUOTE", slot.span), slot],
-                    entry.span,
-                );
+                let quoted_slot =
+                    Form::list(vec![Form::atom("QUOTE", slot.span), slot], entry.span);
                 (
                     variable,
                     Form::list(
@@ -2688,10 +3304,7 @@ impl Runtime {
                     ),
                 )
             };
-            symbol_bindings.push(Form::list(
-                vec![variable, expansion],
-                entry.span,
-            ));
+            symbol_bindings.push(Form::list(vec![variable, expansion], entry.span));
         }
 
         let symbol_macrolet = {
@@ -2702,10 +3315,7 @@ impl Runtime {
             Form::list(forms, form.span)
         };
         let let_bindings = Form::list(
-            vec![Form::list(
-                vec![temporary, items[2].clone()],
-                items[2].span,
-            )],
+            vec![Form::list(vec![temporary, items[2].clone()], items[2].span)],
             items[1].span,
         );
         Ok(Form::list(
@@ -2727,10 +3337,7 @@ impl Runtime {
         }
         let binding_form = &items[1];
         let FormKind::List(binding) = &binding_form.kind else {
-            return Err(self.invalid(
-                "with-open-file binding must be a list",
-                binding_form.span,
-            ));
+            return Err(self.invalid("with-open-file binding must be a list", binding_form.span));
         };
         if binding.len() < 2 {
             return Err(self.invalid(
@@ -2771,7 +3378,384 @@ impl Runtime {
             form.span,
         );
         Ok(Form::list(
-            vec![Form::atom("LET", form.span), generated_binding, protected_form],
+            vec![
+                Form::atom("LET", form.span),
+                generated_binding,
+                protected_form,
+            ],
+            form.span,
+        ))
+    }
+
+    fn expand_with_open_stream(&self, form: &Form) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity(
+                "with-open-stream",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let binding_form = &items[1];
+        let FormKind::List(binding) = &binding_form.kind else {
+            return Err(self.invalid("with-open-stream binding must be a list", binding_form.span));
+        };
+        if binding.len() != 2 {
+            return Err(self.invalid(
+                "with-open-stream binding needs a stream variable and stream form",
+                binding_form.span,
+            ));
+        }
+        self.variable_name_info(
+            &binding[0],
+            "with-open-stream stream variable must be a symbol",
+        )?;
+
+        let generated_binding = Form::list(
+            vec![Form::list(
+                vec![binding[0].clone(), binding[1].clone()],
+                binding_form.span,
+            )],
+            binding_form.span,
+        );
+        let body = if items.len() > 2 {
+            let mut body_items = Vec::with_capacity(items.len() - 1);
+            body_items.push(Form::atom("PROGN", form.span));
+            body_items.extend(items[2..].iter().cloned());
+            Form::list(body_items, form.span)
+        } else {
+            Form::atom("NIL", form.span)
+        };
+        let close_form = Form::list(
+            vec![Form::atom("CLOSE", form.span), binding[0].clone()],
+            form.span,
+        );
+        let protected_form = Form::list(
+            vec![Form::atom("UNWIND-PROTECT", form.span), body, close_form],
+            form.span,
+        );
+        Ok(Form::list(
+            vec![
+                Form::atom("LET", form.span),
+                generated_binding,
+                protected_form,
+            ],
+            form.span,
+        ))
+    }
+
+    fn expand_with_output_to_string(&self, form: &Form) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity(
+                "with-output-to-string",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let binding_form = &items[1];
+        let FormKind::List(binding) = &binding_form.kind else {
+            return Err(self.invalid(
+                "with-output-to-string binding must be a list",
+                binding_form.span,
+            ));
+        };
+        if binding.is_empty() {
+            return Err(self.invalid(
+                "with-output-to-string binding needs a stream variable",
+                binding_form.span,
+            ));
+        }
+        let has_literal_nil_string_form = binding.get(1).is_some_and(is_nil_form);
+        if binding.len() != 1 && !has_literal_nil_string_form {
+            return Err(self.invalid(
+                "with-output-to-string currently supports only a variable binding or literal NIL string form with :element-type",
+                binding_form.span,
+            ));
+        }
+        if has_literal_nil_string_form && !(binding.len() - 2).is_multiple_of(2) {
+            return Err(self.invalid(
+                "with-output-to-string keyword arguments must be keyword/value pairs",
+                binding_form.span,
+            ));
+        }
+        self.variable_name_info(
+            &binding[0],
+            "with-output-to-string stream variable must be a symbol",
+        )?;
+
+        let mut initializer_items =
+            vec![Form::atom("MAKE-STRING-OUTPUT-STREAM", binding_form.span)];
+        let mut element_type_form = None;
+        if has_literal_nil_string_form {
+            for pair in binding[2..].chunks_exact(2) {
+                let Some((keyword, escaped)) = macro_keyword_name(&pair[0]) else {
+                    return Err(self.invalid(
+                        "with-output-to-string keyword arguments must use keyword names",
+                        pair[0].span,
+                    ));
+                };
+                if !macro_keyword_matches("ELEMENT-TYPE", false, &keyword, escaped) {
+                    return Err(self.invalid(
+                        "with-output-to-string currently supports only :element-type",
+                        pair[0].span,
+                    ));
+                }
+                if element_type_form.is_some() {
+                    return Err(self.invalid(
+                        "with-output-to-string received duplicate :element-type",
+                        pair[0].span,
+                    ));
+                }
+                element_type_form = Some(pair[1].clone());
+            }
+        }
+        if let Some(element_type_form) = element_type_form {
+            initializer_items.push(Form::atom(":ELEMENT-TYPE", binding_form.span));
+            initializer_items.push(element_type_form);
+        }
+        let initializer = Form::list(initializer_items, binding_form.span);
+        let generated_binding = Form::list(
+            vec![Form::list(
+                vec![binding[0].clone(), initializer],
+                binding_form.span,
+            )],
+            binding_form.span,
+        );
+        let result_form = Form::list(
+            vec![
+                Form::atom("GET-OUTPUT-STREAM-STRING", form.span),
+                binding[0].clone(),
+            ],
+            form.span,
+        );
+        let body = if items.len() > 2 {
+            let mut body_items = Vec::with_capacity(items.len() + 1);
+            body_items.push(Form::atom("PROGN", form.span));
+            body_items.extend(items[2..].iter().cloned());
+            body_items.push(result_form);
+            Form::list(body_items, form.span)
+        } else {
+            result_form
+        };
+        let close_form = Form::list(
+            vec![Form::atom("CLOSE", form.span), binding[0].clone()],
+            form.span,
+        );
+        let protected_form = Form::list(
+            vec![Form::atom("UNWIND-PROTECT", form.span), body, close_form],
+            form.span,
+        );
+        Ok(Form::list(
+            vec![
+                Form::atom("LET", form.span),
+                generated_binding,
+                protected_form,
+            ],
+            form.span,
+        ))
+    }
+
+    fn expand_with_input_from_string(&self, form: &Form) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity(
+                "with-input-from-string",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let binding_form = &items[1];
+        let FormKind::List(binding) = &binding_form.kind else {
+            return Err(self.invalid(
+                "with-input-from-string binding must be a list",
+                binding_form.span,
+            ));
+        };
+        if binding.len() < 2 {
+            return Err(self.invalid(
+                "with-input-from-string binding needs a variable and string form",
+                binding_form.span,
+            ));
+        }
+        self.variable_name_info(
+            &binding[0],
+            "with-input-from-string stream variable must be a symbol",
+        )?;
+
+        if !(binding.len() - 2).is_multiple_of(2) {
+            return Err(self.invalid(
+                "with-input-from-string requires keyword/value pairs after the string form",
+                binding_form.span,
+            ));
+        }
+        let mut index_form: Option<Form> = None;
+        let mut start_form: Option<Form> = None;
+        let mut end_form: Option<Form> = None;
+        for pair in binding[2..].chunks_exact(2) {
+            let Some((keyword, escaped)) = macro_keyword_name(&pair[0]) else {
+                return Err(self.invalid(
+                    "with-input-from-string options must use keyword names",
+                    pair[0].span,
+                ));
+            };
+            let slot = if macro_keyword_matches("INDEX", false, &keyword, escaped) {
+                &mut index_form
+            } else if macro_keyword_matches("START", false, &keyword, escaped) {
+                &mut start_form
+            } else if macro_keyword_matches("END", false, &keyword, escaped) {
+                &mut end_form
+            } else {
+                return Err(self.invalid(
+                    &format!("with-input-from-string does not recognize keyword :{keyword}"),
+                    pair[0].span,
+                ));
+            };
+            if slot.is_some() {
+                return Err(self.invalid(
+                    &format!("with-input-from-string received duplicate keyword :{keyword}"),
+                    pair[0].span,
+                ));
+            }
+            *slot = Some(pair[1].clone());
+        }
+
+        let mut initializer_items = vec![
+            Form::atom("MAKE-STRING-INPUT-STREAM", binding_form.span),
+            binding[1].clone(),
+        ];
+        if let Some(start) = start_form {
+            initializer_items.push(start);
+        } else if end_form.is_some() {
+            initializer_items.push(Form::atom("0", binding_form.span));
+        }
+        if let Some(end) = end_form {
+            initializer_items.push(end);
+        }
+        let initializer = Form::list(initializer_items, binding_form.span);
+        let generated_binding = Form::list(
+            vec![Form::list(
+                vec![binding[0].clone(), initializer],
+                binding_form.span,
+            )],
+            binding_form.span,
+        );
+        let body = if items.len() > 2 {
+            let mut body_items = Vec::with_capacity(items.len() - 1);
+            body_items.push(Form::atom("PROGN", form.span));
+            body_items.extend(items[2..].iter().cloned());
+            Form::list(body_items, form.span)
+        } else {
+            Form::atom("NIL", form.span)
+        };
+        let body = if let Some(index_form) = index_form {
+            let position_form = Form::list(
+                vec![
+                    Form::atom("__NCL-STRING-INPUT-STREAM-POSITION", form.span),
+                    binding[0].clone(),
+                ],
+                form.span,
+            );
+            let update_form = Form::list(
+                vec![Form::atom("SETF", form.span), index_form, position_form],
+                form.span,
+            );
+            Form::list(
+                vec![
+                    Form::atom("MULTIPLE-VALUE-PROG1", form.span),
+                    body,
+                    update_form,
+                ],
+                form.span,
+            )
+        } else {
+            body
+        };
+        let close_form = Form::list(
+            vec![Form::atom("CLOSE", form.span), binding[0].clone()],
+            form.span,
+        );
+        let protected_form = Form::list(
+            vec![Form::atom("UNWIND-PROTECT", form.span), body, close_form],
+            form.span,
+        );
+        Ok(Form::list(
+            vec![
+                Form::atom("LET", form.span),
+                generated_binding,
+                protected_form,
+            ],
+            form.span,
+        ))
+    }
+
+    fn expand_with_hash_table_iterator(&self, form: &Form) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 2 {
+            return Err(self.arity(
+                "with-hash-table-iterator",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let binding_form = &items[1];
+        let FormKind::List(binding) = &binding_form.kind else {
+            return Err(self.invalid(
+                "with-hash-table-iterator binding must be a list",
+                binding_form.span,
+            ));
+        };
+        if binding.len() != 2 {
+            return Err(self.invalid(
+                "with-hash-table-iterator binding needs an iterator name and a hash table",
+                binding_form.span,
+            ));
+        }
+        self.variable_name_info(
+            &binding[0],
+            "with-hash-table-iterator iterator name must be a symbol",
+        )?;
+
+        let state = self.fresh_hash_table_iterator_state(binding_form.span);
+        let initializer = Form::list(
+            vec![
+                Form::atom("__NCL-MAKE-HASH-TABLE-ITERATOR", binding_form.span),
+                binding[1].clone(),
+            ],
+            binding_form.span,
+        );
+        let local_function = Form::list(
+            vec![
+                binding[0].clone(),
+                Form::list(Vec::new(), binding_form.span),
+                Form::list(
+                    vec![
+                        Form::atom("__NCL-HASH-TABLE-ITERATOR-NEXT", form.span),
+                        state.clone(),
+                    ],
+                    form.span,
+                ),
+            ],
+            binding_form.span,
+        );
+        let local_bindings = Form::list(vec![local_function], binding_form.span);
+        let mut flet_items = Vec::with_capacity(items.len());
+        flet_items.push(Form::atom("FLET", form.span));
+        flet_items.push(local_bindings);
+        flet_items.extend(items[2..].iter().cloned());
+        let flet = Form::list(flet_items, form.span);
+        let state_binding = Form::list(vec![state, initializer], binding_form.span);
+        let let_bindings = Form::list(vec![state_binding], binding_form.span);
+        Ok(Form::list(
+            vec![Form::atom("LET", form.span), let_bindings, flet],
             form.span,
         ))
     }
@@ -2785,7 +3769,7 @@ impl Runtime {
     ) -> Result<(), RuntimeError> {
         match pattern {
             MacroPattern::Name(name) => {
-                environment.define(name, value);
+                self.define_macro_binding_in(name, value, environment);
                 Ok(())
             }
             MacroPattern::List(patterns) => {
@@ -2838,10 +3822,7 @@ impl Runtime {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let Some(arguments) = value.list_items() else {
-            return Err(self.invalid(
-                "destructuring-bind value must be a proper list",
-                span,
-            ));
+            return Err(self.invalid("destructuring-bind value must be a proper list", span));
         };
         let required_count = lambda_list.required.len();
         let optional_count = lambda_list.optional.len();
@@ -2893,21 +3874,26 @@ impl Runtime {
             self.bind_macro_pattern(pattern, argument, environment, span)?;
         }
         for (index, specification) in lambda_list.optional.iter().enumerate() {
-            let supplied = (index < optional_supplied_count)
-                .then(|| &arguments[required_count + index]);
+            let supplied =
+                (index < optional_supplied_count).then(|| &arguments[required_count + index]);
             let value = match supplied {
                 Some(argument) => argument.clone(),
                 None => self.eval_in(&specification.init_form, environment)?,
             };
             self.bind_macro_pattern(&specification.pattern, value, environment, span)?;
             if let Some(supplied_p) = &specification.supplied_p {
-                environment.define(supplied_p, Value::boolean(supplied.is_some()));
+                self.define_macro_binding_in(
+                    supplied_p,
+                    Value::boolean(supplied.is_some()),
+                    environment,
+                );
             }
         }
         if let Some(rest_name) = &lambda_list.rest {
-            environment.define(
+            self.define_macro_binding_in(
                 rest_name,
                 Value::list(arguments[key_start..].to_vec()),
+                environment,
             );
         }
 
@@ -2916,54 +3902,75 @@ impl Runtime {
             if keyword_arguments.len() % 2 != 0 {
                 return Err(self.invalid("keyword arguments must be supplied in pairs", span));
             }
-            let mut supplied_keywords = HashMap::new();
+            let mut supplied_keywords = Vec::new();
             let mut accepts_unknown_keywords = lambda_list.allow_other_keys;
             for pair in keyword_arguments.chunks_exact(2) {
-                let keyword = match &pair[0] {
-                    Value::Keyword(keyword) | Value::KeywordExact(keyword) => keyword,
+                let (keyword_name, keyword_name_escaped) = match &pair[0] {
+                    Value::Keyword(keyword) => (keyword.to_string(), false),
+                    Value::KeywordExact(keyword) => (keyword.to_string(), true),
                     _ => {
-                        return Err(self.invalid(
-                            "keyword argument name must be a keyword",
-                            span,
-                        ));
+                        return Err(self.invalid("keyword argument name must be a keyword", span));
                     }
                 };
-                let keyword_name = keyword.to_string();
-                if keyword_name == "ALLOW-OTHER-KEYS" && pair[1].is_truthy() {
+                if macro_keyword_matches(
+                    "ALLOW-OTHER-KEYS",
+                    false,
+                    &keyword_name,
+                    keyword_name_escaped,
+                ) && pair[1].is_truthy()
+                {
                     accepts_unknown_keywords = true;
                 }
-                supplied_keywords.insert(keyword_name, pair[1].clone());
+                supplied_keywords.push((keyword_name, keyword_name_escaped, pair[1].clone()));
             }
             if !accepts_unknown_keywords {
-                for keyword_name in supplied_keywords.keys() {
-                    if keyword_name != "ALLOW-OTHER-KEYS"
-                        && !lambda_list
-                            .keywords
-                            .iter()
-                            .any(|specification| specification.keyword_name == *keyword_name)
-                    {
-                        return Err(self.invalid(
-                            &format!("unknown keyword :{keyword_name}"),
-                            span,
-                        ));
+                for (keyword_name, keyword_name_escaped, _) in &supplied_keywords {
+                    if !macro_keyword_matches(
+                        "ALLOW-OTHER-KEYS",
+                        false,
+                        keyword_name,
+                        *keyword_name_escaped,
+                    ) && !lambda_list.keywords.iter().any(|specification| {
+                        macro_keyword_matches(
+                            &specification.keyword_name,
+                            specification.keyword_name_escaped,
+                            keyword_name,
+                            *keyword_name_escaped,
+                        )
+                    }) {
+                        return Err(self.invalid(&format!("unknown keyword :{keyword_name}"), span));
                     }
                 }
             }
             for specification in &lambda_list.keywords {
-                let supplied = supplied_keywords.get(&specification.keyword_name);
+                let supplied = supplied_keywords
+                    .iter()
+                    .find(|(keyword_name, keyword_name_escaped, _)| {
+                        macro_keyword_matches(
+                            &specification.keyword_name,
+                            specification.keyword_name_escaped,
+                            keyword_name,
+                            *keyword_name_escaped,
+                        )
+                    })
+                    .map(|(_, _, argument)| argument);
                 let value = match supplied {
                     Some(argument) => argument.clone(),
                     None => self.eval_in(&specification.init_form, environment)?,
                 };
                 self.bind_macro_pattern(&specification.pattern, value, environment, span)?;
                 if let Some(supplied_p) = &specification.supplied_p {
-                    environment.define(supplied_p, Value::boolean(supplied.is_some()));
+                    self.define_macro_binding_in(
+                        supplied_p,
+                        Value::boolean(supplied.is_some()),
+                        environment,
+                    );
                 }
             }
         }
         for specification in &lambda_list.auxiliary {
             let value = self.eval_in(&specification.init_form, environment)?;
-            environment.define(&specification.name, value);
+            self.define_macro_binding_in(&specification.name, value, environment);
         }
         Ok(())
     }
@@ -3025,10 +4032,7 @@ impl Runtime {
                 usize::try_from(index).map_err(|_| RuntimeError::NumericOverflow)?
             }
             Value::Integer(_) => {
-                return Err(self.invalid(
-                    "nth-value index must be non-negative",
-                    items[1].span,
-                ));
+                return Err(self.invalid("nth-value index must be non-negative", items[1].span));
             }
             value => {
                 return Err(RuntimeError::Type {
@@ -3039,7 +4043,9 @@ impl Runtime {
             }
         };
 
-        let values = self.eval_values_in(&items[2], environment)?.multiple_values();
+        let values = self
+            .eval_values_in(&items[2], environment)?
+            .multiple_values();
         Ok(values.get(index).cloned().unwrap_or(Value::Nil))
     }
 
@@ -3048,7 +4054,104 @@ impl Runtime {
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
+        let declared = self.declared_special_names(items.get(1..).unwrap_or(&[]))?;
+        let (names, exact_names) = split_special_names(declared);
+        let _special_guard = self.special_declaration_guard(&names, &exact_names);
         self.eval_sequence_values(items.get(1..).unwrap_or(&[]), environment)
+    }
+
+    fn special_global_declaration(
+        &self,
+        items: &[Form],
+        _environment: &Environment,
+        quoted: bool,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 2 {
+            return Err(self.arity(
+                if quoted { "proclaim" } else { "declaim" },
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let specs = if quoted {
+            let argument = &items[1];
+            match &argument.kind {
+                FormKind::List(quoted_form)
+                    if quoted_form.len() == 2
+                        && atom_name(&quoted_form[0])
+                            .map(|name| normalize_name(name) == "QUOTE")
+                            .unwrap_or(false) =>
+                {
+                    vec![quoted_form[1].clone()]
+                }
+                _ => vec![argument.clone()],
+            }
+        } else {
+            items[1..].to_vec()
+        };
+        let declared = self.special_names_from_specs(&specs)?;
+        for (name, escaped) in declared {
+            self.declare_special(&name, escaped);
+        }
+        Ok(Value::Nil)
+    }
+
+    fn special_names_from_specs(
+        &self,
+        specs: &[Form],
+    ) -> Result<HashSet<(String, bool)>, RuntimeError> {
+        let mut names = HashSet::new();
+        for spec in specs {
+            let FormKind::List(items) = &spec.kind else {
+                continue;
+            };
+            let Some(operator) = items.first().and_then(atom_name) else {
+                continue;
+            };
+            let Ok(token) = parse_symbol_token(operator) else {
+                continue;
+            };
+            if token.kind != SymbolTokenKind::Symbol
+                || token.package.is_some()
+                || token.escaped
+                || !token.name.eq_ignore_ascii_case("SPECIAL")
+            {
+                continue;
+            }
+            for variable in &items[1..] {
+                names.insert(
+                    self.variable_name_info(variable, "special declaration name must be a symbol")?,
+                );
+            }
+        }
+        Ok(names)
+    }
+
+    fn declared_special_names(
+        &self,
+        forms: &[Form],
+    ) -> Result<HashSet<(String, bool)>, RuntimeError> {
+        let mut names = HashSet::new();
+        for form in forms {
+            let FormKind::List(items) = &form.kind else {
+                break;
+            };
+            let Some(operator) = items.first().and_then(atom_name) else {
+                break;
+            };
+            let Ok(token) = parse_symbol_token(operator) else {
+                break;
+            };
+            if token.kind != SymbolTokenKind::Symbol
+                || token.package.is_some()
+                || token.escaped
+                || !token.name.eq_ignore_ascii_case("DECLARE")
+            {
+                break;
+            }
+            names.extend(self.special_names_from_specs(&items[1..])?);
+        }
+        Ok(names)
     }
 
     fn special_eval_when(
@@ -3057,11 +4160,7 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         if items.len() < 2 {
-            return Err(self.arity(
-                "eval-when",
-                "at least one",
-                items.len().saturating_sub(1),
-            ));
+            return Err(self.arity("eval-when", "at least one", items.len().saturating_sub(1)));
         }
         if self.eval_when_executes(&items[1])? {
             self.eval_sequence_values(items.get(2..).unwrap_or(&[]), environment)
@@ -3072,32 +4171,24 @@ impl Runtime {
 
     fn eval_when_executes(&self, form: &Form) -> Result<bool, RuntimeError> {
         let FormKind::List(situations) = &form.kind else {
-            return Err(self.invalid(
-                "eval-when situations must be a list",
-                form.span,
-            ));
+            return Err(self.invalid("eval-when situations must be a list", form.span));
         };
         let mut executes = false;
         for situation in situations {
             let Some(name) = atom_name(situation) else {
-                return Err(self.invalid(
-                    "eval-when situations must contain symbols",
-                    situation.span,
-                ));
+                return Err(
+                    self.invalid("eval-when situations must contain symbols", situation.span)
+                );
             };
             let token = parse_symbol_token(name).map_err(|_| {
-                self.invalid(
-                    "eval-when situations must contain symbols",
-                    situation.span,
-                )
+                self.invalid("eval-when situations must contain symbols", situation.span)
             })?;
             if token.kind == SymbolTokenKind::Uninterned
                 || (token.kind == SymbolTokenKind::Symbol && literal_atom(name).is_some())
             {
-                return Err(self.invalid(
-                    "eval-when situations must contain symbols",
-                    situation.span,
-                ));
+                return Err(
+                    self.invalid("eval-when situations must contain symbols", situation.span)
+                );
             }
             if token.package.is_none() && token.name.eq_ignore_ascii_case("execute") {
                 executes = true;
@@ -3132,9 +4223,12 @@ impl Runtime {
         depth: usize,
     ) -> Result<Value, RuntimeError> {
         match &form.kind {
-            FormKind::Atom(_) | FormKind::String(_) | FormKind::Character(_) => {
-                self.quoted_value(form)
-            }
+            FormKind::Atom(_)
+            | FormKind::String(_)
+            | FormKind::Character(_)
+            | FormKind::Complex { .. }
+            | FormKind::BitVector(_)
+            | FormKind::ReadTimeEval(_) => self.quoted_value(form),
             FormKind::Vector(items) => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
@@ -3355,10 +4449,7 @@ impl Runtime {
                     (name_form, parts.get(1).cloned())
                 }
                 _ => {
-                    return Err(self.invalid(
-                        "prog binding must be a symbol or list",
-                        binding.span,
-                    ));
+                    return Err(self.invalid("prog binding must be a symbol or list", binding.span));
                 }
             };
             let (name, escaped) =
@@ -3391,12 +4482,9 @@ impl Runtime {
             } else {
                 let mut values = Vec::with_capacity(bindings.len());
                 for (_, _, init) in &bindings {
-                    values.push(
-                        init.as_ref()
-                            .map_or(Ok(Value::Nil), |form| {
-                                self.eval_in(form, &block_environment)
-                            })?,
-                    );
+                    values.push(init.as_ref().map_or(Ok(Value::Nil), |form| {
+                        self.eval_in(form, &block_environment)
+                    })?);
                 }
                 for ((name, escaped, _), value) in bindings.iter().zip(values) {
                     self.define_variable_in(name, *escaped, value, &local);
@@ -3436,13 +4524,11 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         if items.len() != 2 {
-            return Err(self.arity(
-                "multiple-value-list",
-                "one",
-                items.len().saturating_sub(1),
-            ));
+            return Err(self.arity("multiple-value-list", "one", items.len().saturating_sub(1)));
         }
-        let values = self.eval_values_in(&items[1], environment)?.multiple_values();
+        let values = self
+            .eval_values_in(&items[1], environment)?
+            .multiple_values();
         Ok(Value::list(values))
     }
 
@@ -3474,6 +4560,7 @@ impl Runtime {
         }
 
         let mut handlers = Vec::with_capacity(items.len().saturating_sub(2));
+        let mut no_error_clause = None;
         for clause in &items[2..] {
             let FormKind::List(clause_items) = &clause.kind else {
                 return Err(self.invalid("handler-case clause must be a list", clause.span));
@@ -3490,6 +4577,18 @@ impl Runtime {
                     clause_items[1].span,
                 ));
             };
+            if is_no_error_marker(&clause_items[0]) {
+                if no_error_clause.replace(clause_items).is_some() {
+                    return Err(self.invalid(
+                        "handler-case accepts at most one :NO-ERROR clause",
+                        clause.span,
+                    ));
+                }
+                for variable in variables {
+                    self.variable_name_info(variable, "handler-case no-error variable")?;
+                }
+                continue;
+            }
             if variables.len() > 1 {
                 return Err(self.invalid(
                     "handler-case accepts at most one condition variable",
@@ -3511,7 +4610,27 @@ impl Runtime {
         let protected_result = self.eval_values_in(&items[1], environment);
         drop(guard);
         let protected = match protected_result {
-            Ok(value) => return Ok(value),
+            Ok(value) => {
+                let Some(clause_items) = no_error_clause else {
+                    return Ok(value);
+                };
+                let FormKind::List(variables) = &clause_items[1].kind else {
+                    unreachable!("handler-case clauses were validated above");
+                };
+                let values = value.multiple_values();
+                let local = environment.child();
+                for (index, variable) in variables.iter().enumerate() {
+                    let (name, escaped) =
+                        self.variable_name_info(variable, "handler-case no-error variable")?;
+                    self.define_variable_in(
+                        &name,
+                        escaped,
+                        values.get(index).cloned().unwrap_or(Value::Nil),
+                        &local,
+                    );
+                }
+                return self.eval_sequence_values(&clause_items[2..], &local);
+            }
             Err(error @ RuntimeError::ReturnFrom { .. }) => return Err(error),
             Err(error @ RuntimeError::Go { .. }) => return Err(error),
             Err(error @ RuntimeError::InvokeRestart { .. }) => return Err(error),
@@ -3522,6 +4641,9 @@ impl Runtime {
             let FormKind::List(clause_items) = &clause.kind else {
                 unreachable!("handler-case clauses were validated above");
             };
+            if is_no_error_marker(&clause_items[0]) {
+                continue;
+            }
             let condition = self.condition_name(&clause_items[0])?;
             if !protected.matches_condition(&condition) {
                 continue;
@@ -3531,12 +4653,7 @@ impl Runtime {
                 if let Some(variable) = variables.first() {
                     let (name, escaped) =
                         self.variable_name_info(variable, "handler-case condition variable")?;
-                    self.define_variable_in(
-                        &name,
-                        escaped,
-                        Value::condition(&protected),
-                        &local,
-                    );
+                    self.define_variable_in(&name, escaped, Value::condition(&protected), &local);
                 }
             }
             return self.eval_sequence_values(&clause_items[2..], &local);
@@ -3793,10 +4910,7 @@ impl Runtime {
 
         for clause in &items[2..] {
             let FormKind::List(parts) = &clause.kind else {
-                return Err(self.invalid(
-                    "restart-case clause must be a list",
-                    clause.span,
-                ));
+                return Err(self.invalid("restart-case clause must be a list", clause.span));
             };
             if parts.len() < 2 {
                 return Err(self.invalid(
@@ -3848,20 +4962,17 @@ impl Runtime {
                     ..
                 } = &error
                 {
-                    if let Some((_, closure, clause_span)) = clauses.iter().find(
-                        |(restart, _, _)| normalize_name(invoked.as_str()) == restart.as_str(),
-                    ) {
+                    if let Some((_, closure, clause_span)) =
+                        clauses.iter().find(|(restart, _, _)| {
+                            normalize_name(invoked.as_str()) == restart.as_str()
+                        })
+                    {
                         let argument_values = arguments
                             .iter()
                             .cloned()
                             .map(ReturnValue::into_value)
                             .collect::<Vec<_>>();
-                        return self.apply_in(
-                            closure,
-                            &argument_values,
-                            *clause_span,
-                            environment,
-                        );
+                        return self.apply_in(closure, &argument_values, *clause_span, environment);
                     }
                 }
                 Err(error)
@@ -4286,7 +5397,11 @@ impl Runtime {
         environment: &Environment,
         error_on_miss: bool,
     ) -> Result<Value, RuntimeError> {
-        let operator = if error_on_miss { "etypecase" } else { "typecase" };
+        let operator = if error_on_miss {
+            "etypecase"
+        } else {
+            "typecase"
+        };
         if items.len() < 2 {
             return Err(self.arity(operator, "at least one", items.len().saturating_sub(1)));
         }
@@ -4320,6 +5435,114 @@ impl Runtime {
         }
     }
 
+    fn special_change_case(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+        typecase: bool,
+    ) -> Result<Value, RuntimeError> {
+        let operator = if typecase { "ctypecase" } else { "ccase" };
+        if items.len() < 2 {
+            return Err(self.arity(operator, "at least one", items.len().saturating_sub(1)));
+        }
+
+        let expansion = self.get_setf_expansion(&items[1], environment)?;
+        let local = self.initialize_setf_expansion(&expansion, environment, items[1].span)?;
+        loop {
+            let key = self.eval_in(&expansion.access_form, &local)?;
+            let mut matched = None;
+            let mut default_body = None;
+            for clause in &items[2..] {
+                let FormKind::List(parts) = &clause.kind else {
+                    return Err(self.invalid(
+                        if typecase {
+                            "ctypecase clauses must be lists"
+                        } else {
+                            "ccase clauses must be lists"
+                        },
+                        clause.span,
+                    ));
+                };
+                if parts.is_empty() {
+                    return Err(self.invalid(
+                        if typecase {
+                            "ctypecase clause cannot be empty"
+                        } else {
+                            "ccase clause cannot be empty"
+                        },
+                        clause.span,
+                    ));
+                }
+                if is_case_default_form(&parts[0]) {
+                    default_body = Some(&parts[1..]);
+                    continue;
+                }
+
+                let is_match = if typecase {
+                    let type_designator = quoted_form_value(&parts[0])?;
+                    builtins::typep_value(&key, &type_designator)?
+                } else {
+                    let keys = match &parts[0].kind {
+                        FormKind::List(keys) => keys.as_slice(),
+                        _ => std::slice::from_ref(&parts[0]),
+                    };
+                    keys.iter().try_fold(false, |matched, key_form| {
+                        Ok::<bool, RuntimeError>(
+                            matched || builtins::eql_value(&key, &quoted_form_value(key_form)?),
+                        )
+                    })?
+                };
+                if is_match {
+                    matched = Some(&parts[1..]);
+                    break;
+                }
+            }
+
+            if let Some(body) = matched.or(default_body) {
+                return self.eval_sequence_values(body, &local);
+            }
+
+            let error = Self::signaled_error(
+                "CASE-FAILURE",
+                vec![
+                    "CASE-FAILURE".to_owned(),
+                    "TYPE-ERROR".to_owned(),
+                    "ERROR".to_owned(),
+                    "SERIOUS-CONDITION".to_owned(),
+                    "CONDITION".to_owned(),
+                ],
+                format!("{operator} fell through"),
+                None,
+                &[],
+                false,
+                items[0].span,
+            );
+            let condition = Value::condition(&error);
+            let guard =
+                self.restart_guard(vec![RestartBinding::new("STORE-VALUE".to_owned(), None)]);
+            let handled = self.dispatch_condition(error.clone(), &condition, &local, items[0].span);
+            drop(guard);
+            match handled {
+                Ok(()) => return Err(error),
+                Err(RuntimeError::InvokeRestart {
+                    name, arguments, ..
+                }) if normalize_name(name.as_str()) == "STORE-VALUE" => {
+                    if arguments.len() != 1 {
+                        let actual = arguments.len();
+                        return Err(self.arity("store-value", "one", actual));
+                    }
+                    let value = arguments
+                        .into_iter()
+                        .next()
+                        .expect("STORE-VALUE arity checked")
+                        .into_value();
+                    self.store_setf_expansion(&expansion, value, &local)?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
     fn special_destructuring_bind(
         &self,
         items: &[Form],
@@ -4346,14 +5569,16 @@ impl Runtime {
             _ => None,
         };
         let mut seen = HashSet::new();
-        let pattern = lambda_list.is_none().then(|| self.macro_pattern(&items[1], &mut seen));
+        let pattern = lambda_list
+            .is_none()
+            .then(|| self.macro_pattern(&items[1], &mut seen));
         let pattern = pattern.transpose()?;
         let local = environment.child();
         let _dynamic_guard = self.dynamic_guard();
         let value = self.eval_in(&items[2], environment)?.primary_value();
         if let Some(lambda_list) = &lambda_list {
             if let Some(whole) = &lambda_list.whole {
-                local.define(whole, value.clone());
+                self.define_macro_binding_in(whole, value.clone(), &local);
             }
         }
         if let Some(lambda_list) = lambda_list {
@@ -4382,6 +5607,10 @@ impl Runtime {
         };
         let local = environment.child();
         let _dynamic_guard = self.dynamic_guard();
+        let declared_special_names = self.declared_special_names(&items[2..])?;
+        let (special_names, exact_special_names) =
+            split_special_names(declared_special_names.clone());
+        let _special_guard = self.special_declaration_guard(&special_names, &exact_special_names);
         for binding in bindings {
             let FormKind::List(binding_items) = &binding.kind else {
                 return Err(self.invalid("let binding must be a list", binding.span));
@@ -4396,7 +5625,15 @@ impl Runtime {
             let value = binding_items.get(1).map_or(Ok(Value::Nil), |form| {
                 self.eval_in(form, if sequential { &local } else { environment })
             })?;
-            self.define_variable_in(&name, escaped, value, &local);
+            if declared_special_names.contains(&(name.clone(), escaped)) {
+                if escaped {
+                    self.define_dynamic_exact(&name, value);
+                } else {
+                    self.define_dynamic(&name, value);
+                }
+            } else {
+                self.define_variable_in(&name, escaped, value, &local);
+            }
         }
         self.eval_sequence_values(&items[2..], &local)
     }
@@ -4481,37 +5718,28 @@ impl Runtime {
             return Err(self.invalid("local macro bindings must be a list", items[1].span));
         };
 
-        let local = environment.child();
-        let captured = environment.clone();
-        let mut names = HashSet::new();
-        for binding in bindings {
-            let FormKind::List(parts) = &binding.kind else {
-                return Err(self.invalid("local macro binding must be a list", binding.span));
-            };
-            if parts.len() < 3 {
-                return Err(self.invalid(
-                    "local macro needs a name, parameters, and a body",
-                    binding.span,
-                ));
-            }
-            let (name, escaped) =
-                self.variable_name_info(&parts[0], "local macro name must be a symbol")?;
-            if !names.insert(name.clone()) {
-                return Err(self.invalid("local macro names must be unique", parts[0].span));
-            }
-            let lambda_list = self.macro_parameters(&parts[1])?;
-            let function = Value::macro_function(
-                lambda_list,
-                parts[2..].to_vec(),
-                captured.clone(),
-            );
-            if escaped {
-                local.define_exact(name, function);
-            } else {
-                local.define(name, function);
-            }
-        }
+        let local = self.make_macrolet_environment(bindings, environment)?;
         self.eval_sequence_values(&items[2..], &local)
+    }
+
+    fn special_macrolet_environment(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() != 2 {
+            return Err(self.arity(
+                "ncl-macro-environment",
+                "one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let FormKind::List(bindings) = &items[1].kind else {
+            return Err(self.invalid("local macro bindings must be a list", items[1].span));
+        };
+        Ok(Value::environment(
+            self.make_macrolet_environment(bindings, environment)?,
+        ))
     }
 
     fn special_symbol_macrolet(
@@ -4527,20 +5755,14 @@ impl Runtime {
             ));
         }
         let FormKind::List(bindings) = &items[1].kind else {
-            return Err(self.invalid(
-                "symbol macro bindings must be a list",
-                items[1].span,
-            ));
+            return Err(self.invalid("symbol macro bindings must be a list", items[1].span));
         };
 
         let local = environment.child();
         let mut names = HashSet::new();
         for binding in bindings {
             let FormKind::List(parts) = &binding.kind else {
-                return Err(self.invalid(
-                    "symbol macro binding must be a list",
-                    binding.span,
-                ));
+                return Err(self.invalid("symbol macro binding must be a list", binding.span));
             };
             if parts.len() != 2 {
                 return Err(self.invalid(
@@ -4551,10 +5773,7 @@ impl Runtime {
             let (name, escaped) =
                 self.variable_name_info(&parts[0], "symbol macro name must be a symbol")?;
             if !names.insert((name.clone(), escaped)) {
-                return Err(self.invalid(
-                    "symbol macro names must be unique",
-                    parts[0].span,
-                ));
+                return Err(self.invalid("symbol macro names must be unique", parts[0].span));
             }
             if escaped {
                 local.define_symbol_macro_exact(name, parts[1].clone());
@@ -4571,16 +5790,10 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         if items.len() != 3 {
-            return Err(self.arity(
-                "DEFINE-SYMBOL-MACRO",
-                "two",
-                items.len().saturating_sub(1),
-            ));
+            return Err(self.arity("DEFINE-SYMBOL-MACRO", "two", items.len().saturating_sub(1)));
         }
-        let (name, escaped) = self.variable_name_info(
-            &items[1],
-            "DEFINE-SYMBOL-MACRO name must be a symbol",
-        )?;
+        let (name, escaped) =
+            self.variable_name_info(&items[1], "DEFINE-SYMBOL-MACRO name must be a symbol")?;
         if escaped {
             environment.define_symbol_macro_exact(name.clone(), items[2].clone());
         } else {
@@ -4697,10 +5910,7 @@ impl Runtime {
             return Err(self.invalid("do termination must be a list", items[2].span));
         };
         if termination.is_empty() {
-            return Err(self.invalid(
-                "do termination needs an end test",
-                items[2].span,
-            ));
+            return Err(self.invalid("do termination needs an end test", items[2].span));
         }
 
         let mut names = HashSet::new();
@@ -4725,12 +5935,7 @@ impl Runtime {
             if !names.insert(key) {
                 return Err(self.invalid("do binding names must be unique", parts[0].span));
             }
-            bindings.push((
-                name,
-                escaped,
-                parts.get(1).cloned(),
-                parts.get(2).cloned(),
-            ));
+            bindings.push((name, escaped, parts.get(1).cloned(), parts.get(2).cloned()));
         }
 
         let target = self.fresh_block_target();
@@ -4750,10 +5955,9 @@ impl Runtime {
             } else {
                 let mut values = Vec::with_capacity(bindings.len());
                 for (_, _, init, _) in &bindings {
-                    values.push(
-                        init.as_ref()
-                            .map_or(Ok(Value::Nil), |form| self.eval_in(form, &block_environment))?,
-                    );
+                    values.push(init.as_ref().map_or(Ok(Value::Nil), |form| {
+                        self.eval_in(form, &block_environment)
+                    })?);
                 }
                 for ((name, escaped, _, _), value) in bindings.iter().zip(values) {
                     self.define_variable_in(name, *escaped, value, &local);
@@ -4831,7 +6035,8 @@ impl Runtime {
             ));
         }
         let lambda_list = self.parameters(&items[1])?;
-        Ok(Value::closure_with_keywords(
+        let (documentation, body) = split_documentation_body(&items[2..]);
+        Ok(Value::closure_with_keywords_and_documentation(
             lambda_list.required,
             lambda_list.required_escaped,
             lambda_list.optional,
@@ -4841,8 +6046,9 @@ impl Runtime {
             lambda_list.has_keyword_section,
             lambda_list.allow_other_keys,
             lambda_list.auxiliary,
-            items[2..].to_vec(),
+            body.to_vec(),
             environment.clone(),
+            documentation,
         ))
     }
 
@@ -4854,25 +6060,74 @@ impl Runtime {
         if items.len() != 2 {
             return Err(self.arity("function", "one", items.len().saturating_sub(1)));
         }
+        if let FormKind::List(function_name) = &items[1].kind {
+            match function_name
+                .first()
+                .and_then(function_operator_name)
+                .as_deref()
+            {
+                Some("SETF") => {
+                    if function_name.len() != 2 {
+                        return Err(
+                            self.invalid("FUNCTION SETF designator needs a symbol", items[1].span)
+                        );
+                    }
+                    let Some(name) = function_name.get(1).and_then(atom_name) else {
+                        return Err(self.invalid(
+                            "SETF function name must be a symbol",
+                            function_name[1].span,
+                        ));
+                    };
+                    if !is_valid_function_symbol_name(name) {
+                        return Err(self.invalid(
+                            "SETF function name must be a symbol",
+                            function_name[1].span,
+                        ));
+                    }
+                    let (resolved_name, _) = resolved_symbol(name);
+                    let lookup_name = unqualified_name(&resolved_name);
+                    return environment
+                        .lookup_setf_function(&lookup_name)
+                        .ok_or_else(|| RuntimeError::UnboundVariable {
+                            name: format!("(SETF {lookup_name})"),
+                            span: Some(function_name[1].span),
+                        });
+                }
+                Some("LAMBDA") => return self.eval_in(&items[1], environment),
+                _ => {
+                    return Err(self.invalid(
+                        "FUNCTION argument must be a symbol, LAMBDA form, or (SETF symbol)",
+                        items[1].span,
+                    ));
+                }
+            }
+        }
         if let Some(name) = atom_name(&items[1]) {
+            if !is_valid_function_symbol_name(name) {
+                return Err(self.invalid(
+                    "FUNCTION argument must be a symbol, LAMBDA form, or (SETF symbol)",
+                    items[1].span,
+                ));
+            }
             let (resolved_name, escaped) = resolved_symbol(name);
             let function = if escaped {
                 self.lookup_function_exact_in(&resolved_name, environment)
             } else {
                 self.lookup_function_in(&resolved_name, environment)
             };
-            return function.ok_or_else(|| {
-                RuntimeError::UnboundVariable {
-                    name: if escaped {
-                        resolved_name
-                    } else {
-                        normalize_name(&resolved_name)
-                    },
-                    span: Some(items[1].span),
-                }
+            return function.ok_or_else(|| RuntimeError::UnboundVariable {
+                name: if escaped {
+                    resolved_name
+                } else {
+                    normalize_name(&resolved_name)
+                },
+                span: Some(items[1].span),
             });
         }
-        self.eval_in(&items[1], environment)
+        Err(self.invalid(
+            "FUNCTION argument must be a symbol, LAMBDA form, or (SETF symbol)",
+            items[1].span,
+        ))
     }
 
     fn special_defun(
@@ -4887,7 +6142,8 @@ impl Runtime {
             return Err(self.invalid("defun name must be a symbol", items[1].span));
         };
         let lambda_list = self.parameters(&items[2])?;
-        let function = Value::closure_with_keywords(
+        let (documentation, body) = split_documentation_body(&items[3..]);
+        let function = Value::closure_with_keywords_and_documentation(
             lambda_list.required,
             lambda_list.required_escaped,
             lambda_list.optional,
@@ -4897,14 +6153,15 @@ impl Runtime {
             lambda_list.has_keyword_section,
             lambda_list.allow_other_keys,
             lambda_list.auxiliary,
-            items[3..].to_vec(),
+            body.to_vec(),
             environment.clone(),
+            documentation,
         );
         let (resolved_name, escaped) = resolved_symbol(name);
         if escaped {
-            self.define_exact_in(&resolved_name, function, environment);
+            environment.define_function_exact(&resolved_name, function);
         } else {
-            self.define_in(&resolved_name, function, environment);
+            environment.define_function(&resolved_name, function);
         }
         Ok(if escaped {
             Value::symbol_exact(resolved_name)
@@ -4918,12 +6175,50 @@ impl Runtime {
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        if items.len() != 3 {
-            return Err(self.invalid("DEFSETF needs an accessor and a writer", items[0].span));
-        }
         let Some(accessor) = atom_name(&items[1]) else {
             return Err(self.invalid("DEFSETF accessor must be a symbol", items[1].span));
         };
+
+        if items.len() != 3 {
+            if items.len() < 5 {
+                return Err(self.invalid(
+                    "DEFSETF needs an accessor, parameters, stores, and a body",
+                    items[0].span,
+                ));
+            }
+            let lambda_list = self.macro_parameters(&items[2])?;
+            let FormKind::List(store_forms) = &items[3].kind else {
+                return Err(self.invalid("DEFSETF store variables must be a list", items[3].span));
+            };
+            if store_forms.is_empty() {
+                return Err(
+                    self.invalid("DEFSETF needs at least one store variable", items[3].span)
+                );
+            }
+            let stores = store_forms
+                .iter()
+                .map(|form| {
+                    let (name, escaped) =
+                        self.variable_name_info(form, "DEFSETF store variable must be a symbol")?;
+                    Ok(MacroBinding { name, escaped })
+                })
+                .collect::<Result<Vec<_>, RuntimeError>>()?;
+            let (resolved_name, escaped) = resolved_symbol(accessor);
+            environment.define_defsetf(
+                unqualified_name(&resolved_name),
+                DefsetfDefinition {
+                    lambda_list,
+                    stores,
+                    body: items[4..].to_vec(),
+                    environment: environment.clone(),
+                },
+            );
+            return Ok(if escaped {
+                Value::symbol_exact(resolved_name)
+            } else {
+                Value::symbol(resolved_name)
+            });
+        }
 
         let writer_designator = if let Some(writer) = atom_name(&items[2]) {
             let (resolved_name, escaped) = resolved_symbol(writer);
@@ -4961,14 +6256,10 @@ impl Runtime {
             ));
         }
         let Some(name) = atom_name(&items[1]) else {
-            return Err(self.invalid(
-                "DEFINE-SETF-EXPANDER name must be a symbol",
-                items[1].span,
-            ));
+            return Err(self.invalid("DEFINE-SETF-EXPANDER name must be a symbol", items[1].span));
         };
         let lambda_list = self.macro_parameters(&items[2])?;
-        let function =
-            Value::macro_function(lambda_list, items[3..].to_vec(), environment.clone());
+        let function = Value::macro_function(lambda_list, items[3..].to_vec(), environment.clone());
         let (resolved_name, escaped) = resolved_symbol(name);
         environment.define_setf_expander(unqualified_name(&resolved_name), function);
         Ok(if escaped {
@@ -5020,9 +6311,9 @@ impl Runtime {
         let function = Value::macro_function(lambda_list, items[3..].to_vec(), environment.clone());
         let (resolved_name, escaped) = resolved_symbol(name);
         if escaped {
-            self.define_exact_in(&resolved_name, function, environment);
+            environment.define_function_exact(&resolved_name, function);
         } else {
-            self.define_in(&resolved_name, function, environment);
+            environment.define_function(&resolved_name, function);
         }
         Ok(if escaped {
             Value::symbol_exact(resolved_name)
@@ -5043,25 +6334,23 @@ impl Runtime {
             ));
         }
         let Some(name) = atom_name(&items[1]) else {
-            return Err(self.invalid(
-                "define-modify-macro name must be a symbol",
-                items[1].span,
-            ));
+            return Err(self.invalid("define-modify-macro name must be a symbol", items[1].span));
         };
         let mut lambda_list = self.macro_parameters(&items[2])?;
-        lambda_list
-            .required
-            .insert(0, MacroPattern::Name("NCL-MODIFY-MACRO-PLACE".to_owned()));
-        let function = Value::modify_macro_function(
-            lambda_list,
-            items[3].clone(),
-            environment.clone(),
+        lambda_list.required.insert(
+            0,
+            MacroPattern::Name(MacroBinding {
+                name: "NCL-MODIFY-MACRO-PLACE".to_owned(),
+                escaped: false,
+            }),
         );
+        let function =
+            Value::modify_macro_function(lambda_list, items[3].clone(), environment.clone());
         let (resolved_name, escaped) = resolved_symbol(name);
         if escaped {
-            self.define_exact_in(&resolved_name, function, environment);
+            environment.define_function_exact(&resolved_name, function);
         } else {
-            self.define_in(&resolved_name, function, environment);
+            environment.define_function(&resolved_name, function);
         }
         Ok(if escaped {
             Value::symbol_exact(resolved_name)
@@ -5076,11 +6365,7 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         if !(2..=3).contains(&items.len()) {
-            return Err(self.arity(
-                "macroexpand-1",
-                "one or two",
-                items.len().saturating_sub(1),
-            ));
+            return Err(self.arity("macroexpand-1", "one or two", items.len().saturating_sub(1)));
         }
         let value = self.eval_in(&items[1], environment)?;
         let form = self.form_from_value(&value, items[1].span)?;
@@ -5106,11 +6391,7 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         if !(2..=3).contains(&items.len()) {
-            return Err(self.arity(
-                "macroexpand",
-                "one or two",
-                items.len().saturating_sub(1),
-            ));
+            return Err(self.arity("macroexpand", "one or two", items.len().saturating_sub(1)));
         }
         let value = self.eval_in(&items[1], environment)?;
         let form = self.form_from_value(&value, items[1].span)?;
@@ -5120,8 +6401,7 @@ impl Runtime {
         } else {
             environment.clone()
         };
-        let (expanded, expanded_p) =
-            self.expand_macros_with_flag(form, &expansion_environment)?;
+        let (expanded, expanded_p) = self.expand_macros_with_flag(form, &expansion_environment)?;
         Ok(Value::values(vec![
             self.quoted_value(&expanded)?,
             Value::boolean(expanded_p),
@@ -5136,10 +6416,7 @@ impl Runtime {
         match value {
             Value::Nil | Value::Boolean(false) => Ok(self.global.clone()),
             Value::Environment(environment) => Ok(environment),
-            _ => Err(self.invalid(
-                "macro expansion environment must be an environment",
-                span,
-            )),
+            _ => Err(self.invalid("macro expansion environment must be an environment", span)),
         }
     }
 
@@ -5151,8 +6428,7 @@ impl Runtime {
         if items.len() != 3 {
             return Err(self.arity("define", "two", items.len().saturating_sub(1)));
         }
-        let (name, escaped) =
-            self.variable_name_info(&items[1], "define name must be a symbol")?;
+        let (name, escaped) = self.variable_name_info(&items[1], "define name must be a symbol")?;
         let value = self.eval_in(&items[2], environment)?;
         self.define_variable_in(&name, escaped, value.clone(), environment);
         Ok(value)
@@ -5266,9 +6542,9 @@ impl Runtime {
         }
         let mut result = Value::Nil;
         for pair in items[1..].chunks_exact(2) {
-            let value = self.eval_in(&pair[1], environment)?;
+            let value = self.eval_values_in(&pair[1], environment)?;
             self.set_place(&pair[0], value.clone(), environment)?;
-            result = value;
+            result = value.primary_value();
         }
         Ok(result)
     }
@@ -5282,18 +6558,46 @@ impl Runtime {
             return Err(self.invalid("psetf needs place/value pairs", items[0].span));
         }
 
-        let mut assignments = Vec::with_capacity((items.len() - 1) / 2);
-        for pair in items[1..].chunks_exact(2) {
-            let value = self.eval_in(&pair[1], environment)?;
-            assignments.push((pair[0].clone(), value));
+        let pairs = items[1..].chunks_exact(2).collect::<Vec<_>>();
+        let expansions = pairs
+            .iter()
+            .map(|pair| self.get_modify_macro_setf_expansion(&pair[0], environment))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut assignments = Vec::with_capacity(expansions.len());
+        for (pair, expansion) in pairs.iter().zip(expansions) {
+            if expansion.temporaries.len() != expansion.values.len() {
+                return Err(self.invalid(
+                    "SETF expansion temporary and value lists must have the same length",
+                    pair[0].span,
+                ));
+            }
+            let local = environment.child();
+            for (temporary, value_form) in expansion.temporaries.iter().zip(&expansion.values) {
+                let (name, escaped) =
+                    self.variable_name_info(temporary, "SETF temporary must be a symbol")?;
+                let value = self.eval_in(value_form, &local)?;
+                self.define_variable_in(&name, escaped, value, &local);
+            }
+            let value = self.eval_values_in(&pair[1], &local)?;
+            self.bind_setf_stores(&expansion, value, &local)?;
+            assignments.push((expansion, local));
         }
 
-        let mut result = Value::Nil;
-        for (place, value) in assignments {
-            self.set_place(&place, value.clone(), environment)?;
-            result = value;
+        for (expansion, local) in assignments {
+            if let Some(current_place) = &expansion.current_place {
+                if expansion.stores.len() != 1 {
+                    return Err(self.invalid(
+                        "SETF expansion with a current place must provide one store variable",
+                        current_place.span,
+                    ));
+                }
+                let value = self.eval_in(&expansion.stores[0], &local)?;
+                self.set_place(current_place, value, &local)?;
+            } else {
+                self.eval_in(&expansion.store_form, &local)?;
+            }
         }
-        Ok(result)
+        Ok(Value::Nil)
     }
 
     fn special_push(
@@ -5357,7 +6661,7 @@ impl Runtime {
         let mut test_not = None;
         let mut key = None;
         for pair in items[3..].chunks_exact(2) {
-            let Some(keyword_name) = macro_keyword_name(&pair[0]) else {
+            let Some((keyword_name, _)) = macro_keyword_name(&pair[0]) else {
                 return Err(self.invalid(
                     "PUSHNEW keyword argument name must be a keyword",
                     pair[0].span,
@@ -5366,19 +6670,15 @@ impl Runtime {
             match keyword_name.as_str() {
                 "TEST" => {
                     if test_not.is_some() {
-                        return Err(self.invalid(
-                            "PUSHNEW cannot use both :test and :test-not",
-                            pair[0].span,
-                        ));
+                        return Err(self
+                            .invalid("PUSHNEW cannot use both :test and :test-not", pair[0].span));
                     }
                     test = Some(self.eval_in(&pair[1], environment)?);
                 }
                 "TEST-NOT" => {
                     if test.is_some() {
-                        return Err(self.invalid(
-                            "PUSHNEW cannot use both :test and :test-not",
-                            pair[0].span,
-                        ));
+                        return Err(self
+                            .invalid("PUSHNEW cannot use both :test and :test-not", pair[0].span));
                     }
                     test_not = Some(self.eval_in(&pair[1], environment)?);
                 }
@@ -5396,14 +6696,12 @@ impl Runtime {
 
         let item = self.eval_in(&items[1], environment)?;
         let current = self.eval_in(&items[2], environment)?;
-        let elements = current
-            .list_items()
-            .ok_or_else(|| self.invalid("PUSHNEW place must contain a proper list", items[2].span))?;
+        let elements = current.list_items().ok_or_else(|| {
+            self.invalid("PUSHNEW place must contain a proper list", items[2].span)
+        })?;
 
         let invert_test = test_not.is_some();
-        let test_designator = test
-            .or(test_not)
-            .unwrap_or_else(|| Value::symbol("EQL"));
+        let test_designator = test.or(test_not).unwrap_or_else(|| Value::symbol("EQL"));
         let test_function = Value::Function(self.resolve_function_designator(
             &test_designator,
             items[0].span,
@@ -5466,16 +6764,22 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         let places = &items[1..];
-        let values = places
-            .iter()
-            .map(|place| self.eval_in(place, environment))
-            .collect::<Result<Vec<_>, _>>()?;
-        if values.len() > 1 {
-            let mut rotated = Vec::with_capacity(values.len());
-            rotated.push(values.last().cloned().unwrap_or(Value::Nil));
-            rotated.extend(values[..values.len() - 1].iter().cloned());
-            for (place, value) in places.iter().zip(rotated) {
-                self.set_place(place, value, environment)?;
+        let mut locations = Vec::with_capacity(places.len());
+        for place in places {
+            let expansion = self.get_modify_macro_setf_expansion(place, environment)?;
+            let local = self.initialize_setf_expansion(&expansion, environment, place.span)?;
+            let value = self.eval_in(&expansion.access_form, &local)?;
+            locations.push((expansion, local, value));
+        }
+        if locations.len() > 1 {
+            let mut rotated = locations
+                .iter()
+                .skip(1)
+                .map(|(_, _, value)| value.clone())
+                .collect::<Vec<_>>();
+            rotated.push(locations[0].2.clone());
+            for ((expansion, local, _), value) in locations.iter().zip(rotated) {
+                self.store_modify_macro_setf_expansion(expansion, value, local)?;
             }
         }
         Ok(Value::Nil)
@@ -5491,19 +6795,26 @@ impl Runtime {
         }
 
         let places = &items[1..items.len() - 1];
-        let old_values = places
-            .iter()
-            .map(|place| self.eval_in(place, environment))
-            .collect::<Result<Vec<_>, _>>()?;
-        let new_value = self.eval_in(&items[items.len() - 1], environment)?;
-        for (index, place) in places.iter().enumerate() {
-            let value = old_values
-                .get(index + 1)
-                .cloned()
-                .unwrap_or_else(|| new_value.clone());
-            self.set_place(place, value, environment)?;
+        let mut locations = Vec::with_capacity(places.len());
+        for place in places {
+            let expansion = self.get_modify_macro_setf_expansion(place, environment)?;
+            let local = self.initialize_setf_expansion(&expansion, environment, place.span)?;
+            let value = self.eval_in(&expansion.access_form, &local)?;
+            locations.push((expansion, local, value));
         }
-        Ok(old_values.into_iter().next().unwrap_or(Value::Nil))
+        let new_value = self.eval_in(&items[items.len() - 1], environment)?;
+        for (index, (expansion, local, _)) in locations.iter().enumerate() {
+            let value = locations
+                .get(index + 1)
+                .map(|(_, _, value)| value.clone())
+                .unwrap_or_else(|| new_value.clone());
+            self.store_modify_macro_setf_expansion(expansion, value, local)?;
+        }
+        Ok(locations
+            .into_iter()
+            .next()
+            .map(|(_, _, value)| value)
+            .unwrap_or(Value::Nil))
     }
 
     fn special_modify_symbol(
@@ -5518,9 +6829,7 @@ impl Runtime {
         }
         let place = &items[1];
         if atom_name(place).is_some()
-            && self
-                .expand_symbol_macro_form(place, environment)?
-                .is_none()
+            && self.expand_symbol_macro_form(place, environment)?.is_none()
         {
             self.variable_name(place, &format!("{operator} target"))?;
         }
@@ -5549,6 +6858,12 @@ impl Runtime {
         Form::atom(format!("NCL-SETF-TEMP-{counter}"), span)
     }
 
+    fn fresh_hash_table_iterator_state(&self, span: Span) -> Form {
+        let counter = self.gensym_counter.get();
+        self.gensym_counter.set(counter.wrapping_add(1));
+        Form::atom(format!("NCL-HASH-TABLE-ITERATOR-STATE-{counter}"), span)
+    }
+
     fn setf_expansion_forms(
         &self,
         value: &Value,
@@ -5574,10 +6889,7 @@ impl Runtime {
     ) -> Result<SetfExpansion, RuntimeError> {
         let values = value.multiple_values();
         if values.len() != 5 {
-            return Err(self.invalid(
-                "SETF expander must return five values",
-                span,
-            ));
+            return Err(self.invalid("SETF expander must return five values", span));
         }
         let temporaries = self.setf_expansion_forms(&values[0], "temporary variables", span)?;
         let value_forms = self.setf_expansion_forms(&values[1], "value forms", span)?;
@@ -5587,19 +6899,20 @@ impl Runtime {
                 span,
             ));
         }
-        let mut stores = self.setf_expansion_forms(&values[2], "store variables", span)?;
-        if stores.len() != 1 {
+        let stores = self.setf_expansion_forms(&values[2], "store variables", span)?;
+        if stores.is_empty() {
             return Err(self.invalid(
-                "SETF expansion must provide exactly one store variable",
+                "SETF expansion must provide at least one store variable",
                 span,
             ));
         }
         Ok(SetfExpansion {
             temporaries,
             values: value_forms,
-            store: stores.remove(0),
+            stores,
             store_form: self.form_from_value(&values[3], span)?,
             access_form: self.form_from_value(&values[4], span)?,
+            current_place: None,
         })
     }
 
@@ -5618,7 +6931,7 @@ impl Runtime {
         Ok(Value::values(vec![
             list_value(&expansion.temporaries)?,
             list_value(&expansion.values)?,
-            Value::list(vec![self.quoted_value(&expansion.store)?]),
+            list_value(&expansion.stores)?,
             self.quoted_value(&expansion.store_form)?,
             self.quoted_value(&expansion.access_form)?,
         ]))
@@ -5634,6 +6947,15 @@ impl Runtime {
             return Ok(None);
         };
         let lookup_name = unqualified_name(operator);
+        if let Some(definition) = environment.lookup_defsetf(&lookup_name) {
+            return Ok(Some(self.defsetf_setf_expansion(
+                place,
+                items,
+                operator,
+                &definition,
+                environment,
+            )?));
+        }
         let Some(function) = environment.lookup_setf_expander(&lookup_name) else {
             return Ok(None);
         };
@@ -5660,6 +6982,53 @@ impl Runtime {
         Ok(Some(self.parse_setf_expansion(&expansion, place.span)?))
     }
 
+    fn defsetf_setf_expansion(
+        &self,
+        place: &Form,
+        items: &[Form],
+        operator: &str,
+        definition: &DefsetfDefinition,
+        environment: &Environment,
+    ) -> Result<SetfExpansion, RuntimeError> {
+        let temporaries = items[1..]
+            .iter()
+            .map(|form| self.fresh_setf_temporary(form.span))
+            .collect::<Vec<_>>();
+        let local = self.bind_macro_arguments(
+            place,
+            &temporaries,
+            operator,
+            &definition.lambda_list,
+            &definition.environment,
+            environment,
+        )?;
+        if definition.stores.is_empty() {
+            return Err(self.invalid("DEFSETF needs a store variable", place.span));
+        }
+        let stores = definition
+            .stores
+            .iter()
+            .map(|_| self.fresh_setf_temporary(place.span))
+            .collect::<Vec<_>>();
+        for (store_binding, store) in definition.stores.iter().zip(&stores) {
+            self.define_macro_binding_in(store_binding, self.quoted_value(store)?, &local);
+        }
+        let writer_value = self.eval_sequence_values(&definition.body, &local)?;
+        let store_form = self.form_from_value(&writer_value.primary_value(), place.span)?;
+        let mut access_items = Vec::with_capacity(items.len());
+        access_items.push(items[0].clone());
+        access_items.extend(temporaries.iter().cloned());
+        let access_form = Form::list(access_items, place.span);
+        Ok(SetfExpansion {
+            temporaries,
+            values: items[1..].to_vec(),
+            stores,
+            store_form,
+            access_form,
+            current_place: None,
+        })
+    }
+
     fn get_setf_expansion(
         &self,
         place: &Form,
@@ -5672,19 +7041,16 @@ impl Runtime {
             self.variable_name_info(place, "SETF place must be a symbol")?;
             let store = self.fresh_setf_temporary(place.span);
             let store_form = Form::list(
-                vec![
-                    Form::atom("SETQ", place.span),
-                    place.clone(),
-                    store.clone(),
-                ],
+                vec![Form::atom("SETQ", place.span), place.clone(), store.clone()],
                 place.span,
             );
             return Ok(SetfExpansion {
                 temporaries: Vec::new(),
                 values: Vec::new(),
-                store,
+                stores: vec![store],
                 store_form,
                 access_form: place.clone(),
+                current_place: Some(place.clone()),
             });
         }
 
@@ -5720,9 +7086,10 @@ impl Runtime {
         Ok(SetfExpansion {
             temporaries,
             values,
-            store,
+            stores: vec![store],
             store_form,
             access_form,
+            current_place: None,
         })
     }
 
@@ -5747,10 +7114,9 @@ impl Runtime {
         if let Some(expansion) = self.custom_setf_expansion(place, items, environment)? {
             return Ok(expansion);
         }
-        let Some(container_index) = Self::modify_macro_container_index(
-            operator,
-            items.len().saturating_sub(1),
-        ) else {
+        let Some(container_index) =
+            Self::modify_macro_container_index(operator, items.len().saturating_sub(1))
+        else {
             return self.get_setf_expansion(place, environment);
         };
 
@@ -5759,10 +7125,15 @@ impl Runtime {
             .map(|_| self.fresh_setf_temporary(place.span))
             .collect::<Vec<_>>();
         let outer_values = items[1..].to_vec();
-        let nested = self.get_modify_macro_setf_expansion(
-            &outer_values[container_index],
-            environment,
-        )?;
+        let nested =
+            self.get_modify_macro_setf_expansion(&outer_values[container_index], environment)?;
+        if nested.stores.len() != 1 {
+            return Err(self.invalid(
+                "nested SETF expansion must provide one store variable",
+                place.span,
+            ));
+        }
+        let nested_store = nested.stores[0].clone();
 
         let mut temporaries = Vec::new();
         let mut values = Vec::new();
@@ -5800,10 +7171,7 @@ impl Runtime {
                 Form::atom("LET", place.span),
                 Form::list(
                     vec![Form::list(
-                        vec![
-                            nested.store.clone(),
-                            outer_temporaries[container_index].clone(),
-                        ],
+                        vec![nested_store, outer_temporaries[container_index].clone()],
                         place.span,
                     )],
                     place.span,
@@ -5820,33 +7188,48 @@ impl Runtime {
             ],
             place.span,
         );
+        let current_place = nested.current_place.as_ref().map(|nested_place| {
+            let mut current_items = Vec::with_capacity(items.len());
+            current_items.push(items[0].clone());
+            for (index, temporary) in outer_temporaries.iter().enumerate() {
+                if index == container_index {
+                    current_items.push(nested_place.clone());
+                } else {
+                    current_items.push(temporary.clone());
+                }
+            }
+            Form::list(current_items, place.span)
+        });
 
         Ok(SetfExpansion {
             temporaries,
             values,
-            store,
+            stores: vec![store],
             store_form,
             access_form,
+            current_place,
         })
     }
 
     fn modify_macro_container_index(operator: &str, argument_count: usize) -> Option<usize> {
+        if cxr_operations(operator).is_some() {
+            return (argument_count > 0).then_some(0);
+        }
         let index = match unqualified_name(operator).as_str() {
-            "CAR" | "FIRST" | "CDR" | "REST" | "GETF" | "ELT" | "CHAR" | "SCHAR"
-            | "BIT" | "AREF" | "ROW-MAJOR-AREF" | "SVREF" | "SUBSEQ" => 0,
+            "CAR" | "FIRST" | "CDR" | "REST" | "GETF" | "ELT" | "CHAR" | "SCHAR" | "BIT"
+            | "SBIT" | "AREF" | "ROW-MAJOR-AREF" | "SVREF" | "SUBSEQ" => 0,
             "NTH" => 1,
             _ => return None,
         };
         (index < argument_count).then_some(index)
     }
 
-    fn apply_setf_expansion(
+    fn initialize_setf_expansion(
         &self,
         expansion: &SetfExpansion,
-        value: Value,
         environment: &Environment,
         span: Span,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<Environment, RuntimeError> {
         if expansion.temporaries.len() != expansion.values.len() {
             return Err(self.invalid(
                 "SETF expansion temporary and value lists must have the same length",
@@ -5860,11 +7243,126 @@ impl Runtime {
             let value = self.eval_in(value_form, &local)?;
             self.define_variable_in(&name, escaped, value, &local);
         }
-        let (store_name, store_escaped) =
-            self.variable_name_info(&expansion.store, "SETF store variable must be a symbol")?;
-        self.define_variable_in(&store_name, store_escaped, value, &local);
-        self.eval_in(&expansion.store_form, &local)?;
+        Ok(local)
+    }
+
+    fn store_setf_expansion(
+        &self,
+        expansion: &SetfExpansion,
+        value: Value,
+        environment: &Environment,
+    ) -> Result<(), RuntimeError> {
+        self.bind_setf_stores(expansion, value, environment)?;
+        self.eval_in(&expansion.store_form, environment)?;
         Ok(())
+    }
+
+    fn store_modify_macro_setf_expansion(
+        &self,
+        expansion: &SetfExpansion,
+        value: Value,
+        environment: &Environment,
+    ) -> Result<(), RuntimeError> {
+        self.bind_setf_stores(expansion, value, environment)?;
+        if let Some(current_place) = &expansion.current_place {
+            if expansion.stores.len() != 1 {
+                return Err(self.invalid(
+                    "SETF expansion with a current place must provide one store variable",
+                    current_place.span,
+                ));
+            }
+            let value = self.eval_in(&expansion.stores[0], environment)?;
+            self.set_place(current_place, value, environment)?;
+        } else {
+            self.eval_in(&expansion.store_form, environment)?;
+        }
+        Ok(())
+    }
+
+    fn bind_setf_stores(
+        &self,
+        expansion: &SetfExpansion,
+        value: Value,
+        environment: &Environment,
+    ) -> Result<(), RuntimeError> {
+        if expansion.stores.is_empty() {
+            return Err(self.invalid(
+                "SETF expansion must provide at least one store variable",
+                expansion.store_form.span,
+            ));
+        }
+        let values = value.multiple_values();
+        for (index, store) in expansion.stores.iter().enumerate() {
+            let (name, escaped) =
+                self.variable_name_info(store, "SETF store variable must be a symbol")?;
+            let value = values.get(index).cloned().unwrap_or(Value::Nil);
+            self.define_variable_in(&name, escaped, value, environment);
+        }
+        Ok(())
+    }
+
+    fn apply_setf_expansion(
+        &self,
+        expansion: &SetfExpansion,
+        value: Value,
+        environment: &Environment,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let local = self.initialize_setf_expansion(expansion, environment, span)?;
+        self.store_setf_expansion(expansion, value, &local)
+    }
+
+    fn set_cxr_value(
+        &self,
+        current: Value,
+        operations: &[u8],
+        value: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let Some(mut elements) = current.list_items() else {
+            return Err(RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: current.type_name().to_string(),
+                span: Some(span),
+            });
+        };
+        if elements.is_empty() {
+            return Err(self.invalid("cannot SETF CXR of NIL", span));
+        }
+
+        let Some((&operation, rest)) = operations.split_first() else {
+            return Ok(value);
+        };
+        match operation {
+            b'A' => {
+                elements[0] = if rest.is_empty() {
+                    value
+                } else {
+                    self.set_cxr_value(elements[0].clone(), rest, value, span)?
+                };
+                Ok(Value::list(elements))
+            }
+            b'D' => {
+                let tail = Value::list(elements.iter().skip(1).cloned().collect());
+                let replacement = if rest.is_empty() {
+                    value.list_items().ok_or_else(|| RuntimeError::Type {
+                        expected: "LIST".to_string(),
+                        actual: value.type_name().to_string(),
+                        span: Some(span),
+                    })?
+                } else {
+                    let updated = self.set_cxr_value(tail, rest, value, span)?;
+                    updated.list_items().ok_or_else(|| {
+                        self.invalid("SETF CXR reconstruction must produce a list", span)
+                    })?
+                };
+                let mut rebuilt = Vec::with_capacity(replacement.len() + 1);
+                rebuilt.push(elements[0].clone());
+                rebuilt.extend(replacement);
+                Ok(Value::list(rebuilt))
+            }
+            _ => Err(self.invalid("unsupported CXR place", span)),
+        }
     }
 
     pub(crate) fn set_place(
@@ -5882,7 +7380,7 @@ impl Runtime {
             self.set_or_define_variable_in(
                 &resolved_name,
                 escaped,
-                value,
+                value.primary_value(),
                 environment,
                 place.span,
             )?;
@@ -5898,10 +7396,13 @@ impl Runtime {
         let args = &items[1..];
 
         let lookup_name = unqualified_name(operator);
-        if environment.lookup_setf_expander(&lookup_name).is_some() {
+        if environment.lookup_setf_expander(&lookup_name).is_some()
+            || environment.lookup_defsetf(&lookup_name).is_some()
+        {
             let expansion = self.get_setf_expansion(place, environment)?;
             return self.apply_setf_expansion(&expansion, value, environment, place.span);
         }
+        let value = value.primary_value();
         if let Some(Value::Function(function)) = self.lookup_function_in(&lookup_name, environment)
         {
             match function.as_ref() {
@@ -5920,6 +7421,7 @@ impl Runtime {
                             span: Some(args[0].span),
                         });
                     }
+                    self.validate_instance_slot_value(&current, slot_name, &value, place.span)?;
                     if current.set_instance_slot(class_name, slot_name, value) {
                         return Ok(());
                     }
@@ -5935,10 +7437,9 @@ impl Runtime {
                         return Err(self.arity("setf structure accessor", "one", args.len()));
                     }
                     if *read_only {
-                        return Err(self.invalid(
-                            "cannot SETF a read-only structure slot",
-                            place.span,
-                        ));
+                        return Err(
+                            self.invalid("cannot SETF a read-only structure slot", place.span)
+                        );
                     }
                     let current = self.eval_in(&args[0], environment)?;
                     if current.set_structure_slot(structure_name, *slot_index, value) {
@@ -5979,6 +7480,7 @@ impl Runtime {
                         span: Some(args[0].span),
                     });
                 };
+                self.validate_instance_slot_value(&current, &slot_name, &value, place.span)?;
                 if current.set_instance_slot(&class.name, &slot_name, value) {
                     Ok(())
                 } else {
@@ -5999,6 +7501,9 @@ impl Runtime {
                 };
                 if elements.is_empty() {
                     return Err(self.invalid("cannot SETF CAR of NIL", args[0].span));
+                }
+                if current.is_typed_list() && current.set_sequence_item(0, value.clone()) {
+                    return Ok(());
                 }
                 elements[0] = value;
                 self.set_place(&args[0], Value::list(elements), environment)
@@ -6025,10 +7530,28 @@ impl Runtime {
                         span: Some(place.span),
                     });
                 };
+                if current.is_typed_list() && current.set_typed_list_cdr(&replacement) {
+                    return Ok(());
+                }
                 let mut rebuilt = Vec::with_capacity(elements.len() + replacement.len());
                 rebuilt.push(elements[0].clone());
                 rebuilt.append(&mut replacement);
                 self.set_place(&args[0], Value::list(rebuilt), environment)
+            }
+            _operator if cxr_operations(&lookup_name).is_some() => {
+                if args.len() != 1 {
+                    return Err(self.arity("setf CXR", "one", args.len()));
+                }
+                if atom_name(&args[0]).is_some() {
+                    let current = self.eval_in(&args[0], environment)?;
+                    let operations = cxr_operations(&lookup_name)
+                        .expect("CXR operation validated by match guard");
+                    let rebuilt = self.set_cxr_value(current, &operations, value, args[0].span)?;
+                    self.set_place(&args[0], rebuilt, environment)
+                } else {
+                    let expansion = self.get_modify_macro_setf_expansion(place, environment)?;
+                    self.apply_setf_expansion(&expansion, value, environment, place.span)
+                }
             }
             "NTH" => {
                 if args.len() != 2 {
@@ -6036,6 +7559,12 @@ impl Runtime {
                 }
                 let index = self.setf_index(self.eval_in(&args[0], environment)?, args[0].span)?;
                 let current = self.eval_in(&args[1], environment)?;
+                if current.is_typed_list() {
+                    if !current.set_sequence_item(index, value) {
+                        return Err(self.invalid("SETF index is out of bounds", args[0].span));
+                    }
+                    return Ok(());
+                }
                 let Some(mut elements) = current.list_items() else {
                     return Err(RuntimeError::Type {
                         expected: "LIST".to_string(),
@@ -6048,6 +7577,27 @@ impl Runtime {
                 };
                 *slot = value;
                 self.set_place(&args[1], Value::list(elements), environment)
+            }
+            "FILL-POINTER" => {
+                if args.len() != 1 {
+                    return Err(self.arity("setf fill-pointer", "one", args.len()));
+                }
+                let current = self.eval_in(&args[0], environment)?;
+                if current.array_fill_pointer().is_none() {
+                    return Err(RuntimeError::Type {
+                        expected: "an array with a fill pointer".to_string(),
+                        actual: current.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
+                }
+                let index = self.setf_index(value, place.span)?;
+                if !current.set_array_fill_pointer(index) {
+                    return Err(self.invalid(
+                        "SETF fill-pointer is out of bounds",
+                        place.span,
+                    ));
+                }
+                Ok(())
             }
             "ELT" => {
                 if args.len() != 2 {
@@ -6064,13 +7614,48 @@ impl Runtime {
                         *slot = value;
                         self.set_place(&args[0], Value::list(elements), environment)
                     }
-                    Value::Vector(_) => {
-                        let mut elements = current.vector_items().unwrap_or_default();
+                    Value::Vector(elements) => {
+                        let mut elements = elements.borrow_mut();
                         let Some(slot) = elements.get_mut(index) else {
                             return Err(self.invalid("SETF index is out of bounds", args[1].span));
                         };
                         *slot = value;
-                        self.set_place(&args[0], Value::vector(elements), environment)
+                        Ok(())
+                    }
+                    container if container.is_typed_list() || container.is_typed_vector() => {
+                        if !container.set_sequence_item(index, value) {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        }
+                        Ok(())
+                    }
+                    Value::Array {
+                        ref dimensions,
+                        ref elements,
+                        ..
+                    } if dimensions.len() == 1 => {
+                        if !current.accepts_array_element(&value) {
+                            let expected = current
+                                .array_element_type()
+                                .map(|element_type| element_type.name())
+                                .unwrap_or("ARRAY");
+                            return Err(RuntimeError::Type {
+                                expected: expected.to_string(),
+                                actual: value.type_name().to_string(),
+                                span: Some(place.span),
+                            });
+                        }
+                        let limit = current
+                            .array_fill_pointer()
+                            .unwrap_or_else(|| elements.borrow().len());
+                        if index >= limit {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        }
+                        let mut elements = elements.borrow_mut();
+                        let Some(slot) = elements.get_mut(index) else {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        };
+                        *slot = value;
+                        Ok(())
                     }
                     Value::String(text) => {
                         let Value::Character(character) = value else {
@@ -6105,7 +7690,17 @@ impl Runtime {
                 let current = self.eval_in(&args[0], environment)?;
                 let mut destination = match &current {
                     Value::Nil => Vec::new(),
-                    Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+                    Value::List(items) => items.as_ref().clone(),
+                    Value::Vector(items) => items.borrow().clone(),
+                    value if value.is_typed_list() => {
+                        value.list_items().expect("typed list items")
+                    }
+                    value if value.is_typed_vector() => {
+                        value.vector_items().expect("typed vector items")
+                    }
+                    Value::Array { dimensions, .. } if dimensions.len() == 1 => {
+                        current.vector_items().expect("vector items")
+                    }
                     Value::String(text) => text.chars().map(Value::Character).collect(),
                     other => {
                         return Err(RuntimeError::Type {
@@ -6115,8 +7710,7 @@ impl Runtime {
                         });
                     }
                 };
-                let start =
-                    self.setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
+                let start = self.setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
                 let end = args
                     .get(2)
                     .map(|form| {
@@ -6131,7 +7725,14 @@ impl Runtime {
 
                 let replacement = match &value {
                     Value::Nil => Vec::new(),
-                    Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+                    Value::List(items) => items.as_ref().clone(),
+                    Value::Vector(items) => items.borrow().clone(),
+                    value if value.is_typed_list() => {
+                        value.list_items().expect("typed list items")
+                    }
+                    value if value.is_typed_vector() => {
+                        value.vector_items().expect("typed vector items")
+                    }
                     Value::String(text) => text.chars().map(Value::Character).collect(),
                     other => {
                         return Err(RuntimeError::Type {
@@ -6142,11 +7743,66 @@ impl Runtime {
                     }
                 };
                 let count = (end - start).min(replacement.len());
+                if current.is_typed_list() || current.is_typed_vector() {
+                    for (offset, item) in replacement.iter().take(count).cloned().enumerate() {
+                        if !current.set_sequence_item(start + offset, item) {
+                            return Err(self.invalid(
+                                "SETF SUBSEQ cannot modify a typed structure discriminator",
+                                place.span,
+                            ));
+                        }
+                    }
+                    return Ok(());
+                }
+                match &current {
+                    Value::Vector(elements) => {
+                        let mut elements = elements.borrow_mut();
+                        elements[start..start + count].clone_from_slice(&replacement[..count]);
+                        return Ok(());
+                    }
+                    Value::Array {
+                        dimensions,
+                        elements,
+                        ..
+                    } if dimensions.len() == 1 => {
+                        if replacement[..count]
+                            .iter()
+                            .any(|item| !current.accepts_array_element(item))
+                        {
+                            let expected = current
+                                .array_element_type()
+                                .map(|element_type| element_type.name())
+                                .unwrap_or("ARRAY");
+                            return Err(RuntimeError::Type {
+                                expected: expected.to_string(),
+                                actual: replacement
+                                    .iter()
+                                    .find(|item| !current.accepts_array_element(item))
+                                    .map(Value::type_name)
+                                    .unwrap_or("VALUE")
+                                    .to_string(),
+                                span: Some(place.span),
+                            });
+                        }
+                        let mut elements = elements.borrow_mut();
+                        elements[start..start + count].clone_from_slice(&replacement[..count]);
+                        return Ok(());
+                    }
+                    _ => {}
+                }
                 destination[start..start + count].clone_from_slice(&replacement[..count]);
 
                 let rebuilt = match &current {
                     Value::Nil | Value::List(_) => Value::list(destination),
                     Value::Vector(_) => Value::vector(destination),
+                    Value::Array { dimensions, .. } if dimensions.len() == 1 => {
+                        let element_type = current.array_element_type().expect("array type");
+                        Value::array_with_element_type(
+                            dimensions.as_ref().clone(),
+                            destination,
+                            element_type,
+                        )
+                    }
                     Value::String(_) => {
                         let mut text = String::new();
                         for item in destination {
@@ -6202,19 +7858,41 @@ impl Runtime {
                 }
                 let current = self.eval_in(&args[0], environment)?;
                 let index = self.setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
-                let Value::Vector(_) = &current else {
-                    return Err(RuntimeError::Type {
+                match &current {
+                    Value::Vector(elements) => {
+                        let mut elements = elements.borrow_mut();
+                        let Some(slot) = elements.get_mut(index) else {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        };
+                        *slot = value;
+                        Ok(())
+                    }
+                    container if container.is_typed_vector() => {
+                        if !container.set_sequence_item(index, value) {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        }
+                        Ok(())
+                    }
+                    Value::Array {
+                        dimensions,
+                        elements,
+                        element_type: ArrayElementType::T,
+                        fill_pointer: None,
+                        adjustable: false,
+                    } if dimensions.len() == 1 => {
+                        let mut elements = elements.borrow_mut();
+                        let Some(slot) = elements.get_mut(index) else {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        };
+                        *slot = value;
+                        Ok(())
+                    }
+                    _ => Err(RuntimeError::Type {
                         expected: "SIMPLE-VECTOR".to_string(),
                         actual: current.type_name().to_string(),
                         span: Some(args[0].span),
-                    });
-                };
-                let mut elements = current.vector_items().expect("vector items");
-                let Some(slot) = elements.get_mut(index) else {
-                    return Err(self.invalid("SETF index is out of bounds", args[1].span));
-                };
-                *slot = value;
-                self.set_place(&args[0], Value::vector(elements), environment)
+                    }),
+                }
             }
             "AREF" => {
                 if args.is_empty() {
@@ -6226,19 +7904,32 @@ impl Runtime {
                     .map(|argument| self.eval_in(argument, environment))
                     .collect::<Result<Vec<_>, _>>()?;
                 match &current {
-                    Value::Vector(_) => {
+                    Value::Vector(elements) => {
                         if indices.len() != 1 {
                             return Err(self.arity("setf aref", "two", args.len()));
                         }
                         let index = self.setf_index(indices[0].clone(), args[1].span)?;
-                        let mut elements = current.vector_items().expect("vector items");
+                        let mut elements = elements.borrow_mut();
                         let Some(slot) = elements.get_mut(index) else {
                             return Err(self.invalid("SETF index is out of bounds", args[1].span));
                         };
                         *slot = value;
-                        self.set_place(&args[0], Value::vector(elements), environment)
+                        Ok(())
                     }
-                    Value::Array { dimensions, .. } => {
+                    container if container.is_typed_vector() => {
+                        if indices.len() != 1 {
+                            return Err(self.arity("setf aref", "two", args.len()));
+                        }
+                        let index = self.setf_index(indices[0].clone(), args[1].span)?;
+                        if !container.set_sequence_item(index, value) {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        }
+                        Ok(())
+                    }
+                    Value::Array { elements, .. } => {
+                        let dimensions = current
+                            .array_dimensions()
+                            .expect("array dimensions are available");
                         if args.len() != dimensions.len() + 1 {
                             return Err(self.arity(
                                 "setf aref",
@@ -6271,19 +7962,49 @@ impl Runtime {
                                 self.invalid("SETF index is too large", place.span)
                             })?;
                         }
-                        let mut elements = current.array_items().expect("array items");
+                        if !current.accepts_array_element(&value) {
+                            let expected = current
+                                .array_element_type()
+                                .map(|element_type| element_type.name())
+                                .unwrap_or("ARRAY");
+                            return Err(RuntimeError::Type {
+                                expected: expected.to_string(),
+                                actual: value.type_name().to_string(),
+                                span: Some(place.span),
+                            });
+                        }
+                        let mut elements = elements.borrow_mut();
                         let Some(slot) = elements.get_mut(offset) else {
                             return Err(self.invalid("SETF index is out of bounds", place.span));
                         };
                         *slot = value;
+                        Ok(())
+                    }
+                    Value::String(text) => {
+                        if indices.len() != 1 {
+                            return Err(self.arity("setf aref", "two", args.len()));
+                        }
+                        let index = self.setf_index(indices[0].clone(), args[1].span)?;
+                        let Value::Character(character) = value else {
+                            return Err(RuntimeError::Type {
+                                expected: "CHARACTER".to_string(),
+                                actual: value.type_name().to_string(),
+                                span: Some(place.span),
+                            });
+                        };
+                        let mut characters = text.chars().collect::<Vec<_>>();
+                        let Some(slot) = characters.get_mut(index) else {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        };
+                        *slot = character;
                         self.set_place(
                             &args[0],
-                            Value::array(dimensions.as_ref().clone(), elements),
+                            Value::string(characters.into_iter().collect::<String>()),
                             environment,
                         )
                     }
                     other => Err(RuntimeError::Type {
-                        expected: "ARRAY or VECTOR".to_string(),
+                        expected: "ARRAY, VECTOR, or STRING".to_string(),
                         actual: other.type_name().to_string(),
                         span: Some(args[0].span),
                     }),
@@ -6294,55 +8015,128 @@ impl Runtime {
                     return Err(self.arity("setf row-major-aref", "two", args.len()));
                 }
                 let current = self.eval_in(&args[0], environment)?;
-                let index =
-                    self.setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
+                let index = self.setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
                 match &current {
-                    Value::Vector(_) => {
-                        let mut elements = current.vector_items().expect("vector items");
+                    Value::Vector(elements) => {
+                        let mut elements = elements.borrow_mut();
                         let Some(slot) = elements.get_mut(index) else {
                             return Err(self.invalid("SETF index is out of bounds", args[1].span));
                         };
                         *slot = value;
-                        self.set_place(&args[0], Value::vector(elements), environment)
+                        Ok(())
                     }
-                    Value::Array { .. } => {
-                        let mut elements = current.array_items().expect("array items");
+                    container if container.is_typed_vector() => {
+                        if !container.set_sequence_item(index, value) {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        }
+                        Ok(())
+                    }
+                    Value::Array { elements, .. } => {
+                        if !current.accepts_array_element(&value) {
+                            let expected = current
+                                .array_element_type()
+                                .map(|element_type| element_type.name())
+                                .unwrap_or("ARRAY");
+                            return Err(RuntimeError::Type {
+                                expected: expected.to_string(),
+                                actual: value.type_name().to_string(),
+                                span: Some(place.span),
+                            });
+                        }
+                        let mut elements = elements.borrow_mut();
                         let Some(slot) = elements.get_mut(index) else {
                             return Err(self.invalid("SETF index is out of bounds", args[1].span));
                         };
                         *slot = value;
-                        let dimensions = current
-                            .array_dimensions()
-                            .expect("array dimensions");
+                        Ok(())
+                    }
+                    Value::String(text) => {
+                        let Value::Character(character) = value else {
+                            return Err(RuntimeError::Type {
+                                expected: "CHARACTER".to_string(),
+                                actual: value.type_name().to_string(),
+                                span: Some(place.span),
+                            });
+                        };
+                        let mut characters = text.chars().collect::<Vec<_>>();
+                        let Some(slot) = characters.get_mut(index) else {
+                            return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                        };
+                        *slot = character;
                         self.set_place(
                             &args[0],
-                            Value::array(dimensions, elements),
+                            Value::string(characters.into_iter().collect::<String>()),
                             environment,
                         )
                     }
                     other => Err(RuntimeError::Type {
-                        expected: "ARRAY or VECTOR".to_string(),
+                        expected: "ARRAY, VECTOR, or STRING".to_string(),
                         actual: other.type_name().to_string(),
                         span: Some(args[0].span),
                     }),
                 }
+            }
+            "SBIT" => {
+                if args.len() != 2 {
+                    return Err(self.arity("setf sbit", "two", args.len()));
+                }
+                let current = self.eval_in(&args[0], environment)?;
+                let Value::Array {
+                    dimensions,
+                    elements,
+                    element_type: ArrayElementType::Bit,
+                    fill_pointer: None,
+                    adjustable: false,
+                } = &current
+                else {
+                    return Err(RuntimeError::Type {
+                        expected: "SIMPLE-BIT-VECTOR".to_string(),
+                        actual: current.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
+                };
+                if dimensions.len() != 1 {
+                    return Err(RuntimeError::Type {
+                        expected: "SIMPLE-BIT-VECTOR".to_string(),
+                        actual: current.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
+                }
+                let index_value = self.eval_in(&args[1], environment)?;
+                let index = self.setf_index(index_value, args[1].span)?;
+                if index >= elements.borrow().len() {
+                    return Err(self.invalid("SETF index is out of bounds", args[1].span));
+                }
+                if !matches!(&value, Value::Integer(bit) if *bit == 0 || *bit == 1) {
+                    return Err(RuntimeError::Type {
+                        expected: "BIT".to_string(),
+                        actual: value.type_name().to_string(),
+                        span: Some(place.span),
+                    });
+                }
+                elements.borrow_mut()[index] = value;
+                Ok(())
             }
             "BIT" => {
                 if args.is_empty() {
                     return Err(self.arity("setf bit", "array and subscripts", 0));
                 }
                 let current = self.eval_in(&args[0], environment)?;
-                let dimensions = match &current {
-                    Value::Vector(items) => vec![items.len()],
-                    Value::Array { dimensions, .. } => dimensions.as_ref().clone(),
-                    other => {
-                        return Err(RuntimeError::Type {
-                            expected: "ARRAY".to_string(),
-                            actual: other.type_name().to_string(),
-                            span: Some(args[0].span),
-                        });
-                    }
+                let Value::Array {
+                    elements,
+                    element_type: ArrayElementType::Bit,
+                    ..
+                } = &current
+                else {
+                    return Err(RuntimeError::Type {
+                        expected: "BIT-ARRAY".to_string(),
+                        actual: current.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
                 };
+                let dimensions = current
+                    .array_dimensions()
+                    .expect("array dimensions are available");
                 if args.len() != dimensions.len() + 1 {
                     return Err(self.arity(
                         "setf bit",
@@ -6355,27 +8149,24 @@ impl Runtime {
                     .map(|argument| self.eval_in(argument, environment))
                     .collect::<Result<Vec<_>, _>>()?;
                 let mut offset = 0_usize;
-                for (axis, (dimension, index_value)) in
-                    dimensions.iter().zip(&indices).enumerate()
+                for (axis, (dimension, index_value)) in dimensions.iter().zip(&indices).enumerate()
                 {
-                    let index =
-                        self.setf_index(index_value.clone(), args[axis + 1].span)?;
+                    let index = self.setf_index(index_value.clone(), args[axis + 1].span)?;
                     if index >= *dimension {
-                        return Err(self
-                            .invalid("SETF index is out of bounds", args[axis + 1].span));
+                        return Err(
+                            self.invalid("SETF index is out of bounds", args[axis + 1].span)
+                        );
                     }
                     let stride = dimensions[axis + 1..]
                         .iter()
-                        .try_fold(1_usize, |stride, dimension| {
-                            stride.checked_mul(*dimension)
-                        })
+                        .try_fold(1_usize, |stride, dimension| stride.checked_mul(*dimension))
                         .ok_or_else(|| self.invalid("SETF index is too large", place.span))?;
-                    let contribution = index.checked_mul(stride).ok_or_else(|| {
-                        self.invalid("SETF index is too large", place.span)
-                    })?;
-                    offset = offset.checked_add(contribution).ok_or_else(|| {
-                        self.invalid("SETF index is too large", place.span)
-                    })?;
+                    let contribution = index
+                        .checked_mul(stride)
+                        .ok_or_else(|| self.invalid("SETF index is too large", place.span))?;
+                    offset = offset
+                        .checked_add(contribution)
+                        .ok_or_else(|| self.invalid("SETF index is too large", place.span))?;
                 }
                 if !matches!(&value, Value::Integer(bit) if *bit == 0 || *bit == 1) {
                     return Err(RuntimeError::Type {
@@ -6384,32 +8175,12 @@ impl Runtime {
                         span: Some(place.span),
                     });
                 }
-                match &current {
-                    Value::Vector(_) => {
-                        let mut elements = current.vector_items().expect("vector items");
-                        let Some(slot) = elements.get_mut(offset) else {
-                            return Err(self.invalid("SETF index is out of bounds", place.span));
-                        };
-                        *slot = value;
-                        self.set_place(&args[0], Value::vector(elements), environment)
-                    }
-                    Value::Array { .. } => {
-                        let mut elements = current.array_items().expect("array items");
-                        let Some(slot) = elements.get_mut(offset) else {
-                            return Err(self.invalid("SETF index is out of bounds", place.span));
-                        };
-                        *slot = value;
-                        let dimensions = current
-                            .array_dimensions()
-                            .expect("array dimensions");
-                        self.set_place(
-                            &args[0],
-                            Value::array(dimensions, elements),
-                            environment,
-                        )
-                    }
-                    _ => unreachable!("bit array type checked above"),
-                }
+                let mut elements = elements.borrow_mut();
+                let Some(slot) = elements.get_mut(offset) else {
+                    return Err(self.invalid("SETF index is out of bounds", place.span));
+                };
+                *slot = value;
+                Ok(())
             }
             "SYMBOL-VALUE" => {
                 if args.len() != 1 {
@@ -6427,9 +8198,9 @@ impl Runtime {
                 }
                 Ok(())
             }
-            "SYMBOL-FUNCTION" => {
+            "FDEFINITION" | "SYMBOL-FUNCTION" => {
                 if args.len() != 1 {
-                    return Err(self.arity("setf symbol-function", "one", args.len()));
+                    return Err(self.arity("setf function definition", "one", args.len()));
                 }
                 if !matches!(&value, Value::Function(_)) {
                     return Err(RuntimeError::Type {
@@ -6440,7 +8211,10 @@ impl Runtime {
                 }
                 let symbol = self.eval_in(&args[0], environment)?;
                 let (name, exact) = symbol.symbol_reference().ok_or_else(|| {
-                    self.invalid("setf symbol-function target must be a symbol", args[0].span)
+                    self.invalid(
+                        "setf function definition target must be a symbol",
+                        args[0].span,
+                    )
                 })?;
                 if exact {
                     self.global.define_function_exact(name, value);
@@ -6491,11 +8265,14 @@ impl Runtime {
                 Ok(())
             }
             "GETHASH" => {
-                if args.len() != 2 {
-                    return Err(self.arity("setf gethash", "two", args.len()));
+                if !(2..=3).contains(&args.len()) {
+                    return Err(self.arity("setf gethash", "two or three", args.len()));
                 }
                 let key = self.eval_in(&args[0], environment)?;
                 let table = self.eval_in(&args[1], environment)?;
+                if let Some(default) = args.get(2) {
+                    let _ = self.eval_in(default, environment)?;
+                }
                 let Some(test) = table.hash_table_test() else {
                     return Err(RuntimeError::Type {
                         expected: "HASH-TABLE".to_string(),
@@ -6522,11 +8299,14 @@ impl Runtime {
                 Ok(())
             }
             "GETF" => {
-                if args.len() != 2 {
-                    return Err(self.arity("setf getf", "two", args.len()));
+                if !(2..=3).contains(&args.len()) {
+                    return Err(self.arity("setf getf", "two or three", args.len()));
                 }
                 let current = self.eval_in(&args[0], environment)?;
                 let indicator = self.eval_in(&args[1], environment)?;
+                if let Some(default) = args.get(2) {
+                    let _ = self.eval_in(default, environment)?;
+                }
                 let Some(mut properties) = current.list_items() else {
                     return Err(RuntimeError::Type {
                         expected: "LIST".to_string(),
@@ -6547,8 +8327,8 @@ impl Runtime {
                 if let Some(index) = found {
                     properties[index] = value;
                 } else {
-                    properties.push(indicator);
-                    properties.push(value);
+                    properties.insert(0, value);
+                    properties.insert(0, indicator);
                 }
                 self.set_place(&args[0], Value::list(properties), environment)
             }
@@ -6566,7 +8346,10 @@ impl Runtime {
             match self.variable_name_info(destination, "SETF target must be a symbol") {
                 Ok(_) => return self.set_place(destination, value, environment),
                 Err(RuntimeError::InvalidForm { message, .. })
-                    if message == "SETF target must be a symbol" => return Ok(()),
+                    if message == "SETF target must be a symbol" =>
+                {
+                    return Ok(());
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -6577,7 +8360,10 @@ impl Runtime {
 
         match self.set_place(destination, value, environment) {
             Err(RuntimeError::InvalidForm { message, .. })
-                if message == "unsupported SETF place" => Ok(()),
+                if message == "unsupported SETF place" =>
+            {
+                Ok(())
+            }
             result => result,
         }
     }
@@ -6647,11 +8433,7 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         if !(items.len() == 3 || items.len() == 4) {
-            return Err(self.arity(
-                "defconstant",
-                "two or three",
-                items.len().saturating_sub(1),
-            ));
+            return Err(self.arity("defconstant", "two or three", items.len().saturating_sub(1)));
         }
         let (name, escaped) =
             self.variable_name_info(&items[1], "defconstant name must be a symbol")?;
@@ -6680,11 +8462,9 @@ impl Runtime {
         }
         let (name_form, option_forms, slot_forms) = match &items[1].kind {
             FormKind::Atom(_) => (&items[1], &items[2..2], &items[2..]),
-            FormKind::List(name_and_options) if !name_and_options.is_empty() => (
-                &name_and_options[0],
-                &name_and_options[1..],
-                &items[2..],
-            ),
+            FormKind::List(name_and_options) if !name_and_options.is_empty() => {
+                (&name_and_options[0], &name_and_options[1..], &items[2..])
+            }
             _ => {
                 return Err(self.invalid(
                     "defstruct name must be a symbol or a name-and-options list",
@@ -6692,16 +8472,43 @@ impl Runtime {
                 ));
             }
         };
-        let (raw_name, _) = self.variable_name_info(name_form, "defstruct name must be a symbol")?;
+        let (documentation, slot_forms) = match slot_forms.first() {
+            Some(Form {
+                kind: FormKind::String(value),
+                ..
+            }) => (Some(value.clone()), &slot_forms[1..]),
+            _ => (None, slot_forms),
+        };
+        let (raw_name, _) =
+            self.variable_name_info(name_form, "defstruct name must be a symbol")?;
         let structure_name = unqualified_name(&raw_name);
         let mut conc_name = format!("{structure_name}-");
         let mut predicate_name = Some(format!("{structure_name}-P"));
+        let mut predicate_explicit = false;
         let mut copier_name = Some(format!("COPY-{structure_name}"));
-        let mut constructor_options: Vec<(Option<String>, Option<OrdinaryLambdaList>)> =
-            Vec::new();
+        let mut constructor_options: Vec<(Option<String>, Option<OrdinaryLambdaList>)> = Vec::new();
         let mut seen_options = HashSet::new();
         let mut included_structure: Option<(StructureDefinition, Vec<Form>)> = None;
+        let mut representation = StructureRepresentation::Structure;
+        let mut representation_explicit = false;
+        let mut named = false;
+        let mut named_explicit = false;
         for option_form in option_forms {
+            if matches!(option_form.kind, FormKind::Atom(_)) {
+                let Some(option_name) = atom_name(option_form) else {
+                    return Err(self.invalid("defstruct option needs a name", option_form.span));
+                };
+                let normalized_option = normalize_name(option_name);
+                if normalized_option.trim_start_matches(':') != "NAMED" {
+                    return Err(self.invalid("defstruct option must be a list", option_form.span));
+                }
+                if !seen_options.insert("NAMED".to_string()) {
+                    return Err(self.invalid("defstruct cannot repeat an option", option_form.span));
+                }
+                named = true;
+                named_explicit = true;
+                continue;
+            }
             let FormKind::List(option_items) = &option_form.kind else {
                 return Err(self.invalid("defstruct option must be a list", option_form.span));
             };
@@ -6711,10 +8518,7 @@ impl Runtime {
             let normalized_option = normalize_name(option_name);
             let option_name = normalized_option.trim_start_matches(':');
             if option_name != "CONSTRUCTOR" && !seen_options.insert(option_name.to_string()) {
-                return Err(self.invalid(
-                    "defstruct cannot repeat an option",
-                    option_form.span,
-                ));
+                return Err(self.invalid("defstruct cannot repeat an option", option_form.span));
             }
             match option_name {
                 "CONC-NAME" => {
@@ -6728,6 +8532,7 @@ impl Runtime {
                         .unwrap_or_default();
                 }
                 "PREDICATE" => {
+                    predicate_explicit = true;
                     predicate_name = self.defstruct_name_option(
                         option_form,
                         option_items,
@@ -6742,6 +8547,33 @@ impl Runtime {
                         format!("COPY-{structure_name}"),
                         "defstruct :copier must name a symbol or NIL",
                     )?;
+                }
+                "TYPE" => {
+                    if option_items.len() != 2 {
+                        return Err(self.invalid(
+                            "defstruct :type needs one type name",
+                            option_form.span,
+                        ));
+                    }
+                    let Some(type_name) = atom_name(&option_items[1]) else {
+                        return Err(self.invalid(
+                            "defstruct :type must name LIST or VECTOR",
+                            option_items[1].span,
+                        ));
+                    };
+                    representation = match normalize_name(type_name)
+                        .trim_start_matches(':')
+                    {
+                        "LIST" => StructureRepresentation::List,
+                        "VECTOR" => StructureRepresentation::Vector,
+                        _ => {
+                            return Err(self.invalid(
+                                "defstruct :type must name LIST or VECTOR",
+                                option_items[1].span,
+                            ));
+                        }
+                    };
+                    representation_explicit = true;
                 }
                 "INCLUDE" => {
                     if option_items.len() < 2 {
@@ -6780,10 +8612,7 @@ impl Runtime {
                     constructor_options.push(constructor);
                 }
                 _ => {
-                    return Err(self.invalid(
-                        "unsupported defstruct option",
-                        option_items[0].span,
-                    ));
+                    return Err(self.invalid("unsupported defstruct option", option_items[0].span));
                 }
             }
         }
@@ -6791,6 +8620,12 @@ impl Runtime {
         let mut slots = Vec::new();
         let mut slot_names = HashSet::new();
         if let Some((parent, overrides)) = included_structure {
+            if !representation_explicit {
+                representation = parent.representation;
+            }
+            if !named_explicit {
+                named = parent.named;
+            }
             structure_types.extend(parent.type_names.clone());
             slots = parent.slots.clone();
             for slot in &slots {
@@ -6826,10 +8661,7 @@ impl Runtime {
                 self.defstruct_slot_description(slot_form, environment)?;
             let slot_name = unqualified_name(&raw_slot_name);
             if !slot_names.insert(slot_name.clone()) {
-                return Err(self.invalid(
-                    "defstruct cannot define duplicate slots",
-                    slot_form.span,
-                ));
+                return Err(self.invalid("defstruct cannot define duplicate slots", slot_form.span));
             }
             slots.push(StructureSlot {
                 name: slot_name,
@@ -6838,11 +8670,18 @@ impl Runtime {
             });
         }
 
+        if representation != StructureRepresentation::Structure && !named && !predicate_explicit {
+            predicate_name = None;
+        }
+
         environment.define_structure(
             &structure_name,
             StructureDefinition {
+                documentation,
                 slots: slots.clone(),
                 type_names: structure_types.clone(),
+                representation,
+                named,
             },
         );
         if constructor_options.is_empty() {
@@ -6856,6 +8695,8 @@ impl Runtime {
                         name: structure_name.clone(),
                         slots: slots.clone(),
                         structure_types: structure_types.clone(),
+                        representation,
+                        named,
                         constructor_lambda_list,
                         environment: environment.clone(),
                     })),
@@ -6918,7 +8759,9 @@ impl Runtime {
         let mut slots: Vec<ClassSlot> = Vec::new();
         let mut readers = Vec::new();
         let mut writers = Vec::new();
+        let mut setf_writers = Vec::new();
         let mut default_initargs = Vec::new();
+        let mut documentation = None;
 
         for slot_form in slot_forms {
             let (slot_name_form, options) = match &slot_form.kind {
@@ -6938,15 +8781,14 @@ impl Runtime {
             let mut initarg = None;
             let mut init_form = None;
             let mut class_value = None;
+            let mut type_specifier = None;
 
             if options.len() % 2 != 0 {
-                return Err(self.invalid(
-                    "defclass slot options require a value",
-                    slot_form.span,
-                ));
+                return Err(self.invalid("defclass slot options require a value", slot_form.span));
             }
             for option in options.chunks_exact(2) {
-                let option_name = self.definition_name_from_form(&option[0], "defclass slot option")?;
+                let option_name =
+                    self.definition_name_from_form(&option[0], "defclass slot option")?;
                 match option_name.as_str() {
                     "INITARG" => {
                         initarg = if is_nil_form(&option[1]) {
@@ -6959,28 +8801,44 @@ impl Runtime {
                     "ALLOCATION" => {
                         let allocation =
                             self.definition_name_from_form(&option[1], "defclass allocation")?;
-                        if allocation == "CLASS" {
-                            class_value = Some(Rc::new(RefCell::new(Value::Unbound)));
-                        } else {
-                            class_value = None;
+                        match allocation.as_str() {
+                            "CLASS" => {
+                                class_value = Some(Rc::new(RefCell::new(Value::Unbound)));
+                            }
+                            "INSTANCE" => class_value = None,
+                            _ => {
+                                return Err(self.invalid(
+                                    "defclass allocation must be :instance or :class",
+                                    option[1].span,
+                                ));
+                            }
                         }
                     }
-                    "ACCESSOR" | "READER" => {
+                    "ACCESSOR" => {
                         let accessor_name =
                             self.variable_name(&option[1], "defclass accessor must be a symbol")?;
-                        readers.push((unqualified_name(&accessor_name), slot_name.clone()));
+                        let accessor_name = unqualified_name(&accessor_name);
+                        readers.push((accessor_name.clone(), slot_name.clone()));
+                        setf_writers.push((accessor_name, slot_name.clone()));
+                    }
+                    "READER" => {
+                        let reader_name =
+                            self.variable_name(&option[1], "defclass reader must be a symbol")?;
+                        readers.push((unqualified_name(&reader_name), slot_name.clone()));
                     }
                     "WRITER" => {
                         let writer_name =
                             self.variable_name(&option[1], "defclass writer must be a symbol")?;
-                        writers.push((unqualified_name(&writer_name), slot_name.clone()));
+                        let writer_name = unqualified_name(&writer_name);
+                        writers.push((writer_name.clone(), slot_name.clone()));
+                        setf_writers.push((writer_name, slot_name.clone()));
                     }
-                    "TYPE" | "DOCUMENTATION" => {}
+                    "TYPE" => type_specifier = Some(quoted_form_value(&option[1])?),
+                    "DOCUMENTATION" => {}
                     _ => {
-                        return Err(self.invalid(
-                            "unsupported defclass slot option",
-                            option[0].span,
-                        ));
+                        return Err(
+                            self.invalid("unsupported defclass slot option", option[0].span)
+                        );
                     }
                 }
             }
@@ -6989,12 +8847,14 @@ impl Runtime {
                 existing.initarg = initarg;
                 existing.init_form = init_form;
                 existing.class_value = class_value;
+                existing.type_specifier = type_specifier;
             } else {
                 slots.push(ClassSlot {
                     name: slot_name,
                     initarg,
                     init_form,
                     class_value,
+                    type_specifier,
                 });
             }
         }
@@ -7015,8 +8875,8 @@ impl Runtime {
                         ));
                     }
                     for pair in option_items[1..].chunks_exact(2) {
-                        let initarg = self
-                            .definition_name_from_form(&pair[0], "defclass default initarg")?;
+                        let initarg =
+                            self.definition_name_from_form(&pair[0], "defclass default initarg")?;
                         if let Some(existing) = default_initargs
                             .iter_mut()
                             .find(|(name, _)| name == &initarg)
@@ -7031,32 +8891,45 @@ impl Runtime {
                     if option_items.len() != 2
                         || !matches!(option_items[1].kind, FormKind::String(_))
                     {
+                        return Err(
+                            self.invalid("defclass :documentation needs one string", option.span)
+                        );
+                    }
+                    let FormKind::String(value) = &option_items[1].kind else {
+                        unreachable!("validated defclass documentation string");
+                    };
+                    documentation = Some(value.clone());
+                }
+                "METACLASS" => {
+                    if option_items.len() != 2 {
+                        return Err(
+                            self.invalid("defclass :metaclass needs one class name", option.span)
+                        );
+                    }
+                    let metaclass =
+                        self.definition_name_from_form(&option_items[1], "defclass metaclass")?;
+                    if metaclass != "STANDARD-CLASS" {
                         return Err(self.invalid(
-                            "defclass :documentation needs one string",
-                            option.span,
+                            "only standard-class defclass metaclass is supported",
+                            option_items[1].span,
                         ));
                     }
                 }
-                _ => {}
+                _ => {
+                    return Err(self.invalid("unsupported defclass option", option_items[0].span));
+                }
             }
         }
 
-        let mut precedence = vec![class_name.clone()];
+        let precedence = c3_class_precedence(&class_name, &direct_superclasses, environment)
+            .map_err(|message| self.invalid(message, items[2].span))?;
         for superclass in &direct_superclasses {
             if superclass == "OBJECT" || superclass == "STANDARD-OBJECT" {
-                if !precedence.iter().any(|name| name == "STANDARD-OBJECT") {
-                    precedence.push("STANDARD-OBJECT".to_owned());
-                }
                 continue;
             }
             let Some(definition) = environment.lookup_class(superclass) else {
                 return Err(self.invalid("unknown defclass superclass", items[2].span));
             };
-            for name in &definition.precedence {
-                if !precedence.iter().any(|existing| existing == name) {
-                    precedence.push(name.clone());
-                }
-            }
             for inherited in &definition.slots {
                 if !slots.iter().any(|slot| slot.name == inherited.name) {
                     slots.push(inherited.clone());
@@ -7071,9 +8944,6 @@ impl Runtime {
                 }
             }
         }
-        if !precedence.iter().any(|name| name == "STANDARD-OBJECT") {
-            precedence.push("STANDARD-OBJECT".to_owned());
-        }
 
         let definition = Rc::new(ClassDefinition {
             name: class_name.clone(),
@@ -7081,6 +8951,7 @@ impl Runtime {
             precedence,
             slots,
             default_initargs,
+            documentation,
         });
         environment.define_class(&class_name, definition);
         for (accessor_name, slot_name) in readers {
@@ -7091,6 +8962,12 @@ impl Runtime {
         }
         for (writer_name, slot_name) in writers {
             environment.define_function(
+                &writer_name,
+                Value::slot_writer(class_name.clone(), slot_name),
+            );
+        }
+        for (writer_name, slot_name) in setf_writers {
+            environment.define_setf_function(
                 &writer_name,
                 Value::slot_writer(class_name.clone(), slot_name),
             );
@@ -7128,10 +9005,7 @@ impl Runtime {
             .position(|form| matches!(form.kind, FormKind::List(_)))
             .map(|index| index + 2)
             .ok_or_else(|| {
-                self.invalid(
-                    "defmethod requires a method lambda list",
-                    items[1].span,
-                )
+                self.invalid("defmethod requires a method lambda list", items[1].span)
             })?;
 
         let qualifiers = items[2..lambda_index]
@@ -7144,6 +9018,12 @@ impl Runtime {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+        if qualifiers.len() > 1 {
+            return Err(self.invalid(
+                "defmethod accepts at most one method qualifier",
+                items[2].span,
+            ));
+        }
         let FormKind::List(parameters) = &items[lambda_index].kind else {
             return Err(self.invalid(
                 "defmethod lambda list must be a list",
@@ -7173,23 +9053,41 @@ impl Runtime {
                     ));
                 }
             };
-            let (parameter_name, escaped) = self.variable_name_info(
-                name_form,
-                "defmethod parameter must be a variable",
-            )?;
+            let (parameter_name, escaped) =
+                self.variable_name_info(name_form, "defmethod parameter must be a variable")?;
             required.push(unqualified_name(&parameter_name));
             required_escaped.push(escaped);
             let specializer = match specializer_form {
-                None => "T".to_owned(),
-                Some(form) => self.definition_name_from_form(form, "defmethod specializer")?,
+                None => MethodSpecializer::Type("T".to_owned()),
+                Some(form) => {
+                    let eql_parts = match &form.kind {
+                        FormKind::List(parts)
+                            if parts
+                                .first()
+                                .and_then(atom_name)
+                                .is_some_and(|name| unqualified_name(name) == "EQL") =>
+                        {
+                            Some(parts)
+                        }
+                        _ => None,
+                    };
+                    if let Some(parts) = eql_parts {
+                        if parts.len() != 2 {
+                            return Err(self
+                                .invalid("defmethod EQL specializer needs one value", form.span));
+                        }
+                        MethodSpecializer::Eql(self.eval_in(&parts[1], environment)?)
+                    } else {
+                        let name = self.definition_name_from_form(form, "defmethod specializer")?;
+                        if !builtins::known_type_name(&name, environment) {
+                            return Err(
+                                self.invalid("unknown defmethod specializer", parameter.span)
+                            );
+                        }
+                        MethodSpecializer::Type(name)
+                    }
+                }
             };
-            if specializer != "T"
-                && specializer != "OBJECT"
-                && specializer != "STANDARD-OBJECT"
-                && environment.lookup_class(&specializer).is_none()
-            {
-                return Err(self.invalid("unknown defmethod specializer", parameter.span));
-            }
             specializers.push(specializer);
             normalized_parameters.push(name_form.clone());
             required_parameter_count += 1;
@@ -7228,15 +9126,24 @@ impl Runtime {
             items[lambda_index + 1..].to_vec(),
             environment.clone(),
         );
-        methods.borrow_mut().push(MethodDefinition {
+        let method = MethodDefinition {
             qualifiers,
             specializers,
             function: closure,
-        });
+        };
+        let mut methods = methods.borrow_mut();
+        if let Some(existing) = methods.iter_mut().find(|existing| {
+            existing.qualifiers == method.qualifiers
+                && method_specializers_equal(&existing.specializers, &method.specializers)
+        }) {
+            *existing = method;
+        } else {
+            methods.push(method);
+        }
         Ok(Value::symbol(name))
     }
 
-    fn list_form_items<'a>(
+    pub(crate) fn list_form_items<'a>(
         &self,
         form: &'a Form,
         context: &str,
@@ -7248,17 +9155,28 @@ impl Runtime {
         }
     }
 
-    fn definition_name_from_form(
+    pub(crate) fn definition_name_from_form(
         &self,
         form: &Form,
         context: &str,
     ) -> Result<String, RuntimeError> {
+        self.definition_name_info_from_form(form, context)
+            .map(|(name, _)| name)
+    }
+
+    pub(crate) fn definition_name_info_from_form(
+        &self,
+        form: &Form,
+        context: &str,
+    ) -> Result<(String, bool), RuntimeError> {
         let Some(raw_name) = atom_name(form) else {
             return Err(self.invalid(context, form.span));
         };
         let token = parse_symbol_token(raw_name).map_err(|_| self.invalid(context, form.span))?;
-        if !matches!(token.kind, SymbolTokenKind::Symbol | SymbolTokenKind::Keyword)
-            || token.name.is_empty()
+        if !matches!(
+            token.kind,
+            SymbolTokenKind::Symbol | SymbolTokenKind::Keyword
+        ) || token.name.is_empty()
         {
             return Err(self.invalid(context, form.span));
         }
@@ -7270,7 +9188,12 @@ impl Runtime {
         } else {
             normalize_name(raw_name)
         };
-        Ok(unqualified_name(normalized.trim_start_matches(':')))
+        let name = if token.escaped {
+            normalized.trim_start_matches(':').to_owned()
+        } else {
+            unqualified_name(normalized.trim_start_matches(':'))
+        };
+        Ok((name, token.escaped))
     }
 
     fn defstruct_name_option(
@@ -7319,15 +9242,18 @@ impl Runtime {
                 Some(unqualified_name(&raw_name))
             }
         };
-        let constructor_lambda_list = option_items.get(2).map(|lambda_list_form| {
-            if constructor_name.is_none() {
-                return Err(self.invalid(
-                    "defstruct :constructor NIL cannot have a lambda list",
-                    lambda_list_form.span,
-                ));
-            }
-            self.parameters(lambda_list_form)
-        }).transpose()?;
+        let constructor_lambda_list = option_items
+            .get(2)
+            .map(|lambda_list_form| {
+                if constructor_name.is_none() {
+                    return Err(self.invalid(
+                        "defstruct :constructor NIL cannot have a lambda list",
+                        lambda_list_form.span,
+                    ));
+                }
+                self.parameters(lambda_list_form)
+            })
+            .transpose()?;
         Ok((constructor_name, constructor_lambda_list))
     }
 
@@ -7347,19 +9273,16 @@ impl Runtime {
                 None,
             )),
             FormKind::List(slot_items) if (1..=3).contains(&slot_items.len()) => {
-                let slot_name = self.variable_name_info(
-                    &slot_items[0],
-                    "defstruct slot name must be a symbol",
-                )?;
+                let slot_name = self
+                    .variable_name_info(&slot_items[0], "defstruct slot name must be a symbol")?;
                 let read_only = slot_items
                     .get(2)
-                    .map(|form| self.eval_in(form, environment).map(|value| value.is_truthy()))
+                    .map(|form| {
+                        self.eval_in(form, environment)
+                            .map(|value| value.is_truthy())
+                    })
                     .transpose()?;
-                Ok((
-                    slot_name.0,
-                    slot_items.get(1).cloned(),
-                    read_only,
-                ))
+                Ok((slot_name.0, slot_items.get(1).cloned(), read_only))
             }
             _ => Err(self.invalid(
                 "defstruct slot must be a symbol or a one- to three-element list",
@@ -7373,12 +9296,14 @@ impl Runtime {
             return Err(self.arity("defpackage", "at least one", items.len().saturating_sub(1)));
         }
         enum DefpackageOperation {
-            Shadow(String),
-            Intern(String),
+            Shadow(String, bool),
+            Intern(String, bool),
+            Unintern(String, bool),
             Import {
                 source_package: String,
                 source_name: String,
                 shadowing: bool,
+                exact: bool,
             },
         }
 
@@ -7386,6 +9311,7 @@ impl Runtime {
         let mut nicknames = Vec::new();
         let mut use_packages = vec![package::COMMON_LISP_PACKAGE.to_string()];
         let mut exports = HashSet::new();
+        let mut exact_exports = Vec::new();
         let mut operations = Vec::new();
         let mut saw_nicknames = false;
         let mut saw_use = false;
@@ -7405,10 +9331,8 @@ impl Runtime {
             match normalized_option.trim_start_matches(':') {
                 "NICKNAMES" => {
                     if saw_nicknames {
-                        return Err(self.invalid(
-                            "defpackage has duplicate :nicknames options",
-                            option.span,
-                        ));
+                        return Err(self
+                            .invalid("defpackage has duplicate :nicknames options", option.span));
                     }
                     saw_nicknames = true;
                     for package_form in option_items.iter().skip(1) {
@@ -7429,10 +9353,9 @@ impl Runtime {
                 }
                 "DOCUMENTATION" => {
                     if saw_documentation || option_items.len() != 2 {
-                        return Err(self.invalid(
-                            "defpackage :documentation needs one string",
-                            option.span,
-                        ));
+                        return Err(
+                            self.invalid("defpackage :documentation needs one string", option.span)
+                        );
                     }
                     saw_documentation = true;
                     let FormKind::String(value) = &option_items[1].kind else {
@@ -7490,21 +9413,30 @@ impl Runtime {
                 }
                 "EXPORT" => {
                     for symbol_form in option_items.iter().skip(1) {
-                        exports.insert(self.symbol_name_from_form(symbol_form)?);
+                        let (symbol, exact) = self.symbol_name_from_form(symbol_form)?;
+                        if exact {
+                            exact_exports.push(symbol);
+                        } else {
+                            exports.insert(symbol);
+                        }
                     }
                 }
                 "SHADOW" => {
                     for symbol_form in option_items.iter().skip(1) {
-                        operations.push(DefpackageOperation::Shadow(
-                            self.symbol_name_from_form(symbol_form)?,
-                        ));
+                        let (symbol, exact) = self.symbol_name_from_form(symbol_form)?;
+                        operations.push(DefpackageOperation::Shadow(symbol, exact));
                     }
                 }
                 "INTERN" => {
                     for symbol_form in option_items.iter().skip(1) {
-                        operations.push(DefpackageOperation::Intern(
-                            self.symbol_name_from_form(symbol_form)?,
-                        ));
+                        let (symbol, exact) = self.symbol_name_from_form(symbol_form)?;
+                        operations.push(DefpackageOperation::Intern(symbol, exact));
+                    }
+                }
+                "UNINTERN" => {
+                    for symbol_form in option_items.iter().skip(1) {
+                        let (symbol, exact) = self.symbol_name_from_form(symbol_form)?;
+                        operations.push(DefpackageOperation::Unintern(symbol, exact));
                     }
                 }
                 "IMPORT-FROM" | "SHADOWING-IMPORT-FROM" => {
@@ -7515,13 +9447,15 @@ impl Runtime {
                         ));
                     }
                     let source_package = self.package_name_from_form(&option_items[1])?;
-                    let shadowing = normalized_option.trim_start_matches(':')
-                        == "SHADOWING-IMPORT-FROM";
+                    let shadowing =
+                        normalized_option.trim_start_matches(':') == "SHADOWING-IMPORT-FROM";
                     for symbol_form in option_items.iter().skip(2) {
+                        let (source_name, exact) = self.symbol_name_from_form(symbol_form)?;
                         operations.push(DefpackageOperation::Import {
                             source_package: source_package.clone(),
-                            source_name: self.symbol_name_from_form(symbol_form)?,
+                            source_name,
                             shadowing,
+                            exact,
                         });
                     }
                 }
@@ -7549,6 +9483,7 @@ impl Runtime {
                 let DefpackageOperation::Import {
                     source_package,
                     source_name,
+                    exact,
                     ..
                 } = operation
                 else {
@@ -7560,11 +9495,14 @@ impl Runtime {
                         items[1].span,
                     ));
                 }
-                if !packages.symbol_exists(source_package, source_name) {
+                let symbol_exists = if *exact {
+                    packages.symbol_exists_exact(source_package, source_name)
+                } else {
+                    packages.symbol_exists(source_package, source_name)
+                };
+                if !symbol_exists {
                     return Err(self.package_error(
-                        &format!(
-                            "unknown symbol {source_package}::{source_name}"
-                        ),
+                        &format!("unknown symbol {source_package}::{source_name}"),
                         items[1].span,
                     ));
                 }
@@ -7572,6 +9510,45 @@ impl Runtime {
         }
 
         let mut packages = self.packages.borrow_mut();
+        let mut preview = packages.clone();
+        if let Err(message) = preview.define_package(
+            name.clone(),
+            nicknames.clone(),
+            use_packages.clone(),
+            exports.clone(),
+            documentation.clone(),
+            local_nicknames.clone(),
+        ) {
+            return Err(self.package_error(&message, items[1].span));
+        }
+        preview.export_symbols_exact(&name, &exact_exports);
+        for operation in &operations {
+            let DefpackageOperation::Import {
+                source_package,
+                source_name,
+                shadowing,
+                exact,
+            } = operation
+            else {
+                continue;
+            };
+            let conflict = if *exact {
+                preview.import_conflict_exact(source_package, source_name, &name)
+            } else {
+                preview.import_conflict(source_package, source_name, &name)
+            };
+            if !shadowing && conflict {
+                return Err(self.package_error(
+                    &format!("name conflict for symbol {source_name}"),
+                    items[1].span,
+                ));
+            }
+            if *exact {
+                preview.import_symbol_exact(source_package, source_name, &name, *shadowing);
+            } else {
+                preview.import_symbol(source_package, source_name, &name, *shadowing);
+            }
+        }
         if let Err(message) = packages.define_package(
             name.clone(),
             nicknames,
@@ -7582,17 +9559,47 @@ impl Runtime {
         ) {
             return Err(self.package_error(&message, items[1].span));
         }
+        packages.export_symbols_exact(&name, &exact_exports);
         for operation in operations {
             match operation {
-                DefpackageOperation::Shadow(symbol) => packages.shadow_symbol(&name, &symbol),
-                DefpackageOperation::Intern(symbol) => {
-                    let _ = packages.intern_symbol(&name, &symbol);
+                DefpackageOperation::Shadow(symbol, exact) => {
+                    if exact {
+                        packages.shadow_symbol_exact(&name, &symbol);
+                    } else {
+                        packages.shadow_symbol(&name, &symbol);
+                    }
+                }
+                DefpackageOperation::Intern(symbol, exact) => {
+                    if exact {
+                        let _ = packages.intern_symbol_exact(&name, &symbol);
+                    } else {
+                        let _ = packages.intern_symbol(&name, &symbol);
+                    }
+                }
+                DefpackageOperation::Unintern(symbol, exact) => {
+                    if exact {
+                        let _ = packages.unintern_symbol_exact(&name, &symbol);
+                    } else {
+                        let _ = packages.unintern_symbol(&name, &symbol);
+                    }
                 }
                 DefpackageOperation::Import {
                     source_package,
                     source_name,
                     shadowing,
-                } => packages.import_symbol(&source_package, &source_name, &name, shadowing),
+                    exact,
+                } => {
+                    if exact {
+                        packages.import_symbol_exact(
+                            &source_package,
+                            &source_name,
+                            &name,
+                            shadowing,
+                        );
+                    } else {
+                        packages.import_symbol(&source_package, &source_name, &name, shadowing);
+                    }
+                }
             }
         }
         let canonical_name = packages.canonical_package_name(&name);
@@ -7610,55 +9617,70 @@ impl Runtime {
         }
         let canonical_name = packages.canonical_package_name(&name);
         packages.set_current(canonical_name.clone());
-        Ok(Value::package(&canonical_name))
+        let package = Value::package(&canonical_name);
+        drop(packages);
+        self.define_special_value("*PACKAGE*", package.clone(), true);
+        Ok(package)
     }
 
     fn package_name_from_form(&self, form: &Form) -> Result<String, RuntimeError> {
-        let raw = match &form.kind {
-            FormKind::Atom(value) | FormKind::String(value) => value.as_str(),
+        let name = match &form.kind {
+            FormKind::String(value) => value.strip_prefix(':').unwrap_or(value).to_string(),
+            FormKind::Atom(value) => {
+                let token = parse_symbol_token(value).map_err(|_| {
+                    self.invalid("package name must be a symbol or string", form.span)
+                })?;
+                if token.kind == SymbolTokenKind::Uninterned || token.package.is_some() {
+                    return Err(self.package_error("package name cannot be qualified", form.span));
+                }
+                token.name
+            }
             _ => {
                 return Err(self.invalid("package name must be a symbol or string", form.span));
             }
         };
-        if !raw.starts_with(':') && package::split_symbol(raw).is_some() {
-            return Err(self.package_error("package name cannot be qualified", form.span));
-        }
-        let name = package::normalize_package_name(raw);
         if name.is_empty() || name.contains(':') {
             return Err(self.package_error("invalid package name", form.span));
         }
         Ok(name)
     }
 
-    fn symbol_name_from_form(&self, form: &Form) -> Result<String, RuntimeError> {
-        let raw = match &form.kind {
-            FormKind::Atom(value) | FormKind::String(value) => value.as_str(),
+    fn symbol_name_from_form(&self, form: &Form) -> Result<(String, bool), RuntimeError> {
+        let (raw, exact) = match &form.kind {
+            FormKind::Atom(value) => (value.as_str(), false),
+            FormKind::String(value) => (value.as_str(), true),
             _ => return Err(self.invalid("symbol name must be a symbol or string", form.span)),
         };
         let name = raw.strip_prefix(':').unwrap_or(raw);
         if name.is_empty() || name.contains(':') {
             return Err(self.package_error("symbol name cannot be qualified", form.span));
         }
-        Ok(normalize_name(name))
+        let name = if exact {
+            name.to_string()
+        } else {
+            normalize_name(name)
+        };
+        Ok((name, exact))
     }
 
-    fn package_designator_name(
-        &self,
-        value: &Value,
-        span: Span,
-    ) -> Result<String, RuntimeError> {
-        let raw = match value {
-            Value::Package(name) | Value::String(name) => name.as_ref(),
-            _ => value.symbol_name().ok_or_else(|| RuntimeError::Type {
+    fn package_designator_name(&self, value: &Value, span: Span) -> Result<String, RuntimeError> {
+        let (raw, exact) = match value {
+            Value::Package(name) | Value::String(name) => (name.as_ref(), true),
+            _ => value.symbol_reference().ok_or_else(|| RuntimeError::Type {
                 expected: "PACKAGE DESIGNATOR".to_string(),
                 actual: value.type_name().to_string(),
                 span: Some(span),
             })?,
         };
+        let raw = raw.strip_prefix(':').unwrap_or(raw);
         if package::split_symbol(raw).is_some() {
             return Err(self.package_error("package name cannot be qualified", span));
         }
-        let name = package::normalize_package_name(raw);
+        let name = if exact {
+            raw.to_string()
+        } else {
+            package::normalize_package_name(raw)
+        };
         if name.is_empty() || name.contains(':') {
             return Err(self.package_error("invalid package name", span));
         }
@@ -7667,11 +9689,17 @@ impl Runtime {
 
     fn package_name_from_value(&self, value: &Value, span: Span) -> Result<String, RuntimeError> {
         let name = self.package_designator_name(value, span)?;
+        let is_package_object = matches!(value, Value::Package(_));
         let packages = self.packages.borrow();
-        if !packages.package_exists(&name) {
+        let package_name = if is_package_object {
+            packages.package_object_name(&name)
+        } else {
+            packages.canonical_package_name(&name)
+        };
+        if !packages.package_exists(&package_name) {
             return Err(self.package_error(&format!("unknown package {name}"), span));
         }
-        Ok(packages.canonical_package_name(&name))
+        Ok(package_name)
     }
 
     fn symbol_name_from_value(&self, value: &Value, span: Span) -> Result<String, RuntimeError> {
@@ -7690,14 +9718,34 @@ impl Runtime {
         Ok(package::normalize_symbol_name(name))
     }
 
-    fn name_designator_from_value(
+    fn symbol_name_from_value_exact(
         &self,
         value: &Value,
         span: Span,
     ) -> Result<String, RuntimeError> {
-        let raw = match value {
-            Value::String(name) => name.as_ref(),
-            _ => value.symbol_name().ok_or_else(|| RuntimeError::Type {
+        match value {
+            Value::String(name) => Ok(name.to_string()),
+            _ => self.symbol_name_from_value(value, span),
+        }
+    }
+
+    pub(crate) fn name_designator_from_value(
+        &self,
+        value: &Value,
+        span: Span,
+    ) -> Result<String, RuntimeError> {
+        self.name_designator_info_from_value(value, span)
+            .map(|(name, _)| name)
+    }
+
+    pub(crate) fn name_designator_info_from_value(
+        &self,
+        value: &Value,
+        span: Span,
+    ) -> Result<(String, bool), RuntimeError> {
+        let (raw, escaped) = match value {
+            Value::String(name) => (name.as_ref(), false),
+            _ => value.symbol_reference().ok_or_else(|| RuntimeError::Type {
                 expected: "SYMBOL DESIGNATOR".to_string(),
                 actual: value.type_name().to_string(),
                 span: Some(span),
@@ -7707,7 +9755,12 @@ impl Runtime {
         if name.is_empty() {
             return Err(self.invalid("symbol name cannot be empty", span));
         }
-        Ok(unqualified_name(name))
+        let normalized = if escaped {
+            name.to_owned()
+        } else {
+            unqualified_name(name)
+        };
+        Ok((normalized, escaped))
     }
 
     fn slot_name_from_value(&self, value: &Value, span: Span) -> Result<String, RuntimeError> {
@@ -7728,6 +9781,149 @@ impl Runtime {
             .collect()
     }
 
+    fn rename_package(&self, arguments: &[Value], span: Span) -> Result<Value, RuntimeError> {
+        if !(2..=3).contains(&arguments.len()) {
+            return Err(self.arity("rename-package", "two or three", arguments.len()));
+        }
+        let package_name = self.package_name_from_value(&arguments[0], span)?;
+        let new_name = self.package_designator_name(&arguments[1], span)?;
+        let new_nicknames = arguments
+            .get(2)
+            .map(|value| {
+                let values = value.list_items().ok_or_else(|| {
+                    self.invalid("rename-package nicknames must be a proper list", span)
+                })?;
+                values
+                    .iter()
+                    .map(|value| self.package_designator_name(value, span))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let renamed_name = self
+            .packages
+            .borrow_mut()
+            .rename_package(&package_name, &new_name, new_nicknames)
+            .map_err(|message| self.package_error(&message, span))?;
+        if matches!(&arguments[0], Value::Package(_)) {
+            Ok(arguments[0].clone())
+        } else {
+            Ok(Value::package(renamed_name))
+        }
+    }
+
+    fn make_package(&self, arguments: &[Value], span: Span) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() {
+            return Err(self.arity("make-package", "at least one", arguments.len()));
+        }
+        if !(arguments.len() - 1).is_multiple_of(2) {
+            return Err(self.invalid(
+                "make-package keyword arguments must be supplied in pairs",
+                span,
+            ));
+        }
+
+        let name = self.package_designator_name(&arguments[0], span)?;
+        let mut nicknames = Vec::new();
+        let mut use_packages = Vec::new();
+        let mut documentation = None;
+        let mut saw_nicknames = false;
+        let mut saw_use = false;
+        let mut saw_documentation = false;
+        let mut saw_size = false;
+
+        for pair in arguments[1..].chunks_exact(2) {
+            let keyword_name = match &pair[0] {
+                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
+                other => {
+                    return Err(self.invalid(
+                        &format!(
+                            "make-package keyword must be a keyword, got {}",
+                            other.type_name()
+                        ),
+                        span,
+                    ));
+                }
+            };
+            match keyword_name.as_str() {
+                "NICKNAMES" => {
+                    if saw_nicknames {
+                        return Err(
+                            self.invalid("make-package received duplicate :nicknames", span)
+                        );
+                    }
+                    saw_nicknames = true;
+                    let values = pair[1].list_items().ok_or_else(|| {
+                        self.invalid("make-package :nicknames must be a proper list", span)
+                    })?;
+                    nicknames = values
+                        .iter()
+                        .map(|value| self.package_designator_name(value, span))
+                        .collect::<Result<Vec<_>, _>>()?;
+                }
+                "USE" => {
+                    if saw_use {
+                        return Err(self.invalid("make-package received duplicate :use", span));
+                    }
+                    saw_use = true;
+                    use_packages = self.package_names_from_value(&pair[1], span)?;
+                }
+                "DOCUMENTATION" => {
+                    if saw_documentation {
+                        return Err(
+                            self.invalid("make-package received duplicate :documentation", span)
+                        );
+                    }
+                    saw_documentation = true;
+                    let Value::String(value) = &pair[1] else {
+                        return Err(
+                            self.invalid("make-package :documentation must be a string", span)
+                        );
+                    };
+                    documentation = Some(value.to_string());
+                }
+                "SIZE" => {
+                    if saw_size {
+                        return Err(self.invalid("make-package received duplicate :size", span));
+                    }
+                    saw_size = true;
+                    if !matches!(&pair[1], Value::Integer(size) if *size >= 0) {
+                        return Err(
+                            self.invalid("make-package :size must be a non-negative integer", span)
+                        );
+                    }
+                }
+                _ => {
+                    return Err(self.invalid(
+                        &format!("unsupported make-package keyword :{keyword_name}"),
+                        span,
+                    ));
+                }
+            }
+        }
+
+        {
+            let packages = self.packages.borrow();
+            if packages.package_exists(&name) {
+                return Err(self.package_error(&format!("package {name} already exists"), span));
+            }
+        }
+
+        let mut packages = self.packages.borrow_mut();
+        packages
+            .define_package(
+                name.clone(),
+                nicknames,
+                use_packages,
+                HashSet::new(),
+                documentation,
+                HashMap::new(),
+            )
+            .map_err(|message| self.package_error(&message, span))?;
+        let canonical_name = packages.canonical_package_name(&name);
+        Ok(Value::package(&canonical_name))
+    }
+
     fn symbol_names_from_value(
         &self,
         value: &Value,
@@ -7742,11 +9938,117 @@ impl Runtime {
             .collect()
     }
 
+    fn symbol_names_from_value_partitioned(
+        &self,
+        value: &Value,
+        span: Span,
+    ) -> Result<Vec<(String, bool)>, RuntimeError> {
+        let values = value
+            .list_items()
+            .ok_or_else(|| self.invalid("symbol designators must be a proper list", span))?;
+        values
+            .iter()
+            .map(|value| match value {
+                Value::SymbolExact(name) | Value::KeywordExact(name) => {
+                    Ok((name.to_string(), true))
+                }
+                Value::QualifiedSymbolExact {
+                    reference,
+                    package_len,
+                } => Ok((reference[*package_len + 2..].to_string(), true)),
+                _ => Ok((self.symbol_name_from_value(value, span)?, false)),
+            })
+            .collect()
+    }
+
+    fn symbol_references_from_value_or_single(
+        &self,
+        value: &Value,
+        span: Span,
+    ) -> Result<Vec<(String, String, bool)>, RuntimeError> {
+        let reference = |value: &Value| -> Result<Option<(String, String, bool)>, RuntimeError> {
+            if matches!(value, Value::UninternedSymbol(_)) {
+                return Ok(None);
+            }
+            match value {
+                Value::QualifiedSymbolExact {
+                    reference,
+                    package_len,
+                } => Ok(Some((
+                    package::normalize_package_name(&reference[..*package_len]),
+                    reference[*package_len + 2..].to_string(),
+                    true,
+                ))),
+                Value::SymbolExact(name) => {
+                    if let Some((package_name, symbol_name, _)) = package::split_symbol(name) {
+                        Ok(Some((
+                            package::normalize_package_name(package_name),
+                            symbol_name.to_string(),
+                            true,
+                        )))
+                    } else {
+                        Ok(Some((self.current_package(), name.to_string(), true)))
+                    }
+                }
+                Value::KeywordExact(name) => Ok(Some((
+                    package::KEYWORD_PACKAGE.to_string(),
+                    name.to_string(),
+                    true,
+                ))),
+                Value::Keyword(name) => Ok(Some((
+                    package::KEYWORD_PACKAGE.to_string(),
+                    package::normalize_symbol_name(name),
+                    false,
+                ))),
+                _ => {
+                    let raw = match value {
+                        Value::String(_) => {
+                            return Err(RuntimeError::Type {
+                                expected: "SYMBOL".to_string(),
+                                actual: value.type_name().to_string(),
+                                span: Some(span),
+                            });
+                        }
+                        _ => value.symbol_name().ok_or_else(|| RuntimeError::Type {
+                            expected: "SYMBOL".to_string(),
+                            actual: value.type_name().to_string(),
+                            span: Some(span),
+                        })?,
+                    };
+                    let raw = raw.strip_prefix(':').unwrap_or(raw);
+                    if let Some((package_name, symbol_name, _)) = package::split_symbol(raw) {
+                        Ok(Some((
+                            package::normalize_package_name(package_name),
+                            package::normalize_symbol_name(symbol_name),
+                            false,
+                        )))
+                    } else {
+                        Ok(Some((
+                            self.current_package(),
+                            package::normalize_symbol_name(raw),
+                            false,
+                        )))
+                    }
+                }
+            }
+        };
+        if let Some(values) = value.list_items() {
+            let mut references = Vec::new();
+            for value in values.iter() {
+                if let Some(reference) = reference(value)? {
+                    references.push(reference);
+                }
+            }
+            return Ok(references);
+        }
+        Ok(reference(value)?.into_iter().collect())
+    }
+
     fn symbol_import_references_from_value(
         &self,
         value: &Value,
         span: Span,
-    ) -> Result<Vec<(String, String)>, RuntimeError> {
+    ) -> Result<Vec<(String, String, bool)>, RuntimeError> {
         let values = value
             .list_items()
             .ok_or_else(|| self.invalid("symbol designators must be a proper list", span))?;
@@ -7756,44 +10058,85 @@ impl Runtime {
                 if matches!(value, Value::UninternedSymbol(_)) {
                     return Err(self.invalid("uninterned symbols cannot be imported", span));
                 }
+                if let Value::QualifiedSymbolExact {
+                    reference,
+                    package_len,
+                } = value
+                {
+                    return Ok((
+                        package::normalize_package_name(&reference[..*package_len]),
+                        reference[*package_len + 2..].to_string(),
+                        true,
+                    ));
+                }
+                if let Value::SymbolExact(name) = value {
+                    return Ok((self.current_package(), name.to_string(), true));
+                }
+                if let Value::KeywordExact(name) = value {
+                    return Ok((package::KEYWORD_PACKAGE.to_string(), name.to_string(), true));
+                }
                 let raw = value.symbol_name().ok_or_else(|| RuntimeError::Type {
                     expected: "SYMBOL".to_string(),
                     actual: value.type_name().to_string(),
                     span: Some(span),
                 })?;
-                if matches!(value, Value::Keyword(_) | Value::KeywordExact(_)) {
+                if matches!(value, Value::Keyword(_)) {
                     return Ok((
                         package::KEYWORD_PACKAGE.to_string(),
                         package::normalize_symbol_name(raw),
+                        false,
                     ));
                 }
                 if let Some((package_name, symbol_name, _)) = package::split_symbol(raw) {
                     return Ok((
                         package::normalize_package_name(package_name),
                         package::normalize_symbol_name(symbol_name),
+                        false,
                     ));
                 }
                 Ok((
                     self.current_package(),
                     package::normalize_symbol_name(raw),
+                    false,
                 ))
             })
             .collect()
     }
 
     fn package_symbol_value(&self, package_name: &str, symbol_name: &str) -> Value {
-        let package_name = self
-            .packages
-            .borrow()
-            .canonical_package_name(package_name);
-        if package_name == package::KEYWORD_PACKAGE {
+        let state = self.packages.borrow();
+        let package_name = state.canonical_package_name(package_name);
+        if let Some((reference, _)) = state.find_symbol(&package_name, symbol_name) {
+            if reference.package() == package::KEYWORD_PACKAGE {
+                Value::keyword(reference.name())
+            } else {
+                Value::symbol(package::canonical_symbol_name(
+                    reference.package(),
+                    reference.name(),
+                ))
+            }
+        } else if package_name == package::KEYWORD_PACKAGE {
             Value::keyword(symbol_name)
         } else {
-            let symbol_name = self
-                .packages
-                .borrow()
-                .imported_symbol_name(&package_name, symbol_name);
-            Value::symbol(symbol_name)
+            Value::symbol(state.imported_symbol_name(&package_name, symbol_name))
+        }
+    }
+
+    fn package_symbol_value_exact(&self, package_name: &str, symbol_name: &str) -> Value {
+        let state = self.packages.borrow();
+        let package_name = state.canonical_package_name(package_name);
+        if let Some((reference, _)) = state.find_symbol_exact(&package_name, symbol_name) {
+            if reference.package() == package::KEYWORD_PACKAGE {
+                Value::keyword_exact(reference.name())
+            } else {
+                Value::qualified_symbol_exact(reference.package(), reference.name())
+            }
+        } else if package_name == package::KEYWORD_PACKAGE {
+            Value::keyword_exact(symbol_name)
+        } else {
+            let (package_name, symbol_name) =
+                state.imported_symbol_parts_exact(&package_name, symbol_name);
+            Value::qualified_symbol_exact(&package_name, &symbol_name)
         }
     }
 
@@ -7801,2365 +10144,47 @@ impl Runtime {
         match status {
             package::SymbolStatus::Internal => Value::keyword("INTERNAL"),
             package::SymbolStatus::External => Value::keyword("EXTERNAL"),
+            package::SymbolStatus::Inherited => Value::keyword("INHERITED"),
         }
     }
 
-    fn special_funcall(
+    fn validate_slot_value(
         &self,
-        items: &[Form],
-        environment: &Environment,
-    ) -> Result<Value, RuntimeError> {
-        if items.len() < 2 {
-            return Err(self.arity("funcall", "at least one", 0));
-        }
-        let function = self.eval_in(&items[1], environment)?;
-        let arguments = items[2..]
-            .iter()
-            .map(|form| self.eval_in(form, environment))
-            .collect::<Result<Vec<_>, _>>()?;
-        self.apply_in(&function, &arguments, items[0].span, environment)
-    }
-
-    fn special_eval(
-        &self,
-        items: &[Form],
-        environment: &Environment,
-    ) -> Result<Value, RuntimeError> {
-        if items.len() != 2 {
-            return Err(self.arity("eval", "one", items.len().saturating_sub(1)));
-        }
-        let value = self.eval_in(&items[1], environment)?;
-        let form = self.form_from_value(&value, items[1].span)?;
-        self.eval_values_in(&form, environment)
-    }
-
-    fn special_apply(
-        &self,
-        items: &[Form],
-        environment: &Environment,
-    ) -> Result<Value, RuntimeError> {
-        if items.len() < 3 {
-            return Err(self.arity("apply", "at least two", items.len().saturating_sub(1)));
-        }
-        let function = self.eval_in(&items[1], environment)?;
-        let evaluated = items[2..]
-            .iter()
-            .map(|form| self.eval_in(form, environment))
-            .collect::<Result<Vec<_>, _>>()?;
-        let Some(last) = evaluated.last() else {
-            return Err(self.invalid("apply needs a final list", items[0].span));
-        };
-        let Some(mut final_arguments) = last.list_items() else {
-            return Err(self.invalid("apply's final argument must be a list", items[0].span));
-        };
-        let mut arguments = evaluated[..evaluated.len() - 1].to_vec();
-        arguments.append(&mut final_arguments);
-        self.apply_in(&function, &arguments, items[0].span, environment)
-    }
-
-    fn resolve_function_designator(
-        &self,
-        function: &Value,
+        slot: &ClassSlot,
+        value: &Value,
         span: Span,
-        environment: &Environment,
-    ) -> Result<Rc<crate::Function>, RuntimeError> {
-        if let Value::Function(function) = function {
-            return Ok(function.clone());
-        }
-
-        let Some((name, exact)) = function.symbol_reference() else {
-            return Err(RuntimeError::NotCallable {
-                value: function.to_string(),
-                span: Some(span),
-            });
+    ) -> Result<(), RuntimeError> {
+        let Some(type_specifier) = &slot.type_specifier else {
+            return Ok(());
         };
-        let resolved = if exact {
-            self.lookup_function_exact_in(name, environment)
-        } else {
-            self.lookup_function_in(name, environment)
-        };
-        match resolved {
-            Some(Value::Function(function)) => Ok(function),
-            Some(value) => Err(RuntimeError::NotCallable {
-                value: value.to_string(),
-                span: Some(span),
-            }),
-            None => Err(RuntimeError::UnboundVariable {
-                name: if exact {
-                    name.to_string()
-                } else {
-                    normalize_name(name)
-                },
-                span: Some(span),
-            }),
-        }
-    }
-
-    fn apply_list_mapping(
-        &self,
-        operation: &str,
-        function: &Value,
-        sequences: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        let (uses_tails, concatenates, returns_first) = match operation {
-            "MAPC" => (false, false, true),
-            "MAPCAR" => (false, false, false),
-            "MAPL" => (true, false, true),
-            "MAPLIST" => (true, false, false),
-            "MAPCAN" => (false, true, false),
-            "MAPCON" => (true, true, false),
-            _ => return Err(self.invalid("unknown list mapping operation", span)),
-        };
-        let operation_name = operation.to_ascii_lowercase();
-        let lists = sequences
-            .iter()
-            .map(|value| {
-                value.list_items().ok_or_else(|| {
-                    self.invalid(
-                        &format!("{operation_name} arguments must be lists"),
-                        span,
-                    )
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let length = lists.iter().map(Vec::len).min().unwrap_or(0);
-        let mut results = Vec::with_capacity(length);
-        for index in 0..length {
-            let arguments = if uses_tails {
-                lists
-                    .iter()
-                    .map(|items| Value::list(items[index..].to_vec()))
-                    .collect::<Vec<_>>()
-            } else {
-                lists
-                    .iter()
-                    .map(|items| items[index].clone())
-                    .collect::<Vec<_>>()
-            };
-            let result = self
-                .apply_in(function, &arguments, span, environment)?
-                .primary_value();
-            if concatenates {
-                let items = result.list_items().ok_or_else(|| {
-                    self.invalid(
-                        &format!("{operation_name} function results must be lists"),
-                        span,
-                    )
-                })?;
-                results.extend(items);
-            } else if !returns_first {
-                results.push(result);
-            }
-        }
-        if returns_first {
-            Ok(sequences.first().cloned().unwrap_or(Value::Nil))
-        } else {
-            Ok(Value::list(results))
-        }
-    }
-
-    fn apply_sequence_mapping(
-        &self,
-        result_type: &Value,
-        function: &Value,
-        sequences: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        let result_type_name = result_type.symbol_name().map(normalize_name);
-        let result_kind = match result_type_name.as_deref() {
-            Some("NIL") => "NIL",
-            Some("LIST") => "LIST",
-            Some("VECTOR") | Some("SIMPLE-VECTOR") => "VECTOR",
-            Some("STRING") | Some("SIMPLE-STRING") => "STRING",
-            _ => {
-                return Err(self.invalid(
-                    "map result type must be LIST, VECTOR, STRING, or NIL",
-                    span,
-                ));
-            }
-        };
-        let function = Value::Function(self.resolve_function_designator(
-            function,
-            span,
-            environment,
-        )?);
-        let sequences = sequences
-            .iter()
-            .map(|value| match value {
-                Value::Nil => Ok(Vec::new()),
-                Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
-                Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
-                value => Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                }),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let length = sequences.iter().map(Vec::len).min().unwrap_or(0);
-        let mut results = Vec::with_capacity(length);
-        for index in 0..length {
-            let arguments = sequences
-                .iter()
-                .map(|items| items[index].clone())
-                .collect::<Vec<_>>();
-            let result = self
-                .apply_in(&function, &arguments, span, environment)?
-                .primary_value();
-            if result_kind != "NIL" {
-                results.push(result);
-            }
-        }
-        match result_kind {
-            "NIL" => Ok(Value::Nil),
-            "LIST" => Ok(Value::list(results)),
-            "VECTOR" => Ok(Value::vector(results)),
-            "STRING" => {
-                let mut string = String::new();
-                for value in results {
-                    let Value::Character(character) = value else {
-                        return Err(RuntimeError::Type {
-                            expected: "CHARACTER".to_string(),
-                            actual: value.type_name().to_string(),
-                            span: Some(span),
-                        });
-                    };
-                    string.push(character);
-                }
-                Ok(Value::string(string))
-            }
-            _ => unreachable!("validated MAP result type"),
-        }
-    }
-
-    fn apply_sequence_reduce(
-        &self,
-        function: &Value,
-        sequence: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if options.len() % 2 != 0 {
-            return Err(self.invalid("reduce keyword arguments must be supplied in pairs", span));
-        }
-
-        let mut from_end = false;
-        let mut start = 0;
-        let mut end = None;
-        let mut initial_value = None;
-        let mut key = None;
-
-        let index_argument = |option: &str, value: &Value| -> Result<usize, RuntimeError> {
-            let Value::Integer(index) = value else {
-                return Err(RuntimeError::Type {
-                    expected: "INTEGER".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            };
-            if *index < 0 {
-                return Err(self.invalid(
-                    &format!("reduce {option} must be non-negative"),
-                    span,
-                ));
-            }
-            usize::try_from(*index).map_err(|_| {
-                self.invalid(&format!("reduce {option} is out of range"), span)
-            })
-        };
-
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "reduce keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "FROM-END" => from_end = pair[1].is_truthy(),
-                "START" => start = index_argument(":start", &pair[1])?,
-                "END" => end = Some(index_argument(":end", &pair[1])?),
-                "INITIAL-VALUE" => initial_value = Some(pair[1].clone()),
-                "KEY" => key = Some(pair[1].clone()),
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown reduce keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        let function = Value::Function(self.resolve_function_designator(
-            function,
-            span,
-            environment,
-        )?);
-        let items = match sequence {
-            Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-        let end = end.unwrap_or(items.len());
-        if start > end || end > items.len() {
-            return Err(self.invalid("reduce sequence bounds are invalid", span));
-        }
-
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(self.resolve_function_designator(
-                &value,
-                span,
-                environment,
-            )?),
-            _ => None,
-        };
-        let apply_key = |value: &Value| -> Result<Value, RuntimeError> {
-            match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(value),
-                        span,
-                        environment,
-                    )
-                    .map(|result| result.primary_value()),
-                None => Ok(value.clone()),
-            }
-        };
-
-        let selected = &items[start..end];
-        if selected.is_empty() {
-            return initial_value
-                .ok_or_else(|| self.invalid("reduce of an empty sequence", span));
-        }
-
-        if from_end {
-            let mut values = selected.iter().rev();
-            let mut accumulator = match initial_value {
-                Some(value) => value,
-                None => apply_key(values.next().expect("non-empty REDUCE selection"))?,
-            };
-            for value in values {
-                let value = apply_key(value)?;
-                accumulator = self
-                    .apply_in(&function, &[value, accumulator], span, environment)?
-                    .primary_value();
-            }
-            Ok(accumulator)
-        } else {
-            let mut values = selected.iter();
-            let mut accumulator = match initial_value {
-                Some(value) => value,
-                None => apply_key(values.next().expect("non-empty REDUCE selection"))?,
-            };
-            for value in values {
-                let value = apply_key(value)?;
-                accumulator = self
-                    .apply_in(&function, &[accumulator, value], span, environment)?
-                    .primary_value();
-            }
-            Ok(accumulator)
-        }
-    }
-
-    fn apply_sequence_search(
-        &self,
-        operation: &str,
-        item: &Value,
-        sequence: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if options.len() % 2 != 0 {
-            return Err(self.invalid(
-                "sequence search keyword arguments must be supplied in pairs",
-                span,
-            ));
-        }
-
-        let mut from_end = false;
-        let mut test = None;
-        let mut test_not = None;
-        let mut key = None;
-        let mut start = 0;
-        let mut end = None;
-
-        let index_argument = |option: &str, value: &Value| -> Result<usize, RuntimeError> {
-            let Value::Integer(index) = value else {
-                return Err(RuntimeError::Type {
-                    expected: "INTEGER".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            };
-            if *index < 0 {
-                return Err(self.invalid(
-                    &format!("sequence search {option} must be non-negative"),
-                    span,
-                ));
-            }
-            usize::try_from(*index).map_err(|_| {
-                self.invalid(&format!("sequence search {option} is out of range"), span)
-            })
-        };
-
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "sequence search keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "FROM-END" => from_end = pair[1].is_truthy(),
-                "TEST" => {
-                    if test_not.is_some() {
-                        return Err(self.invalid(
-                            "sequence search cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test = Some(pair[1].clone());
-                }
-                "TEST-NOT" => {
-                    if test.is_some() {
-                        return Err(self.invalid(
-                            "sequence search cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test_not = Some(pair[1].clone());
-                }
-                "KEY" => key = Some(pair[1].clone()),
-                "START" => start = index_argument(":start", &pair[1])?,
-                "END" => {
-                    end = match &pair[1] {
-                        Value::Nil => None,
-                        value => Some(index_argument(":end", value)?),
-                    }
-                }
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown sequence search keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        let items = match sequence {
-            Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-        let end = end.unwrap_or(items.len());
-        if start > end || end > items.len() {
-            return Err(self.invalid("sequence search bounds are invalid", span));
-        }
-
-        let invert_test = test_not.is_some();
-        let test_designator = test
-            .or(test_not)
-            .unwrap_or_else(|| Value::symbol("EQL"));
-        let test_function = Value::Function(self.resolve_function_designator(
-            &test_designator,
-            span,
-            environment,
-        )?);
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(self.resolve_function_designator(
-                &value,
-                span,
-                environment,
-            )?),
-            _ => None,
-        };
-
-        let indexes: Vec<usize> = if from_end {
-            (start..end).rev().collect()
-        } else {
-            (start..end).collect()
-        };
-        let mut count = 0;
-        for index in indexes {
-            let candidate = match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(&items[index]),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => items[index].clone(),
-            };
-            let matches = self
-                .apply_in(
-                    &test_function,
-                    &[item.clone(), candidate],
-                    span,
-                    environment,
-                )?
-                .primary_value()
-                .is_truthy();
-            let matches = if invert_test { !matches } else { matches };
-            if matches {
-                match operation {
-                    "FIND" => return Ok(items[index].clone()),
-                    "POSITION" => return Ok(Value::Integer(index as i64)),
-                    "COUNT" => count += 1,
-                    _ => return Err(self.invalid("unknown sequence search operation", span)),
-                }
-            }
-        }
-
-        match operation {
-            "FIND" => Ok(Value::Nil),
-            "POSITION" => Ok(Value::Nil),
-            "COUNT" => Ok(Value::Integer(count)),
-            _ => Err(self.invalid("unknown sequence search operation", span)),
-        }
-    }
-
-    fn apply_sequence_pair_search(
-        &self,
-        operation: &str,
-        sequence1: &Value,
-        sequence2: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if !matches!(operation, "SEARCH" | "MISMATCH") {
-            return Err(self.invalid("unknown sequence pair search operation", span));
-        }
-        if options.len() % 2 != 0 {
-            return Err(self.invalid(
-                "sequence pair search keyword arguments must be supplied in pairs",
-                span,
-            ));
-        }
-
-        let mut from_end = false;
-        let mut test = None;
-        let mut test_not = None;
-        let mut key = None;
-        let mut start1 = 0;
-        let mut start2 = 0;
-        let mut end1 = None;
-        let mut end2 = None;
-
-        let index_argument = |option: &str, value: &Value| -> Result<usize, RuntimeError> {
-            let Value::Integer(index) = value else {
-                return Err(RuntimeError::Type {
-                    expected: "INTEGER".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            };
-            if *index < 0 {
-                return Err(self.invalid(
-                    &format!("sequence pair search {option} must be non-negative"),
-                    span,
-                ));
-            }
-            usize::try_from(*index).map_err(|_| {
-                self.invalid(
-                    &format!("sequence pair search {option} is out of range"),
-                    span,
-                )
-            })
-        };
-
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "sequence pair search keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "FROM-END" => from_end = pair[1].is_truthy(),
-                "TEST" => {
-                    if test_not.is_some() {
-                        return Err(self.invalid(
-                            "sequence pair search cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test = Some(pair[1].clone());
-                }
-                "TEST-NOT" => {
-                    if test.is_some() {
-                        return Err(self.invalid(
-                            "sequence pair search cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test_not = Some(pair[1].clone());
-                }
-                "KEY" => key = Some(pair[1].clone()),
-                "START1" => start1 = index_argument(":start1", &pair[1])?,
-                "END1" => {
-                    end1 = match &pair[1] {
-                        Value::Nil => None,
-                        value => Some(index_argument(":end1", value)?),
-                    }
-                }
-                "START2" => start2 = index_argument(":start2", &pair[1])?,
-                "END2" => {
-                    end2 = match &pair[1] {
-                        Value::Nil => None,
-                        value => Some(index_argument(":end2", value)?),
-                    }
-                }
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown sequence pair search keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        let items1 = match sequence1 {
-            Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-        let items2 = match sequence2 {
-            Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-
-        let end1 = end1.unwrap_or(items1.len());
-        let end2 = end2.unwrap_or(items2.len());
-        if start1 > end1 || end1 > items1.len() || start2 > end2 || end2 > items2.len() {
-            return Err(self.invalid("sequence pair search bounds are invalid", span));
-        }
-
-        let invert_test = test_not.is_some();
-        let test_designator = test
-            .or(test_not)
-            .unwrap_or_else(|| Value::symbol("EQL"));
-        let test_function = Value::Function(self.resolve_function_designator(
-            &test_designator,
-            span,
-            environment,
-        )?);
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(self.resolve_function_designator(
-                &value,
-                span,
-                environment,
-            )?),
-            _ => None,
-        };
-        let apply_key = |value: &Value| -> Result<Value, RuntimeError> {
-            match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(value),
-                        span,
-                        environment,
-                    )
-                    .map(|result| result.primary_value()),
-                None => Ok(value.clone()),
-            }
-        };
-        let elements_match = |left: &Value, right: &Value| -> Result<bool, RuntimeError> {
-            let left = apply_key(left)?;
-            let right = apply_key(right)?;
-            let matches = self
-                .apply_in(&test_function, &[left, right], span, environment)?
-                .primary_value()
-                .is_truthy();
-            Ok(if invert_test { !matches } else { matches })
-        };
-
-        let length1 = end1 - start1;
-        let length2 = end2 - start2;
-        match operation {
-            "SEARCH" => {
-                if length1 > length2 {
-                    return Ok(Value::Nil);
-                }
-                let last_start = end2 - length1;
-                if from_end {
-                    for candidate in (start2..=last_start).rev() {
-                        let mut matches = true;
-                        for offset in 0..length1 {
-                            if !elements_match(
-                                &items1[start1 + offset],
-                                &items2[candidate + offset],
-                            )? {
-                                matches = false;
-                                break;
-                            }
-                        }
-                        if matches {
-                            return Ok(Value::Integer(candidate as i64));
-                        }
-                    }
-                } else {
-                    for candidate in start2..=last_start {
-                        let mut matches = true;
-                        for offset in 0..length1 {
-                            if !elements_match(
-                                &items1[start1 + offset],
-                                &items2[candidate + offset],
-                            )? {
-                                matches = false;
-                                break;
-                            }
-                        }
-                        if matches {
-                            return Ok(Value::Integer(candidate as i64));
-                        }
-                    }
-                }
-                Ok(Value::Nil)
-            }
-            "MISMATCH" => {
-                let compared_length = length1.min(length2);
-                if from_end {
-                    for offset in 0..compared_length {
-                        let index1 = end1 - 1 - offset;
-                        let index2 = end2 - 1 - offset;
-                        if !elements_match(&items1[index1], &items2[index2])? {
-                            return Ok(Value::Integer((index1 + 1) as i64));
-                        }
-                    }
-                    if length1 == length2 {
-                        Ok(Value::Nil)
-                    } else {
-                        Ok(Value::Integer(
-                            (start1 + length1.saturating_sub(length2)) as i64,
-                        ))
-                    }
-                } else {
-                    for offset in 0..compared_length {
-                        let index1 = start1 + offset;
-                        let index2 = start2 + offset;
-                        if !elements_match(&items1[index1], &items2[index2])? {
-                            return Ok(Value::Integer(index1 as i64));
-                        }
-                    }
-                    if length1 == length2 {
-                        Ok(Value::Nil)
-                    } else {
-                        Ok(Value::Integer((start1 + compared_length) as i64))
-                    }
-                }
-            }
-            _ => Err(self.invalid("unknown sequence pair search operation", span)),
-        }
-    }
-
-    fn apply_sequence_sort(
-        &self,
-        operation: &str,
-        sequence: &Value,
-        predicate: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if !matches!(operation, "SORT" | "STABLE-SORT") {
-            return Err(self.invalid("unknown sequence sort operation", span));
-        }
-        if options.len() % 2 != 0 {
-            return Err(self.invalid(
-                "sequence sort keyword arguments must be supplied in pairs",
-                span,
-            ));
-        }
-
-        let mut key = None;
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "sequence sort keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "KEY" => key = Some(pair[1].clone()),
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown sequence sort keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        enum SequenceKind {
-            List,
-            Vector,
-            String,
-        }
-        let (kind, items) = match sequence {
-            Value::Nil => (SequenceKind::List, Vec::new()),
-            Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
-            Value::String(value) => (
-                SequenceKind::String,
-                value.chars().map(Value::Character).collect(),
-            ),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-
-        let predicate = Value::Function(self.resolve_function_designator(
-            predicate,
-            span,
-            environment,
-        )?);
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(self.resolve_function_designator(
-                &value,
-                span,
-                environment,
-            )?),
-            _ => None,
-        };
-
-        let mut sorted: Vec<(Value, Value)> = Vec::with_capacity(items.len());
-        for item in items {
-            let item_key = match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(&item),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => item.clone(),
-            };
-            let mut insert_at = sorted.len();
-            for (index, (_, existing_key)) in sorted.iter().enumerate() {
-                let precedes = self
-                    .apply_in(
-                        &predicate,
-                        &[item_key.clone(), existing_key.clone()],
-                        span,
-                        environment,
-                    )?
-                    .primary_value()
-                    .is_truthy();
-                if precedes {
-                    insert_at = index;
-                    break;
-                }
-            }
-            sorted.insert(insert_at, (item, item_key));
-        }
-
-        let result = sorted
-            .into_iter()
-            .map(|(item, _)| item)
-            .collect::<Vec<_>>();
-        match kind {
-            SequenceKind::List => Ok(Value::list(result)),
-            SequenceKind::Vector => Ok(Value::vector(result)),
-            SequenceKind::String => {
-                let mut value = String::new();
-                for item in result {
-                    let Value::Character(character) = item else {
-                        return Err(RuntimeError::Type {
-                            expected: "CHARACTER".to_string(),
-                            actual: item.type_name().to_string(),
-                            span: Some(span),
-                        });
-                    };
-                    value.push(character);
-                }
-                Ok(Value::string(value))
-            }
-        }
-    }
-
-    fn apply_sequence_merge(
-        &self,
-        result_type: &Value,
-        sequence1: &Value,
-        sequence2: &Value,
-        predicate: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if options.len() % 2 != 0 {
-            return Err(self.invalid(
-                "merge keyword arguments must be supplied in pairs",
-                span,
-            ));
-        }
-
-        let mut key = None;
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "merge keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "KEY" => key = Some(pair[1].clone()),
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown merge keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        let result_type_name = result_type.symbol_name().map(normalize_name);
-        let result_kind = match result_type_name.as_deref() {
-            Some("NIL") => "NIL",
-            Some("LIST") => "LIST",
-            Some("VECTOR") | Some("SIMPLE-VECTOR") => "VECTOR",
-            Some("STRING") | Some("SIMPLE-STRING") => "STRING",
-            _ => {
-                return Err(self.invalid(
-                    "merge result type must be LIST, VECTOR, STRING, or NIL",
-                    span,
-                ));
-            }
-        };
-
-        let sequence_items = |value: &Value| match value {
-            Value::Nil => Ok(Vec::new()),
-            Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
-            Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
-            value => Err(RuntimeError::Type {
-                expected: "SEQUENCE".to_string(),
-                actual: value.type_name().to_string(),
-                span: Some(span),
-            }),
-        };
-        let items1 = sequence_items(sequence1)?;
-        let items2 = sequence_items(sequence2)?;
-
-        let predicate = Value::Function(self.resolve_function_designator(
-            predicate,
-            span,
-            environment,
-        )?);
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(self.resolve_function_designator(
-                &value,
-                span,
-                environment,
-            )?),
-            _ => None,
-        };
-
-        let mut keyed1 = Vec::with_capacity(items1.len());
-        for item in items1 {
-            let item_key = match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(&item),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => item.clone(),
-            };
-            keyed1.push((item, item_key));
-        }
-
-        let mut keyed2 = Vec::with_capacity(items2.len());
-        for item in items2 {
-            let item_key = match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(&item),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => item.clone(),
-            };
-            keyed2.push((item, item_key));
-        }
-
-        let mut merged = Vec::with_capacity(keyed1.len() + keyed2.len());
-        let mut index1 = 0;
-        let mut index2 = 0;
-        while index1 < keyed1.len() && index2 < keyed2.len() {
-            let (_, first_key) = &keyed1[index1];
-            let (_, second_key) = &keyed2[index2];
-            let second_precedes = self
-                .apply_in(
-                    &predicate,
-                    &[second_key.clone(), first_key.clone()],
-                    span,
-                    environment,
-                )?
-                .primary_value()
-                .is_truthy();
-            if second_precedes {
-                merged.push(keyed2[index2].0.clone());
-                index2 += 1;
-            } else {
-                merged.push(keyed1[index1].0.clone());
-                index1 += 1;
-            }
-        }
-        merged.extend(
-            keyed1[index1..]
-                .iter()
-                .map(|(item, _)| item.clone()),
-        );
-        merged.extend(
-            keyed2[index2..]
-                .iter()
-                .map(|(item, _)| item.clone()),
-        );
-
-        match result_kind {
-            "NIL" => Ok(Value::Nil),
-            "LIST" => Ok(Value::list(merged)),
-            "VECTOR" => Ok(Value::vector(merged)),
-            "STRING" => {
-                let mut value = String::new();
-                for item in merged {
-                    let Value::Character(character) = item else {
-                        return Err(RuntimeError::Type {
-                            expected: "CHARACTER".to_string(),
-                            actual: item.type_name().to_string(),
-                            span: Some(span),
-                        });
-                    };
-                    value.push(character);
-                }
-                Ok(Value::string(value))
-            }
-            _ => unreachable!("validated MERGE result type"),
-        }
-    }
-
-    fn apply_sequence_quantifier(
-        &self,
-        operation: &str,
-        predicate: &Value,
-        sequences: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if !matches!(operation, "EVERY" | "SOME" | "NOTANY" | "NOTEVERY") {
-            return Err(self.invalid("unknown sequence quantifier operation", span));
-        }
-
-        let predicate = Value::Function(self.resolve_function_designator(
-            predicate,
-            span,
-            environment,
-        )?);
-        let sequences = sequences
-            .iter()
-            .map(|value| match value {
-                Value::Nil => Ok(Vec::new()),
-                Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
-                Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
-                value => Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                }),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let length = sequences.iter().map(Vec::len).min().unwrap_or(0);
-
-        for index in 0..length {
-            let arguments = sequences
-                .iter()
-                .map(|items| items[index].clone())
-                .collect::<Vec<_>>();
-            let result = self
-                .apply_in(&predicate, &arguments, span, environment)?
-                .primary_value();
-            match operation {
-                "SOME" if result.is_truthy() => return Ok(result),
-                "EVERY" if !result.is_truthy() => return Ok(Value::Nil),
-                "NOTANY" if result.is_truthy() => return Ok(Value::Nil),
-                "NOTEVERY" if !result.is_truthy() => return Ok(Value::boolean(true)),
-                _ => {}
-            }
-        }
-
-        match operation {
-            "EVERY" | "NOTANY" => Ok(Value::boolean(true)),
-            "SOME" | "NOTEVERY" => Ok(Value::Nil),
-            _ => Err(self.invalid("unknown sequence quantifier operation", span)),
-        }
-    }
-
-    fn apply_list_membership(
-        &self,
-        operation: &str,
-        item_or_predicate: &Value,
-        list: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if !matches!(
-            operation,
-            "MEMBER" | "MEMBER-IF" | "MEMBER-IF-NOT" | "ADJOIN"
-        ) {
-            return Err(self.invalid("unknown list membership operation", span));
-        }
-        if options.len() % 2 != 0 {
-            return Err(self.invalid(
-                "list membership keyword arguments must be supplied in pairs",
-                span,
-            ));
-        }
-
-        let is_predicate = matches!(operation, "MEMBER-IF" | "MEMBER-IF-NOT");
-        let mut test = None;
-        let mut test_not = None;
-        let mut key = None;
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "list membership keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "KEY" => key = Some(pair[1].clone()),
-                "TEST" if !is_predicate => {
-                    if test_not.is_some() {
-                        return Err(self.invalid(
-                            "list membership cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test = Some(pair[1].clone());
-                }
-                "TEST-NOT" if !is_predicate => {
-                    if test.is_some() {
-                        return Err(self.invalid(
-                            "list membership cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test_not = Some(pair[1].clone());
-                }
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown list membership keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        let Some(items) = list.list_items() else {
-            return Err(RuntimeError::Type {
-                expected: "LIST".to_string(),
-                actual: list.type_name().to_string(),
-                span: Some(span),
-            });
-        };
-        let invert_test = test_not.is_some() || operation == "MEMBER-IF-NOT";
-        let test_designator = if is_predicate {
-            item_or_predicate.clone()
-        } else {
-            test.or(test_not)
-                .unwrap_or_else(|| Value::symbol("EQL"))
-        };
-        let test_function = Value::Function(self.resolve_function_designator(
-            &test_designator,
-            span,
-            environment,
-        )?);
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(self.resolve_function_designator(
-                &value,
-                span,
-                environment,
-            )?),
-            _ => None,
-        };
-
-        for index in 0..items.len() {
-            let candidate = match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(&items[index]),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => items[index].clone(),
-            };
-            let matches = if is_predicate {
-                self.apply_in(
-                    &test_function,
-                    std::slice::from_ref(&candidate),
-                    span,
-                    environment,
-                )?
-                .primary_value()
-                .is_truthy()
-            } else {
-                self.apply_in(
-                    &test_function,
-                    &[item_or_predicate.clone(), candidate],
-                    span,
-                    environment,
-                )?
-                .primary_value()
-                .is_truthy()
-            };
-            let matches = if invert_test { !matches } else { matches };
-            if matches {
-                return match operation {
-                    "ADJOIN" => Ok(list.clone()),
-                    "MEMBER" | "MEMBER-IF" | "MEMBER-IF-NOT" => {
-                        Ok(Value::list(items[index..].to_vec()))
-                    }
-                    _ => Err(self.invalid("unknown list membership operation", span)),
-                };
-            }
-        }
-
-        if operation == "ADJOIN" {
-            let mut result = Vec::with_capacity(items.len() + 1);
-            result.push(item_or_predicate.clone());
-            result.extend(items);
-            Ok(Value::list(result))
-        } else {
-            Ok(Value::Nil)
-        }
-    }
-
-    fn association_entry_parts(entry: &Value) -> Option<(Value, Value)> {
-        match entry {
-            Value::List(items) => {
-                let (key, rest) = items.split_first()?;
-                Some((key.clone(), Value::list(rest.to_vec())))
-            }
-            Value::DottedList { items, tail } => {
-                let (key, rest) = items.split_first()?;
-                let value = if rest.is_empty() {
-                    tail.as_ref().clone()
-                } else {
-                    Value::dotted_list(rest.to_vec(), tail.as_ref().clone())
-                };
-                Some((key.clone(), value))
-            }
-            _ => None,
-        }
-    }
-
-    fn apply_association_search(
-        &self,
-        operation: &str,
-        item_or_predicate: &Value,
-        alist: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if !matches!(
-            operation,
-            "ASSOC"
-                | "ASSOC-IF"
-                | "ASSOC-IF-NOT"
-                | "RASSOC"
-                | "RASSOC-IF"
-                | "RASSOC-IF-NOT"
-        ) {
-            return Err(self.invalid("unknown association search operation", span));
-        }
-        if options.len() % 2 != 0 {
-            return Err(self.invalid(
-                "association search keyword arguments must be supplied in pairs",
-                span,
-            ));
-        }
-
-        let is_predicate = matches!(
-            operation,
-            "ASSOC-IF" | "ASSOC-IF-NOT" | "RASSOC-IF" | "RASSOC-IF-NOT"
-        );
-        let reverse = matches!(
-            operation,
-            "RASSOC" | "RASSOC-IF" | "RASSOC-IF-NOT"
-        );
-        let mut test = None;
-        let mut test_not = None;
-        let mut key = None;
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "association search keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "KEY" => key = Some(pair[1].clone()),
-                "TEST" if !is_predicate => {
-                    if test_not.is_some() {
-                        return Err(self.invalid(
-                            "association search cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test = Some(pair[1].clone());
-                }
-                "TEST-NOT" if !is_predicate => {
-                    if test.is_some() {
-                        return Err(self.invalid(
-                            "association search cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test_not = Some(pair[1].clone());
-                }
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown association search keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        let Some(entries) = alist.list_items() else {
-            return Err(RuntimeError::Type {
-                expected: "ASSOCIATION LIST".to_string(),
-                actual: alist.type_name().to_string(),
-                span: Some(span),
-            });
-        };
-        let invert_test = test_not.is_some()
-            || matches!(operation, "ASSOC-IF-NOT" | "RASSOC-IF-NOT");
-        let test_designator = if is_predicate {
-            item_or_predicate.clone()
-        } else {
-            test.or(test_not)
-                .unwrap_or_else(|| Value::symbol("EQL"))
-        };
-        let test_function = Value::Function(self.resolve_function_designator(
-            &test_designator,
-            span,
-            environment,
-        )?);
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(self.resolve_function_designator(
-                &value,
-                span,
-                environment,
-            )?),
-            _ => None,
-        };
-
-        for entry in entries {
-            let Some((entry_key, entry_value)) = Self::association_entry_parts(&entry) else {
-                return Err(RuntimeError::Type {
-                    expected: "ASSOCIATION LIST ENTRY".to_string(),
-                    actual: entry.type_name().to_string(),
-                    span: Some(span),
-                });
-            };
-            let candidate = if reverse { entry_value } else { entry_key };
-            let candidate = match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(&candidate),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => candidate,
-            };
-            let matches = if is_predicate {
-                self.apply_in(
-                    &test_function,
-                    std::slice::from_ref(&candidate),
-                    span,
-                    environment,
-                )?
-                .primary_value()
-                .is_truthy()
-            } else {
-                self.apply_in(
-                    &test_function,
-                    &[item_or_predicate.clone(), candidate],
-                    span,
-                    environment,
-                )?
-                .primary_value()
-                .is_truthy()
-            };
-            let matches = if invert_test { !matches } else { matches };
-            if matches {
-                return Ok(entry);
-            }
-        }
-        Ok(Value::Nil)
-    }
-
-    fn apply_sequence_remove(
-        &self,
-        operation: &str,
-        item_or_predicate: &Value,
-        sequence: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if !matches!(
-            operation,
-            "REMOVE"
-                | "REMOVE-IF"
-                | "REMOVE-IF-NOT"
-                | "DELETE"
-                | "DELETE-IF"
-                | "DELETE-IF-NOT"
-                | "REMOVE-DUPLICATES"
-                | "DELETE-DUPLICATES"
-        ) {
-            return Err(self.invalid("unknown sequence removal operation", span));
-        }
-        if options.len() % 2 != 0 {
-            return Err(self.invalid(
-                "sequence removal keyword arguments must be supplied in pairs",
-                span,
-            ));
-        }
-
-        let is_predicate = matches!(
-            operation,
-            "REMOVE-IF" | "REMOVE-IF-NOT" | "DELETE-IF" | "DELETE-IF-NOT"
-        );
-        let removes_duplicates = matches!(
-            operation,
-            "REMOVE-DUPLICATES" | "DELETE-DUPLICATES"
-        );
-        let mut from_end = false;
-        let mut test = None;
-        let mut test_not = None;
-        let mut key = None;
-        let mut start = 0;
-        let mut end = None;
-        let mut count = None;
-
-        let index_argument = |option: &str, value: &Value| -> Result<usize, RuntimeError> {
-            let Value::Integer(index) = value else {
-                return Err(RuntimeError::Type {
-                    expected: "INTEGER".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            };
-            if *index < 0 {
-                return Err(self.invalid(
-                    &format!("sequence removal {option} must be non-negative"),
-                    span,
-                ));
-            }
-            usize::try_from(*index).map_err(|_| {
-                self.invalid(&format!("sequence removal {option} is out of range"), span)
-            })
-        };
-
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "sequence removal keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "FROM-END" => from_end = pair[1].is_truthy(),
-                "TEST" if !is_predicate => {
-                    if test_not.is_some() {
-                        return Err(self.invalid(
-                            "sequence removal cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test = Some(pair[1].clone());
-                }
-                "TEST-NOT" if !is_predicate => {
-                    if test.is_some() {
-                        return Err(self.invalid(
-                            "sequence removal cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test_not = Some(pair[1].clone());
-                }
-                "KEY" => key = Some(pair[1].clone()),
-                "START" => start = index_argument(":start", &pair[1])?,
-                "END" => {
-                    end = match &pair[1] {
-                        Value::Nil => None,
-                        value => Some(index_argument(":end", value)?),
-                    }
-                }
-                "COUNT" if !removes_duplicates => {
-                    count = match &pair[1] {
-                        Value::Nil => None,
-                        value => Some(index_argument(":count", value)?),
-                    };
-                }
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown sequence removal keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        enum SequenceKind {
-            List,
-            Vector,
-            String,
-        }
-        let (kind, items) = match sequence {
-            Value::Nil => (SequenceKind::List, Vec::new()),
-            Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
-            Value::String(value) => (
-                SequenceKind::String,
-                value.chars().map(Value::Character).collect(),
-            ),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-        let end = end.unwrap_or(items.len());
-        if start > end || end > items.len() {
-            return Err(self.invalid("sequence removal bounds are invalid", span));
-        }
-
-        let invert_test = test_not.is_some()
-            || matches!(operation, "REMOVE-IF-NOT" | "DELETE-IF-NOT");
-        let test_designator = if is_predicate {
-            item_or_predicate.clone()
-        } else {
-            test.or(test_not)
-                .unwrap_or_else(|| Value::symbol("EQL"))
-        };
-        let test_function = Value::Function(self.resolve_function_designator(
-            &test_designator,
-            span,
-            environment,
-        )?);
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(self.resolve_function_designator(
-                &value,
-                span,
-                environment,
-            )?),
-            _ => None,
-        };
-        let mut candidates = items.clone();
-        for index in start..end {
-            candidates[index] = match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(&items[index]),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => items[index].clone(),
-            };
-        }
-
-        let mut remove = vec![false; items.len()];
-        if removes_duplicates {
-            let mut kept: Vec<usize> = Vec::new();
-            if from_end {
-                for index in (start..end).rev() {
-                    let mut duplicate = false;
-                    for kept_index in &kept {
-                        let matches = self
-                            .apply_in(
-                                &test_function,
-                                &[candidates[index].clone(), candidates[*kept_index].clone()],
-                                span,
-                                environment,
-                            )?
-                            .primary_value()
-                            .is_truthy();
-                        duplicate = if invert_test { !matches } else { matches };
-                        if duplicate {
-                            break;
-                        }
-                    }
-                    if duplicate {
-                        remove[index] = true;
-                    } else {
-                        kept.push(index);
-                    }
-                }
-            } else {
-                for index in start..end {
-                    let mut duplicate = false;
-                    for kept_index in &kept {
-                        let matches = self
-                            .apply_in(
-                                &test_function,
-                                &[candidates[index].clone(), candidates[*kept_index].clone()],
-                                span,
-                                environment,
-                            )?
-                            .primary_value()
-                            .is_truthy();
-                        duplicate = if invert_test { !matches } else { matches };
-                        if duplicate {
-                            break;
-                        }
-                    }
-                    if duplicate {
-                        remove[index] = true;
-                    } else {
-                        kept.push(index);
-                    }
-                }
-            }
-        } else {
-            let mut matched = Vec::new();
-            for index in start..end {
-                let matches = if is_predicate {
-                    self.apply_in(
-                        &test_function,
-                        std::slice::from_ref(&candidates[index]),
-                        span,
-                        environment,
-                    )?
-                    .primary_value()
-                    .is_truthy()
-                } else {
-                    self.apply_in(
-                        &test_function,
-                        &[item_or_predicate.clone(), candidates[index].clone()],
-                        span,
-                        environment,
-                    )?
-                    .primary_value()
-                    .is_truthy()
-                };
-                let matches = if invert_test { !matches } else { matches };
-                if matches {
-                    matched.push(index);
-                }
-            }
-            let limit = count.unwrap_or(matched.len()).min(matched.len());
-            if from_end {
-                for index in matched.into_iter().rev().take(limit) {
-                    remove[index] = true;
-                }
-            } else {
-                for index in matched.into_iter().take(limit) {
-                    remove[index] = true;
-                }
-            }
-        }
-
-        let result = items
-            .into_iter()
-            .enumerate()
-            .filter_map(|(index, value)| (!remove[index]).then_some(value))
-            .collect::<Vec<_>>();
-        match kind {
-            SequenceKind::List => Ok(Value::list(result)),
-            SequenceKind::Vector => Ok(Value::vector(result)),
-            SequenceKind::String => {
-                let mut value = String::new();
-                for item in result {
-                    let Value::Character(character) = item else {
-                        return Err(RuntimeError::Type {
-                            expected: "CHARACTER".to_string(),
-                            actual: item.type_name().to_string(),
-                            span: Some(span),
-                        });
-                    };
-                    value.push(character);
-                }
-                Ok(Value::string(value))
-            }
-        }
-    }
-
-    fn apply_sequence_substitute(
-        &self,
-        operation: &str,
-        new_item: &Value,
-        old_or_predicate: &Value,
-        sequence: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if !matches!(
-            operation,
-            "SUBSTITUTE"
-                | "SUBSTITUTE-IF"
-                | "SUBSTITUTE-IF-NOT"
-                | "NSUBSTITUTE"
-                | "NSUBSTITUTE-IF"
-                | "NSUBSTITUTE-IF-NOT"
-        ) {
-            return Err(self.invalid("unknown sequence substitution operation", span));
-        }
-        if options.len() % 2 != 0 {
-            return Err(self.invalid(
-                "sequence substitution keyword arguments must be supplied in pairs",
-                span,
-            ));
-        }
-
-        let is_predicate = matches!(
-            operation,
-            "SUBSTITUTE-IF" | "SUBSTITUTE-IF-NOT" | "NSUBSTITUTE-IF" | "NSUBSTITUTE-IF-NOT"
-        );
-        let mut from_end = false;
-        let mut test = None;
-        let mut test_not = None;
-        let mut key = None;
-        let mut start = 0;
-        let mut end = None;
-        let mut count = None;
-
-        let index_argument = |option: &str, value: &Value| -> Result<usize, RuntimeError> {
-            let Value::Integer(index) = value else {
-                return Err(RuntimeError::Type {
-                    expected: "INTEGER".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            };
-            if *index < 0 {
-                return Err(self.invalid(
-                    &format!("sequence substitution {option} must be non-negative"),
-                    span,
-                ));
-            }
-            usize::try_from(*index).map_err(|_| {
-                self.invalid(&format!("sequence substitution {option} is out of range"), span)
-            })
-        };
-
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "sequence substitution keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "FROM-END" => from_end = pair[1].is_truthy(),
-                "TEST" if !is_predicate => {
-                    if test_not.is_some() {
-                        return Err(self.invalid(
-                            "sequence substitution cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test = Some(pair[1].clone());
-                }
-                "TEST-NOT" if !is_predicate => {
-                    if test.is_some() {
-                        return Err(self.invalid(
-                            "sequence substitution cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test_not = Some(pair[1].clone());
-                }
-                "KEY" => key = Some(pair[1].clone()),
-                "START" => start = index_argument(":start", &pair[1])?,
-                "END" => {
-                    end = match &pair[1] {
-                        Value::Nil => None,
-                        value => Some(index_argument(":end", value)?),
-                    }
-                }
-                "COUNT" => {
-                    count = match &pair[1] {
-                        Value::Nil => None,
-                        value => Some(index_argument(":count", value)?),
-                    };
-                }
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown sequence substitution keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        enum SequenceKind {
-            List,
-            Vector,
-            String,
-        }
-        let (kind, items) = match sequence {
-            Value::Nil => (SequenceKind::List, Vec::new()),
-            Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
-            Value::String(value) => (
-                SequenceKind::String,
-                value.chars().map(Value::Character).collect(),
-            ),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-        if matches!(kind, SequenceKind::String) && !matches!(new_item, Value::Character(_)) {
-            return Err(RuntimeError::Type {
-                expected: "CHARACTER".to_string(),
-                actual: new_item.type_name().to_string(),
-                span: Some(span),
-            });
-        }
-        let end = end.unwrap_or(items.len());
-        if start > end || end > items.len() {
-            return Err(self.invalid("sequence substitution bounds are invalid", span));
-        }
-
-        let invert_test = test_not.is_some()
-            || matches!(operation, "SUBSTITUTE-IF-NOT" | "NSUBSTITUTE-IF-NOT");
-        let test_designator = if is_predicate {
-            old_or_predicate.clone()
-        } else {
-            test.or(test_not)
-                .unwrap_or_else(|| Value::symbol("EQL"))
-        };
-        let test_function = Value::Function(self.resolve_function_designator(
-            &test_designator,
-            span,
-            environment,
-        )?);
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(self.resolve_function_designator(
-                &value,
-                span,
-                environment,
-            )?),
-            _ => None,
-        };
-        let mut candidates = items.clone();
-        for index in start..end {
-            candidates[index] = match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        &Value::Function(key_function.clone()),
-                        std::slice::from_ref(&items[index]),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => items[index].clone(),
-            };
-        }
-
-        let mut matched = Vec::new();
-        for index in start..end {
-            let matches = if is_predicate {
-                self.apply_in(
-                    &test_function,
-                    std::slice::from_ref(&candidates[index]),
-                    span,
-                    environment,
-                )?
-                .primary_value()
-                .is_truthy()
-            } else {
-                self.apply_in(
-                    &test_function,
-                    &[old_or_predicate.clone(), candidates[index].clone()],
-                    span,
-                    environment,
-                )?
-                .primary_value()
-                .is_truthy()
-            };
-            let matches = if invert_test { !matches } else { matches };
-            if matches {
-                matched.push(index);
-            }
-        }
-
-        let limit = count.unwrap_or(matched.len()).min(matched.len());
-        let mut replace = vec![false; items.len()];
-        if from_end {
-            for index in matched.into_iter().rev().take(limit) {
-                replace[index] = true;
-            }
-        } else {
-            for index in matched.into_iter().take(limit) {
-                replace[index] = true;
-            }
-        }
-
-        let result = items
-            .into_iter()
-            .enumerate()
-            .map(|(index, value)| {
-                if replace[index] {
-                    new_item.clone()
-                } else {
-                    value
-                }
-            })
-            .collect::<Vec<_>>();
-        match kind {
-            SequenceKind::List => Ok(Value::list(result)),
-            SequenceKind::Vector => Ok(Value::vector(result)),
-            SequenceKind::String => {
-                let mut value = String::new();
-                for item in result {
-                    let Value::Character(character) = item else {
-                        return Err(RuntimeError::Type {
-                            expected: "CHARACTER".to_string(),
-                            actual: item.type_name().to_string(),
-                            span: Some(span),
-                        });
-                    };
-                    value.push(character);
-                }
-                Ok(Value::string(value))
-            }
-        }
-    }
-
-    fn apply_sequence_map_into(
-        &self,
-        destination: &Value,
-        function: &Value,
-        sequences: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        let (result_kind, mut result) = match destination {
-            Value::Nil => ("NIL", Vec::new()),
-            Value::List(items) => ("LIST", items.as_ref().clone()),
-            Value::Vector(items) => ("VECTOR", items.as_ref().clone()),
-            Value::String(value) => (
-                "STRING",
-                value.chars().map(Value::Character).collect::<Vec<_>>(),
-            ),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-        let function = Value::Function(self.resolve_function_designator(
-            function,
-            span,
-            environment,
-        )?);
-        let sequences = sequences
-            .iter()
-            .map(|value| match value {
-                Value::Nil => Ok(Vec::new()),
-                Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
-                Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
-                value => Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                }),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let length = sequences
-            .iter()
-            .map(Vec::len)
-            .fold(result.len(), |length, sequence_length| {
-                length.min(sequence_length)
-            });
-        for index in 0..length {
-            let arguments = sequences
-                .iter()
-                .map(|items| items[index].clone())
-                .collect::<Vec<_>>();
-            let value = self
-                .apply_in(&function, &arguments, span, environment)?
-                .primary_value();
-            if result_kind == "STRING" && !matches!(value, Value::Character(_)) {
-                return Err(RuntimeError::Type {
-                    expected: "CHARACTER".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-            result[index] = value;
-        }
-        match result_kind {
-            "NIL" => Ok(Value::Nil),
-            "LIST" => Ok(Value::list(result)),
-            "VECTOR" => Ok(Value::vector(result)),
-            "STRING" => {
-                let mut string = String::new();
-                for value in result {
-                    let Value::Character(character) = value else {
-                        return Err(RuntimeError::Type {
-                            expected: "CHARACTER".to_string(),
-                            actual: value.type_name().to_string(),
-                            span: Some(span),
-                        });
-                    };
-                    string.push(character);
-                }
-                Ok(Value::string(string))
-            }
-            _ => unreachable!("validated MAP-INTO destination type"),
-        }
-    }
-
-    fn apply_list_set_operation(
-        &self,
-        operation: &str,
-        first: &Value,
-        second: &Value,
-        options: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if !matches!(
-            operation,
-            "UNION"
-                | "NUNION"
-                | "INTERSECTION"
-                | "NINTERSECTION"
-                | "SET-DIFFERENCE"
-                | "NSET-DIFFERENCE"
-                | "SET-EXCLUSIVE-OR"
-                | "NSET-EXCLUSIVE-OR"
-                | "SUBSETP"
-        ) {
-            return Err(self.invalid("unknown list set operation", span));
-        }
-        if options.len() % 2 != 0 {
-            return Err(self.invalid(
-                "list set operation keyword arguments must be supplied in pairs",
-                span,
-            ));
-        }
-
-        let mut test = None;
-        let mut test_not = None;
-        let mut key = None;
-        for pair in options.chunks_exact(2) {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(self.invalid(
-                        "list set operation keyword argument name must be a keyword",
-                        span,
-                    ));
-                }
-            };
-            match keyword_name.as_str() {
-                "TEST" => {
-                    if test_not.is_some() {
-                        return Err(self.invalid(
-                            "list set operation cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test = Some(pair[1].clone());
-                }
-                "TEST-NOT" => {
-                    if test.is_some() {
-                        return Err(self.invalid(
-                            "list set operation cannot use both :test and :test-not",
-                            span,
-                        ));
-                    }
-                    test_not = Some(pair[1].clone());
-                }
-                "KEY" => key = Some(pair[1].clone()),
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown list set operation keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-
-        let first_items = first.list_items().ok_or_else(|| RuntimeError::Type {
-            expected: "LIST".to_string(),
-            actual: first.type_name().to_string(),
+        if matches!(value, Value::Unbound) || builtins::typep_value(value, type_specifier)? {
+            return Ok(());
+        }
+        Err(RuntimeError::Type {
+            expected: type_specifier.to_string(),
+            actual: value.type_name().to_string(),
             span: Some(span),
-        })?;
-        let second_items = second.list_items().ok_or_else(|| RuntimeError::Type {
-            expected: "LIST".to_string(),
-            actual: second.type_name().to_string(),
-            span: Some(span),
-        })?;
-
-        let invert_test = test_not.is_some();
-        let test_designator = test
-            .or(test_not)
-            .unwrap_or_else(|| Value::symbol("EQL"));
-        let test_function = Value::Function(self.resolve_function_designator(
-            &test_designator,
-            span,
-            environment,
-        )?);
-        let key_function = match key {
-            Some(value) if value.is_truthy() => Some(Value::Function(
-                self.resolve_function_designator(&value, span, environment)?,
-            )),
-            _ => None,
-        };
-
-        let mut first_keys = Vec::with_capacity(first_items.len());
-        for item in &first_items {
-            first_keys.push(match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        key_function,
-                        std::slice::from_ref(item),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => item.clone(),
-            });
-        }
-        let mut second_keys = Vec::with_capacity(second_items.len());
-        for item in &second_items {
-            second_keys.push(match &key_function {
-                Some(key_function) => self
-                    .apply_in(
-                        key_function,
-                        std::slice::from_ref(item),
-                        span,
-                        environment,
-                    )?
-                    .primary_value(),
-                None => item.clone(),
-            });
-        }
-
-        let contains_key = |key: &Value, candidates: &[Value]| -> Result<bool, RuntimeError> {
-            for candidate in candidates {
-                let equal = self
-                    .apply_in(
-                        &test_function,
-                        &[key.clone(), candidate.clone()],
-                        span,
-                        environment,
-                    )?
-                    .primary_value()
-                    .is_truthy();
-                if if invert_test { !equal } else { equal } {
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        };
-
-        if operation == "SUBSETP" {
-            for key in &first_keys {
-                if !contains_key(key, &second_keys)? {
-                    return Ok(Value::Nil);
-                }
-            }
-            return Ok(Value::boolean(true));
-        }
-
-        let mut result = Vec::new();
-        let mut result_keys = Vec::new();
-        let mut append_unique = |item: &Value, key: &Value| -> Result<(), RuntimeError> {
-            if !contains_key(key, &result_keys)? {
-                result.push(item.clone());
-                result_keys.push(key.clone());
-            }
-            Ok(())
-        };
-
-        match operation {
-            "UNION" | "NUNION" => {
-                for (item, key) in first_items.iter().zip(&first_keys) {
-                    append_unique(item, key)?;
-                }
-                for (item, key) in second_items.iter().zip(&second_keys) {
-                    append_unique(item, key)?;
-                }
-            }
-            "INTERSECTION" | "NINTERSECTION" => {
-                for (item, key) in first_items.iter().zip(&first_keys) {
-                    if contains_key(key, &second_keys)? {
-                        append_unique(item, key)?;
-                    }
-                }
-            }
-            "SET-DIFFERENCE" | "NSET-DIFFERENCE" => {
-                for (item, key) in first_items.iter().zip(&first_keys) {
-                    if !contains_key(key, &second_keys)? {
-                        append_unique(item, key)?;
-                    }
-                }
-            }
-            "SET-EXCLUSIVE-OR" | "NSET-EXCLUSIVE-OR" => {
-                for (item, key) in first_items.iter().zip(&first_keys) {
-                    if !contains_key(key, &second_keys)? {
-                        append_unique(item, key)?;
-                    }
-                }
-                for (item, key) in second_items.iter().zip(&second_keys) {
-                    if !contains_key(key, &first_keys)? {
-                        append_unique(item, key)?;
-                    }
-                }
-            }
-            _ => return Err(self.invalid("unknown list set operation", span)),
-        }
-
-        Ok(Value::list(result))
+        })
     }
 
-    fn special_mapcar(
+    fn validate_instance_slot_value(
         &self,
-        items: &[Form],
-        environment: &Environment,
-    ) -> Result<Value, RuntimeError> {
-        if items.len() < 3 {
-            return Err(self.arity("mapcar", "at least two", items.len().saturating_sub(1)));
-        }
-        let function = self.eval_in(&items[1], environment)?;
-        let sequences = items[2..]
+        object: &Value,
+        slot_name: &str,
+        value: &Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let Some(class) = object.instance_class_definition() else {
+            return Ok(());
+        };
+        if let Some(slot) = class
+            .slots
             .iter()
-            .map(|form| self.eval_in(form, environment))
-            .collect::<Result<Vec<_>, _>>()?;
-        self.apply_list_mapping(
-            "MAPCAR",
-            &function,
-            &sequences,
-            environment,
-            items[0].span,
-        )
-    }
-
-    fn special_map_into(
-        &self,
-        items: &[Form],
-        environment: &Environment,
-    ) -> Result<Value, RuntimeError> {
-        if items.len() < 3 {
-            return Err(self.arity("map-into", "at least two", items.len().saturating_sub(1)));
+            .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+        {
+            self.validate_slot_value(slot, value, span)?;
         }
-        let destination_form = &items[1];
-        let destination = self.eval_in(destination_form, environment)?;
-        let function = self.eval_in(&items[2], environment)?;
-        let sequences = items[3..]
-            .iter()
-            .map(|form| self.eval_in(form, environment))
-            .collect::<Result<Vec<_>, _>>()?;
-        let result = self.apply_sequence_map_into(
-            &destination,
-            &function,
-            &sequences,
-            environment,
-            items[0].span,
-        )?;
-        self.set_map_into_destination(destination_form, result.clone(), environment)?;
-        Ok(result)
+        Ok(())
     }
 
     fn make_instance(
@@ -10201,6 +10226,7 @@ impl Runtime {
         }
 
         let mut slots = Vec::with_capacity(class.slots.len());
+        let mut pending_class_values = Vec::new();
         for slot in &class.slots {
             let initarg_value = slot.initarg.as_ref().and_then(|initarg| {
                 initargs
@@ -10220,7 +10246,7 @@ impl Runtime {
                         .map(|form| self.eval_in(form, environment))
                         .transpose()?
                         .unwrap_or(Value::Unbound);
-                    *class_value.borrow_mut() = value.clone();
+                    pending_class_values.push((class_value.clone(), value.clone()));
                     value
                 } else {
                     current
@@ -10232,16 +10258,31 @@ impl Runtime {
                     .transpose()?
                     .unwrap_or(Value::Unbound)
             };
+            self.validate_slot_value(slot, &value, span)?;
             slots.push((slot.name.clone(), value));
         }
         let instance = Value::instance(class.clone(), slots);
+        let mut pending_instance_values = Vec::new();
         for (initarg, value) in initargs {
-            let Some(index) = class.slots.iter().position(|slot| {
-                slot.initarg.as_deref() == Some(initarg.as_str())
-            }) else {
+            let Some(index) = class
+                .slots
+                .iter()
+                .position(|slot| slot.initarg.as_deref() == Some(initarg.as_str()))
+            else {
                 return Err(self.invalid("unknown make-instance initarg", span));
             };
-            if !instance.set_instance_slot(&class.name, &class.slots[index].name, value) {
+            self.validate_slot_value(&class.slots[index], &value, span)?;
+            if let Some(class_value) = &class.slots[index].class_value {
+                pending_class_values.push((class_value.clone(), value));
+            } else {
+                pending_instance_values.push((class.slots[index].name.clone(), value));
+            }
+        }
+        for (class_value, value) in pending_class_values {
+            *class_value.borrow_mut() = value;
+        }
+        for (slot_name, value) in pending_instance_values {
+            if !instance.set_instance_slot(&class.name, &slot_name, value) {
                 return Err(self.invalid("unknown make-instance initarg", span));
             }
         }
@@ -10301,14 +10342,8 @@ impl Runtime {
                 let form = self.form_from_value(definition, span)?;
                 let expanded = self.prepare_compiled_form(&form, environment)?;
                 let program = Rc::new(Compiler::compile_form(&expanded)?);
-                crate::vm::run_entry(
-                    self,
-                    program,
-                    0,
-                    environment.clone(),
-                    expanded.span,
-                )?
-                .primary_value()
+                crate::vm::run_entry(self, program, 0, environment.clone(), expanded.span)?
+                    .primary_value()
             }
         };
 
@@ -10384,9 +10419,7 @@ impl Runtime {
         span: Span,
     ) -> RuntimeError {
         RuntimeError::Signaled {
-            condition: normalize_name(condition)
-                .trim_start_matches(':')
-                .to_owned(),
+            condition: normalize_name(condition).trim_start_matches(':').to_owned(),
             condition_types,
             message,
             format_control,
@@ -10427,68 +10460,6 @@ impl Runtime {
             &format_arguments,
             warning,
             span,
-        ))
-    }
-
-    fn make_condition(
-        &self,
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        if arguments.is_empty() {
-            return Err(self.arity("make-condition", "at least one", arguments.len()));
-        }
-        let initargs = &arguments[1..];
-        if !initargs.len().is_multiple_of(2) {
-            return Err(self.invalid(
-                "make-condition initargs must be keyword/value pairs",
-                span,
-            ));
-        }
-
-        let actual_type = self.name_designator_from_value(&arguments[0], span)?;
-        let mut format_control = None;
-        let mut format_arguments = Vec::new();
-        for pair in initargs.chunks_exact(2) {
-            let initarg = self.name_designator_from_value(&pair[0], span)?;
-            match initarg.as_str() {
-                "FORMAT-CONTROL" => {
-                    let Value::String(control) = &pair[1] else {
-                        return Err(RuntimeError::Type {
-                            expected: "STRING".to_owned(),
-                            actual: pair[1].type_name().to_owned(),
-                            span: Some(span),
-                        });
-                    };
-                    format_control = Some(control.to_string());
-                }
-                "FORMAT-ARGUMENTS" => {
-                    format_arguments = pair[1].list_items().ok_or_else(|| {
-                        RuntimeError::Type {
-                            expected: "PROPER-LIST".to_owned(),
-                            actual: pair[1].type_name().to_owned(),
-                            span: Some(span),
-                        }
-                    })?;
-                }
-                _ => {
-                    return Err(self.invalid(
-                        &format!("unknown make-condition initarg :{initarg}"),
-                        span,
-                    ));
-                }
-            }
-        }
-
-        let message = match format_control.as_deref() {
-            Some(control) => builtins::format_control(control, &format_arguments)?,
-            None => String::new(),
-        };
-        Ok(Value::condition_from_parts(
-            actual_type,
-            message,
-            format_control,
-            format_arguments,
         ))
     }
 
@@ -10567,95 +10538,36 @@ impl Runtime {
         self.dispatch_condition(error, &condition_value, environment, span)
     }
 
-    fn restart_invocation_error(
-        name: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> RuntimeError {
-        let value = match arguments {
-            [] => Value::Nil,
-            [value] => value.clone(),
-            values => Value::values(values.to_vec()),
-        };
-        RuntimeError::InvokeRestart {
-            name: normalize_name(name),
-            value: ReturnValue::new(value),
-            arguments: arguments
-                .iter()
-                .cloned()
-                .map(ReturnValue::new)
-                .collect(),
-            span: Some(span),
-        }
-    }
-
-    fn restart_binding_for_designator_in(
-        &self,
-        designator: &Value,
-        bindings: &[RestartBinding],
-        span: Span,
-    ) -> Result<Option<RestartBinding>, RuntimeError> {
-        if let Some((name, _)) = designator.symbol_reference() {
-            let normalized = normalize_name(name);
-            return Ok(bindings
-                .iter()
-                .rev()
-                .find(|binding| normalize_name(&binding.name) == normalized)
-                .cloned());
-        }
-        if designator.restart_name().is_some() {
-            return Ok(bindings
-                .iter()
-                .rev()
-                .find(|binding| binding.restart.eq_value(designator))
-                .cloned());
-        }
-        Err(self.invalid("restart designator must be a symbol or restart", span))
-    }
-
-    fn restart_binding_for_designator(
-        &self,
-        designator: &Value,
-        span: Span,
-    ) -> Result<Option<RestartBinding>, RuntimeError> {
-        let bindings = self.restart_bindings();
-        self.restart_binding_for_designator_in(designator, &bindings, span)
-    }
-
-    fn invoke_restart_binding(
-        &self,
-        binding: RestartBinding,
-        arguments: &[Value],
-        environment: &Environment,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
-        let Some(function) = binding.function else {
-            return Err(Self::restart_invocation_error(
-                &binding.name,
-                arguments,
-                span,
-            ));
-        };
-        self.apply_in(&function, arguments, span, environment)
-    }
-
-    fn invoke_restart_named(
+    fn apply_standard_input_primitive(
         &self,
         name: &str,
         arguments: &[Value],
         environment: &Environment,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        let normalized = normalize_name(name);
-        let Some(binding) = self
-            .restart_bindings()
-            .into_iter()
-            .rev()
-            .find(|binding| normalize_name(&binding.name) == normalized)
-        else {
-            return Err(Self::restart_invocation_error(&normalized, arguments, span));
-        };
-        self.invoke_restart_binding(binding, arguments, environment, span)
+        let stream = self
+            .lookup_symbol_value_in("*STANDARD-INPUT*", environment)
+            .ok_or_else(|| self.invalid("*STANDARD-INPUT* is unbound", span))?;
+        match name {
+            "READ" => {
+                let features = self.reader_features_for(environment, span)?;
+                builtins::read_with_standard_input(arguments, &stream, &features)
+            }
+            "READ-PRESERVING-WHITESPACE" => {
+                let features = self.reader_features_for(environment, span)?;
+                builtins::read_preserving_whitespace_with_standard_input(
+                    arguments, &stream, &features,
+                )
+            }
+            "READ-CHAR" => builtins::read_char_with_standard_input(arguments, &stream),
+            "PEEK-CHAR" => builtins::peek_char_with_standard_input(arguments, &stream),
+            "UNREAD-CHAR" => builtins::unread_char_with_standard_input(arguments, &stream),
+            "LISTEN" => builtins::listen_with_standard_input(arguments, &stream),
+            "CLEAR-INPUT" => builtins::clear_input_with_standard_input(arguments, &stream),
+            "READ-LINE" => builtins::read_line_with_standard_input(arguments, &stream),
+            "READ-SEQUENCE" => builtins::read_sequence_with_standard_input(arguments, &stream),
+            _ => unreachable!(),
+        }
     }
 
     fn apply_primitive(
@@ -10666,6 +10578,37 @@ impl Runtime {
         span: Span,
     ) -> Result<Value, RuntimeError> {
         match name {
+            "FUNCALL" => {
+                if arguments.is_empty() {
+                    return Err(self.arity("funcall", "at least one", arguments.len()));
+                }
+                self.apply_in(&arguments[0], &arguments[1..], span, environment)
+            }
+            "APPLY" => {
+                if arguments.len() < 2 {
+                    return Err(self.arity("apply", "at least two", arguments.len()));
+                }
+                let Some(last) = arguments.last() else {
+                    return Err(self.invalid("apply needs a final list", span));
+                };
+                let Some(mut final_arguments) = last.list_items() else {
+                    return Err(self.invalid("apply's final argument must be a list", span));
+                };
+                let mut applied_arguments = arguments[1..arguments.len() - 1].to_vec();
+                applied_arguments.append(&mut final_arguments);
+                self.apply_in(&arguments[0], &applied_arguments, span, environment)
+            }
+            "READ"
+            | "READ-PRESERVING-WHITESPACE"
+            | "READ-CHAR"
+            | "PEEK-CHAR"
+            | "UNREAD-CHAR"
+            | "LISTEN"
+            | "CLEAR-INPUT"
+            | "READ-LINE"
+            | "READ-SEQUENCE" => {
+                self.apply_standard_input_primitive(name, arguments, environment, span)
+            }
             "ERROR" => {
                 if arguments.is_empty() {
                     return Err(self.arity("error", "at least one", arguments.len()));
@@ -10817,13 +10760,24 @@ impl Runtime {
                     })
                 }
             }
-            "MAKE-CONDITION" => self.make_condition(arguments, span),
+            "MAKE-CONDITION" => conditions::make_condition(self, arguments, span, environment),
             "EVAL" => {
-                if arguments.len() != 1 {
-                    return Err(self.arity("eval", "one", arguments.len()));
+                if !(1..=2).contains(&arguments.len()) {
+                    return Err(self.arity("eval", "one or two", arguments.len()));
                 }
                 let form = self.form_from_value(&arguments[0], span)?;
-                self.eval_values_in(&form, environment)
+                let target_environment = match arguments.get(1) {
+                    None => environment.clone(),
+                    Some(Value::Environment(environment)) => environment.clone(),
+                    Some(value) => {
+                        return Err(RuntimeError::Type {
+                            expected: "ENVIRONMENT".to_string(),
+                            actual: value.type_name().to_string(),
+                            span: Some(span),
+                        });
+                    }
+                };
+                self.eval_values_in(&form, &target_environment)
             }
             "COMPILE" => self.compile_function(arguments, environment, span),
             "LOAD" => self.load_file(arguments, span),
@@ -10868,6 +10822,7 @@ impl Runtime {
                             precedence: vec![name, "STANDARD-OBJECT".to_owned()],
                             slots: Vec::new(),
                             default_initargs: Vec::new(),
+                            documentation: None,
                         })
                     }
                 };
@@ -10896,6 +10851,36 @@ impl Runtime {
                 };
                 Ok(Value::symbol(class.name.clone()))
             }
+            "CLASS-PRECEDENCE-LIST" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("class-precedence-list", "one", arguments.len()));
+                }
+                let Value::Class(class) = &arguments[0] else {
+                    return Err(RuntimeError::Type {
+                        expected: "CLASS".to_owned(),
+                        actual: arguments[0].type_name().to_string(),
+                        span: Some(span),
+                    });
+                };
+                let precedence = class
+                    .precedence
+                    .iter()
+                    .map(|class_name| {
+                        let definition = environment.lookup_class(class_name).unwrap_or_else(|| {
+                            Rc::new(ClassDefinition {
+                                name: class_name.clone(),
+                                direct_superclasses: Vec::new(),
+                                precedence: vec![class_name.clone()],
+                                slots: Vec::new(),
+                                default_initargs: Vec::new(),
+                                documentation: None,
+                            })
+                        });
+                        Value::class_object(definition)
+                    })
+                    .collect();
+                Ok(Value::list(precedence))
+            }
             "SLOT-EXISTS-P" => {
                 if arguments.len() != 2 {
                     return Err(self.arity("slot predicate", "two", arguments.len()));
@@ -10908,7 +10893,9 @@ impl Runtime {
                         span: Some(span),
                     });
                 }
-                Ok(Value::boolean(arguments[0].instance_slot_exists(&slot_name)))
+                Ok(Value::boolean(
+                    arguments[0].instance_slot_exists(&slot_name),
+                ))
             }
             "SLOT-BOUNDP" => {
                 if arguments.len() != 2 {
@@ -10951,7 +10938,9 @@ impl Runtime {
                 let (continuation, default_arguments) = {
                     let contexts = self.method_context.borrow();
                     let Some(context) = contexts.last() else {
-                        return Err(self.invalid("call-next-method is only available in a method", span));
+                        return Err(
+                            self.invalid("call-next-method is only available in a method", span)
+                        );
                     };
                     (context.next.clone(), context.arguments.clone())
                 };
@@ -11008,35 +10997,39 @@ impl Runtime {
                 if !(1..=2).contains(&arguments.len()) {
                     return Err(self.arity("intern", "one or two", arguments.len()));
                 }
-                let symbol_name = self.symbol_name_from_value(&arguments[0], span)?;
+                let symbol_name = self.symbol_name_from_value_exact(&arguments[0], span)?;
                 let package_name = arguments
                     .get(1)
                     .map(|value| self.package_name_from_value(value, span))
                     .transpose()?
                     .unwrap_or_else(|| self.current_package());
-                let status = match self
+                let (status, inserted) = match self
                     .packages
                     .borrow_mut()
-                    .intern_symbol(&package_name, &symbol_name)
+                    .intern_symbol_exact(&package_name, &symbol_name)
                 {
-                    Some(status) => status,
+                    Some(result) => result,
                     None => {
                         return Err(
                             self.package_error(&format!("unknown package {package_name}"), span)
                         );
                     }
                 };
-                let symbol = self.package_symbol_value(&package_name, &symbol_name);
+                let symbol = self.package_symbol_value_exact(&package_name, &symbol_name);
                 Ok(Value::values(vec![
                     symbol,
-                    Self::symbol_status_value(status),
+                    if inserted {
+                        Value::Nil
+                    } else {
+                        Self::symbol_status_value(status)
+                    },
                 ]))
             }
             "FIND-SYMBOL" => {
                 if !(1..=2).contains(&arguments.len()) {
                     return Err(self.arity("find-symbol", "one or two", arguments.len()));
                 }
-                let symbol_name = self.symbol_name_from_value(&arguments[0], span)?;
+                let symbol_name = self.symbol_name_from_value_exact(&arguments[0], span)?;
                 let package_name = arguments
                     .get(1)
                     .map(|value| self.package_name_from_value(value, span))
@@ -11045,10 +11038,10 @@ impl Runtime {
                 let status = self
                     .packages
                     .borrow()
-                    .symbol_status(&package_name, &symbol_name);
+                    .symbol_status_exact(&package_name, &symbol_name);
                 match status {
                     Some(status) => {
-                        let symbol = self.package_symbol_value(&package_name, &symbol_name);
+                        let symbol = self.package_symbol_value_exact(&package_name, &symbol_name);
                         Ok(Value::values(vec![
                             symbol,
                             Self::symbol_status_value(status),
@@ -11057,14 +11050,61 @@ impl Runtime {
                     None => Ok(Value::values(vec![Value::Nil, Value::Nil])),
                 }
             }
+            "FIND-ALL-SYMBOLS" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("find-all-symbols", "one", arguments.len()));
+                }
+                let symbol_name = self.symbol_name_from_value_exact(&arguments[0], span)?;
+                let symbols = self.packages.borrow().find_all_symbols(&symbol_name);
+                Ok(Value::list(
+                    symbols
+                        .into_iter()
+                        .map(|reference| {
+                            if reference.package() == package::KEYWORD_PACKAGE {
+                                Value::keyword_exact(reference.name())
+                            } else {
+                                Value::qualified_symbol_exact(
+                                    reference.package(),
+                                    reference.name(),
+                                )
+                            }
+                        })
+                        .collect(),
+                ))
+            }
+            "MAKE-PACKAGE" => self.make_package(arguments, span),
+            "DELETE-PACKAGE" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("delete-package", "one", arguments.len()));
+                }
+                let package_name = self.package_name_from_value(&arguments[0], span)?;
+                let current = self.active_package_name();
+                let result = self
+                    .packages
+                    .borrow_mut()
+                    .delete_package(&package_name, &current);
+                result.map_err(|message| self.package_error(&message, span))?;
+                Ok(Value::boolean(true))
+            }
+            "RENAME-PACKAGE" => self.rename_package(arguments, span),
             "FIND-PACKAGE" => {
                 if arguments.len() != 1 {
                     return Err(self.arity("find-package", "one", arguments.len()));
                 }
                 let package = self.package_designator_name(&arguments[0], span)?;
+                let is_package_object = matches!(&arguments[0], Value::Package(_));
                 let packages = self.packages.borrow();
-                if packages.package_exists(&package) {
-                    Ok(Value::package(packages.canonical_package_name(&package)))
+                let package_name = if is_package_object {
+                    packages.package_object_name(&package)
+                } else {
+                    packages.canonical_package_name(&package)
+                };
+                if packages.package_exists(&package_name) {
+                    if is_package_object {
+                        Ok(arguments[0].clone())
+                    } else {
+                        Ok(Value::package(package_name))
+                    }
                 } else {
                     Ok(Value::Nil)
                 }
@@ -11074,7 +11114,11 @@ impl Runtime {
                     return Err(self.arity("package-name", "one", arguments.len()));
                 }
                 match &arguments[0] {
-                    Value::Package(package) => Ok(Value::string(package.as_ref())),
+                    Value::Package(package) => Ok(Value::string(
+                        self.packages
+                            .borrow()
+                            .package_object_name(package.as_ref()),
+                    )),
                     other => Err(RuntimeError::Type {
                         expected: "PACKAGE".to_string(),
                         actual: other.type_name().to_string(),
@@ -11088,7 +11132,87 @@ impl Runtime {
                 }
                 match &arguments[0] {
                     Value::Package(package) => {
-                        let names = self.packages.borrow().use_packages_for(package);
+                        let package_name = self
+                            .packages
+                            .borrow()
+                            .package_object_name(package.as_ref());
+                        let names = self.packages.borrow().use_packages_for(&package_name);
+                        Ok(Value::list(names.into_iter().map(Value::package).collect()))
+                    }
+                    other => Err(RuntimeError::Type {
+                        expected: "PACKAGE".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(span),
+                    }),
+                }
+            }
+            "PACKAGE-NICKNAMES" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("package-nicknames", "one", arguments.len()));
+                }
+                match &arguments[0] {
+                    Value::Package(package) => {
+                        let package_name = self
+                            .packages
+                            .borrow()
+                            .package_object_name(package.as_ref());
+                        let names = self.packages.borrow().nicknames_for(&package_name);
+                        Ok(Value::list(
+                            names
+                                .into_iter()
+                                .map(|name| Value::string(name.as_str()))
+                                .collect(),
+                        ))
+                    }
+                    other => Err(RuntimeError::Type {
+                        expected: "PACKAGE".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(span),
+                    }),
+                }
+            }
+            "PACKAGE-SHADOWING-SYMBOLS" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("package-shadowing-symbols", "one", arguments.len()));
+                }
+                match &arguments[0] {
+                    Value::Package(package) => {
+                        let package_name = self
+                            .packages
+                            .borrow()
+                            .package_object_name(package.as_ref());
+                        let names = self
+                            .packages
+                            .borrow()
+                            .shadowing_symbols_for(&package_name);
+                        Ok(Value::list(
+                            names
+                                .into_iter()
+                                .map(|name| self.package_symbol_value(&package_name, &name))
+                                .collect(),
+                        ))
+                    }
+                    other => Err(RuntimeError::Type {
+                        expected: "PACKAGE".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(span),
+                    }),
+                }
+            }
+            "PACKAGE-USED-BY-LIST" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("package-used-by-list", "one", arguments.len()));
+                }
+                match &arguments[0] {
+                    Value::Package(package) => {
+                        let package_name = self
+                            .packages
+                            .borrow()
+                            .package_object_name(package.as_ref());
+                        let names = self
+                            .packages
+                            .borrow()
+                            .used_by_packages_for(&package_name);
                         Ok(Value::list(names.into_iter().map(Value::package).collect()))
                     }
                     other => Err(RuntimeError::Type {
@@ -11103,15 +11227,77 @@ impl Runtime {
                     return Err(self.arity("documentation", "two", arguments.len()));
                 }
                 match &arguments[0] {
-                    Value::Package(package) => Ok(self
-                        .packages
-                        .borrow()
-                        .package_documentation(package)
-                        .map_or(Value::Nil, |documentation| {
-                            Value::string(documentation.as_str())
-                        })),
+                    Value::Package(package) => {
+                        let package_name = self
+                            .packages
+                            .borrow()
+                            .package_object_name(package.as_ref());
+                        Ok(self
+                            .packages
+                            .borrow()
+                            .package_documentation(&package_name)
+                            .map_or(Value::Nil, |documentation| {
+                                Value::string(documentation.as_str())
+                            }))
+                    }
+                    Value::Class(class) => {
+                        let documentation_type =
+                            self.name_designator_from_value(&arguments[1], span)?;
+                        if documentation_type != "T" {
+                            return Ok(Value::Nil);
+                        }
+                        Ok(class
+                            .documentation
+                            .as_deref()
+                            .map_or(Value::Nil, Value::string))
+                    }
+                    Value::Function(function) => {
+                        let documentation_type =
+                            self.name_designator_from_value(&arguments[1], span)?;
+                        if documentation_type != "FUNCTION" {
+                            return Ok(Value::Nil);
+                        }
+                        Ok(function
+                            .documentation()
+                            .map_or(Value::Nil, |documentation| Value::string(documentation)))
+                    }
+                    other if other.symbol_reference().is_some() => {
+                        let documentation_type =
+                            self.name_designator_from_value(&arguments[1], span)?;
+                        match documentation_type.as_str() {
+                            "FUNCTION" => {
+                                let (name, escaped) =
+                                    self.name_designator_info_from_value(other, span)?;
+                                let function = if escaped {
+                                    self.lookup_function_exact_in(&name, environment)
+                                } else {
+                                    self.lookup_function_in(&name, environment)
+                                };
+                                Ok(function
+                                    .and_then(|value| match value {
+                                        Value::Function(function) => {
+                                            function.documentation().map(str::to_owned)
+                                        }
+                                        _ => None,
+                                    })
+                                    .map_or(Value::Nil, |documentation| {
+                                        Value::string(documentation.as_str())
+                                    }))
+                            }
+                            "STRUCTURE" => {
+                                let name = self.name_designator_from_value(other, span)?;
+                                Ok(environment
+                                    .lookup_structure(&name)
+                                    .and_then(|definition| definition.documentation)
+                                    .map_or(Value::Nil, |documentation| {
+                                        Value::string(documentation.as_str())
+                                    }))
+                            }
+                            _ => Ok(Value::Nil),
+                        }
+                    }
                     other => Err(RuntimeError::Type {
-                        expected: "PACKAGE".to_string(),
+                        expected: "PACKAGE, CLASS, FUNCTION, or SYMBOL".to_string(),
                         actual: other.type_name().to_string(),
                         span: Some(span),
                     }),
@@ -11136,6 +11322,18 @@ impl Runtime {
                     .unwrap_or_else(|| self.current_package());
                 if packages.iter().any(|package| package == &target) {
                     return Err(self.package_error("a package cannot use itself", span));
+                }
+                {
+                    let mut preview = self.packages.borrow().clone();
+                    for package in &packages {
+                        if let Some(conflict) = preview.use_package_conflict(package, &target) {
+                            return Err(self.package_error(
+                                &format!("name conflict for symbol {conflict}"),
+                                span,
+                            ));
+                        }
+                        preview.use_package(package, &target);
+                    }
                 }
                 let mut state = self.packages.borrow_mut();
                 for package in packages {
@@ -11163,30 +11361,50 @@ impl Runtime {
                 if arguments.len() != 1 && arguments.len() != 2 {
                     return Err(self.arity("export", "one or two", arguments.len()));
                 }
-                let symbols = self.symbol_names_from_value(&arguments[0], span)?;
+                let symbols = self.symbol_names_from_value_partitioned(&arguments[0], span)?;
                 let package = arguments
                     .get(1)
                     .map(|value| self.package_name_from_value(value, span))
                     .transpose()?
                     .unwrap_or_else(|| self.current_package());
-                self.packages
-                    .borrow_mut()
-                    .export_symbols(&package, &symbols);
+                let (normalized, exact): (Vec<_>, Vec<_>) =
+                    symbols.into_iter().partition(|(_, is_exact)| !*is_exact);
+                let normalized = normalized
+                    .into_iter()
+                    .map(|(symbol, _)| symbol)
+                    .collect::<Vec<_>>();
+                let exact = exact
+                    .into_iter()
+                    .map(|(symbol, _)| symbol)
+                    .collect::<Vec<_>>();
+                let mut state = self.packages.borrow_mut();
+                state.export_symbols(&package, &normalized);
+                state.export_symbols_exact(&package, &exact);
                 Ok(Value::boolean(true))
             }
             "UNEXPORT" => {
                 if arguments.len() != 1 && arguments.len() != 2 {
                     return Err(self.arity("unexport", "one or two", arguments.len()));
                 }
-                let symbols = self.symbol_names_from_value(&arguments[0], span)?;
+                let symbols = self.symbol_names_from_value_partitioned(&arguments[0], span)?;
                 let package = arguments
                     .get(1)
                     .map(|value| self.package_name_from_value(value, span))
                     .transpose()?
                     .unwrap_or_else(|| self.current_package());
-                self.packages
-                    .borrow_mut()
-                    .unexport_symbols(&package, &symbols);
+                let (normalized, exact): (Vec<_>, Vec<_>) =
+                    symbols.into_iter().partition(|(_, is_exact)| !*is_exact);
+                let normalized = normalized
+                    .into_iter()
+                    .map(|(symbol, _)| symbol)
+                    .collect::<Vec<_>>();
+                let exact = exact
+                    .into_iter()
+                    .map(|(symbol, _)| symbol)
+                    .collect::<Vec<_>>();
+                let mut state = self.packages.borrow_mut();
+                state.unexport_symbols(&package, &normalized);
+                state.unexport_symbols_exact(&package, &exact);
                 Ok(Value::boolean(true))
             }
             "IMPORT" | "SHADOWING-IMPORT" => {
@@ -11201,26 +11419,61 @@ impl Runtime {
                     .unwrap_or_else(|| self.current_package());
                 {
                     let state = self.packages.borrow();
-                    for (source_package, source_name) in &imports {
-                        if !state.symbol_exists(source_package, source_name) {
+                    for (source_package, source_name, is_exact) in &imports {
+                        let exists = if *is_exact {
+                            state.symbol_exists_exact(source_package, source_name)
+                        } else {
+                            state.symbol_exists(source_package, source_name)
+                        };
+                        if !exists {
                             return Err(self.package_error(
-                                &format!(
-                                    "unknown symbol {source_package}::{source_name}"
-                                ),
+                                &format!("unknown symbol {source_package}::{source_name}"),
                                 span,
                             ));
                         }
                     }
                 }
                 let shadowing = name == "SHADOWING-IMPORT";
+                {
+                    let mut preview = self.packages.borrow().clone();
+                    for (source_package, source_name, is_exact) in &imports {
+                        if !shadowing {
+                            let conflict = if *is_exact {
+                                preview.import_conflict_exact(source_package, source_name, &target)
+                            } else {
+                                preview.import_conflict(source_package, source_name, &target)
+                            };
+                            if conflict {
+                                return Err(self.package_error(
+                                    &format!("name conflict for symbol {source_name}"),
+                                    span,
+                                ));
+                            }
+                        }
+                        if *is_exact {
+                            preview.import_symbol_exact(
+                                source_package,
+                                source_name,
+                                &target,
+                                shadowing,
+                            );
+                        } else {
+                            preview.import_symbol(source_package, source_name, &target, shadowing);
+                        }
+                    }
+                }
                 let mut state = self.packages.borrow_mut();
-                for (source_package, source_name) in imports {
-                    state.import_symbol(
-                        &source_package,
-                        &source_name,
-                        &target,
-                        shadowing,
-                    );
+                for (source_package, source_name, is_exact) in imports {
+                    if is_exact {
+                        state.import_symbol_exact(
+                            &source_package,
+                            &source_name,
+                            &target,
+                            shadowing,
+                        );
+                    } else {
+                        state.import_symbol(&source_package, &source_name, &target, shadowing);
+                    }
                 }
                 Ok(Value::boolean(true))
             }
@@ -11228,15 +11481,19 @@ impl Runtime {
                 if arguments.len() != 1 && arguments.len() != 2 {
                     return Err(self.arity("shadow", "one or two", arguments.len()));
                 }
-                let symbols = self.symbol_names_from_value(&arguments[0], span)?;
+                let symbols = self.symbol_names_from_value_partitioned(&arguments[0], span)?;
                 let target = arguments
                     .get(1)
                     .map(|value| self.package_name_from_value(value, span))
                     .transpose()?
                     .unwrap_or_else(|| self.current_package());
                 let mut state = self.packages.borrow_mut();
-                for symbol in symbols {
-                    state.shadow_symbol(&target, &symbol);
+                for (symbol, is_exact) in symbols {
+                    if is_exact {
+                        state.shadow_symbol_exact(&target, &symbol);
+                    } else {
+                        state.shadow_symbol(&target, &symbol);
+                    }
                 }
                 Ok(Value::boolean(true))
             }
@@ -11244,24 +11501,22 @@ impl Runtime {
                 if arguments.len() != 1 && arguments.len() != 2 {
                     return Err(self.arity("unintern", "one or two", arguments.len()));
                 }
-                let symbols = self.symbol_names_from_value(&arguments[0], span)?;
+                let symbols = self.symbol_references_from_value_or_single(&arguments[0], span)?;
                 let target = arguments
                     .get(1)
                     .map(|value| self.package_name_from_value(value, span))
                     .transpose()?
                     .unwrap_or_else(|| self.current_package());
                 let mut removed = false;
-                let mut local_names = Vec::new();
-                {
-                    let mut state = self.packages.borrow_mut();
-                    for symbol in symbols {
-                        let local_name = package::canonical_symbol_name(&target, &symbol);
-                        removed |= state.unintern_symbol(&target, &symbol);
-                        local_names.push(local_name);
-                    }
-                }
-                for local_name in local_names {
-                    self.remove_global_symbol(&local_name);
+                let mut state = self.packages.borrow_mut();
+                for (source_package, symbol, is_exact) in symbols {
+                    let symbol_removed = state.unintern_symbol_reference(
+                        &target,
+                        &source_package,
+                        &symbol,
+                        is_exact,
+                    );
+                    removed |= symbol_removed;
                 }
                 Ok(Value::boolean(removed))
             }
@@ -11302,17 +11557,16 @@ impl Runtime {
                 if arguments.len() != 1 && arguments.len() != 2 {
                     return Err(self.arity("macro-function", "one or two", arguments.len()));
                 }
-                let (name, exact) = arguments[0]
-                    .symbol_reference()
-                    .ok_or_else(|| self.invalid("macro-function argument must be a symbol", span))?;
+                let (name, exact) = arguments[0].symbol_reference().ok_or_else(|| {
+                    self.invalid("macro-function argument must be a symbol", span)
+                })?;
                 let lookup_environment = match arguments.get(1) {
                     None | Some(Value::Nil | Value::Boolean(false)) => &self.global,
                     Some(Value::Environment(environment)) => environment,
                     Some(_) => {
-                        return Err(self.invalid(
-                            "macro-function environment must be an environment",
-                            span,
-                        ))
+                        return Err(
+                            self.invalid("macro-function environment must be an environment", span)
+                        );
                     }
                 };
                 let value = if exact {
@@ -11324,8 +11578,7 @@ impl Runtime {
                     Some(Value::Function(function))
                         if matches!(
                             function.as_ref(),
-                            crate::Function::Macro { .. }
-                                | crate::Function::ModifyMacro { .. }
+                            crate::Function::Macro { .. } | crate::Function::ModifyMacro { .. }
                         ) =>
                     {
                         Value::Function(function)
@@ -11337,9 +11590,9 @@ impl Runtime {
                 if arguments.len() != 1 {
                     return Err(self.arity("special-operator-p", "one", arguments.len()));
                 }
-                let (name, _) = arguments[0]
-                    .symbol_reference()
-                    .ok_or_else(|| self.invalid("special-operator-p argument must be a symbol", span))?;
+                let (name, _) = arguments[0].symbol_reference().ok_or_else(|| {
+                    self.invalid("special-operator-p argument must be a symbol", span)
+                })?;
                 Ok(Value::boolean(is_special_operator_name(name)))
             }
             "COMPILED-FUNCTION-P" => {
@@ -11384,9 +11637,9 @@ impl Runtime {
                 if arguments.len() != 1 {
                     return Err(self.arity("symbol-function", "one", arguments.len()));
                 }
-                let (name, exact) = arguments[0]
-                    .symbol_reference()
-                    .ok_or_else(|| self.invalid("symbol-function argument must be a symbol", span))?;
+                let (name, exact) = arguments[0].symbol_reference().ok_or_else(|| {
+                    self.invalid("symbol-function argument must be a symbol", span)
+                })?;
                 let value = if exact {
                     self.lookup_function_exact_in(name, environment)
                 } else {
@@ -11416,19 +11669,18 @@ impl Runtime {
                     .symbol_reference()
                     .ok_or_else(|| self.invalid("symbol-value argument must be a symbol", span))?;
                 let value = if exact {
-                    self.lookup_exact_in(name, environment)
+                    self.lookup_symbol_value_exact_in(name, environment)
                 } else {
-                    self.lookup_in(name, environment)
+                    self.lookup_symbol_value_in(name, environment)
                 };
-                value
-                    .ok_or_else(|| RuntimeError::UnboundVariable {
-                        name: if exact {
-                            name.to_string()
-                        } else {
-                            normalize_name(name)
-                        },
-                        span: Some(span),
-                    })
+                value.ok_or_else(|| RuntimeError::UnboundVariable {
+                    name: if exact {
+                        name.to_string()
+                    } else {
+                        normalize_name(name)
+                    },
+                    span: Some(span),
+                })
             }
             "GET" => {
                 if !(2..=3).contains(&arguments.len()) {
@@ -11627,6 +11879,15 @@ impl Runtime {
                     .map(|binding| binding.restart)
                     .unwrap_or(Value::Nil))
             }
+            "RESTART-FUNCTION" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity("restart-function", "one", arguments.len()));
+                }
+                Ok(self
+                    .restart_binding_for_designator(&arguments[0], span)?
+                    .and_then(|binding| binding.function)
+                    .unwrap_or(Value::Nil))
+            }
             "RESTART-NAME" => {
                 if arguments.len() != 1 {
                     return Err(self.arity("restart-name", "one", arguments.len()));
@@ -11653,6 +11914,23 @@ impl Runtime {
                 };
                 self.invoke_restart_binding(binding, &arguments[1..], environment, span)
             }
+            "INVOKE-RESTART-INTERACTIVELY" => {
+                if arguments.len() != 1 {
+                    return Err(self.arity(
+                        "invoke-restart-interactively",
+                        "one",
+                        arguments.len(),
+                    ));
+                }
+                if let Some((name, _)) = arguments[0].symbol_reference() {
+                    return self.invoke_restart_named(name, &[], environment, span);
+                }
+                let Some(binding) = self.restart_binding_for_designator(&arguments[0], span)?
+                else {
+                    return Err(self.invalid("restart is not active", span));
+                };
+                self.invoke_restart_binding(binding, &[], environment, span)
+            }
             "MAP" => {
                 if arguments.len() < 3 {
                     return Err(self.arity("map", "at least three", arguments.len()));
@@ -11677,8 +11955,7 @@ impl Runtime {
                     span,
                 )
             }
-            "REMOVE" | "REMOVE-IF" | "REMOVE-IF-NOT" | "DELETE" | "DELETE-IF"
-            | "DELETE-IF-NOT" => {
+            "REMOVE" | "REMOVE-IF" | "REMOVE-IF-NOT" | "DELETE" | "DELETE-IF" | "DELETE-IF-NOT" => {
                 if arguments.len() < 2 {
                     let function_name = name.to_ascii_lowercase();
                     return Err(self.arity(&function_name, "at least two", arguments.len()));
@@ -11722,15 +11999,8 @@ impl Runtime {
                     span,
                 )
             }
-            "UNION"
-            | "NUNION"
-            | "INTERSECTION"
-            | "NINTERSECTION"
-            | "SET-DIFFERENCE"
-            | "NSET-DIFFERENCE"
-            | "SET-EXCLUSIVE-OR"
-            | "NSET-EXCLUSIVE-OR"
-            | "SUBSETP" => {
+            "UNION" | "NUNION" | "INTERSECTION" | "NINTERSECTION" | "SET-DIFFERENCE"
+            | "NSET-DIFFERENCE" | "SET-EXCLUSIVE-OR" | "NSET-EXCLUSIVE-OR" | "SUBSETP" => {
                 if arguments.len() < 2 {
                     let function_name = name.to_ascii_lowercase();
                     return Err(self.arity(&function_name, "at least two", arguments.len()));
@@ -11758,8 +12028,7 @@ impl Runtime {
                     span,
                 )
             }
-            "ASSOC" | "ASSOC-IF" | "ASSOC-IF-NOT" | "RASSOC" | "RASSOC-IF"
-            | "RASSOC-IF-NOT" => {
+            "ASSOC" | "ASSOC-IF" | "ASSOC-IF-NOT" | "RASSOC" | "RASSOC-IF" | "RASSOC-IF-NOT" => {
                 if arguments.len() < 2 {
                     let function_name = name.to_ascii_lowercase();
                     return Err(self.arity(&function_name, "at least two", arguments.len()));
@@ -11854,6 +12123,12 @@ impl Runtime {
                     span,
                 )
             }
+            "MAPHASH" => {
+                if arguments.len() != 2 {
+                    return Err(self.arity("maphash", "two", arguments.len()));
+                }
+                self.apply_hash_table_mapping(&arguments[0], &arguments[1], environment, span)
+            }
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 if arguments.len() < 2 {
                     let function_name = name.to_ascii_lowercase();
@@ -11865,7 +12140,7 @@ impl Runtime {
         }
     }
 
-    fn method_score(&self, method: &MethodDefinition, arguments: &[Value]) -> Option<usize> {
+    fn method_score(&self, method: &MethodDefinition, arguments: &[Value]) -> Option<Vec<usize>> {
         let required_count = method.specializers.len();
         if arguments.len() < required_count {
             return None;
@@ -11888,22 +12163,41 @@ impl Runtime {
                 }
             }
         }
-        let mut score = 0usize;
+        let mut score = Vec::with_capacity(required_count);
         for (specializer, argument) in method
             .specializers
             .iter()
             .zip(arguments.iter().take(required_count))
         {
-            if specializer == "T" || specializer == "OBJECT" {
-                score = score.saturating_add(1_000_000);
-                continue;
+            match specializer {
+                MethodSpecializer::Eql(expected) => {
+                    if !builtins::eql_value(expected, argument) {
+                        return None;
+                    }
+                    score.push(0);
+                    continue;
+                }
+                MethodSpecializer::Type(specializer) => {
+                    if specializer == "T" || specializer == "OBJECT" {
+                        score.push(1_000_000);
+                        continue;
+                    }
+                    if let Some(class) = argument.instance_class_definition() {
+                        if let Some(position) =
+                            class.precedence.iter().position(|name| name == specializer)
+                        {
+                            score.push(position.saturating_add(1));
+                            continue;
+                        }
+                    }
+                    let matches =
+                        builtins::typep_value(argument, &Value::symbol(specializer)).ok()?;
+                    if !matches {
+                        return None;
+                    }
+                    score.push(builtins::builtin_type_specializer_score(specializer));
+                }
             }
-            let class = argument.instance_class_definition()?;
-            let position = class
-                .precedence
-                .iter()
-                .position(|name| name == specializer)?;
-            score = score.saturating_add(position);
         }
         Some(score)
     }
@@ -11987,14 +12281,7 @@ impl Runtime {
                 before,
                 primary,
                 after,
-            } => self.invoke_core(
-                &before,
-                &primary,
-                &after,
-                arguments,
-                span,
-                environment,
-            ),
+            } => self.invoke_core(&before, &primary, &after, arguments, span, environment),
         }
     }
 
@@ -12017,7 +12304,7 @@ impl Runtime {
         if applicable.is_empty() {
             return Err(self.invalid(&format!("no applicable method for {name}"), span));
         }
-        applicable.sort_by_key(|(score, _)| *score);
+        applicable.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         let mut around = Vec::new();
         let mut before = Vec::new();
@@ -12059,7 +12346,23 @@ impl Runtime {
     ) -> Result<Value, RuntimeError> {
         let function = self.resolve_function_designator(function, span, environment)?;
         match function.as_ref() {
-            crate::Function::Builtin { function, .. } => function(arguments),
+            crate::Function::Builtin { name, function } => {
+                match name.as_ref() {
+                    "random" => {
+                        let state = self.random_state_for(environment, span)?;
+                        builtins::random::random_with_state(arguments, &state)
+                    }
+                    "make-random-state" => {
+                        let state = self.random_state_for(environment, span)?;
+                        builtins::random::make_random_state_with_state(arguments, &state)
+                    }
+                    "read-from-string" => {
+                        let features = self.reader_features_for(environment, span)?;
+                        builtins::read_from_string_with_features(arguments, &features)
+                    }
+                    _ => function(arguments),
+                }
+            }
             crate::Function::Primitive { name } => {
                 self.apply_primitive(name, arguments, environment, span)
             }
@@ -12104,6 +12407,7 @@ impl Runtime {
                         span: Some(span),
                     });
                 }
+                self.validate_instance_slot_value(object, slot_name, &value, span)?;
                 if object.set_instance_slot(class_name, slot_name, value.clone()) {
                     Ok(value)
                 } else {
@@ -12140,6 +12444,8 @@ impl Runtime {
                 name,
                 slots,
                 structure_types,
+                representation,
+                named,
                 constructor_lambda_list,
                 environment: definition_environment,
             } => {
@@ -12148,6 +12454,8 @@ impl Runtime {
                         name,
                         slots,
                         structure_types,
+                        *representation,
+                        *named,
                         lambda_list,
                         definition_environment,
                         arguments,
@@ -12181,7 +12489,9 @@ impl Runtime {
                                 span: Some(span),
                             });
                         };
-                        supplied[index] = Some(pair[1].clone());
+                        if supplied[index].is_none() {
+                            supplied[index] = Some(pair[1].clone());
+                        }
                     }
                     let mut values = Vec::with_capacity(slots.len());
                     for (index, slot) in slots.iter().enumerate() {
@@ -12196,10 +12506,12 @@ impl Runtime {
                         };
                         values.push((slot.name.clone(), value));
                     }
-                    Ok(Value::structure_with_types(
+                    Ok(Value::structure_with_representation(
                         name,
                         values,
                         structure_types.clone(),
+                        *representation,
+                        *named,
                     ))
                 }
             }
@@ -12207,7 +12519,7 @@ impl Runtime {
                 if arguments.len() != 1 {
                     return Err(self.arity("structure predicate", "one", arguments.len()));
                 }
-                Ok(Value::boolean(arguments[0].structure_is_type(name)))
+                Ok(Value::boolean(arguments[0].structure_typep_is_type(name)))
             }
             crate::Function::StructureAccessor {
                 structure_name,
@@ -12256,6 +12568,7 @@ impl Runtime {
                 auxiliary,
                 body,
                 environment,
+                ..
             } => {
                 let required_count = parameters.len();
                 let optional_count = optional.len();
@@ -12297,12 +12610,15 @@ impl Runtime {
                     return Err(self.arity("closure", &expected, arguments.len()));
                 }
 
+                let declared_special_names = self.declared_special_names(body)?;
+                let (special_names, special_exact_names) =
+                    split_special_names(declared_special_names);
+                let _special_guard =
+                    self.special_declaration_guard(&special_names, &special_exact_names);
                 let local = environment.child();
                 let _dynamic_guard = self.dynamic_guard();
-                for (index, (parameter, argument)) in parameters
-                    .iter()
-                    .zip(arguments.iter())
-                    .enumerate()
+                for (index, (parameter, argument)) in
+                    parameters.iter().zip(arguments.iter()).enumerate()
                 {
                     if required_escaped.get(index).copied().unwrap_or(false) {
                         self.define_exact_in(parameter, argument.clone(), &local);
@@ -12365,7 +12681,9 @@ impl Runtime {
                         if keyword_name == "ALLOW-OTHER-KEYS" && pair[1].is_truthy() {
                             accepts_unknown_keywords = true;
                         }
-                        supplied_keywords.insert(keyword_name, pair[1].clone());
+                        supplied_keywords
+                            .entry(keyword_name)
+                            .or_insert_with(|| pair[1].clone());
                     }
                     if !accepts_unknown_keywords {
                         for keyword_name in supplied_keywords.keys() {
@@ -12421,14 +12739,15 @@ impl Runtime {
             }
             crate::Function::Macro { .. } | crate::Function::ModifyMacro { .. } => {
                 Err(RuntimeError::NotCallable {
-                value: Value::Function(function.clone()).to_string(),
-                span: Some(span),
+                    value: Value::Function(function.clone()).to_string(),
+                    span: Some(span),
                 })
             }
             crate::Function::Compiled {
                 program,
                 function,
                 environment,
+                ..
             } => crate::vm::run(
                 self,
                 program.clone(),
@@ -12445,6 +12764,8 @@ impl Runtime {
         name: &str,
         slots: &[StructureSlot],
         structure_types: &[String],
+        representation: StructureRepresentation,
+        named: bool,
         lambda_list: &OrdinaryLambdaList,
         definition_environment: &Environment,
         arguments: &[Value],
@@ -12499,11 +12820,8 @@ impl Runtime {
         let local = definition_environment.child();
         let _dynamic_guard = self.dynamic_guard();
         let mut slot_values = vec![None; slots.len()];
-        let slot_index = |parameter_name: &str| {
-            slots
-                .iter()
-                .position(|slot| slot.name == parameter_name)
-        };
+        let slot_index =
+            |parameter_name: &str| slots.iter().position(|slot| slot.name == parameter_name);
         let evaluate_slot_default = |parameter_name: &str| -> Result<Value, RuntimeError> {
             slots
                 .iter()
@@ -12520,7 +12838,12 @@ impl Runtime {
             .zip(arguments.iter())
             .enumerate()
         {
-            if lambda_list.required_escaped.get(index).copied().unwrap_or(false) {
+            if lambda_list
+                .required_escaped
+                .get(index)
+                .copied()
+                .unwrap_or(false)
+            {
                 self.define_exact_in(parameter, argument.clone(), &local);
             } else {
                 self.define_in(parameter, argument.clone(), &local);
@@ -12531,8 +12854,8 @@ impl Runtime {
         }
 
         for (index, specification) in lambda_list.optional.iter().enumerate() {
-            let supplied = (index < optional_supplied_count)
-                .then(|| &arguments[required_count + index]);
+            let supplied =
+                (index < optional_supplied_count).then(|| &arguments[required_count + index]);
             let value = match supplied {
                 Some(argument) => argument.clone(),
                 None if specification.init_form_supplied => {
@@ -12578,31 +12901,42 @@ impl Runtime {
             let mut supplied_keywords = Vec::new();
             let mut accepts_unknown_keywords = lambda_list.allow_other_keys;
             for pair in keyword_arguments.chunks_exact(2) {
-                let keyword_name = match &pair[0] {
-                    Value::Keyword(keyword) | Value::KeywordExact(keyword) => keyword.to_string(),
+                let (keyword_name, keyword_name_escaped) = match &pair[0] {
+                    Value::Keyword(keyword) => (keyword.to_string(), false),
+                    Value::KeywordExact(keyword) => (keyword.to_string(), true),
                     _ => return Err(self.invalid("keyword argument name must be a keyword", span)),
                 };
-                if normalize_name(&keyword_name) == "ALLOW-OTHER-KEYS" && pair[1].is_truthy() {
+                if macro_keyword_matches(
+                    "ALLOW-OTHER-KEYS",
+                    false,
+                    &keyword_name,
+                    keyword_name_escaped,
+                ) && pair[1].is_truthy()
+                {
                     accepts_unknown_keywords = true;
                 }
-                supplied_keywords.push((keyword_name, pair[1].clone()));
+                supplied_keywords.push((keyword_name, keyword_name_escaped, pair[1].clone()));
             }
             let keyword_matches = |specification: &LambdaListKeywordParameter,
-                                   actual_name: &str| {
-                if specification.keyword_name_escaped {
-                    specification.keyword_name == actual_name
-                } else {
-                    normalize_name(&specification.keyword_name) == normalize_name(actual_name)
-                }
+                                   actual_name: &str,
+                                   actual_name_escaped: bool| {
+                macro_keyword_matches(
+                    &specification.keyword_name,
+                    specification.keyword_name_escaped,
+                    actual_name,
+                    actual_name_escaped,
+                )
             };
             if !accepts_unknown_keywords {
-                for (keyword_name, _) in &supplied_keywords {
-                    if normalize_name(keyword_name) != "ALLOW-OTHER-KEYS"
-                        && !lambda_list
-                            .keywords
-                            .iter()
-                            .any(|specification| keyword_matches(specification, keyword_name))
-                    {
+                for (keyword_name, keyword_name_escaped, _) in &supplied_keywords {
+                    if !macro_keyword_matches(
+                        "ALLOW-OTHER-KEYS",
+                        false,
+                        keyword_name,
+                        *keyword_name_escaped,
+                    ) && !lambda_list.keywords.iter().any(|specification| {
+                        keyword_matches(specification, keyword_name, *keyword_name_escaped)
+                    }) {
                         return Err(RuntimeError::InvalidForm {
                             message: format!("unknown keyword :{keyword_name}"),
                             span: Some(span),
@@ -12611,12 +12945,14 @@ impl Runtime {
                 }
             }
             for specification in &lambda_list.keywords {
-                let supplied = supplied_keywords
-                    .iter()
-                    .rev()
-                    .find(|(keyword_name, _)| keyword_matches(specification, keyword_name));
+                let supplied =
+                    supplied_keywords
+                        .iter()
+                        .find(|(keyword_name, keyword_name_escaped, _)| {
+                            keyword_matches(specification, keyword_name, *keyword_name_escaped)
+                        });
                 let value = match supplied {
-                    Some((_, argument)) => argument.clone(),
+                    Some((_, _, argument)) => argument.clone(),
                     None if specification.init_form_supplied => {
                         self.eval_in(&specification.init_form, &local)?
                     }
@@ -12661,10 +12997,12 @@ impl Runtime {
             };
             values.push((slot.name.clone(), value));
         }
-        Ok(Value::structure_with_types(
+        Ok(Value::structure_with_representation(
             name,
             values,
             structure_types.to_vec(),
+            representation,
+            named,
         ))
     }
 
@@ -12673,432 +13011,6 @@ impl Runtime {
             let message = error.kind.to_string();
             self.invalid(&message, error.span)
         })
-    }
-
-    fn macro_parameters(&self, form: &Form) -> Result<MacroLambdaList, RuntimeError> {
-        let FormKind::List(parameters) = &form.kind else {
-            return Err(self.invalid("macro parameters must be a list", form.span));
-        };
-
-        let mut lambda_list = MacroLambdaList {
-            whole: None,
-            environment: None,
-            required: Vec::new(),
-            optional: Vec::new(),
-            rest: None,
-            keywords: Vec::new(),
-            has_keyword_section: false,
-            allow_other_keys: false,
-            auxiliary: Vec::new(),
-        };
-        let mut seen = HashSet::new();
-        let mut section = MacroLambdaListSection::Required;
-        let mut index = 0;
-
-        while index < parameters.len() {
-            let parameter = &parameters[index];
-            if let Some(name) = atom_name(parameter) {
-                let marker = normalize_name(name);
-                match marker.as_str() {
-                    "&WHOLE" => {
-                        if index != 0
-                            || lambda_list.whole.is_some()
-                            || index + 1 >= parameters.len()
-                        {
-                            return Err(self.invalid(
-                                "&whole must be the first marker followed by one parameter",
-                                parameter.span,
-                            ));
-                        }
-                        lambda_list.whole =
-                            Some(self.macro_binding_name(&parameters[index + 1], &mut seen)?);
-                        index += 2;
-                    }
-                    "&OPTIONAL" => {
-                        if section != MacroLambdaListSection::Required {
-                            return Err(self.invalid(
-                                "&optional is out of order in macro lambda list",
-                                parameter.span,
-                            ));
-                        }
-                        section = MacroLambdaListSection::Optional;
-                        index += 1;
-                    }
-                    "&REST" | "&BODY" => {
-                        if lambda_list.rest.is_some()
-                            || matches!(
-                                section,
-                                MacroLambdaListSection::Rest
-                                    | MacroLambdaListSection::Keyword
-                                    | MacroLambdaListSection::Auxiliary
-                            )
-                            || index + 1 >= parameters.len()
-                        {
-                            return Err(self.invalid(
-                                "&rest or &body must be followed by one parameter",
-                                parameter.span,
-                            ));
-                        }
-                        lambda_list.rest =
-                            Some(self.macro_binding_name(&parameters[index + 1], &mut seen)?);
-                        section = MacroLambdaListSection::Rest;
-                        index += 2;
-                    }
-                    "&KEY" => {
-                        if lambda_list.has_keyword_section
-                            || matches!(
-                                section,
-                                MacroLambdaListSection::Keyword | MacroLambdaListSection::Auxiliary
-                            )
-                        {
-                            return Err(self.invalid(
-                                "&key is out of order or repeated in macro lambda list",
-                                parameter.span,
-                            ));
-                        }
-                        lambda_list.has_keyword_section = true;
-                        section = MacroLambdaListSection::Keyword;
-                        index += 1;
-                    }
-                    "&ALLOW-OTHER-KEYS" => {
-                        if section != MacroLambdaListSection::Keyword
-                            || lambda_list.allow_other_keys
-                        {
-                            return Err(self.invalid(
-                                "&allow-other-keys requires a keyword section",
-                                parameter.span,
-                            ));
-                        }
-                        lambda_list.allow_other_keys = true;
-                        index += 1;
-                    }
-                    "&AUX" => {
-                        if section == MacroLambdaListSection::Auxiliary {
-                            return Err(self
-                                .invalid("&aux is repeated in macro lambda list", parameter.span));
-                        }
-                        section = MacroLambdaListSection::Auxiliary;
-                        index += 1;
-                    }
-                    "&ENVIRONMENT" => {
-                        if lambda_list.environment.is_some() || index + 1 >= parameters.len() {
-                            return Err(self.invalid(
-                                "&environment must be followed by one parameter",
-                                parameter.span,
-                            ));
-                        }
-                        lambda_list.environment =
-                            Some(self.macro_binding_name(&parameters[index + 1], &mut seen)?);
-                        index += 2;
-                    }
-                    _ if marker.starts_with('&') => {
-                        return Err(
-                            self.invalid("unsupported marker in macro lambda list", parameter.span)
-                        );
-                    }
-                    _ => {
-                        if section == MacroLambdaListSection::Rest {
-                            return Err(self.invalid(
-                                "macro rest parameter must be followed by a keyword or auxiliary section",
-                                parameter.span,
-                            ));
-                        }
-                        match section {
-                            MacroLambdaListSection::Required => {
-                                lambda_list
-                                    .required
-                                    .push(self.macro_pattern(parameter, &mut seen)?);
-                            }
-                            MacroLambdaListSection::Optional => {
-                                lambda_list.optional.push(
-                                    self.parse_macro_optional_parameter(parameter, &mut seen)?,
-                                );
-                            }
-                            MacroLambdaListSection::Keyword => {
-                                if lambda_list.allow_other_keys {
-                                    return Err(self.invalid(
-                                        "&allow-other-keys must be the last keyword-list marker",
-                                        parameter.span,
-                                    ));
-                                }
-                                let specification =
-                                    self.parse_macro_keyword_parameter(parameter, &mut seen)?;
-                                if lambda_list
-                                    .keywords
-                                    .iter()
-                                    .any(|item| item.keyword_name == specification.keyword_name)
-                                {
-                                    return Err(self.invalid(
-                                        "macro keyword names must be unique",
-                                        parameter.span,
-                                    ));
-                                }
-                                lambda_list.keywords.push(specification);
-                            }
-                            MacroLambdaListSection::Auxiliary => {
-                                lambda_list.auxiliary.push(
-                                    self.parse_macro_auxiliary_parameter(parameter, &mut seen)?,
-                                );
-                            }
-                            MacroLambdaListSection::Rest => unreachable!(),
-                        }
-                        index += 1;
-                    }
-                }
-                continue;
-            }
-
-            if section == MacroLambdaListSection::Rest {
-                return Err(self.invalid(
-                    "macro rest parameter must be followed by a keyword or auxiliary section",
-                    parameter.span,
-                ));
-            }
-            match section {
-                MacroLambdaListSection::Required => {
-                    lambda_list
-                        .required
-                        .push(self.macro_pattern(parameter, &mut seen)?);
-                }
-                MacroLambdaListSection::Optional => {
-                    lambda_list
-                        .optional
-                        .push(self.parse_macro_optional_parameter(parameter, &mut seen)?);
-                }
-                MacroLambdaListSection::Keyword => {
-                    if lambda_list.allow_other_keys {
-                        return Err(self.invalid(
-                            "&allow-other-keys must be the last keyword-list marker",
-                            parameter.span,
-                        ));
-                    }
-                    let specification = self.parse_macro_keyword_parameter(parameter, &mut seen)?;
-                    if lambda_list
-                        .keywords
-                        .iter()
-                        .any(|item| item.keyword_name == specification.keyword_name)
-                    {
-                        return Err(
-                            self.invalid("macro keyword names must be unique", parameter.span)
-                        );
-                    }
-                    lambda_list.keywords.push(specification);
-                }
-                MacroLambdaListSection::Auxiliary => {
-                    lambda_list
-                        .auxiliary
-                        .push(self.parse_macro_auxiliary_parameter(parameter, &mut seen)?);
-                }
-                MacroLambdaListSection::Rest => unreachable!(),
-            }
-            index += 1;
-        }
-
-        Ok(lambda_list)
-    }
-
-    fn macro_binding_name(
-        &self,
-        form: &Form,
-        seen: &mut HashSet<String>,
-    ) -> Result<String, RuntimeError> {
-        let Some(name) = atom_name(form) else {
-            return Err(self.invalid("macro parameter must be a symbol", form.span));
-        };
-        let normalized = normalize_name(name);
-        if normalized.is_empty()
-            || normalized.starts_with('&')
-            || literal_atom(name).is_some()
-            || !seen.insert(normalized.clone())
-        {
-            return Err(self.invalid(
-                "macro parameter names must be unique and bindable",
-                form.span,
-            ));
-        }
-        Ok(normalized)
-    }
-
-    fn macro_pattern(
-        &self,
-        form: &Form,
-        seen: &mut HashSet<String>,
-    ) -> Result<MacroPattern, RuntimeError> {
-        match &form.kind {
-            FormKind::Atom(_) => Ok(MacroPattern::Name(self.macro_binding_name(form, seen)?)),
-            FormKind::List(items) => Ok(MacroPattern::List(
-                items
-                    .iter()
-                    .map(|item| self.macro_pattern(item, seen))
-                    .collect::<Result<Vec<_>, _>>()?,
-            )),
-            FormKind::DottedList { items, tail } => Ok(MacroPattern::Dotted {
-                items: items
-                    .iter()
-                    .map(|item| self.macro_pattern(item, seen))
-                    .collect::<Result<Vec<_>, _>>()?,
-                tail: Box::new(self.macro_pattern(tail, seen)?),
-            }),
-            _ => Err(self.invalid(
-                "macro destructuring pattern must be a symbol or list",
-                form.span,
-            )),
-        }
-    }
-
-    fn parse_macro_optional_parameter(
-        &self,
-        form: &Form,
-        seen: &mut HashSet<String>,
-    ) -> Result<MacroOptionalParameter, RuntimeError> {
-        let nil = || Form::atom("NIL", form.span);
-        match &form.kind {
-            FormKind::Atom(_) => Ok(MacroOptionalParameter {
-                pattern: self.macro_pattern(form, seen)?,
-                init_form: nil(),
-                supplied_p: None,
-            }),
-            FormKind::List(items) if (1..=3).contains(&items.len()) => {
-                let pattern = self.macro_pattern(&items[0], seen)?;
-                let init_form = items.get(1).cloned().unwrap_or_else(nil);
-                let supplied_p = items
-                    .get(2)
-                    .map(|item| self.macro_binding_name(item, seen))
-                    .transpose()?;
-                Ok(MacroOptionalParameter {
-                    pattern,
-                    init_form,
-                    supplied_p,
-                })
-            }
-            FormKind::List(_) => Err(self.invalid(
-                "macro optional parameter must contain one to three items",
-                form.span,
-            )),
-            _ => Err(self.invalid(
-                "macro optional parameter must be a symbol or list",
-                form.span,
-            )),
-        }
-    }
-
-    fn parse_macro_keyword_parameter(
-        &self,
-        form: &Form,
-        seen: &mut HashSet<String>,
-    ) -> Result<MacroKeywordParameter, RuntimeError> {
-        let nil = || Form::atom("NIL", form.span);
-        let (keyword_name, pattern, trailing_start) = match &form.kind {
-            FormKind::Atom(_) => {
-                let name = self.macro_binding_name(form, seen)?;
-                let keyword_name = normalize_name(&name);
-                (keyword_name, MacroPattern::Name(name), 0)
-            }
-            FormKind::List(items) if !items.is_empty() => {
-                if let FormKind::List(key_specification) = &items[0].kind {
-                    if key_specification.len() != 2 {
-                        return Err(self.invalid(
-                            "macro keyword designator must contain a keyword and variable",
-                            items[0].span,
-                        ));
-                    }
-                    let Some(keyword_name) = macro_keyword_name(&key_specification[0]) else {
-                        return Err(self.invalid(
-                            "macro keyword designator must start with a keyword",
-                            key_specification[0].span,
-                        ));
-                    };
-                    let pattern = self.macro_pattern(&key_specification[1], seen)?;
-                    (keyword_name, pattern, 1)
-                } else if atom_name(&items[0]).is_some_and(|name| name.starts_with(':')) {
-                    let Some(keyword_name) = macro_keyword_name(&items[0]) else {
-                        return Err(self.invalid(
-                            "macro keyword designator must be a nonempty keyword",
-                            items[0].span,
-                        ));
-                    };
-                    if items.len() < 2 {
-                        return Err(
-                            self.invalid("macro keyword parameter needs a variable", form.span)
-                        );
-                    }
-                    let pattern = self.macro_pattern(&items[1], seen)?;
-                    (keyword_name, pattern, 2)
-                } else {
-                    let pattern = self.macro_pattern(&items[0], seen)?;
-                    let MacroPattern::Name(name) = &pattern else {
-                        return Err(self.invalid(
-                            "macro keyword parameter must have a variable name",
-                            items[0].span,
-                        ));
-                    };
-                    (normalize_name(name), pattern, 1)
-                }
-            }
-            FormKind::List(_) => unreachable!(),
-            _ => {
-                return Err(self.invalid(
-                    "macro keyword parameter must be a symbol or list",
-                    form.span,
-                ));
-            }
-        };
-
-        let item_count = match &form.kind {
-            FormKind::Atom(_) => 0,
-            FormKind::List(items) => items.len(),
-            _ => unreachable!(),
-        };
-        if item_count > trailing_start + 2 {
-            return Err(self.invalid("macro keyword parameter contains too many items", form.span));
-        }
-        let (init_form, supplied_p) = match &form.kind {
-            FormKind::Atom(_) => (nil(), None),
-            FormKind::List(items) => (
-                items.get(trailing_start).cloned().unwrap_or_else(nil),
-                items
-                    .get(trailing_start + 1)
-                    .map(|item| self.macro_binding_name(item, seen))
-                    .transpose()?,
-            ),
-            _ => unreachable!(),
-        };
-        Ok(MacroKeywordParameter {
-            keyword_name,
-            pattern,
-            init_form,
-            supplied_p,
-        })
-    }
-
-    fn parse_macro_auxiliary_parameter(
-        &self,
-        form: &Form,
-        seen: &mut HashSet<String>,
-    ) -> Result<MacroAuxiliaryParameter, RuntimeError> {
-        match &form.kind {
-            FormKind::Atom(_) => Ok(MacroAuxiliaryParameter {
-                name: self.macro_binding_name(form, seen)?,
-                init_form: Form::atom("NIL", form.span),
-            }),
-            FormKind::List(items) if (1..=2).contains(&items.len()) => {
-                Ok(MacroAuxiliaryParameter {
-                    name: self.macro_binding_name(&items[0], seen)?,
-                    init_form: items
-                        .get(1)
-                        .cloned()
-                        .unwrap_or_else(|| Form::atom("NIL", form.span)),
-                })
-            }
-            FormKind::List(_) => Err(self.invalid(
-                "macro auxiliary parameter must contain one or two items",
-                form.span,
-            )),
-            _ => Err(self.invalid(
-                "macro auxiliary parameter must be a symbol or list",
-                form.span,
-            )),
-        }
     }
 
     fn eval_sequence(
@@ -13136,6 +13048,13 @@ impl Runtime {
                 span,
             )),
             Value::Float(value) => Ok(Form::atom(value.to_string(), span)),
+            Value::Complex { real, imaginary } => Ok(Form::new(
+                FormKind::Complex {
+                    real: Box::new(self.form_from_value(real.as_ref(), span)?),
+                    imaginary: Box::new(self.form_from_value(imaginary.as_ref(), span)?),
+                },
+                span,
+            )),
             Value::String(value) => Ok(Form::new(FormKind::String(value.to_string()), span)),
             Value::Character(value) => Ok(Form::new(FormKind::Character(*value), span)),
             Value::Package(name) => Ok(Form::list(
@@ -13147,6 +13066,17 @@ impl Runtime {
             )),
             Value::Symbol(value) => Ok(Form::atom(value.as_ref(), span)),
             Value::SymbolExact(value) => Ok(Form::atom(escaped_symbol_atom(value), span)),
+            Value::QualifiedSymbolExact {
+                reference,
+                package_len,
+            } => Ok(Form::atom(
+                format!(
+                    "{}{}",
+                    &reference[..*package_len + 2],
+                    escaped_symbol_atom(&reference[*package_len + 2..])
+                ),
+                span,
+            )),
             Value::UninternedSymbol(value) => Ok(Form::atom(format!("#:{value}"), span)),
             Value::Keyword(value) => Ok(Form::atom(format!(":{value}"), span)),
             Value::KeywordExact(value) => {
@@ -13170,6 +13100,7 @@ impl Runtime {
             Value::Vector(values) => Ok(Form::new(
                 FormKind::Vector(
                     values
+                        .borrow()
                         .iter()
                         .map(|value| self.form_from_value(value, span))
                         .collect::<Result<Vec<_>, _>>()?,
@@ -13178,7 +13109,9 @@ impl Runtime {
             )),
             Value::Array { .. }
             | Value::HashTable { .. }
+            | Value::HashTableIterator(_)
             | Value::Stream(_)
+            | Value::RandomState(_)
             | Value::Values(_)
             | Value::Condition(_)
             | Value::Restart(_)
@@ -13271,8 +13204,7 @@ impl Runtime {
         if token.kind != SymbolTokenKind::Symbol
             || token.name.is_empty()
             || (token.escaped && token.package.is_some())
-            || (!token.escaped
-                && (token.name.starts_with('&') || literal_atom(name).is_some()))
+            || (!token.escaped && (token.name.starts_with('&') || literal_atom(name).is_some()))
         {
             return Err(self.invalid(context, form.span));
         }
@@ -13285,8 +13217,7 @@ impl Runtime {
     }
 
     fn variable_name(&self, form: &Form, context: &str) -> Result<String, RuntimeError> {
-        self.variable_name_info(form, context)
-            .map(|(name, _)| name)
+        self.variable_name_info(form, context).map(|(name, _)| name)
     }
 
     fn define_variable_in(
@@ -13300,6 +13231,27 @@ impl Runtime {
             self.define_exact_in(name, value, environment);
         } else {
             self.define_in(name, value, environment);
+        }
+    }
+
+    fn define_macro_binding_in(
+        &self,
+        binding: &MacroBinding,
+        value: Value,
+        environment: &Environment,
+    ) {
+        self.define_variable_in(&binding.name, binding.escaped, value, environment);
+    }
+
+    fn lookup_macro_binding_in(
+        &self,
+        binding: &MacroBinding,
+        environment: &Environment,
+    ) -> Option<Value> {
+        if binding.escaped {
+            self.lookup_exact_in(&binding.name, environment)
+        } else {
+            self.lookup_in(&binding.name, environment)
         }
     }
 
@@ -13371,6 +13323,56 @@ fn atom_name(form: &Form) -> Option<&str> {
     }
 }
 
+fn method_specializers_equal(left: &[MethodSpecializer], right: &[MethodSpecializer]) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right)
+            .all(|(left, right)| match (left, right) {
+                (MethodSpecializer::Type(left), MethodSpecializer::Type(right)) => left == right,
+                (MethodSpecializer::Eql(left), MethodSpecializer::Eql(right)) => {
+                    builtins::eql_value(left, right)
+                }
+                _ => false,
+            })
+}
+
+fn split_special_names(names: HashSet<(String, bool)>) -> (Vec<String>, Vec<String>) {
+    let mut normal = Vec::new();
+    let mut exact = Vec::new();
+    for (name, escaped) in names {
+        if escaped {
+            exact.push(name);
+        } else {
+            normal.push(name);
+        }
+    }
+    (normal, exact)
+}
+
+fn function_operator_name(form: &Form) -> Option<String> {
+    let name = atom_name(form)?;
+    let token = parse_symbol_token(name).ok()?;
+    if token.kind == SymbolTokenKind::Symbol && token.package.is_none() && !token.escaped {
+        Some(normalize_name(&token.name))
+    } else {
+        None
+    }
+}
+
+fn is_valid_function_symbol_name(name: &str) -> bool {
+    let Ok(token) = parse_symbol_token(name) else {
+        return false;
+    };
+    if token.kind != SymbolTokenKind::Symbol || token.name.is_empty() {
+        return false;
+    }
+    if token.escaped {
+        return token.package.is_none();
+    }
+    literal_atom(name).is_none() && !name.starts_with(':')
+}
+
 fn is_nil_form(form: &Form) -> bool {
     atom_name(form).is_some_and(|name| name.eq_ignore_ascii_case("nil"))
 }
@@ -13379,10 +13381,34 @@ fn is_macro_keyword_form(form: &Form) -> bool {
     macro_keyword_name(form).is_some()
 }
 
-fn macro_keyword_name(form: &Form) -> Option<String> {
+fn macro_keyword_name(form: &Form) -> Option<(String, bool)> {
     let name = atom_name(form)?;
-    let keyword = name.strip_prefix(':')?;
-    (!keyword.is_empty()).then(|| normalize_name(keyword))
+    let token = parse_symbol_token(name).ok()?;
+    if token.kind != SymbolTokenKind::Keyword || token.package.is_some() || token.name.is_empty() {
+        return None;
+    }
+    if token.escaped {
+        Some((token.name, true))
+    } else {
+        Some((normalize_name(&token.name), false))
+    }
+}
+
+fn is_no_error_marker(form: &Form) -> bool {
+    macro_keyword_name(form).is_some_and(|(name, escaped)| !escaped && name == "NO-ERROR")
+}
+
+fn macro_keyword_matches(
+    specification_name: &str,
+    specification_escaped: bool,
+    actual_name: &str,
+    _actual_escaped: bool,
+) -> bool {
+    if specification_escaped {
+        specification_name == actual_name
+    } else {
+        normalize_name(specification_name) == actual_name
+    }
 }
 
 fn macro_dotted_parts(value: &Value) -> Option<(Vec<Value>, Value)> {
@@ -13433,6 +13459,24 @@ fn unqualified_name(name: &str) -> String {
     package::split_symbol(&normalized)
         .map(|(_, symbol, _)| symbol.to_string())
         .unwrap_or(normalized)
+}
+
+fn cxr_operations(name: &str) -> Option<Vec<u8>> {
+    let name = unqualified_name(name);
+    let bytes = name.as_bytes();
+    if !(4..=6).contains(&bytes.len())
+        || bytes.first() != Some(&b'C')
+        || bytes.last() != Some(&b'R')
+        || bytes[1..bytes.len() - 1]
+            .iter()
+            .any(|operation| !matches!(operation, b'A' | b'D'))
+    {
+        return None;
+    }
+
+    let mut operations = bytes[1..bytes.len() - 1].to_vec();
+    operations.reverse();
+    Some(operations)
 }
 
 fn is_special_operator_name(name: &str) -> bool {
@@ -13520,6 +13564,10 @@ fn is_special_form(form: &Form) -> bool {
             | "THROW"
             | "WITH-SIMPLE-RESTART"
             | "WITH-OPEN-FILE"
+            | "WITH-OPEN-STREAM"
+            | "WITH-OUTPUT-TO-STRING"
+            | "WITH-INPUT-FROM-STRING"
+            | "WITH-HASH-TABLE-ITERATOR"
             | "RESTART-CASE"
             | "UNWIND-PROTECT"
             | "BLOCK"
@@ -13537,8 +13585,10 @@ fn is_special_form(form: &Form) -> bool {
             | "UNLESS"
             | "COND"
             | "CASE"
+            | "CCASE"
             | "ECASE"
             | "TYPECASE"
+            | "CTYPECASE"
             | "ETYPECASE"
             | "DESTRUCTURING-BIND"
             | "LET"
@@ -13547,6 +13597,7 @@ fn is_special_form(form: &Form) -> bool {
             | "LABELS"
             | "MACROLET"
             | "SYMBOL-MACROLET"
+            | "NCL-MACRO-ENVIRONMENT"
             | "DOTIMES"
             | "DOLIST"
             | "DO"
@@ -13577,6 +13628,7 @@ fn is_special_form(form: &Form) -> bool {
             | "DECF"
             | "DEFSTRUCT"
             | "DEFCLASS"
+            | "DEFINE-CONDITION"
             | "DEFGENERIC"
             | "DEFMETHOD"
             | "DEFVAR"
@@ -13588,6 +13640,7 @@ fn is_special_form(form: &Form) -> bool {
             | "FUNCALL"
             | "APPLY"
             | "MAP-INTO"
+            | "MAPHASH"
             | "MAPCAR"
     )
 }
@@ -13638,6 +13691,20 @@ pub(crate) fn quoted_form_value(form: &Form) -> Result<Value, RuntimeError> {
         }
         FormKind::String(value) => Ok(Value::string(value.clone())),
         FormKind::Character(value) => Ok(Value::Character(*value)),
+        FormKind::Complex { real, imaginary } => {
+            Value::complex(quoted_form_value(real)?, quoted_form_value(imaginary)?)
+        }
+        FormKind::ReadTimeEval(_) => Err(RuntimeError::InvalidForm {
+            message: "read-time evaluation must be resolved before quoting".to_string(),
+            span: Some(form.span),
+        }),
+        FormKind::BitVector(bits) => Ok(Value::array_with_element_type(
+            vec![bits.len()],
+            bits.iter()
+                .map(|bit| Value::Integer(i64::from(*bit)))
+                .collect(),
+            ArrayElementType::Bit,
+        )),
         FormKind::List(items) => Ok(Value::list(
             items
                 .iter()
@@ -13690,6 +13757,9 @@ fn literal_atom(atom: &str) -> Option<Value> {
             if let Ok(value) = token.name.parse::<i64>() {
                 return Some(Value::Integer(value));
             }
+            if let Some(value) = parse_radix_integer_literal(&token.name) {
+                return Some(Value::Integer(value));
+            }
             if let Some((numerator, denominator)) = token.name.split_once('/') {
                 if let (Ok(numerator), Ok(denominator)) =
                     (numerator.parse::<i128>(), denominator.parse::<i128>())
@@ -13697,7 +13767,7 @@ fn literal_atom(atom: &str) -> Option<Value> {
                     return Value::rational(numerator, denominator).ok();
                 }
             }
-            token.name.parse::<f64>().ok().map(Value::Float)
+            parse_float_literal(&token.name).map(Value::Float)
         }
         _ => None,
     }

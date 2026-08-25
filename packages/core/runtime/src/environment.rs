@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use ncl_syntax::Form;
 
-use crate::value::{ClassDefinition, ConditionDefinition, StructureDefinition};
 use crate::Value;
+use crate::value::{ClassDefinition, ConditionDefinition, DefsetfDefinition, StructureDefinition};
 
 #[derive(Clone)]
 pub struct Environment(Rc<RefCell<Frame>>);
@@ -19,6 +19,7 @@ struct Frame {
     exact_functions: HashMap<String, Value>,
     setf_functions: HashMap<String, Value>,
     setf_expanders: HashMap<String, Value>,
+    defsetf_definitions: HashMap<String, DefsetfDefinition>,
     structures: HashMap<String, StructureDefinition>,
     classes: HashMap<String, Rc<ClassDefinition>>,
     conditions: HashMap<String, Rc<ConditionDefinition>>,
@@ -39,6 +40,7 @@ impl Environment {
             exact_functions: HashMap::new(),
             setf_functions: HashMap::new(),
             setf_expanders: HashMap::new(),
+            defsetf_definitions: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
             conditions: HashMap::new(),
@@ -59,6 +61,7 @@ impl Environment {
             exact_functions: HashMap::new(),
             setf_functions: HashMap::new(),
             setf_expanders: HashMap::new(),
+            defsetf_definitions: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
             conditions: HashMap::new(),
@@ -138,7 +141,10 @@ impl Environment {
     pub(crate) fn remove_exact(&self, name: &str) -> bool {
         let (removed, parent) = {
             let mut frame = self.0.borrow_mut();
-            (frame.exact_values.remove(name).is_some(), frame.parent.clone())
+            (
+                frame.exact_values.remove(name).is_some(),
+                frame.parent.clone(),
+            )
         };
         removed || parent.is_some_and(|environment| environment.remove_exact(name))
     }
@@ -168,7 +174,8 @@ impl Environment {
         if shadowed {
             None
         } else {
-            expansion.or_else(|| parent.and_then(|environment| environment.lookup_symbol_macro(name)))
+            expansion
+                .or_else(|| parent.and_then(|environment| environment.lookup_symbol_macro(name)))
         }
     }
 
@@ -214,11 +221,12 @@ impl Environment {
     pub(crate) fn lookup_function_exact(&self, name: &str) -> Option<Value> {
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.exact_functions.get(name).cloned(), frame.parent.clone())
+            (
+                frame.exact_functions.get(name).cloned(),
+                frame.parent.clone(),
+            )
         };
-        value.or_else(|| {
-            parent.and_then(|environment| environment.lookup_function_exact(name))
-        })
+        value.or_else(|| parent.and_then(|environment| environment.lookup_function_exact(name)))
     }
 
     pub(crate) fn define_setf_function(&self, name: impl AsRef<str>, value: Value) {
@@ -230,7 +238,10 @@ impl Environment {
         let key = normalize_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.setf_functions.get(&key).cloned(), frame.parent.clone())
+            (
+                frame.setf_functions.get(&key).cloned(),
+                frame.parent.clone(),
+            )
         };
         value.or_else(|| parent.and_then(|environment| environment.lookup_setf_function(name)))
     }
@@ -244,9 +255,32 @@ impl Environment {
         let key = normalize_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.setf_expanders.get(&key).cloned(), frame.parent.clone())
+            (
+                frame.setf_expanders.get(&key).cloned(),
+                frame.parent.clone(),
+            )
         };
         value.or_else(|| parent.and_then(|environment| environment.lookup_setf_expander(name)))
+    }
+
+    pub(crate) fn define_defsetf(&self, name: impl AsRef<str>, definition: DefsetfDefinition) {
+        let key = normalize_name(name.as_ref());
+        self.0
+            .borrow_mut()
+            .defsetf_definitions
+            .insert(key, definition);
+    }
+
+    pub(crate) fn lookup_defsetf(&self, name: &str) -> Option<DefsetfDefinition> {
+        let key = normalize_name(name);
+        let (definition, parent) = {
+            let frame = self.0.borrow();
+            (
+                frame.defsetf_definitions.get(&key).cloned(),
+                frame.parent.clone(),
+            )
+        };
+        definition.or_else(|| parent.and_then(|environment| environment.lookup_defsetf(name)))
     }
 
     pub(crate) fn remove_function(&self, name: &str) -> bool {
@@ -283,11 +317,7 @@ impl Environment {
         definition.or_else(|| parent.and_then(|environment| environment.lookup_structure(name)))
     }
 
-    pub(crate) fn define_class(
-        &self,
-        name: impl AsRef<str>,
-        definition: Rc<ClassDefinition>,
-    ) {
+    pub(crate) fn define_class(&self, name: impl AsRef<str>, definition: Rc<ClassDefinition>) {
         let key = normalize_name(name.as_ref());
         self.0.borrow_mut().classes.insert(key, definition);
     }
@@ -369,7 +399,8 @@ impl Environment {
                 frame.parent.clone(),
             )
         };
-        removed.or_else(|| parent.and_then(|environment| environment.remove_symbol_property(symbol)))
+        removed
+            .or_else(|| parent.and_then(|environment| environment.remove_symbol_property(symbol)))
     }
 
     pub(crate) fn define_block(&self, name: impl AsRef<str>, target: u64) {

@@ -13,11 +13,25 @@ use ncl_syntax::{
 use crate::environment::Environment;
 use crate::error::{ReturnValue, RuntimeError};
 
+#[path = "value/stream.rs"]
+mod stream;
+
+#[path = "value/display.rs"]
+mod display;
+
+pub use stream::Stream;
+
 pub type Builtin = fn(&[Value]) -> Result<Value, RuntimeError>;
 
 #[derive(Clone)]
+pub(crate) struct MacroBinding {
+    pub(crate) name: String,
+    pub(crate) escaped: bool,
+}
+
+#[derive(Clone)]
 pub(crate) enum MacroPattern {
-    Name(String),
+    Name(MacroBinding),
     List(Vec<MacroPattern>),
     Dotted {
         items: Vec<MacroPattern>,
@@ -29,34 +43,43 @@ pub(crate) enum MacroPattern {
 pub(crate) struct MacroOptionalParameter {
     pub(crate) pattern: MacroPattern,
     pub(crate) init_form: Form,
-    pub(crate) supplied_p: Option<String>,
+    pub(crate) supplied_p: Option<MacroBinding>,
 }
 
 #[derive(Clone)]
 pub(crate) struct MacroKeywordParameter {
     pub(crate) keyword_name: String,
+    pub(crate) keyword_name_escaped: bool,
     pub(crate) pattern: MacroPattern,
     pub(crate) init_form: Form,
-    pub(crate) supplied_p: Option<String>,
+    pub(crate) supplied_p: Option<MacroBinding>,
 }
 
 #[derive(Clone)]
 pub(crate) struct MacroAuxiliaryParameter {
-    pub(crate) name: String,
+    pub(crate) name: MacroBinding,
     pub(crate) init_form: Form,
 }
 
 #[derive(Clone)]
 pub(crate) struct MacroLambdaList {
-    pub(crate) whole: Option<String>,
-    pub(crate) environment: Option<String>,
+    pub(crate) whole: Option<MacroBinding>,
+    pub(crate) environment: Option<MacroBinding>,
     pub(crate) required: Vec<MacroPattern>,
     pub(crate) optional: Vec<MacroOptionalParameter>,
-    pub(crate) rest: Option<String>,
+    pub(crate) rest: Option<MacroBinding>,
     pub(crate) keywords: Vec<MacroKeywordParameter>,
     pub(crate) has_keyword_section: bool,
     pub(crate) allow_other_keys: bool,
     pub(crate) auxiliary: Vec<MacroAuxiliaryParameter>,
+}
+
+#[derive(Clone)]
+pub(crate) struct DefsetfDefinition {
+    pub(crate) lambda_list: MacroLambdaList,
+    pub(crate) stores: Vec<MacroBinding>,
+    pub(crate) body: Vec<Form>,
+    pub(crate) environment: Environment,
 }
 
 #[derive(Clone)]
@@ -66,19 +89,46 @@ pub(crate) struct StructureSlot {
     pub(crate) read_only: bool,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StructureRepresentation {
+    Structure,
+    List,
+    Vector,
+}
+
 #[derive(Clone)]
 pub(crate) struct StructureDefinition {
+    pub(crate) documentation: Option<String>,
     pub(crate) slots: Vec<StructureSlot>,
     pub(crate) type_names: Vec<String>,
+    pub(crate) representation: StructureRepresentation,
+    pub(crate) named: bool,
 }
 
 #[derive(Clone)]
 pub(crate) struct ConditionSlot {
     pub(crate) name: String,
-    pub(crate) initarg: Option<String>,
+    pub(crate) initarg: Option<ConditionInitarg>,
     pub(crate) init_form: Option<Form>,
     pub(crate) readers: Vec<String>,
     pub(crate) writers: Vec<String>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ConditionInitarg {
+    pub(crate) name: String,
+    pub(crate) escaped: bool,
+}
+
+impl ConditionInitarg {
+    pub(crate) fn matches(&self, name: &str, escaped: bool) -> bool {
+        self.escaped == escaped
+            && if escaped {
+                self.name == name
+            } else {
+                self.name.eq_ignore_ascii_case(name)
+            }
+    }
 }
 
 #[derive(Clone)]
@@ -96,6 +146,7 @@ pub(crate) struct ClassSlot {
     pub(crate) initarg: Option<String>,
     pub(crate) init_form: Option<Form>,
     pub(crate) class_value: Option<Rc<RefCell<Value>>>,
+    pub(crate) type_specifier: Option<Value>,
 }
 
 #[derive(Clone)]
@@ -105,12 +156,19 @@ pub(crate) struct ClassDefinition {
     pub(crate) precedence: Vec<String>,
     pub(crate) slots: Vec<ClassSlot>,
     pub(crate) default_initargs: Vec<(String, Form)>,
+    pub(crate) documentation: Option<String>,
+}
+
+#[derive(Clone)]
+pub(crate) enum MethodSpecializer {
+    Type(String),
+    Eql(Value),
 }
 
 #[derive(Clone)]
 pub(crate) struct MethodDefinition {
     pub(crate) qualifiers: Vec<String>,
-    pub(crate) specializers: Vec<String>,
+    pub(crate) specializers: Vec<MethodSpecializer>,
     pub(crate) function: Value,
 }
 
@@ -133,6 +191,8 @@ pub enum Function {
         name: String,
         slots: Vec<StructureSlot>,
         structure_types: Vec<String>,
+        representation: StructureRepresentation,
+        named: bool,
         constructor_lambda_list: Option<OrdinaryLambdaList>,
         environment: Environment,
     },
@@ -180,6 +240,7 @@ pub enum Function {
         auxiliary: Vec<LambdaListAuxiliaryParameter>,
         body: Vec<Form>,
         environment: Environment,
+        documentation: Option<String>,
     },
     Macro {
         lambda_list: MacroLambdaList,
@@ -195,7 +256,19 @@ pub enum Function {
         program: Rc<Program>,
         function: FunctionId,
         environment: Environment,
+        documentation: Option<String>,
     },
+}
+
+impl Function {
+    pub(crate) fn documentation(&self) -> Option<&str> {
+        match self {
+            Self::Closure { documentation, .. } | Self::Compiled { documentation, .. } => {
+                documentation.as_deref()
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -212,7 +285,9 @@ impl Rational {
 
         let (numerator, denominator) = if denominator < 0 {
             (
-                numerator.checked_neg().ok_or(RuntimeError::NumericOverflow)?,
+                numerator
+                    .checked_neg()
+                    .ok_or(RuntimeError::NumericOverflow)?,
                 denominator
                     .checked_neg()
                     .ok_or(RuntimeError::NumericOverflow)?,
@@ -259,436 +334,6 @@ fn gcd(mut left: u128, mut right: u128) -> u128 {
     left
 }
 
-pub struct Stream {
-    kind: StreamKind,
-    closed: bool,
-}
-
-enum StreamKind {
-    Input {
-        characters: Rc<Vec<char>>,
-        position: usize,
-        pushback: Option<char>,
-        file: bool,
-    },
-    Io {
-        characters: Vec<char>,
-        position: usize,
-        pushback: Option<char>,
-        at_line_start: bool,
-        file_path: Rc<PathBuf>,
-    },
-    Output {
-        buffer: String,
-        at_line_start: bool,
-        file_path: Option<Rc<PathBuf>>,
-    },
-}
-
-impl Stream {
-    fn input(source: &str, start: usize, end: usize) -> Self {
-        Self {
-            kind: StreamKind::Input {
-                characters: Rc::new(source.chars().skip(start).take(end - start).collect()),
-                position: 0,
-                pushback: None,
-                file: false,
-            },
-            closed: false,
-        }
-    }
-
-    fn file_input(source: String) -> Self {
-        Self {
-            kind: StreamKind::Input {
-                characters: Rc::new(source.chars().collect()),
-                position: 0,
-                pushback: None,
-                file: true,
-            },
-            closed: false,
-        }
-    }
-
-    fn file_io(path: PathBuf, source: String, append: bool) -> Self {
-        let characters: Vec<char> = source.chars().collect();
-        let position = if append { characters.len() } else { 0 };
-        let at_line_start = if position == 0 {
-            true
-        } else {
-            characters.get(position - 1) == Some(&'\n')
-        };
-        Self {
-            kind: StreamKind::Io {
-                characters,
-                position,
-                pushback: None,
-                at_line_start,
-                file_path: Rc::new(path),
-            },
-            closed: false,
-        }
-    }
-
-    fn output() -> Self {
-        Self {
-            kind: StreamKind::Output {
-                buffer: String::new(),
-                at_line_start: true,
-                file_path: None,
-            },
-            closed: false,
-        }
-    }
-
-    fn file_output(path: PathBuf, initial: String) -> Self {
-        let at_line_start = initial.ends_with('\n');
-        Self {
-            kind: StreamKind::Output {
-                buffer: initial,
-                at_line_start,
-                file_path: Some(Rc::new(path)),
-            },
-            closed: false,
-        }
-    }
-
-    pub(crate) fn kind_name(&self) -> &'static str {
-        match &self.kind {
-            StreamKind::Input { file, .. } => {
-                if *file {
-                    "FILE-INPUT-STREAM"
-                } else {
-                    "STRING-INPUT-STREAM"
-                }
-            }
-            StreamKind::Io { .. } => "FILE-IO-STREAM",
-            StreamKind::Output { file_path, .. } => {
-                if file_path.is_some() {
-                    "FILE-OUTPUT-STREAM"
-                } else {
-                    "STRING-OUTPUT-STREAM"
-                }
-            }
-        }
-    }
-
-    pub(crate) fn is_input(&self) -> bool {
-        matches!(&self.kind, StreamKind::Input { .. } | StreamKind::Io { .. })
-    }
-
-    pub(crate) fn is_output(&self) -> bool {
-        matches!(&self.kind, StreamKind::Output { .. } | StreamKind::Io { .. })
-    }
-
-    pub(crate) fn read_char(&mut self) -> Option<char> {
-        if self.closed {
-            return None;
-        }
-        match &mut self.kind {
-            StreamKind::Input {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                if let Some(character) = pushback.take() {
-                    return Some(character);
-                }
-                let character = characters.get(*position).copied()?;
-                *position += 1;
-                Some(character)
-            }
-            StreamKind::Io {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                if let Some(character) = pushback.take() {
-                    return Some(character);
-                }
-                let character = characters.get(*position).copied()?;
-                *position += 1;
-                Some(character)
-            }
-            StreamKind::Output { .. } => None,
-        }
-    }
-
-    pub(crate) fn peek_char(&self) -> Option<char> {
-        if self.closed {
-            return None;
-        }
-        match &self.kind {
-            StreamKind::Input {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                if let Some(character) = pushback {
-                    return Some(*character);
-                }
-                characters.get(*position).copied()
-            }
-            StreamKind::Io {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                if let Some(character) = pushback {
-                    return Some(*character);
-                }
-                characters.get(*position).copied()
-            }
-            StreamKind::Output { .. } => None,
-        }
-    }
-
-    pub(crate) fn unread_char(&mut self, character: char) -> bool {
-        if self.closed {
-            return false;
-        }
-        match &mut self.kind {
-            StreamKind::Input {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                if pushback.is_some() || *position == 0 {
-                    return false;
-                }
-                if characters.get(*position - 1).copied() != Some(character) {
-                    return false;
-                }
-                *pushback = Some(character);
-                true
-            }
-            StreamKind::Io {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                if pushback.is_some() || *position == 0 {
-                    return false;
-                }
-                if characters.get(*position - 1).copied() != Some(character) {
-                    return false;
-                }
-                *pushback = Some(character);
-                true
-            }
-            StreamKind::Output { .. } => false,
-        }
-    }
-
-    pub(crate) fn read_line(&mut self) -> Option<(String, bool)> {
-        let first = self.read_char()?;
-        let mut line = String::new();
-        let mut character = first;
-        loop {
-            if character == '\n' {
-                return Some((line, false));
-            }
-            line.push(character);
-            match self.read_char() {
-                Some(next) => character = next,
-                None => return Some((line, true)),
-            }
-        }
-    }
-
-    pub(crate) fn remaining_input(&self) -> Option<String> {
-        if self.closed {
-            return None;
-        }
-        match &self.kind {
-            StreamKind::Input {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                let mut source = String::new();
-                if let Some(character) = pushback {
-                    source.push(*character);
-                }
-                source.extend(characters.iter().skip(*position).copied());
-                Some(source)
-            }
-            StreamKind::Io {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                let mut source = String::new();
-                if let Some(character) = pushback {
-                    source.push(*character);
-                }
-                source.extend(characters.iter().skip(*position).copied());
-                Some(source)
-            }
-            StreamKind::Output { .. } => None,
-        }
-    }
-
-    pub(crate) fn consume_input(&mut self, count: usize) -> bool {
-        if self.closed {
-            return false;
-        }
-        match &mut self.kind {
-            StreamKind::Input {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                let available = usize::from(pushback.is_some())
-                    + characters.len().saturating_sub(*position);
-                if count > available {
-                    return false;
-                }
-                if count == 0 {
-                    return true;
-                }
-                let mut remaining = count;
-                if pushback.take().is_some() {
-                    remaining -= 1;
-                }
-                *position += remaining;
-                true
-            }
-            StreamKind::Io {
-                characters,
-                position,
-                pushback,
-                ..
-            } => {
-                let available = usize::from(pushback.is_some())
-                    + characters.len().saturating_sub(*position);
-                if count > available {
-                    return false;
-                }
-                if count == 0 {
-                    return true;
-                }
-                let mut remaining = count;
-                if pushback.take().is_some() {
-                    remaining -= 1;
-                }
-                *position += remaining;
-                true
-            }
-            StreamKind::Output { .. } => false,
-        }
-    }
-
-    pub(crate) fn write(&mut self, text: &str) -> bool {
-        if self.closed {
-            return false;
-        }
-        match &mut self.kind {
-            StreamKind::Output {
-                buffer,
-                at_line_start,
-                ..
-            } => {
-                buffer.push_str(text);
-                if let Some(character) = text.chars().last() {
-                    *at_line_start = character == '\n';
-                }
-                true
-            }
-            StreamKind::Io {
-                characters,
-                position,
-                pushback,
-                at_line_start,
-                ..
-            } => {
-                pushback.take();
-                for character in text.chars() {
-                    if *position < characters.len() {
-                        characters[*position] = character;
-                    } else {
-                        characters.push(character);
-                    }
-                    *position += 1;
-                }
-                if let Some(character) = text.chars().last() {
-                    *at_line_start = character == '\n';
-                }
-                true
-            }
-            StreamKind::Input { .. } => false,
-        }
-    }
-
-    pub(crate) fn fresh_line(&mut self) -> Option<bool> {
-        if self.closed {
-            return None;
-        }
-        let at_line_start = match &self.kind {
-            StreamKind::Output { at_line_start, .. } | StreamKind::Io { at_line_start, .. } => {
-                *at_line_start
-            }
-            StreamKind::Input { .. } => return None,
-        };
-        if at_line_start {
-            return Some(false);
-        }
-        if self.write("\n") {
-            Some(true)
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn take_output(&mut self) -> Option<String> {
-        let StreamKind::Output {
-            buffer,
-            file_path: None,
-            ..
-        } = &mut self.kind
-        else {
-            return None;
-        };
-        Some(std::mem::take(buffer))
-    }
-
-    pub(crate) fn close(&mut self, abort: bool) -> Result<(), std::io::Error> {
-        if self.closed {
-            return Ok(());
-        }
-        if !abort {
-            if let StreamKind::Output {
-                buffer,
-                file_path: Some(path),
-                ..
-            } = &self.kind
-            {
-                std::fs::write(path.as_ref(), buffer.as_bytes())?;
-            }
-            if let StreamKind::Io {
-                characters,
-                file_path,
-                ..
-            } = &self.kind
-            {
-                let source: String = characters.iter().collect();
-                std::fs::write(file_path.as_ref(), source.as_bytes())?;
-            }
-        }
-        self.closed = true;
-        Ok(())
-    }
-}
-
 #[derive(Clone)]
 pub(crate) struct ConditionData {
     actual_type: String,
@@ -729,6 +374,64 @@ pub(crate) struct RestartData {
     name: Rc<str>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArrayElementType {
+    T,
+    Character,
+    Bit,
+}
+
+impl ArrayElementType {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::T => "T",
+            Self::Character => "CHARACTER",
+            Self::Bit => "BIT",
+        }
+    }
+}
+
+pub(crate) struct HashTableIteratorState {
+    entries: Vec<(Value, Value)>,
+    index: usize,
+}
+
+#[derive(Clone)]
+pub(crate) struct RandomState {
+    state: u64,
+}
+
+impl RandomState {
+    const NONZERO_SEED: u64 = 0x9E3779B97F4A7C15;
+
+    pub(crate) fn seeded() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos() as u64);
+        let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+        Self::from_seed(time ^ counter.wrapping_mul(Self::NONZERO_SEED))
+    }
+
+    fn from_seed(seed: u64) -> Self {
+        Self {
+            state: if seed == 0 { Self::NONZERO_SEED } else { seed },
+        }
+    }
+
+    pub(crate) fn next_u64(&mut self) -> u64 {
+        let mut state = self.state;
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        self.state = state;
+        state.wrapping_mul(2_685_829_013_198_858_977)
+    }
+}
+
 #[derive(Clone)]
 pub enum Value {
     Nil,
@@ -737,13 +440,22 @@ pub enum Value {
     Integer(i64),
     Rational(Rational),
     Float(f64),
+    Complex {
+        real: Box<Value>,
+        imaginary: Box<Value>,
+    },
     String(Rc<str>),
     Character(char),
     Stream(Rc<RefCell<Stream>>),
+    RandomState(Rc<RefCell<RandomState>>),
     Package(Rc<str>),
     Environment(Environment),
     Symbol(Rc<str>),
     SymbolExact(Rc<str>),
+    QualifiedSymbolExact {
+        reference: Rc<str>,
+        package_len: usize,
+    },
     UninternedSymbol(Rc<str>),
     Keyword(Rc<str>),
     KeywordExact(Rc<str>),
@@ -752,15 +464,23 @@ pub enum Value {
         items: Rc<Vec<Value>>,
         tail: Rc<Value>,
     },
-    Vector(Rc<Vec<Value>>),
+    Vector(Rc<RefCell<Vec<Value>>>),
     Array {
         dimensions: Rc<Vec<usize>>,
-        elements: Rc<Vec<Value>>,
+        elements: Rc<RefCell<Vec<Value>>>,
+        element_type: ArrayElementType,
+        fill_pointer: Option<Rc<RefCell<usize>>>,
+        adjustable: bool,
     },
     HashTable {
         test: Rc<str>,
         entries: Rc<RefCell<Vec<(Value, Value)>>>,
+        size: usize,
+        rehash_size: f64,
+        rehash_threshold: f64,
+        synchronized: bool,
     },
+    HashTableIterator(Rc<RefCell<HashTableIteratorState>>),
     Values(Rc<Vec<Value>>),
     Condition(Rc<ConditionData>),
     Restart(Rc<RestartData>),
@@ -768,6 +488,9 @@ pub enum Value {
         name: Rc<str>,
         types: Rc<Vec<Rc<str>>>,
         slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
+        representation: StructureRepresentation,
+        named: bool,
+        marker: Option<Rc<RefCell<Value>>>,
     },
     Class(Rc<ClassDefinition>),
     Instance(Instance),
@@ -796,8 +519,53 @@ impl Value {
         }
     }
 
+    pub(crate) fn complex(real: Value, imaginary: Value) -> Result<Self, RuntimeError> {
+        if !real.is_real_number() || !imaginary.is_real_number() {
+            return Err(RuntimeError::Type {
+                expected: "REAL".to_string(),
+                actual: format!("{} and {}", real.type_name(), imaginary.type_name()),
+                span: None,
+            });
+        }
+        if imaginary.is_numeric_zero() {
+            return Ok(real);
+        }
+        Ok(Self::Complex {
+            real: Box::new(real),
+            imaginary: Box::new(imaginary),
+        })
+    }
+
+    pub(crate) fn is_real_number(&self) -> bool {
+        matches!(self, Self::Integer(_) | Self::Rational(_) | Self::Float(_))
+    }
+
+    pub(crate) fn is_numeric_zero(&self) -> bool {
+        match self {
+            Self::Integer(value) => *value == 0,
+            Self::Rational(value) => value.numerator() == 0,
+            Self::Float(value) => *value == 0.0,
+            _ => false,
+        }
+    }
+
     pub(crate) fn string_input_stream(source: &str, start: usize, end: usize) -> Self {
         Self::Stream(Rc::new(RefCell::new(Stream::input(source, start, end))))
+    }
+
+    pub(crate) fn random_state(state: RandomState) -> Self {
+        Self::RandomState(Rc::new(RefCell::new(state)))
+    }
+
+    pub(crate) fn random_state_value(state: Rc<RefCell<RandomState>>) -> Self {
+        Self::RandomState(state)
+    }
+
+    pub(crate) fn random_state_reference(&self) -> Option<Rc<RefCell<RandomState>>> {
+        match self {
+            Self::RandomState(state) => Some(Rc::clone(state)),
+            _ => None,
+        }
     }
 
     pub(crate) fn string_output_stream() -> Self {
@@ -808,12 +576,34 @@ impl Value {
         Self::Stream(Rc::new(RefCell::new(Stream::file_input(source))))
     }
 
-    pub(crate) fn file_output_stream(path: PathBuf, initial: String) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::file_output(path, initial))))
+    pub(crate) fn file_probe_stream() -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::file_probe())))
+    }
+
+    pub(crate) fn file_output_stream(path: PathBuf, initial: String, append: bool) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::file_output(
+            path, initial, append,
+        ))))
     }
 
     pub(crate) fn file_io_stream(path: PathBuf, source: String, append: bool) -> Self {
         Self::Stream(Rc::new(RefCell::new(Stream::file_io(path, source, append))))
+    }
+
+    pub(crate) fn two_way_stream(input: Rc<RefCell<Stream>>, output: Rc<RefCell<Stream>>) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::two_way(input, output))))
+    }
+
+    pub(crate) fn broadcast_stream(streams: Vec<Rc<RefCell<Stream>>>) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::broadcast(streams))))
+    }
+
+    pub(crate) fn concatenated_stream(streams: Vec<Rc<RefCell<Stream>>>) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::concatenated(streams))))
+    }
+
+    pub(crate) fn echo_stream(input: Rc<RefCell<Stream>>, output: Rc<RefCell<Stream>>) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::echo(input, output))))
     }
 
     pub fn package(value: impl AsRef<str>) -> Self {
@@ -830,6 +620,15 @@ impl Value {
 
     pub fn symbol_exact(value: impl AsRef<str>) -> Self {
         Self::SymbolExact(Rc::from(value.as_ref()))
+    }
+
+    pub fn qualified_symbol_exact(package: impl AsRef<str>, name: impl AsRef<str>) -> Self {
+        let package = package.as_ref();
+        let name = name.as_ref();
+        Self::QualifiedSymbolExact {
+            reference: Rc::from(format!("{package}::{name}")),
+            package_len: package.len(),
+        }
     }
 
     pub fn uninterned_symbol(value: impl AsRef<str>) -> Self {
@@ -861,21 +660,76 @@ impl Value {
     }
 
     pub fn vector(values: Vec<Self>) -> Self {
-        Self::Vector(Rc::new(values))
+        Self::Vector(Rc::new(RefCell::new(values)))
     }
 
     pub fn array(dimensions: Vec<usize>, elements: Vec<Self>) -> Self {
+        Self::array_with_element_type(dimensions, elements, ArrayElementType::T)
+    }
+
+    pub(crate) fn array_with_element_type(
+        dimensions: Vec<usize>,
+        elements: Vec<Self>,
+        element_type: ArrayElementType,
+    ) -> Self {
+        Self::array_with_options(dimensions, elements, element_type, None, false)
+    }
+
+    pub(crate) fn array_with_options(
+        dimensions: Vec<usize>,
+        elements: Vec<Self>,
+        element_type: ArrayElementType,
+        fill_pointer: Option<usize>,
+        adjustable: bool,
+    ) -> Self {
         Self::Array {
             dimensions: Rc::new(dimensions),
-            elements: Rc::new(elements),
+            elements: Rc::new(RefCell::new(elements)),
+            element_type,
+            fill_pointer: fill_pointer.map(|value| Rc::new(RefCell::new(value))),
+            adjustable,
         }
     }
 
     pub(crate) fn hash_table(test: impl AsRef<str>) -> Self {
+        Self::hash_table_with_options(test, 16, 1.5, 0.75, false)
+    }
+
+    pub(crate) fn hash_table_with_options(
+        test: impl AsRef<str>,
+        size: usize,
+        rehash_size: f64,
+        rehash_threshold: f64,
+        synchronized: bool,
+    ) -> Self {
         Self::HashTable {
             test: Rc::from(test.as_ref()),
             entries: Rc::new(RefCell::new(Vec::new())),
+            size,
+            rehash_size,
+            rehash_threshold,
+            synchronized,
         }
+    }
+
+    pub(crate) fn hash_table_iterator(table: &Self) -> Option<Self> {
+        let entries = table.hash_table_entries()?.borrow().clone();
+        Some(Self::HashTableIterator(Rc::new(RefCell::new(
+            HashTableIteratorState { entries, index: 0 },
+        ))))
+    }
+
+    pub(crate) fn hash_table_iterator_next(&self) -> Option<Self> {
+        let Self::HashTableIterator(state) = self else {
+            return None;
+        };
+        let mut state = state.borrow_mut();
+        let index = state.index;
+        let Some((key, value)) = state.entries.get(index).cloned() else {
+            return Some(Self::Nil);
+        };
+        state.index += 1;
+        Some(Self::values(vec![Self::boolean(true), key, value]))
     }
 
     pub(crate) fn values(values: Vec<Self>) -> Self {
@@ -904,7 +758,7 @@ impl Value {
                     .iter()
                     .cloned()
                     .map(ReturnValue::into_value)
-                .collect(),
+                    .collect(),
             ),
             _ => (
                 error.condition_type_name(),
@@ -934,6 +788,23 @@ impl Value {
             actual_type.clone(),
             vec![actual_type],
             Vec::new(),
+            message,
+            format_control,
+            format_arguments,
+        )
+    }
+
+    pub(crate) fn condition_from_parts_with_slots(
+        actual_type: String,
+        slots: Vec<(String, Value)>,
+        message: String,
+        format_control: Option<String>,
+        format_arguments: Vec<Value>,
+    ) -> Self {
+        Self::condition_from_parts_with_types(
+            actual_type.clone(),
+            vec![actual_type],
+            slots,
             message,
             format_control,
             format_arguments,
@@ -1096,6 +967,36 @@ impl Value {
         body: Vec<Form>,
         environment: Environment,
     ) -> Self {
+        Self::closure_with_keywords_and_documentation(
+            parameters,
+            required_escaped,
+            optional,
+            rest,
+            rest_escaped,
+            keywords,
+            has_keyword_section,
+            allow_other_keys,
+            auxiliary,
+            body,
+            environment,
+            None,
+        )
+    }
+
+    pub(crate) fn closure_with_keywords_and_documentation(
+        parameters: Vec<String>,
+        required_escaped: Vec<bool>,
+        optional: Vec<LambdaListOptionalParameter>,
+        rest: Option<String>,
+        rest_escaped: bool,
+        keywords: Vec<LambdaListKeywordParameter>,
+        has_keyword_section: bool,
+        allow_other_keys: bool,
+        auxiliary: Vec<LambdaListAuxiliaryParameter>,
+        body: Vec<Form>,
+        environment: Environment,
+        documentation: Option<String>,
+    ) -> Self {
         Self::Function(Rc::new(Function::Closure {
             parameters,
             required_escaped,
@@ -1108,6 +1009,7 @@ impl Value {
             auxiliary,
             body,
             environment,
+            documentation,
         }))
     }
 
@@ -1119,7 +1021,7 @@ impl Value {
         Self::Function(Rc::new(Function::Macro {
             lambda_list,
             body,
-                environment,
+            environment,
         }))
     }
 
@@ -1140,10 +1042,15 @@ impl Value {
         function: FunctionId,
         environment: Environment,
     ) -> Self {
+        let documentation = program
+            .functions
+            .get(function)
+            .and_then(|function| function.documentation.clone());
         Self::Function(Rc::new(Function::Compiled {
             program,
             function,
             environment,
+            documentation,
         }))
     }
 
@@ -1155,7 +1062,23 @@ impl Value {
     pub(crate) fn structure_with_types(
         name: impl AsRef<str>,
         slots: Vec<(String, Value)>,
+        type_names: Vec<String>,
+    ) -> Self {
+        Self::structure_with_representation(
+            name,
+            slots,
+            type_names,
+            StructureRepresentation::Structure,
+            false,
+        )
+    }
+
+    pub(crate) fn structure_with_representation(
+        name: impl AsRef<str>,
+        slots: Vec<(String, Value)>,
         mut type_names: Vec<String>,
+        representation: StructureRepresentation,
+        named: bool,
     ) -> Self {
         let name = name.as_ref().to_string();
         if !type_names
@@ -1164,6 +1087,8 @@ impl Value {
         {
             type_names.insert(0, name.clone());
         }
+        let marker = (named && representation != StructureRepresentation::Structure)
+            .then(|| Rc::new(RefCell::new(Self::symbol(&name))));
         Self::Structure {
             name: Rc::from(name),
             types: Rc::new(type_names.into_iter().map(Rc::<str>::from).collect()),
@@ -1173,6 +1098,9 @@ impl Value {
                     .map(|(slot_name, value)| (Rc::from(slot_name), value))
                     .collect(),
             )),
+            representation,
+            named,
+            marker,
         }
     }
 
@@ -1180,10 +1108,7 @@ impl Value {
         Self::Class(definition)
     }
 
-    pub(crate) fn instance(
-        definition: Rc<ClassDefinition>,
-        slots: Vec<(String, Value)>,
-    ) -> Self {
+    pub(crate) fn instance(definition: Rc<ClassDefinition>, slots: Vec<(String, Value)>) -> Self {
         Self::Instance(Instance {
             class: definition,
             slots: Rc::new(RefCell::new(
@@ -1299,6 +1224,35 @@ impl Value {
         }
     }
 
+    pub(crate) fn type_of_name(&self) -> &str {
+        match self {
+            Self::Structure {
+                name,
+                representation: StructureRepresentation::Structure,
+                ..
+            } => name,
+            Self::Structure {
+                representation: StructureRepresentation::List,
+                named: true,
+                ..
+            } => "CONS",
+            Self::Structure {
+                representation: StructureRepresentation::List,
+                ..
+            } => "LIST",
+            Self::Structure {
+                representation: StructureRepresentation::Vector,
+                named: true,
+                ..
+            } => "SIMPLE-VECTOR",
+            Self::Structure {
+                representation: StructureRepresentation::Vector,
+                ..
+            } => "VECTOR",
+            _ => self.type_name(),
+        }
+    }
+
     pub(crate) fn structure_is_type(&self, expected: &str) -> bool {
         match self {
             Self::Structure { types, .. } => types
@@ -1306,6 +1260,27 @@ impl Value {
                 .any(|type_name| type_name.eq_ignore_ascii_case(expected)),
             _ => false,
         }
+    }
+
+    pub(crate) fn structure_typep_is_type(&self, expected: &str) -> bool {
+        self.structure_is_type(expected) && self.structure_discriminator_matches()
+    }
+
+    fn structure_discriminator_matches(&self) -> bool {
+        let Self::Structure {
+            name,
+            representation: StructureRepresentation::List | StructureRepresentation::Vector,
+            named: true,
+            marker: Some(marker),
+            ..
+        } = self
+        else {
+            return true;
+        };
+        let marker = marker.borrow();
+        marker
+            .symbol_name()
+            .is_some_and(|marker_name| marker_name.eq_ignore_ascii_case(name))
     }
 
     pub(crate) fn structure_slot(&self, index: usize) -> Option<Value> {
@@ -1338,13 +1313,26 @@ impl Value {
     }
 
     pub(crate) fn copy_structure(&self) -> Option<Self> {
-        let Self::Structure { name, types, slots } = self else {
+        let Self::Structure {
+            name,
+            types,
+            slots,
+            representation,
+            named,
+            marker,
+        } = self
+        else {
             return None;
         };
         Some(Self::Structure {
             name: name.clone(),
             types: types.clone(),
             slots: Rc::new(RefCell::new(slots.borrow().clone())),
+            representation: *representation,
+            named: *named,
+            marker: marker
+                .as_ref()
+                .map(|marker| Rc::new(RefCell::new(marker.borrow().clone()))),
         })
     }
 
@@ -1374,23 +1362,31 @@ impl Value {
             Self::Integer(_) => "INTEGER",
             Self::Rational(_) => "RATIO",
             Self::Float(_) => "FLOAT",
+            Self::Complex { .. } => "COMPLEX",
             Self::String(_) => "STRING",
             Self::Character(_) => "CHARACTER",
             Self::Stream(_) => "STREAM",
+            Self::RandomState(_) => "RANDOM-STATE",
             Self::Package(_) => "PACKAGE",
             Self::Environment(_) => "ENVIRONMENT",
             Self::Symbol(_)
             | Self::SymbolExact(_)
+            | Self::QualifiedSymbolExact { .. }
             | Self::UninternedSymbol(_) => "SYMBOL",
             Self::Keyword(_) | Self::KeywordExact(_) => "KEYWORD",
             Self::List(_) | Self::DottedList { .. } => "LIST",
             Self::Vector(_) => "VECTOR",
             Self::Array { .. } => "ARRAY",
             Self::HashTable { .. } => "HASH-TABLE",
+            Self::HashTableIterator(_) => "HASH-TABLE-ITERATOR",
             Self::Values(_) => "VALUES",
             Self::Condition(_) => "CONDITION",
             Self::Restart(_) => "RESTART",
-            Self::Structure { .. } => "STRUCTURE",
+            Self::Structure { representation, .. } => match representation {
+                StructureRepresentation::Structure => "STRUCTURE",
+                StructureRepresentation::List => "LIST",
+                StructureRepresentation::Vector => "VECTOR",
+            },
             Self::Class(_) => "CLASS",
             Self::Instance(_) => "STANDARD-OBJECT",
             Self::Function(_) => "FUNCTION",
@@ -1401,9 +1397,7 @@ impl Value {
         let Self::Condition(condition) = self else {
             return false;
         };
-        let expected = expected
-            .trim_start_matches(':')
-            .to_ascii_uppercase();
+        let expected = expected.trim_start_matches(':').to_ascii_uppercase();
         if condition.actual_type.eq_ignore_ascii_case(&expected) {
             return true;
         }
@@ -1418,6 +1412,10 @@ impl Value {
             return true;
         }
         match condition.actual_type.as_str() {
+            "SIMPLE-TYPE-ERROR" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "SIMPLE-CONDITION" | "TYPE-ERROR"
+            ),
             "SIMPLE-ERROR" => matches!(
                 expected.as_str(),
                 "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "SIMPLE-CONDITION"
@@ -1432,18 +1430,22 @@ impl Value {
                 "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "ARITHMETIC-ERROR"
             ),
             "ARITHMETIC-ERROR" => {
-                matches!(expected.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION")
+                matches!(
+                    expected.as_str(),
+                    "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+                )
             }
-            "TYPE-ERROR"
-            | "PROGRAM-ERROR"
-            | "PACKAGE-ERROR"
-            | "READER-ERROR"
-            | "COMPILER-ERROR"
-            | "FILE-ERROR"
-            | "UNBOUND-VARIABLE" => {
-                matches!(expected.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION")
+            "TYPE-ERROR" | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR"
+            | "COMPILER-ERROR" | "FILE-ERROR" | "UNBOUND-VARIABLE" => {
+                matches!(
+                    expected.as_str(),
+                    "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+                )
             }
-            "CONTROL-ERROR" => matches!(expected.as_str(), "CONDITION"),
+            "CONTROL-ERROR" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+            ),
             _ => false,
         }
     }
@@ -1455,11 +1457,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn condition_slot(
-        &self,
-        condition_name: &str,
-        slot_name: &str,
-    ) -> Option<Value> {
+    pub(crate) fn condition_slot(&self, condition_name: &str, slot_name: &str) -> Option<Value> {
         let Self::Condition(condition) = self else {
             return None;
         };
@@ -1539,28 +1537,297 @@ impl Value {
         match self {
             Self::Nil => Some(Vec::new()),
             Self::List(items) => Some(items.as_ref().clone()),
+            Self::Structure {
+                name,
+                slots,
+                representation: StructureRepresentation::List,
+                named,
+                marker,
+                ..
+            } => {
+                let mut values = Vec::with_capacity(slots.borrow().len() + usize::from(*named));
+                if *named {
+                    values.push(
+                        marker
+                            .as_ref()
+                            .map(|marker| marker.borrow().clone())
+                            .unwrap_or_else(|| Self::symbol(name.as_ref())),
+                    );
+                }
+                values.extend(slots.borrow().iter().map(|(_, value)| value.clone()));
+                Some(values)
+            }
             _ => None,
         }
     }
 
     pub fn vector_items(&self) -> Option<Vec<Value>> {
         match self {
-            Self::Vector(items) => Some(items.as_ref().clone()),
+            Self::Vector(items) => Some(items.borrow().clone()),
+            Self::Structure {
+                name,
+                slots,
+                representation: StructureRepresentation::Vector,
+                named,
+                marker,
+                ..
+            } => {
+                let mut values = Vec::with_capacity(slots.borrow().len() + usize::from(*named));
+                if *named {
+                    values.push(
+                        marker
+                            .as_ref()
+                            .map(|marker| marker.borrow().clone())
+                            .unwrap_or_else(|| Self::symbol(name.as_ref())),
+                    );
+                }
+                values.extend(slots.borrow().iter().map(|(_, value)| value.clone()));
+                Some(values)
+            }
+            Self::Array {
+                dimensions,
+                elements,
+                fill_pointer,
+                ..
+            } if dimensions.len() == 1 => {
+                let elements = elements.borrow();
+                let end = fill_pointer
+                    .as_ref()
+                    .map(|pointer| *pointer.borrow())
+                    .unwrap_or(elements.len())
+                    .min(elements.len());
+                Some(elements[..end].to_vec())
+            }
             _ => None,
         }
+    }
+
+    pub(crate) fn is_typed_list(&self) -> bool {
+        matches!(
+            self,
+            Self::Structure {
+                representation: StructureRepresentation::List,
+                ..
+            }
+        )
+    }
+
+    pub(crate) fn is_typed_vector(&self) -> bool {
+        matches!(
+            self,
+            Self::Structure {
+                representation: StructureRepresentation::Vector,
+                ..
+            }
+        )
+    }
+
+    pub(crate) fn is_simple_vector(&self) -> bool {
+        match self {
+            Self::Vector(_) => true,
+            Self::Structure {
+                representation: StructureRepresentation::Vector,
+                ..
+            } => true,
+            Self::Array {
+                dimensions,
+                element_type,
+                fill_pointer,
+                adjustable,
+                ..
+            } => {
+                dimensions.len() == 1
+                    && *element_type == ArrayElementType::T
+                    && fill_pointer.is_none()
+                    && !adjustable
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn set_sequence_item(&self, index: usize, value: Value) -> bool {
+        match self {
+            Self::Vector(items) => {
+                let mut items = items.borrow_mut();
+                let Some(item) = items.get_mut(index) else {
+                    return false;
+                };
+                *item = value;
+                true
+            }
+            Self::Structure {
+                slots,
+                representation:
+                    StructureRepresentation::List | StructureRepresentation::Vector,
+                named,
+                marker,
+                ..
+            } => {
+                if *named && index == 0 {
+                    let Some(marker) = marker.as_ref() else {
+                        return false;
+                    };
+                    *marker.borrow_mut() = value;
+                    return true;
+                }
+                let Some(slot_index) = index.checked_sub(usize::from(*named)) else {
+                    return false;
+                };
+                let mut slots = slots.borrow_mut();
+                let Some((_, slot_value)) = slots.get_mut(slot_index) else {
+                    return false;
+                };
+                *slot_value = value;
+                true
+            }
+            Self::Array {
+                dimensions,
+                elements,
+                fill_pointer,
+                element_type: ArrayElementType::T,
+                ..
+            } if dimensions.len() == 1 => {
+                let limit = fill_pointer
+                    .as_ref()
+                    .map(|pointer| *pointer.borrow())
+                    .unwrap_or_else(|| elements.borrow().len());
+                if index >= limit {
+                    return false;
+                }
+                let mut elements = elements.borrow_mut();
+                let Some(item) = elements.get_mut(index) else {
+                    return false;
+                };
+                *item = value;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn set_typed_list_cdr(&self, replacement: &[Value]) -> bool {
+        let Self::Structure {
+            slots,
+            representation: StructureRepresentation::List,
+            named,
+            ..
+        } = self
+        else {
+            return false;
+        };
+
+        let mut slots = slots.borrow_mut();
+        if *named {
+            let old_len = slots.len();
+            slots.truncate(replacement.len());
+            for (index, value) in replacement.iter().enumerate().take(old_len) {
+                let Some((_, slot_value)) = slots.get_mut(index) else {
+                    break;
+                };
+                *slot_value = value.clone();
+            }
+            for value in replacement.iter().skip(old_len) {
+                slots.push((Rc::<str>::from(""), value.clone()));
+            }
+        } else {
+            let Some((first_name, first_value)) = slots.first().cloned() else {
+                return false;
+            };
+            let mut updated = Vec::with_capacity(replacement.len() + 1);
+            updated.push((first_name, first_value));
+            for (index, value) in replacement.iter().enumerate() {
+                let slot_name = slots
+                    .get(index + 1)
+                    .map(|(name, _)| name.clone())
+                    .unwrap_or_else(|| Rc::<str>::from(""));
+                updated.push((slot_name, value.clone()));
+            }
+            *slots = updated;
+        }
+        true
     }
 
     pub fn array_dimensions(&self) -> Option<Vec<usize>> {
         match self {
-            Self::Array { dimensions, .. } => Some(dimensions.as_ref().clone()),
+            Self::Array {
+                dimensions,
+                elements,
+                fill_pointer,
+                ..
+            } => {
+                if dimensions.len() == 1 && fill_pointer.is_some() {
+                    Some(vec![elements.borrow().len()])
+                } else {
+                    Some(dimensions.as_ref().clone())
+                }
+            }
             _ => None,
         }
     }
 
+    pub(crate) fn array_fill_pointer(&self) -> Option<usize> {
+        match self {
+            Self::Array {
+                fill_pointer: Some(pointer),
+                ..
+            } => Some(*pointer.borrow()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn has_fill_pointer(&self) -> bool {
+        self.array_fill_pointer().is_some()
+    }
+
+    pub(crate) fn is_adjustable_array(&self) -> bool {
+        matches!(self, Self::Array { adjustable: true, .. })
+    }
+
+    pub(crate) fn set_array_fill_pointer(&self, value: usize) -> bool {
+        let Self::Array {
+            dimensions,
+            elements,
+            fill_pointer: Some(pointer),
+            ..
+        } = self
+        else {
+            return false;
+        };
+        if dimensions.len() != 1 || value > elements.borrow().len() {
+            return false;
+        }
+        *pointer.borrow_mut() = value;
+        true
+    }
+
     pub fn array_items(&self) -> Option<Vec<Value>> {
         match self {
-            Self::Array { elements, .. } => Some(elements.as_ref().clone()),
+            Self::Array { elements, .. } => Some(elements.borrow().clone()),
             _ => None,
+        }
+    }
+
+    pub(crate) fn array_element_type(&self) -> Option<ArrayElementType> {
+        match self {
+            Self::String(_) => Some(ArrayElementType::Character),
+            Self::Vector(_) => Some(ArrayElementType::T),
+            Self::Structure {
+                representation: StructureRepresentation::Vector,
+                ..
+            } => Some(ArrayElementType::T),
+            Self::Array { element_type, .. } => Some(*element_type),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn accepts_array_element(&self, value: &Self) -> bool {
+        match self.array_element_type() {
+            Some(ArrayElementType::T) => true,
+            Some(ArrayElementType::Character) => matches!(value, Self::Character(_)),
+            Some(ArrayElementType::Bit) => {
+                matches!(value, Self::Integer(bit) if *bit == 0 || *bit == 1)
+            }
+            None => false,
         }
     }
 
@@ -1578,6 +1845,37 @@ impl Value {
         }
     }
 
+    pub(crate) fn hash_table_size(&self) -> Option<usize> {
+        match self {
+            Self::HashTable { size, .. } => Some(*size),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn hash_table_rehash_size(&self) -> Option<f64> {
+        match self {
+            Self::HashTable { rehash_size, .. } => Some(*rehash_size),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn hash_table_rehash_threshold(&self) -> Option<f64> {
+        match self {
+            Self::HashTable {
+                rehash_threshold,
+                ..
+            } => Some(*rehash_threshold),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn hash_table_synchronized(&self) -> Option<bool> {
+        match self {
+            Self::HashTable { synchronized, .. } => Some(*synchronized),
+            _ => None,
+        }
+    }
+
     pub fn symbol_name(&self) -> Option<&str> {
         match self {
             Self::Symbol(name)
@@ -1585,6 +1883,10 @@ impl Value {
             | Self::UninternedSymbol(name)
             | Self::Keyword(name)
             | Self::KeywordExact(name) => Some(name),
+            Self::QualifiedSymbolExact {
+                reference,
+                package_len,
+            } => Some(&reference[*package_len + 2..]),
             Self::Nil | Self::Boolean(false) => Some("NIL"),
             Self::Boolean(true) => Some("T"),
             _ => None,
@@ -1597,6 +1899,7 @@ impl Value {
                 Some((name, false))
             }
             Self::SymbolExact(name) | Self::KeywordExact(name) => Some((name, true)),
+            Self::QualifiedSymbolExact { reference, .. } => Some((reference, true)),
             Self::Nil | Self::Boolean(false) => Some(("NIL", false)),
             Self::Boolean(true) => Some(("T", false)),
             _ => None,
@@ -1612,28 +1915,62 @@ impl Value {
             (Self::Integer(left), Self::Integer(right)) => left == right,
             (Self::Rational(left), Self::Rational(right)) => left == right,
             (Self::Float(left), Self::Float(right)) => left == right,
+            (
+                Self::Complex {
+                    real: left_real,
+                    imaginary: left_imaginary,
+                },
+                Self::Complex {
+                    real: right_real,
+                    imaginary: right_imaginary,
+                },
+            ) => left_real.eq_value(right_real) && left_imaginary.eq_value(right_imaginary),
             (Self::Character(left), Self::Character(right)) => left == right,
             (Self::Stream(left), Self::Stream(right)) => Rc::ptr_eq(left, right),
+            (Self::RandomState(left), Self::RandomState(right)) => Rc::ptr_eq(left, right),
             (Self::Package(left), Self::Package(right)) => left == right,
             (Self::String(left), Self::String(right)) => Rc::ptr_eq(left, right),
             (Self::Symbol(left), Self::Symbol(right))
             | (Self::Keyword(left), Self::Keyword(right)) => left == right,
             (Self::SymbolExact(left), Self::SymbolExact(right))
             | (Self::KeywordExact(left), Self::KeywordExact(right)) => left == right,
+            (
+                Self::Symbol(left),
+                Self::QualifiedSymbolExact {
+                    reference: right, ..
+                },
+            )
+            | (
+                Self::QualifiedSymbolExact {
+                    reference: right, ..
+                },
+                Self::Symbol(left),
+            ) => left == right,
+            (
+                Self::QualifiedSymbolExact {
+                    reference: left_reference,
+                    package_len: left_package_len,
+                },
+                Self::QualifiedSymbolExact {
+                    reference: right_reference,
+                    package_len: right_package_len,
+                },
+            ) => left_package_len == right_package_len && left_reference == right_reference,
             (Self::UninternedSymbol(left), Self::UninternedSymbol(right)) => {
                 Rc::ptr_eq(left, right)
             }
-            (Self::List(left), Self::List(right)) | (Self::Vector(left), Self::Vector(right)) => {
-                Rc::ptr_eq(left, right)
-            }
+            (Self::List(left), Self::List(right)) => Rc::ptr_eq(left, right),
+            (Self::Vector(left), Self::Vector(right)) => Rc::ptr_eq(left, right),
             (
                 Self::Array {
                     dimensions: left_dimensions,
                     elements: left_elements,
+                    ..
                 },
                 Self::Array {
                     dimensions: right_dimensions,
                     elements: right_elements,
+                    ..
                 },
             ) => {
                 Rc::ptr_eq(left_dimensions, right_dimensions)
@@ -1649,6 +1986,7 @@ impl Value {
                     ..
                 },
             ) => Rc::ptr_eq(left_entries, right_entries),
+            (Self::HashTableIterator(left), Self::HashTableIterator(right)) => Rc::ptr_eq(left, right),
             (Self::Values(left), Self::Values(right)) => Rc::ptr_eq(left, right),
             (Self::Condition(left), Self::Condition(right)) => Rc::ptr_eq(left, right),
             (Self::Restart(left), Self::Restart(right)) => Rc::ptr_eq(left, right),
@@ -1687,7 +2025,16 @@ impl Value {
     pub fn equal_value(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::String(left), Self::String(right)) => left == right,
-            (Self::List(left), Self::List(right)) | (Self::Vector(left), Self::Vector(right)) => {
+            (Self::List(left), Self::List(right)) => {
+                left.len() == right.len()
+                    && left
+                        .iter()
+                        .zip(right.iter())
+                        .all(|(left, right)| left.equal_value(right))
+            }
+            (Self::Vector(left), Self::Vector(right)) => {
+                let left = left.borrow();
+                let right = right.borrow();
                 left.len() == right.len()
                     && left
                         .iter()
@@ -1695,20 +2042,33 @@ impl Value {
                         .all(|(left, right)| left.equal_value(right))
             }
             (
+                Self::Complex {
+                    real: left_real,
+                    imaginary: left_imaginary,
+                },
+                Self::Complex {
+                    real: right_real,
+                    imaginary: right_imaginary,
+                },
+            ) => left_real.equal_value(right_real) && left_imaginary.equal_value(right_imaginary),
+            (
                 Self::Array {
                     dimensions: left_dimensions,
                     elements: left_elements,
+                    ..
                 },
                 Self::Array {
                     dimensions: right_dimensions,
                     elements: right_elements,
+                    ..
                 },
             ) => {
                 left_dimensions == right_dimensions
-                    && left_elements.len() == right_elements.len()
+                    && left_elements.borrow().len() == right_elements.borrow().len()
                     && left_elements
+                        .borrow()
                         .iter()
-                        .zip(right_elements.iter())
+                        .zip(right_elements.borrow().iter())
                         .all(|(left, right)| left.equal_value(right))
             }
             (Self::Values(left), Self::Values(right)) => {
@@ -1744,9 +2104,7 @@ impl Value {
                         },
                     )
             }
-            (Self::Class(left), Self::Class(right)) => {
-                left.name.eq_ignore_ascii_case(&right.name)
-            }
+            (Self::Class(left), Self::Class(right)) => left.name.eq_ignore_ascii_case(&right.name),
             (Self::Instance(left), Self::Instance(right)) => {
                 if !left.class.name.eq_ignore_ascii_case(&right.class.name) {
                     return false;
@@ -1779,128 +2137,6 @@ impl Value {
                     && left_tail.equal_value(right_tail)
             }
             _ => self.eq_value(other),
-        }
-    }
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Nil => formatter.write_str("NIL"),
-            Self::Unbound => formatter.write_str("#<UNBOUND>"),
-            Self::Boolean(true) => formatter.write_str("T"),
-            Self::Boolean(false) => formatter.write_str("NIL"),
-            Self::Integer(value) => value.fmt(formatter),
-            Self::Rational(value) => write!(formatter, "{}/{}", value.numerator, value.denominator),
-            Self::Float(value) => {
-                if value.fract() == 0.0 {
-                    write!(formatter, "{value:.1}")
-                } else {
-                    value.fmt(formatter)
-                }
-            }
-            Self::String(value) => write!(formatter, "{value:?}"),
-            Self::Character(value) => match value {
-                ' ' => formatter.write_str("#\\SPACE"),
-                '\n' => formatter.write_str("#\\NEWLINE"),
-                '\t' => formatter.write_str("#\\TAB"),
-                '\r' => formatter.write_str("#\\RETURN"),
-                value => write!(formatter, "#\\{value}"),
-            },
-            Self::Stream(stream) => write!(formatter, "#<{}>", stream.borrow().kind_name()),
-            Self::Package(value) => write!(formatter, "#<PACKAGE \"{value}\">"),
-            Self::Environment(_) => formatter.write_str("#<ENVIRONMENT>"),
-            Self::Symbol(value) => formatter.write_str(value),
-            Self::SymbolExact(value) => write_escaped_symbol(formatter, value),
-            Self::UninternedSymbol(value) => write!(formatter, "#:{value}"),
-            Self::Keyword(value) => write!(formatter, ":{value}"),
-            Self::KeywordExact(value) => {
-                formatter.write_char(':')?;
-                write_escaped_symbol(formatter, value)
-            }
-            Self::List(values) => {
-                formatter.write_str("(")?;
-                write_sequence(formatter, values)?;
-                formatter.write_str(")")
-            }
-            Self::DottedList { items, tail } => {
-                formatter.write_str("(")?;
-                write_sequence(formatter, items)?;
-                if !items.is_empty() {
-                    formatter.write_str(" ")?;
-                }
-                write!(formatter, ". {tail})")
-            }
-            Self::Vector(values) => {
-                formatter.write_str("#(")?;
-                write_sequence(formatter, values)?;
-                formatter.write_str(")")
-            }
-            Self::Array { dimensions, .. } => write!(formatter, "#<ARRAY {dimensions:?}>"),
-            Self::HashTable { test, .. } => write!(formatter, "#<HASH-TABLE {test}>"),
-            Self::Values(values) => {
-                formatter.write_str("#<VALUES")?;
-                if !values.is_empty() {
-                    formatter.write_str(" ")?;
-                    write_sequence(formatter, values)?;
-                }
-                formatter.write_str(">")
-            }
-            Self::Condition(condition) => write!(formatter, "#<CONDITION {}>", condition.message),
-            Self::Restart(restart) => write!(formatter, "#<RESTART {}>", restart.name),
-            Self::Structure { name, slots, .. } => {
-                write!(formatter, "#S({name}")?;
-                for (slot_name, value) in slots.borrow().iter() {
-                    write!(formatter, " :{slot_name} {value}")?;
-                }
-                formatter.write_char(')')
-            }
-            Self::Class(definition) => write!(formatter, "#<CLASS {}>", definition.name),
-            Self::Instance(instance) => write!(formatter, "#<{} INSTANCE>", instance.class.name),
-            Self::Function(function) => match function.as_ref() {
-                Function::Builtin { name, .. } => write!(formatter, "#<BUILTIN {name}>"),
-                Function::Primitive { name } => write!(formatter, "#<PRIMITIVE {name}>"),
-                Function::StructureConstructor { name, .. } => {
-                    write!(formatter, "#<STRUCTURE-CONSTRUCTOR {name}>")
-                }
-                Function::StructurePredicate { name } => {
-                    write!(formatter, "#<STRUCTURE-PREDICATE {name}>")
-                }
-                Function::StructureAccessor {
-                    structure_name,
-                    slot_name,
-                    ..
-                } => write!(
-                    formatter,
-                    "#<STRUCTURE-ACCESSOR {structure_name}-{slot_name}>"
-                ),
-                Function::StructureCopier { name } => {
-                    write!(formatter, "#<STRUCTURE-COPIER {name}>")
-                }
-                Function::Generic { name, .. } => write!(formatter, "#<GENERIC-FUNCTION {name}>"),
-                Function::SlotReader {
-                    class_name,
-                    slot_name,
-                } => write!(formatter, "#<SLOT-READER {class_name}-{slot_name}>"),
-                Function::SlotWriter {
-                    class_name,
-                    slot_name,
-                } => write!(formatter, "#<SLOT-WRITER {class_name}-{slot_name}>"),
-                Function::ConditionReader {
-                    condition_name,
-                    slot_name,
-                } => write!(formatter, "#<CONDITION-READER {condition_name}-{slot_name}>"),
-                Function::ConditionWriter {
-                    condition_name,
-                    slot_name,
-                } => write!(formatter, "#<CONDITION-WRITER {condition_name}-{slot_name}>"),
-                Function::Closure { .. } | Function::Compiled { .. } => {
-                    formatter.write_str("#<FUNCTION>")
-                }
-                Function::Macro { .. } | Function::ModifyMacro { .. } => {
-                    formatter.write_str("#<MACRO>")
-                }
-            },
         }
     }
 }

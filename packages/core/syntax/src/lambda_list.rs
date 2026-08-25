@@ -2,7 +2,10 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
-use crate::{parse_symbol_token, Form, FormKind, Span, SymbolTokenKind};
+use crate::{
+    parse_float_literal, parse_radix_integer_literal, parse_symbol_token, Form, FormKind, Span,
+    SymbolTokenKind,
+};
 
 /// The ordinary lambda-list shape shared by the compiler and evaluator.
 #[derive(Clone, Debug, PartialEq)]
@@ -127,7 +130,16 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
         FormKind::List(parameters) => parameters,
         // Runtime values represent the empty list as NIL.  This case is
         // needed when a quoted lambda form is reconstructed for EVAL/COMPILE.
-        FormKind::Atom(name) if name == "NIL" => &[],
+        FormKind::Atom(name)
+            if parse_symbol_token(name).is_ok_and(|token| {
+                token.kind == SymbolTokenKind::Symbol
+                    && token.package.is_none()
+                    && !token.escaped
+                    && token.name == "NIL"
+            }) =>
+        {
+            &[]
+        }
         _ => {
             return Err(LambdaListError {
                 kind: LambdaListErrorKind::ExpectedList,
@@ -183,9 +195,7 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                             parameter.span,
                         ));
                     };
-                    if marker_name(rest_parameter)
-                        .is_some_and(|name| name.starts_with('&'))
-                    {
+                    if marker_name(rest_parameter).is_some_and(|name| name.starts_with('&')) {
                         return Err(LambdaListError::invalid(
                             "&rest must be followed by one parameter",
                             rest_parameter.span,
@@ -432,12 +442,7 @@ fn parse_keyword_parameter(form: &Form) -> Result<LambdaListKeywordParameter, La
                         parse_keyword_name(&keyword_specification[0], "keyword name")?;
                     let (name, name_escaped) =
                         parse_name(&keyword_specification[1], "keyword parameter")?;
-                    (
-                        keyword_name,
-                        keyword_name_escaped,
-                        name,
-                        name_escaped,
-                    )
+                    (keyword_name, keyword_name_escaped, name, name_escaped)
                 }
                 FormKind::List(_) => {
                     return Err(LambdaListError::invalid(
@@ -460,8 +465,8 @@ fn parse_keyword_parameter(form: &Form) -> Result<LambdaListKeywordParameter, La
                 .get(2)
                 .map(|supplied_p| parse_name(supplied_p, "supplied-p parameter"))
                 .transpose()?;
-            let (supplied_p, supplied_p_escaped) = supplied_p
-                .map_or((None, None), |(name, escaped)| (Some(name), Some(escaped)));
+            let (supplied_p, supplied_p_escaped) =
+                supplied_p.map_or((None, None), |(name, escaped)| (Some(name), Some(escaped)));
             (
                 keyword_name,
                 keyword_name_escaped,
@@ -610,7 +615,8 @@ fn literal_atom(name: &str) -> bool {
         || token.name == "#F"
         || token.name == "#T"
         || token.name.parse::<i64>().is_ok()
-        || token.name.parse::<f64>().is_ok()
+        || parse_radix_integer_literal(&token.name).is_some()
+        || parse_float_literal(&token.name).is_some()
 }
 
 fn normalize_name(name: &str) -> String {

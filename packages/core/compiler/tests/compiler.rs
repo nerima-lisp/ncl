@@ -1,5 +1,8 @@
-use ncl_compiler::{CompileErrorKind, Compiler, Constant, Instruction};
-use ncl_syntax::{read, Form, FormKind, Span};
+use ncl_compiler::{
+    BindingName, CompileErrorKind, Compiler, Constant, DestructurePattern, DestructureSpec,
+    Instruction,
+};
+use ncl_syntax::{Form, FormKind, Span, read};
 
 fn compile(source: &str) -> ncl_compiler::Program {
     let forms = read(source).expect("test source should parse");
@@ -15,10 +18,46 @@ fn compiles_arithmetic_shaped_calls_and_normalizes_names() {
     assert_eq!(
         program.functions[0].instructions,
         vec![
-            Instruction::FunctionLoad("+".to_string()),
+            Instruction::FunctionCallLoad("+".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(2)),
             Instruction::Call(2),
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
+fn compiles_fixed_radix_integer_literals() {
+    let program = compile("(list #b101 #o17 #x1f #x-10)");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![
+            Instruction::FunctionCallLoad("LIST".to_string()),
+            Instruction::Constant(Constant::Integer(5)),
+            Instruction::Constant(Constant::Integer(15)),
+            Instruction::Constant(Constant::Integer(31)),
+            Instruction::Constant(Constant::Integer(-16)),
+            Instruction::Call(4),
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
+fn compiles_general_radix_integer_literals() {
+    let program = compile("(list #2r101 #10r42 #36rZ #16r-ff)");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![
+            Instruction::FunctionCallLoad("LIST".to_string()),
+            Instruction::Constant(Constant::Integer(5)),
+            Instruction::Constant(Constant::Integer(42)),
+            Instruction::Constant(Constant::Integer(35)),
+            Instruction::Constant(Constant::Integer(-255)),
+            Instruction::Call(4),
             Instruction::Return,
         ]
     );
@@ -54,7 +93,7 @@ fn compiles_lambda_as_a_closure_function() {
     assert_eq!(
         program.functions[1].instructions,
         vec![
-            Instruction::FunctionLoad("+".to_string()),
+            Instruction::FunctionCallLoad("+".to_string()),
             Instruction::Load("X".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Call(2),
@@ -137,7 +176,7 @@ fn compiles_ignore_errors_into_a_catch_boundary() {
     assert_eq!(
         program.functions[1].instructions,
         vec![
-            Instruction::FunctionLoad("+".to_string()),
+            Instruction::FunctionCallLoad("+".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(2)),
             Instruction::Call(2),
@@ -439,12 +478,16 @@ fn emits_control_flow_and_dynamic_binding_instructions() {
     assert!(instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::IsBound(name) if name == "ANSWER")
     }));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Set(name) if name == "ANSWER")));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_))));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Set(name) if name == "ANSWER"))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
+    );
 }
 
 #[test]
@@ -461,12 +504,16 @@ fn lowers_case_to_eql_comparisons_and_jumps() {
     assert!(instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::Quote(form) if matches!(&form.kind, FormKind::Atom(atom) if atom == "1"))
     }));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_))));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::ExitScope)));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::ExitScope))
+    );
 }
 
 #[test]
@@ -483,12 +530,16 @@ fn lowers_typecase_to_typep_comparisons_and_jumps() {
     assert!(instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::Quote(form) if matches!(&form.kind, FormKind::Atom(atom) if atom == "INTEGER"))
     }));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_))));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::ExitScope)));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::ExitScope))
+    );
 }
 
 #[test]
@@ -510,6 +561,151 @@ fn lowers_multiple_value_list_to_a_value_carrier_conversion() {
 }
 
 #[test]
+fn lowers_nth_value_without_evaluator_fallback() {
+    let program = compile("(nth-value 1 (values 10 20))");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::Primary,
+            Instruction::Constant(Constant::Integer(10)),
+            Instruction::Primary,
+            Instruction::Constant(Constant::Integer(20)),
+            Instruction::Primary,
+            Instruction::Values(2),
+            Instruction::NthValue(Span::new(11, 12)),
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
+fn lowers_single_pair_psetf_without_evaluator_fallback() {
+    let program = compile("(psetf a 1)");
+
+    assert!(matches!(
+        program.functions[0].instructions.as_slice(),
+        [
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::Setf(_),
+            Instruction::Pop,
+            Instruction::Constant(Constant::Nil),
+            Instruction::Return,
+        ]
+    ));
+}
+
+#[test]
+fn lowers_multi_pair_symbol_psetf_without_evaluator_fallback() {
+    let program = compile("(psetf a 1 |b| 2)");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::Constant(Constant::Integer(2)),
+            Instruction::PsetqExact(vec![("A".to_string(), false), ("b".to_string(), true),]),
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
+fn lowers_symbol_rotatef_and_shiftf_without_evaluator_fallback() {
+    let rotatef = compile("(rotatef a b)");
+    assert_eq!(
+        rotatef.functions[0].instructions,
+        vec![
+            Instruction::Load("A".to_string()),
+            Instruction::Load("B".to_string()),
+            Instruction::Rotatef(vec!["A".to_string(), "B".to_string()]),
+            Instruction::Return,
+        ]
+    );
+
+    let shiftf = compile("(shiftf a b 9)");
+    assert_eq!(
+        shiftf.functions[0].instructions,
+        vec![
+            Instruction::Load("A".to_string()),
+            Instruction::Load("B".to_string()),
+            Instruction::Constant(Constant::Integer(9)),
+            Instruction::Shiftf(vec!["A".to_string(), "B".to_string()]),
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
+fn lowers_symbol_push_pop_and_pushnew_without_evaluator_fallback() {
+    let push = compile("(push 1 cell)");
+    assert_eq!(
+        push.functions[0].instructions,
+        vec![
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::Push("CELL".to_string()),
+            Instruction::Return,
+        ]
+    );
+
+    let pop = compile("(pop cell)");
+    assert_eq!(
+        pop.functions[0].instructions,
+        vec![Instruction::PopPlace("CELL".to_string()), Instruction::Return]
+    );
+
+    let pushnew = compile("(pushnew 1 cell)");
+    assert_eq!(
+        pushnew.functions[0].instructions,
+        vec![
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::PushNew("CELL".to_string()),
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
+fn preserves_escaped_destructuring_pattern_identity() {
+    let program = compile("(destructuring-bind |foo| 1 |foo|)");
+    let pattern = program.functions[0]
+        .instructions
+        .iter()
+        .find_map(|instruction| match instruction {
+            Instruction::Destructure(DestructureSpec::Pattern(pattern)) => Some(pattern),
+            _ => None,
+        })
+        .expect("destructuring-bind should emit a pattern specification");
+
+    assert_eq!(
+        pattern,
+        &DestructurePattern::Name(BindingName {
+            name: "foo".to_string(),
+            escaped: true,
+        })
+    );
+}
+
+#[test]
+fn lowers_escaped_let_binding_to_exact_instructions() {
+    let program = compile("(let ((|foo| 1)) |foo|)");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![
+            Instruction::EnterScope,
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::DefineExact("foo".to_string()),
+            Instruction::Pop,
+            Instruction::LoadExact("foo".to_string()),
+            Instruction::ExitScope,
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
 fn emits_quasiquote_and_apply_instructions() {
     let quasiquote = compile("`(item ,value)");
     assert!(matches!(
@@ -518,10 +714,48 @@ fn emits_quasiquote_and_apply_instructions() {
     ));
 
     let apply = compile("(apply + 1 '(2))");
-    assert!(apply.functions[0]
-        .instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Apply(2))));
+    assert!(
+        apply.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Apply(2)))
+    );
+}
+
+#[test]
+fn emits_setf_function_designator_instruction() {
+    let program = compile("(function (setf accessor))");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![
+            Instruction::SetfFunctionLoad("ACCESSOR".to_string()),
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
+fn rejects_invalid_function_designators() {
+    for source in [
+        "(function (+ 1 2))",
+        "(function (quote foo))",
+        "(function (setf))",
+        "(function (setf foo bar))",
+        "(function 1)",
+    ] {
+        let forms = read(source).expect("test source should parse");
+        let error = Compiler::compile_forms(&forms).expect_err("invalid function designator");
+        assert!(
+            matches!(
+                error.kind,
+                CompileErrorKind::InvalidForm { .. } | CompileErrorKind::ExpectedSymbol { .. }
+            ),
+            "unexpected error for {source}: {error:?}"
+        );
+    }
+
+    compile("(function (lambda (value) value))");
 }
 
 #[test]
@@ -537,10 +771,12 @@ fn emits_eval_and_mapcar_instructions() {
     ));
 
     let mapcar = compile("(mapcar + '(1 2) '(10 20))");
-    assert!(mapcar.functions[0]
-        .instructions
-        .iter()
-        .any(|instruction| { matches!(instruction, Instruction::MapCar(2)) }));
+    assert!(
+        mapcar.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::MapCar(2)) })
+    );
 }
 
 #[test]
@@ -551,7 +787,7 @@ fn lowers_dotimes_with_a_single_count_evaluation_and_result() {
         program.functions[0].instructions,
         vec![
             Instruction::EnterScope,
-            Instruction::FunctionLoad("+".to_string()),
+            Instruction::FunctionCallLoad("+".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Call(2),
@@ -565,7 +801,7 @@ fn lowers_dotimes_with_a_single_count_evaluation_and_result() {
             Instruction::Load("__NCL_DOTIMES_LIMIT_0".to_string()),
             Instruction::Call(2),
             Instruction::JumpIfFalse(27),
-            Instruction::FunctionLoad("+".to_string()),
+            Instruction::FunctionCallLoad("+".to_string()),
             Instruction::Load("I".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Call(2),
@@ -577,7 +813,7 @@ fn lowers_dotimes_with_a_single_count_evaluation_and_result() {
             Instruction::Set("I".to_string()),
             Instruction::Pop,
             Instruction::Jump(10),
-            Instruction::FunctionLoad("+".to_string()),
+            Instruction::FunctionCallLoad("+".to_string()),
             Instruction::Load("I".to_string()),
             Instruction::Constant(Constant::Integer(10)),
             Instruction::Call(2),
@@ -630,7 +866,7 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
         program.functions[0].instructions,
         vec![
             Instruction::EnterScope,
-            Instruction::FunctionLoad("LIST".to_string()),
+            Instruction::FunctionCallLoad("LIST".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(2)),
             Instruction::Call(2),
@@ -649,7 +885,7 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
             Instruction::Call(1),
             Instruction::Set("ITEM".to_string()),
             Instruction::Pop,
-            Instruction::FunctionLoad("+".to_string()),
+            Instruction::FunctionCallLoad("+".to_string()),
             Instruction::Load("ITEM".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Call(2),
@@ -686,19 +922,22 @@ fn lowers_do_with_implicit_block_parallel_steps_and_tagbody() {
         )
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::TagBody { .. })
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::TagBody { .. }))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::JumpIfFalse(_))
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::Set(name) if name == "I")
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Set(name) if name == "I"))
     }));
 }
 
@@ -713,19 +952,22 @@ fn lowers_prog_with_implicit_block_and_tagbody() {
         )
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::TagBody { .. })
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::TagBody { .. }))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::Go { tag } if tag == "DONE")
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Go { tag } if tag == "DONE"))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::Define(name) if name == "I")
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Define(name) if name == "I"))
     }));
 }
 

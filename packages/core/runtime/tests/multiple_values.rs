@@ -66,6 +66,43 @@ fn multiple_value_list_and_values_list_round_trip_value_sequences() {
 }
 
 #[test]
+fn value_sequence_queries_cover_empty_missing_and_explicit_nil_cases() {
+    for (source, expected) in [
+        ("(nth-value 0 (values 4 5))", "4"),
+        ("(nth-value 1 (values 4 5))", "5"),
+        ("(nth-value 2 (values 4 5))", "NIL"),
+        ("(nth-value 0 (values))", "NIL"),
+        ("(nth-value 0 (values nil))", "NIL"),
+    ] {
+        assert_interpreted_and_compiled(source, expected);
+    }
+}
+
+#[test]
+fn nth_value_rejects_invalid_indices_and_arity_in_both_execution_modes() {
+    let cases = [
+        ("(nth-value -1 (values 1))", "non-negative"),
+        ("(nth-value 1/2 (values 1))", "INTEGER"),
+        ("(nth-value 0)", "expected two"),
+        ("(nth-value 0 (values 1) extra)", "expected two"),
+    ];
+
+    for (source, expected_message) in cases {
+        let interpreted = Runtime::new().eval_source(source).unwrap_err();
+        assert!(
+            interpreted.to_string().contains(expected_message),
+            "interpreted evaluation of {source:?}: {interpreted}"
+        );
+
+        let compiled = Runtime::new().eval_compiled_source(source).unwrap_err();
+        assert!(
+            compiled.to_string().contains(expected_message),
+            "compiled evaluation of {source:?}: {compiled}"
+        );
+    }
+}
+
+#[test]
 fn multiple_value_bind_binds_all_values_and_fills_missing_bindings_with_nil() {
     assert_interpreted_and_compiled(
         "(multiple-value-bind (first second third) (values 1 2 3)

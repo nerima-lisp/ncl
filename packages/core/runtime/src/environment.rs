@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use ncl_syntax::Form;
 
-use crate::value::{ClassDefinition, ConditionDefinition, StructureDefinition};
 use crate::Value;
+use crate::value::{ClassDefinition, StructureDefinition};
 
 #[derive(Clone)]
 pub struct Environment(Rc<RefCell<Frame>>);
@@ -21,7 +21,6 @@ struct Frame {
     setf_expanders: HashMap<String, Value>,
     structures: HashMap<String, StructureDefinition>,
     classes: HashMap<String, Rc<ClassDefinition>>,
-    conditions: HashMap<String, Rc<ConditionDefinition>>,
     symbol_properties: Vec<(Value, Value)>,
     block_targets: HashMap<String, u64>,
     tag_targets: HashMap<String, u64>,
@@ -29,6 +28,7 @@ struct Frame {
 }
 
 impl Environment {
+    #[must_use]
     pub fn new() -> Self {
         Self(Rc::new(RefCell::new(Frame {
             values: HashMap::new(),
@@ -41,7 +41,6 @@ impl Environment {
             setf_expanders: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
-            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),
@@ -49,6 +48,7 @@ impl Environment {
         })))
     }
 
+    #[must_use]
     pub fn child(&self) -> Self {
         Self(Rc::new(RefCell::new(Frame {
             values: HashMap::new(),
@@ -61,7 +61,6 @@ impl Environment {
             setf_expanders: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
-            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),
@@ -85,6 +84,7 @@ impl Environment {
             .insert(name.as_ref().to_string(), value);
     }
 
+    #[must_use]
     pub fn lookup(&self, name: &str) -> Option<Value> {
         let key = normalize_name(name);
         let (value, parent) = {
@@ -102,15 +102,19 @@ impl Environment {
         value.or_else(|| parent.and_then(|environment| environment.lookup_exact(name)))
     }
 
+    #[must_use]
     pub fn set(&self, name: &str, value: Value) -> bool {
         let key = normalize_name(name);
-        if self.0.borrow().values.contains_key(&key) {
-            self.0.borrow_mut().values.insert(key, value);
-            true
-        } else {
-            let parent = self.0.borrow().parent.clone();
-            parent.is_some_and(|environment| environment.set(name, value))
-        }
+        let parent = {
+            let mut frame = self.0.borrow_mut();
+            if let std::collections::hash_map::Entry::Occupied(mut entry) = frame.values.entry(key)
+            {
+                entry.insert(value);
+                return true;
+            }
+            frame.parent.clone()
+        };
+        parent.is_some_and(|environment| environment.set(name, value))
     }
 
     pub(crate) fn remove(&self, name: &str) -> bool {
@@ -138,7 +142,10 @@ impl Environment {
     pub(crate) fn remove_exact(&self, name: &str) -> bool {
         let (removed, parent) = {
             let mut frame = self.0.borrow_mut();
-            (frame.exact_values.remove(name).is_some(), frame.parent.clone())
+            (
+                frame.exact_values.remove(name).is_some(),
+                frame.parent.clone(),
+            )
         };
         removed || parent.is_some_and(|environment| environment.remove_exact(name))
     }
@@ -168,7 +175,8 @@ impl Environment {
         if shadowed {
             None
         } else {
-            expansion.or_else(|| parent.and_then(|environment| environment.lookup_symbol_macro(name)))
+            expansion
+                .or_else(|| parent.and_then(|environment| environment.lookup_symbol_macro(name)))
         }
     }
 
@@ -214,11 +222,12 @@ impl Environment {
     pub(crate) fn lookup_function_exact(&self, name: &str) -> Option<Value> {
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.exact_functions.get(name).cloned(), frame.parent.clone())
+            (
+                frame.exact_functions.get(name).cloned(),
+                frame.parent.clone(),
+            )
         };
-        value.or_else(|| {
-            parent.and_then(|environment| environment.lookup_function_exact(name))
-        })
+        value.or_else(|| parent.and_then(|environment| environment.lookup_function_exact(name)))
     }
 
     pub(crate) fn define_setf_function(&self, name: impl AsRef<str>, value: Value) {
@@ -230,7 +239,10 @@ impl Environment {
         let key = normalize_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.setf_functions.get(&key).cloned(), frame.parent.clone())
+            (
+                frame.setf_functions.get(&key).cloned(),
+                frame.parent.clone(),
+            )
         };
         value.or_else(|| parent.and_then(|environment| environment.lookup_setf_function(name)))
     }
@@ -244,7 +256,10 @@ impl Environment {
         let key = normalize_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.setf_expanders.get(&key).cloned(), frame.parent.clone())
+            (
+                frame.setf_expanders.get(&key).cloned(),
+                frame.parent.clone(),
+            )
         };
         value.or_else(|| parent.and_then(|environment| environment.lookup_setf_expander(name)))
     }
@@ -283,11 +298,7 @@ impl Environment {
         definition.or_else(|| parent.and_then(|environment| environment.lookup_structure(name)))
     }
 
-    pub(crate) fn define_class(
-        &self,
-        name: impl AsRef<str>,
-        definition: Rc<ClassDefinition>,
-    ) {
+    pub(crate) fn define_class(&self, name: impl AsRef<str>, definition: Rc<ClassDefinition>) {
         let key = normalize_name(name.as_ref());
         self.0.borrow_mut().classes.insert(key, definition);
     }
@@ -299,24 +310,6 @@ impl Environment {
             (frame.classes.get(&key).cloned(), frame.parent.clone())
         };
         definition.or_else(|| parent.and_then(|environment| environment.lookup_class(name)))
-    }
-
-    pub(crate) fn define_condition(
-        &self,
-        name: impl AsRef<str>,
-        definition: Rc<ConditionDefinition>,
-    ) {
-        let key = normalize_name(name.as_ref());
-        self.0.borrow_mut().conditions.insert(key, definition);
-    }
-
-    pub(crate) fn lookup_condition(&self, name: &str) -> Option<Rc<ConditionDefinition>> {
-        let key = normalize_name(name);
-        let (definition, parent) = {
-            let frame = self.0.borrow();
-            (frame.conditions.get(&key).cloned(), frame.parent.clone())
-        };
-        definition.or_else(|| parent.and_then(|environment| environment.lookup_condition(name)))
     }
 
     pub(crate) fn symbol_plist(&self, symbol: &Value) -> Option<Value> {
@@ -369,7 +362,8 @@ impl Environment {
                 frame.parent.clone(),
             )
         };
-        removed.or_else(|| parent.and_then(|environment| environment.remove_symbol_property(symbol)))
+        removed
+            .or_else(|| parent.and_then(|environment| environment.remove_symbol_property(symbol)))
     }
 
     pub(crate) fn define_block(&self, name: impl AsRef<str>, target: u64) {

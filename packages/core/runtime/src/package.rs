@@ -21,37 +21,6 @@ pub(crate) enum SymbolStatus {
     External,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct SymbolReference {
-    package: String,
-    name: String,
-}
-
-impl SymbolReference {
-    fn new(package: String, name: String) -> Self {
-        Self { package, name }
-    }
-
-    pub(crate) fn package(&self) -> &str {
-        &self.package
-    }
-
-    pub(crate) fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub(crate) fn canonical_name(&self) -> String {
-        format!("{}::{}", self.package, self.name)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum SymbolResolutionError {
-    Invalid,
-    UnknownPackage(String),
-    NotExported { package: String, name: String },
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct PackageState {
     current: String,
@@ -126,7 +95,8 @@ impl PackageState {
     }
 
     pub(crate) fn package_exists(&self, name: &str) -> bool {
-        self.packages.contains_key(&self.canonical_package_name(name))
+        self.packages
+            .contains_key(&self.canonical_package_name(name))
     }
 
     pub(crate) fn package_documentation(&self, package: &str) -> Option<String> {
@@ -183,40 +153,6 @@ impl PackageState {
         }
     }
 
-    pub(crate) fn resolve_symbol(
-        &self,
-        raw: &str,
-        current: &str,
-    ) -> Result<SymbolReference, SymbolResolutionError> {
-        if let Some((package_name, symbol_name, external)) = split_symbol(raw) {
-            let package_name = self.canonical_package_name_for(current, package_name);
-            let symbol_name = normalize_symbol_name(symbol_name);
-            if package_name.is_empty() || symbol_name.is_empty() {
-                return Err(SymbolResolutionError::Invalid);
-            }
-            if !self.package_exists(&package_name) {
-                return Err(SymbolResolutionError::UnknownPackage(package_name));
-            }
-            if external && !self.is_exported(&package_name, &symbol_name) {
-                return Err(SymbolResolutionError::NotExported {
-                    package: package_name,
-                    name: symbol_name,
-                });
-            }
-            return Ok(SymbolReference::new(package_name, symbol_name));
-        }
-
-        let package_name = self.canonical_package_name(current);
-        let symbol_name = normalize_symbol_name(raw);
-        if package_name.is_empty() || symbol_name.is_empty() {
-            return Err(SymbolResolutionError::Invalid);
-        }
-        if !self.package_exists(&package_name) {
-            return Err(SymbolResolutionError::UnknownPackage(package_name));
-        }
-        Ok(SymbolReference::new(package_name, symbol_name))
-    }
-
     pub(crate) fn use_packages_for(&self, name: &str) -> Vec<String> {
         let name = self.canonical_package_name(name);
         self.packages
@@ -228,10 +164,10 @@ impl PackageState {
     pub(crate) fn use_package(&mut self, package: &str, target: &str) {
         let package = self.canonical_package_name(package);
         let target = self.canonical_package_name(target);
-        if let Some(entry) = self.packages.get_mut(&target) {
-            if !entry.use_packages.iter().any(|used| used == &package) {
-                entry.use_packages.push(package);
-            }
+        if let Some(entry) = self.packages.get_mut(&target)
+            && !entry.use_packages.iter().any(|used| used == &package)
+        {
+            entry.use_packages.push(package);
         }
     }
 
@@ -283,9 +219,10 @@ impl PackageState {
         let target = self.canonical_package_name(target);
         if let Some(entry) = self.packages.get_mut(&target) {
             entry.symbols.insert(source_name.clone());
-            entry
-                .imports
-                .insert(source_name.clone(), canonical_symbol_name(&source_package, &source_name));
+            entry.imports.insert(
+                source_name.clone(),
+                canonical_symbol_name(&source_package, &source_name),
+            );
             if shadowing {
                 entry.shadows.insert(source_name);
             } else {
@@ -308,11 +245,10 @@ impl PackageState {
         let package = self.canonical_package_name(package);
         let name = normalize_symbol_name(name);
         self.packages.get_mut(&package).is_some_and(|entry| {
-            let existed = entry.symbols.remove(&name)
+            entry.symbols.remove(&name)
                 || entry.exports.remove(&name)
                 || entry.imports.remove(&name).is_some()
-                || entry.shadows.remove(&name);
-            existed
+                || entry.shadows.remove(&name)
         })
     }
 
@@ -353,7 +289,9 @@ impl PackageState {
     ) -> Result<(), String> {
         let name = normalize_package_name(&name);
         if self.nicknames.contains_key(&name) {
-            return Err(format!("package name {name} conflicts with an existing nickname"));
+            return Err(format!(
+                "package name {name} conflicts with an existing nickname"
+            ));
         }
         let mut normalized_nicknames = Vec::new();
         for nickname in nicknames {
@@ -369,9 +307,7 @@ impl PackageState {
             if let Some(existing) = self.nicknames.get(&nickname)
                 && existing != &name
             {
-                return Err(format!(
-                    "package nickname {nickname} is already in use"
-                ));
+                return Err(format!("package nickname {nickname} is already in use"));
             }
             if !normalized_nicknames.contains(&nickname) {
                 normalized_nicknames.push(nickname);
@@ -401,9 +337,7 @@ impl PackageState {
                 .insert(nickname.clone(), target)
                 .is_some()
             {
-                return Err(format!(
-                    "duplicate local package nickname {nickname}"
-                ));
+                return Err(format!("duplicate local package nickname {nickname}"));
             }
         }
 

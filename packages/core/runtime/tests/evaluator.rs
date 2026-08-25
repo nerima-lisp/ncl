@@ -1,8 +1,9 @@
-use ncl_runtime::{Runtime, Value};
+#[path = "support/evaluator.rs"]
+mod support;
 
-fn evaluate(source: &str) -> Value {
-    Runtime::new().eval_source(source).unwrap().pop().unwrap()
-}
+use ncl_runtime::Runtime;
+
+use support::evaluate;
 
 #[test]
 fn supports_uninterned_symbols_and_gensym() {
@@ -70,8 +71,7 @@ fn preserves_escaped_symbol_identity_across_namespaces() {
         "(1 3)",
     );
     assert_eq!(
-        evaluate(r#"(list (symbol-name :|foo|) (symbol-name :FOO) (eq :|foo| :FOO))"#)
-            .to_string(),
+        evaluate(r#"(list (symbol-name :|foo|) (symbol-name :FOO) (eq :|foo| :FOO))"#).to_string(),
         r#"("foo" "FOO" NIL)"#,
     );
 }
@@ -136,6 +136,17 @@ fn evaluates_common_lisp_truth_and_lists() {
     assert_eq!(evaluate("(car nil)").to_string(), "NIL");
     assert_eq!(evaluate("(cdr nil)").to_string(), "NIL");
     assert_eq!(evaluate("'(a . b)").to_string(), "(A . B)");
+}
+
+#[test]
+fn evaluates_sequence_operations_through_the_public_api() {
+    assert_eq!(
+        evaluate(
+            "(list (mapcar #'+ '(1 2) '(3 4))\n                  (reduce #'+ '(1 2 3 4))\n                  (find 3 '(1 2 3 4))\n                  (remove 2 '(1 2 2 3))\n                  (substitute 9 2 '(1 2 3))\n                  (sort (list 3 1 2) #'<))",
+        )
+        .to_string(),
+        "((4 6) 10 3 (1 3) (1 9 3) (1 2 3))",
+    );
 }
 
 #[test]
@@ -261,6 +272,28 @@ fn macro_rest_parameters_receive_unquoted_forms() {
 }
 
 #[test]
+fn macro_lambda_lists_support_all_standard_sections() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defmacro inspect
+                   (&whole whole required
+                    &optional (optional 10 optional-p)
+                    &rest rest
+                    &key ((:named named) 20 named-p)
+                    &allow-other-keys
+                    &aux (aux 30)
+                    &environment environment)
+                 (declare (ignore whole optional-p rest named-p environment))
+                 \u{60}(list ,required ,optional ,named ,aux))
+               (inspect 1 2 :named 3))",
+        )
+        .to_string(),
+        "(1 2 3 30)"
+    );
+}
+
+#[test]
 fn macroexpand_1_returns_expanded_and_unexpanded_forms() {
     let values = Runtime::new()
         .eval_source(
@@ -358,15 +391,28 @@ fn macros_are_not_callable_through_normal_apply() {
 
 #[test]
 fn malformed_macro_parameters_are_rejected() {
-    let error = Runtime::new()
-        .eval_source("(defmacro bad (x &rest) '(x))")
-        .unwrap_err();
+    let cases = [
+        ("(defmacro bad (x &rest) '(x))", "&rest"),
+        ("(defmacro bad (&whole) '(x))", "&whole"),
+        ("(defmacro bad (&optional x &optional y) '(x))", "&optional"),
+        (
+            "(defmacro bad (&allow-other-keys) '(x))",
+            "&allow-other-keys",
+        ),
+        ("(defmacro bad (&unknown x) '(x))", "unsupported marker"),
+    ];
 
-    assert!(matches!(
-        error,
-        ncl_runtime::RuntimeError::InvalidForm { message, .. }
-            if message.contains("&rest")
-    ));
+    for (source, expected_message) in cases {
+        let error = Runtime::new().eval_source(source).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                ncl_runtime::RuntimeError::InvalidForm { message, .. }
+                    if message.contains(expected_message)
+            ),
+            "source: {source}"
+        );
+    }
 }
 
 #[test]
@@ -622,6 +668,28 @@ fn malformed_ordinary_lambda_parameters_are_rejected() {
 }
 
 #[test]
+fn lambda_list_sections_bind_through_a_shared_table() {
+    let cases = [
+        (
+            "((lambda (required &optional (optional 2 optional-p) &rest rest)\n                 (list required optional optional-p rest))\n               1 3 4 5)",
+            "(1 3 T (4 5))",
+        ),
+        (
+            "((lambda (required &key (keyword 2 keyword-p) &allow-other-keys)\n                 (list required keyword keyword-p))\n               1 :keyword 9 :extra 8)",
+            "(1 9 T)",
+        ),
+        (
+            "((lambda (required &aux (derived (+ required 1))) derived) 4)",
+            "5",
+        ),
+    ];
+
+    for (source, expected) in cases {
+        assert_eq!(evaluate(source).to_string(), expected, "source: {source}");
+    }
+}
+
+#[test]
 fn definitions_are_visible_to_later_forms() {
     let values = Runtime::new()
         .eval_source("(define answer 41) (+ answer 1)")
@@ -734,15 +802,21 @@ fn evaluates_defconstant_and_constantp() {
         "(42 T T T)"
     );
 
-    assert!(Runtime::new()
-        .eval_source("(defconstant +answer+ 42) (setq +answer+ 7)")
-        .is_err());
-    assert!(Runtime::new()
-        .eval_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
-        .is_err());
-    assert!(Runtime::new()
-        .eval_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
-        .is_err());
+    assert!(
+        Runtime::new()
+            .eval_source("(defconstant +answer+ 42) (setq +answer+ 7)")
+            .is_err()
+    );
+    assert!(
+        Runtime::new()
+            .eval_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
+            .is_err()
+    );
+    assert!(
+        Runtime::new()
+            .eval_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
+            .is_err()
+    );
 }
 
 #[test]
@@ -1069,10 +1143,7 @@ fn evaluates_map_over_sequence_types() {
 
 #[test]
 fn evaluates_reduce_over_sequences() {
-    assert_eq!(
-        evaluate("(reduce #'+ '(1 2 3 4))").to_string(),
-        "10"
-    );
+    assert_eq!(evaluate("(reduce #'+ '(1 2 3 4))").to_string(), "10");
     assert_eq!(
         evaluate("(reduce #'- '(1 2 3) :from-end t)").to_string(),
         "2"
@@ -1139,8 +1210,7 @@ fn evaluates_sequence_search_and_mismatch() {
         "2"
     );
     assert_eq!(
-        evaluate("(search \"ab\" \"xxABab\" :test #'char-equal :from-end t)")
-            .to_string(),
+        evaluate("(search \"ab\" \"xxABab\" :test #'char-equal :from-end t)").to_string(),
         "4"
     );
     assert_eq!(
@@ -1218,14 +1288,8 @@ fn evaluates_sequence_merge() {
 #[test]
 fn evaluates_sequence_quantifiers() {
     assert_eq!(evaluate("(every #'numberp '(1 2))").to_string(), "T");
-    assert_eq!(
-        evaluate("(every #'= '(1 2) #(1 2))").to_string(),
-        "T"
-    );
-    assert_eq!(
-        evaluate("(some #'identity '(nil 2 4))").to_string(),
-        "2"
-    );
+    assert_eq!(evaluate("(every #'= '(1 2) #(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(some #'identity '(nil 2 4))").to_string(), "2");
     assert_eq!(evaluate("(notany #'evenp '(1 3 5))").to_string(), "T");
     assert_eq!(evaluate("(notevery #'evenp '(2 4 5))").to_string(), "T");
     assert_eq!(evaluate("(every #'char= \"ab\" \"ab\")").to_string(), "T");
@@ -1256,14 +1320,8 @@ fn evaluates_list_membership_and_association_searches() {
         evaluate("(member-if-not #'evenp '(2 4 5 6))").to_string(),
         "(5 6)"
     );
-    assert_eq!(
-        evaluate("(adjoin 2 '(1 2 3))").to_string(),
-        "(1 2 3)"
-    );
-    assert_eq!(
-        evaluate("(adjoin 4 '(1 2 3))").to_string(),
-        "(4 1 2 3)"
-    );
+    assert_eq!(evaluate("(adjoin 2 '(1 2 3))").to_string(), "(1 2 3)");
+    assert_eq!(evaluate("(adjoin 4 '(1 2 3))").to_string(), "(4 1 2 3)");
     assert_eq!(
         evaluate("(assoc 'b '((a . 1) (b . 2)))").to_string(),
         "(B . 2)"
@@ -1333,7 +1391,10 @@ fn evaluates_sequence_removals() {
         evaluate("(delete-if #'evenp '(1 2 4 3))").to_string(),
         "(1 3)"
     );
-    assert_eq!(evaluate("(delete-duplicates '(1 2 1))").to_string(), "(1 2)");
+    assert_eq!(
+        evaluate("(delete-duplicates '(1 2 1))").to_string(),
+        "(1 2)"
+    );
     assert_eq!(
         evaluate("(funcall #'remove 2 '(1 2 3))").to_string(),
         "(1 3)"
@@ -1386,10 +1447,7 @@ fn evaluates_sequence_substitutions() {
 
 #[test]
 fn evaluates_list_set_operations() {
-    assert_eq!(
-        evaluate("(union '(1 2 2) '(2 3 3))").to_string(),
-        "(1 2 3)"
-    );
+    assert_eq!(evaluate("(union '(1 2 2) '(2 3 3))").to_string(), "(1 2 3)");
     assert_eq!(
         evaluate("(nunion '(1 2 2) '(2 3 3))").to_string(),
         "(1 2 3)"
@@ -1418,10 +1476,7 @@ fn evaluates_list_set_operations() {
         evaluate("(nset-exclusive-or '(1 2 2 3) '(2 4))").to_string(),
         "(1 3 4)"
     );
-    assert_eq!(
-        evaluate("(subsetp '(1 2) '(3 2 1 4))").to_string(),
-        "T"
-    );
+    assert_eq!(evaluate("(subsetp '(1 2) '(3 2 1 4))").to_string(), "T");
     assert_eq!(evaluate("(subsetp '(1 5) '(3 2 1 4))").to_string(), "NIL");
     assert_eq!(
         evaluate("(union '(1 2) '(2 3) :test #'=)").to_string(),
@@ -1435,18 +1490,12 @@ fn evaluates_list_set_operations() {
         evaluate("(set-difference '(1 2 3) '(2) :test-not #'eql)").to_string(),
         "(2)"
     );
-    assert_eq!(
-        evaluate("(funcall #'union '(1) '(2))").to_string(),
-        "(1 2)"
-    );
+    assert_eq!(evaluate("(funcall #'union '(1) '(2))").to_string(), "(1 2)");
 }
 
 #[test]
 fn evaluates_list_construction_and_partitioning() {
-    assert_eq!(
-        evaluate("(list* 1 2 '(3 4))").to_string(),
-        "(1 2 3 4)"
-    );
+    assert_eq!(evaluate("(list* 1 2 '(3 4))").to_string(), "(1 2 3 4)");
     assert_eq!(evaluate("(list* 1 2 3)").to_string(), "(1 2 . 3)");
     assert_eq!(evaluate("(list* 7)").to_string(), "7");
     assert_eq!(
@@ -1454,10 +1503,7 @@ fn evaluates_list_construction_and_partitioning() {
         "(X X X)"
     );
     assert_eq!(evaluate("(make-list 2)").to_string(), "(NIL NIL)");
-    assert_eq!(
-        evaluate("(copy-list '(1 2 3))").to_string(),
-        "(1 2 3)"
-    );
+    assert_eq!(evaluate("(copy-list '(1 2 3))").to_string(), "(1 2 3)");
     assert_eq!(
         evaluate("(copy-tree '((1) (2 3)))").to_string(),
         "((1) (2 3))"
@@ -1479,8 +1525,7 @@ fn evaluates_list_construction_and_partitioning() {
         "((A . 1) (B 2))"
     );
     assert_eq!(
-        evaluate("(multiple-value-list (get-properties '(:a 1 :b 2) '(:b :a)))")
-            .to_string(),
+        evaluate("(multiple-value-list (get-properties '(:a 1 :b 2) '(:b :a)))").to_string(),
         "(:A 1 (:A 1 :B 2))"
     );
     assert_eq!(
@@ -1493,24 +1538,31 @@ fn evaluates_list_construction_and_partitioning() {
     assert_eq!(evaluate("(butlast '(1 2 3))").to_string(), "(1 2)");
     assert_eq!(evaluate("(nbutlast '(1 2 3) 2)").to_string(), "(1)");
     assert_eq!(evaluate("(nreverse '(1 2 3))").to_string(), "(3 2 1)");
-    assert_eq!(
-        evaluate("(nconc '(1 2) '(3 4))").to_string(),
-        "(1 2 3 4)"
-    );
+    assert_eq!(evaluate("(nconc '(1 2) '(3 4))").to_string(), "(1 2 3 4)");
     assert_eq!(evaluate("(nconc '(1 2) 3)").to_string(), "(1 2 . 3)");
     assert_eq!(
         evaluate("(revappend '(1 2) '(3 4))").to_string(),
         "(2 1 3 4)"
     );
-    assert_eq!(
-        evaluate("(nreconc '(1 2) '(3 4))").to_string(),
-        "(2 1 3 4)"
-    );
+    assert_eq!(evaluate("(nreconc '(1 2) '(3 4))").to_string(), "(2 1 3 4)");
     assert_eq!(
         evaluate("(funcall #'list* 1 '(2 3))").to_string(),
         "(1 2 3)"
     );
     assert_eq!(evaluate("(funcall #'nthcdr 1 '(4 5))").to_string(), "(5)");
+}
+
+#[test]
+fn evaluates_list_operations_at_boundary_counts() {
+    let cases = [
+        ("(last '(1 2) 9)", "(1 2)"),
+        ("(butlast '(1 2) 9)", "NIL"),
+        ("(copy-tree '(a . (b . c)))", "(A . (B . C))"),
+    ];
+
+    for (form, expected) in cases {
+        assert_eq!(evaluate(form).to_string(), expected, "form: {form}");
+    }
 }
 
 #[test]
@@ -1523,20 +1575,13 @@ fn evaluates_sequence_fill_replace_and_concatenate() {
         evaluate("(fill #\\x \"abcd\" :start 1)").to_string(),
         "\"axxx\""
     );
+    assert_eq!(evaluate("(fill 9 #(1 2 3) :end 2)").to_string(), "#(9 9 3)");
     assert_eq!(
-        evaluate("(fill 9 #(1 2 3) :end 2)").to_string(),
-        "#(9 9 3)"
-    );
-    assert_eq!(
-        evaluate(
-            "(replace '(9 9 9) '(1 2 3 4) :start1 1 :end1 3 :start2 0 :end2 2)"
-        )
-        .to_string(),
+        evaluate("(replace '(9 9 9) '(1 2 3 4) :start1 1 :end1 3 :start2 0 :end2 2)").to_string(),
         "(9 1 2)"
     );
     assert_eq!(
-        evaluate("(replace \"xxxx\" \"abcd\" :start1 1 :end1 3 :start2 0 :end2 2)")
-            .to_string(),
+        evaluate("(replace \"xxxx\" \"abcd\" :start1 1 :end1 3 :start2 0 :end2 2)").to_string(),
         "\"xabx\""
     );
     assert_eq!(evaluate("(copy-seq #(1 2))").to_string(), "#(1 2)");
@@ -1633,6 +1678,27 @@ fn evaluates_function_namespace_introspection() {
         error,
         ncl_runtime::RuntimeError::UnboundVariable { name, .. }
             if name == "MISSING-FUNCTION"
+    ));
+}
+
+#[test]
+fn rejects_invalid_function_designators_through_public_api() {
+    let runtime = Runtime::new();
+    let non_function = runtime
+        .eval_source("(define function-designator-data 1) (funcall 'function-designator-data)")
+        .unwrap_err();
+    assert!(matches!(
+        non_function,
+        ncl_runtime::RuntimeError::NotCallable { .. }
+    ));
+
+    let missing = runtime
+        .eval_source("(funcall 'missing-function-designator)")
+        .unwrap_err();
+    assert!(matches!(
+        missing,
+        ncl_runtime::RuntimeError::UnboundVariable { name, .. }
+            if name == "MISSING-FUNCTION-DESIGNATOR"
     ));
 }
 
@@ -1898,6 +1964,25 @@ fn evaluates_basic_format_directives() {
 }
 
 #[test]
+fn rejects_malformed_format_parameters() {
+    let cases = [
+        (r#"(format nil "~'")"#, "missing its character"),
+        (r#"(format nil "~,-D" 1)"#, "needs digits"),
+        (
+            r#"(format nil "~VD" "not-an-integer" 1)"#,
+            "requires integer",
+        ),
+        (r#"(format nil "~V" 1)"#, "ends after a tilde"),
+        (r#"(format nil "~:Q")"#, "unsupported format modifier"),
+    ];
+
+    for (source, expected) in cases {
+        let error = Runtime::new().eval_source(source).expect_err(source);
+        assert!(error.to_string().contains(expected), "{source}: {error}");
+    }
+}
+
+#[test]
 fn evaluates_plural_format_directive() {
     assert_eq!(
         evaluate(r#"(format nil "~P|~P|~@P|~@P" 1 2 1 2)"#).to_string(),
@@ -1970,7 +2055,10 @@ fn evaluates_fixed_float_format_directive() {
             .to_string(),
         r#""1.25|1.25|      1.25|+1.25|****""#,
     );
-    assert_eq!(evaluate(r#"(format nil "~,0F" 1.25)"#).to_string(), r#""1.""#);
+    assert_eq!(
+        evaluate(r#"(format nil "~,0F" 1.25)"#).to_string(),
+        r#""1.""#
+    );
     assert_eq!(evaluate(r#"(format nil "~F" 3)"#).to_string(), r#""3.0""#);
 }
 
@@ -1981,8 +2069,7 @@ fn evaluates_exponential_float_format_directive() {
         r#""1.25E+0|1.25E+0|   1.25E+0|+1.25E+0""#,
     );
     assert_eq!(
-        evaluate(r#"(format nil "~,2,3E|~,2,,0E|~,2,,-1E" 0.0125 637.5 637.5)"#)
-            .to_string(),
+        evaluate(r#"(format nil "~,2,3E|~,2,,0E|~,2,,-1E" 0.0125 637.5 637.5)"#).to_string(),
         r#""1.25E-002|0.64E+3|0.06E+4""#,
     );
     assert_eq!(
@@ -1994,8 +2081,7 @@ fn evaluates_exponential_float_format_directive() {
 #[test]
 fn evaluates_parameterized_format_directives() {
     assert_eq!(
-        evaluate(r#"(format nil "~10A|~10@A|~10,'0D|~:D|~@D" "x" "y" 42 1234567 8)"#)
-            .to_string(),
+        evaluate(r#"(format nil "~10A|~10@A|~10,'0D|~:D|~@D" "x" "y" 42 1234567 8)"#).to_string(),
         r#""x         |         y|0000000042|1,234,567|+8""#,
     );
     assert_eq!(
@@ -2052,10 +2138,7 @@ fn evaluates_format_recursive_processing_directive() {
         r#"("<Foo 5> 7" "<Foo 5> 7" "<Foo 5> 14")"#,
     );
     assert_eq!(
-        evaluate(
-            r#"(format nil "~:{ ~@?~:^ ...~} " '(("a") ("b")))"#,
-        )
-        .to_string(),
+        evaluate(r#"(format nil "~:{ ~@?~:^ ...~} " '(("a") ("b")))"#,).to_string(),
         r#"" a ... b ""#,
     );
 }
@@ -2143,14 +2226,8 @@ fn evaluates_format_escape_upward_directive() {
         evaluate(r#"(format nil "done~^ignored")"#).to_string(),
         r#""done""#,
     );
-    assert_eq!(
-        evaluate(r#"(format nil "a~1,1^b")"#).to_string(),
-        r#""a""#,
-    );
-    assert_eq!(
-        evaluate(r#"(format nil "a~1,2^b")"#).to_string(),
-        r#""ab""#,
-    );
+    assert_eq!(evaluate(r#"(format nil "a~1,1^b")"#).to_string(), r#""a""#,);
+    assert_eq!(evaluate(r#"(format nil "a~1,2^b")"#).to_string(), r#""ab""#,);
     assert_eq!(
         evaluate(r#"(format nil "~:{~A~:^, ~}" '((a) (b) (c)))"#).to_string(),
         r#""A, B, C""#,
@@ -2494,6 +2571,27 @@ fn evaluates_parse_integer() {
 }
 
 #[test]
+fn parse_integer_rejects_invalid_requests() {
+    for (source, expected) in [
+        ("(parse-integer 42)", "a string"),
+        ("(parse-integer \"1\" :radix 1)", "between 2 and 36"),
+        (
+            "(parse-integer \"1\" :start 2 :end 1)",
+            "bounds are invalid",
+        ),
+        ("(parse-integer \"1x\")", "found junk"),
+        ("(parse-integer \"x\")", "found no integer"),
+        (
+            "(parse-integer \"1\" :unknown t)",
+            "does not accept :UNKNOWN",
+        ),
+    ] {
+        let error = Runtime::new().eval_source(source).expect_err(source);
+        assert!(error.to_string().contains(expected), "{source}: {error}");
+    }
+}
+
+#[test]
 fn evaluates_basic_clos_instances_and_accessors() {
     let values = Runtime::new()
         .eval_source(
@@ -2538,9 +2636,11 @@ fn evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(runtime
-        .eval_source("(with-accessors (x) object x)")
-        .is_err());
+    assert!(
+        runtime
+            .eval_source("(with-accessors (x) object x)")
+            .is_err()
+    );
 }
 
 #[test]
@@ -3312,6 +3412,10 @@ fn evaluates_setf_places() {
         "(9 2 7)"
     );
     assert_eq!(
+        evaluate("(let ((xs (list 1 2 3))) (setf (cdr xs) '(8 9)) xs)").to_string(),
+        "(1 8 9)"
+    );
+    assert_eq!(
         evaluate("(let ((values #(1 2))) (setf (aref values 1) 8) values)").to_string(),
         "#(1 8)"
     );
@@ -3350,12 +3454,29 @@ fn evaluates_setf_places() {
         "0"
     );
     assert_eq!(
+        evaluate(
+            "(let ((bits (make-array '(2 2) :initial-element 0)))
+               (setf (bit bits 1 0) 1)
+               (bit bits 1 0))",
+        )
+        .to_string(),
+        "1"
+    );
+    assert_eq!(
         evaluate("(let ((xs (list (list 1 2)))) (setf (car (nth 0 xs)) 9) xs)").to_string(),
         "((9 2))"
     );
     assert_eq!(
         evaluate("(let ((text \"abc\")) (setf (elt text 1) #\\X) text)").to_string(),
         "\"aXc\""
+    );
+    assert_eq!(
+        evaluate("(let ((values #(1 2))) (setf (elt values 1) 8) values)").to_string(),
+        "#(1 8)"
+    );
+    assert_eq!(
+        evaluate("(let ((values (list 1 2))) (setf (elt values 1) 8) values)").to_string(),
+        "(1 8)"
     );
     assert_eq!(
         evaluate(
@@ -3399,6 +3520,123 @@ fn evaluates_setf_places() {
         .to_string(),
         "(7 7)"
     );
+}
+
+#[test]
+fn evaluates_setf_place_variants_from_a_table() {
+    let cases = [
+        ("(let ((xs (list 1 2))) (setf (first xs) 9) xs)", "(9 2)"),
+        (
+            "(let ((xs (list 1 2))) (setf (rest xs) '(7 8)) xs)",
+            "(1 7 8)",
+        ),
+        (
+            "(let ((xs (list :key 1))) (setf (getf xs :key) 4) xs)",
+            "(:KEY 4)",
+        ),
+        ("(let ((xs (list 1 2))) (setf (elt xs 0) 6) xs)", "(6 2)"),
+        (
+            "(let ((text \"abc\")) (setf (char text 0) #\\Z) text)",
+            "\"Zbc\"",
+        ),
+        (
+            "(let ((values #(1 2))) (setf (row-major-aref values 0) 5) values)",
+            "#(5 2)",
+        ),
+    ];
+
+    for (source, expected) in cases {
+        assert_eq!(evaluate(source).to_string(), expected, "source: {source}");
+    }
+}
+
+#[test]
+fn rejects_invalid_setf_places_with_specific_errors() {
+    let cases = [
+        (
+            "(let ((xs nil)) (setf (car xs) 1))",
+            "cannot SETF CAR of NIL",
+        ),
+        (
+            "(let ((xs nil)) (setf (cdr xs) nil))",
+            "cannot SETF CDR of NIL",
+        ),
+        (
+            "(let ((xs (list 1))) (setf (nth 2 xs) 1))",
+            "SETF index is out of bounds",
+        ),
+        ("(let ((text \"abc\")) (setf (char text 1) 1))", "CHARACTER"),
+        (
+            "(let ((xs (list 1 2))) (setf (subseq xs 2 1) nil))",
+            "SETF SUBSEQ bounds are invalid",
+        ),
+        ("(let ((xs (list 1 2))) (setf (cdr xs) 42))", "LIST"),
+        (
+            "(let ((xs (list 1 2))) (setf (elt xs 2) 1))",
+            "SETF index is out of bounds",
+        ),
+        (
+            "(let ((values #(1 2))) (setf (aref values 2) 1))",
+            "SETF index is out of bounds",
+        ),
+        (
+            "(let ((values #(1 2))) (setf (aref values 'index) 1))",
+            "INTEGER",
+        ),
+        (
+            "(let ((values #(1 2))) (setf (svref values 2) 1))",
+            "SETF index is out of bounds",
+        ),
+        (
+            "(let ((values #(1 2))) (setf (row-major-aref values 'index) 1))",
+            "INTEGER",
+        ),
+        (
+            "(let ((bits #(0 1))) (setf (bit bits 'index) 1))",
+            "INTEGER",
+        ),
+        (
+            "(let ((text \"abc\")) (setf (char text 'index) #\\X))",
+            "INTEGER",
+        ),
+        (
+            "(let ((xs (list 1 2))) (setf (nth -1 xs) 1))",
+            "SETF index must be non-negative",
+        ),
+        (
+            "(let ((xs (list 1 2))) (setf (elt xs 'index) 1))",
+            "INTEGER",
+        ),
+        ("(let ((bits #(0 1))) (setf (bit bits 0) 2))", "BIT"),
+        (
+            "(let ((xs (list 1 2))) (setf (subseq xs 0) 42))",
+            "SEQUENCE",
+        ),
+        (
+            "(let ((text \"abc\")) (setf (subseq text 0 2) '(1 2)))",
+            "CHARACTER",
+        ),
+        (
+            "(let ((array (make-array '(2 2)))) (setf (aref array 2 0) 1))",
+            "SETF index is out of bounds",
+        ),
+        ("(let ((values #(1 2))) (setf (aref values 0 1) 1))", "two"),
+        (
+            "(let ((values #(1 2))) (setf (row-major-aref values 2) 1))",
+            "SETF index is out of bounds",
+        ),
+    ];
+
+    for (source, expected) in cases {
+        let error = Runtime::new().eval_source(source).expect_err(source);
+        let message = match error {
+            ncl_runtime::RuntimeError::InvalidForm { message, .. } => message,
+            ncl_runtime::RuntimeError::Type { expected, .. } => expected,
+            ncl_runtime::RuntimeError::Arity { expected, .. } => expected,
+            other => panic!("{source}: unexpected error {other:?}"),
+        };
+        assert!(message.contains(expected), "{source}: {message}");
+    }
 }
 
 #[test]
@@ -3968,6 +4206,24 @@ fn defpackage_size_option_is_accepted_and_validated() {
         .eval_source("(defpackage :package-size-invalid-eval (:size -1))")
         .unwrap_err();
     assert!(error.to_string().contains("defpackage :size"));
+}
+
+#[test]
+fn rejects_invalid_package_designators_through_public_api() {
+    let runtime = Runtime::new();
+    for source in [
+        "(find-package 1)",
+        "(package-name 1)",
+        "(intern 1 :ncl-user)",
+        "(find-symbol 1 :ncl-user)",
+    ] {
+        let error = runtime.eval_source(source).unwrap_err();
+        assert!(
+            matches!(error, ncl_runtime::RuntimeError::Type { .. })
+                || matches!(error, ncl_runtime::RuntimeError::Package { .. }),
+            "unexpected error for {source}: {error}"
+        );
+    }
 }
 
 #[test]

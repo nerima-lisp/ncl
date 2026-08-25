@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
-use crate::{parse_symbol_token, Form, FormKind, Span, SymbolTokenKind};
+use crate::{Form, FormKind, Span, SymbolTokenKind, parse_symbol_token};
 
 /// The ordinary lambda-list shape shared by the compiler and evaluator.
 #[derive(Clone, Debug, PartialEq)]
@@ -183,9 +183,7 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                             parameter.span,
                         ));
                     };
-                    if marker_name(rest_parameter)
-                        .is_some_and(|name| name.starts_with('&'))
-                    {
+                    if marker_name(rest_parameter).is_some_and(|name| name.starts_with('&')) {
                         return Err(LambdaListError::invalid(
                             "&rest must be followed by one parameter",
                             rest_parameter.span,
@@ -271,13 +269,13 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                         parameter.span,
                     ));
                 }
-                if let Some(supplied_p) = &specification.supplied_p {
-                    if !names.insert(supplied_p.clone()) {
-                        return Err(LambdaListError::invalid(
-                            "parameter names must be unique",
-                            parameter.span,
-                        ));
-                    }
+                if let Some(supplied_p) = &specification.supplied_p
+                    && !names.insert(supplied_p.clone())
+                {
+                    return Err(LambdaListError::invalid(
+                        "parameter names must be unique",
+                        parameter.span,
+                    ));
                 }
                 optional.push(specification);
             }
@@ -307,13 +305,13 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                         parameter.span,
                     ));
                 }
-                if let Some(supplied_p) = &specification.supplied_p {
-                    if !names.insert(supplied_p.clone()) {
-                        return Err(LambdaListError::invalid(
-                            "parameter names must be unique",
-                            parameter.span,
-                        ));
-                    }
+                if let Some(supplied_p) = &specification.supplied_p
+                    && !names.insert(supplied_p.clone())
+                {
+                    return Err(LambdaListError::invalid(
+                        "parameter names must be unique",
+                        parameter.span,
+                    ));
                 }
                 keywords.push(specification);
             }
@@ -432,12 +430,7 @@ fn parse_keyword_parameter(form: &Form) -> Result<LambdaListKeywordParameter, La
                         parse_keyword_name(&keyword_specification[0], "keyword name")?;
                     let (name, name_escaped) =
                         parse_name(&keyword_specification[1], "keyword parameter")?;
-                    (
-                        keyword_name,
-                        keyword_name_escaped,
-                        name,
-                        name_escaped,
-                    )
+                    (keyword_name, keyword_name_escaped, name, name_escaped)
                 }
                 FormKind::List(_) => {
                     return Err(LambdaListError::invalid(
@@ -460,8 +453,8 @@ fn parse_keyword_parameter(form: &Form) -> Result<LambdaListKeywordParameter, La
                 .get(2)
                 .map(|supplied_p| parse_name(supplied_p, "supplied-p parameter"))
                 .transpose()?;
-            let (supplied_p, supplied_p_escaped) = supplied_p
-                .map_or((None, None), |(name, escaped)| (Some(name), Some(escaped)));
+            let (supplied_p, supplied_p_escaped) =
+                supplied_p.map_or((None, None), |(name, escaped)| (Some(name), Some(escaped)));
             (
                 keyword_name,
                 keyword_name_escaped,

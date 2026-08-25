@@ -6,7 +6,7 @@ Common Lisp-oriented surface.
 
 ## Quick Start
 
-NCL requires Rust 1.85 or newer.
+NCL requires Rust 1.97 or newer.
 
 ~~~sh
 cargo run -- --eval '(+ 1 2)'
@@ -44,6 +44,9 @@ mkdocs build --strict --config-file docs/mkdocs.yml
 ~~~sh
 cargo check --workspace --all-targets
 cargo test --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+LLVM_COV=$(command -v llvm-cov) LLVM_PROFDATA=$(command -v llvm-profdata) \
+  cargo llvm-cov --workspace --all-targets --summary-only
 cargo fmt --all -- --check
 ~~~
 
@@ -51,6 +54,17 @@ If Rust is provided through Nix, the equivalent formatter check is:
 
 ~~~sh
 nix shell nixpkgs#rustc nixpkgs#rustfmt --command cargo fmt --all -- --check
+~~~
+
+For the complete reproducible toolchain, including formatter and Clippy, use
+the flake shell:
+
+~~~sh
+nix develop
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-targets
+cargo llvm-cov --workspace --all-targets --summary-only
 ~~~
 
 ## Contributing

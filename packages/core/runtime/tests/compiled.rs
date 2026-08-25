@@ -1,12 +1,9 @@
-use ncl_runtime::{Runtime, RuntimeError, Value};
+#[path = "support/compiled.rs"]
+mod support;
 
-fn evaluate(source: &str) -> Value {
-    Runtime::new()
-        .eval_compiled_source(source)
-        .unwrap()
-        .pop()
-        .unwrap()
-}
+use ncl_runtime::{Runtime, RuntimeError};
+
+use support::evaluate;
 
 #[test]
 fn compiled_supports_uninterned_symbols_and_gensym() {
@@ -72,8 +69,7 @@ fn compiled_preserves_escaped_symbol_identity_across_namespaces() {
         "(1 3)",
     );
     assert_eq!(
-        evaluate(r#"(list (symbol-name :|foo|) (symbol-name :FOO) (eq :|foo| :FOO))"#)
-            .to_string(),
+        evaluate(r#"(list (symbol-name :|foo|) (symbol-name :FOO) (eq :|foo| :FOO))"#).to_string(),
         r#"("foo" "FOO" NIL)"#,
     );
 }
@@ -189,15 +185,21 @@ fn compiled_evaluates_defconstant_and_constantp() {
         "(42 T T T)"
     );
 
-    assert!(Runtime::new()
-        .eval_compiled_source("(defconstant +answer+ 42) (setq +answer+ 7)")
-        .is_err());
-    assert!(Runtime::new()
-        .eval_compiled_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
-        .is_err());
-    assert!(Runtime::new()
-        .eval_compiled_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
-        .is_err());
+    assert!(
+        Runtime::new()
+            .eval_compiled_source("(defconstant +answer+ 42) (setq +answer+ 7)")
+            .is_err()
+    );
+    assert!(
+        Runtime::new()
+            .eval_compiled_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
+            .is_err()
+    );
+    assert!(
+        Runtime::new()
+            .eval_compiled_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
+            .is_err()
+    );
 }
 
 #[test]
@@ -1052,10 +1054,7 @@ fn compiled_evaluates_map_over_sequence_types() {
 
 #[test]
 fn compiled_evaluates_reduce_over_sequences() {
-    assert_eq!(
-        evaluate("(reduce #'+ '(1 2 3 4))").to_string(),
-        "10"
-    );
+    assert_eq!(evaluate("(reduce #'+ '(1 2 3 4))").to_string(), "10");
     assert_eq!(
         evaluate("(reduce #'- '(1 2 3) :from-end t)").to_string(),
         "2"
@@ -1122,8 +1121,7 @@ fn compiled_evaluates_sequence_search_and_mismatch() {
         "2"
     );
     assert_eq!(
-        evaluate("(search \"ab\" \"xxABab\" :test #'char-equal :from-end t)")
-            .to_string(),
+        evaluate("(search \"ab\" \"xxABab\" :test #'char-equal :from-end t)").to_string(),
         "4"
     );
     assert_eq!(
@@ -1201,14 +1199,8 @@ fn compiled_evaluates_sequence_merge() {
 #[test]
 fn compiled_evaluates_sequence_quantifiers() {
     assert_eq!(evaluate("(every #'numberp '(1 2))").to_string(), "T");
-    assert_eq!(
-        evaluate("(every #'= '(1 2) #(1 2))").to_string(),
-        "T"
-    );
-    assert_eq!(
-        evaluate("(some #'identity '(nil 2 4))").to_string(),
-        "2"
-    );
+    assert_eq!(evaluate("(every #'= '(1 2) #(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(some #'identity '(nil 2 4))").to_string(), "2");
     assert_eq!(evaluate("(notany #'evenp '(1 3 5))").to_string(), "T");
     assert_eq!(evaluate("(notevery #'evenp '(2 4 5))").to_string(), "T");
     assert_eq!(evaluate("(every #'char= \"ab\" \"ab\")").to_string(), "T");
@@ -1231,10 +1223,7 @@ fn compiled_evaluates_list_membership_and_association_searches() {
         evaluate("(member-if-not #'evenp '(2 4 5 6))").to_string(),
         "(5 6)"
     );
-    assert_eq!(
-        evaluate("(adjoin 4 '(1 2 3))").to_string(),
-        "(4 1 2 3)"
-    );
+    assert_eq!(evaluate("(adjoin 4 '(1 2 3))").to_string(), "(4 1 2 3)");
     assert_eq!(
         evaluate("(assoc 'b '((a . 1) (b . 2)))").to_string(),
         "(B . 2)"
@@ -1321,10 +1310,7 @@ fn compiled_evaluates_sequence_substitutions() {
 
 #[test]
 fn compiled_evaluates_list_set_operations() {
-    assert_eq!(
-        evaluate("(union '(1 2 2) '(2 3 3))").to_string(),
-        "(1 2 3)"
-    );
+    assert_eq!(evaluate("(union '(1 2 2) '(2 3 3))").to_string(), "(1 2 3)");
     assert_eq!(
         evaluate("(intersection '(1 2 2 3) '(2 3 4))").to_string(),
         "(2 3)"
@@ -1337,10 +1323,7 @@ fn compiled_evaluates_list_set_operations() {
         evaluate("(set-exclusive-or '(1 2 2 3) '(2 4))").to_string(),
         "(1 3 4)"
     );
-    assert_eq!(
-        evaluate("(subsetp '(1 2) '(3 2 1 4))").to_string(),
-        "T"
-    );
+    assert_eq!(evaluate("(subsetp '(1 2) '(3 2 1 4))").to_string(), "T");
     assert_eq!(
         evaluate("(union '(1 2) '(2 3) :test #'=)").to_string(),
         "(1 2 3)"
@@ -1349,22 +1332,13 @@ fn compiled_evaluates_list_set_operations() {
         evaluate("(union '((1 a) (2 b)) '((1 c) (3 d)) :key #'car)").to_string(),
         "((1 A) (2 B) (3 D))"
     );
-    assert_eq!(
-        evaluate("(nunion '(1 2) '(2 3))").to_string(),
-        "(1 2 3)"
-    );
-    assert_eq!(
-        evaluate("(funcall #'union '(1) '(2))").to_string(),
-        "(1 2)"
-    );
+    assert_eq!(evaluate("(nunion '(1 2) '(2 3))").to_string(), "(1 2 3)");
+    assert_eq!(evaluate("(funcall #'union '(1) '(2))").to_string(), "(1 2)");
 }
 
 #[test]
 fn compiled_evaluates_list_construction_and_partitioning() {
-    assert_eq!(
-        evaluate("(list* 1 2 '(3 4))").to_string(),
-        "(1 2 3 4)"
-    );
+    assert_eq!(evaluate("(list* 1 2 '(3 4))").to_string(), "(1 2 3 4)");
     assert_eq!(evaluate("(list* 1 2 3)").to_string(), "(1 2 . 3)");
     assert_eq!(
         evaluate("(make-list 3 :initial-element 'x)").to_string(),
@@ -1391,8 +1365,7 @@ fn compiled_evaluates_list_construction_and_partitioning() {
         "((A . 1) (B 2))"
     );
     assert_eq!(
-        evaluate("(multiple-value-list (get-properties '(:a 1 :b 2) '(:b :a)))")
-            .to_string(),
+        evaluate("(multiple-value-list (get-properties '(:a 1 :b 2) '(:b :a)))").to_string(),
         "(:A 1 (:A 1 :B 2))"
     );
     assert_eq!(
@@ -1402,10 +1375,7 @@ fn compiled_evaluates_list_construction_and_partitioning() {
     assert_eq!(evaluate("(last '(1 2 3) 2)").to_string(), "(2 3)");
     assert_eq!(evaluate("(butlast '(1 2 3))").to_string(), "(1 2)");
     assert_eq!(evaluate("(nreverse '(1 2 3))").to_string(), "(3 2 1)");
-    assert_eq!(
-        evaluate("(nconc '(1 2) '(3 4))").to_string(),
-        "(1 2 3 4)"
-    );
+    assert_eq!(evaluate("(nconc '(1 2) '(3 4))").to_string(), "(1 2 3 4)");
     assert_eq!(
         evaluate("(revappend '(1 2) '(3 4))").to_string(),
         "(2 1 3 4)"
@@ -1427,20 +1397,13 @@ fn compiled_evaluates_sequence_fill_replace_and_concatenate() {
         evaluate("(fill #\\x \"abcd\" :start 1)").to_string(),
         "\"axxx\""
     );
+    assert_eq!(evaluate("(fill 9 #(1 2 3) :end 2)").to_string(), "#(9 9 3)");
     assert_eq!(
-        evaluate("(fill 9 #(1 2 3) :end 2)").to_string(),
-        "#(9 9 3)"
-    );
-    assert_eq!(
-        evaluate(
-            "(replace '(9 9 9) '(1 2 3 4) :start1 1 :end1 3 :start2 0 :end2 2)"
-        )
-        .to_string(),
+        evaluate("(replace '(9 9 9) '(1 2 3 4) :start1 1 :end1 3 :start2 0 :end2 2)").to_string(),
         "(9 1 2)"
     );
     assert_eq!(
-        evaluate("(replace \"xxxx\" \"abcd\" :start1 1 :end1 3 :start2 0 :end2 2)")
-            .to_string(),
+        evaluate("(replace \"xxxx\" \"abcd\" :start1 1 :end1 3 :start2 0 :end2 2)").to_string(),
         "\"xabx\""
     );
     assert_eq!(evaluate("(copy-seq #(1 2))").to_string(), "#(1 2)");
@@ -1873,7 +1836,10 @@ fn compiled_evaluates_fixed_float_format_directive() {
             .to_string(),
         r#""1.25|1.25|      1.25|+1.25|****""#,
     );
-    assert_eq!(evaluate(r#"(format nil "~,0F" 1.25)"#).to_string(), r#""1.""#);
+    assert_eq!(
+        evaluate(r#"(format nil "~,0F" 1.25)"#).to_string(),
+        r#""1.""#
+    );
     assert_eq!(evaluate(r#"(format nil "~F" 3)"#).to_string(), r#""3.0""#);
 }
 
@@ -1884,8 +1850,7 @@ fn compiled_evaluates_exponential_float_format_directive() {
         r#""1.25E+0|1.25E+0|   1.25E+0|+1.25E+0""#,
     );
     assert_eq!(
-        evaluate(r#"(format nil "~,2,3E|~,2,,0E|~,2,,-1E" 0.0125 637.5 637.5)"#)
-            .to_string(),
+        evaluate(r#"(format nil "~,2,3E|~,2,,0E|~,2,,-1E" 0.0125 637.5 637.5)"#).to_string(),
         r#""1.25E-002|0.64E+3|0.06E+4""#,
     );
     assert_eq!(
@@ -1897,8 +1862,7 @@ fn compiled_evaluates_exponential_float_format_directive() {
 #[test]
 fn compiled_evaluates_parameterized_format_directives() {
     assert_eq!(
-        evaluate(r#"(format nil "~10A|~10@A|~10,'0D|~:D|~@D" "x" "y" 42 1234567 8)"#)
-            .to_string(),
+        evaluate(r#"(format nil "~10A|~10@A|~10,'0D|~:D|~@D" "x" "y" 42 1234567 8)"#).to_string(),
         r#""x         |         y|0000000042|1,234,567|+8""#,
     );
     assert_eq!(
@@ -1955,10 +1919,7 @@ fn compiled_evaluates_format_recursive_processing_directive() {
         r#"("<Foo 5> 7" "<Foo 5> 7" "<Foo 5> 14")"#,
     );
     assert_eq!(
-        evaluate(
-            r#"(format nil "~:{ ~@?~:^ ...~} " '(("a") ("b")))"#,
-        )
-        .to_string(),
+        evaluate(r#"(format nil "~:{ ~@?~:^ ...~} " '(("a") ("b")))"#,).to_string(),
         r#"" a ... b ""#,
     );
 }
@@ -2049,14 +2010,8 @@ fn compiled_evaluates_format_escape_upward_directive() {
         evaluate(r#"(format nil "done~^ignored")"#).to_string(),
         r#""done""#,
     );
-    assert_eq!(
-        evaluate(r#"(format nil "a~1,1^b")"#).to_string(),
-        r#""a""#,
-    );
-    assert_eq!(
-        evaluate(r#"(format nil "a~1,2^b")"#).to_string(),
-        r#""ab""#,
-    );
+    assert_eq!(evaluate(r#"(format nil "a~1,1^b")"#).to_string(), r#""a""#,);
+    assert_eq!(evaluate(r#"(format nil "a~1,2^b")"#).to_string(), r#""ab""#,);
     assert_eq!(
         evaluate(r#"(format nil "~:{~A~:^, ~}" '((a) (b) (c)))"#).to_string(),
         r#""A, B, C""#,
@@ -2444,9 +2399,11 @@ fn compiled_evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(runtime
-        .eval_compiled_source("(with-accessors (x) object x)")
-        .is_err());
+    assert!(
+        runtime
+            .eval_compiled_source("(with-accessors (x) object x)")
+            .is_err()
+    );
 }
 
 #[test]
@@ -4094,7 +4051,10 @@ fn compiled_defpackage_size_option_is_accepted_and_validated() {
         )
         .unwrap();
 
-    assert_eq!(values.last().unwrap().to_string(), "\"PACKAGE-SIZE-COMPILED\"");
+    assert_eq!(
+        values.last().unwrap().to_string(),
+        "\"PACKAGE-SIZE-COMPILED\""
+    );
 
     let error = runtime
         .eval_compiled_source("(defpackage :package-size-invalid-compiled (:size -1))")
@@ -4383,7 +4343,9 @@ fn compiled_rejects_invalid_go_shapes_and_tags() {
             "{source}"
         );
     }
-    assert!(Runtime::new()
-        .eval_compiled_source("(tagbody start start)")
-        .is_err());
+    assert!(
+        Runtime::new()
+            .eval_compiled_source("(tagbody start start)")
+            .is_err()
+    );
 }

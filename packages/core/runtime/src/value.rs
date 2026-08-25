@@ -1,6 +1,4 @@
 use std::cell::RefCell;
-use std::fmt;
-use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -13,7 +11,29 @@ use ncl_syntax::{
 use crate::environment::Environment;
 use crate::error::{ReturnValue, RuntimeError};
 
+#[path = "rational.rs"]
+mod rational;
+pub use rational::Rational;
+
+#[path = "value_display.rs"]
+mod display;
+
 pub type Builtin = fn(&[Value]) -> Result<Value, RuntimeError>;
+type SlotValues = Rc<RefCell<Vec<(Rc<str>, Value)>>>;
+type ValueEntries = Rc<RefCell<Vec<(Value, Value)>>>;
+
+pub(crate) struct ClosureSpec {
+    pub(crate) parameters: Vec<String>,
+    pub(crate) required_escaped: Vec<bool>,
+    pub(crate) optional: Vec<LambdaListOptionalParameter>,
+    pub(crate) rest: Option<String>,
+    pub(crate) rest_escaped: bool,
+    pub(crate) keywords: Vec<LambdaListKeywordParameter>,
+    pub(crate) has_keyword_section: bool,
+    pub(crate) allow_other_keys: bool,
+    pub(crate) auxiliary: Vec<LambdaListAuxiliaryParameter>,
+    pub(crate) body: Vec<Form>,
+}
 
 #[derive(Clone)]
 pub(crate) enum MacroPattern {
@@ -47,7 +67,7 @@ pub(crate) struct MacroAuxiliaryParameter {
 }
 
 #[derive(Clone)]
-pub(crate) struct MacroLambdaList {
+pub struct MacroLambdaList {
     pub(crate) whole: Option<String>,
     pub(crate) environment: Option<String>,
     pub(crate) required: Vec<MacroPattern>,
@@ -60,7 +80,7 @@ pub(crate) struct MacroLambdaList {
 }
 
 #[derive(Clone)]
-pub(crate) struct StructureSlot {
+pub struct StructureSlot {
     pub(crate) name: String,
     pub(crate) init_form: Option<Form>,
     pub(crate) read_only: bool,
@@ -73,24 +93,6 @@ pub(crate) struct StructureDefinition {
 }
 
 #[derive(Clone)]
-pub(crate) struct ConditionSlot {
-    pub(crate) name: String,
-    pub(crate) initarg: Option<String>,
-    pub(crate) init_form: Option<Form>,
-    pub(crate) readers: Vec<String>,
-    pub(crate) writers: Vec<String>,
-}
-
-#[derive(Clone)]
-pub(crate) struct ConditionDefinition {
-    pub(crate) name: String,
-    pub(crate) direct_superclasses: Vec<String>,
-    pub(crate) precedence: Vec<String>,
-    pub(crate) slots: Vec<ConditionSlot>,
-    pub(crate) report: Option<String>,
-}
-
-#[derive(Clone)]
 pub(crate) struct ClassSlot {
     pub(crate) name: String,
     pub(crate) initarg: Option<String>,
@@ -99,25 +101,24 @@ pub(crate) struct ClassSlot {
 }
 
 #[derive(Clone)]
-pub(crate) struct ClassDefinition {
+pub struct ClassDefinition {
     pub(crate) name: String,
-    pub(crate) direct_superclasses: Vec<String>,
     pub(crate) precedence: Vec<String>,
     pub(crate) slots: Vec<ClassSlot>,
     pub(crate) default_initargs: Vec<(String, Form)>,
 }
 
 #[derive(Clone)]
-pub(crate) struct MethodDefinition {
+pub struct MethodDefinition {
     pub(crate) qualifiers: Vec<String>,
     pub(crate) specializers: Vec<String>,
     pub(crate) function: Value,
 }
 
 #[derive(Clone)]
-pub(crate) struct Instance {
+pub struct Instance {
     pub(crate) class: Rc<ClassDefinition>,
-    pub(crate) slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
+    pub(crate) slots: SlotValues,
 }
 
 #[derive(Clone)]
@@ -196,67 +197,6 @@ pub enum Function {
         function: FunctionId,
         environment: Environment,
     },
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Rational {
-    numerator: i64,
-    denominator: i64,
-}
-
-impl Rational {
-    pub(crate) fn new(numerator: i128, denominator: i128) -> Result<Self, RuntimeError> {
-        if denominator == 0 {
-            return Err(RuntimeError::DivisionByZero);
-        }
-
-        let (numerator, denominator) = if denominator < 0 {
-            (
-                numerator.checked_neg().ok_or(RuntimeError::NumericOverflow)?,
-                denominator
-                    .checked_neg()
-                    .ok_or(RuntimeError::NumericOverflow)?,
-            )
-        } else {
-            (numerator, denominator)
-        };
-
-        let numerator_abs = if numerator < 0 {
-            numerator
-                .checked_neg()
-                .ok_or(RuntimeError::NumericOverflow)? as u128
-        } else {
-            numerator as u128
-        };
-        let denominator_abs = denominator as u128;
-        let divisor = gcd(numerator_abs, denominator_abs);
-        let numerator = i64::try_from(numerator / divisor as i128)
-            .map_err(|_| RuntimeError::NumericOverflow)?;
-        let denominator = i64::try_from(denominator / divisor as i128)
-            .map_err(|_| RuntimeError::NumericOverflow)?;
-
-        Ok(Self {
-            numerator,
-            denominator,
-        })
-    }
-
-    pub(crate) fn numerator(self) -> i64 {
-        self.numerator
-    }
-
-    pub(crate) fn denominator(self) -> i64 {
-        self.denominator
-    }
-}
-
-fn gcd(mut left: u128, mut right: u128) -> u128 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-    left
 }
 
 pub struct Stream {
@@ -378,7 +318,10 @@ impl Stream {
     }
 
     pub(crate) fn is_output(&self) -> bool {
-        matches!(&self.kind, StreamKind::Output { .. } | StreamKind::Io { .. })
+        matches!(
+            &self.kind,
+            StreamKind::Output { .. } | StreamKind::Io { .. }
+        )
     }
 
     pub(crate) fn read_char(&mut self) -> Option<char> {
@@ -548,8 +491,8 @@ impl Stream {
                 pushback,
                 ..
             } => {
-                let available = usize::from(pushback.is_some())
-                    + characters.len().saturating_sub(*position);
+                let available =
+                    usize::from(pushback.is_some()) + characters.len().saturating_sub(*position);
                 if count > available {
                     return false;
                 }
@@ -569,8 +512,8 @@ impl Stream {
                 pushback,
                 ..
             } => {
-                let available = usize::from(pushback.is_some())
-                    + characters.len().saturating_sub(*position);
+                let available =
+                    usize::from(pushback.is_some()) + characters.len().saturating_sub(*position);
                 if count > available {
                     return false;
                 }
@@ -642,11 +585,7 @@ impl Stream {
         if at_line_start {
             return Some(false);
         }
-        if self.write("\n") {
-            Some(true)
-        } else {
-            None
-        }
+        if self.write("\n") { Some(true) } else { None }
     }
 
     pub(crate) fn take_output(&mut self) -> Option<String> {
@@ -690,10 +629,10 @@ impl Stream {
 }
 
 #[derive(Clone)]
-pub(crate) struct ConditionData {
+pub struct ConditionData {
     actual_type: String,
     type_names: Rc<Vec<String>>,
-    slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
+    slots: SlotValues,
     message: Rc<str>,
     format_control: Option<Rc<str>>,
     format_arguments: Vec<Value>,
@@ -725,7 +664,7 @@ impl ConditionData {
 }
 
 #[derive(Clone)]
-pub(crate) struct RestartData {
+pub struct RestartData {
     name: Rc<str>,
 }
 
@@ -759,7 +698,7 @@ pub enum Value {
     },
     HashTable {
         test: Rc<str>,
-        entries: Rc<RefCell<Vec<(Value, Value)>>>,
+        entries: ValueEntries,
     },
     Values(Rc<Vec<Value>>),
     Condition(Rc<ConditionData>),
@@ -767,7 +706,7 @@ pub enum Value {
     Structure {
         name: Rc<str>,
         types: Rc<Vec<Rc<str>>>,
-        slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
+        slots: SlotValues,
     },
     Class(Rc<ClassDefinition>),
     Instance(Instance),
@@ -884,27 +823,21 @@ impl Value {
 
     pub(crate) fn condition(error: &RuntimeError) -> Self {
         let (actual_type, type_names, message, format_control, format_arguments) = match error {
-            RuntimeError::Signaled {
-                condition,
-                condition_types,
-                message,
-                format_control,
-                format_arguments,
-                ..
-            } => (
+            RuntimeError::Signaled(signaled) => (
                 error.condition_type_name(),
-                if condition_types.is_empty() {
-                    vec![condition.clone()]
+                if signaled.condition_types.is_empty() {
+                    vec![signaled.condition.clone()]
                 } else {
-                    condition_types.clone()
+                    signaled.condition_types.clone()
                 },
-                message.clone(),
-                format_control.clone(),
-                format_arguments
+                signaled.message.clone(),
+                signaled.format_control.clone(),
+                signaled
+                    .format_arguments
                     .iter()
                     .cloned()
                     .map(ReturnValue::into_value)
-                .collect(),
+                    .collect(),
             ),
             _ => (
                 error.condition_type_name(),
@@ -934,24 +867,6 @@ impl Value {
             actual_type.clone(),
             vec![actual_type],
             Vec::new(),
-            message,
-            format_control,
-            format_arguments,
-        )
-    }
-
-    pub(crate) fn condition_from_definition(
-        actual_type: String,
-        type_names: Vec<String>,
-        slots: Vec<(String, Value)>,
-        message: String,
-        format_control: Option<String>,
-        format_arguments: Vec<Value>,
-    ) -> Self {
-        Self::condition_from_parts_with_types(
-            actual_type,
-            type_names,
-            slots,
             message,
             format_control,
             format_arguments,
@@ -1016,37 +931,8 @@ impl Value {
         }))
     }
 
-    pub(crate) fn condition_reader(
-        condition_name: impl Into<String>,
-        slot_name: impl Into<String>,
-    ) -> Self {
-        Self::Function(Rc::new(Function::ConditionReader {
-            condition_name: condition_name.into(),
-            slot_name: slot_name.into(),
-        }))
-    }
-
-    pub(crate) fn condition_writer(
-        condition_name: impl Into<String>,
-        slot_name: impl Into<String>,
-    ) -> Self {
-        Self::Function(Rc::new(Function::ConditionWriter {
-            condition_name: condition_name.into(),
-            slot_name: slot_name.into(),
-        }))
-    }
-
     pub fn closure(parameters: Vec<String>, body: Vec<Form>, environment: Environment) -> Self {
         Self::closure_with_optional(parameters, Vec::new(), None, body, environment)
-    }
-
-    pub(crate) fn closure_with_rest(
-        parameters: Vec<String>,
-        rest: Option<String>,
-        body: Vec<Form>,
-        environment: Environment,
-    ) -> Self {
-        Self::closure_with_optional(parameters, Vec::new(), rest, body, environment)
     }
 
     pub(crate) fn closure_with_optional(
@@ -1069,44 +955,34 @@ impl Value {
     ) -> Self {
         let required_escaped = vec![false; parameters.len()];
         Self::closure_with_keywords(
-            parameters,
-            required_escaped,
-            optional,
-            rest,
-            false,
-            Vec::new(),
-            false,
-            false,
-            auxiliary,
-            body,
+            ClosureSpec {
+                parameters,
+                required_escaped,
+                optional,
+                rest,
+                rest_escaped: false,
+                keywords: Vec::new(),
+                has_keyword_section: false,
+                allow_other_keys: false,
+                auxiliary,
+                body,
+            },
             environment,
         )
     }
 
-    pub(crate) fn closure_with_keywords(
-        parameters: Vec<String>,
-        required_escaped: Vec<bool>,
-        optional: Vec<LambdaListOptionalParameter>,
-        rest: Option<String>,
-        rest_escaped: bool,
-        keywords: Vec<LambdaListKeywordParameter>,
-        has_keyword_section: bool,
-        allow_other_keys: bool,
-        auxiliary: Vec<LambdaListAuxiliaryParameter>,
-        body: Vec<Form>,
-        environment: Environment,
-    ) -> Self {
+    pub(crate) fn closure_with_keywords(spec: ClosureSpec, environment: Environment) -> Self {
         Self::Function(Rc::new(Function::Closure {
-            parameters,
-            required_escaped,
-            optional,
-            rest,
-            rest_escaped,
-            keywords,
-            has_keyword_section,
-            allow_other_keys,
-            auxiliary,
-            body,
+            parameters: spec.parameters,
+            required_escaped: spec.required_escaped,
+            optional: spec.optional,
+            rest: spec.rest,
+            rest_escaped: spec.rest_escaped,
+            keywords: spec.keywords,
+            has_keyword_section: spec.has_keyword_section,
+            allow_other_keys: spec.allow_other_keys,
+            auxiliary: spec.auxiliary,
+            body: spec.body,
             environment,
         }))
     }
@@ -1119,7 +995,7 @@ impl Value {
         Self::Function(Rc::new(Function::Macro {
             lambda_list,
             body,
-                environment,
+            environment,
         }))
     }
 
@@ -1145,11 +1021,6 @@ impl Value {
             function,
             environment,
         }))
-    }
-
-    pub(crate) fn structure(name: impl AsRef<str>, slots: Vec<(String, Value)>) -> Self {
-        let name = name.as_ref().to_string();
-        Self::structure_with_types(name.clone(), slots, vec![name])
     }
 
     pub(crate) fn structure_with_types(
@@ -1180,10 +1051,7 @@ impl Value {
         Self::Class(definition)
     }
 
-    pub(crate) fn instance(
-        definition: Rc<ClassDefinition>,
-        slots: Vec<(String, Value)>,
-    ) -> Self {
+    pub(crate) fn instance(definition: Rc<ClassDefinition>, slots: Vec<(String, Value)>) -> Self {
         Self::Instance(Instance {
             class: definition,
             slots: Rc::new(RefCell::new(
@@ -1193,13 +1061,6 @@ impl Value {
                     .collect(),
             )),
         })
-    }
-
-    pub(crate) fn class_definition(&self) -> Option<Rc<ClassDefinition>> {
-        match self {
-            Self::Class(definition) => Some(definition.clone()),
-            _ => None,
-        }
     }
 
     pub(crate) fn instance_class_definition(&self) -> Option<Rc<ClassDefinition>> {
@@ -1229,10 +1090,9 @@ impl Value {
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+            && let Some(class_value) = &slot.class_value
         {
-            if let Some(class_value) = &slot.class_value {
-                return Some(class_value.borrow().clone());
-            }
+            return Some(class_value.borrow().clone());
         }
         instance
             .slots
@@ -1275,11 +1135,10 @@ impl Value {
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+            && let Some(class_value) = &slot.class_value
         {
-            if let Some(class_value) = &slot.class_value {
-                *class_value.borrow_mut() = value;
-                return true;
-            }
+            *class_value.borrow_mut() = value;
+            return true;
         }
         let mut slots = instance.slots.borrow_mut();
         let Some((_, slot_value)) = slots
@@ -1379,9 +1238,7 @@ impl Value {
             Self::Stream(_) => "STREAM",
             Self::Package(_) => "PACKAGE",
             Self::Environment(_) => "ENVIRONMENT",
-            Self::Symbol(_)
-            | Self::SymbolExact(_)
-            | Self::UninternedSymbol(_) => "SYMBOL",
+            Self::Symbol(_) | Self::SymbolExact(_) | Self::UninternedSymbol(_) => "SYMBOL",
             Self::Keyword(_) | Self::KeywordExact(_) => "KEYWORD",
             Self::List(_) | Self::DottedList { .. } => "LIST",
             Self::Vector(_) => "VECTOR",
@@ -1401,9 +1258,7 @@ impl Value {
         let Self::Condition(condition) = self else {
             return false;
         };
-        let expected = expected
-            .trim_start_matches(':')
-            .to_ascii_uppercase();
+        let expected = expected.trim_start_matches(':').to_ascii_uppercase();
         if condition.actual_type.eq_ignore_ascii_case(&expected) {
             return true;
         }
@@ -1417,7 +1272,7 @@ impl Value {
         if expected == "CONDITION" {
             return true;
         }
-        match condition.actual_type.as_str() {
+        match condition.actual_type.to_ascii_uppercase().as_str() {
             "SIMPLE-ERROR" => matches!(
                 expected.as_str(),
                 "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "SIMPLE-CONDITION"
@@ -1432,16 +1287,17 @@ impl Value {
                 "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "ARITHMETIC-ERROR"
             ),
             "ARITHMETIC-ERROR" => {
-                matches!(expected.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION")
+                matches!(
+                    expected.as_str(),
+                    "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+                )
             }
-            "TYPE-ERROR"
-            | "PROGRAM-ERROR"
-            | "PACKAGE-ERROR"
-            | "READER-ERROR"
-            | "COMPILER-ERROR"
-            | "FILE-ERROR"
-            | "UNBOUND-VARIABLE" => {
-                matches!(expected.as_str(), "CONDITION" | "ERROR" | "SERIOUS-CONDITION")
+            "TYPE-ERROR" | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR"
+            | "COMPILER-ERROR" | "FILE-ERROR" | "UNBOUND-VARIABLE" => {
+                matches!(
+                    expected.as_str(),
+                    "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+                )
             }
             "CONTROL-ERROR" => matches!(expected.as_str(), "CONDITION"),
             _ => false,
@@ -1455,11 +1311,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn condition_slot(
-        &self,
-        condition_name: &str,
-        slot_name: &str,
-    ) -> Option<Value> {
+    pub(crate) fn condition_slot(&self, condition_name: &str, slot_name: &str) -> Option<Value> {
         let Self::Condition(condition) = self else {
             return None;
         };
@@ -1744,9 +1596,7 @@ impl Value {
                         },
                     )
             }
-            (Self::Class(left), Self::Class(right)) => {
-                left.name.eq_ignore_ascii_case(&right.name)
-            }
+            (Self::Class(left), Self::Class(right)) => left.name.eq_ignore_ascii_case(&right.name),
             (Self::Instance(left), Self::Instance(right)) => {
                 if !left.class.name.eq_ignore_ascii_case(&right.class.name) {
                     return false;
@@ -1783,153 +1633,239 @@ impl Value {
     }
 }
 
-impl fmt::Display for Value {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Nil => formatter.write_str("NIL"),
-            Self::Unbound => formatter.write_str("#<UNBOUND>"),
-            Self::Boolean(true) => formatter.write_str("T"),
-            Self::Boolean(false) => formatter.write_str("NIL"),
-            Self::Integer(value) => value.fmt(formatter),
-            Self::Rational(value) => write!(formatter, "{}/{}", value.numerator, value.denominator),
-            Self::Float(value) => {
-                if value.fract() == 0.0 {
-                    write!(formatter, "{value:.1}")
-                } else {
-                    value.fmt(formatter)
-                }
-            }
-            Self::String(value) => write!(formatter, "{value:?}"),
-            Self::Character(value) => match value {
-                ' ' => formatter.write_str("#\\SPACE"),
-                '\n' => formatter.write_str("#\\NEWLINE"),
-                '\t' => formatter.write_str("#\\TAB"),
-                '\r' => formatter.write_str("#\\RETURN"),
-                value => write!(formatter, "#\\{value}"),
-            },
-            Self::Stream(stream) => write!(formatter, "#<{}>", stream.borrow().kind_name()),
-            Self::Package(value) => write!(formatter, "#<PACKAGE \"{value}\">"),
-            Self::Environment(_) => formatter.write_str("#<ENVIRONMENT>"),
-            Self::Symbol(value) => formatter.write_str(value),
-            Self::SymbolExact(value) => write_escaped_symbol(formatter, value),
-            Self::UninternedSymbol(value) => write!(formatter, "#:{value}"),
-            Self::Keyword(value) => write!(formatter, ":{value}"),
-            Self::KeywordExact(value) => {
-                formatter.write_char(':')?;
-                write_escaped_symbol(formatter, value)
-            }
-            Self::List(values) => {
-                formatter.write_str("(")?;
-                write_sequence(formatter, values)?;
-                formatter.write_str(")")
-            }
-            Self::DottedList { items, tail } => {
-                formatter.write_str("(")?;
-                write_sequence(formatter, items)?;
-                if !items.is_empty() {
-                    formatter.write_str(" ")?;
-                }
-                write!(formatter, ". {tail})")
-            }
-            Self::Vector(values) => {
-                formatter.write_str("#(")?;
-                write_sequence(formatter, values)?;
-                formatter.write_str(")")
-            }
-            Self::Array { dimensions, .. } => write!(formatter, "#<ARRAY {dimensions:?}>"),
-            Self::HashTable { test, .. } => write!(formatter, "#<HASH-TABLE {test}>"),
-            Self::Values(values) => {
-                formatter.write_str("#<VALUES")?;
-                if !values.is_empty() {
-                    formatter.write_str(" ")?;
-                    write_sequence(formatter, values)?;
-                }
-                formatter.write_str(">")
-            }
-            Self::Condition(condition) => write!(formatter, "#<CONDITION {}>", condition.message),
-            Self::Restart(restart) => write!(formatter, "#<RESTART {}>", restart.name),
-            Self::Structure { name, slots, .. } => {
-                write!(formatter, "#S({name}")?;
-                for (slot_name, value) in slots.borrow().iter() {
-                    write!(formatter, " :{slot_name} {value}")?;
-                }
-                formatter.write_char(')')
-            }
-            Self::Class(definition) => write!(formatter, "#<CLASS {}>", definition.name),
-            Self::Instance(instance) => write!(formatter, "#<{} INSTANCE>", instance.class.name),
-            Self::Function(function) => match function.as_ref() {
-                Function::Builtin { name, .. } => write!(formatter, "#<BUILTIN {name}>"),
-                Function::Primitive { name } => write!(formatter, "#<PRIMITIVE {name}>"),
-                Function::StructureConstructor { name, .. } => {
-                    write!(formatter, "#<STRUCTURE-CONSTRUCTOR {name}>")
-                }
-                Function::StructurePredicate { name } => {
-                    write!(formatter, "#<STRUCTURE-PREDICATE {name}>")
-                }
-                Function::StructureAccessor {
-                    structure_name,
-                    slot_name,
-                    ..
-                } => write!(
-                    formatter,
-                    "#<STRUCTURE-ACCESSOR {structure_name}-{slot_name}>"
-                ),
-                Function::StructureCopier { name } => {
-                    write!(formatter, "#<STRUCTURE-COPIER {name}>")
-                }
-                Function::Generic { name, .. } => write!(formatter, "#<GENERIC-FUNCTION {name}>"),
-                Function::SlotReader {
-                    class_name,
-                    slot_name,
-                } => write!(formatter, "#<SLOT-READER {class_name}-{slot_name}>"),
-                Function::SlotWriter {
-                    class_name,
-                    slot_name,
-                } => write!(formatter, "#<SLOT-WRITER {class_name}-{slot_name}>"),
-                Function::ConditionReader {
-                    condition_name,
-                    slot_name,
-                } => write!(formatter, "#<CONDITION-READER {condition_name}-{slot_name}>"),
-                Function::ConditionWriter {
-                    condition_name,
-                    slot_name,
-                } => write!(formatter, "#<CONDITION-WRITER {condition_name}-{slot_name}>"),
-                Function::Closure { .. } | Function::Compiled { .. } => {
-                    formatter.write_str("#<FUNCTION>")
-                }
-                Function::Macro { .. } | Function::ModifyMacro { .. } => {
-                    formatter.write_str("#<MACRO>")
-                }
-            },
+#[cfg(test)]
+mod tests {
+    use super::{Rational, Stream, Value};
+    use crate::error::RuntimeError;
+    use std::rc::Rc;
+
+    #[test]
+    fn boolean_and_multiple_values_follow_truthiness_rules() {
+        assert!(Value::boolean(true).is_truthy());
+        assert!(!Value::boolean(false).is_truthy());
+        assert!(!Value::Nil.is_truthy());
+        assert!(Value::Values(Rc::new(vec![Value::Integer(1), Value::Nil])).is_truthy());
+        assert!(!Value::Values(Rc::new(Vec::new())).is_truthy());
+    }
+
+    #[test]
+    fn type_names_cover_scalar_and_collection_values() {
+        let cases = [
+            (Value::Nil, "NIL"),
+            (Value::Unbound, "UNBOUND"),
+            (Value::Boolean(true), "BOOLEAN"),
+            (Value::Integer(1), "INTEGER"),
+            (Value::Float(1.0), "FLOAT"),
+            (Value::string("text"), "STRING"),
+            (Value::Character('x'), "CHARACTER"),
+            (Value::List(Rc::new(Vec::new())), "LIST"),
+            (
+                Value::DottedList {
+                    items: Rc::new(Vec::new()),
+                    tail: Rc::new(Value::Nil),
+                },
+                "LIST",
+            ),
+            (Value::Vector(Rc::new(Vec::new())), "VECTOR"),
+            (
+                Value::Array {
+                    dimensions: Rc::new(vec![0]),
+                    elements: Rc::new(Vec::new()),
+                },
+                "ARRAY",
+            ),
+            (Value::Values(Rc::new(Vec::new())), "VALUES"),
+        ];
+        for (value, expected) in cases {
+            assert_eq!(value.type_name(), expected);
         }
     }
-}
 
-impl fmt::Debug for Value {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("Value(")?;
-        fmt::Display::fmt(self, formatter)?;
-        formatter.write_str(")")
+    #[test]
+    fn collection_accessors_preserve_shape_and_reject_other_values() {
+        let items = vec![Value::Integer(1), Value::Integer(2)];
+        let list = Value::List(Rc::new(items.clone()));
+        assert_eq!(list.list_items().as_ref().map(Vec::len), Some(2));
+        assert_eq!(Value::Nil.list_items().as_ref().map(Vec::len), Some(0));
+        assert!(Value::Integer(1).list_items().is_none());
+
+        let vector = Value::Vector(Rc::new(items));
+        assert_eq!(vector.vector_items().as_ref().map(Vec::len), Some(2));
+        assert!(list.vector_items().is_none());
+
+        let array = Value::Array {
+            dimensions: Rc::new(vec![2, 1]),
+            elements: Rc::new(vec![Value::Nil, Value::Nil]),
+        };
+        assert_eq!(array.array_dimensions(), Some(vec![2, 1]));
+        assert_eq!(array.array_items().as_ref().map(Vec::len), Some(2));
+        assert!(vector.array_items().is_none());
     }
-}
 
-fn write_sequence(formatter: &mut fmt::Formatter<'_>, values: &[Value]) -> fmt::Result {
-    for (index, value) in values.iter().enumerate() {
-        if index != 0 {
-            formatter.write_str(" ")?;
+    #[test]
+    fn symbol_names_and_references_preserve_exactness() {
+        let cases = [
+            (Value::Nil, Some(("NIL", false))),
+            (Value::Boolean(true), Some(("T", false))),
+            (Value::Symbol(Rc::from("name")), Some(("name", false))),
+            (Value::SymbolExact(Rc::from("name")), Some(("name", true))),
+            (Value::Integer(1), None),
+        ];
+        for (value, expected) in cases {
+            assert_eq!(value.symbol_reference(), expected);
+            assert_eq!(value.symbol_name(), expected.map(|(name, _)| name));
         }
-        fmt::Display::fmt(value, formatter)?;
     }
-    Ok(())
-}
 
-fn write_escaped_symbol(formatter: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
-    formatter.write_char('|')?;
-    for character in value.chars() {
-        if matches!(character, '|' | '\\') {
-            formatter.write_char('\\')?;
-        }
-        formatter.write_char(character)?;
+    #[test]
+    fn eq_is_identity_based_while_equal_is_structural() {
+        let left = Value::List(Rc::new(vec![Value::string("same")]));
+        let right = Value::List(Rc::new(vec![Value::string("same")]));
+        assert!(!left.eq_value(&right));
+        assert!(left.equal_value(&right));
+        assert!(Value::Nil.eq_value(&Value::Boolean(false)));
+        assert!(!Value::Integer(1).equal_value(&Value::Integer(2)));
     }
-    formatter.write_char('|')
+
+    #[test]
+    fn input_stream_preserves_peek_pushback_and_consumption_semantics() {
+        let mut stream = Stream::input("ab\ncd", 0, 5);
+        assert_eq!(stream.kind_name(), "STRING-INPUT-STREAM");
+        assert!(stream.is_input());
+        assert!(!stream.is_output());
+        assert_eq!(stream.peek_char(), Some('a'));
+        assert_eq!(stream.read_char(), Some('a'));
+        assert!(stream.unread_char('a'));
+        assert!(!stream.unread_char('a'));
+        assert_eq!(stream.remaining_input(), Some("ab\ncd".to_owned()));
+        assert!(stream.consume_input(2));
+        assert_eq!(stream.peek_char(), Some('\n'));
+        assert_eq!(stream.read_line(), Some((String::new(), false)));
+        assert_eq!(stream.read_line(), Some(("cd".to_owned(), true)));
+        assert_eq!(stream.read_char(), None);
+        assert!(!stream.consume_input(1));
+    }
+
+    #[test]
+    fn output_stream_tracks_line_state_and_can_be_drained() {
+        let mut stream = Stream::output();
+        assert_eq!(stream.kind_name(), "STRING-OUTPUT-STREAM");
+        assert!(!stream.is_input());
+        assert!(stream.is_output());
+        assert_eq!(stream.fresh_line(), Some(false));
+        assert!(stream.write("hello"));
+        assert_eq!(stream.fresh_line(), Some(true));
+        assert_eq!(stream.fresh_line(), Some(false));
+        assert_eq!(stream.take_output(), Some("hello\n".to_owned()));
+        assert_eq!(stream.take_output(), Some(String::new()));
+        stream.close(false).expect("string output closes");
+        assert!(!stream.write("closed later"));
+        assert_eq!(stream.fresh_line(), None);
+    }
+
+    #[test]
+    fn rational_constructor_reduces_integers_and_rejects_zero_denominator() {
+        let cases = [
+            ((6, 3), Value::Integer(2)),
+            ((-6, 3), Value::Integer(-2)),
+            ((6, -3), Value::Integer(-2)),
+            (
+                (2, 4),
+                Value::Rational(Rational::new(1, 2).expect("reduced ratio")),
+            ),
+        ];
+
+        for ((numerator, denominator), expected) in cases {
+            assert!(
+                Value::rational(numerator, denominator)
+                    .expect("valid ratio")
+                    .equal_value(&expected)
+            );
+        }
+
+        for (numerator, denominator) in [(1, 0), (i128::MIN, 1), (1, i128::MIN)] {
+            assert!(
+                Value::rational(numerator, denominator).is_err(),
+                "ratio {numerator}/{denominator} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn constructors_normalize_symbols_keywords_and_collections() {
+        assert!(matches!(Value::boolean(true), Value::Boolean(true)));
+        assert!(matches!(Value::boolean(false), Value::Nil));
+        assert!(matches!(Value::symbol("name"), Value::Symbol(name) if name.as_ref() == "NAME"));
+        assert!(
+            matches!(Value::symbol_exact("name"), Value::SymbolExact(name) if name.as_ref() == "name")
+        );
+        assert!(matches!(Value::keyword(":name"), Value::Keyword(name) if name.as_ref() == "NAME"));
+        assert!(
+            matches!(Value::keyword_exact(":name"), Value::KeywordExact(name) if name.as_ref() == "name")
+        );
+        assert!(matches!(Value::list(Vec::new()), Value::Nil));
+        assert!(
+            Value::list(vec![Value::Integer(1)])
+                .list_items()
+                .expect("list items")[0]
+                .equal_value(&Value::Integer(1))
+        );
+        assert!(
+            Value::vector(vec![Value::Integer(1)])
+                .vector_items()
+                .expect("vector items")[0]
+                .equal_value(&Value::Integer(1))
+        );
+        assert_eq!(
+            Value::array(vec![1, 2], vec![Value::Integer(1), Value::Integer(2)]).array_dimensions(),
+            Some(vec![1, 2])
+        );
+    }
+
+    #[test]
+    fn conditions_preserve_hierarchy_slots_and_format_metadata() {
+        let condition = Value::condition_from_parts_with_types(
+            "SIMPLE-ERROR".to_owned(),
+            vec!["SIMPLE-ERROR".to_owned()],
+            vec![("datum".to_owned(), Value::Integer(1))],
+            "bad value".to_owned(),
+            Some("~A".to_owned()),
+            vec![Value::Integer(7)],
+        );
+
+        assert!(condition.condition_is_type(":error"));
+        assert!(condition.condition_is_type("SERIOUS-CONDITION"));
+        assert!(condition.condition_is_type("condition"));
+        assert!(!condition.condition_is_type("warning"));
+        assert!(!Value::Nil.condition_is_type("condition"));
+
+        let lowercase = Value::condition_from_parts(
+            "simple-error".to_owned(),
+            "lowercase".to_owned(),
+            None,
+            Vec::new(),
+        );
+        assert!(lowercase.condition_is_type("serious-condition"));
+        assert_eq!(condition.condition_type_name(), Some("SIMPLE-ERROR"));
+        assert_eq!(condition.condition_message(), Some("bad value"));
+        assert_eq!(condition.simple_condition_format_control(), Some("~A"));
+        assert!(matches!(
+            condition.simple_condition_format_arguments(),
+            Some(arguments) if arguments.len() == 1 && arguments[0].equal_value(&Value::Integer(7))
+        ));
+
+        assert!(!condition.set_condition_slot("warning", "datum", Value::Nil));
+        assert!(condition.set_condition_slot("error", "datum", Value::Integer(2)));
+        assert!(matches!(
+            condition.condition_slot("ERROR", "DATUM"),
+            Some(value) if value.equal_value(&Value::Integer(2))
+        ));
+        assert!(!condition.set_condition_slot("error", "missing", Value::Nil));
+
+        let division = Value::condition(&RuntimeError::DivisionByZero);
+        assert!(division.condition_is_type("arithmetic-error"));
+        assert!(division.condition_is_type("error"));
+        assert_eq!(division.condition_message(), Some("division by zero"));
+        assert_eq!(Value::Nil.condition_message(), None);
+    }
 }

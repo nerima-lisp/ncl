@@ -82,15 +82,13 @@ pub fn parse_symbol_token(token: &str) -> Result<SymbolToken, SymbolTokenError> 
     }
 
     match separators.as_slice() {
-        [] => {
-            Ok(SymbolToken {
-                kind: SymbolTokenKind::Symbol,
-                package: None,
-                name: chars_to_string(&decoded),
-                external: false,
-                escaped,
-            })
-        }
+        [] => Ok(SymbolToken {
+            kind: SymbolTokenKind::Symbol,
+            package: None,
+            name: chars_to_string(&decoded),
+            external: false,
+            escaped,
+        }),
         [separator] => {
             let name = chars_to_string(&decoded[separator + 1..]);
             if name.is_empty() {

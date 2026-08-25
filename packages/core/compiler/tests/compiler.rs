@@ -1,5 +1,5 @@
 use ncl_compiler::{CompileErrorKind, Compiler, Constant, Instruction};
-use ncl_syntax::{read, Form, FormKind, Span};
+use ncl_syntax::{Form, FormKind, Span, read};
 
 fn compile(source: &str) -> ncl_compiler::Program {
     let forms = read(source).expect("test source should parse");
@@ -21,6 +21,18 @@ fn compiles_arithmetic_shaped_calls_and_normalizes_names() {
             Instruction::Call(2),
             Instruction::Return,
         ]
+    );
+}
+
+#[test]
+fn compiling_no_forms_emits_a_nil_result() {
+    let program = Compiler::compile_forms(&[]).expect("an empty program should compile");
+
+    assert_eq!(program.entry, 0);
+    assert_eq!(program.functions.len(), 1);
+    assert_eq!(
+        program.functions[program.entry].instructions,
+        vec![Instruction::Constant(Constant::Nil), Instruction::Return]
     );
 }
 
@@ -416,6 +428,42 @@ fn rejects_non_symbol_bindings_without_panicking() {
 }
 
 #[test]
+fn rejects_malformed_destructuring_names_as_a_table() {
+    let cases = [
+        (
+            "(destructuring-bind ((&optional value)) (list (list 1)) value)",
+            CompileErrorKind::InvalidForm {
+                message: "destructuring pattern does not support lambda-list markers".to_string(),
+            },
+        ),
+        (
+            "(destructuring-bind (value value) (list 1 2) value)",
+            CompileErrorKind::InvalidForm {
+                message: "destructuring pattern names must be unique".to_string(),
+            },
+        ),
+        (
+            "(destructuring-bind (&key ((value 1))) (list) value)",
+            CompileErrorKind::InvalidForm {
+                message: "destructuring keyword designator must start with a keyword".to_string(),
+            },
+        ),
+        (
+            "(destructuring-bind (&key ((: value))) (list) value)",
+            CompileErrorKind::InvalidForm {
+                message: "destructuring keyword designator must be nonempty".to_string(),
+            },
+        ),
+    ];
+
+    for (source, expected) in cases {
+        let forms = read(source).expect("test source should parse");
+        let error = Compiler::compile_forms(&forms).expect_err("malformed pattern should fail");
+        assert_eq!(error.kind, expected, "source: {source}");
+    }
+}
+
+#[test]
 fn emits_quoted_vectors_as_data() {
     let program = compile("#(a 1)");
     let forms = read("#(a 1)").expect("test source should parse");
@@ -439,12 +487,16 @@ fn emits_control_flow_and_dynamic_binding_instructions() {
     assert!(instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::IsBound(name) if name == "ANSWER")
     }));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Set(name) if name == "ANSWER")));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_))));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Set(name) if name == "ANSWER"))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
+    );
 }
 
 #[test]
@@ -461,12 +513,16 @@ fn lowers_case_to_eql_comparisons_and_jumps() {
     assert!(instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::Quote(form) if matches!(&form.kind, FormKind::Atom(atom) if atom == "1"))
     }));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_))));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::ExitScope)));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::ExitScope))
+    );
 }
 
 #[test]
@@ -483,12 +539,16 @@ fn lowers_typecase_to_typep_comparisons_and_jumps() {
     assert!(instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::Quote(form) if matches!(&form.kind, FormKind::Atom(atom) if atom == "INTEGER"))
     }));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_))));
-    assert!(instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::ExitScope)));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::ExitScope))
+    );
 }
 
 #[test]
@@ -518,10 +578,12 @@ fn emits_quasiquote_and_apply_instructions() {
     ));
 
     let apply = compile("(apply + 1 '(2))");
-    assert!(apply.functions[0]
-        .instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Apply(2))));
+    assert!(
+        apply.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Apply(2)))
+    );
 }
 
 #[test]
@@ -537,10 +599,12 @@ fn emits_eval_and_mapcar_instructions() {
     ));
 
     let mapcar = compile("(mapcar + '(1 2) '(10 20))");
-    assert!(mapcar.functions[0]
-        .instructions
-        .iter()
-        .any(|instruction| { matches!(instruction, Instruction::MapCar(2)) }));
+    assert!(
+        mapcar.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::MapCar(2)) })
+    );
 }
 
 #[test]
@@ -686,19 +750,22 @@ fn lowers_do_with_implicit_block_parallel_steps_and_tagbody() {
         )
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::TagBody { .. })
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::TagBody { .. }))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::JumpIfFalse(_))
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::JumpIfFalse(_)))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::Set(name) if name == "I")
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Set(name) if name == "I"))
     }));
 }
 
@@ -713,19 +780,22 @@ fn lowers_prog_with_implicit_block_and_tagbody() {
         )
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::TagBody { .. })
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::TagBody { .. }))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::Go { tag } if tag == "DONE")
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Go { tag } if tag == "DONE"))
     }));
     assert!(program.functions.iter().any(|function| {
-        function.instructions.iter().any(|instruction| {
-            matches!(instruction, Instruction::Define(name) if name == "I")
-        })
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Define(name) if name == "I"))
     }));
 }
 
@@ -784,4 +854,149 @@ fn compiles_tagbody_and_go_with_label_positions() {
             Instruction::Return,
         ]
     );
+}
+
+#[test]
+fn compiles_literal_constant_families_without_runtime_adapters() {
+    let cases = [
+        ("nil", Constant::Nil),
+        ("#t", Constant::Boolean(true)),
+        ("#f", Constant::Nil),
+        ("42", Constant::Integer(42)),
+        (
+            "6/8",
+            Constant::Rational {
+                numerator: 3,
+                denominator: 4,
+            },
+        ),
+        ("1.5", Constant::Float(1.5)),
+        (":foo", Constant::Keyword("FOO".to_owned())),
+    ];
+
+    for (source, expected) in cases {
+        let program = compile(source);
+        assert_eq!(
+            program.functions[0].instructions[0],
+            Instruction::Constant(expected),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn compiles_eval_when_only_for_execute_situations() {
+    for (source, expected_constants) in [
+        ("(eval-when (:compile-toplevel) 7)", 1),
+        ("(eval-when (:execute) 7)", 1),
+        ("(eval-when (:compile-toplevel :execute) 7)", 1),
+    ] {
+        let program = compile(source);
+        let constants = program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::Constant(_)))
+            .count();
+        assert_eq!(constants, expected_constants, "{source}");
+    }
+}
+
+#[test]
+fn rejects_non_symbol_eval_when_situations() {
+    for source in ["(eval-when (1) 7)", "(eval-when (#:phase) 7)"] {
+        let forms = read(source).expect("test source should parse");
+        let error = Compiler::compile_forms(&forms).expect_err(source);
+        assert!(
+            matches!(error.kind, CompileErrorKind::ExpectedSymbol { .. }),
+            "{source}: {error}"
+        );
+    }
+}
+
+#[test]
+fn compiles_control_bindings_and_definition_forms_as_a_group() {
+    let program = compile(
+        "(progn
+           (defvar *value* 1)
+           (setq *value* 2)
+           (psetq *value* 3)
+           (let ((local 4))
+             (flet ((identity (value) value))
+               (funcall #'identity local)))
+           (catch 'done (throw 'done 5))
+           (handler-case (error 'condition)
+             (condition (condition) condition))
+           (defconstant +constant+ 6)
+           (defstruct point x y)
+           (defun point-sum (point)
+             (+ (point-x point) (point-y point)))
+           (values 1 2))",
+    );
+
+    assert!(!program.functions.is_empty());
+}
+
+#[test]
+fn compiles_control_and_iteration_forms_through_one_shared_contract() {
+    let forms = [
+        "(values 1 2)",
+        "(multiple-value-list (values 1 2))",
+        "(ignore-errors 1)",
+        "(handler-bind ((condition (lambda (condition) condition))) 1)",
+        "(restart-bind ((continue (lambda () 1))) 2)",
+        "(with-simple-restart (continue \"continue\") 3)",
+        "(restart-case 4 (continue () 5))",
+        "(with-condition-restarts 'condition nil 6)",
+        "(catch 'tag 7)",
+        "(throw 'tag 8)",
+        "(progv '(name) '(9) name)",
+        "(block result (return-from result 10))",
+        "(tagbody start (go start))",
+        "(multiple-value-bind (left right) (values 1 2) (+ left right))",
+        "(multiple-value-call #'list 1 2)",
+        "(multiple-value-prog1 1 2)",
+        "(and 1 2)",
+        "(or nil 2)",
+        "(when t 1)",
+        "(cond (nil 1) (t 2))",
+        "(case 1 (1 2) (otherwise 3))",
+        "(typecase 1 (integer 2) (otherwise 3))",
+        "(dotimes (index 2) index)",
+        "(dolist (item '(1 2)) item)",
+        "(do ((index 0 (1+ index))) ((= index 2) index) index)",
+    ];
+
+    for source in forms {
+        let program = compile(source);
+        assert!(!program.functions.is_empty(), "no functions for {source}");
+    }
+}
+
+#[test]
+fn compiles_keyword_control_names_and_rejects_invalid_names() {
+    for source in [
+        "(handler-case 1 (:condition () 2))",
+        "(handler-bind ((:condition (lambda (condition) condition))) 1)",
+        "(restart-bind ((:continue (lambda () 1))) 2)",
+        "(with-simple-restart (:continue \"continue\") 3)",
+        "(restart-case 4 (:continue () 5))",
+        "(with-condition-restarts ':condition nil 6)",
+        "(tagbody :start (go :start))",
+        "(block :result (return-from :result 10))",
+    ] {
+        let program = compile(source);
+        assert!(!program.functions.is_empty(), "no functions for {source}");
+    }
+
+    for source in [
+        "(handler-case 1 (1 () 2))",
+        "(restart-bind ((1 (lambda () 1))) 2)",
+    ] {
+        let forms = read(source).expect("test source should parse");
+        let error = Compiler::compile_forms(&forms).expect_err(source);
+        assert!(
+            matches!(error.kind, CompileErrorKind::ExpectedSymbol { .. }),
+            "{source}: {error}"
+        );
+    }
 }

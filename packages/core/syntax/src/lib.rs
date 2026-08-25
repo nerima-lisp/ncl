@@ -7,8 +7,8 @@ mod symbol;
 pub use error::{ReadError, ReadErrorKind};
 pub use form::{Form, FormKind, Span};
 pub use lambda_list::{
-    parse_ordinary_lambda_list, LambdaListAuxiliaryParameter, LambdaListError, LambdaListErrorKind,
-    LambdaListKeywordParameter, LambdaListOptionalParameter, OrdinaryLambdaList,
+    LambdaListAuxiliaryParameter, LambdaListError, LambdaListErrorKind, LambdaListKeywordParameter,
+    LambdaListOptionalParameter, OrdinaryLambdaList, parse_ordinary_lambda_list,
 };
-pub use reader::{read, Reader, MAX_NESTING_DEPTH};
-pub use symbol::{parse_symbol_token, SymbolToken, SymbolTokenError, SymbolTokenKind};
+pub use reader::{MAX_NESTING_DEPTH, Reader, read};
+pub use symbol::{SymbolToken, SymbolTokenError, SymbolTokenKind, parse_symbol_token};

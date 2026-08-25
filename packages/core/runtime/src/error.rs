@@ -134,8 +134,10 @@ impl RuntimeError {
             Self::NotCallable { .. } | Self::Type { .. } => "TYPE-ERROR".to_owned(),
             Self::Arity { .. } => "PROGRAM-ERROR".to_owned(),
             Self::InvalidForm { .. } => "SIMPLE-ERROR".to_owned(),
-            Self::Signaled(signaled) => {
-                if signaled.warning {
+            Self::Signaled {
+                condition, warning, ..
+            } => {
+                if *warning {
                     "SIMPLE-WARNING".to_owned()
                 } else {
                     signaled.condition.clone()
@@ -175,12 +177,11 @@ impl RuntimeError {
                     } else if signaled.warning {
                         false
                     } else {
-                        signaled
-                            .condition_types
+                        condition_types
                             .iter()
                             .any(|type_name| normalize_condition_name(type_name) == condition)
                             || matches!(
-                                normalize_condition_name(&signaled.condition).as_str(),
+                                normalize_condition_name(signaled).as_str(),
                                 "SIMPLE-ERROR"
                                     | "DIVISION-BY-ZERO"
                                     | "ARITHMETIC-ERROR"

@@ -1,34 +1,30 @@
-use super::*;
+use std::collections::HashSet;
 
-impl CompileState {
-    pub(super) fn compile_destructuring_pattern(
-        &mut self,
+use ncl_syntax::{Form, FormKind, Span, SymbolTokenKind, parse_symbol_token};
+
+use super::{
+    BindingName, CompileError, CompileErrorKind, DestructureAuxiliaryParameter,
+    DestructureKeywordParameter, DestructureLambdaList, DestructureLambdaListSection,
+    DestructureOptionalParameter, DestructurePattern, DestructureSpec, FunctionId, Instruction,
+    normalize_name,
+};
+
+impl super::CompileState {
+    fn compile_destructuring_pattern(
+        &self,
         form: &Form,
-        seen: &mut HashSet<String>,
+        seen: &mut HashSet<BindingName>,
     ) -> Result<DestructurePattern, CompileError> {
         match &form.kind {
             FormKind::Atom(_) => Ok(DestructurePattern::Name(
                 self.compile_destructuring_binding_name(form, seen, "destructuring pattern name")?,
             )),
-            FormKind::List(items) => {
-                if items.iter().any(|item| {
-                    matches!(
-                        &item.kind,
-                        FormKind::Atom(name) if normalize_name(name).starts_with('&')
-                    )
-                }) {
-                    Ok(DestructurePattern::LambdaList(
-                        self.compile_destructuring_lambda_list_with_seen(form, seen)?,
-                    ))
-                } else {
-                    Ok(DestructurePattern::List(
-                        items
-                            .iter()
-                            .map(|item| self.compile_destructuring_pattern(item, seen))
-                            .collect::<Result<Vec<_>, _>>()?,
-                    ))
-                }
-            }
+            FormKind::List(items) => Ok(DestructurePattern::List(
+                items
+                    .iter()
+                    .map(|item| self.compile_destructuring_pattern(item, seen))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
             FormKind::DottedList { items, tail } => Ok(DestructurePattern::Dotted {
                 items: items
                     .iter()
@@ -45,23 +41,15 @@ impl CompileState {
         }
     }
 
-    pub(super) fn compile_destructuring_binding_name(
+    fn compile_destructuring_binding_name(
         &self,
         form: &Form,
-        seen: &mut HashSet<String>,
+        seen: &mut HashSet<BindingName>,
         context: &str,
-    ) -> Result<String, CompileError> {
-        let name = self.symbol_name(form, context)?;
-        if name.starts_with('&') {
-            return Err(CompileError::new(
-                CompileErrorKind::InvalidForm {
-                    message: "destructuring pattern does not support lambda-list markers"
-                        .to_string(),
-                },
-                form.span,
-            ));
-        }
-        if !seen.insert(name.clone()) {
+    ) -> Result<BindingName, CompileError> {
+        let (name, escaped) = self.symbol_name_info(form, context)?;
+        let binding = BindingName { name, escaped };
+        if !seen.insert(binding.clone()) {
             return Err(CompileError::new(
                 CompileErrorKind::InvalidForm {
                     message: "destructuring pattern names must be unique".to_string(),
@@ -69,23 +57,20 @@ impl CompileState {
                 form.span,
             ));
         }
-        Ok(name)
+        Ok(binding)
     }
 
-    pub(super) fn compile_destructuring_default(
-        &mut self,
-        form: &Form,
-    ) -> Result<FunctionId, CompileError> {
+    fn compile_destructuring_default(&mut self, form: &Form) -> Result<FunctionId, CompileError> {
         let default_function = self.reserve_function(None, Vec::new());
         self.compile_expression(default_function, form)?;
         self.emit(default_function, Instruction::Return, form.span)?;
         Ok(default_function)
     }
 
-    pub(super) fn compile_destructuring_optional_parameter(
+    fn compile_destructuring_optional_parameter(
         &mut self,
         form: &Form,
-        seen: &mut HashSet<String>,
+        seen: &mut HashSet<BindingName>,
     ) -> Result<DestructureOptionalParameter, CompileError> {
         let nil = || Form::atom("NIL", form.span);
         let (pattern, init_form, supplied_p) = match &form.kind {
@@ -132,10 +117,10 @@ impl CompileState {
         })
     }
 
-    pub(super) fn compile_destructuring_keyword_name(
+    fn compile_destructuring_keyword_name(
         &self,
         form: &Form,
-    ) -> Result<String, CompileError> {
+    ) -> Result<(String, bool), CompileError> {
         let FormKind::Atom(name) = &form.kind else {
             return Err(CompileError::new(
                 CompileErrorKind::ExpectedSymbol {
@@ -144,41 +129,54 @@ impl CompileState {
                 form.span,
             ));
         };
-        let Some(keyword) = name.strip_prefix(':') else {
+        let Ok(token) = parse_symbol_token(name) else {
             return Err(CompileError::new(
-                CompileErrorKind::InvalidForm {
-                    message: "destructuring keyword designator must start with a keyword"
-                        .to_string(),
+                CompileErrorKind::ExpectedSymbol {
+                    context: "destructuring keyword name".to_string(),
                 },
                 form.span,
             ));
         };
-        if keyword.is_empty() {
+        if token.kind != SymbolTokenKind::Keyword
+            || token.package.is_some()
+            || token.name.is_empty()
+        {
             return Err(CompileError::new(
                 CompileErrorKind::InvalidForm {
-                    message: "destructuring keyword designator must be nonempty".to_string(),
+                    message: "destructuring keyword designator must be a nonempty keyword"
+                        .to_string(),
                 },
                 form.span,
             ));
         }
-        Ok(normalize_name(keyword))
+        Ok(if token.escaped {
+            (token.name, true)
+        } else {
+            (normalize_name(&token.name), false)
+        })
     }
 
-    pub(super) fn compile_destructuring_keyword_parameter(
+    fn compile_destructuring_keyword_parameter(
         &mut self,
         form: &Form,
-        seen: &mut HashSet<String>,
+        seen: &mut HashSet<BindingName>,
     ) -> Result<DestructureKeywordParameter, CompileError> {
         let nil = || Form::atom("NIL", form.span);
-        let (keyword_name, pattern, trailing_start) = match &form.kind {
+        let (keyword_name, keyword_name_escaped, pattern, trailing_start) = match &form.kind {
             FormKind::Atom(_) => {
-                let name = self.compile_destructuring_binding_name(
+                let binding = self.compile_destructuring_binding_name(
                     form,
                     seen,
                     "destructuring keyword parameter name",
                 )?;
-                let keyword_name = normalize_name(&name);
-                (keyword_name, DestructurePattern::Name(name), 0)
+                let keyword_name = binding.name.clone();
+                let keyword_name_escaped = binding.escaped;
+                (
+                    keyword_name,
+                    keyword_name_escaped,
+                    DestructurePattern::Name(binding),
+                    0,
+                )
             }
             FormKind::List(items) if !items.is_empty() => {
                 if let FormKind::List(key_specification) = &items[0].kind {
@@ -191,13 +189,20 @@ impl CompileState {
                             items[0].span,
                         ));
                     }
-                    let keyword_name =
+                    let (keyword_name, keyword_name_escaped) =
                         self.compile_destructuring_keyword_name(&key_specification[0])?;
                     let pattern =
                         self.compile_destructuring_pattern(&key_specification[1], seen)?;
-                    (keyword_name, pattern, 1)
-                } else if matches!(&items[0].kind, FormKind::Atom(name) if name.starts_with(':')) {
-                    let keyword_name = self.compile_destructuring_keyword_name(&items[0])?;
+                    (keyword_name, keyword_name_escaped, pattern, 1)
+                } else if matches!(
+                    &items[0].kind,
+                    FormKind::Atom(name)
+                        if parse_symbol_token(name)
+                            .map(|token| token.kind == SymbolTokenKind::Keyword)
+                            .unwrap_or(false)
+                ) {
+                    let (keyword_name, keyword_name_escaped) =
+                        self.compile_destructuring_keyword_name(&items[0])?;
                     if items.len() < 2 {
                         return Err(CompileError::new(
                             CompileErrorKind::InvalidForm {
@@ -208,10 +213,10 @@ impl CompileState {
                         ));
                     }
                     let pattern = self.compile_destructuring_pattern(&items[1], seen)?;
-                    (keyword_name, pattern, 2)
+                    (keyword_name, keyword_name_escaped, pattern, 2)
                 } else {
                     let pattern = self.compile_destructuring_pattern(&items[0], seen)?;
-                    let DestructurePattern::Name(name) = &pattern else {
+                    let DestructurePattern::Name(binding) = &pattern else {
                         return Err(CompileError::new(
                             CompileErrorKind::InvalidForm {
                                 message:
@@ -221,7 +226,7 @@ impl CompileState {
                             items[0].span,
                         ));
                     };
-                    (normalize_name(name), pattern, 1)
+                    (binding.name.clone(), binding.escaped, pattern, 1)
                 }
             }
             FormKind::List(_) => unreachable!(),
@@ -269,16 +274,17 @@ impl CompileState {
         let default_function = self.compile_destructuring_default(&init_form)?;
         Ok(DestructureKeywordParameter {
             keyword_name,
+            keyword_name_escaped,
             pattern,
             default_function,
             supplied_p,
         })
     }
 
-    pub(super) fn compile_destructuring_auxiliary_parameter(
+    fn compile_destructuring_auxiliary_parameter(
         &mut self,
         form: &Form,
-        seen: &mut HashSet<String>,
+        seen: &mut HashSet<BindingName>,
     ) -> Result<DestructureAuxiliaryParameter, CompileError> {
         let nil = || Form::atom("NIL", form.span);
         let (name, init_form) = match &form.kind {
@@ -324,18 +330,9 @@ impl CompileState {
         })
     }
 
-    pub(super) fn compile_destructuring_lambda_list(
+    fn compile_destructuring_lambda_list(
         &mut self,
         form: &Form,
-    ) -> Result<DestructureLambdaList, CompileError> {
-        let mut seen = HashSet::new();
-        self.compile_destructuring_lambda_list_with_seen(form, &mut seen)
-    }
-
-    pub(super) fn compile_destructuring_lambda_list_with_seen(
-        &mut self,
-        form: &Form,
-        seen: &mut HashSet<String>,
     ) -> Result<DestructureLambdaList, CompileError> {
         let FormKind::List(parameters) = &form.kind else {
             return Err(CompileError::new(
@@ -347,7 +344,6 @@ impl CompileState {
         };
         let mut lambda_list = DestructureLambdaList {
             whole: None,
-            environment: None,
             required: Vec::new(),
             optional: Vec::new(),
             keywords: Vec::new(),
@@ -356,6 +352,7 @@ impl CompileState {
             rest: None,
             auxiliary: Vec::new(),
         };
+        let mut seen = HashSet::new();
         let mut section = DestructureLambdaListSection::Required;
         let mut index = 0;
         while index < parameters.len() {
@@ -379,7 +376,7 @@ impl CompileState {
                         }
                         lambda_list.whole = Some(self.compile_destructuring_binding_name(
                             &parameters[index + 1],
-                            seen,
+                            &mut seen,
                             "destructuring whole parameter name",
                         )?);
                         index += 2;
@@ -418,7 +415,7 @@ impl CompileState {
                         }
                         lambda_list.rest = Some(self.compile_destructuring_binding_name(
                             &parameters[index + 1],
-                            seen,
+                            &mut seen,
                             "destructuring rest parameter name",
                         )?);
                         section = DestructureLambdaListSection::Rest;
@@ -473,26 +470,9 @@ impl CompileState {
                         index += 1;
                     }
                     "&ENVIRONMENT" => {
-                        if lambda_list.environment.is_some() || index + 1 >= parameters.len() {
-                            return Err(CompileError::new(
-                                CompileErrorKind::InvalidForm {
-                                    message: "&environment must be followed by one parameter"
-                                        .to_string(),
-                                },
-                                parameter.span,
-                            ));
-                        }
-                        lambda_list.environment = Some(self.compile_destructuring_binding_name(
-                            &parameters[index + 1],
-                            seen,
-                            "destructuring environment parameter name",
-                        )?);
-                        index += 2;
-                    }
-                    _ if marker.starts_with('&') => {
                         return Err(CompileError::new(
                             CompileErrorKind::InvalidForm {
-                                message: "unsupported marker in destructuring lambda list"
+                                message: "&environment is not supported in destructuring-bind"
                                     .to_string(),
                             },
                             parameter.span,
@@ -511,9 +491,11 @@ impl CompileState {
                         match section {
                             DestructureLambdaListSection::Required => lambda_list
                                 .required
-                                .push(self.compile_destructuring_pattern(parameter, seen)?),
+                                .push(self.compile_destructuring_pattern(parameter, &mut seen)?),
                             DestructureLambdaListSection::Optional => lambda_list.optional.push(
-                                self.compile_destructuring_optional_parameter(parameter, seen)?,
+                                self.compile_destructuring_optional_parameter(
+                                    parameter, &mut seen,
+                                )?,
                             ),
                             DestructureLambdaListSection::Keyword => {
                                 if lambda_list.allow_other_keys {
@@ -525,8 +507,9 @@ impl CompileState {
                                         parameter.span,
                                     ));
                                 }
-                                let specification =
-                                    self.compile_destructuring_keyword_parameter(parameter, seen)?;
+                                let specification = self.compile_destructuring_keyword_parameter(
+                                    parameter, &mut seen,
+                                )?;
                                 if lambda_list
                                     .keywords
                                     .iter()
@@ -543,7 +526,9 @@ impl CompileState {
                                 lambda_list.keywords.push(specification);
                             }
                             DestructureLambdaListSection::Auxiliary => lambda_list.auxiliary.push(
-                                self.compile_destructuring_auxiliary_parameter(parameter, seen)?,
+                                self.compile_destructuring_auxiliary_parameter(
+                                    parameter, &mut seen,
+                                )?,
                             ),
                             DestructureLambdaListSection::Rest => unreachable!(),
                         }
@@ -565,10 +550,10 @@ impl CompileState {
             match section {
                 DestructureLambdaListSection::Required => lambda_list
                     .required
-                    .push(self.compile_destructuring_pattern(parameter, seen)?),
+                    .push(self.compile_destructuring_pattern(parameter, &mut seen)?),
                 DestructureLambdaListSection::Optional => lambda_list
                     .optional
-                    .push(self.compile_destructuring_optional_parameter(parameter, seen)?),
+                    .push(self.compile_destructuring_optional_parameter(parameter, &mut seen)?),
                 DestructureLambdaListSection::Keyword => {
                     if lambda_list.allow_other_keys {
                         return Err(CompileError::new(
@@ -580,7 +565,7 @@ impl CompileState {
                         ));
                     }
                     let specification =
-                        self.compile_destructuring_keyword_parameter(parameter, seen)?;
+                        self.compile_destructuring_keyword_parameter(parameter, &mut seen)?;
                     if lambda_list
                         .keywords
                         .iter()
@@ -597,7 +582,7 @@ impl CompileState {
                 }
                 DestructureLambdaListSection::Auxiliary => lambda_list
                     .auxiliary
-                    .push(self.compile_destructuring_auxiliary_parameter(parameter, seen)?),
+                    .push(self.compile_destructuring_auxiliary_parameter(parameter, &mut seen)?),
                 DestructureLambdaListSection::Rest => unreachable!(),
             }
             index += 1;

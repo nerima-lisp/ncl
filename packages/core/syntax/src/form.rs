@@ -17,7 +17,6 @@ impl Span {
         self.end.saturating_sub(self.start)
     }
 
-    #[must_use]
     pub const fn is_empty(self) -> bool {
         self.len() == 0
     }
@@ -63,8 +62,17 @@ pub enum FormKind {
     String(String),
     Character(char),
     List(Vec<Form>),
-    DottedList { items: Vec<Form>, tail: Box<Form> },
+    DottedList {
+        items: Vec<Form>,
+        tail: Box<Form>,
+    },
     Vector(Vec<Form>),
+    BitVector(Vec<u8>),
+    Complex {
+        real: Box<Form>,
+        imaginary: Box<Form>,
+    },
+    ReadTimeEval(Box<Form>),
 }
 
 impl fmt::Display for Form {
@@ -102,6 +110,24 @@ impl fmt::Display for Form {
                     item.fmt(formatter)?;
                 }
                 formatter.write_str(")")
+            }
+            FormKind::BitVector(bits) => {
+                formatter.write_str("#*")?;
+                for bit in bits {
+                    write!(formatter, "{bit}")?;
+                }
+                Ok(())
+            }
+            FormKind::Complex { real, imaginary } => {
+                formatter.write_str("#C(")?;
+                real.fmt(formatter)?;
+                formatter.write_str(" ")?;
+                imaginary.fmt(formatter)?;
+                formatter.write_str(")")
+            }
+            FormKind::ReadTimeEval(form) => {
+                formatter.write_str("#.")?;
+                form.fmt(formatter)
             }
         }
     }

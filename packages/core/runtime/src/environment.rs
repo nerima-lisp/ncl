@@ -5,7 +5,7 @@ use std::rc::Rc;
 use ncl_syntax::Form;
 
 use crate::Value;
-use crate::value::{ClassDefinition, StructureDefinition};
+use crate::value::{ClassDefinition, ConditionDefinition, DefsetfDefinition, StructureDefinition};
 
 #[derive(Clone)]
 pub struct Environment(Rc<RefCell<Frame>>);
@@ -19,6 +19,7 @@ struct Frame {
     exact_functions: HashMap<String, Value>,
     setf_functions: HashMap<String, Value>,
     setf_expanders: HashMap<String, Value>,
+    defsetf_definitions: HashMap<String, DefsetfDefinition>,
     structures: HashMap<String, StructureDefinition>,
     classes: HashMap<String, Rc<ClassDefinition>>,
     symbol_properties: Vec<(Value, Value)>,
@@ -39,6 +40,7 @@ impl Environment {
             exact_functions: HashMap::new(),
             setf_functions: HashMap::new(),
             setf_expanders: HashMap::new(),
+            defsetf_definitions: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
             symbol_properties: Vec::new(),
@@ -59,6 +61,7 @@ impl Environment {
             exact_functions: HashMap::new(),
             setf_functions: HashMap::new(),
             setf_expanders: HashMap::new(),
+            defsetf_definitions: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
             symbol_properties: Vec::new(),
@@ -262,6 +265,26 @@ impl Environment {
             )
         };
         value.or_else(|| parent.and_then(|environment| environment.lookup_setf_expander(name)))
+    }
+
+    pub(crate) fn define_defsetf(&self, name: impl AsRef<str>, definition: DefsetfDefinition) {
+        let key = normalize_name(name.as_ref());
+        self.0
+            .borrow_mut()
+            .defsetf_definitions
+            .insert(key, definition);
+    }
+
+    pub(crate) fn lookup_defsetf(&self, name: &str) -> Option<DefsetfDefinition> {
+        let key = normalize_name(name);
+        let (definition, parent) = {
+            let frame = self.0.borrow();
+            (
+                frame.defsetf_definitions.get(&key).cloned(),
+                frame.parent.clone(),
+            )
+        };
+        definition.or_else(|| parent.and_then(|environment| environment.lookup_defsetf(name)))
     }
 
     pub(crate) fn remove_function(&self, name: &str) -> bool {

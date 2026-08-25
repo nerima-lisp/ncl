@@ -36,6 +36,23 @@ fn optional_parameters_default_to_nil_when_no_init_form_is_given() {
 }
 
 #[test]
+fn accepts_case_insensitive_nil_as_the_empty_lambda_list() {
+    let lambda_list = parse("nil");
+
+    assert!(lambda_list.required.is_empty());
+    assert!(lambda_list.optional.is_empty());
+    assert!(lambda_list.rest.is_none());
+}
+
+#[test]
+fn keeps_escaped_nil_as_a_symbol() {
+    let form = &read("|NIL|").expect("source should parse")[0];
+    let error = parse_ordinary_lambda_list(form).unwrap_err();
+
+    assert!(matches!(error.kind, LambdaListErrorKind::ExpectedList));
+}
+
+#[test]
 fn parses_auxiliary_parameters_after_optional_and_rest_parameters() {
     let lambda_list =
         parse("(first &optional (second (+ first 1)) &rest rest &aux (sum (+ first second)) next)");

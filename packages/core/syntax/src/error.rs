@@ -33,12 +33,13 @@ pub enum ReadErrorKind {
     UnexpectedEnd { context: &'static str },
     UnexpectedClosingDelimiter { delimiter: char },
     MismatchedDelimiter { expected: char, found: char },
+    MissingDottedHead,
     MissingDottedTail,
     MultipleDottedTails,
     InvalidEscape,
     InvalidCharacterName,
     InvalidDispatch,
-    InvalidRadix { radix: u32 },
+    UnquoteOutsideQuasiquote,
     NestingTooDeep { limit: usize },
 }
 
@@ -54,13 +55,14 @@ impl fmt::Display for ReadErrorKind {
             Self::MismatchedDelimiter { expected, found } => {
                 write!(formatter, "expected {expected}, found {found}")
             }
+            Self::MissingDottedHead => formatter.write_str("dotted list is missing its head"),
             Self::MissingDottedTail => formatter.write_str("dotted list is missing its tail"),
             Self::MultipleDottedTails => formatter.write_str("dotted list has more than one dot"),
             Self::InvalidEscape => formatter.write_str("invalid string escape"),
             Self::InvalidCharacterName => formatter.write_str("invalid character name"),
             Self::InvalidDispatch => formatter.write_str("invalid reader dispatch"),
-            Self::InvalidRadix { radix } => {
-                write!(formatter, "invalid base-{radix} integer")
+            Self::UnquoteOutsideQuasiquote => {
+                formatter.write_str("unquote is only valid inside quasiquote")
             }
             Self::NestingTooDeep { limit } => {
                 write!(formatter, "reader nesting exceeds limit {limit}")

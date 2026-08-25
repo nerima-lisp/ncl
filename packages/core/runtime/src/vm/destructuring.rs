@@ -1,5 +1,25 @@
+use std::rc::Rc;
 
-fn destructure_specification(
+use ncl_compiler::{BindingName, DestructurePattern, DestructureSpec, Program};
+use ncl_syntax::Span;
+
+use super::{compiled_keyword_matches, invalid, run_code};
+use crate::{Environment, Runtime, RuntimeError, Value};
+
+fn define_destructure_binding(
+    runtime: &Runtime,
+    binding: &BindingName,
+    value: Value,
+    environment: &Environment,
+) {
+    if binding.escaped {
+        runtime.define_exact_in(&binding.name, value, environment);
+    } else {
+        runtime.define_in(&binding.name, value, environment);
+    }
+}
+
+pub(super) fn destructure_specification(
     specification: &DestructureSpec,
     value: Value,
     runtime: &Runtime,
@@ -9,233 +29,233 @@ fn destructure_specification(
 ) -> Result<(), RuntimeError> {
     match specification {
         DestructureSpec::Pattern(pattern) => {
-            destructure_value(pattern, value, runtime, program, environment, span)
+            destructure_value(pattern, value, runtime, environment, span)
         }
         DestructureSpec::LambdaList(lambda_list) => {
-            destructure_lambda_list(lambda_list, value, runtime, program, environment, span)
-        }
-    }
-}
-
-fn destructure_lambda_list(
-    lambda_list: &DestructureLambdaList,
-    value: Value,
-    runtime: &Runtime,
-    program: &Rc<Program>,
-    environment: &Environment,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    let Some(arguments) = value.list_items() else {
-        return Err(invalid(
-            "destructuring-bind value must be a proper list",
-            span,
-        ));
-    };
-    if let Some(environment_name) = &lambda_list.environment {
-        runtime.define_in(
-            environment_name,
-            Value::environment(environment.clone()),
-            environment,
-        );
-    }
-    if let Some(whole) = &lambda_list.whole {
-        runtime.define_in(whole, value.clone(), environment);
-    }
-    let required_count = lambda_list.required.len();
-    let optional_count = lambda_list.optional.len();
-    if arguments.len() < required_count {
-        return Err(RuntimeError::Arity {
-            function: "destructuring-bind".to_string(),
-            expected: format!("at least {required_count}"),
-            actual: arguments.len(),
-        });
-    }
-    let optional_supplied_count = if lambda_list.has_keyword_section {
-        let available = arguments
-            .len()
-            .saturating_sub(required_count)
-            .min(optional_count);
-        (0..available)
-            .take_while(|index| {
-                !matches!(
-                    arguments[required_count + *index],
-                    Value::Keyword(_) | Value::KeywordExact(_)
-                )
-            })
-            .count()
-    } else {
-        arguments
-            .len()
-            .saturating_sub(required_count)
-            .min(optional_count)
-    };
-    let key_start = required_count + optional_supplied_count;
-    if !lambda_list.has_keyword_section
-        && lambda_list.rest.is_none()
-        && arguments.len() > required_count + optional_count
-    {
-        let maximum = required_count + optional_count;
-        return Err(RuntimeError::Arity {
-            function: "destructuring-bind".to_string(),
-            expected: format!("at most {maximum}"),
-            actual: arguments.len(),
-        });
-    }
-
-    for (pattern, argument) in lambda_list
-        .required
-        .iter()
-        .zip(arguments.iter().take(required_count).cloned())
-    {
-        destructure_value(pattern, argument, runtime, program, environment, span)?;
-    }
-    for (index, parameter) in lambda_list.optional.iter().enumerate() {
-        let supplied =
-            (index < optional_supplied_count).then(|| arguments[required_count + index].clone());
-        let value = if let Some(argument) = supplied.as_ref() {
-            argument.clone()
-        } else {
-            let default_function = program
-                .functions
-                .get(parameter.default_function)
-                .ok_or_else(|| {
-                    invalid(
-                        "compiled destructuring optional default is out of range",
-                        span,
-                    )
-                })?;
-            run_code(
-                runtime,
-                program,
-                default_function,
-                environment.clone(),
-                span,
-            )?
-            .primary_value()
-        };
-        destructure_value(
-            &parameter.pattern,
-            value,
-            runtime,
-            program,
-            environment,
-            span,
-        )?;
-        if let Some(supplied_p) = &parameter.supplied_p {
-            runtime.define_in(supplied_p, Value::boolean(supplied.is_some()), environment);
-        }
-    }
-    if let Some(rest_name) = &lambda_list.rest {
-        runtime.define_in(
-            rest_name,
-            Value::list(arguments[key_start..].to_vec()),
-            environment,
-        );
-    }
-
-    if lambda_list.has_keyword_section {
-        let keyword_arguments = &arguments[key_start..];
-        if keyword_arguments.len() % 2 != 0 {
-            return Err(invalid("keyword arguments must be supplied in pairs", span));
-        }
-        let mut supplied_keywords = HashMap::new();
-        let mut accepts_unknown_keywords = lambda_list.allow_other_keys;
-        for pair in keyword_arguments.chunks_exact(2) {
-            let keyword = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => keyword,
-                _ => {
-                    return Err(invalid("keyword argument name must be a keyword", span));
-                }
+            let Some(arguments) = value.list_items() else {
+                return Err(invalid(
+                    "destructuring-bind value must be a proper list",
+                    span,
+                ));
             };
-            let keyword_name = keyword.to_string();
-            if keyword_name == "ALLOW-OTHER-KEYS" && pair[1].is_truthy() {
-                accepts_unknown_keywords = true;
+            if let Some(whole) = &lambda_list.whole {
+                define_destructure_binding(runtime, whole, value.clone(), environment);
             }
-            supplied_keywords.insert(keyword_name, pair[1].clone());
-        }
-        if !accepts_unknown_keywords {
-            for keyword_name in supplied_keywords.keys() {
-                if keyword_name != "ALLOW-OTHER-KEYS"
-                    && !lambda_list
-                        .keywords
-                        .iter()
-                        .any(|parameter| parameter.keyword_name == *keyword_name)
-                {
-                    return Err(invalid(&format!("unknown keyword :{keyword_name}"), span));
+            let required_count = lambda_list.required.len();
+            let optional_count = lambda_list.optional.len();
+            if arguments.len() < required_count {
+                return Err(RuntimeError::Arity {
+                    function: "destructuring-bind".to_string(),
+                    expected: format!("at least {required_count}"),
+                    actual: arguments.len(),
+                });
+            }
+            let optional_supplied_count = if lambda_list.has_keyword_section {
+                let available = arguments
+                    .len()
+                    .saturating_sub(required_count)
+                    .min(optional_count);
+                (0..available)
+                    .take_while(|index| {
+                        !matches!(
+                            arguments[required_count + *index],
+                            Value::Keyword(_) | Value::KeywordExact(_)
+                        )
+                    })
+                    .count()
+            } else {
+                arguments
+                    .len()
+                    .saturating_sub(required_count)
+                    .min(optional_count)
+            };
+            let key_start = required_count + optional_supplied_count;
+            if !lambda_list.has_keyword_section
+                && lambda_list.rest.is_none()
+                && arguments.len() > required_count + optional_count
+            {
+                let maximum = required_count + optional_count;
+                return Err(RuntimeError::Arity {
+                    function: "destructuring-bind".to_string(),
+                    expected: format!("at most {maximum}"),
+                    actual: arguments.len(),
+                });
+            }
+
+            for (pattern, argument) in lambda_list
+                .required
+                .iter()
+                .zip(arguments.iter().take(required_count).cloned())
+            {
+                destructure_value(pattern, argument, runtime, environment, span)?;
+            }
+            for (index, parameter) in lambda_list.optional.iter().enumerate() {
+                let supplied = (index < optional_supplied_count)
+                    .then(|| arguments[required_count + index].clone());
+                let value = if let Some(argument) = supplied.as_ref() {
+                    argument.clone()
+                } else {
+                    let default_function = program
+                        .functions
+                        .get(parameter.default_function)
+                        .ok_or_else(|| {
+                            invalid(
+                                "compiled destructuring optional default is out of range",
+                                span,
+                            )
+                        })?;
+                    run_code(
+                        runtime,
+                        program,
+                        default_function,
+                        environment.clone(),
+                        span,
+                    )?
+                    .primary_value()
+                };
+                destructure_value(&parameter.pattern, value, runtime, environment, span)?;
+                if let Some(supplied_p) = &parameter.supplied_p {
+                    define_destructure_binding(
+                        runtime,
+                        supplied_p,
+                        Value::boolean(supplied.is_some()),
+                        environment,
+                    );
                 }
             }
-        }
-        for parameter in &lambda_list.keywords {
-            let supplied = supplied_keywords.get(&parameter.keyword_name);
-            let value = if let Some(argument) = supplied {
-                argument.clone()
-            } else {
+            if let Some(rest_name) = &lambda_list.rest {
+                define_destructure_binding(
+                    runtime,
+                    rest_name,
+                    Value::list(arguments[key_start..].to_vec()),
+                    environment,
+                );
+            }
+
+            if lambda_list.has_keyword_section {
+                let keyword_arguments = &arguments[key_start..];
+                if keyword_arguments.len() % 2 != 0 {
+                    return Err(invalid("keyword arguments must be supplied in pairs", span));
+                }
+                let mut supplied_keywords = Vec::new();
+                let mut accepts_unknown_keywords = lambda_list.allow_other_keys;
+                for pair in keyword_arguments.chunks_exact(2) {
+                    let (keyword_name, keyword_name_escaped) = match &pair[0] {
+                        Value::Keyword(keyword) => (keyword.to_string(), false),
+                        Value::KeywordExact(keyword) => (keyword.to_string(), true),
+                        _ => {
+                            return Err(invalid("keyword argument name must be a keyword", span));
+                        }
+                    };
+                    if compiled_keyword_matches(
+                        "ALLOW-OTHER-KEYS",
+                        false,
+                        &keyword_name,
+                        keyword_name_escaped,
+                    ) && pair[1].is_truthy()
+                    {
+                        accepts_unknown_keywords = true;
+                    }
+                    supplied_keywords.push((keyword_name, keyword_name_escaped, pair[1].clone()));
+                }
+                if !accepts_unknown_keywords {
+                    for (keyword_name, keyword_name_escaped, _) in &supplied_keywords {
+                        if !compiled_keyword_matches(
+                            "ALLOW-OTHER-KEYS",
+                            false,
+                            keyword_name,
+                            *keyword_name_escaped,
+                        ) && !lambda_list.keywords.iter().any(|parameter| {
+                            compiled_keyword_matches(
+                                &parameter.keyword_name,
+                                parameter.keyword_name_escaped,
+                                keyword_name,
+                                *keyword_name_escaped,
+                            )
+                        }) {
+                            return Err(invalid(&format!("unknown keyword :{keyword_name}"), span));
+                        }
+                    }
+                }
+                for parameter in &lambda_list.keywords {
+                    let supplied = supplied_keywords
+                        .iter()
+                        .find(|(keyword_name, keyword_name_escaped, _)| {
+                            compiled_keyword_matches(
+                                &parameter.keyword_name,
+                                parameter.keyword_name_escaped,
+                                keyword_name,
+                                *keyword_name_escaped,
+                            )
+                        })
+                        .map(|(_, _, argument)| argument);
+                    let value = if let Some(argument) = supplied {
+                        argument.clone()
+                    } else {
+                        let default_function = program
+                            .functions
+                            .get(parameter.default_function)
+                            .ok_or_else(|| {
+                                invalid(
+                                    "compiled destructuring keyword default is out of range",
+                                    span,
+                                )
+                            })?;
+                        run_code(
+                            runtime,
+                            program,
+                            default_function,
+                            environment.clone(),
+                            span,
+                        )?
+                        .primary_value()
+                    };
+                    destructure_value(&parameter.pattern, value, runtime, environment, span)?;
+                    if let Some(supplied_p) = &parameter.supplied_p {
+                        define_destructure_binding(
+                            runtime,
+                            supplied_p,
+                            Value::boolean(supplied.is_some()),
+                            environment,
+                        );
+                    }
+                }
+            }
+            for parameter in &lambda_list.auxiliary {
                 let default_function = program
                     .functions
                     .get(parameter.default_function)
                     .ok_or_else(|| {
                         invalid(
-                            "compiled destructuring keyword default is out of range",
+                            "compiled destructuring auxiliary default is out of range",
                             span,
                         )
                     })?;
-                run_code(
+                let value = run_code(
                     runtime,
                     program,
                     default_function,
                     environment.clone(),
                     span,
                 )?
-                .primary_value()
-            };
-            destructure_value(
-                &parameter.pattern,
-                value,
-                runtime,
-                program,
-                environment,
-                span,
-            )?;
-            if let Some(supplied_p) = &parameter.supplied_p {
-                runtime.define_in(supplied_p, Value::boolean(supplied.is_some()), environment);
+                .primary_value();
+                define_destructure_binding(runtime, &parameter.name, value, environment);
             }
+            Ok(())
         }
     }
-    for parameter in &lambda_list.auxiliary {
-        let default_function = program
-            .functions
-            .get(parameter.default_function)
-            .ok_or_else(|| {
-                invalid(
-                    "compiled destructuring auxiliary default is out of range",
-                    span,
-                )
-            })?;
-        let value = run_code(
-            runtime,
-            program,
-            default_function,
-            environment.clone(),
-            span,
-        )?
-        .primary_value();
-        runtime.define_in(&parameter.name, value, environment);
-    }
-    Ok(())
 }
-
 
 fn destructure_value(
     pattern: &DestructurePattern,
     value: Value,
     runtime: &Runtime,
-    program: &Rc<Program>,
     environment: &Environment,
     span: Span,
 ) -> Result<(), RuntimeError> {
     match pattern {
         DestructurePattern::Name(name) => {
-            runtime.define_in(name, value, environment);
+            define_destructure_binding(runtime, name, value, environment);
             Ok(())
         }
         DestructurePattern::List(patterns) => {
@@ -252,12 +272,9 @@ fn destructure_value(
                 ));
             }
             for (pattern, value) in patterns.iter().zip(values) {
-                destructure_value(pattern, value, runtime, program, environment, span)?;
+                destructure_value(pattern, value, runtime, environment, span)?;
             }
             Ok(())
-        }
-        DestructurePattern::LambdaList(lambda_list) => {
-            destructure_lambda_list(lambda_list, value, runtime, program, environment, span)
         }
         DestructurePattern::Dotted { items, tail } => {
             let Some((values, dotted_tail)) = destructure_dotted_parts(&value) else {
@@ -270,7 +287,7 @@ fn destructure_value(
                 ));
             }
             for (pattern, value) in items.iter().zip(values.iter().cloned()) {
-                destructure_value(pattern, value, runtime, program, environment, span)?;
+                destructure_value(pattern, value, runtime, environment, span)?;
             }
             let remaining = values[items.len()..].to_vec();
             let tail_value = if remaining.is_empty() {
@@ -280,11 +297,10 @@ fn destructure_value(
             } else {
                 Value::list(remaining)
             };
-            destructure_value(tail, tail_value, runtime, program, environment, span)
+            destructure_value(tail, tail_value, runtime, environment, span)
         }
     }
 }
-
 
 fn destructure_dotted_parts(value: &Value) -> Option<(Vec<Value>, Value)> {
     match value {

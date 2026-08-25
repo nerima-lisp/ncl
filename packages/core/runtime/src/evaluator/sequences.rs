@@ -1,57 +1,163 @@
 use super::*;
 
+fn sequence_values(value: &Value) -> Option<Vec<Value>> {
+    value
+        .list_items()
+        .or_else(|| value.vector_items())
+        .or_else(|| match value {
+            Value::String(value) => Some(value.chars().map(Value::Character).collect()),
+            _ => None,
+        })
+}
+
 impl Runtime {
-    pub(super) fn special_funcall(
+    pub(super) fn apply_list_mapping(
         &self,
-        items: &[Form],
+        operation: &str,
+        function: &Value,
+        sequences: &[Value],
         environment: &Environment,
+        span: Span,
     ) -> Result<Value, RuntimeError> {
-        if items.len() < 2 {
-            return Err(self.arity("funcall", "at least one", 0));
-        }
-        let function = self.eval_in(&items[1], environment)?;
-        let arguments = items[2..]
+        let (uses_tails, concatenates, returns_first) = match operation {
+            "MAPC" => (false, false, true),
+            "MAPCAR" => (false, false, false),
+            "MAPL" => (true, false, true),
+            "MAPLIST" => (true, false, false),
+            "MAPCAN" => (false, true, false),
+            "MAPCON" => (true, true, false),
+            _ => return Err(self.invalid("unknown list mapping operation", span)),
+        };
+        let operation_name = operation.to_ascii_lowercase();
+        let lists = sequences
             .iter()
-            .map(|form| self.eval_in(form, environment))
+            .map(|value| {
+                value.list_items().ok_or_else(|| {
+                    self.invalid(&format!("{operation_name} arguments must be lists"), span)
+                })
+            })
             .collect::<Result<Vec<_>, _>>()?;
-        self.apply_in(&function, &arguments, items[0].span, environment)
+        let length = lists.iter().map(Vec::len).min().unwrap_or(0);
+        let mut results = Vec::with_capacity(length);
+        for index in 0..length {
+            let arguments = if uses_tails {
+                lists
+                    .iter()
+                    .map(|items| Value::list(items[index..].to_vec()))
+                    .collect::<Vec<_>>()
+            } else {
+                lists
+                    .iter()
+                    .map(|items| items[index].clone())
+                    .collect::<Vec<_>>()
+            };
+            let result = self
+                .apply_in(function, &arguments, span, environment)?
+                .primary_value();
+            if concatenates {
+                let items = result.list_items().ok_or_else(|| {
+                    self.invalid(
+                        &format!("{operation_name} function results must be lists"),
+                        span,
+                    )
+                })?;
+                results.extend(items);
+            } else if !returns_first {
+                results.push(result);
+            }
+        }
+        if returns_first {
+            Ok(sequences.first().cloned().unwrap_or(Value::Nil))
+        } else {
+            Ok(Value::list(results))
+        }
     }
 
-    pub(super) fn special_eval(
+    pub(super) fn apply_hash_table_mapping(
         &self,
-        items: &[Form],
+        function: &Value,
+        table: &Value,
         environment: &Environment,
+        span: Span,
     ) -> Result<Value, RuntimeError> {
-        if items.len() != 2 {
-            return Err(self.arity("eval", "one", items.len().saturating_sub(1)));
+        let Some(entries) = table.hash_table_entries() else {
+            return Err(RuntimeError::Type {
+                expected: "HASH-TABLE".to_string(),
+                actual: table.type_name().to_string(),
+                span: Some(span),
+            });
+        };
+        let entries = entries.borrow().clone();
+        for (key, value) in entries {
+            self.apply_in(function, &[key, value], span, environment)?;
         }
-        let value = self.eval_in(&items[1], environment)?;
-        let form = self.form_from_value(&value, items[1].span)?;
-        self.eval_values_in(&form, environment)
+        Ok(table.clone())
     }
 
-    pub(super) fn special_apply(
+    pub(super) fn apply_sequence_mapping(
         &self,
-        items: &[Form],
+        result_type: &Value,
+        function: &Value,
+        sequences: &[Value],
         environment: &Environment,
+        span: Span,
     ) -> Result<Value, RuntimeError> {
-        if items.len() < 3 {
-            return Err(self.arity("apply", "at least two", items.len().saturating_sub(1)));
-        }
-        let function = self.eval_in(&items[1], environment)?;
-        let evaluated = items[2..]
+        let result_type_name = result_type.symbol_name().map(normalize_name);
+        let result_kind = match result_type_name.as_deref() {
+            Some("NIL") => "NIL",
+            Some("LIST") => "LIST",
+            Some("VECTOR") | Some("SIMPLE-VECTOR") => "VECTOR",
+            Some("STRING") | Some("SIMPLE-STRING") => "STRING",
+            _ => {
+                return Err(
+                    self.invalid("map result type must be LIST, VECTOR, STRING, or NIL", span)
+                );
+            }
+        };
+        let function =
+            Value::Function(self.resolve_function_designator(function, span, environment)?);
+        let sequences = sequences
             .iter()
-            .map(|form| self.eval_in(form, environment))
+            .map(|value| sequence_values(value).ok_or_else(|| RuntimeError::Type {
+                    expected: "SEQUENCE".to_string(),
+                    actual: value.type_name().to_string(),
+                    span: Some(span),
+                }))
             .collect::<Result<Vec<_>, _>>()?;
-        let Some(last) = evaluated.last() else {
-            return Err(self.invalid("apply needs a final list", items[0].span));
-        };
-        let Some(mut final_arguments) = last.list_items() else {
-            return Err(self.invalid("apply's final argument must be a list", items[0].span));
-        };
-        let mut arguments = evaluated[..evaluated.len() - 1].to_vec();
-        arguments.append(&mut final_arguments);
-        self.apply_in(&function, &arguments, items[0].span, environment)
+        let length = sequences.iter().map(Vec::len).min().unwrap_or(0);
+        let mut results = Vec::with_capacity(length);
+        for index in 0..length {
+            let arguments = sequences
+                .iter()
+                .map(|items| items[index].clone())
+                .collect::<Vec<_>>();
+            let result = self
+                .apply_in(&function, &arguments, span, environment)?
+                .primary_value();
+            if result_kind != "NIL" {
+                results.push(result);
+            }
+        }
+        match result_kind {
+            "NIL" => Ok(Value::Nil),
+            "LIST" => Ok(Value::list(results)),
+            "VECTOR" => Ok(Value::vector(results)),
+            "STRING" => {
+                let mut string = String::new();
+                for value in results {
+                    let Value::Character(character) = value else {
+                        return Err(RuntimeError::Type {
+                            expected: "CHARACTER".to_string(),
+                            actual: value.type_name().to_string(),
+                            span: Some(span),
+                        });
+                    };
+                    string.push(character);
+                }
+                Ok(Value::string(string))
+            }
+            _ => unreachable!("validated MAP result type"),
+        }
     }
 
     pub(super) fn apply_sequence_reduce(
@@ -62,7 +168,7 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid("reduce keyword arguments must be supplied in pairs", span));
         }
 
@@ -113,7 +219,7 @@ impl Runtime {
 
         let function =
             Value::Function(self.resolve_function_designator(function, span, environment)?);
-        let items = sequence_items(sequence).ok_or_else(|| RuntimeError::Type {
+        let items = sequence_values(sequence).ok_or_else(|| RuntimeError::Type {
             expected: "SEQUENCE".to_string(),
             actual: sequence.type_name().to_string(),
             span: Some(span),
@@ -186,7 +292,7 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid(
                 "sequence search keyword arguments must be supplied in pairs",
                 span,
@@ -262,18 +368,11 @@ impl Runtime {
             }
         }
 
-        let items = match sequence {
-            Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
+        let items = sequence_values(sequence).ok_or_else(|| RuntimeError::Type {
+            expected: "SEQUENCE".to_string(),
+            actual: sequence.type_name().to_string(),
+            span: Some(span),
+        })?;
         let end = end.unwrap_or(items.len());
         if start > end || end > items.len() {
             return Err(self.invalid("sequence search bounds are invalid", span));
@@ -351,7 +450,7 @@ impl Runtime {
         if !matches!(operation, "SEARCH" | "MISMATCH") {
             return Err(self.invalid("unknown sequence pair search operation", span));
         }
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid(
                 "sequence pair search keyword arguments must be supplied in pairs",
                 span,
@@ -443,30 +542,16 @@ impl Runtime {
             }
         }
 
-        let items1 = match sequence1 {
-            Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-        let items2 = match sequence2 {
-            Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
+        let items1 = sequence_values(sequence1).ok_or_else(|| RuntimeError::Type {
+            expected: "SEQUENCE".to_string(),
+            actual: sequence1.type_name().to_string(),
+            span: Some(span),
+        })?;
+        let items2 = sequence_values(sequence2).ok_or_else(|| RuntimeError::Type {
+            expected: "SEQUENCE".to_string(),
+            actual: sequence2.type_name().to_string(),
+            span: Some(span),
+        })?;
 
         let end1 = end1.unwrap_or(items1.len());
         let end2 = end2.unwrap_or(items2.len());
@@ -601,7 +686,7 @@ impl Runtime {
         if !matches!(operation, "SORT" | "STABLE-SORT") {
             return Err(self.invalid("unknown sequence sort operation", span));
         }
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid(
                 "sequence sort keyword arguments must be supplied in pairs",
                 span,
@@ -638,7 +723,15 @@ impl Runtime {
         let (kind, items) = match sequence {
             Value::Nil => (SequenceKind::List, Vec::new()),
             Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
+            Value::Vector(items) => (SequenceKind::Vector, items.borrow().clone()),
+            value if value.is_typed_list() => (
+                SequenceKind::List,
+                value.list_items().unwrap_or_default(),
+            ),
+            value if value.is_typed_vector() => (
+                SequenceKind::Vector,
+                value.vector_items().unwrap_or_default(),
+            ),
             Value::String(value) => (
                 SequenceKind::String,
                 value.chars().map(Value::Character).collect(),
@@ -716,18 +809,15 @@ impl Runtime {
 
     pub(super) fn apply_sequence_merge(
         &self,
-        request: SequenceMergeRequest<'_>,
+        result_type: &Value,
+        sequence1: &Value,
+        sequence2: &Value,
+        predicate: &Value,
+        options: &[Value],
+        environment: &Environment,
+        span: Span,
     ) -> Result<Value, RuntimeError> {
-        let SequenceMergeRequest {
-            result_type,
-            sequence1,
-            sequence2,
-            predicate,
-            options,
-            environment,
-            span,
-        } = request;
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid("merge keyword arguments must be supplied in pairs", span));
         }
 
@@ -764,16 +854,11 @@ impl Runtime {
             }
         };
 
-        let sequence_items = |value: &Value| match value {
-            Value::Nil => Ok(Vec::new()),
-            Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
-            Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
-            value => Err(RuntimeError::Type {
+        let sequence_items = |value: &Value| sequence_values(value).ok_or_else(|| RuntimeError::Type {
                 expected: "SEQUENCE".to_string(),
                 actual: value.type_name().to_string(),
                 span: Some(span),
-            }),
-        };
+            });
         let items1 = sequence_items(sequence1)?;
         let items2 = sequence_items(sequence2)?;
 
@@ -882,16 +967,11 @@ impl Runtime {
             Value::Function(self.resolve_function_designator(predicate, span, environment)?);
         let sequences = sequences
             .iter()
-            .map(|value| match value {
-                Value::Nil => Ok(Vec::new()),
-                Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
-                Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
-                value => Err(RuntimeError::Type {
+            .map(|value| sequence_values(value).ok_or_else(|| RuntimeError::Type {
                     expected: "SEQUENCE".to_string(),
                     actual: value.type_name().to_string(),
                     span: Some(span),
-                }),
-            })
+                }))
             .collect::<Result<Vec<_>, _>>()?;
         let length = sequences.iter().map(Vec::len).min().unwrap_or(0);
 
@@ -934,7 +1014,7 @@ impl Runtime {
         ) {
             return Err(self.invalid("unknown list membership operation", span));
         }
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid(
                 "list membership keyword arguments must be supplied in pairs",
                 span,
@@ -1058,7 +1138,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn association_entry_parts(entry: &Value) -> Option<(Value, Value)> {
+    fn association_entry_parts(entry: &Value) -> Option<(Value, Value)> {
         match entry {
             Value::List(items) => {
                 let (key, rest) = items.split_first()?;
@@ -1092,7 +1172,7 @@ impl Runtime {
         ) {
             return Err(self.invalid("unknown association search operation", span));
         }
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid(
                 "association search keyword arguments must be supplied in pairs",
                 span,
@@ -1241,7 +1321,7 @@ impl Runtime {
         ) {
             return Err(self.invalid("unknown sequence removal operation", span));
         }
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid(
                 "sequence removal keyword arguments must be supplied in pairs",
                 span,
@@ -1341,7 +1421,15 @@ impl Runtime {
         let (kind, items) = match sequence {
             Value::Nil => (SequenceKind::List, Vec::new()),
             Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
+            Value::Vector(items) => (SequenceKind::Vector, items.borrow().clone()),
+            value if value.is_typed_list() => (
+                SequenceKind::List,
+                value.list_items().unwrap_or_default(),
+            ),
+            value if value.is_typed_vector() => (
+                SequenceKind::Vector,
+                value.vector_items().unwrap_or_default(),
+            ),
             Value::String(value) => (
                 SequenceKind::String,
                 value.chars().map(Value::Character).collect(),
@@ -1446,12 +1534,11 @@ impl Runtime {
             }
         } else {
             let mut matched = Vec::new();
-            for (offset, candidate) in candidates[start..end].iter().enumerate() {
-                let index = start + offset;
+            for index in start..end {
                 let matches = if is_predicate {
                     self.apply_in(
                         &test_function,
-                        std::slice::from_ref(candidate),
+                        std::slice::from_ref(&candidates[index]),
                         span,
                         environment,
                     )?
@@ -1460,7 +1547,7 @@ impl Runtime {
                 } else {
                     self.apply_in(
                         &test_function,
-                        &[item_or_predicate.clone(), candidate.clone()],
+                        &[item_or_predicate.clone(), candidates[index].clone()],
                         span,
                         environment,
                     )?
@@ -1511,17 +1598,14 @@ impl Runtime {
 
     pub(super) fn apply_sequence_substitute(
         &self,
-        request: SequenceSubstituteRequest<'_>,
+        operation: &str,
+        new_item: &Value,
+        old_or_predicate: &Value,
+        sequence: &Value,
+        options: &[Value],
+        environment: &Environment,
+        span: Span,
     ) -> Result<Value, RuntimeError> {
-        let SequenceSubstituteRequest {
-            operation,
-            new_item,
-            old_or_predicate,
-            sequence,
-            options,
-            environment,
-            span,
-        } = request;
         if !matches!(
             operation,
             "SUBSTITUTE"
@@ -1533,7 +1617,7 @@ impl Runtime {
         ) {
             return Err(self.invalid("unknown sequence substitution operation", span));
         }
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid(
                 "sequence substitution keyword arguments must be supplied in pairs",
                 span,
@@ -1635,7 +1719,15 @@ impl Runtime {
         let (kind, items) = match sequence {
             Value::Nil => (SequenceKind::List, Vec::new()),
             Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
+            Value::Vector(items) => (SequenceKind::Vector, items.borrow().clone()),
+            value if value.is_typed_list() => (
+                SequenceKind::List,
+                value.list_items().unwrap_or_default(),
+            ),
+            value if value.is_typed_vector() => (
+                SequenceKind::Vector,
+                value.vector_items().unwrap_or_default(),
+            ),
             Value::String(value) => (
                 SequenceKind::String,
                 value.chars().map(Value::Character).collect(),
@@ -1694,12 +1786,11 @@ impl Runtime {
         }
 
         let mut matched = Vec::new();
-        for (offset, candidate) in candidates[start..end].iter().enumerate() {
-            let index = start + offset;
+        for index in start..end {
             let matches = if is_predicate {
                 self.apply_in(
                     &test_function,
-                    std::slice::from_ref(candidate),
+                    std::slice::from_ref(&candidates[index]),
                     span,
                     environment,
                 )?
@@ -1708,7 +1799,7 @@ impl Runtime {
             } else {
                 self.apply_in(
                     &test_function,
-                    &[old_or_predicate.clone(), candidate.clone()],
+                    &[old_or_predicate.clone(), candidates[index].clone()],
                     span,
                     environment,
                 )?
@@ -1775,7 +1866,11 @@ impl Runtime {
         let (result_kind, mut result) = match destination {
             Value::Nil => ("NIL", Vec::new()),
             Value::List(items) => ("LIST", items.as_ref().clone()),
-            Value::Vector(items) => ("VECTOR", items.as_ref().clone()),
+            Value::Vector(items) => ("VECTOR", items.borrow().clone()),
+            value if value.is_typed_list() => ("LIST", value.list_items().unwrap_or_default()),
+            value if value.is_typed_vector() => {
+                ("VECTOR", value.vector_items().unwrap_or_default())
+            }
             Value::String(value) => (
                 "STRING",
                 value.chars().map(Value::Character).collect::<Vec<_>>(),
@@ -1792,16 +1887,11 @@ impl Runtime {
             Value::Function(self.resolve_function_designator(function, span, environment)?);
         let sequences = sequences
             .iter()
-            .map(|value| match value {
-                Value::Nil => Ok(Vec::new()),
-                Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
-                Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
-                value => Err(RuntimeError::Type {
+            .map(|value| sequence_values(value).ok_or_else(|| RuntimeError::Type {
                     expected: "SEQUENCE".to_string(),
                     actual: value.type_name().to_string(),
                     span: Some(span),
-                }),
-            })
+                }))
             .collect::<Result<Vec<_>, _>>()?;
         let length = sequences
             .iter()
@@ -1871,7 +1961,7 @@ impl Runtime {
         ) {
             return Err(self.invalid("unknown list set operation", span));
         }
-        if !options.len().is_multiple_of(2) {
+        if options.len() % 2 != 0 {
             return Err(self.invalid(
                 "list set operation keyword arguments must be supplied in pairs",
                 span,
@@ -2040,6 +2130,19 @@ impl Runtime {
         }
 
         Ok(Value::list(result))
+    }
+
+    pub(super) fn special_maphash(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() != 3 {
+            return Err(self.arity("maphash", "two", items.len().saturating_sub(1)));
+        }
+        let function = self.eval_in(&items[1], environment)?;
+        let table = self.eval_in(&items[2], environment)?;
+        self.apply_hash_table_mapping(&function, &table, environment, items[0].span)
     }
 
     pub(super) fn special_mapcar(

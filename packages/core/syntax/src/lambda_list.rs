@@ -2,7 +2,10 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
-use crate::{Form, FormKind, Span, SymbolTokenKind, parse_symbol_token};
+use crate::{
+    parse_float_literal, parse_radix_integer_literal, parse_symbol_token, Form, FormKind, Span,
+    SymbolTokenKind,
+};
 
 /// The ordinary lambda-list shape shared by the compiler and evaluator.
 #[derive(Clone, Debug, PartialEq)]
@@ -127,7 +130,16 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
         FormKind::List(parameters) => parameters,
         // Runtime values represent the empty list as NIL.  This case is
         // needed when a quoted lambda form is reconstructed for EVAL/COMPILE.
-        FormKind::Atom(name) if name == "NIL" => &[],
+        FormKind::Atom(name)
+            if parse_symbol_token(name).is_ok_and(|token| {
+                token.kind == SymbolTokenKind::Symbol
+                    && token.package.is_none()
+                    && !token.escaped
+                    && token.name == "NIL"
+            }) =>
+        {
+            &[]
+        }
         _ => {
             return Err(LambdaListError {
                 kind: LambdaListErrorKind::ExpectedList,
@@ -603,7 +615,8 @@ fn literal_atom(name: &str) -> bool {
         || token.name == "#F"
         || token.name == "#T"
         || token.name.parse::<i64>().is_ok()
-        || token.name.parse::<f64>().is_ok()
+        || parse_radix_integer_literal(&token.name).is_some()
+        || parse_float_literal(&token.name).is_some()
 }
 
 fn normalize_name(name: &str) -> String {

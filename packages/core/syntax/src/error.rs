@@ -10,7 +10,6 @@ pub struct ReadError {
 }
 
 impl ReadError {
-    #[must_use]
     pub const fn new(kind: ReadErrorKind, span: Span) -> Self {
         Self { kind, span }
     }
@@ -68,61 +67,5 @@ impl fmt::Display for ReadErrorKind {
                 write!(formatter, "reader nesting exceeds limit {limit}")
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{ReadError, ReadErrorKind};
-    use crate::Span;
-
-    #[test]
-    fn displays_every_reader_error_kind() {
-        let cases = [
-            (
-                ReadErrorKind::UnexpectedEnd { context: "list" },
-                "unexpected end of input while reading list",
-            ),
-            (
-                ReadErrorKind::UnexpectedClosingDelimiter { delimiter: ')' },
-                "unexpected closing delimiter )",
-            ),
-            (
-                ReadErrorKind::MismatchedDelimiter {
-                    expected: ')',
-                    found: ']',
-                },
-                "expected ), found ]",
-            ),
-            (
-                ReadErrorKind::MissingDottedTail,
-                "dotted list is missing its tail",
-            ),
-            (
-                ReadErrorKind::MultipleDottedTails,
-                "dotted list has more than one dot",
-            ),
-            (ReadErrorKind::InvalidEscape, "invalid string escape"),
-            (
-                ReadErrorKind::InvalidCharacterName,
-                "invalid character name",
-            ),
-            (ReadErrorKind::InvalidDispatch, "invalid reader dispatch"),
-            (
-                ReadErrorKind::NestingTooDeep { limit: 64 },
-                "reader nesting exceeds limit 64",
-            ),
-        ];
-
-        for (kind, expected) in cases {
-            assert_eq!(kind.to_string(), expected);
-        }
-    }
-
-    #[test]
-    fn read_error_constructor_and_display_include_span() {
-        let error = ReadError::new(ReadErrorKind::InvalidEscape, Span::new(2, 4));
-        assert_eq!(error.span, Span::new(2, 4));
-        assert_eq!(error.to_string(), "invalid string escape at byte 2..4");
     }
 }

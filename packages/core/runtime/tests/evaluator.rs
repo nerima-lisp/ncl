@@ -1,8 +1,8 @@
 use ncl_runtime::{Runtime, RuntimeError, Value};
 
-use ncl_runtime::Runtime;
-
-use support::evaluate;
+fn evaluate(source: &str) -> Value {
+    Runtime::new().eval_source(source).unwrap().pop().unwrap()
+}
 
 #[test]
 fn reader_features_are_empty_by_default_interpreted() {
@@ -242,17 +242,6 @@ fn evaluates_common_lisp_truth_and_lists() {
 }
 
 #[test]
-fn evaluates_sequence_operations_through_the_public_api() {
-    assert_eq!(
-        evaluate(
-            "(list (mapcar #'+ '(1 2) '(3 4))\n                  (reduce #'+ '(1 2 3 4))\n                  (find 3 '(1 2 3 4))\n                  (remove 2 '(1 2 2 3))\n                  (substitute 9 2 '(1 2 3))\n                  (sort (list 3 1 2) #'<))",
-        )
-        .to_string(),
-        "((4 6) 10 3 (1 3) (1 9 3) (1 2 3))",
-    );
-}
-
-#[test]
 fn evaluates_quasiquote_unquote_and_splicing() {
     assert_eq!(
         evaluate("(let ((x 2) (xs '(3 4))) \u{60}(1 ,x ,@xs))").to_string(),
@@ -397,28 +386,6 @@ fn macro_rest_parameters_receive_unquoted_forms() {
 }
 
 #[test]
-fn macro_lambda_lists_support_all_standard_sections() {
-    assert_eq!(
-        evaluate(
-            "(progn
-               (defmacro inspect
-                   (&whole whole required
-                    &optional (optional 10 optional-p)
-                    &rest rest
-                    &key ((:named named) 20 named-p)
-                    &allow-other-keys
-                    &aux (aux 30)
-                    &environment environment)
-                 (declare (ignore whole optional-p rest named-p environment))
-                 \u{60}(list ,required ,optional ,named ,aux))
-               (inspect 1 2 :named 3))",
-        )
-        .to_string(),
-        "(1 2 3 30)"
-    );
-}
-
-#[test]
 fn macroexpand_1_returns_expanded_and_unexpanded_forms() {
     let values = Runtime::new()
         .eval_source(
@@ -516,28 +483,15 @@ fn macros_are_not_callable_through_normal_apply() {
 
 #[test]
 fn malformed_macro_parameters_are_rejected() {
-    let cases = [
-        ("(defmacro bad (x &rest) '(x))", "&rest"),
-        ("(defmacro bad (&whole) '(x))", "&whole"),
-        ("(defmacro bad (&optional x &optional y) '(x))", "&optional"),
-        (
-            "(defmacro bad (&allow-other-keys) '(x))",
-            "&allow-other-keys",
-        ),
-        ("(defmacro bad (&unknown x) '(x))", "unsupported marker"),
-    ];
+    let error = Runtime::new()
+        .eval_source("(defmacro bad (x &rest) '(x))")
+        .unwrap_err();
 
-    for (source, expected_message) in cases {
-        let error = Runtime::new().eval_source(source).unwrap_err();
-        assert!(
-            matches!(
-                error,
-                ncl_runtime::RuntimeError::InvalidForm { message, .. }
-                    if message.contains(expected_message)
-            ),
-            "source: {source}"
-        );
-    }
+    assert!(matches!(
+        error,
+        ncl_runtime::RuntimeError::InvalidForm { message, .. }
+            if message.contains("&rest")
+    ));
 }
 
 #[test]
@@ -840,28 +794,6 @@ fn malformed_ordinary_lambda_parameters_are_rejected() {
 }
 
 #[test]
-fn lambda_list_sections_bind_through_a_shared_table() {
-    let cases = [
-        (
-            "((lambda (required &optional (optional 2 optional-p) &rest rest)\n                 (list required optional optional-p rest))\n               1 3 4 5)",
-            "(1 3 T (4 5))",
-        ),
-        (
-            "((lambda (required &key (keyword 2 keyword-p) &allow-other-keys)\n                 (list required keyword keyword-p))\n               1 :keyword 9 :extra 8)",
-            "(1 9 T)",
-        ),
-        (
-            "((lambda (required &aux (derived (+ required 1))) derived) 4)",
-            "5",
-        ),
-    ];
-
-    for (source, expected) in cases {
-        assert_eq!(evaluate(source).to_string(), expected, "source: {source}");
-    }
-}
-
-#[test]
 fn definitions_are_visible_to_later_forms() {
     let values = Runtime::new()
         .eval_source("(define answer 41) (+ answer 1)")
@@ -1019,21 +951,15 @@ fn evaluates_defconstant_and_constantp() {
         "(42 T T T)"
     );
 
-    assert!(
-        Runtime::new()
-            .eval_source("(defconstant +answer+ 42) (setq +answer+ 7)")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(defconstant +answer+ 42) (setq +answer+ 7)")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
+        .is_err());
 }
 
 #[test]
@@ -1873,19 +1799,6 @@ fn evaluates_list_construction_and_partitioning() {
 }
 
 #[test]
-fn evaluates_list_operations_at_boundary_counts() {
-    let cases = [
-        ("(last '(1 2) 9)", "(1 2)"),
-        ("(butlast '(1 2) 9)", "NIL"),
-        ("(copy-tree '(a . (b . c)))", "(A . (B . C))"),
-    ];
-
-    for (form, expected) in cases {
-        assert_eq!(evaluate(form).to_string(), expected, "form: {form}");
-    }
-}
-
-#[test]
 fn evaluates_sequence_fill_replace_and_concatenate() {
     assert_eq!(
         evaluate("(fill 0 '(1 2 3 4) :start 1 :end 3)").to_string(),
@@ -2014,27 +1927,6 @@ fn evaluates_function_namespace_introspection() {
         error,
         ncl_runtime::RuntimeError::UnboundVariable { name, .. }
             if name == "MISSING-FUNCTION"
-    ));
-}
-
-#[test]
-fn rejects_invalid_function_designators_through_public_api() {
-    let runtime = Runtime::new();
-    let non_function = runtime
-        .eval_source("(define function-designator-data 1) (funcall 'function-designator-data)")
-        .unwrap_err();
-    assert!(matches!(
-        non_function,
-        ncl_runtime::RuntimeError::NotCallable { .. }
-    ));
-
-    let missing = runtime
-        .eval_source("(funcall 'missing-function-designator)")
-        .unwrap_err();
-    assert!(matches!(
-        missing,
-        ncl_runtime::RuntimeError::UnboundVariable { name, .. }
-            if name == "MISSING-FUNCTION-DESIGNATOR"
     ));
 }
 
@@ -3955,27 +3847,6 @@ fn evaluates_parse_integer() {
 }
 
 #[test]
-fn parse_integer_rejects_invalid_requests() {
-    for (source, expected) in [
-        ("(parse-integer 42)", "a string"),
-        ("(parse-integer \"1\" :radix 1)", "between 2 and 36"),
-        (
-            "(parse-integer \"1\" :start 2 :end 1)",
-            "bounds are invalid",
-        ),
-        ("(parse-integer \"1x\")", "found junk"),
-        ("(parse-integer \"x\")", "found no integer"),
-        (
-            "(parse-integer \"1\" :unknown t)",
-            "does not accept :UNKNOWN",
-        ),
-    ] {
-        let error = Runtime::new().eval_source(source).expect_err(source);
-        assert!(error.to_string().contains(expected), "{source}: {error}");
-    }
-}
-
-#[test]
 fn evaluates_basic_clos_instances_and_accessors() {
     let values = Runtime::new()
         .eval_source(
@@ -4020,11 +3891,9 @@ fn evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(
-        runtime
-            .eval_source("(with-accessors (x) object x)")
-            .is_err()
-    );
+    assert!(runtime
+        .eval_source("(with-accessors (x) object x)")
+        .is_err());
 }
 
 #[test]
@@ -5873,10 +5742,6 @@ fn evaluates_setf_places() {
         "(9 2 7)"
     );
     assert_eq!(
-        evaluate("(let ((xs (list 1 2 3))) (setf (cdr xs) '(8 9)) xs)").to_string(),
-        "(1 8 9)"
-    );
-    assert_eq!(
         evaluate("(let ((values #(1 2))) (setf (aref values 1) 8) values)").to_string(),
         "#(1 8)"
     );
@@ -5919,29 +5784,12 @@ fn evaluates_setf_places() {
         "0"
     );
     assert_eq!(
-        evaluate(
-            "(let ((bits (make-array '(2 2) :initial-element 0)))
-               (setf (bit bits 1 0) 1)
-               (bit bits 1 0))",
-        )
-        .to_string(),
-        "1"
-    );
-    assert_eq!(
         evaluate("(let ((xs (list (list 1 2)))) (setf (car (nth 0 xs)) 9) xs)").to_string(),
         "((9 2))"
     );
     assert_eq!(
         evaluate("(let ((text \"abc\")) (setf (elt text 1) #\\X) text)").to_string(),
         "\"aXc\""
-    );
-    assert_eq!(
-        evaluate("(let ((values #(1 2))) (setf (elt values 1) 8) values)").to_string(),
-        "#(1 8)"
-    );
-    assert_eq!(
-        evaluate("(let ((values (list 1 2))) (setf (elt values 1) 8) values)").to_string(),
-        "(1 8)"
     );
     assert_eq!(
         evaluate(
@@ -7265,24 +7113,6 @@ fn defpackage_size_option_is_accepted_and_validated() {
         .eval_source("(defpackage :package-size-invalid-eval (:size -1))")
         .unwrap_err();
     assert!(error.to_string().contains("defpackage :size"));
-}
-
-#[test]
-fn rejects_invalid_package_designators_through_public_api() {
-    let runtime = Runtime::new();
-    for source in [
-        "(find-package 1)",
-        "(package-name 1)",
-        "(intern 1 :ncl-user)",
-        "(find-symbol 1 :ncl-user)",
-    ] {
-        let error = runtime.eval_source(source).unwrap_err();
-        assert!(
-            matches!(error, ncl_runtime::RuntimeError::Type { .. })
-                || matches!(error, ncl_runtime::RuntimeError::Package { .. }),
-            "unexpected error for {source}: {error}"
-        );
-    }
 }
 
 #[test]

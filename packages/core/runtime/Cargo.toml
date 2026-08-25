@@ -1,15 +1,11 @@
 [package]
 name = "ncl-runtime"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
 description = "The initial Lisp runtime for ncl"
-license.workspace = true
-
-[lints]
-workspace = true
+license = "MIT"
 
 [dependencies]
-ncl-compiler.workspace = true
-ncl-syntax.workspace = true
+ncl-compiler = { path = "../compiler" }
+ncl-syntax = { path = "../syntax" }

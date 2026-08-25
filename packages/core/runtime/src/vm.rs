@@ -167,7 +167,7 @@ pub(crate) fn run(
     }
     if function.has_keyword_section {
         let keyword_arguments = &arguments[key_start..];
-        if !keyword_arguments.len().is_multiple_of(2) {
+        if keyword_arguments.len() % 2 != 0 {
             return Err(RuntimeError::InvalidForm {
                 message: "keyword arguments must be supplied in pairs".to_string(),
                 span: Some(span),

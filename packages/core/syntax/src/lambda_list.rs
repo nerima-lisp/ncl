@@ -281,13 +281,13 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                         parameter.span,
                     ));
                 }
-                if let Some(supplied_p) = &specification.supplied_p
-                    && !names.insert(supplied_p.clone())
-                {
-                    return Err(LambdaListError::invalid(
-                        "parameter names must be unique",
-                        parameter.span,
-                    ));
+                if let Some(supplied_p) = &specification.supplied_p {
+                    if !names.insert(supplied_p.clone()) {
+                        return Err(LambdaListError::invalid(
+                            "parameter names must be unique",
+                            parameter.span,
+                        ));
+                    }
                 }
                 optional.push(specification);
             }
@@ -317,13 +317,13 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                         parameter.span,
                     ));
                 }
-                if let Some(supplied_p) = &specification.supplied_p
-                    && !names.insert(supplied_p.clone())
-                {
-                    return Err(LambdaListError::invalid(
-                        "parameter names must be unique",
-                        parameter.span,
-                    ));
+                if let Some(supplied_p) = &specification.supplied_p {
+                    if !names.insert(supplied_p.clone()) {
+                        return Err(LambdaListError::invalid(
+                            "parameter names must be unique",
+                            parameter.span,
+                        ));
+                    }
                 }
                 keywords.push(specification);
             }

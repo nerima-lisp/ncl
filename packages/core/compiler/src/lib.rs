@@ -9,20 +9,25 @@ use ncl_syntax::{
     LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind,
     parse_float_literal, parse_ordinary_lambda_list, parse_radix_integer_literal, parse_symbol_token,
 };
-use std::collections::HashSet;
 
-mod data;
-mod error;
-mod helpers;
-mod state;
+/// A literal value embedded directly in bytecode.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Constant {
+    Nil,
+    Boolean(bool),
+    Integer(i64),
+    Rational { numerator: i64, denominator: i64 },
+    Float(f64),
+    String(String),
+    Character(char),
+    Symbol(String),
+    SymbolExact(String),
+    Keyword(String),
+    KeywordExact(String),
+}
 
-pub use data::{
-    AuxiliaryParameter, Constant, DestructureAuxiliaryParameter, DestructureKeywordParameter,
-    DestructureLambdaList, DestructureOptionalParameter, DestructurePattern, DestructureSpec,
-    FunctionCode, FunctionId, HandlerBindClause, HandlerCaseClause, Instruction, KeywordParameter,
-    OptionalParameter, Program, RestartBindClause, RestartCaseClause,
-};
-pub use error::{CompileError, CompileErrorKind};
+/// An index into [`Program::functions`].
+pub type FunctionId = usize;
 
 /// Metadata for one compiled `&OPTIONAL` parameter.
 #[derive(Clone, Debug, PartialEq)]
@@ -405,7 +410,6 @@ pub struct Compiler;
 
 impl Compiler {
     /// Compile a sequence of forms into an entry function.
-    #[must_use = "the compiled program or error must be handled"]
     pub fn compile_forms(forms: &[Form]) -> Result<Program, CompileError> {
         let mut state = CompileState::default();
         state.collect_names(forms);
@@ -419,7 +423,6 @@ impl Compiler {
     }
 
     /// Compile one form as a complete program.
-    #[must_use = "the compiled program or error must be handled"]
     pub fn compile_form(form: &Form) -> Result<Program, CompileError> {
         Self::compile_forms(std::slice::from_ref(form))
     }

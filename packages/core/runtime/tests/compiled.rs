@@ -1,9 +1,13 @@
 use ncl_compiler::CompileErrorKind;
 use ncl_runtime::{Runtime, RuntimeError, Value};
 
-use ncl_runtime::{Runtime, RuntimeError};
-
-use support::evaluate;
+fn evaluate(source: &str) -> Value {
+    Runtime::new()
+        .eval_compiled_source(source)
+        .unwrap()
+        .pop()
+        .unwrap()
+}
 
 #[test]
 fn reader_features_are_empty_by_default_compiled() {
@@ -289,21 +293,15 @@ fn compiled_evaluates_defconstant_and_constantp() {
         "(42 T T T)"
     );
 
-    assert!(
-        Runtime::new()
-            .eval_compiled_source("(defconstant +answer+ 42) (setq +answer+ 7)")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_compiled_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_compiled_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_compiled_source("(defconstant +answer+ 42) (setq +answer+ 7)")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_compiled_source("(defconstant +answer+ 42) (setf (symbol-value '+answer+) 7)")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_compiled_source("(defconstant +answer+ 42) (psetq +answer+ 7)")
+        .is_err());
 }
 
 #[test]
@@ -3896,11 +3894,9 @@ fn compiled_evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(
-        runtime
-            .eval_compiled_source("(with-accessors (x) object x)")
-            .is_err()
-    );
+    assert!(runtime
+        .eval_compiled_source("(with-accessors (x) object x)")
+        .is_err());
 }
 
 #[test]
@@ -8497,9 +8493,7 @@ fn compiled_rejects_invalid_go_shapes_and_tags() {
             "{source}"
         );
     }
-    assert!(
-        Runtime::new()
-            .eval_compiled_source("(tagbody start start)")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_compiled_source("(tagbody start start)")
+        .is_err());
 }

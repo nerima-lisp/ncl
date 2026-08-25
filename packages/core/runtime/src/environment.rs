@@ -22,6 +22,7 @@ struct Frame {
     defsetf_definitions: HashMap<String, DefsetfDefinition>,
     structures: HashMap<String, StructureDefinition>,
     classes: HashMap<String, Rc<ClassDefinition>>,
+    conditions: HashMap<String, Rc<ConditionDefinition>>,
     symbol_properties: Vec<(Value, Value)>,
     block_targets: HashMap<String, u64>,
     tag_targets: HashMap<String, u64>,
@@ -29,7 +30,6 @@ struct Frame {
 }
 
 impl Environment {
-    #[must_use]
     pub fn new() -> Self {
         Self(Rc::new(RefCell::new(Frame {
             values: HashMap::new(),
@@ -43,6 +43,7 @@ impl Environment {
             defsetf_definitions: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
+            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),
@@ -50,7 +51,6 @@ impl Environment {
         })))
     }
 
-    #[must_use]
     pub fn child(&self) -> Self {
         Self(Rc::new(RefCell::new(Frame {
             values: HashMap::new(),
@@ -64,6 +64,7 @@ impl Environment {
             defsetf_definitions: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
+            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),
@@ -87,7 +88,6 @@ impl Environment {
             .insert(name.as_ref().to_string(), value);
     }
 
-    #[must_use]
     pub fn lookup(&self, name: &str) -> Option<Value> {
         let key = normalize_name(name);
         let (value, parent) = {
@@ -105,19 +105,15 @@ impl Environment {
         value.or_else(|| parent.and_then(|environment| environment.lookup_exact(name)))
     }
 
-    #[must_use]
     pub fn set(&self, name: &str, value: Value) -> bool {
         let key = normalize_name(name);
-        let parent = {
-            let mut frame = self.0.borrow_mut();
-            if let std::collections::hash_map::Entry::Occupied(mut entry) = frame.values.entry(key)
-            {
-                entry.insert(value);
-                return true;
-            }
-            frame.parent.clone()
-        };
-        parent.is_some_and(|environment| environment.set(name, value))
+        if self.0.borrow().values.contains_key(&key) {
+            self.0.borrow_mut().values.insert(key, value);
+            true
+        } else {
+            let parent = self.0.borrow().parent.clone();
+            parent.is_some_and(|environment| environment.set(name, value))
+        }
     }
 
     pub(crate) fn remove(&self, name: &str) -> bool {
@@ -333,6 +329,24 @@ impl Environment {
             (frame.classes.get(&key).cloned(), frame.parent.clone())
         };
         definition.or_else(|| parent.and_then(|environment| environment.lookup_class(name)))
+    }
+
+    pub(crate) fn define_condition(
+        &self,
+        name: impl AsRef<str>,
+        definition: Rc<ConditionDefinition>,
+    ) {
+        let key = normalize_name(name.as_ref());
+        self.0.borrow_mut().conditions.insert(key, definition);
+    }
+
+    pub(crate) fn lookup_condition(&self, name: &str) -> Option<Rc<ConditionDefinition>> {
+        let key = normalize_name(name);
+        let (definition, parent) = {
+            let frame = self.0.borrow();
+            (frame.conditions.get(&key).cloned(), frame.parent.clone())
+        };
+        definition.or_else(|| parent.and_then(|environment| environment.lookup_condition(name)))
     }
 
     pub(crate) fn symbol_plist(&self, symbol: &Value) -> Option<Value> {

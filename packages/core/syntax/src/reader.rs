@@ -27,7 +27,6 @@ pub struct Reader<'source> {
 }
 
 impl<'source> Reader<'source> {
-    #[must_use]
     pub fn new(source: &'source str) -> Self {
         Self {
             source,
@@ -65,10 +64,10 @@ impl<'source> Reader<'source> {
     }
 
     pub fn consume_one_whitespace_after_form(&mut self) {
-        if let Some(character) = self.peek_char()
-            && character.is_whitespace()
-        {
-            self.position += character.len_utf8();
+        if let Some(character) = self.peek_char() {
+            if character.is_whitespace() {
+                self.position += character.len_utf8();
+            }
         }
     }
 
@@ -642,14 +641,14 @@ impl<'source> Reader<'source> {
     fn parse_character(&mut self, start: usize) -> Result<Form, ReadError> {
         self.position += 1;
         let token_start = self.position;
-        if let Some(character) = self.peek_char()
-            && self.is_delimiter(character)
-        {
-            self.position += character.len_utf8();
-            return Ok(Form::new(
-                FormKind::Character(character),
-                Span::new(start, self.position),
-            ));
+        if let Some(character) = self.peek_char() {
+            if self.is_delimiter(character) {
+                self.position += character.len_utf8();
+                return Ok(Form::new(
+                    FormKind::Character(character),
+                    Span::new(start, self.position),
+                ));
+            }
         }
         while let Some(character) = self.peek_char() {
             if self.is_delimiter(character) {
@@ -805,13 +804,13 @@ impl<'source> Reader<'source> {
     }
 
     fn ensure_dispatch_boundary(&self, start: usize) -> Result<(), ReadError> {
-        if let Some(character) = self.peek_char()
-            && !self.is_delimiter(character)
-        {
-            return Err(self.error(
-                ReadErrorKind::InvalidDispatch,
-                Span::new(start, self.position + character.len_utf8()),
-            ));
+        if let Some(character) = self.peek_char() {
+            if !self.is_delimiter(character) {
+                return Err(self.error(
+                    ReadErrorKind::InvalidDispatch,
+                    Span::new(start, self.position + character.len_utf8()),
+                ));
+            }
         }
         Ok(())
     }

@@ -1311,7 +1311,7 @@ fn parse_print_options(
     options: &[Value],
     allow_stream: bool,
 ) -> Result<(bool, Option<Value>), RuntimeError> {
-    if !options.len().is_multiple_of(2) {
+    if options.len() % 2 != 0 {
         return Err(RuntimeError::InvalidForm {
             message: format!("{function} requires keyword/value pairs"),
             span: None,
@@ -1398,7 +1398,7 @@ pub(crate) fn read_from_string_with_features(
         Value::String(value) => value.as_ref(),
         value => return Err(type_error("read-from-string", "a string", value)),
     };
-    let eof_error_p = arguments.get(1).is_none_or(Value::is_truthy);
+    let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
     let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let source_length = source.chars().count();
     let mut start = 0;
@@ -1500,7 +1500,7 @@ fn read_stream_form(
         }
         Some(value) => return Err(type_error(function, "an input stream", value)),
     };
-    let eof_error_p = arguments.get(1).is_none_or(Value::is_truthy);
+    let eof_error_p = arguments.get(1).map_or(true, Value::is_truthy);
     let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let source = {
         let stream = stream.borrow();

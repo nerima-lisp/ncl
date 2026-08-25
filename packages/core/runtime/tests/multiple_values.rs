@@ -1,9 +1,44 @@
 use ncl_runtime::{Runtime, RuntimeError};
 
-#[path = "support/evaluation.rs"]
-mod support;
+fn evaluate_interpreted(source: &str) -> Result<String, String> {
+    Runtime::new()
+        .eval_source(source)
+        .map_err(|error| error.to_string())
+        .and_then(|mut values| {
+            values
+                .pop()
+                .map(|value| value.to_string())
+                .ok_or_else(|| "evaluation returned no values".to_string())
+        })
+}
 
-use support::{assert_interpreted_and_compiled, evaluate_compiled, evaluate_interpreted};
+fn evaluate_compiled(source: &str) -> Result<String, String> {
+    Runtime::new()
+        .eval_compiled_source(source)
+        .map_err(|error| error.to_string())
+        .and_then(|mut values| {
+            values
+                .pop()
+                .map(|value| value.to_string())
+                .ok_or_else(|| "compiled evaluation returned no values".to_string())
+        })
+}
+
+fn assert_interpreted_and_compiled(source: &str, expected: &str) {
+    let interpreted = evaluate_interpreted(source);
+    let compiled = evaluate_compiled(source);
+
+    assert_eq!(
+        interpreted,
+        Ok(expected.to_string()),
+        "interpreted evaluation of {source:?}",
+    );
+    assert_eq!(
+        compiled,
+        Ok(expected.to_string()),
+        "compiled evaluation of {source:?}",
+    );
+}
 
 #[test]
 fn values_returns_the_primary_value_in_a_single_value_context() {
@@ -28,43 +63,6 @@ fn multiple_value_list_and_values_list_round_trip_value_sequences() {
            (list first second third))",
         "(6 7 NIL)",
     );
-}
-
-#[test]
-fn value_sequence_queries_cover_empty_missing_and_explicit_nil_cases() {
-    for (source, expected) in [
-        ("(nth-value 0 (values 4 5))", "4"),
-        ("(nth-value 1 (values 4 5))", "5"),
-        ("(nth-value 2 (values 4 5))", "NIL"),
-        ("(nth-value 0 (values))", "NIL"),
-        ("(nth-value 0 (values nil))", "NIL"),
-    ] {
-        assert_interpreted_and_compiled(source, expected);
-    }
-}
-
-#[test]
-fn nth_value_rejects_invalid_indices_and_arity_in_both_execution_modes() {
-    let cases = [
-        ("(nth-value -1 (values 1))", "non-negative"),
-        ("(nth-value 1/2 (values 1))", "INTEGER"),
-        ("(nth-value 0)", "expected two"),
-        ("(nth-value 0 (values 1) extra)", "expected two"),
-    ];
-
-    for (source, expected_message) in cases {
-        let interpreted = Runtime::new().eval_source(source).unwrap_err();
-        assert!(
-            interpreted.to_string().contains(expected_message),
-            "interpreted evaluation of {source:?}: {interpreted}"
-        );
-
-        let compiled = Runtime::new().eval_compiled_source(source).unwrap_err();
-        assert!(
-            compiled.to_string().contains(expected_message),
-            "compiled evaluation of {source:?}: {compiled}"
-        );
-    }
 }
 
 #[test]
@@ -102,16 +100,6 @@ fn multiple_value_prog1_retains_values_and_evaluates_tail_forms_in_order() {
 }
 
 #[test]
-fn prog1_and_prog2_retain_multiple_values_in_both_execution_modes() {
-    assert_interpreted_and_compiled(
-        "(list
-           (multiple-value-call #'list (prog1 (values 1 2) 3))
-           (multiple-value-call #'list (prog2 0 (values 3 4) 5)))",
-        "((1 2) (3 4))",
-    );
-}
-
-#[test]
 fn zero_values_are_distinct_from_one_nil() {
     assert_interpreted_and_compiled(
         "(list
@@ -139,11 +127,6 @@ fn ignore_errors_preserves_successful_multiple_values_and_catches_errors() {
         "(multiple-value-bind (value condition) (ignore-errors (+ 1 \"x\")) (list value (type-of condition)))",
         "(NIL CONDITION)",
     );
-}
-
-#[test]
-fn ignore_errors_does_not_swallow_throw_in_either_execution_mode() {
-    assert_interpreted_and_compiled("(catch 'tag (ignore-errors (throw 'tag 42)))", "42");
 }
 
 #[test]

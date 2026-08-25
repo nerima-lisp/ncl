@@ -1,17 +1,13 @@
 [package]
 name = "ncl-compiler"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
 description = "Stack bytecode compiler for ncl"
-license.workspace = true
-
-[lints]
-workspace = true
+license = "MIT"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-ncl-syntax.workspace = true
+ncl-syntax = { path = "../syntax" }

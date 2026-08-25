@@ -1,17 +1,9 @@
-use ncl_compiler::{CompileErrorKind, Compiler, Constant, DestructureSpec, Instruction};
+use ncl_compiler::{CompileErrorKind, Compiler, Constant, Instruction};
 use ncl_syntax::{Form, FormKind, Span, read};
 
 fn compile(source: &str) -> ncl_compiler::Program {
     let forms = read(source).expect("test source should parse");
     Compiler::compile_forms(&forms).expect("test source should compile")
-}
-
-fn compile_error_message(source: &str) -> String {
-    let forms = read(source).expect("test source should parse");
-    match Compiler::compile_forms(&forms) {
-        Ok(program) => panic!("test source should fail to compile: {source}: {program:?}"),
-        Err(error) => error.kind.to_string(),
-    }
 }
 
 #[test]
@@ -29,6 +21,18 @@ fn compiles_arithmetic_shaped_calls_and_normalizes_names() {
             Instruction::Call(2),
             Instruction::Return,
         ]
+    );
+}
+
+#[test]
+fn compiling_no_forms_emits_a_nil_result() {
+    let program = Compiler::compile_forms(&[]).expect("an empty program should compile");
+
+    assert_eq!(program.entry, 0);
+    assert_eq!(program.functions.len(), 1);
+    assert_eq!(
+        program.functions[program.entry].instructions,
+        vec![Instruction::Constant(Constant::Nil), Instruction::Return]
     );
 }
 
@@ -131,161 +135,6 @@ fn rejects_malformed_ordinary_lambda_parameters() {
             ),
             "{source}: {error:?}"
         );
-    }
-}
-
-#[test]
-fn compiles_destructuring_lambda_lists_and_rejects_malformed_sections() {
-    let program = compile(
-        "(destructuring-bind (&whole whole (first second)
-            &optional (third (+ first 1) third-p)
-            &rest rest
-            &key ((:scale scale) scale-value scale-p) (limit 10)
-            &allow-other-keys
-            &aux (total (+ first third)))
-            (list (list 1 2) 3 :scale 5 :extra 8)
-            (list whole first second third third-p rest scale-value scale-p limit total))",
-    );
-    let Some(Instruction::Destructure(DestructureSpec::LambdaList(lambda_list))) = program
-        .functions[0]
-        .instructions
-        .iter()
-        .find(|instruction| matches!(instruction, Instruction::Destructure(_)))
-    else {
-        panic!("destructuring-bind should emit a lambda-list instruction");
-    };
-    assert_eq!(lambda_list.whole.as_deref(), Some("WHOLE"));
-    assert_eq!(lambda_list.required.len(), 1);
-    assert_eq!(lambda_list.optional.len(), 1);
-    assert_eq!(
-        lambda_list.optional[0].supplied_p.as_deref(),
-        Some("THIRD-P")
-    );
-    assert_eq!(lambda_list.rest.as_deref(), Some("REST"));
-    assert_eq!(lambda_list.keywords.len(), 2);
-    assert_eq!(lambda_list.keywords[0].keyword_name, "SCALE");
-    assert_eq!(
-        lambda_list.keywords[0].supplied_p.as_deref(),
-        Some("SCALE-P")
-    );
-    assert!(lambda_list.allow_other_keys);
-    assert_eq!(lambda_list.auxiliary[0].name, "TOTAL");
-
-    for (source, expected) in [
-        (
-            "(destructuring-bind (first))",
-            "DESTRUCTURING-BIND expected two or more arguments, received 1",
-        ),
-        (
-            "(destructuring-bind (&whole) value body)",
-            "&whole must be the first marker followed by one parameter",
-        ),
-        (
-            "(destructuring-bind (first &whole whole) value body)",
-            "&whole must be the first marker followed by one parameter",
-        ),
-        (
-            "(destructuring-bind (first &optional second &optional third) value body)",
-            "&optional is out of order in destructuring lambda list",
-        ),
-        (
-            "(destructuring-bind (first &rest) value body)",
-            "&rest or &body must be followed by one parameter",
-        ),
-        (
-            "(destructuring-bind (first &rest 1) value body)",
-            "destructuring rest parameter name must be a symbol",
-        ),
-        (
-            "(destructuring-bind (first &rest rest another) value body)",
-            "destructuring rest parameter must be followed by a keyword or auxiliary section",
-        ),
-        (
-            "(destructuring-bind (first &rest rest &rest more) value body)",
-            "&rest or &body must be followed by one parameter",
-        ),
-        (
-            "(destructuring-bind (first &key &key other) value body)",
-            "&key is out of order or repeated in destructuring lambda list",
-        ),
-        (
-            "(destructuring-bind (first &allow-other-keys) value body)",
-            "&allow-other-keys requires a keyword section",
-        ),
-        (
-            "(destructuring-bind (first &key key &allow-other-keys other) value body)",
-            "&allow-other-keys must be the last keyword-list marker",
-        ),
-        (
-            "(destructuring-bind (first &aux x &aux y) value body)",
-            "&aux is repeated in destructuring lambda list",
-        ),
-        (
-            "(destructuring-bind (first &unknown x) value body)",
-            "unsupported marker in destructuring lambda list",
-        ),
-        (
-            "(destructuring-bind ((&unknown)) value body)",
-            "unsupported marker in destructuring lambda list",
-        ),
-        (
-            "(destructuring-bind (#(first)) value body)",
-            "destructuring pattern must be a symbol or list",
-        ),
-        (
-            "(destructuring-bind (first &optional (second 1 2 3)) value body)",
-            "destructuring optional parameter must contain one to three items",
-        ),
-        (
-            "(destructuring-bind (first &optional (second . third)) value body)",
-            "destructuring optional parameter must be a symbol or list",
-        ),
-        (
-            "(destructuring-bind (first &key ((:scale) scale-value)) value body)",
-            "destructuring keyword designator must contain a keyword and variable",
-        ),
-        (
-            "(destructuring-bind (first &key ((scale scale) scale-value)) value body)",
-            "destructuring keyword designator must start with a keyword",
-        ),
-        (
-            "(destructuring-bind (first &key (:scale)) value body)",
-            "destructuring keyword parameter needs a variable",
-        ),
-        (
-            "(destructuring-bind (first &key ((nested . value))) value body)",
-            "destructuring keyword parameter must have a variable name",
-        ),
-        (
-            "(destructuring-bind (first &key (scale 1 2 3)) value body)",
-            "destructuring keyword parameter contains too many items",
-        ),
-        (
-            "(destructuring-bind (first &key (scale 1 2)) value body)",
-            "destructuring supplied-p name must be a symbol",
-        ),
-        (
-            "(destructuring-bind (first &key (scale . rest)) value body)",
-            "destructuring keyword parameter must be a symbol or list",
-        ),
-        (
-            "(destructuring-bind (first &key ((:scale second) 1) ((:scale third) 2)) value body)",
-            "destructuring keyword names must be unique",
-        ),
-        (
-            "(destructuring-bind (first &aux (total 1 2)) value body)",
-            "destructuring auxiliary parameter must contain one or two items",
-        ),
-        (
-            "(destructuring-bind (first &aux (total . rest)) value body)",
-            "destructuring auxiliary parameter must be a symbol or list",
-        ),
-        (
-            "(destructuring-bind (first first) value body)",
-            "destructuring pattern names must be unique",
-        ),
-    ] {
-        assert_eq!(compile_error_message(source), expected, "{source}");
     }
 }
 
@@ -412,89 +261,6 @@ fn reports_malformed_forms_with_the_offending_span() {
 }
 
 #[test]
-fn lowers_defconstant_without_runtime_eval_fallback() {
-    let program = compile("(defconstant +answer+ 42)");
-    let instructions = &program.functions[0].instructions;
-
-    assert!(
-        instructions
-            .iter()
-            .any(|instruction| matches!(instruction, Instruction::CheckConstant(_)))
-    );
-    assert!(
-        instructions
-            .iter()
-            .any(|instruction| matches!(instruction, Instruction::DefineConstant(_)))
-    );
-    assert!(
-        !instructions
-            .iter()
-            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
-    );
-}
-
-#[test]
-fn lowers_nth_value_to_native_multiple_value_selection() {
-    let program = compile("(nth-value 1 (values 10 20))");
-    let instructions = &program.functions[0].instructions;
-
-    assert!(
-        instructions
-            .iter()
-            .any(|instruction| matches!(instruction, Instruction::NthValue(_)))
-    );
-    assert!(
-        !instructions
-            .iter()
-            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
-    );
-}
-
-#[test]
-fn lowers_symbol_push_pop_and_pushnew_without_evaluator_fallback() {
-    let push = compile("(push 1 cell)");
-    assert_eq!(
-        push.functions[0].instructions,
-        vec![
-            Instruction::Constant(Constant::Integer(1)),
-            Instruction::Push("CELL".to_string()),
-            Instruction::Return,
-        ]
-    );
-    let pop = compile("(pop cell)");
-    assert_eq!(
-        pop.functions[0].instructions,
-        vec![Instruction::PopPlace("CELL".to_string()), Instruction::Return]
-    );
-    let pushnew = compile("(pushnew 1 cell)");
-    assert_eq!(
-        pushnew.functions[0].instructions,
-        vec![
-            Instruction::Constant(Constant::Integer(1)),
-            Instruction::PushNew("CELL".to_string()),
-            Instruction::Return,
-        ]
-    );
-}
-
-#[test]
-fn lowers_load_time_value_without_runtime_eval_fallback() {
-    let program = compile("(load-time-value (values 10 20) (progn 1))");
-    let instructions = &program.functions[0].instructions;
-
-    assert!(
-        instructions
-            .iter()
-            .any(|instruction| matches!(instruction, Instruction::LoadTimeValue))
-    );
-    assert!(
-        !instructions
-            .iter()
-            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
-    );
-}
-
-#[test]
 fn lowers_prog1_with_retained_value_and_ordered_tail_effects() {
     let program = compile("(prog1 (setq marker 1) (setq marker 2) (setq marker 3))");
 
@@ -504,7 +270,7 @@ fn lowers_prog1_with_retained_value_and_ordered_tail_effects() {
             Instruction::EnterScope,
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Set("MARKER".to_string()),
-            Instruction::DefineValues("__NCL_PROG1_VALUE_0".to_string()),
+            Instruction::Define("__NCL_PROG1_VALUE_0".to_string()),
             Instruction::Pop,
             Instruction::Constant(Constant::Integer(2)),
             Instruction::Set("MARKER".to_string()),
@@ -530,7 +296,7 @@ fn lowers_prog2_with_discarded_first_value_and_empty_tail() {
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Pop,
             Instruction::Constant(Constant::Integer(2)),
-            Instruction::DefineValues("__NCL_PROG2_VALUE_0".to_string()),
+            Instruction::Define("__NCL_PROG2_VALUE_0".to_string()),
             Instruction::Pop,
             Instruction::Load("__NCL_PROG2_VALUE_0".to_string()),
             Instruction::ExitScope,
@@ -588,7 +354,7 @@ fn prog_temporary_names_avoid_source_collisions() {
     assert!(instructions.iter().any(|instruction| {
         matches!(
             instruction,
-            Instruction::DefineValues(name) if name == "__NCL_PROG1_VALUE_1"
+            Instruction::Define(name) if name == "__NCL_PROG1_VALUE_1"
         )
     }));
     assert!(instructions.iter().any(|instruction| {
@@ -662,6 +428,42 @@ fn rejects_non_symbol_bindings_without_panicking() {
 }
 
 #[test]
+fn rejects_malformed_destructuring_names_as_a_table() {
+    let cases = [
+        (
+            "(destructuring-bind ((&optional value)) (list (list 1)) value)",
+            CompileErrorKind::InvalidForm {
+                message: "destructuring pattern does not support lambda-list markers".to_string(),
+            },
+        ),
+        (
+            "(destructuring-bind (value value) (list 1 2) value)",
+            CompileErrorKind::InvalidForm {
+                message: "destructuring pattern names must be unique".to_string(),
+            },
+        ),
+        (
+            "(destructuring-bind (&key ((value 1))) (list) value)",
+            CompileErrorKind::InvalidForm {
+                message: "destructuring keyword designator must start with a keyword".to_string(),
+            },
+        ),
+        (
+            "(destructuring-bind (&key ((: value))) (list) value)",
+            CompileErrorKind::InvalidForm {
+                message: "destructuring keyword designator must be nonempty".to_string(),
+            },
+        ),
+    ];
+
+    for (source, expected) in cases {
+        let forms = read(source).expect("test source should parse");
+        let error = Compiler::compile_forms(&forms).expect_err("malformed pattern should fail");
+        assert_eq!(error.kind, expected, "source: {source}");
+    }
+}
+
+#[test]
 fn emits_quoted_vectors_as_data() {
     let program = compile("#(a 1)");
     let forms = read("#(a 1)").expect("test source should parse");
@@ -669,30 +471,6 @@ fn emits_quoted_vectors_as_data() {
     assert_eq!(
         program.functions[0].instructions,
         vec![Instruction::Quote(forms[0].clone()), Instruction::Return]
-    );
-}
-
-#[test]
-fn emits_bit_vectors_as_vector_data() {
-    let program = compile("#*101");
-    let forms = read("#*101").expect("test source should parse");
-
-    assert_eq!(
-        program.functions[0].instructions,
-        vec![Instruction::Quote(forms[0].clone()), Instruction::Return]
-    );
-}
-
-#[test]
-fn emits_radix_integer_literals_as_numbers() {
-    let program = compile("#xff");
-
-    assert_eq!(
-        program.functions[0].instructions,
-        vec![
-            Instruction::Constant(Constant::Integer(255)),
-            Instruction::Return
-        ]
     );
 }
 
@@ -837,12 +615,10 @@ fn lowers_dotimes_with_a_single_count_evaluation_and_result() {
         program.functions[0].instructions,
         vec![
             Instruction::EnterScope,
-            Instruction::FunctionLoad("__NCL_REQUIRE_INTEGER".to_string()),
             Instruction::FunctionLoad("+".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Call(2),
-            Instruction::Call(1),
             Instruction::Define("__NCL_DOTIMES_LIMIT_0".to_string()),
             Instruction::Pop,
             Instruction::Constant(Constant::Integer(0)),
@@ -852,7 +628,7 @@ fn lowers_dotimes_with_a_single_count_evaluation_and_result() {
             Instruction::Load("I".to_string()),
             Instruction::Load("__NCL_DOTIMES_LIMIT_0".to_string()),
             Instruction::Call(2),
-            Instruction::JumpIfFalse(29),
+            Instruction::JumpIfFalse(27),
             Instruction::FunctionLoad("+".to_string()),
             Instruction::Load("I".to_string()),
             Instruction::Constant(Constant::Integer(1)),
@@ -864,7 +640,7 @@ fn lowers_dotimes_with_a_single_count_evaluation_and_result() {
             Instruction::Call(2),
             Instruction::Set("I".to_string()),
             Instruction::Pop,
-            Instruction::Jump(12),
+            Instruction::Jump(10),
             Instruction::FunctionLoad("+".to_string()),
             Instruction::Load("I".to_string()),
             Instruction::Constant(Constant::Integer(10)),
@@ -883,9 +659,7 @@ fn lowers_empty_dotimes_body_with_a_default_result() {
         program.functions[0].instructions,
         vec![
             Instruction::EnterScope,
-            Instruction::FunctionLoad("__NCL_REQUIRE_INTEGER".to_string()),
             Instruction::Constant(Constant::Integer(0)),
-            Instruction::Call(1),
             Instruction::Define("__NCL_DOTIMES_LIMIT_0".to_string()),
             Instruction::Pop,
             Instruction::Constant(Constant::Integer(0)),
@@ -895,7 +669,7 @@ fn lowers_empty_dotimes_body_with_a_default_result() {
             Instruction::Load("I".to_string()),
             Instruction::Load("__NCL_DOTIMES_LIMIT_0".to_string()),
             Instruction::Call(2),
-            Instruction::JumpIfFalse(23),
+            Instruction::JumpIfFalse(21),
             Instruction::Constant(Constant::Nil),
             Instruction::Pop,
             Instruction::FunctionLoad("+".to_string()),
@@ -904,7 +678,7 @@ fn lowers_empty_dotimes_body_with_a_default_result() {
             Instruction::Call(2),
             Instruction::Set("I".to_string()),
             Instruction::Pop,
-            Instruction::Jump(9),
+            Instruction::Jump(7),
             Instruction::Constant(Constant::Nil),
             Instruction::ExitScope,
             Instruction::Return,
@@ -920,12 +694,10 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
         program.functions[0].instructions,
         vec![
             Instruction::EnterScope,
-            Instruction::FunctionLoad("__NCL_REQUIRE_LIST".to_string()),
             Instruction::FunctionLoad("LIST".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(2)),
             Instruction::Call(2),
-            Instruction::Call(1),
             Instruction::Define("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Pop,
             Instruction::Constant(Constant::Nil),
@@ -934,8 +706,8 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
             Instruction::FunctionLoad("ENDP".to_string()),
             Instruction::Load("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Call(1),
-            Instruction::JumpIfFalse(17),
-            Instruction::Jump(33),
+            Instruction::JumpIfFalse(15),
+            Instruction::Jump(31),
             Instruction::FunctionLoad("CAR".to_string()),
             Instruction::Load("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Call(1),
@@ -951,7 +723,7 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
             Instruction::Call(1),
             Instruction::Set("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Pop,
-            Instruction::Jump(12),
+            Instruction::Jump(10),
             Instruction::Constant(Constant::Nil),
             Instruction::Set("ITEM".to_string()),
             Instruction::Pop,
@@ -1082,4 +854,149 @@ fn compiles_tagbody_and_go_with_label_positions() {
             Instruction::Return,
         ]
     );
+}
+
+#[test]
+fn compiles_literal_constant_families_without_runtime_adapters() {
+    let cases = [
+        ("nil", Constant::Nil),
+        ("#t", Constant::Boolean(true)),
+        ("#f", Constant::Nil),
+        ("42", Constant::Integer(42)),
+        (
+            "6/8",
+            Constant::Rational {
+                numerator: 3,
+                denominator: 4,
+            },
+        ),
+        ("1.5", Constant::Float(1.5)),
+        (":foo", Constant::Keyword("FOO".to_owned())),
+    ];
+
+    for (source, expected) in cases {
+        let program = compile(source);
+        assert_eq!(
+            program.functions[0].instructions[0],
+            Instruction::Constant(expected),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn compiles_eval_when_only_for_execute_situations() {
+    for (source, expected_constants) in [
+        ("(eval-when (:compile-toplevel) 7)", 1),
+        ("(eval-when (:execute) 7)", 1),
+        ("(eval-when (:compile-toplevel :execute) 7)", 1),
+    ] {
+        let program = compile(source);
+        let constants = program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::Constant(_)))
+            .count();
+        assert_eq!(constants, expected_constants, "{source}");
+    }
+}
+
+#[test]
+fn rejects_non_symbol_eval_when_situations() {
+    for source in ["(eval-when (1) 7)", "(eval-when (#:phase) 7)"] {
+        let forms = read(source).expect("test source should parse");
+        let error = Compiler::compile_forms(&forms).expect_err(source);
+        assert!(
+            matches!(error.kind, CompileErrorKind::ExpectedSymbol { .. }),
+            "{source}: {error}"
+        );
+    }
+}
+
+#[test]
+fn compiles_control_bindings_and_definition_forms_as_a_group() {
+    let program = compile(
+        "(progn
+           (defvar *value* 1)
+           (setq *value* 2)
+           (psetq *value* 3)
+           (let ((local 4))
+             (flet ((identity (value) value))
+               (funcall #'identity local)))
+           (catch 'done (throw 'done 5))
+           (handler-case (error 'condition)
+             (condition (condition) condition))
+           (defconstant +constant+ 6)
+           (defstruct point x y)
+           (defun point-sum (point)
+             (+ (point-x point) (point-y point)))
+           (values 1 2))",
+    );
+
+    assert!(!program.functions.is_empty());
+}
+
+#[test]
+fn compiles_control_and_iteration_forms_through_one_shared_contract() {
+    let forms = [
+        "(values 1 2)",
+        "(multiple-value-list (values 1 2))",
+        "(ignore-errors 1)",
+        "(handler-bind ((condition (lambda (condition) condition))) 1)",
+        "(restart-bind ((continue (lambda () 1))) 2)",
+        "(with-simple-restart (continue \"continue\") 3)",
+        "(restart-case 4 (continue () 5))",
+        "(with-condition-restarts 'condition nil 6)",
+        "(catch 'tag 7)",
+        "(throw 'tag 8)",
+        "(progv '(name) '(9) name)",
+        "(block result (return-from result 10))",
+        "(tagbody start (go start))",
+        "(multiple-value-bind (left right) (values 1 2) (+ left right))",
+        "(multiple-value-call #'list 1 2)",
+        "(multiple-value-prog1 1 2)",
+        "(and 1 2)",
+        "(or nil 2)",
+        "(when t 1)",
+        "(cond (nil 1) (t 2))",
+        "(case 1 (1 2) (otherwise 3))",
+        "(typecase 1 (integer 2) (otherwise 3))",
+        "(dotimes (index 2) index)",
+        "(dolist (item '(1 2)) item)",
+        "(do ((index 0 (1+ index))) ((= index 2) index) index)",
+    ];
+
+    for source in forms {
+        let program = compile(source);
+        assert!(!program.functions.is_empty(), "no functions for {source}");
+    }
+}
+
+#[test]
+fn compiles_keyword_control_names_and_rejects_invalid_names() {
+    for source in [
+        "(handler-case 1 (:condition () 2))",
+        "(handler-bind ((:condition (lambda (condition) condition))) 1)",
+        "(restart-bind ((:continue (lambda () 1))) 2)",
+        "(with-simple-restart (:continue \"continue\") 3)",
+        "(restart-case 4 (:continue () 5))",
+        "(with-condition-restarts ':condition nil 6)",
+        "(tagbody :start (go :start))",
+        "(block :result (return-from :result 10))",
+    ] {
+        let program = compile(source);
+        assert!(!program.functions.is_empty(), "no functions for {source}");
+    }
+
+    for source in [
+        "(handler-case 1 (1 () 2))",
+        "(restart-bind ((1 (lambda () 1))) 2)",
+    ] {
+        let forms = read(source).expect("test source should parse");
+        let error = Compiler::compile_forms(&forms).expect_err(source);
+        assert!(
+            matches!(error.kind, CompileErrorKind::ExpectedSymbol { .. }),
+            "{source}: {error}"
+        );
+    }
 }

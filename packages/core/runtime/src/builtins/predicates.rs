@@ -1,181 +1,39 @@
-macro_rules! predicate_builtins {
-    () => {
-fn null(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "null", 1)?;
-    Ok(Value::boolean(!arguments[0].is_truthy()))
+use super::*;
+
+pub(crate) fn characterp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "characterp", 1)?;
+    Ok(Value::boolean(matches!(&arguments[0], Value::Character(_))))
 }
 
-fn atom(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "atom", 1)?;
-    Ok(Value::boolean(
-        arguments[0].list_items().is_none()
-            && !matches!(&arguments[0], Value::DottedList { .. }),
-    ))
-}
-
-fn consp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "consp", 1)?;
-    Ok(Value::boolean(
-        arguments[0]
-            .list_items()
-            .is_some_and(|items| !items.is_empty())
-            || matches!(&arguments[0], Value::DottedList { .. }),
-    ))
-}
-
-fn listp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "listp", 1)?;
-    Ok(Value::boolean(
-        matches!(&arguments[0], Value::Nil | Value::Boolean(false))
-            || arguments[0].list_items().is_some(),
-    ))
-}
-
-fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "numberp", 1)?;
+pub(crate) fn keywordp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "keywordp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
-        Value::Integer(_) | Value::Rational(_) | Value::Float(_) | Value::Complex { .. }
+        Value::Keyword(_) | Value::KeywordExact(_)
     )))
 }
 
-fn complexp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "complexp", 1)?;
-    Ok(Value::boolean(matches!(
-        &arguments[0],
-        Value::Complex { .. }
-    )))
+pub(crate) fn vectorp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "vectorp", 1)?;
+    Ok(Value::boolean(matches!(&arguments[0], Value::Vector(_))))
 }
 
-fn integerp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "integerp", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::Integer(_))))
+pub(crate) fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "simple-vector-p", 1)?;
+    Ok(Value::boolean(matches!(&arguments[0], Value::Vector(_))))
 }
 
-fn floatp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "floatp", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::Float(_))))
+pub(crate) fn typep(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "typep", 2)?;
+    Ok(Value::boolean(typep_value(&arguments[0], &arguments[1])?))
 }
 
-fn rationalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "rationalp", 1)?;
-    Ok(Value::boolean(matches!(
-        &arguments[0],
-        Value::Integer(_) | Value::Rational(_)
-    )))
-}
-
-fn complex(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "complex", 2)?;
-    Ok(Value::complex(
-        real_number_argument("complex", &arguments[0])?,
-        real_number_argument("complex", &arguments[1])?,
-    ))
-}
-
-fn conjugate(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "conjugate", 1)?;
-    match numeric_argument("conjugate", &arguments[0])? {
-        Numeric::Real(value) => number_to_value(value),
-        Numeric::Complex { real, imag } => Ok(Value::complex(
-            number_to_value(real)?,
-            number_to_value(negate_number(imag)?)?,
-        )),
-    }
-}
-
-fn phase(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "phase", 1)?;
-    match numeric_argument("phase", &arguments[0])? {
-        Numeric::Real(value) => phase_real(value),
-        Numeric::Complex { real, imag } => phase_complex(real, imag),
-    }
-}
-
-fn phase_real(value: Number) -> Result<Value, RuntimeError> {
-    let as_float = value.as_float();
-    if as_float == 0.0 {
-        return number_to_value(match value {
-            Number::Float(_) => Number::Float(0.0),
-            _ => Number::Integer(0),
-        });
-    }
-    if as_float.is_sign_negative() {
-        Ok(Value::Float(PI))
-    } else {
-        number_to_value(match value {
-            Number::Float(_) => Number::Float(0.0),
-            _ => Number::Integer(0),
-        })
-    }
-}
-
-fn phase_complex(real: Number, imag: Number) -> Result<Value, RuntimeError> {
-    if real.as_float() == 0.0 && imag.as_float() == 0.0 {
-        return Ok(Value::Integer(0));
-    }
-    Ok(Value::Float(imag.as_float().atan2(real.as_float())))
-}
-
-fn realpart(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "realpart", 1)?;
-    match &arguments[0] {
-        Value::Complex { real, .. } => Ok(real.as_ref().clone()),
-        value if is_real_number(value) => Ok(value.clone()),
-        value => Err(number_error("realpart", value)),
-    }
-}
-
-fn imagpart(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "imagpart", 1)?;
-    match &arguments[0] {
-        Value::Complex { imag, .. } => Ok(imag.as_ref().clone()),
-        Value::Float(_) => Ok(Value::Float(0.0)),
-        value if is_real_number(value) => Ok(Value::Integer(0)),
-        value => Err(number_error("imagpart", value)),
-    }
-}
-
-fn stringp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "stringp", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::String(_))))
-}
-
-fn simple_string_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "simple-string-p", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::String(_))))
-}
-
-fn symbolp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "symbolp", 1)?;
-    Ok(Value::boolean(matches!(
-        &arguments[0],
-        Value::Nil
-            | Value::Boolean(_)
-            | Value::Symbol(_)
-            | Value::UninternedSymbol(_)
-            | Value::Keyword(_)
-            | Value::SymbolExact(_)
-            | Value::KeywordExact(_)
-    )))
-}
-
-fn packagep(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "packagep", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::Package(_))))
-}
-
-fn functionp(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "functionp", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::Function(_))))
-}
-
-fn eq(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn eq(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "eq", 2)?;
     Ok(Value::boolean(arguments[0].eq_value(&arguments[1])))
 }
 
-fn eql(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn eql(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "eql", 2)?;
     Ok(Value::boolean(eql_value(&arguments[0], &arguments[1])))
 }
@@ -190,60 +48,25 @@ pub(crate) fn eql_value(left: &Value, right: &Value) -> bool {
     left.eq_value(right) || numeric_equal
 }
 
-fn equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "equal", 2)?;
     Ok(Value::boolean(arguments[0].equal_value(&arguments[1])))
 }
 
-fn equalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn equalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "equalp", 2)?;
     Ok(Value::boolean(equalp_value(&arguments[0], &arguments[1])))
 }
 
-fn equalp_value(left: &Value, right: &Value) -> bool {
+pub(crate) fn equalp_value(left: &Value, right: &Value) -> bool {
     if let (Ok(left), Ok(right)) = (number(left), number(right)) {
         return numeric_equalp(left, right);
     }
     match (left, right) {
         (Value::String(left), Value::String(right)) => left.eq_ignore_ascii_case(right),
         (Value::Character(left), Value::Character(right)) => left.eq_ignore_ascii_case(right),
-        (Value::List(left), Value::List(right)) => {
+        (Value::List(left), Value::List(right)) | (Value::Vector(left), Value::Vector(right)) => {
             left.len() == right.len()
-                && left
-                    .iter()
-                    .zip(right.iter())
-                    .all(|(left, right)| equalp_value(left, right))
-        }
-        (
-            Value::Vector {
-                fill_pointer: left_fill_pointer,
-                element_type: left_element_type,
-                adjustable: left_adjustable,
-                displaced_to: left_displaced_to,
-                displaced_index_offset: left_displaced_index_offset,
-                ..
-            },
-            Value::Vector {
-                fill_pointer: right_fill_pointer,
-                element_type: right_element_type,
-                adjustable: right_adjustable,
-                displaced_to: right_displaced_to,
-                displaced_index_offset: right_displaced_index_offset,
-                ..
-            },
-        ) => {
-            let left = left.vector_items().expect("vector items");
-            let right = right.vector_items().expect("vector items");
-            left_fill_pointer == right_fill_pointer
-                && left_adjustable == right_adjustable
-                && left_element_type.equal_value(right_element_type)
-                && left_displaced_index_offset == right_displaced_index_offset
-                && match (left_displaced_to, right_displaced_to) {
-                    (Some(left), Some(right)) => equalp_value(left, right),
-                    (None, None) => true,
-                    _ => false,
-                }
-                && left.len() == right.len()
                 && left
                     .iter()
                     .zip(right.iter())
@@ -252,32 +75,14 @@ fn equalp_value(left: &Value, right: &Value) -> bool {
         (
             Value::Array {
                 dimensions: left_dimensions,
-                element_type: left_element_type,
-                adjustable: left_adjustable,
-                displaced_to: left_displaced_to,
-                displaced_index_offset: left_displaced_index_offset,
-                ..
+                elements: left_elements,
             },
             Value::Array {
                 dimensions: right_dimensions,
-                element_type: right_element_type,
-                adjustable: right_adjustable,
-                displaced_to: right_displaced_to,
-                displaced_index_offset: right_displaced_index_offset,
-                ..
+                elements: right_elements,
             },
         ) => {
-            let left_elements = left.array_items().expect("array items");
-            let right_elements = right.array_items().expect("array items");
             left_dimensions == right_dimensions
-                && left_adjustable == right_adjustable
-                && left_element_type.equal_value(right_element_type)
-                && left_displaced_index_offset == right_displaced_index_offset
-                && match (left_displaced_to, right_displaced_to) {
-                    (Some(left), Some(right)) => equalp_value(left, right),
-                    (None, None) => true,
-                    _ => false,
-                }
                 && left_elements.len() == right_elements.len()
                 && left_elements
                     .iter()
@@ -305,11 +110,105 @@ fn equalp_value(left: &Value, right: &Value) -> bool {
     }
 }
 
-fn identity(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn identity(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "identity", 1)?;
     Ok(arguments[0].clone())
 }
 
+pub(crate) fn type_of(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "type-of", 1)?;
+    Ok(Value::symbol(
+        arguments[0]
+            .structure_name()
+            .unwrap_or(arguments[0].type_name()),
+    ))
+}
 
-    };
+pub(crate) fn null(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "null", 1)?;
+    Ok(Value::boolean(!arguments[0].is_truthy()))
+}
+
+pub(crate) fn atom(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "atom", 1)?;
+    Ok(Value::boolean(!matches!(
+        &arguments[0],
+        Value::List(_) | Value::DottedList { .. }
+    )))
+}
+
+pub(crate) fn consp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "consp", 1)?;
+    Ok(Value::boolean(matches!(
+        &arguments[0],
+        Value::List(_) | Value::DottedList { .. }
+    )))
+}
+
+pub(crate) fn listp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "listp", 1)?;
+    Ok(Value::boolean(matches!(
+        &arguments[0],
+        Value::Nil | Value::List(_)
+    )))
+}
+
+pub(crate) fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "numberp", 1)?;
+    Ok(Value::boolean(matches!(
+        &arguments[0],
+        Value::Integer(_) | Value::Rational(_) | Value::Float(_)
+    )))
+}
+
+pub(crate) fn integerp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "integerp", 1)?;
+    Ok(Value::boolean(matches!(&arguments[0], Value::Integer(_))))
+}
+
+pub(crate) fn floatp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "floatp", 1)?;
+    Ok(Value::boolean(matches!(&arguments[0], Value::Float(_))))
+}
+
+pub(crate) fn rationalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "rationalp", 1)?;
+    Ok(Value::boolean(matches!(
+        &arguments[0],
+        Value::Integer(_) | Value::Rational(_)
+    )))
+}
+
+pub(crate) fn stringp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "stringp", 1)?;
+    Ok(Value::boolean(matches!(&arguments[0], Value::String(_))))
+}
+
+pub(crate) fn simple_string_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "simple-string-p", 1)?;
+    Ok(Value::boolean(matches!(&arguments[0], Value::String(_))))
+}
+
+pub(crate) fn symbolp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "symbolp", 1)?;
+    Ok(Value::boolean(matches!(
+        &arguments[0],
+        Value::Nil
+            | Value::Boolean(_)
+            | Value::Symbol(_)
+            | Value::UninternedSymbol(_)
+            | Value::Keyword(_)
+            | Value::SymbolExact(_)
+            | Value::KeywordExact(_)
+    )))
+}
+
+pub(crate) fn packagep(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "packagep", 1)?;
+    Ok(Value::boolean(matches!(&arguments[0], Value::Package(_))))
+}
+
+pub(crate) fn functionp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "functionp", 1)?;
+    Ok(Value::boolean(matches!(&arguments[0], Value::Function(_))))
 }

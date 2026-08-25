@@ -1,25 +1,23 @@
 use std::error::Error;
 use std::fmt;
 
-use ncl_compiler::{CompileError, CompileErrorKind};
+use ncl_compiler::CompileError;
 use ncl_syntax::{ReadError, Span};
 
 use crate::Value;
 
-#[cfg(test)]
-#[path = "error_tests.rs"]
-mod error_tests;
-
 #[derive(Clone, Debug)]
-pub struct ReturnValue(Box<Value>);
+pub struct ReturnValue(Value);
 
 impl ReturnValue {
+    #[must_use]
     pub fn new(value: Value) -> Self {
-        Self(Box::new(value))
+        Self(value)
     }
 
+    #[must_use]
     pub fn into_value(self) -> Value {
-        *self.0
+        self.0
     }
 }
 
@@ -32,11 +30,11 @@ impl PartialEq for ReturnValue {
 impl Eq for ReturnValue {}
 
 #[derive(Clone, Debug)]
-pub struct ThrowTag(Box<Value>);
+pub struct ThrowTag(Value);
 
 impl ThrowTag {
     pub(crate) fn new(value: Value) -> Self {
-        Self(Box::new(value))
+        Self(value)
     }
 
     pub(crate) fn matches(&self, value: &Value) -> bool {
@@ -84,15 +82,7 @@ pub enum RuntimeError {
         message: String,
         span: Option<Span>,
     },
-    Signaled {
-        condition: String,
-        condition_types: Box<Vec<String>>,
-        message: String,
-        format_control: Option<String>,
-        format_arguments: Box<Vec<ReturnValue>>,
-        warning: bool,
-        span: Option<Span>,
-    },
+    Signaled(Box<SignaledError>),
     Package {
         message: String,
         span: Option<Span>,
@@ -124,6 +114,17 @@ pub enum RuntimeError {
     Io(String),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SignaledError {
+    pub(crate) condition: String,
+    pub(crate) condition_types: Vec<String>,
+    pub(crate) message: String,
+    pub(crate) format_control: Option<String>,
+    pub(crate) format_arguments: Vec<ReturnValue>,
+    pub(crate) warning: bool,
+    pub(crate) span: Option<Span>,
+}
+
 impl RuntimeError {
     pub(crate) fn condition_type_name(&self) -> String {
         match self {
@@ -133,13 +134,11 @@ impl RuntimeError {
             Self::NotCallable { .. } | Self::Type { .. } => "TYPE-ERROR".to_owned(),
             Self::Arity { .. } => "PROGRAM-ERROR".to_owned(),
             Self::InvalidForm { .. } => "SIMPLE-ERROR".to_owned(),
-            Self::Signaled {
-                condition, warning, ..
-            } => {
-                if *warning {
+            Self::Signaled(signaled) => {
+                if signaled.warning {
                     "SIMPLE-WARNING".to_owned()
                 } else {
-                    condition.clone()
+                    signaled.condition.clone()
                 }
             }
             Self::Package { .. } => "PACKAGE-ERROR".to_owned(),
@@ -170,22 +169,18 @@ impl RuntimeError {
             "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
         ) {
             return match self {
-                Self::Signaled {
-                    condition: signaled,
-                    condition_types,
-                    warning,
-                    ..
-                } => {
+                Self::Signaled(signaled) => {
                     if condition == "CONDITION" {
                         true
-                    } else if *warning {
+                    } else if signaled.warning {
                         false
                     } else {
-                        condition_types
+                        signaled
+                            .condition_types
                             .iter()
                             .any(|type_name| normalize_condition_name(type_name) == condition)
                             || matches!(
-                                normalize_condition_name(signaled).as_str(),
+                                normalize_condition_name(&signaled.condition).as_str(),
                                 "SIMPLE-ERROR"
                                     | "DIVISION-BY-ZERO"
                                     | "ARITHMETIC-ERROR"
@@ -204,18 +199,14 @@ impl RuntimeError {
         }
 
         match self {
-            Self::Signaled {
-                condition: signaled,
-                condition_types,
-                warning,
-                ..
-            } => {
-                condition == normalize_condition_name(signaled)
-                    || condition_types
+            Self::Signaled(signaled) => {
+                condition == normalize_condition_name(&signaled.condition)
+                    || signaled
+                        .condition_types
                         .iter()
                         .any(|type_name| normalize_condition_name(type_name) == condition)
-                    || (*warning && condition == "WARNING")
-                    || (!*warning && condition == "SIMPLE-CONDITION")
+                    || (signaled.warning && condition == "WARNING")
+                    || (!signaled.warning && condition == "SIMPLE-CONDITION")
             }
             Self::DivisionByZero => {
                 matches!(condition.as_str(), "DIVISION-BY-ZERO" | "ARITHMETIC-ERROR")
@@ -259,9 +250,9 @@ impl fmt::Display for RuntimeError {
                 formatter.write_str(message)?;
                 write_span(formatter, *span)
             }
-            Self::Signaled { message, span, .. } => {
-                formatter.write_str(message)?;
-                write_span(formatter, *span)
+            Self::Signaled(signaled) => {
+                formatter.write_str(&signaled.message)?;
+                write_span(formatter, signaled.span)
             }
             Self::Package { message, span } => {
                 formatter.write_str(message)?;
@@ -308,260 +299,7 @@ impl From<ReadError> for RuntimeError {
 
 impl From<CompileError> for RuntimeError {
     fn from(error: CompileError) -> Self {
-        match error.kind {
-            CompileErrorKind::Arity {
-                operator,
-                expected,
-                actual,
-            } if matches!(
-                operator.as_str(),
-                "PROG1" | "PROG2" | "IF" | "LET" | "LET*" | "FLET" | "LABELS" | "WHEN" | "UNLESS"
-            ) =>
-            {
-                Self::Arity {
-                    function: operator.to_ascii_lowercase(),
-                    expected,
-                    actual,
-                }
-            }
-            CompileErrorKind::ExpectedList { context }
-                if matches!(
-                    context.as_str(),
-                    "DOTIMES binding"
-                        | "DOLIST binding"
-                        | "DO bindings"
-                        | "DO termination"
-                        | "DO binding"
-                        | "PROG bindings"
-                        | "WITH-OPEN-FILE binding"
-                        | "WITH-OUTPUT-TO-STRING binding"
-                        | "WITH-INPUT-FROM-STRING binding"
-                        | "let bindings"
-                        | "let binding"
-                        | "local function bindings"
-                        | "local function binding"
-                        | "handler-bind handler list"
-                        | "handler-bind clause"
-                        | "handler-case clause"
-                        | "handler-case variable list"
-                        | "restart-bind binding list"
-                        | "restart-bind clause"
-                        | "WITH-SIMPLE-RESTART restart clause"
-                        | "restart-case clause"
-                        | "cond clause"
-                        | "case clause"
-                        | "typecase clause"
-                        | "EVAL-WHEN situations"
-                        | "MULTIPLE-VALUE-BIND variables"
-                        | "MULTIPLE-VALUE-SETQ variables"
-                        | "parameters"
-                ) =>
-            {
-                let message = match context.as_str() {
-                    "DOTIMES binding" => "dotimes binding must be a list".to_string(),
-                    "DOLIST binding" => "dolist binding must be a list".to_string(),
-                    "DO bindings" => "do bindings must be a list".to_string(),
-                    "DO termination" => "do termination must be a list".to_string(),
-                    "DO binding" => "do binding must be a list".to_string(),
-                    "PROG bindings" => "prog bindings must be a list".to_string(),
-                    "EVAL-WHEN situations" => "eval-when situations must be a list".to_string(),
-                    "MULTIPLE-VALUE-BIND variables" => {
-                        "multiple-value-bind variables must be a list".to_string()
-                    }
-                    "MULTIPLE-VALUE-SETQ variables" => {
-                        "multiple-value-setq variables must be a list".to_string()
-                    }
-                    "WITH-OPEN-FILE binding" => "with-open-file binding must be a list".to_string(),
-                    "WITH-OUTPUT-TO-STRING binding" => {
-                        "with-output-to-string binding must be a list".to_string()
-                    }
-                    "WITH-INPUT-FROM-STRING binding" => {
-                        "with-input-from-string binding must be a list".to_string()
-                    }
-                    "WITH-SIMPLE-RESTART restart clause" => {
-                        "with-simple-restart restart clause must be a list".to_string()
-                    }
-                    "cond clause" => "cond clauses must be lists".to_string(),
-                    "case clause" => "case clauses must be lists".to_string(),
-                    "typecase clause" => "typecase clauses must be lists".to_string(),
-                    _ => format!("{context} must be a list"),
-                };
-
-                Self::InvalidForm {
-                    message,
-                    span: Some(error.span),
-                }
-            }
-            CompileErrorKind::ExpectedSymbol { context }
-                if matches!(
-                    context.as_str(),
-                    "GO tag"
-                        | "parameter"
-                        | "&rest parameter"
-                        | "BLOCK name"
-                        | "RETURN-FROM name"
-                        | "PROG binding name"
-                        | "DO binding name"
-                        | "DOTIMES variable"
-                        | "DOLIST variable"
-                        | "handler-case condition"
-                        | "handler-bind condition"
-                        | "RESTART-BIND restart name"
-                        | "WITH-SIMPLE-RESTART name"
-                        | "RESTART-CASE restart name"
-                        | "WITH-OPEN-FILE stream variable"
-                        | "WITH-OUTPUT-TO-STRING stream variable"
-                        | "WITH-INPUT-FROM-STRING stream variable"
-                        | "EVAL-WHEN situation"
-                        | "MULTIPLE-VALUE-BIND variable"
-                        | "MULTIPLE-VALUE-SETQ variable"
-                        | "destructuring pattern name"
-                        | "destructuring supplied-p name"
-                        | "destructuring keyword name"
-                        | "destructuring keyword parameter name"
-                        | "destructuring auxiliary parameter name"
-                        | "destructuring whole parameter name"
-                        | "destructuring rest parameter name"
-                ) =>
-            {
-                let message = match context.as_str() {
-                    "BLOCK name" | "RETURN-FROM name" => "block name must be a symbol".to_string(),
-                    "PROG binding name" => "prog binding name must be a symbol".to_string(),
-                    "DO binding name" => "do binding name must be a symbol".to_string(),
-                    "DOTIMES variable" => "dotimes binding name must be a symbol".to_string(),
-                    "DOLIST variable" => "dolist binding name must be a symbol".to_string(),
-                    "handler-case condition" | "handler-bind condition" => {
-                        "condition name must be a symbol".to_string()
-                    }
-                    "RESTART-BIND restart name"
-                    | "WITH-SIMPLE-RESTART name"
-                    | "RESTART-CASE restart name" => "restart name must be a symbol".to_string(),
-                    "EVAL-WHEN situation" => {
-                        "eval-when situations must contain symbols".to_string()
-                    }
-                    "GO tag" => "go tag must be a symbol or integer".to_string(),
-                    "WITH-OPEN-FILE stream variable" => {
-                        "with-open-file stream variable must be a symbol".to_string()
-                    }
-                    "WITH-OUTPUT-TO-STRING stream variable" => {
-                        "with-output-to-string stream variable must be a symbol".to_string()
-                    }
-                    "WITH-INPUT-FROM-STRING stream variable" => {
-                        "with-input-from-string stream variable must be a symbol".to_string()
-                    }
-                    "MULTIPLE-VALUE-BIND variable" => {
-                        "multiple-value-bind variable must be a symbol".to_string()
-                    }
-                    "MULTIPLE-VALUE-SETQ variable" => {
-                        "multiple-value-setq variable must be a symbol".to_string()
-                    }
-                    "destructuring keyword name" => {
-                        "destructuring keyword designator must be a symbol".to_string()
-                    }
-                    _ => format!("{context} must be a symbol"),
-                };
-
-                Self::InvalidForm {
-                    message,
-                    span: Some(error.span),
-                }
-            }
-            CompileErrorKind::InvalidForm { message }
-                if message.starts_with("duplicate TAGBODY tag ")
-                    || message == "PROG binding needs a name and optional value"
-                    || message == "PROG binding names must be unique"
-                    || message == "DO termination needs an end test"
-                    || message == "DO binding needs a name, optional init, and optional step"
-                    || message == "DO binding names must be unique"
-                    || message
-                        == "DOTIMES binding needs a variable, count, and optional result"
-                    || message == "DOLIST binding needs a variable, list, and optional result"
-                    || message == "WITH-OPEN-FILE binding needs a stream variable and pathname"
-                    || message
-                        == "WITH-OUTPUT-TO-STRING binding needs a stream variable and optional string place"
-                    || message
-                        == "WITH-INPUT-FROM-STRING binding needs a stream variable and string"
-                    || message == "WITH-INPUT-FROM-STRING options need keyword/value pairs"
-                    || message == "WITH-INPUT-FROM-STRING option must be a keyword"
-                    || message == "WITH-INPUT-FROM-STRING :start may appear only once"
-                    || message == "WITH-INPUT-FROM-STRING :end may appear only once"
-                    || message == "WITH-INPUT-FROM-STRING :index may appear only once"
-                    || message == "WITH-INPUT-FROM-STRING option is not supported"
-                    || message == "handler-case clause needs a condition and variable list"
-                    || message == "handler-bind clause needs a condition and handler"
-                    || message
-                        == "WITH-SIMPLE-RESTART restart clause needs a name and report format"
-                    || message == "restart-bind clause needs a name and function"
-                    || message == "restart-case clause needs a name, lambda list, and body"
-                    || message == "cond clause cannot be empty"
-                    || message == "case clause cannot be empty"
-                    || message == "typecase clause cannot be empty"
-                    || message == "&rest must be followed by one parameter"
-                    || message == "&rest must be followed by &key, &aux, or end of lambda-list"
-                    || message == "parameter names must be unique" =>
-            {
-                let message = if message.starts_with("duplicate TAGBODY tag ") {
-                    "tagbody contains duplicate tag".to_string()
-                } else if message == "PROG binding needs a name and optional value" {
-                    "prog binding needs a name and optional value".to_string()
-                } else if message == "PROG binding names must be unique" {
-                    "prog binding names must be unique".to_string()
-                } else if message == "DO termination needs an end test" {
-                    "do termination needs an end test".to_string()
-                } else if message == "DO binding needs a name, optional init, and optional step" {
-                    "do binding needs a name, optional init, and optional step".to_string()
-                } else if message == "DO binding names must be unique" {
-                    "do binding names must be unique".to_string()
-                } else if message == "DOTIMES binding needs a variable, count, and optional result"
-                {
-                    "dotimes binding needs a name, count, and optional result".to_string()
-                } else if message == "DOLIST binding needs a variable, list, and optional result" {
-                    "dolist binding needs a name, list, and optional result".to_string()
-                } else if message == "WITH-OPEN-FILE binding needs a stream variable and pathname" {
-                    "with-open-file binding needs a stream variable and pathname".to_string()
-                } else if message
-                    == "WITH-OUTPUT-TO-STRING binding needs a stream variable and optional string place"
-                {
-                    "with-output-to-string binding needs a stream variable and optional string place"
-                        .to_string()
-                } else if message
-                    == "WITH-INPUT-FROM-STRING binding needs a stream variable and string"
-                {
-                    "with-input-from-string binding needs a stream variable and string".to_string()
-                } else if message == "WITH-INPUT-FROM-STRING options need keyword/value pairs" {
-                    "with-input-from-string options need keyword/value pairs".to_string()
-                } else if message == "WITH-INPUT-FROM-STRING option must be a keyword" {
-                    "with-input-from-string option must be a keyword".to_string()
-                } else if message == "WITH-INPUT-FROM-STRING :start may appear only once" {
-                    "with-input-from-string :start may appear only once".to_string()
-                } else if message == "WITH-INPUT-FROM-STRING :end may appear only once" {
-                    "with-input-from-string :end may appear only once".to_string()
-                } else if message == "WITH-INPUT-FROM-STRING :index may appear only once" {
-                    "with-input-from-string :index may appear only once".to_string()
-                } else if message == "WITH-INPUT-FROM-STRING option is not supported" {
-                    "with-input-from-string option is not supported".to_string()
-                } else if message == "handler-case clause needs a condition and variable list" {
-                    "handler-case clause needs a condition and body".to_string()
-                } else if message == "handler-bind clause needs a condition and handler" {
-                    "handler-bind clause needs a condition and function".to_string()
-                } else if message
-                    == "WITH-SIMPLE-RESTART restart clause needs a name and report format"
-                {
-                    "with-simple-restart restart clause needs a name and report format".to_string()
-                } else {
-                    message
-                };
-
-                Self::InvalidForm {
-                    message,
-                    span: Some(error.span),
-                }
-            }
-            kind => Self::Compile(CompileError {
-                kind,
-                span: error.span,
-            }),
-        }
+        Self::Compile(error)
     }
 }
 
@@ -574,4 +312,210 @@ fn write_span(formatter: &mut fmt::Formatter<'_>, span: Option<Span>) -> fmt::Re
 
 fn normalize_condition_name(condition: &str) -> String {
     condition.trim_start_matches(':').to_ascii_uppercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn control_value_wrappers_preserve_their_comparison_semantics() {
+        let returned = ReturnValue::new(Value::list(vec![Value::Integer(1)]));
+        assert_eq!(
+            returned,
+            ReturnValue::new(Value::list(vec![Value::Integer(1)]))
+        );
+        assert_eq!(returned.into_value().to_string(), "(1)");
+
+        let tag = ThrowTag::new(Value::symbol_exact("Tag"));
+        assert_eq!(tag, ThrowTag::new(Value::symbol_exact("Tag")));
+        assert_ne!(tag, ThrowTag::new(Value::symbol_exact("Other")));
+        assert_eq!(tag.to_string(), "|Tag|");
+    }
+
+    fn signaled(warning: bool) -> RuntimeError {
+        RuntimeError::Signaled(Box::new(SignaledError {
+            condition: "custom-condition".to_owned(),
+            condition_types: vec!["parent-condition".to_owned()],
+            message: "message".to_owned(),
+            format_control: None,
+            format_arguments: Vec::new(),
+            warning,
+            span: Some(Span::new(2, 5)),
+        }))
+    }
+
+    #[test]
+    fn condition_matching_normalizes_names_and_handles_control_errors() {
+        let error = signaled(false);
+        assert!(error.matches_condition(":custom-condition"));
+        assert!(error.matches_condition("PARENT-CONDITION"));
+        assert!(error.matches_condition("simple-condition"));
+        assert!(!error.matches_condition("serious-condition"));
+        assert!(!error.matches_condition("warning"));
+
+        let control = RuntimeError::Go {
+            tag: "done".to_owned(),
+            target: None,
+            span: None,
+        };
+        assert!(!control.matches_condition("condition"));
+    }
+
+    #[test]
+    fn warning_matching_excludes_error_and_includes_warning() {
+        let warning = signaled(true);
+        assert!(warning.matches_condition("WARNING"));
+        assert!(warning.matches_condition("CONDITION"));
+        assert!(!warning.matches_condition("ERROR"));
+        assert_eq!(warning.condition_type_name(), "SIMPLE-WARNING");
+    }
+
+    #[test]
+    fn built_in_error_conditions_are_classified() {
+        assert!(RuntimeError::DivisionByZero.matches_condition("arithmetic-error"));
+        assert!(!RuntimeError::DivisionByZero.matches_condition("warning"));
+        assert!(RuntimeError::NumericOverflow.matches_condition("ARITHMETIC-ERROR"));
+        assert_eq!(
+            RuntimeError::Io("io".to_owned()).condition_type_name(),
+            "FILE-ERROR"
+        );
+    }
+
+    #[test]
+    fn condition_type_names_cover_non_signaled_runtime_errors() {
+        let cases = [
+            (
+                RuntimeError::UnboundVariable {
+                    name: "x".to_owned(),
+                    span: None,
+                },
+                "UNBOUND-VARIABLE",
+            ),
+            (
+                RuntimeError::NotCallable {
+                    value: "x".to_owned(),
+                    span: None,
+                },
+                "TYPE-ERROR",
+            ),
+            (
+                RuntimeError::Arity {
+                    function: "f".to_owned(),
+                    expected: "1".to_owned(),
+                    actual: 2,
+                },
+                "PROGRAM-ERROR",
+            ),
+            (
+                RuntimeError::InvalidForm {
+                    message: "bad".to_owned(),
+                    span: None,
+                },
+                "SIMPLE-ERROR",
+            ),
+            (
+                RuntimeError::Package {
+                    message: "bad package".to_owned(),
+                    span: None,
+                },
+                "PACKAGE-ERROR",
+            ),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(error.condition_type_name(), expected);
+            assert!(error.matches_condition(expected));
+            assert!(error.matches_condition("condition"));
+            assert!(error.matches_condition("error"));
+        }
+    }
+
+    #[test]
+    fn display_includes_spans_and_control_details() {
+        let error = RuntimeError::UnboundVariable {
+            name: "x".to_owned(),
+            span: Some(Span::new(3, 4)),
+        };
+        assert_eq!(error.to_string(), "unbound variable x at byte 3..4");
+        assert_eq!(signaled(false).to_string(), "message at byte 2..5");
+        assert_eq!(RuntimeError::DivisionByZero.to_string(), "division by zero");
+    }
+
+    #[test]
+    fn display_uses_human_readable_messages_for_each_control_error() {
+        let value = ReturnValue::new(Value::Integer(1));
+        let cases = [
+            (
+                RuntimeError::NotCallable {
+                    value: "1".to_owned(),
+                    span: None,
+                },
+                "1 is not callable",
+            ),
+            (
+                RuntimeError::Arity {
+                    function: "f".to_owned(),
+                    expected: "1".to_owned(),
+                    actual: 2,
+                },
+                "f expected 1 arguments, received 2",
+            ),
+            (
+                RuntimeError::Type {
+                    expected: "integer".to_owned(),
+                    actual: "string".to_owned(),
+                    span: None,
+                },
+                "expected integer, received string",
+            ),
+            (
+                RuntimeError::Package {
+                    message: "missing package".to_owned(),
+                    span: None,
+                },
+                "missing package",
+            ),
+            (
+                RuntimeError::ReturnFrom {
+                    block: "done".to_owned(),
+                    target: None,
+                    value: value.clone(),
+                    span: None,
+                },
+                "return-from done",
+            ),
+            (
+                RuntimeError::Go {
+                    tag: "loop".to_owned(),
+                    target: None,
+                    span: None,
+                },
+                "go loop",
+            ),
+            (
+                RuntimeError::Throw {
+                    tag: ThrowTag::new(Value::symbol("tag")),
+                    value: value.clone(),
+                    span: None,
+                },
+                "throw TAG",
+            ),
+            (
+                RuntimeError::InvokeRestart {
+                    name: "use-value".to_owned(),
+                    value,
+                    arguments: Vec::new(),
+                    span: None,
+                },
+                "invoke-restart use-value",
+            ),
+            (RuntimeError::NumericOverflow, "numeric overflow"),
+            (RuntimeError::Io("io failed".to_owned()), "io failed"),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(error.to_string(), expected);
+        }
+    }
 }

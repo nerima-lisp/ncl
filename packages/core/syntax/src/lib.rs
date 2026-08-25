@@ -10,5 +10,5 @@ pub use lambda_list::{
     LambdaListAuxiliaryParameter, LambdaListError, LambdaListErrorKind, LambdaListKeywordParameter,
     LambdaListOptionalParameter, OrdinaryLambdaList, parse_ordinary_lambda_list,
 };
-pub use reader::{DEFAULT_FEATURES, MAX_NESTING_DEPTH, Reader, read, read_with_features};
+pub use reader::{MAX_NESTING_DEPTH, Reader, read};
 pub use symbol::{SymbolToken, SymbolTokenError, SymbolTokenKind, parse_symbol_token};

@@ -3,6 +3,7 @@ name = "ncl-compiler"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+
 description = "Stack bytecode compiler for ncl"
 license.workspace = true
 

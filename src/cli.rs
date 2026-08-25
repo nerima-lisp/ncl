@@ -26,91 +26,55 @@ pub fn run() -> std::process::ExitCode {
 
 fn run_inner() -> Result<(), CliError> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
-    match parse_arguments(&arguments)? {
-        CliCommand::Help => {
-            print_help();
-            Ok(())
-        }
-        CliCommand::Version => {
-            println!("ncl {VERSION}");
-            Ok(())
-        }
-        CliCommand::Run(options) => run_options(options),
-    }
-}
-
-fn run_options(options: Options) -> Result<(), CliError> {
-    let Options {
-        evaluations,
-        file,
-        repl,
-        quiet,
-        compiled,
-        compile_only,
-    } = options;
-
-    let runtime = Runtime::new();
-    for source in &evaluations {
-        if compile_only {
-            print_compilation(&runtime, source, quiet)?;
-        } else {
-            print_values(&runtime, source, quiet, compiled)?;
-        }
-    }
-    if let Some(ref path) = file {
-        let source = fs::read_to_string(path)
-            .map_err(|error| CliError::Io(format!("cannot read {path}: {error}")))?;
-        if compile_only {
-            print_compilation(&runtime, &source, quiet)?;
-        } else {
-            print_values(&runtime, &source, quiet, compiled)?;
-        }
-    }
-    if !compile_only && (repl || (evaluations.is_empty() && file.is_none())) {
-        repl_loop(&runtime, quiet, compiled)?;
-    }
-    Ok(())
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct Options {
-    evaluations: Vec<String>,
-    file: Option<String>,
-    repl: bool,
-    quiet: bool,
-    compiled: bool,
-    compile_only: bool,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum CliCommand {
-    Help,
-    Version,
-    Run(Options),
-}
-
-fn parse_arguments(arguments: &[String]) -> Result<CliCommand, CliError> {
     if arguments
         .iter()
         .any(|argument| argument == "--help" || argument == "-h")
     {
-        return Ok(CliCommand::Help);
+        print_help();
+        return Ok(());
     }
     if arguments
         .iter()
         .any(|argument| argument == "--version" || argument == "-V")
     {
-        return Ok(CliCommand::Version);
+        println!("ncl {VERSION}");
+        return Ok(());
     }
 
-    let mut options = Options {
-        evaluations: Vec::new(),
-        file: None,
-        repl: false,
-        quiet: false,
-        compiled: false,
-        compile_only: false,
-    };
+    let options = parse_arguments(&arguments)?;
+    let CliOptions {
+        evaluations,
+        file,
+        repl,
+        quiet,
+        compiled,
+    } = options;
+    let runtime = Runtime::new();
+    for source in &evaluations {
+        print_values(&runtime, source, quiet, compiled)?;
+    }
+    if let Some(ref path) = file {
+        let source = fs::read_to_string(path)
+            .map_err(|error| CliError::Io(format!("cannot read {path}: {error}")))?;
+        print_values(&runtime, &source, quiet, compiled)?;
+    }
+    if repl || (evaluations.is_empty() && file.is_none()) {
+        repl_loop(&runtime, quiet, compiled)?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct CliOptions {
+    evaluations: Vec<String>,
+    file: Option<String>,
+    repl: bool,
+    quiet: bool,
+    compiled: bool,
+}
+
+fn parse_arguments(arguments: &[String]) -> Result<CliOptions, CliError> {
+    let mut options = CliOptions::default();
     let mut index = 0;
     while index < arguments.len() {
         match arguments[index].as_str() {
@@ -132,7 +96,6 @@ fn parse_arguments(arguments: &[String]) -> Result<CliCommand, CliError> {
             }
             "--repl" => options.repl = true,
             "--compiled" => options.compiled = true,
-            "--compile" => options.compile_only = true,
             "--quiet" | "-q" => options.quiet = true,
             argument if argument.starts_with('-') => {
                 return Err(CliError::Usage(format!("unknown option {argument}")));
@@ -145,45 +108,7 @@ fn parse_arguments(arguments: &[String]) -> Result<CliCommand, CliError> {
         }
         index += 1;
     }
-
-    if options.compile_only && options.compiled {
-        return Err(CliError::Usage(
-            "--compile cannot be combined with --compiled".to_string(),
-        ));
-    }
-    if options.compile_only && options.repl {
-        return Err(CliError::Usage(
-            "--compile cannot be combined with --repl".to_string(),
-        ));
-    }
-    if options.compile_only && options.evaluations.is_empty() && options.file.is_none() {
-        return Err(CliError::Usage(
-            "--compile requires --eval or --file".to_string(),
-        ));
-    }
-
-    Ok(CliCommand::Run(options))
-}
-
-fn print_compilation(runtime: &Runtime, source: &str, quiet: bool) -> Result<(), CliError> {
-    let forms = runtime.compile_source(source).map_err(CliError::Runtime)?;
-    if !quiet {
-        let function_count = forms
-            .iter()
-            .map(|form| form.function_count())
-            .sum::<usize>();
-        let instruction_count = forms
-            .iter()
-            .map(|form| form.instruction_count())
-            .sum::<usize>();
-        println!(
-            "compiled {} form(s), {} function(s), {} instruction(s)",
-            forms.len(),
-            function_count,
-            instruction_count
-        );
-    }
-    Ok(())
+    Ok(options)
 }
 
 fn print_values(
@@ -208,13 +133,32 @@ fn print_values(
 
 fn repl_loop(runtime: &Runtime, quiet: bool, compiled: bool) -> Result<(), CliError> {
     let stdin = io::stdin();
-    let mut input = stdin.lock();
+    let input = stdin.lock();
+    let stdout = io::stdout();
+    let output = stdout.lock();
+    let stderr = io::stderr();
+    let errors = stderr.lock();
+    repl_loop_with_io(runtime, quiet, compiled, input, output, errors)
+}
+
+fn repl_loop_with_io<R, W, E>(
+    runtime: &Runtime,
+    quiet: bool,
+    compiled: bool,
+    mut input: R,
+    mut output: W,
+    mut errors: E,
+) -> Result<(), CliError>
+where
+    R: BufRead,
+    W: Write,
+    E: Write,
+{
     let mut line = String::new();
     loop {
         if !quiet {
-            print!("ncl> ");
-            io::stdout()
-                .flush()
+            write!(output, "ncl> ")
+                .and_then(|()| output.flush())
                 .map_err(|error| CliError::Io(error.to_string()))?;
         }
         line.clear();
@@ -237,11 +181,14 @@ fn repl_loop(runtime: &Runtime, quiet: bool, compiled: bool) -> Result<(), CliEr
             Ok(values) => {
                 if !quiet {
                     for value in values {
-                        println!("{value}");
+                        writeln!(output, "{value}")
+                            .map_err(|error| CliError::Io(error.to_string()))?;
                     }
                 }
             }
-            Err(error) => eprintln!("{error}"),
+            Err(error) => {
+                writeln!(errors, "{error}").map_err(|error| CliError::Io(error.to_string()))?
+            }
         }
     }
     Ok(())
@@ -261,14 +208,13 @@ Options:
   -f, --file PATH   Evaluate a source file
       --repl        Start the line-oriented REPL
       --compiled     Execute input through the bytecode compiler and VM
-      --compile      Compile input without executing it
   -q, --quiet       Suppress value output and REPL prompts
   -h, --help        Show this help
   -V, --version     Show the version"
     );
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 enum CliError {
     Usage(String),
     Runtime(RuntimeError),
@@ -277,66 +223,116 @@ enum CliError {
 
 #[cfg(test)]
 mod tests {
-    use super::{CliCommand, Options, parse_arguments};
+    use std::io::Cursor;
 
-    fn arguments(values: &[&str]) -> Vec<String> {
-        values.iter().map(ToString::to_string).collect()
-    }
+    use super::{CliError, CliOptions, parse_arguments, print_values, repl_loop_with_io};
+    use ncl_runtime::Runtime;
 
-    fn assert_usage(values: &[&str], expected: &str) {
-        assert_eq!(
-            parse_arguments(&arguments(values)),
-            Err(super::CliError::Usage(expected.to_string()))
-        );
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_string()).collect()
     }
 
     #[test]
-    fn parses_execution_options_and_aliases() {
-        let command = parse_arguments(&arguments(&[
+    fn parses_all_options_and_aliases() {
+        let parsed = parse_arguments(&args(&[
             "-e",
             "(+ 1 2)",
             "--eval",
-            "(+ 3 4)",
+            "42",
             "-f",
-            "program.ncl",
+            "input.lisp",
             "--repl",
             "--compiled",
             "-q",
-        ]));
-
+        ]))
+        .expect("valid arguments");
         assert_eq!(
-            command,
-            Ok(CliCommand::Run(Options {
-                evaluations: vec!["(+ 1 2)".to_string(), "(+ 3 4)".to_string()],
-                file: Some("program.ncl".to_string()),
+            parsed,
+            CliOptions {
+                evaluations: vec!["(+ 1 2)".into(), "42".into()],
+                file: Some("input.lisp".into()),
                 repl: true,
                 quiet: true,
                 compiled: true,
-                compile_only: false,
-            }))
+            }
         );
     }
 
     #[test]
-    fn help_and_version_are_detected_before_other_arguments() {
-        assert_eq!(
-            parse_arguments(&arguments(&["--help", "--unknown"])),
-            Ok(CliCommand::Help)
-        );
-        assert_eq!(
-            parse_arguments(&arguments(&["--version", "--unknown"])),
-            Ok(CliCommand::Version)
-        );
+    fn accepts_empty_arguments() {
+        assert!(matches!(parse_arguments(&[]), Ok(options) if options == CliOptions::default()));
     }
 
     #[test]
-    fn reports_missing_values_unknown_options_and_positional_paths() {
-        assert_usage(&["--eval"], "--eval requires a source string");
-        assert_usage(&["--file"], "--file requires a path");
-        assert_usage(&["--unknown"], "unknown option --unknown");
-        assert_usage(
-            &["program.ncl"],
-            "unexpected argument program.ncl; use --file",
-        );
+    fn reports_missing_values_and_unknown_arguments() {
+        for (input, message) in [
+            (&["--eval"][..], "--eval requires a source string"),
+            (&["--file"][..], "--file requires a path"),
+            (&["--unknown"][..], "unknown option --unknown"),
+            (
+                &["input.lisp"][..],
+                "unexpected argument input.lisp; use --file",
+            ),
+        ] {
+            assert!(matches!(
+                parse_arguments(&args(input)),
+                Err(CliError::Usage(actual)) if actual == message
+            ));
+        }
+    }
+
+    #[test]
+    fn reports_evaluation_errors_in_both_execution_modes() {
+        let runtime = Runtime::new();
+        for compiled in [false, true] {
+            let result = print_values(&runtime, "(car 1)", true, compiled);
+            assert!(
+                matches!(result, Err(CliError::Runtime(_))),
+                "compiled={compiled}"
+            );
+        }
+    }
+
+    #[test]
+    fn repl_evaluates_values_skips_blank_lines_and_reports_errors() {
+        let runtime = Runtime::new();
+        let mut output = Vec::new();
+        let mut errors = Vec::new();
+
+        repl_loop_with_io(
+            &runtime,
+            false,
+            false,
+            Cursor::new("\n(+ 1 2)\n(car 1)\n"),
+            &mut output,
+            &mut errors,
+        )
+        .expect("REPL input should be processed");
+
+        let output = String::from_utf8(output).expect("REPL output is UTF-8");
+        let errors = String::from_utf8(errors).expect("REPL errors are UTF-8");
+        assert_eq!(output.matches("ncl> ").count(), 4);
+        assert!(output.contains("3\n"));
+        assert!(!errors.is_empty());
+    }
+
+    #[test]
+    fn compiled_quiet_repl_suppresses_output_and_errors_are_empty_on_success() {
+        let runtime = Runtime::new();
+        let mut output = Vec::new();
+        let mut errors = Vec::new();
+
+        repl_loop_with_io(
+            &runtime,
+            true,
+            true,
+            Cursor::new("(+ 2 3)\n"),
+            &mut output,
+            &mut errors,
+        )
+        .expect("compiled REPL input should be processed");
+
+        assert!(output.is_empty());
+        assert!(errors.is_empty());
     }
 }

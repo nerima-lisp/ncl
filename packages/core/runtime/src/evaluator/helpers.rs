@@ -1,25 +1,27 @@
-fn atom_name(form: &Form) -> Option<&str> {
+use super::*;
+
+pub(super) fn atom_name(form: &Form) -> Option<&str> {
     match &form.kind {
         FormKind::Atom(value) => Some(value),
         _ => None,
     }
 }
 
-fn is_nil_form(form: &Form) -> bool {
+pub(super) fn is_nil_form(form: &Form) -> bool {
     atom_name(form).is_some_and(|name| name.eq_ignore_ascii_case("nil"))
 }
 
-fn is_macro_keyword_form(form: &Form) -> bool {
+pub(super) fn is_macro_keyword_form(form: &Form) -> bool {
     macro_keyword_name(form).is_some()
 }
 
-fn macro_keyword_name(form: &Form) -> Option<String> {
+pub(super) fn macro_keyword_name(form: &Form) -> Option<String> {
     let name = atom_name(form)?;
     let keyword = name.strip_prefix(':')?;
     (!keyword.is_empty()).then(|| normalize_name(keyword))
 }
 
-fn macro_dotted_parts(value: &Value) -> Option<(Vec<Value>, Value)> {
+pub(super) fn macro_dotted_parts(value: &Value) -> Option<(Vec<Value>, Value)> {
     match value {
         Value::Nil => Some((Vec::new(), Value::Nil)),
         Value::List(values) => Some((values.as_ref().clone(), Value::Nil)),
@@ -43,7 +45,16 @@ fn macro_dotted_parts(value: &Value) -> Option<(Vec<Value>, Value)> {
     }
 }
 
-fn control_tag(form: &Form) -> Option<String> {
+pub(super) fn sequence_items(value: &Value) -> Option<Vec<Value>> {
+    match value {
+        Value::Nil => Some(Vec::new()),
+        Value::List(items) | Value::Vector(items) => Some(items.as_ref().clone()),
+        Value::String(value) => Some(value.chars().map(Value::Character).collect()),
+        _ => None,
+    }
+}
+
+pub(super) fn control_tag(form: &Form) -> Option<String> {
     let name = atom_name(form)?;
     if name.is_empty() || name == ":" {
         return None;
@@ -62,14 +73,14 @@ fn control_tag(form: &Form) -> Option<String> {
     }
 }
 
-fn unqualified_name(name: &str) -> String {
+pub(super) fn unqualified_name(name: &str) -> String {
     let normalized = normalize_name(name);
     package::split_symbol(&normalized)
         .map(|(_, symbol, _)| symbol.to_string())
         .unwrap_or(normalized)
 }
 
-fn is_special_operator_name(name: &str) -> bool {
+pub(super) fn is_special_operator_name(name: &str) -> bool {
     matches!(
         unqualified_name(name).as_str(),
         "BLOCK"
@@ -84,7 +95,6 @@ fn is_special_operator_name(name: &str) -> bool {
             | "LET*"
             | "LOAD-TIME-VALUE"
             | "LOCALLY"
-            | "WITH-COMPILATION-UNIT"
             | "MACROLET"
             | "MULTIPLE-VALUE-CALL"
             | "MULTIPLE-VALUE-PROG1"
@@ -97,11 +107,10 @@ fn is_special_operator_name(name: &str) -> bool {
             | "THE"
             | "THROW"
             | "UNWIND-PROTECT"
-            | "REMF"
     )
 }
 
-fn is_case_default_form(form: &Form) -> bool {
+pub(super) fn is_case_default_form(form: &Form) -> bool {
     let Some(name) = atom_name(form) else {
         return false;
     };
@@ -113,7 +122,7 @@ fn is_case_default_form(form: &Form) -> bool {
         && matches!(unqualified_name(name).as_str(), "T" | "OTHERWISE")
 }
 
-fn is_operator_form(form: &Form, name: &str) -> bool {
+pub(super) fn is_operator_form(form: &Form, name: &str) -> bool {
     match &form.kind {
         FormKind::List(items) => items
             .first()
@@ -123,7 +132,7 @@ fn is_operator_form(form: &Form, name: &str) -> bool {
     }
 }
 
-fn is_special_form(form: &Form) -> bool {
+pub(super) fn is_special_form(form: &Form) -> bool {
     let Some(operator) = atom_name(form) else {
         return false;
     };
@@ -156,8 +165,6 @@ fn is_special_form(form: &Form) -> bool {
             | "THROW"
             | "WITH-SIMPLE-RESTART"
             | "WITH-OPEN-FILE"
-            | "WITH-OUTPUT-TO-STRING"
-            | "WITH-INPUT-FROM-STRING"
             | "RESTART-CASE"
             | "UNWIND-PROTECT"
             | "BLOCK"
@@ -208,14 +215,12 @@ fn is_special_form(form: &Form) -> bool {
             | "PUSH"
             | "POP"
             | "PUSHNEW"
-            | "REMF"
             | "ROTATEF"
             | "SHIFTF"
             | "DEFSETF"
             | "INCF"
             | "DECF"
             | "DEFSTRUCT"
-            | "DEFINE-CONDITION"
             | "DEFCLASS"
             | "DEFGENERIC"
             | "DEFMETHOD"
@@ -232,7 +237,7 @@ fn is_special_form(form: &Form) -> bool {
     )
 }
 
-fn prefix_argument<'form>(items: &'form [Form], name: &str) -> Option<&'form Form> {
+pub(super) fn prefix_argument<'form>(items: &'form [Form], name: &str) -> Option<&'form Form> {
     if items.len() != 2 {
         return None;
     }
@@ -240,7 +245,7 @@ fn prefix_argument<'form>(items: &'form [Form], name: &str) -> Option<&'form For
     Some(&items[1])
 }
 
-fn quasiquote_marker(name: &str, value: Value) -> Value {
+pub(super) fn quasiquote_marker(name: &str, value: Value) -> Value {
     Value::list(vec![Value::symbol(name), value])
 }
 
@@ -249,9 +254,7 @@ pub(crate) fn quoted_form_value(form: &Form) -> Result<Value, RuntimeError> {
         FormKind::Atom(atom) => {
             if let Ok(token) = parse_symbol_token(atom) {
                 match token.kind {
-                    SymbolTokenKind::Uninterned => {
-                        return Ok(Value::uninterned_symbol(token.name));
-                    }
+                    SymbolTokenKind::Uninterned => return Ok(Value::uninterned_symbol(token.name)),
                     SymbolTokenKind::Keyword => {
                         return Ok(if token.escaped {
                             Value::keyword_exact(token.name)
@@ -300,7 +303,7 @@ pub(crate) fn quoted_form_value(form: &Form) -> Result<Value, RuntimeError> {
     }
 }
 
-fn escaped_symbol_atom(value: &str) -> String {
+pub(super) fn escaped_symbol_atom(value: &str) -> String {
     let mut result = String::with_capacity(value.len() + 2);
     result.push('|');
     for character in value.chars() {
@@ -313,130 +316,7 @@ fn escaped_symbol_atom(value: &str) -> String {
     result
 }
 
-fn generated_form_span() -> Span {
-    Span::new(0, 0)
-}
-
-fn lambda_symbol_form(name: &str, escaped: bool) -> Form {
-    let atom = if escaped {
-        escaped_symbol_atom(name)
-    } else {
-        name.to_string()
-    };
-    Form::atom(atom, generated_form_span())
-}
-
-fn lambda_keyword_form(name: &str, escaped: bool) -> Form {
-    let atom = if escaped {
-        format!(":{}", escaped_symbol_atom(name))
-    } else {
-        format!(":{name}")
-    };
-    Form::atom(atom, generated_form_span())
-}
-
-fn lambda_optional_form(parameter: &LambdaListOptionalParameter) -> Form {
-    if !parameter.init_form_supplied && parameter.supplied_p.is_none() {
-        return lambda_symbol_form(&parameter.name, parameter.name_escaped);
-    }
-    let mut items = vec![
-        lambda_symbol_form(&parameter.name, parameter.name_escaped),
-        parameter.init_form.clone(),
-    ];
-    if let Some(supplied_p) = &parameter.supplied_p {
-        items.push(lambda_symbol_form(
-            supplied_p,
-            parameter.supplied_p_escaped.unwrap_or(false),
-        ));
-    }
-    Form::list(items, generated_form_span())
-}
-
-fn lambda_keyword_parameter_form(parameter: &LambdaListKeywordParameter) -> Form {
-    let binding = if parameter.keyword_name == parameter.name
-        && parameter.keyword_name_escaped == parameter.name_escaped
-    {
-        lambda_symbol_form(&parameter.name, parameter.name_escaped)
-    } else {
-        Form::list(
-            vec![
-                lambda_keyword_form(&parameter.keyword_name, parameter.keyword_name_escaped),
-                lambda_symbol_form(&parameter.name, parameter.name_escaped),
-            ],
-            generated_form_span(),
-        )
-    };
-    if !parameter.init_form_supplied && parameter.supplied_p.is_none() {
-        return binding;
-    }
-    let mut items = vec![binding, parameter.init_form.clone()];
-    if let Some(supplied_p) = &parameter.supplied_p {
-        items.push(lambda_symbol_form(
-            supplied_p,
-            parameter.supplied_p_escaped.unwrap_or(false),
-        ));
-    }
-    Form::list(items, generated_form_span())
-}
-
-fn lambda_auxiliary_form(parameter: &LambdaListAuxiliaryParameter) -> Form {
-    if parameter.init_form == Form::atom("NIL", parameter.init_form.span) {
-        return lambda_symbol_form(&parameter.name, parameter.name_escaped);
-    }
-    Form::list(
-        vec![
-            lambda_symbol_form(&parameter.name, parameter.name_escaped),
-            parameter.init_form.clone(),
-        ],
-        generated_form_span(),
-    )
-}
-
-fn closure_lambda_form(data: ClosureLambdaForm<'_>) -> Form {
-    let ClosureLambdaForm {
-        parameters,
-        required_escaped,
-        optional,
-        rest,
-        rest_escaped,
-        keywords,
-        has_keyword_section,
-        allow_other_keys,
-        auxiliary,
-        body,
-    } = data;
-    let mut lambda_list = Vec::new();
-    for (name, escaped) in parameters.iter().zip(required_escaped.iter().copied()) {
-        lambda_list.push(lambda_symbol_form(name, escaped));
-    }
-    if !optional.is_empty() {
-        lambda_list.push(Form::atom("&OPTIONAL", generated_form_span()));
-        lambda_list.extend(optional.iter().map(lambda_optional_form));
-    }
-    if let Some(rest) = rest {
-        lambda_list.push(Form::atom("&REST", generated_form_span()));
-        lambda_list.push(lambda_symbol_form(rest, rest_escaped));
-    }
-    if has_keyword_section {
-        lambda_list.push(Form::atom("&KEY", generated_form_span()));
-        lambda_list.extend(keywords.iter().map(lambda_keyword_parameter_form));
-        if allow_other_keys {
-            lambda_list.push(Form::atom("&ALLOW-OTHER-KEYS", generated_form_span()));
-        }
-    }
-    if !auxiliary.is_empty() {
-        lambda_list.push(Form::atom("&AUX", generated_form_span()));
-        lambda_list.extend(auxiliary.iter().map(lambda_auxiliary_form));
-    }
-    let mut lambda = vec![
-        Form::atom("LAMBDA", generated_form_span()),
-        Form::list(lambda_list, generated_form_span()),
-    ];
-    lambda.extend(body.iter().cloned());
-    Form::list(lambda, generated_form_span())
-}
-
-fn literal_atom(atom: &str) -> Option<Value> {
+pub(super) fn literal_atom(atom: &str) -> Option<Value> {
     let token = parse_symbol_token(atom).ok()?;
     match token.kind {
         SymbolTokenKind::Keyword => Some(if token.escaped {
@@ -465,7 +345,7 @@ fn literal_atom(atom: &str) -> Option<Value> {
     }
 }
 
-fn resolved_symbol(atom: &str) -> (String, bool) {
+pub(super) fn resolved_symbol(atom: &str) -> (String, bool) {
     let Ok(token) = parse_symbol_token(atom) else {
         return (normalize_name(atom), false);
     };
@@ -483,5 +363,103 @@ fn resolved_symbol(atom: &str) -> (String, bool) {
             });
             (resolved, token.escaped)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Value;
+    use ncl_syntax::{Form, Span};
+
+    fn atom(name: &str) -> Form {
+        Form::atom(name, Span::new(0, name.len()))
+    }
+
+    #[test]
+    fn sequence_items_normalizes_supported_sequence_shapes() {
+        let cases = [
+            (Value::Nil, Vec::new()),
+            (
+                Value::list(vec![Value::Integer(1)]),
+                vec![Value::Integer(1)],
+            ),
+            (
+                Value::vector(vec![Value::Integer(2)]),
+                vec![Value::Integer(2)],
+            ),
+            (
+                Value::string("ab"),
+                vec![Value::Character('a'), Value::Character('b')],
+            ),
+        ];
+
+        for (value, expected) in cases {
+            let actual = sequence_items(&value).expect("supported sequence");
+            assert_eq!(actual.len(), expected.len());
+            assert!(
+                actual
+                    .iter()
+                    .zip(expected.iter())
+                    .all(|(actual, expected)| actual.equal_value(expected))
+            );
+        }
+    }
+
+    #[test]
+    fn sequence_items_rejects_non_sequence_values() {
+        assert!(sequence_items(&Value::Integer(1)).is_none());
+    }
+
+    #[test]
+    fn symbol_helpers_handle_packages_and_escaping() {
+        assert_eq!(macro_keyword_name(&atom(":when")), Some("WHEN".into()));
+        assert_eq!(macro_keyword_name(&atom(":")), None);
+        assert_eq!(unqualified_name("pkg:name"), "NAME");
+        assert_eq!(resolved_symbol(":|hello|"), (":hello".into(), true));
+        assert_eq!(resolved_symbol("#:tmp"), ("#:TMP".into(), false));
+        assert_eq!(escaped_symbol_atom("a|b\\c"), "|a\\|b\\\\c|");
+    }
+
+    #[test]
+    fn control_and_operator_helpers_reject_invalid_forms() {
+        assert_eq!(control_tag(&atom(":tag")), Some(":TAG".into()));
+        assert_eq!(control_tag(&atom("1")), Some("1".into()));
+        assert_eq!(control_tag(&atom("1.5")), None);
+        assert!(is_special_operator_name("pkg:if"));
+        assert!(!is_special_operator_name("unknown"));
+        assert!(is_case_default_form(&atom("otherwise")));
+        assert!(!is_case_default_form(&atom("|T|")));
+        assert!(is_operator_form(
+            &Form::list(vec![atom("+"), atom("1")], Span::new(0, 1)),
+            "+"
+        ));
+        assert!(!is_operator_form(&atom("+"), "+"));
+        let arguments = [atom("quote"), atom("x")];
+        assert_eq!(
+            atom_name(prefix_argument(&arguments, "QUOTE").unwrap()),
+            Some("x")
+        );
+    }
+
+    #[test]
+    fn dotted_values_and_quoted_forms_preserve_shape() {
+        let dotted = Value::dotted_list(
+            vec![Value::Integer(1)],
+            Value::list(vec![Value::Integer(2), Value::Integer(3)]),
+        );
+        let (items, tail) = macro_dotted_parts(&dotted).unwrap();
+        assert!(
+            items
+                .iter()
+                .zip([1, 2, 3])
+                .all(|(value, expected)| { value.equal_value(&Value::Integer(expected)) })
+        );
+        assert!(tail.equal_value(&Value::Nil));
+        let quoted = Form::dotted_list(vec![atom("x")], atom(".tail"), Span::new(0, 1));
+        assert!(quoted_form_value(&quoted).is_ok());
+        let marker = quasiquote_marker("QUOTE", Value::Integer(1));
+        let expected = Value::list(vec![Value::symbol("QUOTE"), Value::Integer(1)]);
+        assert!(marker.equal_value(&expected));
     }
 }

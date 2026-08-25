@@ -1,64 +1,52 @@
 # Getting started
 
-## Rust runtime requirements
+## Requirements
 
-The workspace requires Rust 1.97 or newer and pins Rust 1.97.1 in
-`rust-toolchain.toml`. It is a Cargo workspace, so all commands below are run
-from its root.
+Install Rust 1.97 or newer. The repository is a Cargo workspace, so all
+commands below are run from its root.
 
 ## Evaluate an expression
 
 Run one expression with the CLI:
 
 ~~~sh
-cargo run --locked -- --eval '(+ 1 2)'
+cargo run -- --eval '(+ 1 2)'
 ~~~
 
 The result is printed to standard output. Repeated <code>--eval</code> options
 share one runtime:
 
 ~~~sh
-cargo run --locked -- --eval '(define square (lambda (x) (* x x)))' --eval '(square 5)'
+cargo run -- --eval '(define square (lambda (x) (* x x)))' --eval '(square 5)'
 ~~~
 
 Use <code>--compiled</code> to send the evaluated source through the
 stack-bytecode compiler and VM:
 
 ~~~sh
-cargo run --locked -- --compiled --eval '(+ 1 2)'
+cargo run -- --compiled --eval '(+ 1 2)'
 ~~~
-
-Use <code>--compile</code> to build and inspect bytecode artifacts without
-executing the forms:
-
-~~~sh
-cargo run -- --compile --eval '(defun square (x) (* x x))'
-~~~
-
-Compilation still performs source reading, package resolution, and macro
-expansion in input order, so later forms can use earlier compile-time state.
-Runtime definitions and other runtime effects are not executed in this mode.
 
 ## Run a file or the REPL
 
 Evaluate a Lisp file with an explicit path:
 
 ~~~sh
-cargo run --locked -- --file path/to/program.lisp
+cargo run -- --file path/to/program.lisp
 ~~~
 
 Start an interactive session with either of these forms:
 
 ~~~sh
-cargo run --locked -- --repl
-cargo run --locked
+cargo run -- --repl
+cargo run
 ~~~
 
 The second command starts the REPL because no file or expression was supplied.
 <code>--quiet</code> suppresses REPL prompts and normal value output:
 
 ~~~sh
-cargo run --locked -- --quiet --repl
+cargo run -- --quiet --repl
 ~~~
 
 ## Command-line help
@@ -75,59 +63,18 @@ and 2 for command-line usage errors.
 
 ## Using Nix
 
-The Nix development shell provides `rustc`, Cargo, `rustfmt`, Clippy, and the
-Common Lisp and documentation tools used by the project:
+The repository includes a flake that provides Rust, rustfmt, Clippy, and the
+LLVM coverage tools:
 
 ~~~sh
-nix develop path:.
+nix develop
 cargo run -- --eval '(+ 1 2)'
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo llvm-cov --workspace --all-targets --summary-only
 ~~~
 
-## Common Lisp core
-
-Enter the project development shell to get SBCL, cl-weave, paredit-cli, and
-the documentation tools:
-
-~~~sh
-nix develop path:.
-~~~
-
-Run the direct Common Lisp CLI:
-
-~~~sh
-nix run path:. -- --eval '(defun square (x) (* x x))' --eval '(square 5)'
-~~~
-
-Run the executable test suite through cl-weave:
-
-~~~sh
-nix run path:.#test
-~~~
-
-Run the same suite with coverage instrumentation:
-
-~~~sh
-nix run path:.#coverage
-~~~
-
-The implementation and test systems are declared in `ncl.asd`. The direct
-entry points read that declaration and load source files in its serial order;
-this keeps the command-line and test paths aligned.
-
-The coverage command writes an HTML report and coverage data below
-`artifacts/ncl-coverage/` by default. Set `NCL_COVERAGE_DIR` to write those
-artifacts elsewhere.
-
-## Rust coverage
-
-Run the Rust workspace tests with LLVM coverage and the current ratchet floors:
-
-~~~sh
-nix run path:.#rust-coverage -- --summary-only
-~~~
-
-The command requires at least 75% line, 78% function, and 75% region coverage.
-The target is 100% for every metric. Pass `--html --output-dir
-artifacts/rust-coverage` instead of `--summary-only` to write a browsable HTML
-report. The same ratchet is enforced by the `ncl-rust-coverage` flake check;
-run `nix flake check path:.` to include it in the repository-wide gates.
+NCL is a Rust/Cargo workspace, so it intentionally has no ASDF system
+definition. Cargo manifests are the single source of truth for package
+metadata and dependencies; `flake.nix` supplies the reproducible developer
+toolchain around them.

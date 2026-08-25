@@ -20,19 +20,25 @@ rust-version = "1.97"
 license = "MIT"
 
 [workspace.dependencies]
-ncl-compiler = { path = "packages/core/compiler", version = "0.1.0" }
-ncl-runtime = { path = "packages/core/runtime", version = "0.1.0" }
-ncl-syntax = { path = "packages/core/syntax", version = "0.1.0" }
+ncl-syntax = { path = "packages/core/syntax" }
+ncl-compiler = { path = "packages/core/compiler" }
+ncl-runtime = { path = "packages/core/runtime" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
-unused_must_use = "deny"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+strip = "symbols"
 
 [package]
 name = "ncl"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+
 description = "A Rust-native Common Lisp runtime"
 license.workspace = true
 

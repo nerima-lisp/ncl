@@ -63,9 +63,10 @@ User macros are defined with <code>defmacro</code> and inspected with
 macros before evaluating the resulting form, including forms processed by the
 compiled route.
 
-## Bounded compatibility
+## Supported language surface
 
-The project documents behavior that is implemented and tested locally rather
-than claiming whole-program SBCL compatibility. See the
-[compatibility reference](../reference/compatibility.md) for feature
-boundaries and the [roadmap](../project/roadmap.md) for planned work.
+The project documents behavior that is implemented and tested locally. It does
+not provide a backward-compatibility layer or claim whole-program SBCL
+compatibility. See the [compatibility reference](../reference/compatibility.md)
+for the current feature boundary and the [roadmap](../project/roadmap.md) for
+planned work.

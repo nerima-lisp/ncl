@@ -24,9 +24,11 @@ work unit.
 
 When a detached worktree was started from an older `main`, inspect its changes
 before integrating them. Staged and unstaged changes may be separate work
-units. Do not overlay the whole snapshot onto the current tree: split the diff
-by behavior, tests, and the files that implement each behavior, then apply one
-work unit at a time in a temporary worktree based on the current `main`:
+units. Preserve that boundary by committing and testing each unit
+independently. When multiple snapshots overlap, choose one canonical
+implementation, port unique documentation or configuration deliberately, and
+resolve implementation conflicts in a temporary worktree based on the current
+`main`:
 
 ~~~sh
 git -C <source-worktree> status --short

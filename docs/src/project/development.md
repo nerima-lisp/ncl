@@ -53,6 +53,12 @@ represented by tested commits. Inspect a dirty worktree before using `git
 worktree remove --force`; keep active, concurrent, or unresolved worktrees and
 branches for their owners.
 
+Completed work units are integrated by preserving their commit boundaries,
+cherry-picking the tested commits into the integration worktree, and running
+the workspace tests again on `main`. The source worktree can then be removed
+once `git status --short --branch` is clean. Keep the integration worktree
+until documentation updates and final verification are complete.
+
 ## Rust workspace
 
 The workspace requires Rust 1.97 or newer and pins Rust 1.97.1 in

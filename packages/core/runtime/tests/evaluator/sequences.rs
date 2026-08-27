@@ -623,6 +623,25 @@ fn evaluates_sequence_fill_replace_and_concatenate() {
 }
 
 #[test]
+fn evaluates_sequence_construction_and_conversion_table() {
+    assert_value_cases(
+        evaluate,
+        &[
+            ("(subseq #(a b c) 1)", "#(B C)"),
+            ("(subseq \"abcd\" 1 3)", "\"bc\""),
+            ("(make-sequence 'list 2 :initial-element 'x)", "(X X)"),
+            ("(make-sequence 'vector 2 :initial-element 7)", "#(7 7)"),
+            ("(make-sequence 'string 3 :initial-element #\\x)", "\"xxx\""),
+            ("(coerce #(1 2) 'list)", "(1 2)"),
+            ("(coerce '(#\\a #\\b) 'string)", "\"ab\""),
+            ("(coerce \"ab\" 'vector)", "#(#\\a #\\b)"),
+            ("(coerce #(1 2) 'sequence)", "#(1 2)"),
+            ("(coerce #\\a 'character)", "#\\a"),
+        ],
+    );
+}
+
+#[test]
 fn rejects_invalid_sequence_operations() {
     for source in [
         "(length 1)",
@@ -640,6 +659,17 @@ fn rejects_invalid_sequence_operations() {
         "(make-sequence 'unknown 1)",
         "(make-sequence 'string 1 :initial-element 1)",
         "(coerce 1 'list)",
+        "(position 1 '(1 2) :start -1)",
+        "(reduce #'+ '(1 2) :start 2 :end 1)",
+        "(reduce #'+ '(1 2) :unknown t)",
+        "(find 1 '(1 2) :start 2 :end 1)",
+        "(mismatch '(1) '(1) :start1 1 :end1 0)",
+        "(every #'identity)",
+        "(map-into 1 #'identity '(1))",
+        "(member 1 '(1 2) :test)",
+        "(member 1 '(1 2) 1 t)",
+        "(member 1 '(1 2) :test #'= :test-not #'=)",
+        "(substitute 0 1 '(1 2) :end 'invalid)",
     ] {
         assert!(Runtime::new().eval_source(source).is_err(), "{source}");
     }

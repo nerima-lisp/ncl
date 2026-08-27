@@ -652,4 +652,90 @@ mod tests {
                 .is_err()
         );
     }
+
+    #[test]
+    fn defpackage_parser_accepts_all_options() {
+        let options = vec![
+            atom("TOOLS"),
+            Form::list(vec![atom(":nicknames"), string("T")], SPAN),
+            Form::list(vec![atom(":use"), atom("COMMON-LISP")], SPAN),
+            Form::list(vec![atom(":documentation"), string("tool package")], SPAN),
+            Form::list(vec![atom(":size"), atom("16")], SPAN),
+            Form::list(
+                vec![
+                    atom(":local-nicknames"),
+                    Form::list(vec![atom("CL"), atom("COMMON-LISP")], SPAN),
+                ],
+                SPAN,
+            ),
+            Form::list(vec![atom(":export"), atom("run")], SPAN),
+            Form::list(vec![atom(":shadow"), atom("print")], SPAN),
+            Form::list(vec![atom(":intern"), atom("state")], SPAN),
+            Form::list(
+                vec![atom(":import-from"), atom("COMMON-LISP"), atom("car")],
+                SPAN,
+            ),
+            Form::list(
+                vec![
+                    atom(":shadowing-import-from"),
+                    atom("COMMON-LISP"),
+                    atom("cdr"),
+                ],
+                SPAN,
+            ),
+        ];
+        let spec = valid(Runtime::parse_defpackage(&options));
+
+        assert_eq!(spec.name, "TOOLS");
+        assert_eq!(spec.nicknames, ["T"]);
+        assert_eq!(spec.use_packages, ["COMMON-LISP"]);
+        assert_eq!(spec.documentation.as_deref(), Some("tool package"));
+        assert!(spec.exports.contains("RUN"));
+        assert_eq!(
+            spec.local_nicknames.get("COMMON-LISP"),
+            Some(&"COMMON-LISP".to_string())
+        );
+        assert!(
+            matches!(spec.operations[0], DefpackageOperation::Shadow(ref name) if name == "PRINT")
+        );
+        assert!(
+            matches!(spec.operations[1], DefpackageOperation::Intern(ref name) if name == "STATE")
+        );
+        assert!(matches!(
+            spec.operations[2],
+            DefpackageOperation::Import {
+                shadowing: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            spec.operations[3],
+            DefpackageOperation::Import {
+                shadowing: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn defpackage_parser_rejects_malformed_options() {
+        let cases = [
+            vec![atom("TOOLS"), atom("not-a-list")],
+            vec![atom("TOOLS"), Form::list(vec![], SPAN)],
+            vec![
+                atom("TOOLS"),
+                Form::list(vec![atom(":size"), atom("-1")], SPAN),
+            ],
+            vec![
+                atom("TOOLS"),
+                Form::list(vec![atom(":local-nicknames"), atom("CL")], SPAN),
+            ],
+            vec![atom("TOOLS"), Form::list(vec![atom(":import-from")], SPAN)],
+            vec![atom("TOOLS"), Form::list(vec![atom(":unknown")], SPAN)],
+        ];
+
+        for items in cases {
+            assert!(Runtime::parse_defpackage(&items).is_err());
+        }
+    }
 }

@@ -381,6 +381,26 @@ mod tests {
             "unexpected output: {formatted:?}"
         );
         assert!(format_general_float_directive(1.0, &[], true, false).is_err());
+        assert!(format_general_float_directive(
+            1.0,
+            &[FormatParameter::Number(i64::MAX)],
+            false,
+            false,
+        )
+        .is_err());
+        assert!(
+            format_general_float_directive(
+                1.0,
+                &[
+                    FormatParameter::Number(0),
+                    FormatParameter::Missing,
+                    FormatParameter::Number(i64::MAX),
+                ],
+                false,
+                false,
+            )
+            .is_err()
+        );
     }
 
     #[test]

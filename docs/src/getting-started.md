@@ -2,8 +2,9 @@
 
 ## Requirements
 
-Install Rust 1.97 or newer. The repository is a Cargo workspace, so all
-commands below are run from its root.
+Install the stable Rust toolchain with `rustfmt` and `clippy`. The repository
+declares these components in `rust-toolchain.toml`; alternatively use `nix
+develop` from the repository root.
 
 ## Evaluate an expression
 
@@ -63,18 +64,25 @@ and 2 for command-line usage errors.
 
 ## Using Nix
 
-The repository includes a flake that provides Rust, rustfmt, Clippy, and the
-LLVM coverage tools:
+When Rust is supplied by Nix, run Cargo and the formatter from a shell that
+contains the required tools:
 
 ~~~sh
-nix develop
-cargo run -- --eval '(+ 1 2)'
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo llvm-cov --workspace --all-targets --summary-only
+nix shell nixpkgs#rustc nixpkgs#rustfmt --command cargo run -- --eval '(+ 1 2)'
 ~~~
 
-NCL is a Rust/Cargo workspace, so it intentionally has no ASDF system
-definition. Cargo manifests are the single source of truth for package
-metadata and dependencies; `flake.nix` supplies the reproducible developer
-toolchain around them.
+From the repository root, `nix develop` provides the complete development
+environment. Use `nix fmt` to format the workspace, then run the checks below:
+
+~~~sh
+nix fmt
+cargo check --workspace --all-targets
+cargo test --workspace --all-targets
+~~~
+
+Coverage is measured with LLVM instrumentation:
+
+~~~sh
+LLVM_COV=llvm-cov LLVM_PROFDATA=llvm-profdata cargo llvm-cov \
+  --locked --workspace --all-features --all-targets --summary-only --fail-under-lines 88.4
+~~~

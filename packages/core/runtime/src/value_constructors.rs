@@ -131,3 +131,20 @@ impl Value {
         Self::Values(Rc::new(values))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Value;
+
+    #[test]
+    fn rational_constructor_reduces_integral_values_to_integers() {
+        let cases = [(2, 1, 2), (-6, -3, 2)];
+
+        for (numerator, denominator, expected) in cases {
+            assert!(matches!(
+                Value::rational(numerator, denominator),
+                Ok(Value::Integer(value)) if value == expected
+            ));
+        }
+    }
+}

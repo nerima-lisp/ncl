@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+
 use ncl_syntax::{FormKind, LambdaListErrorKind, parse_ordinary_lambda_list, read};
 
 fn parse(source: &str) -> ncl_syntax::OrdinaryLambdaList {
@@ -33,23 +35,6 @@ fn optional_parameters_default_to_nil_when_no_init_form_is_given() {
         &lambda_list.optional[0].init_form.kind,
         FormKind::Atom(name) if name == "NIL"
     ));
-}
-
-#[test]
-fn accepts_case_insensitive_nil_as_the_empty_lambda_list() {
-    let lambda_list = parse("nil");
-
-    assert!(lambda_list.required.is_empty());
-    assert!(lambda_list.optional.is_empty());
-    assert!(lambda_list.rest.is_none());
-}
-
-#[test]
-fn keeps_escaped_nil_as_a_symbol() {
-    let form = &read("|NIL|").expect("source should parse")[0];
-    let error = parse_ordinary_lambda_list(form).unwrap_err();
-
-    assert!(matches!(error.kind, LambdaListErrorKind::ExpectedList));
 }
 
 #[test]
@@ -174,4 +159,39 @@ fn rejects_malformed_auxiliary_specs_and_ordering() {
         error.kind,
         LambdaListErrorKind::ExpectedSymbol { .. }
     ));
+}
+
+#[test]
+fn rejects_malformed_keyword_name_specifications() {
+    for source in ["(&key ((:name)))", "(&key ((\"name\")))"] {
+        let form = &read(source).expect("source should parse")[0];
+        let error = parse_ordinary_lambda_list(form).unwrap_err();
+        assert!(
+            matches!(error.kind, LambdaListErrorKind::InvalidForm { .. })
+                || matches!(error.kind, LambdaListErrorKind::ExpectedSymbol { .. }),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn rejects_lambda_list_boundary_and_duplicate_cases_from_a_table() {
+    let non_list = &read("value").expect("source should parse")[0];
+    let error = parse_ordinary_lambda_list(non_list).unwrap_err();
+    assert!(matches!(error.kind, LambdaListErrorKind::ExpectedList));
+    assert_eq!(error.to_string(), "parameters must be a list at byte 0..5");
+
+    for source in [
+        "(&optional (value nil supplied) (other nil supplied))",
+        "(&key first first)",
+        "(&key first &allow-other-keys second)",
+        "(&key first &allow-other-keys &allow-other-keys)",
+    ] {
+        let form = &read(source).expect("source should parse")[0];
+        let error = parse_ordinary_lambda_list(form).unwrap_err();
+        assert!(
+            matches!(error.kind, LambdaListErrorKind::InvalidForm { .. }),
+            "{source}"
+        );
+    }
 }

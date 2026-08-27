@@ -482,6 +482,25 @@ fn compiled_evaluates_sequence_fill_replace_and_concatenate() {
 }
 
 #[test]
+fn compiled_evaluates_sequence_construction_and_conversion_table() {
+    let cases = [
+        ("(subseq #(a b c) 1)", "#(B C)"),
+        ("(subseq \"abcd\" 1 3)", "\"bc\""),
+        ("(make-sequence 'list 2 :initial-element 'x)", "(X X)"),
+        ("(make-sequence 'vector 2 :initial-element 7)", "#(7 7)"),
+        ("(make-sequence 'string 3 :initial-element #\\x)", "\"xxx\""),
+        ("(coerce #(1 2) 'list)", "(1 2)"),
+        ("(coerce '(#\\a #\\b) 'string)", "\"ab\""),
+        ("(coerce \"ab\" 'vector)", "#(#\\a #\\b)"),
+        ("(coerce #(1 2) 'sequence)", "#(1 2)"),
+        ("(coerce #\\a 'character)", "#\\a"),
+    ];
+    for (source, expected) in cases {
+        assert_eq!(evaluate(source).to_string(), expected, "{source}");
+    }
+}
+
+#[test]
 fn compiled_evaluates_map_into_over_sequences() {
     assert_eq!(
         evaluate(

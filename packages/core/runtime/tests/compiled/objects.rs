@@ -583,4 +583,37 @@ fn compiled_rejects_invalid_hash_table_options() {
         );
     }
 }
+
+#[test]
+fn compiled_rejects_invalid_defstruct_invocations() {
+    let cases = [
+        (
+            "odd constructor arguments",
+            "(progn (defstruct record id) (make-record :id))",
+        ),
+        (
+            "non-keyword constructor name",
+            "(progn (defstruct record id) (make-record 1 2))",
+        ),
+        (
+            "unknown constructor keyword",
+            "(progn (defstruct record id) (make-record :missing 2))",
+        ),
+        (
+            "accessor receives the wrong type",
+            "(progn (defstruct record id) (record-id 1))",
+        ),
+        (
+            "copier receives the wrong type",
+            "(progn (defstruct (record (:copier copy-record)) id) (copy-record 1))",
+        ),
+    ];
+
+    for (name, source) in cases {
+        assert!(
+            Runtime::new().eval_compiled_source(source).is_err(),
+            "expected {name} to fail: {source}"
+        );
+    }
+}
 use super::*;

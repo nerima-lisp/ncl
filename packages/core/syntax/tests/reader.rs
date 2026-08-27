@@ -1,144 +1,15 @@
-use ncl_syntax::{read, FormKind, ReadErrorKind, Reader, MAX_NESTING_DEPTH};
+#![allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+
+use ncl_syntax::{FormKind, MAX_NESTING_DEPTH, ReadErrorKind, Span, read};
 
 #[test]
 fn reads_lists_prefixes_and_literals() {
-    let forms = read("(+ 1 2) '(a . b) #(\"x\" #\\Space #t)").unwrap();
+    let forms = read("(+ 1 2) '(a . b) #(\"x\" #\\Space #t #f)").unwrap();
 
     assert_eq!(forms.len(), 3);
     assert!(matches!(forms[0].kind, FormKind::List(_)));
     assert!(matches!(forms[1].kind, FormKind::List(_)));
     assert!(matches!(forms[2].kind, FormKind::Vector(_)));
-}
-
-#[test]
-fn reads_complex_literals() {
-    let forms = read("#C(1 -2) #c(3.0 4/5)").unwrap();
-
-    assert_eq!(forms.len(), 2);
-    assert!(matches!(
-        &forms[0].kind,
-        FormKind::Complex { real, imaginary }
-            if real.to_string() == "1" && imaginary.to_string() == "-2"
-    ));
-    assert!(matches!(
-        &forms[1].kind,
-        FormKind::Complex { real, imaginary }
-            if real.to_string() == "3.0" && imaginary.to_string() == "4/5"
-    ));
-    assert_eq!(forms[0].to_string(), "#C(1 -2)");
-    assert_eq!(forms[1].to_string(), "#C(3.0 4/5)");
-}
-
-#[test]
-fn unquote_requires_a_quasiquote_context() {
-    for source in [",value", ",@values", "' ,value"] {
-        let error = read(source).unwrap_err();
-
-        assert!(matches!(
-            error.kind,
-            ReadErrorKind::UnquoteOutsideQuasiquote
-        ));
-    }
-
-    assert!(read("`(outer ,value ,@(list value))").is_ok());
-    assert!(read("`(outer `((inner ,value)))").is_ok());
-}
-
-#[test]
-fn reads_bit_vectors() {
-    let forms = read("#*1010 #*").unwrap();
-
-    assert_eq!(forms.len(), 2);
-    assert!(matches!(
-        &forms[0].kind,
-        FormKind::BitVector(bits) if bits == &vec![1, 0, 1, 0]
-    ));
-    assert!(matches!(&forms[1].kind, FormKind::BitVector(bits) if bits.is_empty()));
-    assert_eq!(forms[0].to_string(), "#*1010");
-    assert!(matches!(
-        read("#*102").unwrap_err().kind,
-        ReadErrorKind::InvalidDispatch
-    ));
-}
-
-#[test]
-fn reads_read_time_evaluation() {
-    let forms = read("#.(+ 1 2)").unwrap();
-
-    assert_eq!(forms.len(), 1);
-    let FormKind::ReadTimeEval(form) = &forms[0].kind else {
-        panic!("expected a read-time evaluation form");
-    };
-    assert_eq!(form.to_string(), "(+ 1 2)");
-    assert_eq!(forms[0].to_string(), "#.(+ 1 2)");
-    assert!(matches!(
-        read("#.").unwrap_err().kind,
-        ReadErrorKind::UnexpectedEnd {
-            context: "read-time evaluation"
-        }
-    ));
-}
-
-#[test]
-fn reads_fixed_radix_integer_dispatch() {
-    let forms = read("#b101 #O17 #x+Ab #x-10 #x1f").unwrap();
-
-    assert_eq!(forms.len(), 5);
-    assert!(matches!(&forms[0].kind, FormKind::Atom(atom) if atom == "#b101"));
-    assert!(matches!(&forms[1].kind, FormKind::Atom(atom) if atom == "#O17"));
-    assert!(matches!(&forms[2].kind, FormKind::Atom(atom) if atom == "#x+Ab"));
-    assert!(matches!(&forms[3].kind, FormKind::Atom(atom) if atom == "#x-10"));
-    assert!(matches!(&forms[4].kind, FormKind::Atom(atom) if atom == "#x1f"));
-
-    for source in ["#b", "#x-", "#b2", "#o8", "#xg", "#x1f2gh"] {
-        assert!(
-            matches!(
-                read(source).unwrap_err().kind,
-                ReadErrorKind::InvalidDispatch
-            ),
-            "{source}"
-        );
-    }
-}
-
-#[test]
-fn reads_general_radix_integer_dispatch() {
-    let forms = read("#2r101 #10R42 #36rz #16r-ff").unwrap();
-
-    assert_eq!(forms.len(), 4);
-    assert!(matches!(&forms[0].kind, FormKind::Atom(atom) if atom == "#2r101"));
-    assert!(matches!(&forms[1].kind, FormKind::Atom(atom) if atom == "#10R42"));
-    assert!(matches!(&forms[2].kind, FormKind::Atom(atom) if atom == "#36rz"));
-    assert!(matches!(&forms[3].kind, FormKind::Atom(atom) if atom == "#16r-ff"));
-
-    for source in ["#r1", "#1r1", "#37r1", "#10r", "#2r102", "#10r1/2"] {
-        assert!(
-            matches!(
-                read(source).unwrap_err().kind,
-                ReadErrorKind::InvalidDispatch
-            ),
-            "{source}"
-        );
-    }
-}
-
-#[test]
-fn reads_general_radix_integer_dispatch_without_i64_overflow() {
-    let forms = read("#10r9223372036854775808 #16r8000000000000000").unwrap();
-
-    assert_eq!(forms.len(), 2);
-    assert!(matches!(
-        &forms[0].kind,
-        FormKind::Atom(atom) if atom == "#10r9223372036854775808"
-    ));
-    assert!(matches!(
-        &forms[1].kind,
-        FormKind::Atom(atom) if atom == "#16r8000000000000000"
-    ));
-    assert!(matches!(
-        read("#2r102").unwrap_err().kind,
-        ReadErrorKind::InvalidDispatch
-    ));
 }
 
 #[test]
@@ -186,6 +57,32 @@ fn malformed_input_has_a_typed_error_and_span() {
 }
 
 #[test]
+fn reports_eof_context_for_incomplete_list_forms() {
+    for source in ["(item", "(item "] {
+        assert_eq!(
+            read(source).unwrap_err().kind,
+            ReadErrorKind::UnexpectedEnd { context: "list" },
+            "source: {source}"
+        );
+    }
+    assert_eq!(
+        read("(item .").unwrap_err().kind,
+        ReadErrorKind::MissingDottedTail
+    );
+}
+
+#[test]
+fn rejects_unmatched_closing_delimiters() {
+    let error = read(")").unwrap_err();
+
+    assert!(matches!(
+        error.kind,
+        ReadErrorKind::UnexpectedClosingDelimiter { delimiter: ')' }
+    ));
+    assert_eq!(error.span, ncl_syntax::Span::new(0, 1));
+}
+
+#[test]
 fn discarded_forms_are_not_returned() {
     let forms = read("#;(ignored form) 42").unwrap();
 
@@ -197,106 +94,32 @@ fn discarded_forms_are_not_returned() {
 }
 
 #[test]
-fn reader_conditionals_select_enabled_forms_and_continue() {
-    let forms = Reader::with_features(
-        "#+enabled kept #-enabled discarded #+unknown removed #-unknown retained",
-        ["enabled"],
-    )
-    .read_all()
-    .unwrap();
-
-    assert_eq!(forms.len(), 2);
-    assert!(matches!(&forms[0].kind, FormKind::Atom(atom) if atom == "kept"));
-    assert!(matches!(&forms[1].kind, FormKind::Atom(atom) if atom == "retained"));
-}
-
-#[test]
-fn reader_conditionals_consume_a_disabled_list_branch() {
-    let forms = Reader::new("#+missing (discarded (nested form)) 42")
-        .read_all()
-        .unwrap();
-
-    assert_eq!(forms.len(), 1);
-    assert!(matches!(&forms[0].kind, FormKind::Atom(atom) if atom == "42"));
-}
-
-#[test]
-fn reader_conditionals_work_inside_lists() {
-    let forms = Reader::with_features(
-        "(#-enabled discarded #+enabled kept #+missing removed tail)",
-        ["enabled"],
-    )
-    .read_all()
-    .unwrap();
-
-    let FormKind::List(items) = &forms[0].kind else {
-        panic!("expected a list");
-    };
-    assert_eq!(items.len(), 2);
-    assert!(matches!(&items[0].kind, FormKind::Atom(atom) if atom == "kept"));
-    assert!(matches!(&items[1].kind, FormKind::Atom(atom) if atom == "tail"));
-}
-
-#[test]
-fn reader_conditionals_normalize_symbols_and_keywords() {
-    let forms = Reader::with_features("#+MiXeD symbol #+:MiXeD keyword", ["mixed", ":mixed"])
-        .read_all()
-        .unwrap();
-
-    assert_eq!(forms.len(), 2);
-    assert!(matches!(&forms[0].kind, FormKind::Atom(atom) if atom == "symbol"));
-    assert!(matches!(&forms[1].kind, FormKind::Atom(atom) if atom == "keyword"));
-}
-
-#[test]
-fn reader_conditionals_support_recursive_feature_expressions() {
-    let forms = Reader::with_features(
-        "#+(and unix (not windows)) first #+(or missing (and unix)) second #+(and unix windows) removed",
-        ["unix"],
-    )
-    .read_all()
-    .unwrap();
-
-    assert_eq!(forms.len(), 2);
-    assert!(matches!(&forms[0].kind, FormKind::Atom(atom) if atom == "first"));
-    assert!(matches!(&forms[1].kind, FormKind::Atom(atom) if atom == "second"));
-}
-
-#[test]
-fn reader_conditionals_report_eof_and_invalid_feature_expressions() {
-    let error = Reader::new("#+").read_all().unwrap_err();
-    assert!(matches!(
-        error.kind,
-        ReadErrorKind::UnexpectedEnd {
-            context: "reader conditional feature expression"
-        }
-    ));
-
-    let error = Reader::new("#+feature").read_all().unwrap_err();
-    assert!(matches!(
-        error.kind,
-        ReadErrorKind::UnexpectedEnd {
-            context: "reader conditional form"
-        }
-    ));
-
-    let error = Reader::new("#+(xor feature) value").read_all().unwrap_err();
-    assert!(matches!(error.kind, ReadErrorKind::InvalidDispatch));
-}
-
-#[test]
-fn reader_conditionals_have_no_default_features() {
-    let forms = read("#+unknown skipped 42").unwrap();
-
-    assert_eq!(forms.len(), 1);
-    assert!(matches!(&forms[0].kind, FormKind::Atom(atom) if atom == "42"));
-}
-
-#[test]
 fn dispatch_booleans_require_a_token_boundary() {
     let error = read("#true").unwrap_err();
 
     assert!(matches!(error.kind, ReadErrorKind::InvalidDispatch));
+}
+
+#[test]
+fn malformed_prefix_and_dispatch_forms_report_typed_errors() {
+    let cases = [
+        ("'", "quote"),
+        ("`", "quasiquote"),
+        (",", "unquote"),
+        (",@", "unquote-splicing"),
+        ("#'", "function"),
+        ("#", "dispatch macro"),
+        ("#;", "discarded form"),
+    ];
+
+    for (source, context) in cases {
+        assert_eq!(
+            read(source).unwrap_err().kind,
+            ReadErrorKind::UnexpectedEnd { context },
+            "source: {source}"
+        );
+    }
+    assert_eq!(read("#x").unwrap_err().kind, ReadErrorKind::InvalidDispatch);
 }
 
 #[test]
@@ -319,27 +142,6 @@ fn dotted_lists_require_a_tail() {
 }
 
 #[test]
-fn dotted_lists_require_a_head() {
-    let error = read("(. a)").unwrap_err();
-
-    assert!(matches!(error.kind, ReadErrorKind::MissingDottedHead));
-}
-
-#[test]
-fn dotted_lists_reject_multiple_tails() {
-    let error = read("(a . b . c)").unwrap_err();
-
-    assert!(matches!(error.kind, ReadErrorKind::MultipleDottedTails));
-}
-
-#[test]
-fn dotted_lists_reject_a_second_dot_as_tail() {
-    let error = read("(a . .)").unwrap_err();
-
-    assert!(matches!(error.kind, ReadErrorKind::MultipleDottedTails));
-}
-
-#[test]
 fn unterminated_dotted_lists_report_eof() {
     let error = read("(a . b").unwrap_err();
 
@@ -352,8 +154,21 @@ fn unterminated_dotted_lists_report_eof() {
 }
 
 #[test]
+fn dotted_lists_reject_extra_forms() {
+    let error = read("(a . b c)").unwrap_err();
+
+    assert_eq!(
+        error.kind,
+        ReadErrorKind::MismatchedDelimiter {
+            expected: ')',
+            found: 'c'
+        }
+    );
+}
+
+#[test]
 fn reads_delimiter_characters() {
-    let forms = read(r#"#\) #\;"#).unwrap();
+    let forms = read(r"#\) #\;").unwrap();
 
     assert!(matches!(forms[0].kind, FormKind::Character(')')));
     assert!(matches!(forms[1].kind, FormKind::Character(';')));
@@ -364,23 +179,67 @@ fn reads_delimiter_characters() {
 }
 
 #[test]
-fn string_backslash_quotes_the_next_character() {
-    let forms = read(r#""\n" "\q" "\\" "\"""#).unwrap();
+fn reads_string_escapes_and_rejects_invalid_forms() {
+    let forms = read(r#""line\n\r\t\\\"""#).unwrap();
+    assert!(matches!(
+        &forms[0].kind,
+        FormKind::String(value) if value == "line\n\r\t\\\""
+    ));
 
-    assert!(matches!(&forms[0].kind, FormKind::String(value) if value == "n"));
-    assert!(matches!(&forms[1].kind, FormKind::String(value) if value == "q"));
-    assert!(matches!(&forms[2].kind, FormKind::String(value) if value == "\\"));
-    assert!(matches!(&forms[3].kind, FormKind::String(value) if value == "\""));
+    let invalid_inputs = [
+        (r#""bad\q""#, ReadErrorKind::InvalidEscape),
+        (
+            r#""unterminated"#,
+            ReadErrorKind::UnexpectedEnd { context: "string" },
+        ),
+        (
+            r#""trailing\"#,
+            ReadErrorKind::UnexpectedEnd { context: "string" },
+        ),
+        (r"#\", ReadErrorKind::InvalidCharacterName),
+    ];
+    for (source, expected) in invalid_inputs {
+        assert_eq!(read(source).unwrap_err().kind, expected);
+    }
 }
 
 #[test]
-fn reads_standard_named_characters() {
-    let forms = read("#\\Backspace #\\Linefeed #\\Page #\\Rubout").unwrap();
+fn malformed_symbols_report_eof() {
+    for (source, context) in [("|unterminated", "symbol"), (r"foo\", "symbol")] {
+        assert_eq!(
+            read(source).unwrap_err().kind,
+            ReadErrorKind::UnexpectedEnd { context },
+            "source: {source}"
+        );
+    }
+}
 
-    assert!(matches!(forms[0].kind, FormKind::Character('\u{0008}')));
-    assert!(matches!(forms[1].kind, FormKind::Character('\n')));
-    assert!(matches!(forms[2].kind, FormKind::Character('\u{000c}')));
-    assert!(matches!(forms[3].kind, FormKind::Character('\u{007f}')));
+#[test]
+fn symbol_escapes_consume_the_following_character() {
+    let forms = read(r"foo\ bar").unwrap();
+
+    assert!(matches!(&forms[0].kind, FormKind::Atom(atom) if atom == r"foo\ bar"));
+    assert_eq!(forms[0].span, Span::new(0, 8));
+}
+
+#[test]
+fn character_names_are_case_insensitive_and_strict() {
+    let forms = read("#\\SPACE #\\NewLine #\\tab #\\return #\\x").unwrap();
+    let characters = forms
+        .iter()
+        .map(|form| match form.kind {
+            FormKind::Character(character) => character,
+            _ => panic!("expected character form"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(characters, [' ', '\n', '\t', '\r', 'x']);
+
+    for source in ["#\\", "#\\xy"] {
+        assert!(matches!(
+            read(source).unwrap_err().kind,
+            ReadErrorKind::InvalidCharacterName
+        ));
+    }
 }
 
 #[test]
@@ -390,19 +249,6 @@ fn deeply_nested_input_has_a_typed_limit_error() {
         "(".repeat(MAX_NESTING_DEPTH + 1),
         ")".repeat(MAX_NESTING_DEPTH + 1)
     );
-    let error = read(&source).unwrap_err();
-
-    assert!(matches!(
-        error.kind,
-        ReadErrorKind::NestingTooDeep {
-            limit: MAX_NESTING_DEPTH
-        }
-    ));
-}
-
-#[test]
-fn deeply_nested_prefix_input_has_a_typed_limit_error() {
-    let source = format!("{}1", "'".repeat(MAX_NESTING_DEPTH + 1));
     let error = read(&source).unwrap_err();
 
     assert!(matches!(

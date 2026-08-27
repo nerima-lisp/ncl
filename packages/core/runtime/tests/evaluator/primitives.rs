@@ -26,6 +26,60 @@ fn evaluates_function_namespace_introspection() {
 }
 
 #[test]
+fn rejects_invalid_function_introspection_arguments_from_table_cases() {
+    let cases = [
+        "(fboundp)",
+        "(fboundp 1)",
+        "(macro-function)",
+        "(macro-function 1)",
+        "(macro-function 'car 1)",
+        "(special-operator-p)",
+        "(special-operator-p 1)",
+        "(compiled-function-p)",
+        "(compiled-function-p 1 2)",
+        "(fdefinition)",
+        "(fdefinition 1)",
+        "(symbol-function)",
+        "(symbol-function 1)",
+    ];
+
+    for source in cases {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn evaluates_symbol_creation_boundaries_from_table_cases() {
+    let cases = [
+        (
+            r#"(symbol-name (make-symbol "temporary"))"#,
+            r#""temporary""#,
+        ),
+        (r"(symbol-name (gensym))", r#""G0""#),
+        (r#"(symbol-name (gensym "TMP"))"#, r#""TMP0""#),
+        (r"(symbol-name (gensym 'prefix))", r#""PREFIX0""#),
+        (
+            r#"(multiple-value-list (find-symbol "missing"))"#,
+            "(NIL NIL)",
+        ),
+    ];
+
+    assert_value_cases(evaluate, &cases);
+
+    for source in [
+        "(make-symbol)",
+        "(make-symbol 1)",
+        "(gensym 1 2)",
+        "(intern)",
+        "(intern 1)",
+        "(find-symbol)",
+        "(find-symbol 1 2 3)",
+    ] {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
 fn evaluates_compile_function() {
     assert_eq!(
         evaluate(
@@ -174,6 +228,43 @@ fn evaluates_symbol_values_and_property_lists_from_table_cases() {
             "(let ((symbol 'property-target))\n                 (list (get symbol :answer)\n                       (putprop symbol 42 :answer)\n                       (get symbol :answer)\n                       (remprop symbol :answer)\n                       (get symbol :answer)\n                       (symbol-plist symbol)))",
             "(NIL 42 42 T NIL NIL)",
         ),
+    ];
+
+    assert_value_cases(evaluate, &cases);
+}
+
+#[test]
+fn rejects_invalid_symbol_property_operations_from_table_cases() {
+    let cases = [
+        "(get)",
+        "(get 1 :answer)",
+        "(get 'property-target)",
+        "(putprop)",
+        "(putprop 1 2 :answer)",
+        "(remprop)",
+        "(remprop 1 :answer)",
+        "(symbol-plist)",
+        "(symbol-plist 1)",
+    ];
+
+    for source in cases {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn evaluates_format_directives_from_table_cases() {
+    let cases = [
+        (
+            r#"(format nil "~A/~S" "text" "text")"#,
+            r#""text/\"text\"""#,
+        ),
+        (
+            r#"(format nil "~D/~B/~O/~X" -12 10 8 255)"#,
+            r#""-12/1010/10/FF""#,
+        ),
+        (r#"(format nil "~C/~~/~%end" #\!)"#, r#""!/~/\nend""#),
+        (r#"(format nil "line~&next")"#, r#""line\nnext""#),
     ];
 
     assert_value_cases(evaluate, &cases);

@@ -2,74 +2,108 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 
-use crate::{
-    parse_float_literal, parse_radix_integer_literal, parse_symbol_token, Form, FormKind, Span,
-    SymbolTokenKind,
-};
+use crate::{Form, FormKind, Span, SymbolTokenKind, parse_symbol_token};
 
 /// The ordinary lambda-list shape shared by the compiler and evaluator.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OrdinaryLambdaList {
+    /// Required parameter names.
     pub required: Vec<String>,
+    /// Whether each required name used escaping.
     pub required_escaped: Vec<bool>,
+    /// Optional parameters.
     pub optional: Vec<LambdaListOptionalParameter>,
+    /// Rest parameter name.
     pub rest: Option<String>,
+    /// Whether the rest name used escaping.
     pub rest_escaped: bool,
+    /// Keyword parameters.
     pub keywords: Vec<LambdaListKeywordParameter>,
+    /// Whether an `&KEY` section was present.
     pub has_keyword_section: bool,
+    /// Whether unknown keywords are accepted.
     pub allow_other_keys: bool,
+    /// Auxiliary parameters.
     pub auxiliary: Vec<LambdaListAuxiliaryParameter>,
 }
 
 /// One `&OPTIONAL` parameter specification.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LambdaListOptionalParameter {
+    /// Parameter name.
     pub name: String,
+    /// Whether the name used escaping.
     pub name_escaped: bool,
+    /// Initialization form.
     pub init_form: Form,
+    /// Whether an initialization form was explicitly supplied.
     pub init_form_supplied: bool,
+    /// `supplied-p` variable name.
     pub supplied_p: Option<String>,
+    /// Whether the `supplied-p` name used escaping.
     pub supplied_p_escaped: Option<bool>,
 }
 
 /// One `&KEY` parameter specification.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LambdaListKeywordParameter {
+    /// External keyword name.
     pub keyword_name: String,
+    /// Whether the keyword name used escaping.
     pub keyword_name_escaped: bool,
+    /// Local parameter name.
     pub name: String,
+    /// Whether the local name used escaping.
     pub name_escaped: bool,
+    /// Initialization form.
     pub init_form: Form,
+    /// Whether an initialization form was explicitly supplied.
     pub init_form_supplied: bool,
+    /// `supplied-p` variable name.
     pub supplied_p: Option<String>,
+    /// Whether the `supplied-p` name used escaping.
     pub supplied_p_escaped: Option<bool>,
 }
 
 /// One `&AUX` parameter specification.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LambdaListAuxiliaryParameter {
+    /// Parameter name.
     pub name: String,
+    /// Whether the name used escaping.
     pub name_escaped: bool,
+    /// Initialization form.
     pub init_form: Form,
 }
 
 /// The category of an ordinary lambda-list syntax error.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LambdaListErrorKind {
+    /// The parameter form was not a proper list.
     ExpectedList,
-    ExpectedSymbol { context: &'static str },
-    InvalidForm { message: String },
+    /// A symbol was required in the named context.
+    ExpectedSymbol {
+        /// Parameter-list context.
+        context: &'static str,
+    },
+    /// The form violated lambda-list syntax.
+    InvalidForm {
+        /// Human-readable validation detail.
+        message: String,
+    },
 }
 
 /// A lambda-list syntax error tied to the offending source span.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LambdaListError {
+    /// Error category.
     pub kind: LambdaListErrorKind,
+    /// Source location of the error.
     pub span: Span,
 }
 
 impl LambdaListError {
-    fn expected_symbol(context: &'static str, span: Span) -> Self {
+    const fn expected_symbol(context: &'static str, span: Span) -> Self {
         Self {
             kind: LambdaListErrorKind::ExpectedSymbol { context },
             span,
@@ -125,21 +159,18 @@ impl Error for LambdaListError {}
 /// Other lambda-list markers are rejected here so that the compiler and the
 /// interpreter fail consistently instead of silently treating a marker as a
 /// variable name.
+///
+/// # Errors
+///
+/// Returns [`LambdaListError`] when the form does not follow the ordinary
+/// lambda-list grammar.
+#[allow(clippy::too_many_lines)]
 pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, LambdaListError> {
     let parameters: &[Form] = match &form.kind {
         FormKind::List(parameters) => parameters,
         // Runtime values represent the empty list as NIL.  This case is
         // needed when a quoted lambda form is reconstructed for EVAL/COMPILE.
-        FormKind::Atom(name)
-            if parse_symbol_token(name).is_ok_and(|token| {
-                token.kind == SymbolTokenKind::Symbol
-                    && token.package.is_none()
-                    && !token.escaped
-                    && token.name == "NIL"
-            }) =>
-        {
-            &[]
-        }
+        FormKind::Atom(name) if name == "NIL" => &[],
         _ => {
             return Err(LambdaListError {
                 kind: LambdaListErrorKind::ExpectedList,
@@ -281,13 +312,13 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                         parameter.span,
                     ));
                 }
-                if let Some(supplied_p) = &specification.supplied_p {
-                    if !names.insert(supplied_p.clone()) {
-                        return Err(LambdaListError::invalid(
-                            "parameter names must be unique",
-                            parameter.span,
-                        ));
-                    }
+                if let Some(supplied_p) = &specification.supplied_p
+                    && !names.insert(supplied_p.clone())
+                {
+                    return Err(LambdaListError::invalid(
+                        "parameter names must be unique",
+                        parameter.span,
+                    ));
                 }
                 optional.push(specification);
             }
@@ -317,13 +348,13 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                         parameter.span,
                     ));
                 }
-                if let Some(supplied_p) = &specification.supplied_p {
-                    if !names.insert(supplied_p.clone()) {
-                        return Err(LambdaListError::invalid(
-                            "parameter names must be unique",
-                            parameter.span,
-                        ));
-                    }
+                if let Some(supplied_p) = &specification.supplied_p
+                    && !names.insert(supplied_p.clone())
+                {
+                    return Err(LambdaListError::invalid(
+                        "parameter names must be unique",
+                        parameter.span,
+                    ));
                 }
                 keywords.push(specification);
             }
@@ -615,8 +646,7 @@ fn literal_atom(name: &str) -> bool {
         || token.name == "#F"
         || token.name == "#T"
         || token.name.parse::<i64>().is_ok()
-        || parse_radix_integer_literal(&token.name).is_some()
-        || parse_float_literal(&token.name).is_some()
+        || token.name.parse::<f64>().is_ok()
 }
 
 fn normalize_name(name: &str) -> String {

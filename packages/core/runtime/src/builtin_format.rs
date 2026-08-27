@@ -1,6 +1,8 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
+const MAX_FORMAT_FIELD_WIDTH: usize = 1_000_000;
+
 #[path = "builtin_format_general.rs"]
 mod general;
 #[allow(clippy::wildcard_imports)]
@@ -1024,6 +1026,12 @@ pub(super) fn format_fixed_float_directive(
         });
     }
     let minimum_column = format_parameter_count(parameters, 0, 0)?;
+    if minimum_column > MAX_FORMAT_FIELD_WIDTH {
+        return Err(RuntimeError::InvalidForm {
+            message: "format field width is too large".to_string(),
+            span: None,
+        });
+    }
     let fractional_digits = match parameters
         .get(1)
         .copied()

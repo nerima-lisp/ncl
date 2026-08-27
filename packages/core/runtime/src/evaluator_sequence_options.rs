@@ -839,6 +839,21 @@ mod tests {
             .map(|value| value.to_string()),
             Ok("4".to_string())
         );
+        let first_value = Value::Integer(3);
+        assert_eq!(
+            reduce_initial_value(None, Some(&first_value), &|_| {
+                Ok(Value::Integer(4))
+            }, SPAN)
+            .map(|value| value.to_string()),
+            Ok("4".to_string())
+        );
+        assert!(reduce_initial_value(
+            None,
+            Some(&first_value),
+            &|_| Err(Runtime::invalid("reduce key failed", SPAN)),
+            SPAN
+        )
+        .is_err());
     }
 
     #[test]

@@ -59,7 +59,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       - run: cargo llvm-cov --locked --workspace --all-features --all-targets --lcov --output-path lcov.info
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --summary-only --fail-under-lines 88.0
+      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --summary-only --fail-under-lines 88.4
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov

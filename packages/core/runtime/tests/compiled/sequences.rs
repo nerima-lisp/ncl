@@ -1,0 +1,540 @@
+#[test]
+fn compiled_evaluates_forms_and_maps_functions_over_lists() {
+    assert_eq!(evaluate("(eval '(+ 2 3))").to_string(), "5");
+    assert_eq!(
+        evaluate("(let ((form '(+ 2 3))) (eval form))").to_string(),
+        "5"
+    );
+    assert_eq!(evaluate("(funcall #'eval '(+ 2 3))").to_string(), "5");
+    assert_eq!(
+        evaluate("(mapcar (lambda (x) (* x 2)) '(1 2 3))").to_string(),
+        "(2 4 6)"
+    );
+    assert_eq!(
+        evaluate("(mapcar (lambda (x y) (+ x y)) '(1 2) '(10 20 30))").to_string(),
+        "(11 22)"
+    );
+    assert_eq!(
+        evaluate("(funcall #'mapcar (lambda (x) (+ x 1)) '(1 2 3))").to_string(),
+        "(2 3 4)"
+    );
+    assert_eq!(evaluate("(funcall 'car '(9 8))").to_string(), "9");
+    assert_eq!(evaluate("(apply 'list 1 '(2 3))").to_string(), "(1 2 3)");
+    assert_eq!(
+        evaluate("(mapcar 'car '((1 2) (3 4)))").to_string(),
+        "(1 3)"
+    );
+    assert_eq!(
+        evaluate("(let ((function-name 'car)) (funcall function-name '(7 6)))").to_string(),
+        "7"
+    );
+    assert_eq!(
+        evaluate("(mapc (lambda (x) (* x 2)) '(1 2 3))").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate("(mapl (lambda (tail) (car tail)) '(1 2 3))").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate("(maplist (lambda (tail) (car tail)) '(1 2 3))").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(
+            "(maplist (lambda (left right) (list (car left) (car right)))
+                      '(1 2) '(10 20 30))",
+        )
+        .to_string(),
+        "((1 10) (2 20))"
+    );
+    assert_eq!(
+        evaluate("(mapcan (lambda (x) (list x (* x 10))) '(1 2 3))").to_string(),
+        "(1 10 2 20 3 30)"
+    );
+    assert_eq!(
+        evaluate("(mapcon (lambda (tail) (list (car tail))) '(1 2 3))").to_string(),
+        "(1 2 3)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_map_over_sequence_types() {
+    assert_eq!(
+        evaluate("(map 'list (lambda (x) (* x 2)) '(1 2 3))").to_string(),
+        "(2 4 6)"
+    );
+    assert_eq!(
+        evaluate("(map 'vector #'1+ #(1 2 3))").to_string(),
+        "#(2 3 4)"
+    );
+    assert_eq!(
+        evaluate("(map 'string #'identity \"abc\")").to_string(),
+        "\"abc\""
+    );
+    assert_eq!(
+        evaluate("(map 'list #'+ '(1 2) '(10 20 30))").to_string(),
+        "(11 22)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((total 0))
+               (map nil (lambda (x) (incf total x)) '(1 2 3))
+               total)",
+        )
+        .to_string(),
+        "6"
+    );
+}
+
+#[test]
+fn compiled_evaluates_reduce_over_sequences() {
+    assert_eq!(evaluate("(reduce #'+ '(1 2 3 4))").to_string(), "10");
+    assert_eq!(
+        evaluate("(reduce #'- '(1 2 3) :from-end t)").to_string(),
+        "2"
+    );
+    assert_eq!(
+        evaluate("(reduce #'+ '(1 2 3) :initial-value 10)").to_string(),
+        "16"
+    );
+    assert_eq!(
+        evaluate("(reduce #'+ '(1 2 3 4) :start 1 :end 3)").to_string(),
+        "5"
+    );
+    assert_eq!(
+        evaluate("(reduce #'+ '((1) (2) (3)) :key #'car)").to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate("(reduce #'+ \"abc\" :key #'char-code)").to_string(),
+        "294"
+    );
+    assert_eq!(
+        evaluate("(reduce #'list '() :initial-value 42)").to_string(),
+        "42"
+    );
+}
+
+#[test]
+fn compiled_evaluates_sequence_searches() {
+    assert_eq!(evaluate("(find 2 '(1 2 3))").to_string(), "2");
+    assert_eq!(evaluate("(position 2 #(1 2 3))").to_string(), "1");
+    assert_eq!(evaluate("(count 2 '(1 2 2 3))").to_string(), "2");
+    assert_eq!(
+        evaluate("(position 2 '(1 2 3 2) :from-end t)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            "(find 2 '(1 2 3) :test-not (lambda (wanted candidate)\n               (= wanted (+ candidate 1))))",
+        )
+        .to_string(),
+        "2"
+    );
+    assert_eq!(
+        evaluate("(position 20 '(10 20 30) :start 1 :end 3)").to_string(),
+        "1"
+    );
+    assert_eq!(
+        evaluate("(find 2 '((1) (2) (3)) :key #'car)").to_string(),
+        "(2)"
+    );
+    assert_eq!(evaluate("(count 2 '(1 2 3 2) :key #'1+)").to_string(), "1");
+    assert_eq!(evaluate("(find 9 '(1 2 3))").to_string(), "NIL");
+}
+
+#[test]
+fn compiled_evaluates_sequence_search_and_mismatch() {
+    assert_eq!(evaluate("(search '(2 3) '(1 2 3 4))").to_string(), "1");
+    assert_eq!(
+        evaluate("(search '(2 3) '(1 2 3 2 3) :from-end t)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate("(search '(0 1) '(2 4 6 1 3 5) :key #'oddp)").to_string(),
+        "2"
+    );
+    assert_eq!(
+        evaluate("(search \"ab\" \"xxABab\" :test #'char-equal :from-end t)").to_string(),
+        "4"
+    );
+    assert_eq!(
+        evaluate("(search '(2 3) '(0 1 2 3 4) :start2 2 :end2 5)").to_string(),
+        "2"
+    );
+    assert_eq!(evaluate("(search '() '(1 2) :start2 1)").to_string(), "1");
+    assert_eq!(
+        evaluate("(search '() '(1 2) :start2 1 :from-end t)").to_string(),
+        "2"
+    );
+    assert_eq!(evaluate("(mismatch '(1 2 9) '(1 2 3))").to_string(), "2");
+    assert_eq!(
+        evaluate("(mismatch '(3 2 1 1 2 3) '(1 2 3) :from-end t)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate("(mismatch \"abcd\" \"ABCDE\" :test #'char-equal)").to_string(),
+        "4"
+    );
+    assert_eq!(
+        evaluate("(mismatch '(1 2 3) '(2 3 4) :test-not #'eq :key #'oddp)").to_string(),
+        "NIL"
+    );
+    assert_eq!(
+        evaluate("(mismatch \"def\" \"abcdef\" :from-end t)").to_string(),
+        "0"
+    );
+    assert_eq!(evaluate("(funcall #'search '(2) '(0 2))").to_string(), "1");
+}
+
+#[test]
+fn compiled_evaluates_sequence_sort_and_stable_sort() {
+    assert_eq!(evaluate("(sort '(3 1 2) #'<)").to_string(), "(1 2 3)");
+    assert_eq!(
+        evaluate("(stable-sort '(2 -2 1 -1) #'< :key #'abs)").to_string(),
+        "(1 -1 2 -2)"
+    );
+    assert_eq!(evaluate("(sort #(3 1 2) #'<)").to_string(), "#(1 2 3)");
+    assert_eq!(evaluate("(sort \"cba\" #'char<)").to_string(), "\"abc\"");
+    assert_eq!(
+        evaluate("(funcall #'stable-sort '(3 1 2) #'<)").to_string(),
+        "(1 2 3)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_sequence_merge() {
+    assert_eq!(
+        evaluate("(merge 'list '(1 3 5) '(2 4 6) #'<)").to_string(),
+        "(1 2 3 4 5 6)"
+    );
+    assert_eq!(
+        evaluate("(merge 'vector #(1 3) #(2 4) #'<)").to_string(),
+        "#(1 2 3 4)"
+    );
+    assert_eq!(
+        evaluate("(merge 'string \"ace\" \"bdf\" #'char<)").to_string(),
+        "\"abcdef\""
+    );
+    assert_eq!(
+        evaluate("(merge 'list '(-1 -3) '(2 4) #'< :key #'abs)").to_string(),
+        "(-1 2 -3 4)"
+    );
+    assert_eq!(
+        evaluate("(merge 'list '((1 a) (2 b)) '((1 c) (2 d)) #'< :key #'car)").to_string(),
+        "((1 A) (1 C) (2 B) (2 D))"
+    );
+    assert_eq!(
+        evaluate("(funcall #'merge 'list '(1 3) '(2 4) #'<)").to_string(),
+        "(1 2 3 4)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_sequence_quantifiers() {
+    assert_eq!(evaluate("(every #'numberp '(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(every #'= '(1 2) #(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(some #'identity '(nil 2 4))").to_string(), "2");
+    assert_eq!(evaluate("(notany #'evenp '(1 3 5))").to_string(), "T");
+    assert_eq!(evaluate("(notevery #'evenp '(2 4 5))").to_string(), "T");
+    assert_eq!(evaluate("(every #'char= \"ab\" \"ab\")").to_string(), "T");
+    assert_eq!(evaluate("(every #'identity '())").to_string(), "T");
+    assert_eq!(evaluate("(some #'identity '())").to_string(), "NIL");
+    assert_eq!(
+        evaluate("(funcall #'some #'identity '(nil 3))").to_string(),
+        "3"
+    );
+}
+
+#[test]
+fn compiled_evaluates_list_membership_and_association_searches() {
+    assert_eq!(evaluate("(member 2 '(1 2 3))").to_string(), "(2 3)");
+    assert_eq!(
+        evaluate("(member 2 '((1) (2) (3)) :key #'car)").to_string(),
+        "((2) (3))"
+    );
+    assert_eq!(
+        evaluate("(member-if-not #'evenp '(2 4 5 6))").to_string(),
+        "(5 6)"
+    );
+    assert_eq!(evaluate("(adjoin 4 '(1 2 3))").to_string(), "(4 1 2 3)");
+    assert_eq!(
+        evaluate("(assoc 'b '((a . 1) (b . 2)))").to_string(),
+        "(B . 2)"
+    );
+    assert_eq!(
+        evaluate("(assoc-if (lambda (key) (eq key 'b)) '((a . 1) (b . 2)))").to_string(),
+        "(B . 2)"
+    );
+    assert_eq!(
+        evaluate("(rassoc-if #'evenp '((a . 1) (b . 2)))").to_string(),
+        "(B . 2)"
+    );
+    assert_eq!(
+        evaluate("(funcall #'member 2 '(1 2 3))").to_string(),
+        "(2 3)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_sequence_removals() {
+    assert_eq!(evaluate("(remove 2 '(1 2 2 3))").to_string(), "(1 3)");
+    assert_eq!(
+        evaluate("(remove 2 '(1 2 3 2) :from-end t :count 1)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate("(remove-if-not #'evenp '(1 2 4 3))").to_string(),
+        "(2 4)"
+    );
+    assert_eq!(evaluate("(remove 2 #(1 2 3))").to_string(), "#(1 3)");
+    assert_eq!(
+        evaluate("(remove #\\a \"banana\" :count 2)").to_string(),
+        "\"bnna\""
+    );
+    assert_eq!(
+        evaluate("(remove-duplicates '(1 2 1 3 2) :from-end t)").to_string(),
+        "(1 3 2)"
+    );
+    assert_eq!(
+        evaluate("(delete-if #'evenp '(1 2 4 3))").to_string(),
+        "(1 3)"
+    );
+    assert_eq!(
+        evaluate("(funcall #'remove 2 '(1 2 3))").to_string(),
+        "(1 3)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_sequence_substitutions() {
+    assert_eq!(
+        evaluate("(substitute 9 2 '(1 2 2 3))").to_string(),
+        "(1 9 9 3)"
+    );
+    assert_eq!(
+        evaluate("(substitute 9 2 '(1 2 2 3) :from-end t :count 1)").to_string(),
+        "(1 2 9 3)"
+    );
+    assert_eq!(
+        evaluate("(substitute-if-not 0 #'evenp '(1 2 4 3))").to_string(),
+        "(0 2 4 0)"
+    );
+    assert_eq!(
+        evaluate("(substitute 0 2 #(1 2 3))").to_string(),
+        "#(1 0 3)"
+    );
+    assert_eq!(
+        evaluate("(substitute #\\x #\\a \"banana\" :count 2)").to_string(),
+        "\"bxnxna\""
+    );
+    assert_eq!(
+        evaluate("(substitute 9 2 '((1) (2) (2)) :key #'car :count 1)").to_string(),
+        "((1) 9 (2))"
+    );
+    assert_eq!(
+        evaluate("(nsubstitute 8 2 '(1 2 3))").to_string(),
+        "(1 8 3)"
+    );
+    assert_eq!(
+        evaluate("(funcall #'substitute 9 2 '(1 2 3))").to_string(),
+        "(1 9 3)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_list_set_operations() {
+    assert_eq!(evaluate("(union '(1 2 2) '(2 3 3))").to_string(), "(1 2 3)");
+    assert_eq!(
+        evaluate("(intersection '(1 2 2 3) '(2 3 4))").to_string(),
+        "(2 3)"
+    );
+    assert_eq!(
+        evaluate("(set-difference '(1 2 2 3) '(2))").to_string(),
+        "(1 3)"
+    );
+    assert_eq!(
+        evaluate("(set-exclusive-or '(1 2 2 3) '(2 4))").to_string(),
+        "(1 3 4)"
+    );
+    assert_eq!(evaluate("(subsetp '(1 2) '(3 2 1 4))").to_string(), "T");
+    assert_eq!(
+        evaluate("(union '(1 2) '(2 3) :test #'=)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate("(union '((1 a) (2 b)) '((1 c) (3 d)) :key #'car)").to_string(),
+        "((1 A) (2 B) (3 D))"
+    );
+    assert_eq!(evaluate("(nunion '(1 2) '(2 3))").to_string(), "(1 2 3)");
+    assert_eq!(evaluate("(funcall #'union '(1) '(2))").to_string(), "(1 2)");
+}
+
+#[test]
+fn compiled_evaluates_list_construction_and_partitioning() {
+    assert_eq!(evaluate("(list* 1 2 '(3 4))").to_string(), "(1 2 3 4)");
+    assert_eq!(evaluate("(list* 1 2 3)").to_string(), "(1 2 . 3)");
+    assert_eq!(
+        evaluate("(make-list 3 :initial-element 'x)").to_string(),
+        "(X X X)"
+    );
+    assert_eq!(
+        evaluate("(copy-tree '((1) (2 3)))").to_string(),
+        "((1) (2 3))"
+    );
+    assert_eq!(
+        evaluate("(copy-tree '(a (b . c)))").to_string(),
+        "(A (B . C))"
+    );
+    assert_eq!(evaluate("(list-length '(1 2 3))").to_string(), "3");
+    assert_eq!(evaluate("(nthcdr 2 '(1 2 3))").to_string(), "(3)");
+    assert_eq!(evaluate("(nthcdr 3 '(1 2 3))").to_string(), "NIL");
+    assert_eq!(evaluate("(nthcdr 1 '(1 . 2))").to_string(), "2");
+    assert_eq!(
+        evaluate("(acons 'a 1 '((b . 2)))").to_string(),
+        "((A . 1) (B . 2))"
+    );
+    assert_eq!(
+        evaluate("(pairlis '(a b) '(1 2) '((c . 3)))").to_string(),
+        "((B . 2) (A . 1) (C . 3))"
+    );
+    assert_eq!(
+        evaluate("(copy-alist '((a . 1) (b 2)))").to_string(),
+        "((A . 1) (B 2))"
+    );
+    assert_eq!(
+        evaluate("(multiple-value-list (get-properties '(:a 1 :b 2) '(:b :a)))").to_string(),
+        "(:A 1 (:A 1 :B 2))"
+    );
+    assert_eq!(
+        evaluate("(multiple-value-list (get-properties '(:a 1) '(:z)))").to_string(),
+        "(NIL NIL NIL)"
+    );
+    assert_eq!(evaluate("(last '(1 2 3) 2)").to_string(), "(2 3)");
+    assert_eq!(evaluate("(last '(1 2 3) 0)").to_string(), "NIL");
+    assert_eq!(evaluate("(butlast '(1 2 3))").to_string(), "(1 2)");
+    assert_eq!(evaluate("(butlast '(1 2 3) 0)").to_string(), "(1 2 3)");
+    assert_eq!(evaluate("(nbutlast '(1 2 3) 2)").to_string(), "(1)");
+    assert_eq!(evaluate("(nreverse '(1 2 3))").to_string(), "(3 2 1)");
+    assert_eq!(evaluate("(nconc '(1 2) '(3 4))").to_string(), "(1 2 3 4)");
+    assert_eq!(
+        evaluate("(revappend '(1 2) '(3 4))").to_string(),
+        "(2 1 3 4)"
+    );
+    assert_eq!(
+        evaluate("(funcall #'list* 1 '(2 3))").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(evaluate("(funcall #'nthcdr 1 '(4 5))").to_string(), "(5)");
+}
+
+#[test]
+fn compiled_rejects_invalid_list_operation_arguments() {
+    for source in [
+        "(copy-list 1)",
+        "(copy-alist '(a))",
+        "(last 1)",
+        "(last '(1 2) -1)",
+        "(butlast 1)",
+        "(reverse 1)",
+        "(nreverse 1)",
+    ] {
+        assert!(
+            Runtime::new().eval_compiled_source(source).is_err(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn compiled_evaluates_sequence_fill_replace_and_concatenate() {
+    assert_eq!(
+        evaluate("(fill 0 '(1 2 3 4) :start 1 :end 3)").to_string(),
+        "(1 0 0 4)"
+    );
+    assert_eq!(
+        evaluate("(fill #\\x \"abcd\" :start 1)").to_string(),
+        "\"axxx\""
+    );
+    assert_eq!(evaluate("(fill 9 #(1 2 3) :end 2)").to_string(), "#(9 9 3)");
+    assert_eq!(
+        evaluate("(replace '(9 9 9) '(1 2 3 4) :start1 1 :end1 3 :start2 0 :end2 2)").to_string(),
+        "(9 1 2)"
+    );
+    assert_eq!(
+        evaluate("(replace \"xxxx\" \"abcd\" :start1 1 :end1 3 :start2 0 :end2 2)").to_string(),
+        "\"xabx\""
+    );
+    assert_eq!(evaluate("(copy-seq #(1 2))").to_string(), "#(1 2)");
+    assert_eq!(
+        evaluate("(concatenate 'list '(1 2) #(3) \"4\")").to_string(),
+        "(1 2 3 #\\4)"
+    );
+    assert_eq!(
+        evaluate("(concatenate 'string \"ab\" '(#\\c #\\d))").to_string(),
+        "\"abcd\""
+    );
+    assert_eq!(
+        evaluate("(funcall #'fill 0 '(1 2) :start 1)").to_string(),
+        "(1 0)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_map_into_over_sequences() {
+    assert_eq!(
+        evaluate(
+            "(let ((result (vector 0 0 0)))
+               (map-into result #'+ '(1 2)))",
+        )
+        .to_string(),
+        "#(1 2 0)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((result (list 9 9 9)))
+               (map-into result #'1+ '(1 2))
+               result)",
+        )
+        .to_string(),
+        "(2 3 9)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((result \"xxx\"))
+               (map-into result #'identity \"ab\")
+               result)",
+        )
+        .to_string(),
+        "\"abx\""
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((result (vector 0 0)))
+               (map-into result (lambda () 7))
+               result)",
+        )
+        .to_string(),
+        "#(7 7)"
+    );
+    assert_eq!(
+        evaluate("(map-into (vector 0 0) #'1+ '(1 2))").to_string(),
+        "#(2 3)"
+    );
+    assert_eq!(
+        evaluate("(map-into \"xx\" #'identity \"ab\")").to_string(),
+        "\"ab\""
+    );
+    assert_eq!(evaluate("(map-into nil #'1+ '(1 2))").to_string(), "NIL");
+    assert_eq!(
+        evaluate(
+            "(let ((container (vector (vector 0 0))))
+               (map-into (aref container 0) #'1+ '(1 2))
+               container)",
+        )
+        .to_string(),
+        "#(#(2 3))"
+    );
+}
+use super::*;

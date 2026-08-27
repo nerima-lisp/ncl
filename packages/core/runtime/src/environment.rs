@@ -5,11 +5,13 @@ use std::rc::Rc;
 use ncl_syntax::Form;
 
 use crate::Value;
-use crate::value::{ClassDefinition, ConditionDefinition, DefsetfDefinition, StructureDefinition};
+use crate::value::{ClassDefinition, StructureDefinition};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+/// Lexically nested bindings and runtime metadata.
 pub struct Environment(Rc<RefCell<Frame>>);
 
+#[derive(Debug)]
 struct Frame {
     values: HashMap<String, Value>,
     exact_values: HashMap<String, Value>,
@@ -19,10 +21,8 @@ struct Frame {
     exact_functions: HashMap<String, Value>,
     setf_functions: HashMap<String, Value>,
     setf_expanders: HashMap<String, Value>,
-    defsetf_definitions: HashMap<String, DefsetfDefinition>,
     structures: HashMap<String, StructureDefinition>,
     classes: HashMap<String, Rc<ClassDefinition>>,
-    conditions: HashMap<String, Rc<ConditionDefinition>>,
     symbol_properties: Vec<(Value, Value)>,
     block_targets: HashMap<String, u64>,
     tag_targets: HashMap<String, u64>,
@@ -30,6 +30,8 @@ struct Frame {
 }
 
 impl Environment {
+    /// Creates an empty root environment.
+    #[must_use]
     pub fn new() -> Self {
         Self(Rc::new(RefCell::new(Frame {
             values: HashMap::new(),
@@ -40,10 +42,8 @@ impl Environment {
             exact_functions: HashMap::new(),
             setf_functions: HashMap::new(),
             setf_expanders: HashMap::new(),
-            defsetf_definitions: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
-            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),
@@ -51,6 +51,8 @@ impl Environment {
         })))
     }
 
+    /// Creates a child environment that falls back to this environment.
+    #[must_use]
     pub fn child(&self) -> Self {
         Self(Rc::new(RefCell::new(Frame {
             values: HashMap::new(),
@@ -61,10 +63,8 @@ impl Environment {
             exact_functions: HashMap::new(),
             setf_functions: HashMap::new(),
             setf_expanders: HashMap::new(),
-            defsetf_definitions: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
-            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),
@@ -76,6 +76,7 @@ impl Environment {
         Rc::ptr_eq(&self.0, &other.0)
     }
 
+    /// Defines a case-insensitive variable binding.
     pub fn define(&self, name: impl AsRef<str>, value: Value) {
         let key = normalize_name(name.as_ref());
         self.0.borrow_mut().values.insert(key, value);
@@ -88,6 +89,8 @@ impl Environment {
             .insert(name.as_ref().to_string(), value);
     }
 
+    /// Looks up a case-insensitive variable binding through the parent chain.
+    #[must_use]
     pub fn lookup(&self, name: &str) -> Option<Value> {
         let key = normalize_name(name);
         let (value, parent) = {
@@ -105,6 +108,8 @@ impl Environment {
         value.or_else(|| parent.and_then(|environment| environment.lookup_exact(name)))
     }
 
+    /// Updates the nearest existing case-insensitive variable binding.
+    #[must_use]
     pub fn set(&self, name: &str, value: Value) -> bool {
         let key = normalize_name(name);
         if self.0.borrow().values.contains_key(&key) {
@@ -263,26 +268,6 @@ impl Environment {
         value.or_else(|| parent.and_then(|environment| environment.lookup_setf_expander(name)))
     }
 
-    pub(crate) fn define_defsetf(&self, name: impl AsRef<str>, definition: DefsetfDefinition) {
-        let key = normalize_name(name.as_ref());
-        self.0
-            .borrow_mut()
-            .defsetf_definitions
-            .insert(key, definition);
-    }
-
-    pub(crate) fn lookup_defsetf(&self, name: &str) -> Option<DefsetfDefinition> {
-        let key = normalize_name(name);
-        let (definition, parent) = {
-            let frame = self.0.borrow();
-            (
-                frame.defsetf_definitions.get(&key).cloned(),
-                frame.parent.clone(),
-            )
-        };
-        definition.or_else(|| parent.and_then(|environment| environment.lookup_defsetf(name)))
-    }
-
     pub(crate) fn remove_function(&self, name: &str) -> bool {
         let key = normalize_name(name);
         let (removed, parent) = {
@@ -329,24 +314,6 @@ impl Environment {
             (frame.classes.get(&key).cloned(), frame.parent.clone())
         };
         definition.or_else(|| parent.and_then(|environment| environment.lookup_class(name)))
-    }
-
-    pub(crate) fn define_condition(
-        &self,
-        name: impl AsRef<str>,
-        definition: Rc<ConditionDefinition>,
-    ) {
-        let key = normalize_name(name.as_ref());
-        self.0.borrow_mut().conditions.insert(key, definition);
-    }
-
-    pub(crate) fn lookup_condition(&self, name: &str) -> Option<Rc<ConditionDefinition>> {
-        let key = normalize_name(name);
-        let (definition, parent) = {
-            let frame = self.0.borrow();
-            (frame.conditions.get(&key).cloned(), frame.parent.clone())
-        };
-        definition.or_else(|| parent.and_then(|environment| environment.lookup_condition(name)))
     }
 
     pub(crate) fn symbol_plist(&self, symbol: &Value) -> Option<Value> {
@@ -438,6 +405,116 @@ impl Default for Environment {
     }
 }
 
-pub(crate) fn normalize_name(name: &str) -> String {
+pub fn normalize_name(name: &str) -> String {
     name.to_ascii_uppercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_integer(value: Option<&Value>, expected: i64) {
+        assert!(matches!(value, Some(Value::Integer(actual)) if *actual == expected));
+    }
+
+    #[test]
+    fn lexical_bindings_update_and_remove_through_parent_chain() {
+        let root = Environment::new();
+        let child = root.child();
+        root.define("Answer", Value::Integer(41));
+
+        assert_integer(child.lookup("answer").as_ref(), 41);
+        assert!(child.set("ANSWER", Value::Integer(42)));
+        assert_integer(root.lookup("answer").as_ref(), 42);
+        assert!(child.remove("answer"));
+        assert!(root.lookup("answer").is_none());
+        assert!(!child.set("missing", Value::Nil));
+        assert!(!child.remove("missing"));
+    }
+
+    #[test]
+    fn exact_bindings_preserve_case_and_update_parent() {
+        let root = Environment::default();
+        let child = root.child();
+        root.define_exact("CaseSensitive", Value::Integer(7));
+
+        assert_integer(child.lookup_exact("CaseSensitive").as_ref(), 7);
+        assert!(child.lookup_exact("casesensitive").is_none());
+        assert!(child.set_exact("CaseSensitive", Value::Integer(8)));
+        assert_integer(root.lookup_exact("CaseSensitive").as_ref(), 8);
+        assert!(child.remove_exact("CaseSensitive"));
+        assert!(root.lookup_exact("CaseSensitive").is_none());
+        assert!(!child.set_exact("missing", Value::Nil));
+        assert!(!child.remove_exact("missing"));
+    }
+
+    #[test]
+    fn function_bindings_are_case_insensitive_and_exact_variants_are_distinct() {
+        let root = Environment::new();
+        let child = root.child();
+        root.define_function("Print", Value::Integer(1));
+        root.define_function_exact("Print", Value::Integer(2));
+
+        assert_integer(child.lookup_function("print").as_ref(), 1);
+        assert_integer(child.lookup_function_exact("Print").as_ref(), 2);
+        assert!(child.lookup_function_exact("print").is_none());
+    }
+
+    #[test]
+    fn function_bindings_remove_from_parent_and_report_missing_names() {
+        let root = Environment::new();
+        let child = root.child();
+        root.define_function("Print", Value::Integer(1));
+        root.define_function_exact("Print", Value::Integer(2));
+
+        assert!(child.remove_function("print"));
+        assert!(!child.remove_function("print"));
+        assert!(child.remove_function_exact("Print"));
+        assert!(!child.remove_function_exact("Print"));
+    }
+
+    #[test]
+    fn auxiliary_bindings_follow_parent_scope_and_shadowing_rules() {
+        let root = Environment::new();
+        let child = root.child();
+        let mut forms = match ncl_syntax::read("replacement") {
+            Ok(forms) => forms,
+            Err(error) => panic!("test form should parse: {error}"),
+        };
+        let form = forms.remove(0);
+
+        root.define_symbol_macro("when", form.clone());
+        assert!(child.lookup_symbol_macro("WHEN").is_some());
+        child.define("when", Value::Nil);
+        assert!(child.lookup_symbol_macro("when").is_none());
+        assert!(child.lookup_symbol_macro_exact("when").is_none());
+        child.define_symbol_macro_exact("when", form);
+        assert!(child.lookup_symbol_macro_exact("when").is_some());
+
+        root.define_setf_function("place", Value::Integer(1));
+        root.define_setf_expander("place", Value::Integer(2));
+        assert_integer(child.lookup_setf_function("PLACE").as_ref(), 1);
+        assert_integer(child.lookup_setf_expander("PLACE").as_ref(), 2);
+
+        root.define_block("done", 11);
+        root.define_tag("again", 22);
+        assert_eq!(child.lookup_block("DONE"), Some(11));
+        assert_eq!(child.lookup_tag("AGAIN"), Some(22));
+        assert_eq!(normalize_name("MiXeD"), "MIXED");
+    }
+
+    #[test]
+    fn symbol_property_bindings_update_remove_and_compare_symbols() {
+        let root = Environment::new();
+        let child = root.child();
+        let symbol = Value::symbol("name");
+
+        assert!(root.symbol_plist(&symbol).is_none());
+        root.set_symbol_plist(&symbol, Value::Integer(1));
+        assert_integer(child.symbol_plist(&Value::symbol("NAME")).as_ref(), 1);
+        child.set_symbol_plist(&symbol, Value::Integer(2));
+        assert_integer(root.symbol_plist(&symbol).as_ref(), 2);
+        assert_integer(child.remove_symbol_property(&symbol).as_ref(), 2);
+        assert!(root.symbol_plist(&symbol).is_none());
+    }
 }

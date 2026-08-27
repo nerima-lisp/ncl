@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
+
 use ncl_runtime::{Runtime, RuntimeError};
 
 fn evaluate_interpreted(source: &str) -> Result<String, String> {
@@ -168,6 +170,23 @@ fn block_and_return_from_share_dynamic_control_semantics() {
     assert_interpreted_and_compiled("(block done (block done (return-from done 1) 2) 3)", "3");
     assert_interpreted_and_compiled("(block outer (block inner (return-from outer 1) 2) 3)", "1");
     assert_interpreted_and_compiled("(block done (ignore-errors (return-from done 9)) 4)", "9");
+}
+
+#[test]
+fn catch_and_throw_share_tag_matching_semantics_in_both_execution_modes() {
+    let cases = [
+        ("(catch 'tag (throw 'tag 42))", "42"),
+        ("(catch 7 (throw 7 9))", "9"),
+        ("(catch 'outer (catch 'inner (throw 'outer 8)))", "8"),
+        (
+            "(catch 'tag (unwind-protect (throw 'tag 5) (values 1 2)))",
+            "5",
+        ),
+    ];
+
+    for (source, expected) in cases {
+        assert_interpreted_and_compiled(source, expected);
+    }
 }
 
 #[test]

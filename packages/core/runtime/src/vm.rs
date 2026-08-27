@@ -1,22 +1,23 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 
-use ncl_compiler::{Constant, FunctionCode, FunctionId, Instruction, Program};
-use ncl_syntax::{FormKind, Span};
+use ncl_compiler::{
+    Constant, DestructureLambdaList, DestructurePattern, DestructureSpec, FunctionCode, FunctionId,
+    HandlerBindClause, HandlerCaseClause, Instruction, Program, RestartBindClause,
+    RestartCaseClause,
+};
+use ncl_syntax::Span;
 
-use crate::builtins::eql_value;
 use crate::environment::normalize_name;
 use crate::error::ThrowTag;
 use crate::evaluator::{ConditionHandlerBinding, RestartBinding};
 use crate::{Environment, ReturnValue, Runtime, RuntimeError, Value};
 
-#[path = "vm/destructuring.rs"]
-mod destructuring;
-
-pub(crate) fn run_entry(
+pub fn run_entry(
     runtime: &Runtime,
-    program: Rc<Program>,
+    program: &Rc<Program>,
     function_id: FunctionId,
-    environment: Environment,
+    environment: &Environment,
     span: Span,
 ) -> Result<Value, RuntimeError> {
     let Some(function) = program.functions.get(function_id) else {
@@ -39,23 +40,54 @@ pub(crate) fn run_entry(
             actual: 0,
         });
     }
-    run_code(runtime, &program, function, environment, span)
+    run_code(runtime, program, function, environment.clone(), span)
 }
 
-pub(crate) fn run(
+pub fn run(
     runtime: &Runtime,
-    program: Rc<Program>,
+    program: &Rc<Program>,
     function_id: FunctionId,
-    environment: Environment,
+    environment: &Environment,
     arguments: &[Value],
     span: Span,
 ) -> Result<Value, RuntimeError> {
     let Some(function) = program.functions.get(function_id) else {
         return Err(invalid("compiled function id is out of range", span));
     };
+    let (optional_supplied_count, key_start) = argument_layout(function, arguments)?;
+
+    let local = environment.child();
+    let _dynamic_guard = runtime.dynamic_guard();
+    bind_required(runtime, function, arguments, &local);
+    bind_optional(
+        runtime,
+        program,
+        function,
+        arguments,
+        optional_supplied_count,
+        &local,
+        span,
+    )?;
+    bind_rest(runtime, function, arguments, key_start, &local);
+    bind_keywords(
+        runtime, program, function, arguments, key_start, &local, span,
+    )?;
+    bind_auxiliary(runtime, program, function, &local, span)?;
+    run_code(runtime, program, function, local, span)
+}
+
+fn argument_layout(
+    function: &FunctionCode,
+    arguments: &[Value],
+) -> Result<(usize, usize), RuntimeError> {
     let required_count = function.parameters.len();
     let optional_count = function.optional.len();
     let maximum_count = required_count + optional_count;
+    let function_name = function
+        .name
+        .as_deref()
+        .unwrap_or("compiled function")
+        .to_string();
     if arguments.len() < required_count {
         let expected =
             if optional_count > 0 || function.rest.is_some() || function.has_keyword_section {
@@ -64,34 +96,13 @@ pub(crate) fn run(
                 required_count.to_string()
             };
         return Err(RuntimeError::Arity {
-            function: function
-                .name
-                .as_deref()
-                .unwrap_or("compiled function")
-                .to_string(),
+            function: function_name,
             expected,
             actual: arguments.len(),
         });
     }
-    let optional_supplied_count = if function.has_keyword_section {
-        let available = arguments
-            .len()
-            .saturating_sub(required_count)
-            .min(optional_count);
-        (0..available)
-            .take_while(|index| {
-                !matches!(
-                    arguments[required_count + *index],
-                    Value::Keyword(_) | Value::KeywordExact(_)
-                )
-            })
-            .count()
-    } else {
-        arguments
-            .len()
-            .saturating_sub(required_count)
-            .min(optional_count)
-    };
+    let optional_supplied_count =
+        supplied_optional_count(function, arguments, required_count, optional_count);
     let key_start = required_count + optional_supplied_count;
     if !function.has_keyword_section && function.rest.is_none() && arguments.len() > maximum_count {
         let expected = if optional_count > 0 {
@@ -100,179 +111,248 @@ pub(crate) fn run(
             maximum_count.to_string()
         };
         return Err(RuntimeError::Arity {
-            function: function
-                .name
-                .as_deref()
-                .unwrap_or("compiled function")
-                .to_string(),
+            function: function_name,
             expected,
             actual: arguments.len(),
         });
     }
+    Ok((optional_supplied_count, key_start))
+}
 
-    let local = environment.child();
-    let _dynamic_guard = runtime.dynamic_guard();
-    let _special_guard =
-        runtime.special_declaration_guard(&function.special_names, &function.special_exact_names);
-    for (index, (parameter, argument)) in
-        function.parameters.iter().zip(arguments.iter()).enumerate()
-    {
+fn supplied_optional_count(
+    function: &FunctionCode,
+    arguments: &[Value],
+    required_count: usize,
+    optional_count: usize,
+) -> usize {
+    let supplied_count = arguments
+        .len()
+        .saturating_sub(required_count)
+        .min(optional_count);
+    if !function.has_keyword_section {
+        return supplied_count;
+    }
+    (0..supplied_count)
+        .take_while(|index| {
+            !matches!(
+                arguments[required_count + *index],
+                Value::Keyword(_) | Value::KeywordExact(_)
+            )
+        })
+        .count()
+}
+
+fn bind_required(
+    runtime: &Runtime,
+    function: &FunctionCode,
+    arguments: &[Value],
+    local: &Environment,
+) {
+    for (index, (parameter, argument)) in function.parameters.iter().zip(arguments).enumerate() {
         if function
             .required_escaped
             .get(index)
             .copied()
             .unwrap_or(false)
         {
-            runtime.define_exact_in(parameter, argument.clone(), &local);
+            runtime.define_exact_in(parameter, argument.clone(), local);
         } else {
-            runtime.define_in(parameter, argument.clone(), &local);
+            runtime.define_in(parameter, argument.clone(), local);
         }
     }
+}
+
+fn bind_optional(
+    runtime: &Runtime,
+    program: &Rc<Program>,
+    function: &FunctionCode,
+    arguments: &[Value],
+    supplied_count: usize,
+    local: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
     for (index, specification) in function.optional.iter().enumerate() {
         let supplied =
-            (index < optional_supplied_count).then(|| &arguments[required_count + index]);
-        let value = if let Some(argument) = supplied {
-            argument.clone()
-        } else {
-            let Some(default_function) = program.functions.get(specification.default_function)
-            else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "compiled optional default is out of range".to_string(),
-                    span: Some(span),
-                });
-            };
-            run_code(runtime, &program, default_function, local.clone(), span)?.primary_value()
+            (index < supplied_count).then(|| &arguments[function.parameters.len() + index]);
+        let value = match supplied {
+            Some(argument) => argument.clone(),
+            None => default_value(
+                runtime,
+                program,
+                specification.default_function,
+                local,
+                span,
+                "compiled optional default is out of range",
+            )?,
         };
-        if specification.name_escaped {
-            runtime.define_exact_in(&specification.name, value, &local);
-        } else {
-            runtime.define_in(&specification.name, value, &local);
-        }
-        if let Some(supplied_p) = &specification.supplied_p {
-            if specification.supplied_p_escaped.unwrap_or(false) {
-                runtime.define_exact_in(supplied_p, Value::boolean(supplied.is_some()), &local);
-            } else {
-                runtime.define_in(supplied_p, Value::boolean(supplied.is_some()), &local);
-            }
-        }
-    }
-    if let Some(rest) = &function.rest {
-        let rest_start = key_start;
-        let value = Value::list(arguments[rest_start..].to_vec());
-        if function.rest_escaped {
-            runtime.define_exact_in(rest, value, &local);
-        } else {
-            runtime.define_in(rest, value, &local);
+        define_binding(
+            runtime,
+            &specification.name,
+            value,
+            specification.name_escaped,
+            local,
+        );
+        if let Some(name) = &specification.supplied_p {
+            define_binding(
+                runtime,
+                name,
+                Value::boolean(supplied.is_some()),
+                specification.supplied_p_escaped.unwrap_or(false),
+                local,
+            );
         }
     }
-    if function.has_keyword_section {
-        let keyword_arguments = &arguments[key_start..];
-        if keyword_arguments.len() % 2 != 0 {
+    Ok(())
+}
+
+fn bind_rest(
+    runtime: &Runtime,
+    function: &FunctionCode,
+    arguments: &[Value],
+    key_start: usize,
+    local: &Environment,
+) {
+    if let Some(name) = &function.rest {
+        define_binding(
+            runtime,
+            name,
+            Value::list(arguments[key_start..].to_vec()),
+            function.rest_escaped,
+            local,
+        );
+    }
+}
+
+fn bind_keywords(
+    runtime: &Runtime,
+    program: &Rc<Program>,
+    function: &FunctionCode,
+    arguments: &[Value],
+    key_start: usize,
+    local: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if !function.has_keyword_section {
+        return Ok(());
+    }
+    let keyword_arguments = &arguments[key_start..];
+    if !keyword_arguments.len().is_multiple_of(2) {
+        return Err(RuntimeError::InvalidForm {
+            message: "keyword arguments must be supplied in pairs".to_string(),
+            span: Some(span),
+        });
+    }
+    let mut supplied = HashMap::new();
+    let mut accepts_unknown = function.allow_other_keys;
+    for pair in keyword_arguments.as_chunks::<2>().0 {
+        let (Value::Keyword(keyword) | Value::KeywordExact(keyword)) = &pair[0] else {
             return Err(RuntimeError::InvalidForm {
-                message: "keyword arguments must be supplied in pairs".to_string(),
+                message: "keyword argument name must be a keyword".to_string(),
                 span: Some(span),
             });
+        };
+        let name = keyword.to_string();
+        if name == "ALLOW-OTHER-KEYS" && pair[1].is_truthy() {
+            accepts_unknown = true;
         }
-        let mut supplied_keywords = Vec::new();
-        let mut accepts_unknown_keywords = function.allow_other_keys;
-        for pair in keyword_arguments.chunks_exact(2) {
-            let (keyword_name, keyword_name_escaped) = match &pair[0] {
-                Value::Keyword(keyword) => (keyword.to_string(), false),
-                Value::KeywordExact(keyword) => (keyword.to_string(), true),
-                _ => {
-                    return Err(RuntimeError::InvalidForm {
-                        message: "keyword argument name must be a keyword".to_string(),
-                        span: Some(span),
-                    });
-                }
-            };
-            if compiled_keyword_matches(
-                "ALLOW-OTHER-KEYS",
-                false,
-                &keyword_name,
-                keyword_name_escaped,
-            ) && pair[1].is_truthy()
-            {
-                accepts_unknown_keywords = true;
-            }
-            supplied_keywords.push((keyword_name, keyword_name_escaped, pair[1].clone()));
-        }
-        if !accepts_unknown_keywords {
-            for (keyword_name, keyword_name_escaped, _) in &supplied_keywords {
-                if !compiled_keyword_matches(
-                    "ALLOW-OTHER-KEYS",
-                    false,
-                    keyword_name,
-                    *keyword_name_escaped,
-                ) && !function.keywords.iter().any(|specification| {
-                    compiled_keyword_matches(
-                        &specification.keyword_name,
-                        specification.keyword_name_escaped,
-                        keyword_name,
-                        *keyword_name_escaped,
-                    )
-                }) {
-                    return Err(RuntimeError::InvalidForm {
-                        message: format!("unknown keyword :{keyword_name}"),
-                        span: Some(span),
-                    });
-                }
-            }
-        }
-        for specification in &function.keywords {
-            let supplied = supplied_keywords
-                .iter()
-                .find(|(keyword_name, keyword_name_escaped, _)| {
-                    compiled_keyword_matches(
-                        &specification.keyword_name,
-                        specification.keyword_name_escaped,
-                        keyword_name,
-                        *keyword_name_escaped,
-                    )
-                })
-                .map(|(_, _, argument)| argument);
-            let value = if let Some(argument) = supplied {
-                argument.clone()
-            } else {
-                let Some(default_function) = program.functions.get(specification.default_function)
-                else {
-                    return Err(RuntimeError::InvalidForm {
-                        message: "compiled keyword default is out of range".to_string(),
-                        span: Some(span),
-                    });
-                };
-                run_code(runtime, &program, default_function, local.clone(), span)?.primary_value()
-            };
-            if specification.name_escaped {
-                runtime.define_exact_in(&specification.name, value, &local);
-            } else {
-                runtime.define_in(&specification.name, value, &local);
-            }
-            if let Some(supplied_p) = &specification.supplied_p {
-                if specification.supplied_p_escaped.unwrap_or(false) {
-                    runtime.define_exact_in(supplied_p, Value::boolean(supplied.is_some()), &local);
-                } else {
-                    runtime.define_in(supplied_p, Value::boolean(supplied.is_some()), &local);
-                }
-            }
+        supplied.insert(name, pair[1].clone());
+    }
+    if !accepts_unknown
+        && let Some(name) = supplied.keys().find(|name| {
+            *name != "ALLOW-OTHER-KEYS"
+                && !function
+                    .keywords
+                    .iter()
+                    .any(|specification| specification.keyword_name == **name)
+        })
+    {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("unknown keyword :{name}"),
+            span: Some(span),
+        });
+    }
+    for specification in &function.keywords {
+        let value = match supplied.get(&specification.keyword_name) {
+            Some(argument) => argument.clone(),
+            None => default_value(
+                runtime,
+                program,
+                specification.default_function,
+                local,
+                span,
+                "compiled keyword default is out of range",
+            )?,
+        };
+        define_binding(
+            runtime,
+            &specification.name,
+            value,
+            specification.name_escaped,
+            local,
+        );
+        if let Some(name) = &specification.supplied_p {
+            define_binding(
+                runtime,
+                name,
+                Value::boolean(supplied.contains_key(&specification.keyword_name)),
+                specification.supplied_p_escaped.unwrap_or(false),
+                local,
+            );
         }
     }
+    Ok(())
+}
+
+fn bind_auxiliary(
+    runtime: &Runtime,
+    program: &Rc<Program>,
+    function: &FunctionCode,
+    local: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
     for specification in &function.auxiliary {
-        let Some(default_function) = program.functions.get(specification.default_function) else {
-            return Err(RuntimeError::InvalidForm {
-                message: "compiled auxiliary default is out of range".to_string(),
-                span: Some(span),
-            });
-        };
-        let value =
-            run_code(runtime, &program, default_function, local.clone(), span)?.primary_value();
-        if specification.name_escaped {
-            runtime.define_exact_in(&specification.name, value, &local);
-        } else {
-            runtime.define_in(&specification.name, value, &local);
-        }
+        let value = default_value(
+            runtime,
+            program,
+            specification.default_function,
+            local,
+            span,
+            "compiled auxiliary default is out of range",
+        )?;
+        define_binding(
+            runtime,
+            &specification.name,
+            value,
+            specification.name_escaped,
+            local,
+        );
     }
-    run_code(runtime, &program, function, local, span)
+    Ok(())
+}
+
+fn default_value(
+    runtime: &Runtime,
+    program: &Rc<Program>,
+    function_id: FunctionId,
+    local: &Environment,
+    span: Span,
+    message: &str,
+) -> Result<Value, RuntimeError> {
+    let Some(function) = program.functions.get(function_id) else {
+        return Err(RuntimeError::InvalidForm {
+            message: message.to_string(),
+            span: Some(span),
+        });
+    };
+    Ok(run_code(runtime, program, function, local.clone(), span)?.primary_value())
+}
+
+fn define_binding(runtime: &Runtime, name: &str, value: Value, escaped: bool, local: &Environment) {
+    if escaped {
+        runtime.define_exact_in(name, value, local);
+    } else {
+        runtime.define_in(name, value, local);
+    }
 }
 
 fn run_code(
@@ -285,1402 +365,32 @@ fn run_code(
     run_code_from(runtime, program, function, environment, span, 0)
 }
 
-fn run_code_from(
-    runtime: &Runtime,
-    program: &Rc<Program>,
-    function: &FunctionCode,
-    mut environment: Environment,
-    span: Span,
-    start_program_counter: usize,
-) -> Result<Value, RuntimeError> {
-    let mut stack = Vec::new();
-    let mut scopes: Vec<(Environment, usize, usize)> = Vec::new();
-    let mut special_guards = Vec::new();
-    let _dynamic_guard = runtime.dynamic_guard();
-    let mut program_counter = start_program_counter;
+#[path = "vm_execution.rs"]
+mod execution;
+#[allow(clippy::wildcard_imports)]
+use execution::*;
 
-    loop {
-        let Some(instruction) = function.instructions.get(program_counter) else {
-            return Err(invalid(
-                "compiled function reached an invalid instruction pointer",
-                span,
-            ));
-        };
-
-        match instruction {
-            Instruction::Constant(constant) => {
-                stack.push(constant_value(constant));
-                program_counter += 1;
-            }
-            Instruction::Quote(form) => {
-                stack.push(runtime.quoted_value(form)?);
-                program_counter += 1;
-            }
-            Instruction::QuasiQuote(form) => {
-                stack.push(runtime.quasiquote_value(form, &environment)?);
-                program_counter += 1;
-            }
-            Instruction::Load(name) => {
-                let value = runtime.lookup_in(name, &environment).ok_or_else(|| {
-                    RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    }
-                })?;
-                stack.push(value);
-                program_counter += 1;
-            }
-            Instruction::LoadExact(name) => {
-                let value = runtime.lookup_exact_in(name, &environment).ok_or_else(|| {
-                    RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    }
-                })?;
-                stack.push(value);
-                program_counter += 1;
-            }
-            Instruction::FunctionLoad(name) => {
-                let value = runtime
-                    .lookup_function_in(name, &environment)
-                    .ok_or_else(|| RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    })?;
-                stack.push(value);
-                program_counter += 1;
-            }
-            Instruction::FunctionLoadExact(name) => {
-                let value = runtime
-                    .lookup_function_exact_in(name, &environment)
-                    .ok_or_else(|| RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    })?;
-                stack.push(value);
-                program_counter += 1;
-            }
-            Instruction::FunctionCallLoad(name) => {
-                let value = runtime
-                    .lookup_callable_in(name, &environment)
-                    .ok_or_else(|| RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    })?;
-                stack.push(value);
-                program_counter += 1;
-            }
-            Instruction::FunctionCallLoadExact(name) => {
-                let value = runtime
-                    .lookup_callable_exact_in(name, &environment)
-                    .ok_or_else(|| RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    })?;
-                stack.push(value);
-                program_counter += 1;
-            }
-            Instruction::SetfFunctionLoad(name) => {
-                let value = environment.lookup_setf_function(name).ok_or_else(|| {
-                    RuntimeError::UnboundVariable {
-                        name: format!("(SETF {name})"),
-                        span: Some(span),
-                    }
-                })?;
-                stack.push(value);
-                program_counter += 1;
-            }
-            Instruction::IsBound(name) => {
-                stack.push(Value::boolean(runtime.is_bound_in(name, &environment)));
-                program_counter += 1;
-            }
-            Instruction::IsBoundExact(name) => {
-                stack.push(Value::boolean(
-                    runtime.is_bound_exact_in(name, &environment),
-                ));
-                program_counter += 1;
-            }
-            Instruction::Define(name) => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("define has no value on the stack", span))?;
-                let value = value.primary_value();
-                runtime.define_in(name, value.clone(), &environment);
-                *stack
-                    .last_mut()
-                    .ok_or_else(|| invalid("define has no value on the stack", span))? = value;
-                program_counter += 1;
-            }
-            Instruction::DefineExact(name) => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("define has no value on the stack", span))?;
-                let value = value.primary_value();
-                runtime.define_exact_in(name, value.clone(), &environment);
-                *stack
-                    .last_mut()
-                    .ok_or_else(|| invalid("define has no value on the stack", span))? = value;
-                program_counter += 1;
-            }
-            Instruction::DefineDynamic(name) => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("define-dynamic has no value on the stack", span))?;
-                let value = value.primary_value();
-                runtime.define_dynamic(name, value.clone());
-                *stack
-                    .last_mut()
-                    .ok_or_else(|| invalid("define-dynamic has no value on the stack", span))? =
-                    value;
-                program_counter += 1;
-            }
-            Instruction::DefineDynamicExact(name) => {
-                let value = stack.last().cloned().ok_or_else(|| {
-                    invalid("define-dynamic-exact has no value on the stack", span)
-                })?;
-                let value = value.primary_value();
-                runtime.define_dynamic_exact(name, value.clone());
-                *stack.last_mut().ok_or_else(|| {
-                    invalid("define-dynamic-exact has no value on the stack", span)
-                })? = value;
-                program_counter += 1;
-            }
-            Instruction::DeclareSpecial { names, exact_names } => {
-                for name in names {
-                    runtime.declare_special(name, false);
-                }
-                for name in exact_names {
-                    runtime.declare_special(name, true);
-                }
-                program_counter += 1;
-            }
-            Instruction::DefineFunction(name) => {
-                let value = pop_value(&mut stack, span, "local function definition")?;
-                environment.define_function(name, value);
-                program_counter += 1;
-            }
-            Instruction::DefineFunctionExact(name) => {
-                let value = pop_value(&mut stack, span, "local function definition")?;
-                environment.define_function_exact(name, value);
-                program_counter += 1;
-            }
-            Instruction::DefineSpecial { name, force } => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("define-special has no value on the stack", span))?;
-                if *force && runtime.is_constant_in(name) {
-                    return Err(runtime.constant_modification_error(name, span));
-                }
-                let value = runtime.define_special_value(name, value.primary_value(), *force);
-                *stack
-                    .last_mut()
-                    .ok_or_else(|| invalid("define-special has no value on the stack", span))? =
-                    value;
-                program_counter += 1;
-            }
-            Instruction::DefineSpecialExact { name, force } => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("define-special has no value on the stack", span))?;
-                if *force && runtime.is_constant_exact_in(name) {
-                    return Err(runtime.constant_modification_error(name, span));
-                }
-                let value = runtime.define_special_value_exact(name, value.primary_value(), *force);
-                *stack
-                    .last_mut()
-                    .ok_or_else(|| invalid("define-special has no value on the stack", span))? =
-                    value;
-                program_counter += 1;
-            }
-            Instruction::DefineValues(name) => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("define-values has no value on the stack", span))?;
-                runtime.define_in(name, value, &environment);
-                program_counter += 1;
-            }
-            Instruction::DefineValuesExact(name) => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("define-values has no value on the stack", span))?;
-                runtime.define_exact_in(name, value, &environment);
-                program_counter += 1;
-            }
-            Instruction::Set(name) => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("setq has no value on the stack", span))?;
-                let value = value.primary_value();
-                runtime.set_or_define_in(name, value.clone(), &environment, span)?;
-                *stack
-                    .last_mut()
-                    .ok_or_else(|| invalid("setq has no value on the stack", span))? = value;
-                program_counter += 1;
-            }
-            Instruction::SetExact(name) => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("setq has no value on the stack", span))?;
-                let value = value.primary_value();
-                runtime.set_or_define_exact_in(name, value.clone(), &environment, span)?;
-                *stack
-                    .last_mut()
-                    .ok_or_else(|| invalid("setq has no value on the stack", span))? = value;
-                program_counter += 1;
-            }
-            Instruction::Setf(place) => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("setf has no value on the stack", span))?;
-                runtime.set_place(place, value.clone(), &environment)?;
-                let value = value.primary_value();
-                *stack
-                    .last_mut()
-                    .ok_or_else(|| invalid("setf has no value on the stack", span))? = value;
-                program_counter += 1;
-            }
-            Instruction::MapIntoSetf(place) => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("map-into has no value on the stack", span))?;
-                let value = value.primary_value();
-                runtime.set_map_into_destination(place, value.clone(), &environment)?;
-                *stack
-                    .last_mut()
-                    .ok_or_else(|| invalid("map-into has no value on the stack", span))? = value;
-                program_counter += 1;
-            }
-            Instruction::Psetq(names) => {
-                if stack.len() < names.len() {
-                    return Err(invalid("psetq has fewer values than targets", span));
-                }
-                let values = stack.split_off(stack.len() - names.len());
-                for (name, value) in names.iter().zip(values) {
-                    let value = value.primary_value();
-                    runtime.set_or_define_in(name, value, &environment, span)?;
-                }
-                stack.push(Value::Nil);
-                program_counter += 1;
-            }
-            Instruction::PsetqExact(names) => {
-                if stack.len() < names.len() {
-                    return Err(invalid("psetq has fewer values than targets", span));
-                }
-                let values = stack.split_off(stack.len() - names.len());
-                for ((name, escaped), value) in names.iter().zip(values) {
-                    let value = value.primary_value();
-                    if *escaped {
-                        runtime.set_or_define_exact_in(name, value, &environment, span)?;
-                    } else {
-                        runtime.set_or_define_in(name, value, &environment, span)?;
-                    }
-                }
-                stack.push(Value::Nil);
-                program_counter += 1;
-            }
-            Instruction::Push(name) => {
-                let value = pop_value(&mut stack, span, "push")?.primary_value();
-                let current = runtime.lookup_in(name, &environment).ok_or_else(|| {
-                    RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    }
-                })?;
-                let mut elements = current
-                    .list_items()
-                    .ok_or_else(|| invalid("PUSH place must contain a proper list", span))?;
-                elements.insert(0, value);
-                let result = Value::list(elements);
-                runtime.set_or_define_in(name, result.clone(), &environment, span)?;
-                stack.push(result);
-                program_counter += 1;
-            }
-            Instruction::PushExact(name) => {
-                let value = pop_value(&mut stack, span, "push")?.primary_value();
-                let current = runtime.lookup_exact_in(name, &environment).ok_or_else(|| {
-                    RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    }
-                })?;
-                let mut elements = current
-                    .list_items()
-                    .ok_or_else(|| invalid("PUSH place must contain a proper list", span))?;
-                elements.insert(0, value);
-                let result = Value::list(elements);
-                runtime.set_or_define_exact_in(name, result.clone(), &environment, span)?;
-                stack.push(result);
-                program_counter += 1;
-            }
-            Instruction::PopPlace(name) => {
-                let current = runtime.lookup_in(name, &environment).ok_or_else(|| {
-                    RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    }
-                })?;
-                let mut elements = current
-                    .list_items()
-                    .ok_or_else(|| invalid("POP place must contain a proper list", span))?;
-                let popped = if elements.is_empty() {
-                    Value::Nil
-                } else {
-                    elements.remove(0)
-                };
-                let result = Value::list(elements);
-                runtime.set_or_define_in(name, result, &environment, span)?;
-                stack.push(popped);
-                program_counter += 1;
-            }
-            Instruction::PopPlaceExact(name) => {
-                let current = runtime.lookup_exact_in(name, &environment).ok_or_else(|| {
-                    RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    }
-                })?;
-                let mut elements = current
-                    .list_items()
-                    .ok_or_else(|| invalid("POP place must contain a proper list", span))?;
-                let popped = if elements.is_empty() {
-                    Value::Nil
-                } else {
-                    elements.remove(0)
-                };
-                let result = Value::list(elements);
-                runtime.set_or_define_exact_in(name, result, &environment, span)?;
-                stack.push(popped);
-                program_counter += 1;
-            }
-            Instruction::PushNew(name) => {
-                let value = pop_value(&mut stack, span, "pushnew")?.primary_value();
-                let current = runtime.lookup_in(name, &environment).ok_or_else(|| {
-                    RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    }
-                })?;
-                let mut elements = current
-                    .list_items()
-                    .ok_or_else(|| invalid("PUSHNEW place must contain a proper list", span))?;
-                if elements.iter().any(|candidate| eql_value(&value, candidate)) {
-                    stack.push(current);
-                } else {
-                    elements.insert(0, value);
-                    let result = Value::list(elements);
-                    runtime.set_or_define_in(name, result.clone(), &environment, span)?;
-                    stack.push(result);
-                }
-                program_counter += 1;
-            }
-            Instruction::PushNewExact(name) => {
-                let value = pop_value(&mut stack, span, "pushnew")?.primary_value();
-                let current = runtime.lookup_exact_in(name, &environment).ok_or_else(|| {
-                    RuntimeError::UnboundVariable {
-                        name: name.clone(),
-                        span: Some(span),
-                    }
-                })?;
-                let mut elements = current
-                    .list_items()
-                    .ok_or_else(|| invalid("PUSHNEW place must contain a proper list", span))?;
-                if elements.iter().any(|candidate| eql_value(&value, candidate)) {
-                    stack.push(current);
-                } else {
-                    elements.insert(0, value);
-                    let result = Value::list(elements);
-                    runtime.set_or_define_exact_in(name, result.clone(), &environment, span)?;
-                    stack.push(result);
-                }
-                program_counter += 1;
-            }
-            Instruction::Rotatef(names) => {
-                if stack.len() < names.len() {
-                    return Err(invalid("rotatef has fewer values than targets", span));
-                }
-                let values = stack.split_off(stack.len() - names.len());
-                for (index, name) in names.iter().enumerate() {
-                    let source_index = if index + 1 == values.len() { 0 } else { index + 1 };
-                    let value = values[source_index].primary_value();
-                    runtime.set_or_define_in(name, value, &environment, span)?;
-                }
-                stack.push(Value::Nil);
-                program_counter += 1;
-            }
-            Instruction::RotatefExact(names) => {
-                if stack.len() < names.len() {
-                    return Err(invalid("rotatef has fewer values than targets", span));
-                }
-                let values = stack.split_off(stack.len() - names.len());
-                for (index, (name, escaped)) in names.iter().enumerate() {
-                    let source_index = if index + 1 == values.len() { 0 } else { index + 1 };
-                    let value = values[source_index].primary_value();
-                    if *escaped {
-                        runtime.set_or_define_exact_in(name, value, &environment, span)?;
-                    } else {
-                        runtime.set_or_define_in(name, value, &environment, span)?;
-                    }
-                }
-                stack.push(Value::Nil);
-                program_counter += 1;
-            }
-            Instruction::Shiftf(names) => {
-                let required = names.len() + 1;
-                if stack.len() < required {
-                    return Err(invalid("shiftf has fewer values than targets", span));
-                }
-                let values = stack.split_off(stack.len() - required);
-                let result = values[0].primary_value();
-                for (index, name) in names.iter().enumerate() {
-                    let value = values[index + 1].primary_value();
-                    runtime.set_or_define_in(name, value, &environment, span)?;
-                }
-                stack.push(result);
-                program_counter += 1;
-            }
-            Instruction::ShiftfExact(names) => {
-                let required = names.len() + 1;
-                if stack.len() < required {
-                    return Err(invalid("shiftf has fewer values than targets", span));
-                }
-                let values = stack.split_off(stack.len() - required);
-                let result = values[0].primary_value();
-                for (index, (name, escaped)) in names.iter().enumerate() {
-                    let value = values[index + 1].primary_value();
-                    if *escaped {
-                        runtime.set_or_define_exact_in(name, value, &environment, span)?;
-                    } else {
-                        runtime.set_or_define_in(name, value, &environment, span)?;
-                    }
-                }
-                stack.push(result);
-                program_counter += 1;
-            }
-            Instruction::MultipleValueSetq(names) => {
-                let source = pop_value(&mut stack, span, "multiple-value-setq")?;
-                let values = source.multiple_values();
-                for (index, name) in names.iter().enumerate() {
-                    let value = values.get(index).cloned().unwrap_or(Value::Nil);
-                    runtime.set_or_define_in(name, value, &environment, span)?;
-                }
-                stack.push(source.primary_value());
-                program_counter += 1;
-            }
-            Instruction::MultipleValueSetqExact(names) => {
-                let source = pop_value(&mut stack, span, "multiple-value-setq")?;
-                let values = source.multiple_values();
-                for (index, (name, escaped)) in names.iter().enumerate() {
-                    let value = values.get(index).cloned().unwrap_or(Value::Nil);
-                    if *escaped {
-                        runtime.set_or_define_exact_in(name, value, &environment, span)?;
-                    } else {
-                        runtime.set_or_define_in(name, value, &environment, span)?;
-                    }
-                }
-                stack.push(source.primary_value());
-                program_counter += 1;
-            }
-            Instruction::EnterScope => {
-                scopes.push((
-                    environment.clone(),
-                    runtime.dynamic_depth(),
-                    runtime.exact_dynamic_depth(),
-                ));
-                environment = environment.child();
-                program_counter += 1;
-            }
-            Instruction::EnterMacroletEnvironment(binding_form) => {
-                scopes.push((
-                    environment.clone(),
-                    runtime.dynamic_depth(),
-                    runtime.exact_dynamic_depth(),
-                ));
-                let FormKind::List(binding_forms) = &binding_form.kind else {
-                    return Err(invalid(
-                        "macrolet environment bindings must be a list",
-                        binding_form.span,
-                    ));
-                };
-                environment = runtime.make_macrolet_environment(binding_forms, &environment)?;
-                program_counter += 1;
-            }
-            Instruction::EnterSpecialScope { names, exact_names } => {
-                special_guards.push(runtime.special_declaration_guard(names, exact_names));
-                program_counter += 1;
-            }
-            Instruction::ExitSpecialScope => {
-                special_guards
-                    .pop()
-                    .ok_or_else(|| invalid("special scope exit has no matching scope", span))?;
-                program_counter += 1;
-            }
-            Instruction::ExitScope => {
-                let (parent, depth, exact_depth) = scopes
-                    .pop()
-                    .ok_or_else(|| invalid("scope exit has no matching scope", span))?;
-                runtime.truncate_dynamic(depth);
-                runtime.truncate_exact_dynamic(exact_depth);
-                environment = parent;
-                program_counter += 1;
-            }
-            Instruction::Pop => {
-                pop_value(&mut stack, span, "pop")?;
-                program_counter += 1;
-            }
-            Instruction::Dup => {
-                let value = stack
-                    .last()
-                    .cloned()
-                    .ok_or_else(|| invalid("dup has no value on the stack", span))?;
-                stack.push(value);
-                program_counter += 1;
-            }
-            Instruction::Primary => {
-                let value = pop_value(&mut stack, span, "primary value")?;
-                stack.push(value.primary_value());
-                program_counter += 1;
-            }
-            Instruction::Values(value_count) => {
-                if stack.len() < *value_count {
-                    return Err(invalid("values has too few stack values", span));
-                }
-                let values = stack.split_off(stack.len() - *value_count);
-                stack.push(Value::values(values));
-                program_counter += 1;
-            }
-            Instruction::NthValue(index_span) => {
-                let values = pop_value(&mut stack, span, "nth-value value")?;
-                let index_value = pop_value(&mut stack, span, "nth-value index")?;
-                let index = match index_value.primary_value() {
-                    Value::Integer(index) if index >= 0 => {
-                        usize::try_from(index).map_err(|_| RuntimeError::NumericOverflow)?
-                    }
-                    Value::Integer(_) => {
-                        return Err(RuntimeError::InvalidForm {
-                            message: "nth-value index must be non-negative".to_string(),
-                            span: Some(*index_span),
-                        });
-                    }
-                    value => {
-                        return Err(RuntimeError::Type {
-                            expected: "INTEGER".to_string(),
-                            actual: value.type_name().to_string(),
-                            span: Some(*index_span),
-                        });
-                    }
-                };
-                let values = values.multiple_values();
-                stack.push(values.get(index).cloned().unwrap_or(Value::Nil));
-                program_counter += 1;
-            }
-            Instruction::MultipleValueList => {
-                let value = pop_value(&mut stack, span, "multiple-value-list")?;
-                stack.push(Value::list(value.multiple_values()));
-                program_counter += 1;
-            }
-            Instruction::BindValues(names) => {
-                let value = pop_value(&mut stack, span, "multiple-value-bind")?;
-                let values = value.multiple_values();
-                for (index, name) in names.iter().enumerate() {
-                    runtime.define_in(
-                        name,
-                        values.get(index).cloned().unwrap_or(Value::Nil),
-                        &environment,
-                    );
-                }
-                program_counter += 1;
-            }
-            Instruction::BindValuesExact(names) => {
-                let value = pop_value(&mut stack, span, "multiple-value-bind")?;
-                let values = value.multiple_values();
-                for (index, (name, escaped)) in names.iter().enumerate() {
-                    let value = values.get(index).cloned().unwrap_or(Value::Nil);
-                    if *escaped {
-                        runtime.define_exact_in(name, value, &environment);
-                    } else {
-                        runtime.define_in(name, value, &environment);
-                    }
-                }
-                program_counter += 1;
-            }
-            Instruction::Destructure(specification) => {
-                let value = pop_value(&mut stack, span, "destructuring-bind")?;
-                destructuring::destructure_specification(
-                    specification,
-                    value.primary_value(),
-                    runtime,
-                    program,
-                    &environment,
-                    span,
-                )?;
-                program_counter += 1;
-            }
-            Instruction::JumpIfFalse(target) => {
-                let condition = pop_value(&mut stack, span, "conditional jump")?;
-                if condition.is_truthy() {
-                    program_counter += 1;
-                } else {
-                    program_counter = jump_target(function, *target, span)?;
-                }
-            }
-            Instruction::Jump(target) => {
-                program_counter = jump_target(function, *target, span)?;
-            }
-            Instruction::MakeClosure(function_id) => {
-                if *function_id >= program.functions.len() {
-                    return Err(invalid("compiled closure id is out of range", span));
-                }
-                stack.push(Value::compiled(
-                    program.clone(),
-                    *function_id,
-                    environment.clone(),
-                ));
-                program_counter += 1;
-            }
-            Instruction::IgnoreErrors(function_id) => {
-                let function = program.functions.get(*function_id).ok_or_else(|| {
-                    invalid("compiled ignore-errors function id is out of range", span)
-                })?;
-                match run_code(runtime, program, function, environment.clone(), span) {
-                    Ok(value) => stack.push(value),
-                    Err(error @ RuntimeError::ReturnFrom { .. }) => return Err(error),
-                    Err(error @ RuntimeError::Go { .. }) => return Err(error),
-                    Err(error @ RuntimeError::InvokeRestart { .. }) => return Err(error),
-                    Err(error) => {
-                        stack.push(Value::values(vec![Value::Nil, Value::condition(&error)]));
-                    }
-                }
-                program_counter += 1;
-            }
-            Instruction::HandlerCase { protected, clauses } => {
-                let protected_function = program.functions.get(*protected).ok_or_else(|| {
-                    invalid("compiled handler-case function id is out of range", span)
-                })?;
-                let guard = runtime.condition_handler_guard(
-                    clauses
-                        .iter()
-                        .filter(|clause| !clause.no_error)
-                        .map(|clause| ConditionHandlerBinding {
-                            condition: clause.condition.clone(),
-                            function: None,
-                            catch: true,
-                        })
-                        .collect(),
-                );
-                let protected_result = run_code(
-                    runtime,
-                    program,
-                    protected_function,
-                    environment.clone(),
-                    span,
-                );
-                drop(guard);
-                match protected_result {
-                    Ok(value) => {
-                        if let Some(clause) = clauses.iter().find(|clause| clause.no_error) {
-                            program.functions.get(clause.function).ok_or_else(|| {
-                                invalid("compiled handler-case clause id is out of range", span)
-                            })?;
-                            let mut arguments = value.multiple_values();
-                            arguments.truncate(clause.variable_count);
-                            arguments.resize(clause.variable_count, Value::Nil);
-                            stack.push(run(
-                                runtime,
-                                program.clone(),
-                                clause.function,
-                                environment.clone(),
-                                &arguments,
-                                span,
-                            )?);
-                        } else {
-                            stack.push(value);
-                        }
-                    }
-                    Err(error @ RuntimeError::ReturnFrom { .. }) => return Err(error),
-                    Err(error @ RuntimeError::Go { .. }) => return Err(error),
-                    Err(error @ RuntimeError::InvokeRestart { .. }) => return Err(error),
-                    Err(error) => {
-                        let Some(clause) = clauses.iter().find(|clause| {
-                            !clause.no_error && error.matches_condition(&clause.condition)
-                        }) else {
-                            return Err(error);
-                        };
-                        program.functions.get(clause.function).ok_or_else(|| {
-                            invalid("compiled handler-case clause id is out of range", span)
-                        })?;
-                        let arguments = if clause.variable.is_some() {
-                            vec![Value::condition(&error)]
-                        } else {
-                            Vec::new()
-                        };
-                        stack.push(run(
-                            runtime,
-                            program.clone(),
-                            clause.function,
-                            environment.clone(),
-                            &arguments,
-                            span,
-                        )?);
-                    }
-                }
-                program_counter += 1;
-            }
-            Instruction::HandlerBind { body, handlers } => {
-                let handler_bindings = handlers
-                    .iter()
-                    .map(|handler| {
-                        program.functions.get(handler.function).ok_or_else(|| {
-                            invalid("compiled handler-bind clause id is out of range", span)
-                        })?;
-                        Ok(ConditionHandlerBinding {
-                            condition: handler.condition.clone(),
-                            function: Some(Value::compiled(
-                                program.clone(),
-                                handler.function,
-                                environment.clone(),
-                            )),
-                            catch: false,
-                        })
-                    })
-                    .collect::<Result<Vec<_>, RuntimeError>>()?;
-                let body_function = program.functions.get(*body).ok_or_else(|| {
-                    invalid("compiled handler-bind body id is out of range", span)
-                })?;
-                let guard = runtime.condition_handler_guard(handler_bindings);
-                let body_result =
-                    run_code(runtime, program, body_function, environment.clone(), span);
-                drop(guard);
-                match body_result {
-                    Ok(value) => stack.push(value),
-                    Err(error @ RuntimeError::ReturnFrom { .. }) => return Err(error),
-                    Err(error @ RuntimeError::Go { .. }) => return Err(error),
-                    Err(error @ RuntimeError::InvokeRestart { .. }) => return Err(error),
-                    Err(error @ RuntimeError::Signaled { .. }) => return Err(error),
-                    Err(error) => {
-                        let Some(handler) = handlers
-                            .iter()
-                            .find(|handler| error.matches_condition(&handler.condition))
-                        else {
-                            return Err(error);
-                        };
-                        program.functions.get(handler.function).ok_or_else(|| {
-                            invalid("compiled handler-bind clause id is out of range", span)
-                        })?;
-                        stack.push(run(
-                            runtime,
-                            program.clone(),
-                            handler.function,
-                            environment.clone(),
-                            &[Value::condition(&error)],
-                            span,
-                        )?);
-                    }
-                }
-                program_counter += 1;
-            }
-            Instruction::RestartBind { body, bindings } => {
-                let mut restarts = Vec::with_capacity(bindings.len());
-                for binding in bindings {
-                    let binding_function =
-                        program.functions.get(binding.function).ok_or_else(|| {
-                            invalid("compiled restart-bind clause id is out of range", span)
-                        })?;
-                    let function = run_code(
-                        runtime,
-                        program,
-                        binding_function,
-                        environment.clone(),
-                        span,
-                    )?
-                    .primary_value();
-                    restarts.push((binding.name.as_str(), function));
-                }
-                let guard = runtime.restart_guard(
-                    restarts
-                        .iter()
-                        .map(|(name, function)| {
-                            RestartBinding::new((*name).to_string(), Some(function.clone()))
-                        })
-                        .collect(),
-                );
-                let body_function = program.functions.get(*body).ok_or_else(|| {
-                    invalid("compiled restart-bind body id is out of range", span)
-                })?;
-                let body_result =
-                    run_code(runtime, program, body_function, environment.clone(), span);
-                drop(guard);
-                match body_result {
-                    Ok(value) => stack.push(value),
-                    Err(error) => {
-                        let RuntimeError::InvokeRestart {
-                            name: invoked,
-                            arguments,
-                            ..
-                        } = &error
-                        else {
-                            return Err(error);
-                        };
-                        let Some((_, function)) = restarts
-                            .iter()
-                            .find(|(name, _)| normalize_name(invoked.as_str()) == *name)
-                        else {
-                            return Err(error);
-                        };
-                        let argument_values = arguments
-                            .iter()
-                            .cloned()
-                            .map(ReturnValue::into_value)
-                            .collect::<Vec<_>>();
-                        stack.push(runtime.apply_in(
-                            function,
-                            &argument_values,
-                            span,
-                            &environment,
-                        )?);
-                    }
-                }
-                program_counter += 1;
-            }
-            Instruction::Catch { tag, body } => {
-                let tag_function = program.functions.get(*tag).ok_or_else(|| {
-                    invalid("compiled catch tag function id is out of range", span)
-                })?;
-                let tag = run_code(runtime, program, tag_function, environment.clone(), span)?
-                    .primary_value();
-                let body_function = program.functions.get(*body).ok_or_else(|| {
-                    invalid("compiled catch body function id is out of range", span)
-                })?;
-                match run_code(runtime, program, body_function, environment.clone(), span) {
-                    Ok(value) => stack.push(value),
-                    Err(RuntimeError::Throw {
-                        tag: thrown_tag,
-                        value,
-                        ..
-                    }) if thrown_tag.matches(&tag) => stack.push(value.into_value()),
-                    Err(error) => return Err(error),
-                }
-                program_counter += 1;
-            }
-            Instruction::WithSimpleRestart { name, body } => {
-                let body_function = program.functions.get(*body).ok_or_else(|| {
-                    invalid("compiled with-simple-restart body id is out of range", span)
-                })?;
-                let guard = runtime.restart_guard(vec![RestartBinding::new(name.clone(), None)]);
-                let body_result =
-                    run_code(runtime, program, body_function, environment.clone(), span);
-                drop(guard);
-                match body_result {
-                    Ok(value) => stack.push(value),
-                    Err(RuntimeError::InvokeRestart {
-                        name: invoked,
-                        value,
-                        ..
-                    }) if normalize_name(invoked.as_str()) == *name => {
-                        stack.push(value.into_value());
-                    }
-                    Err(error) => return Err(error),
-                }
-                program_counter += 1;
-            }
-            Instruction::RestartCase { protected, clauses } => {
-                let protected_function = program.functions.get(*protected).ok_or_else(|| {
-                    invalid(
-                        "compiled restart-case protected function id is out of range",
-                        span,
-                    )
-                })?;
-                let guard = runtime.restart_guard(
-                    clauses
-                        .iter()
-                        .map(|clause| RestartBinding::new(clause.name.clone(), None))
-                        .collect(),
-                );
-                let protected_result = run_code(
-                    runtime,
-                    program,
-                    protected_function,
-                    environment.clone(),
-                    span,
-                );
-                drop(guard);
-                match protected_result {
-                    Ok(value) => stack.push(value),
-                    Err(error) => {
-                        let RuntimeError::InvokeRestart {
-                            name: invoked,
-                            arguments,
-                            ..
-                        } = &error
-                        else {
-                            return Err(error);
-                        };
-                        let Some(clause) = clauses.iter().find(|clause| {
-                            normalize_name(invoked.as_str()) == clause.name.as_str()
-                        }) else {
-                            return Err(error);
-                        };
-                        program.functions.get(clause.function).ok_or_else(|| {
-                            invalid("compiled restart-case clause id is out of range", span)
-                        })?;
-                        let argument_values = arguments
-                            .iter()
-                            .cloned()
-                            .map(ReturnValue::into_value)
-                            .collect::<Vec<_>>();
-                        stack.push(run(
-                            runtime,
-                            program.clone(),
-                            clause.function,
-                            environment.clone(),
-                            &argument_values,
-                            span,
-                        )?);
-                    }
-                }
-                program_counter += 1;
-            }
-            Instruction::WithConditionRestarts {
-                condition,
-                restarts,
-                body,
-            } => {
-                let condition_function = program.functions.get(*condition).ok_or_else(|| {
-                    invalid(
-                        "compiled with-condition-restarts condition function id is out of range",
-                        span,
-                    )
-                })?;
-                let condition_value = run_code(
-                    runtime,
-                    program,
-                    condition_function,
-                    environment.clone(),
-                    span,
-                )?
-                .primary_value();
-                if condition_value.condition_type_name().is_none() {
-                    return Err(RuntimeError::Type {
-                        expected: "CONDITION".to_string(),
-                        actual: condition_value.type_name().to_string(),
-                        span: Some(span),
-                    });
-                }
-
-                let restarts_function = program.functions.get(*restarts).ok_or_else(|| {
-                    invalid(
-                        "compiled with-condition-restarts restarts function id is out of range",
-                        span,
-                    )
-                })?;
-                let restarts_value = run_code(
-                    runtime,
-                    program,
-                    restarts_function,
-                    environment.clone(),
-                    span,
-                )?
-                .primary_value();
-                let Some(restart_values) = restarts_value.list_items() else {
-                    return Err(RuntimeError::Type {
-                        expected: "LIST".to_string(),
-                        actual: restarts_value.type_name().to_string(),
-                        span: Some(span),
-                    });
-                };
-                if let Some(restart) = restart_values
-                    .iter()
-                    .find(|restart| restart.restart_name().is_none())
-                {
-                    return Err(RuntimeError::Type {
-                        expected: "RESTART".to_string(),
-                        actual: restart.type_name().to_string(),
-                        span: Some(span),
-                    });
-                }
-
-                let guard = runtime.condition_restart_guard(condition_value, restart_values);
-                let body_function = program.functions.get(*body).ok_or_else(|| {
-                    invalid(
-                        "compiled with-condition-restarts body id is out of range",
-                        span,
-                    )
-                })?;
-                let body_result =
-                    run_code(runtime, program, body_function, environment.clone(), span);
-                drop(guard);
-                stack.push(body_result?);
-                program_counter += 1;
-            }
-            Instruction::Progv {
-                symbols,
-                values,
-                body,
-            } => {
-                let symbols_function = program.functions.get(*symbols).ok_or_else(|| {
-                    invalid("compiled progv symbol function id is out of range", span)
-                })?;
-                let symbols_value = run_code(
-                    runtime,
-                    program,
-                    symbols_function,
-                    environment.clone(),
-                    span,
-                )?
-                .primary_value();
-                let symbol_items =
-                    symbols_value
-                        .list_items()
-                        .ok_or_else(|| RuntimeError::Type {
-                            expected: "LIST".to_string(),
-                            actual: symbols_value.type_name().to_string(),
-                            span: Some(span),
-                        })?;
-
-                let values_function = program.functions.get(*values).ok_or_else(|| {
-                    invalid("compiled progv value function id is out of range", span)
-                })?;
-                let values_value =
-                    run_code(runtime, program, values_function, environment.clone(), span)?
-                        .primary_value();
-                let value_items = values_value
-                    .list_items()
-                    .ok_or_else(|| RuntimeError::Type {
-                        expected: "LIST".to_string(),
-                        actual: values_value.type_name().to_string(),
-                        span: Some(span),
-                    })?;
-
-                let _dynamic_guard = runtime.dynamic_guard();
-                for (index, symbol) in symbol_items.iter().enumerate() {
-                    let name = symbol.symbol_name().ok_or_else(|| {
-                        invalid("progv symbol list must contain only symbols", span)
-                    })?;
-                    runtime.define_dynamic(
-                        name,
-                        value_items.get(index).cloned().unwrap_or(Value::Nil),
-                    );
-                }
-                let body_function = program.functions.get(*body).ok_or_else(|| {
-                    invalid("compiled progv body function id is out of range", span)
-                })?;
-                stack.push(run_code(
-                    runtime,
-                    program,
-                    body_function,
-                    environment.clone(),
-                    span,
-                )?);
-                program_counter += 1;
-            }
-            Instruction::Throw => {
-                let value = pop_value(&mut stack, span, "throw")?;
-                let tag = pop_value(&mut stack, span, "throw")?.primary_value();
-                return Err(RuntimeError::Throw {
-                    tag: ThrowTag::new(tag),
-                    value: ReturnValue::new(value),
-                    span: Some(span),
-                });
-            }
-            Instruction::Block {
-                function: function_id,
-                name,
-            } => {
-                let function = program
-                    .functions
-                    .get(*function_id)
-                    .ok_or_else(|| invalid("compiled block function id is out of range", span))?;
-                let target = runtime.fresh_block_target();
-                let block_environment = environment.child();
-                block_environment.define_block(name, target);
-                match run_code(runtime, program, function, block_environment, span) {
-                    Ok(value) => stack.push(value),
-                    Err(RuntimeError::ReturnFrom {
-                        target: Some(return_target),
-                        value,
-                        ..
-                    }) if return_target == target => {
-                        stack.push(value.into_value());
-                    }
-                    Err(error) => return Err(error),
-                }
-                program_counter += 1;
-            }
-            Instruction::TagBody {
-                function: function_id,
-                tags,
-            } => {
-                let tagbody_function = program
-                    .functions
-                    .get(*function_id)
-                    .ok_or_else(|| invalid("compiled tagbody function id is out of range", span))?;
-                let target = runtime.fresh_block_target();
-                let tag_environment = environment.child();
-                for (tag, _) in tags {
-                    tag_environment.define_tag(tag, target);
-                }
-
-                let mut tagbody_program_counter = 0;
-                loop {
-                    match run_code_from(
-                        runtime,
-                        program,
-                        tagbody_function,
-                        tag_environment.clone(),
-                        span,
-                        tagbody_program_counter,
-                    ) {
-                        Ok(_) => {
-                            stack.push(Value::Nil);
-                            break;
-                        }
-                        Err(RuntimeError::Go {
-                            tag,
-                            target: Some(go_target),
-                            ..
-                        }) if go_target == target => {
-                            tagbody_program_counter = tags
-                                .iter()
-                                .find(|(known_tag, _)| known_tag == &tag)
-                                .map(|(_, position)| *position)
-                                .ok_or_else(|| {
-                                    invalid("compiled GO target is missing from TAGBODY", span)
-                                })?;
-                        }
-                        Err(error) => return Err(error),
-                    }
-                }
-                program_counter += 1;
-            }
-            Instruction::Go { tag } => {
-                return Err(RuntimeError::Go {
-                    tag: tag.clone(),
-                    target: environment.lookup_tag(tag),
-                    span: Some(span),
-                });
-            }
-            Instruction::UnwindProtect {
-                protected: protected_id,
-                cleanup: cleanup_id,
-            } => {
-                let protected_function = program.functions.get(*protected_id).ok_or_else(|| {
-                    invalid(
-                        "compiled unwind-protect protected function id is out of range",
-                        span,
-                    )
-                })?;
-                let cleanup_function = program.functions.get(*cleanup_id).ok_or_else(|| {
-                    invalid(
-                        "compiled unwind-protect cleanup function id is out of range",
-                        span,
-                    )
-                })?;
-                let protected_result = run_code(
-                    runtime,
-                    program,
-                    protected_function,
-                    environment.clone(),
-                    span,
-                );
-                let cleanup_result = run_code(
-                    runtime,
-                    program,
-                    cleanup_function,
-                    environment.clone(),
-                    span,
-                );
-                match cleanup_result {
-                    Ok(_) => stack.push(protected_result?),
-                    Err(error) => return Err(error),
-                }
-                program_counter += 1;
-            }
-            Instruction::ReturnFrom { name } => {
-                let value = pop_value(&mut stack, span, "return-from")?;
-                return Err(RuntimeError::ReturnFrom {
-                    block: name.clone(),
-                    target: environment.lookup_block(name),
-                    value: ReturnValue::new(value),
-                    span: Some(span),
-                });
-            }
-            Instruction::Eval(form_span) => {
-                let value = pop_value(&mut stack, span, "eval")?.primary_value();
-                let form = runtime.form_from_value(&value, *form_span)?;
-                stack.push(runtime.eval_values_in(&form, &environment)?);
-                program_counter += 1;
-            }
-            Instruction::EvalWithEnvironment(form_span) => {
-                let target_environment = pop_value(&mut stack, span, "eval environment")?;
-                let target_environment = match target_environment.primary_value() {
-                    Value::Environment(environment) => environment,
-                    value => {
-                        return Err(RuntimeError::Type {
-                            expected: "ENVIRONMENT".to_string(),
-                            actual: value.type_name().to_string(),
-                            span: Some(*form_span),
-                        });
-                    }
-                };
-                let value = pop_value(&mut stack, span, "eval")?.primary_value();
-                let form = runtime.form_from_value(&value, *form_span)?;
-                stack.push(runtime.eval_values_in(&form, &target_environment)?);
-                program_counter += 1;
-            }
-            Instruction::Call(argument_count) => {
-                if stack.len() < argument_count.saturating_add(1) {
-                    return Err(invalid("call has too few stack values", span));
-                }
-                let arguments_start = stack.len() - argument_count;
-                let arguments = stack.split_off(arguments_start);
-                let function_value = stack
-                    .pop()
-                    .ok_or_else(|| invalid("call has no function value", span))?;
-                let arguments = arguments
-                    .into_iter()
-                    .map(|value| value.primary_value())
-                    .collect::<Vec<_>>();
-                stack.push(runtime.apply_in(
-                    &function_value.primary_value(),
-                    &arguments,
-                    span,
-                    &environment,
-                )?);
-                program_counter += 1;
-            }
-            Instruction::Apply(argument_count) => {
-                if *argument_count == 0 || stack.len() < argument_count.saturating_add(1) {
-                    return Err(invalid("apply has too few stack values", span));
-                }
-                let arguments_start = stack.len() - argument_count;
-                let mut evaluated = stack.split_off(arguments_start);
-                let function_value = stack
-                    .pop()
-                    .ok_or_else(|| invalid("apply has no function value", span))?;
-                let final_value = evaluated
-                    .pop()
-                    .ok_or_else(|| invalid("apply has no final list", span))?;
-                let mut arguments = evaluated
-                    .into_iter()
-                    .map(|value| value.primary_value())
-                    .collect::<Vec<_>>();
-                let mut final_arguments = final_value
-                    .primary_value()
-                    .list_items()
-                    .ok_or_else(|| invalid("apply's final argument must be a proper list", span))?;
-                arguments.append(&mut final_arguments);
-                stack.push(runtime.apply_in(
-                    &function_value.primary_value(),
-                    &arguments,
-                    span,
-                    &environment,
-                )?);
-                program_counter += 1;
-            }
-            Instruction::MapCar(sequence_count) => {
-                if *sequence_count == 0 || stack.len() < sequence_count.saturating_add(1) {
-                    return Err(invalid("mapcar has too few stack values", span));
-                }
-                let sequences_start = stack.len() - *sequence_count;
-                let sequences = stack.split_off(sequences_start);
-                let function_value = stack
-                    .pop()
-                    .ok_or_else(|| invalid("mapcar has no function value", span))?;
-                let lists = sequences
-                    .iter()
-                    .map(|value| {
-                        value
-                            .primary_value()
-                            .list_items()
-                            .ok_or_else(|| invalid("mapcar arguments must be proper lists", span))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                let length = lists.iter().map(Vec::len).min().unwrap_or(0);
-                let mut results = Vec::with_capacity(length);
-                for index in 0..length {
-                    let arguments = lists
-                        .iter()
-                        .map(|items| items[index].clone())
-                        .collect::<Vec<_>>();
-                    results.push(
-                        runtime
-                            .apply_in(
-                                &function_value.primary_value(),
-                                &arguments,
-                                span,
-                                &environment,
-                            )?
-                            .primary_value(),
-                    );
-                }
-                stack.push(Value::list(results));
-                program_counter += 1;
-            }
-            Instruction::MultipleValueCall(value_form_count) => {
-                if stack.len() < value_form_count.saturating_add(1) {
-                    return Err(invalid(
-                        "multiple-value-call has too few stack values",
-                        span,
-                    ));
-                }
-                let start = stack.len() - value_form_count.saturating_add(1);
-                let mut operands = stack.split_off(start);
-                let function_value = operands
-                    .first()
-                    .cloned()
-                    .ok_or_else(|| invalid("multiple-value-call has no function value", span))?;
-                let mut arguments = Vec::new();
-                for value in operands.drain(1..) {
-                    arguments.extend(value.multiple_values());
-                }
-                stack.push(runtime.apply_in(
-                    &function_value.primary_value(),
-                    &arguments,
-                    span,
-                    &environment,
-                )?);
-                program_counter += 1;
-            }
-            Instruction::Return => {
-                if !scopes.is_empty() {
-                    return Err(invalid(
-                        "compiled function returned with an open scope",
-                        span,
-                    ));
-                }
-                return pop_value(&mut stack, span, "return");
-            }
-        }
-    }
-}
-
-fn constant_value(constant: &Constant) -> Value {
+fn constant_value(constant: &Constant, span: Span) -> Result<Value, RuntimeError> {
     match constant {
-        Constant::Nil => Value::Nil,
-        Constant::Boolean(value) => Value::boolean(*value),
-        Constant::Integer(value) => Value::Integer(*value),
+        Constant::Nil => Ok(Value::Nil),
+        Constant::Boolean(value) => Ok(Value::boolean(*value)),
+        Constant::Integer(value) => Ok(Value::Integer(*value)),
         Constant::Rational {
             numerator,
             denominator,
-        } => Value::rational(i128::from(*numerator), i128::from(*denominator))
-            .expect("compiler emitted an invalid rational constant"),
-        Constant::Float(value) => Value::Float(*value),
-        Constant::String(value) => Value::string(value.clone()),
-        Constant::Character(value) => Value::Character(*value),
-        Constant::Symbol(value) => Value::symbol(value),
-        Constant::SymbolExact(value) => Value::symbol_exact(value),
-        Constant::Keyword(value) => Value::keyword(value),
-        Constant::KeywordExact(value) => Value::keyword_exact(value),
+        } => Value::rational(i128::from(*numerator), i128::from(*denominator)).map_err(|_| {
+            RuntimeError::InvalidForm {
+                message: "compiled rational constant is invalid".to_owned(),
+                span: Some(span),
+            }
+        }),
+        Constant::Float(value) => Ok(Value::Float(*value)),
+        Constant::String(value) => Ok(Value::string(value.clone())),
+        Constant::Character(value) => Ok(Value::Character(*value)),
+        Constant::Symbol(value) => Ok(Value::symbol(value)),
+        Constant::SymbolExact(value) => Ok(Value::symbol_exact(value)),
+        Constant::Keyword(value) => Ok(Value::keyword(value)),
+        Constant::KeywordExact(value) => Ok(Value::keyword_exact(value)),
     }
 }
 
@@ -1690,6 +400,322 @@ fn pop_value(stack: &mut Vec<Value>, span: Span, operation: &str) -> Result<Valu
         .ok_or_else(|| invalid(&format!("{operation} has no value on the stack"), span))
 }
 
+fn destructure_specification(
+    specification: &DestructureSpec,
+    value: Value,
+    runtime: &Runtime,
+    program: &Rc<Program>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    match specification {
+        DestructureSpec::Pattern(pattern) => {
+            destructure_value(pattern, value, runtime, environment, span)
+        }
+        DestructureSpec::LambdaList(lambda_list) => {
+            let Some(arguments) = value.list_items() else {
+                return Err(invalid(
+                    "destructuring-bind value must be a proper list",
+                    span,
+                ));
+            };
+            if let Some(whole) = &lambda_list.whole {
+                runtime.define_in(whole, value, environment);
+            }
+            let required_count = lambda_list.required.len();
+            let optional_count = lambda_list.optional.len();
+            if arguments.len() < required_count {
+                return Err(RuntimeError::Arity {
+                    function: "destructuring-bind".to_string(),
+                    expected: format!("at least {required_count}"),
+                    actual: arguments.len(),
+                });
+            }
+            let optional_supplied_count = if lambda_list.has_keyword_section {
+                let available = arguments
+                    .len()
+                    .saturating_sub(required_count)
+                    .min(optional_count);
+                (0..available)
+                    .take_while(|index| {
+                        !matches!(
+                            arguments[required_count + *index],
+                            Value::Keyword(_) | Value::KeywordExact(_)
+                        )
+                    })
+                    .count()
+            } else {
+                arguments
+                    .len()
+                    .saturating_sub(required_count)
+                    .min(optional_count)
+            };
+            let key_start = required_count + optional_supplied_count;
+            if !lambda_list.has_keyword_section
+                && lambda_list.rest.is_none()
+                && arguments.len() > required_count + optional_count
+            {
+                let maximum = required_count + optional_count;
+                return Err(RuntimeError::Arity {
+                    function: "destructuring-bind".to_string(),
+                    expected: format!("at most {maximum}"),
+                    actual: arguments.len(),
+                });
+            }
+
+            destructure_required_and_optional(
+                lambda_list,
+                &arguments[..required_count + optional_supplied_count],
+                optional_supplied_count,
+                runtime,
+                program,
+                environment,
+                span,
+            )?;
+            if let Some(rest_name) = &lambda_list.rest {
+                runtime.define_in(
+                    rest_name,
+                    Value::list(arguments[key_start..].to_vec()),
+                    environment,
+                );
+            }
+
+            if lambda_list.has_keyword_section {
+                destructure_keyword_parameters(
+                    lambda_list,
+                    &arguments[key_start..],
+                    runtime,
+                    program,
+                    environment,
+                    span,
+                )?;
+            }
+            destructure_auxiliary_parameters(lambda_list, runtime, program, environment, span)?;
+            Ok(())
+        }
+    }
+}
+
+fn destructure_required_and_optional(
+    lambda_list: &DestructureLambdaList,
+    arguments: &[Value],
+    optional_supplied_count: usize,
+    runtime: &Runtime,
+    program: &Rc<Program>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    for (pattern, argument) in lambda_list.required.iter().zip(arguments.iter().cloned()) {
+        destructure_value(pattern, argument, runtime, environment, span)?;
+    }
+    for (index, parameter) in lambda_list.optional.iter().enumerate() {
+        let supplied = (index < optional_supplied_count)
+            .then(|| arguments[lambda_list.required.len() + index].clone());
+        let value = if let Some(argument) = supplied.as_ref() {
+            argument.clone()
+        } else {
+            let default_function = program
+                .functions
+                .get(parameter.default_function)
+                .ok_or_else(|| {
+                    invalid(
+                        "compiled destructuring optional default is out of range",
+                        span,
+                    )
+                })?;
+            run_code(
+                runtime,
+                program,
+                default_function,
+                environment.clone(),
+                span,
+            )?
+            .primary_value()
+        };
+        destructure_value(&parameter.pattern, value, runtime, environment, span)?;
+        if let Some(supplied_p) = &parameter.supplied_p {
+            runtime.define_in(supplied_p, Value::boolean(supplied.is_some()), environment);
+        }
+    }
+    Ok(())
+}
+
+fn destructure_keyword_parameters(
+    lambda_list: &DestructureLambdaList,
+    keyword_arguments: &[Value],
+    runtime: &Runtime,
+    program: &Rc<Program>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if !keyword_arguments.len().is_multiple_of(2) {
+        return Err(invalid("keyword arguments must be supplied in pairs", span));
+    }
+    let mut supplied_keywords = HashMap::new();
+    let mut accepts_unknown_keywords = lambda_list.allow_other_keys;
+    for pair in keyword_arguments.as_chunks::<2>().0 {
+        let (Value::Keyword(keyword) | Value::KeywordExact(keyword)) = &pair[0] else {
+            return Err(invalid("keyword argument name must be a keyword", span));
+        };
+        let keyword_name = keyword.to_string();
+        if keyword_name == "ALLOW-OTHER-KEYS" && pair[1].is_truthy() {
+            accepts_unknown_keywords = true;
+        }
+        supplied_keywords.insert(keyword_name, pair[1].clone());
+    }
+    if !accepts_unknown_keywords {
+        for keyword_name in supplied_keywords.keys() {
+            if keyword_name != "ALLOW-OTHER-KEYS"
+                && !lambda_list
+                    .keywords
+                    .iter()
+                    .any(|parameter| parameter.keyword_name == *keyword_name)
+            {
+                return Err(invalid(&format!("unknown keyword :{keyword_name}"), span));
+            }
+        }
+    }
+    for parameter in &lambda_list.keywords {
+        let supplied = supplied_keywords.get(&parameter.keyword_name);
+        let value = if let Some(argument) = supplied {
+            argument.clone()
+        } else {
+            let default_function = program
+                .functions
+                .get(parameter.default_function)
+                .ok_or_else(|| {
+                    invalid(
+                        "compiled destructuring keyword default is out of range",
+                        span,
+                    )
+                })?;
+            run_code(
+                runtime,
+                program,
+                default_function,
+                environment.clone(),
+                span,
+            )?
+            .primary_value()
+        };
+        destructure_value(&parameter.pattern, value, runtime, environment, span)?;
+        if let Some(supplied_p) = &parameter.supplied_p {
+            runtime.define_in(supplied_p, Value::boolean(supplied.is_some()), environment);
+        }
+    }
+    Ok(())
+}
+
+fn destructure_auxiliary_parameters(
+    lambda_list: &DestructureLambdaList,
+    runtime: &Runtime,
+    program: &Rc<Program>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    for parameter in &lambda_list.auxiliary {
+        let default_function = program
+            .functions
+            .get(parameter.default_function)
+            .ok_or_else(|| {
+                invalid(
+                    "compiled destructuring auxiliary default is out of range",
+                    span,
+                )
+            })?;
+        let value = run_code(
+            runtime,
+            program,
+            default_function,
+            environment.clone(),
+            span,
+        )?
+        .primary_value();
+        runtime.define_in(&parameter.name, value, environment);
+    }
+    Ok(())
+}
+
+fn destructure_value(
+    pattern: &DestructurePattern,
+    value: Value,
+    runtime: &Runtime,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    match pattern {
+        DestructurePattern::Name(name) => {
+            runtime.define_in(name, value, environment);
+            Ok(())
+        }
+        DestructurePattern::List(patterns) => {
+            let Some(values) = value.list_items() else {
+                return Err(invalid(
+                    "destructuring-bind pattern requires a proper list",
+                    span,
+                ));
+            };
+            if values.len() != patterns.len() {
+                return Err(invalid(
+                    "destructuring-bind pattern has the wrong number of elements",
+                    span,
+                ));
+            }
+            for (pattern, value) in patterns.iter().zip(values) {
+                destructure_value(pattern, value, runtime, environment, span)?;
+            }
+            Ok(())
+        }
+        DestructurePattern::Dotted { items, tail } => {
+            let Some((values, dotted_tail)) = destructure_dotted_parts(&value) else {
+                return Err(invalid("destructuring-bind pattern requires a list", span));
+            };
+            if values.len() < items.len() {
+                return Err(invalid(
+                    "destructuring-bind pattern has too few elements",
+                    span,
+                ));
+            }
+            for (pattern, value) in items.iter().zip(values.iter().cloned()) {
+                destructure_value(pattern, value, runtime, environment, span)?;
+            }
+            let remaining = values[items.len()..].to_vec();
+            let tail_value = if remaining.is_empty() {
+                dotted_tail
+            } else if dotted_tail.is_truthy() {
+                Value::dotted_list(remaining, dotted_tail)
+            } else {
+                Value::list(remaining)
+            };
+            destructure_value(tail, tail_value, runtime, environment, span)
+        }
+    }
+}
+
+fn destructure_dotted_parts(value: &Value) -> Option<(Vec<Value>, Value)> {
+    match value {
+        Value::Nil => Some((Vec::new(), Value::Nil)),
+        Value::List(values) => Some((values.as_ref().clone(), Value::Nil)),
+        Value::DottedList { items, tail } => {
+            let mut values = items.as_ref().clone();
+            match tail.as_ref() {
+                Value::Nil => Some((values, Value::Nil)),
+                Value::List(more) => {
+                    values.extend(more.iter().cloned());
+                    Some((values, Value::Nil))
+                }
+                Value::DottedList { .. } => {
+                    let (more, dotted_tail) = destructure_dotted_parts(tail)?;
+                    values.extend(more);
+                    Some((values, dotted_tail))
+                }
+                other => Some((values, other.clone())),
+            }
+        }
+        _ => None,
+    }
+}
+
 fn jump_target(function: &FunctionCode, target: usize, span: Span) -> Result<usize, RuntimeError> {
     if target >= function.instructions.len() {
         return Err(invalid("compiled jump target is out of range", span));
@@ -1697,22 +723,498 @@ fn jump_target(function: &FunctionCode, target: usize, span: Span) -> Result<usi
     Ok(target)
 }
 
-fn compiled_keyword_matches(
-    specification_name: &str,
-    specification_escaped: bool,
-    actual_name: &str,
-    _actual_escaped: bool,
-) -> bool {
-    if specification_escaped {
-        specification_name == actual_name
-    } else {
-        normalize_name(specification_name) == actual_name
-    }
-}
-
 fn invalid(message: &str, span: Span) -> RuntimeError {
     RuntimeError::InvalidForm {
         message: message.to_string(),
         span: Some(span),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn function(instructions: Vec<Instruction>) -> FunctionCode {
+        FunctionCode {
+            name: Some("test-function".to_string()),
+            parameters: Vec::new(),
+            required_escaped: Vec::new(),
+            optional: Vec::new(),
+            keywords: Vec::new(),
+            has_keyword_section: false,
+            allow_other_keys: false,
+            rest: None,
+            rest_escaped: false,
+            auxiliary: Vec::new(),
+            instructions,
+        }
+    }
+
+    #[test]
+    fn rejects_an_entry_function_id_out_of_range() {
+        let runtime = Runtime::new();
+        let program = Rc::new(Program {
+            functions: Vec::new(),
+            entry: 0,
+        });
+        let Err(error) = run_entry(&runtime, &program, 0, &Environment::new(), Span::new(0, 1))
+        else {
+            panic!("an invalid function id must be rejected");
+        };
+
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "compiled function id is out of range"
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_jump_targets_before_indexing_the_instruction_stream() {
+        let runtime = Runtime::new();
+        let program = Rc::new(Program {
+            functions: vec![function(vec![Instruction::Jump(1)])],
+            entry: 0,
+        });
+        let Err(error) = run_entry(&runtime, &program, 0, &Environment::new(), Span::new(0, 1))
+        else {
+            panic!("an invalid jump target must be rejected");
+        };
+
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "compiled jump target is out of range"
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_compiled_rational_constants() {
+        let runtime = Runtime::new();
+        let program = Rc::new(Program {
+            functions: vec![function(vec![Instruction::Constant(Constant::Rational {
+                numerator: 1,
+                denominator: 0,
+            })])],
+            entry: 0,
+        });
+
+        let result = run_entry(&runtime, &program, 0, &Environment::new(), Span::new(0, 1));
+
+        assert!(matches!(
+            result,
+            Err(RuntimeError::InvalidForm { message, .. })
+                if message == "compiled rational constant is invalid"
+        ));
+    }
+
+    #[test]
+    fn rejects_too_few_required_arguments() {
+        let runtime = Runtime::new();
+        let mut compiled = function(vec![Instruction::Return]);
+        compiled.parameters.push("value".to_string());
+        let program = Rc::new(Program {
+            functions: vec![compiled],
+            entry: 0,
+        });
+
+        let result = run(
+            &runtime,
+            &program,
+            0,
+            &Environment::new(),
+            &[],
+            Span::new(0, 1),
+        );
+
+        assert!(
+            matches!(result, Err(RuntimeError::Arity { expected, actual, .. }) if expected == "1" && actual == 0)
+        );
+    }
+
+    #[test]
+    fn rejects_too_many_arguments_without_a_rest_parameter() {
+        let runtime = Runtime::new();
+        let mut compiled = function(vec![Instruction::Return]);
+        compiled.parameters.push("value".to_string());
+        let program = Rc::new(Program {
+            functions: vec![compiled],
+            entry: 0,
+        });
+
+        let result = run(
+            &runtime,
+            &program,
+            0,
+            &Environment::new(),
+            &[Value::Integer(1), Value::Integer(2)],
+            Span::new(0, 1),
+        );
+
+        assert!(
+            matches!(result, Err(RuntimeError::Arity { expected, actual, .. }) if expected == "1" && actual == 2)
+        );
+    }
+
+    #[test]
+    fn accepts_extra_arguments_when_a_rest_parameter_is_declared() {
+        let runtime = Runtime::new();
+        let mut compiled = function(vec![
+            Instruction::Load("rest".to_string()),
+            Instruction::Return,
+        ]);
+        compiled.parameters.push("value".to_string());
+        compiled.rest = Some("rest".to_string());
+        let program = Rc::new(Program {
+            functions: vec![compiled],
+            entry: 0,
+        });
+
+        let result = match run(
+            &runtime,
+            &program,
+            0,
+            &Environment::new(),
+            &[Value::Integer(1), Value::Integer(2)],
+            Span::new(0, 1),
+        ) {
+            Ok(value) => value,
+            Err(error) => panic!("a rest parameter must accept additional arguments: {error}"),
+        };
+
+        assert_eq!(result.to_string(), "(2)");
+    }
+
+    #[test]
+    fn rejects_entry_functions_with_parameters_or_dynamic_bindings() {
+        let runtime = Runtime::new();
+        let mut compiled = function(vec![Instruction::Return]);
+        compiled.parameters.push("value".to_string());
+        let program = Rc::new(Program {
+            functions: vec![compiled],
+            entry: 0,
+        });
+
+        let result = run_entry(&runtime, &program, 0, &Environment::new(), Span::new(0, 1));
+
+        assert!(matches!(
+            result,
+            Err(RuntimeError::Arity { expected, actual, .. }) if expected == "0" && actual == 0
+        ));
+    }
+
+    #[test]
+    fn argument_layout_handles_optional_keyword_and_rest_shapes() {
+        let mut optional = function(vec![]);
+        optional.parameters.push("required".to_string());
+        optional.optional.push(ncl_compiler::OptionalParameter {
+            name: "optional".to_string(),
+            name_escaped: false,
+            default_function: 0,
+            supplied_p: None,
+            supplied_p_escaped: None,
+        });
+        optional.has_keyword_section = true;
+
+        let layouts = [
+            (&optional, vec![Value::Integer(1)], (0, 1)),
+            (
+                &optional,
+                vec![Value::Integer(1), Value::Keyword("key".to_string().into())],
+                (0, 1),
+            ),
+            (
+                &optional,
+                vec![Value::Integer(1), Value::Integer(2)],
+                (1, 2),
+            ),
+        ];
+
+        for (function, arguments, expected) in layouts {
+            assert!(matches!(
+                argument_layout(function, &arguments),
+                Ok(layout) if layout == expected
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_call_without_enough_stack_values() {
+        let result = execute_call_instruction(
+            &Runtime::new(),
+            0,
+            &mut Vec::new(),
+            &Environment::new(),
+            Span::new(0, 1),
+        );
+
+        assert!(matches!(
+            result,
+            Err(RuntimeError::InvalidForm { message, .. })
+                if message == "call has too few stack values"
+        ));
+    }
+
+    #[test]
+    fn rejects_apply_without_enough_stack_values_or_a_final_list() {
+        let mut stack = Vec::new();
+        let result = execute_apply_instruction(
+            &Runtime::new(),
+            0,
+            &mut stack,
+            &Environment::new(),
+            Span::new(0, 1),
+        );
+        assert!(matches!(
+            result,
+            Err(RuntimeError::InvalidForm { message, .. })
+                if message == "apply has too few stack values"
+        ));
+
+        stack = vec![Value::Integer(1), Value::Integer(2)];
+        let result = execute_apply_instruction(
+            &Runtime::new(),
+            1,
+            &mut stack,
+            &Environment::new(),
+            Span::new(0, 1),
+        );
+        assert!(matches!(
+            result,
+            Err(RuntimeError::InvalidForm { message, .. })
+                if message == "apply's final argument must be a proper list"
+        ));
+    }
+
+    #[test]
+    fn rejects_mapcar_without_enough_stack_values_or_proper_lists() {
+        let result = execute_mapcar_instruction(
+            &Runtime::new(),
+            0,
+            &mut Vec::new(),
+            &Environment::new(),
+            Span::new(0, 1),
+        );
+        assert!(matches!(
+            result,
+            Err(RuntimeError::InvalidForm { message, .. })
+                if message == "mapcar has too few stack values"
+        ));
+
+        let mut stack = vec![Value::Integer(1), Value::Integer(2)];
+        let result = execute_mapcar_instruction(
+            &Runtime::new(),
+            1,
+            &mut stack,
+            &Environment::new(),
+            Span::new(0, 1),
+        );
+        assert!(matches!(
+            result,
+            Err(RuntimeError::InvalidForm { message, .. })
+                if message == "mapcar arguments must be proper lists"
+        ));
+    }
+
+    #[test]
+    fn rejects_multiple_value_call_without_enough_stack_values() {
+        let result = execute_multiple_value_call_instruction(
+            &Runtime::new(),
+            0,
+            &mut Vec::new(),
+            &Environment::new(),
+            Span::new(0, 1),
+        );
+
+        assert!(matches!(
+            result,
+            Err(RuntimeError::InvalidForm { message, .. })
+                if message == "multiple-value-call has too few stack values"
+        ));
+    }
+
+    #[test]
+    fn destructure_dotted_parts_normalizes_list_shapes() {
+        let nested = Value::dotted_list(
+            vec![Value::Integer(1)],
+            Value::dotted_list(vec![Value::Integer(2)], Value::Integer(3)),
+        );
+        let cases = [
+            (Value::Nil, vec![], Value::Nil),
+            (
+                Value::list(vec![Value::Integer(1)]),
+                vec![Value::Integer(1)],
+                Value::Nil,
+            ),
+            (
+                Value::dotted_list(vec![Value::Integer(1)], Value::Nil),
+                vec![Value::Integer(1)],
+                Value::Nil,
+            ),
+            (
+                Value::dotted_list(
+                    vec![Value::Integer(1)],
+                    Value::list(vec![Value::Integer(2)]),
+                ),
+                vec![Value::Integer(1), Value::Integer(2)],
+                Value::Nil,
+            ),
+            (
+                nested,
+                vec![Value::Integer(1), Value::Integer(2)],
+                Value::Integer(3),
+            ),
+            (
+                Value::dotted_list(vec![Value::Integer(1)], Value::Integer(2)),
+                vec![Value::Integer(1)],
+                Value::Integer(2),
+            ),
+        ];
+
+        for (value, expected_items, expected_tail) in cases {
+            let Some((items, tail)) = destructure_dotted_parts(&value) else {
+                panic!("a list-shaped value must be decomposed");
+            };
+            assert_eq!(
+                items.iter().map(Value::to_string).collect::<Vec<_>>(),
+                expected_items
+                    .iter()
+                    .map(Value::to_string)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(tail.to_string(), expected_tail.to_string());
+        }
+
+        assert!(destructure_dotted_parts(&Value::Integer(1)).is_none());
+    }
+
+    #[test]
+    fn rejects_invalid_destructure_shapes() {
+        let runtime = Runtime::new();
+        let environment = Environment::new();
+        let span = Span::new(0, 1);
+
+        let cases = [
+            (
+                DestructurePattern::List(vec![]),
+                Value::Integer(1),
+                "destructuring-bind pattern requires a proper list",
+            ),
+            (
+                DestructurePattern::List(vec![DestructurePattern::Name("x".to_string())]),
+                Value::Nil,
+                "destructuring-bind pattern has the wrong number of elements",
+            ),
+            (
+                DestructurePattern::Dotted {
+                    items: vec![DestructurePattern::Name("x".to_string())],
+                    tail: Box::new(DestructurePattern::Name("rest".to_string())),
+                },
+                Value::Nil,
+                "destructuring-bind pattern has too few elements",
+            ),
+        ];
+
+        for (pattern, value, message) in cases {
+            let result = destructure_value(&pattern, value, &runtime, &environment, span);
+            assert!(
+                matches!(result, Err(RuntimeError::InvalidForm { message: actual, .. }) if actual == message)
+            );
+        }
+    }
+
+    #[test]
+    fn executes_stack_transformations_as_a_table() {
+        let runtime = Runtime::new();
+        let span = Span::new(0, 1);
+        let cases = [
+            (Instruction::Pop, vec![Value::Integer(1)], vec![]),
+            (
+                Instruction::Dup,
+                vec![Value::Integer(1)],
+                vec![Value::Integer(1), Value::Integer(1)],
+            ),
+            (
+                Instruction::Primary,
+                vec![Value::values(vec![Value::Integer(1), Value::Integer(2)])],
+                vec![Value::Integer(1)],
+            ),
+            (
+                Instruction::Values(2),
+                vec![Value::Integer(1), Value::Integer(2)],
+                vec![Value::values(vec![Value::Integer(1), Value::Integer(2)])],
+            ),
+            (
+                Instruction::MultipleValueList,
+                vec![Value::values(vec![Value::Integer(1), Value::Integer(2)])],
+                vec![Value::list(vec![Value::Integer(1), Value::Integer(2)])],
+            ),
+        ];
+
+        for (instruction, mut stack, expected_stack) in cases {
+            let mut scopes = Vec::new();
+            let mut environment = Environment::new();
+            let mut program_counter = 0;
+            let result = execute_stack_instruction(
+                &runtime,
+                &instruction,
+                &mut stack,
+                &mut scopes,
+                &mut environment,
+                &mut program_counter,
+                span,
+            );
+            assert!(matches!(result, Ok(true)));
+            assert_eq!(
+                stack.iter().map(Value::to_string).collect::<Vec<_>>(),
+                expected_stack
+                    .iter()
+                    .map(Value::to_string)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(program_counter, 1);
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_stack_transformations_as_a_table() {
+        let runtime = Runtime::new();
+        let span = Span::new(0, 1);
+        let cases = [
+            (Instruction::Pop, "pop has no value on the stack"),
+            (Instruction::Dup, "dup has no value on the stack"),
+            (
+                Instruction::Primary,
+                "primary value has no value on the stack",
+            ),
+            (Instruction::Values(1), "values has too few stack values"),
+            (
+                Instruction::MultipleValueList,
+                "multiple-value-list has no value on the stack",
+            ),
+            (Instruction::ExitScope, "scope exit has no matching scope"),
+        ];
+
+        for (instruction, message) in cases {
+            let mut stack = Vec::new();
+            let mut scopes = Vec::new();
+            let mut environment = Environment::new();
+            let mut program_counter = 0;
+            let result = execute_stack_instruction(
+                &runtime,
+                &instruction,
+                &mut stack,
+                &mut scopes,
+                &mut environment,
+                &mut program_counter,
+                span,
+            );
+            let result_debug = format!("{result:?}");
+            assert!(
+                matches!(result, Err(RuntimeError::InvalidForm { message: actual, .. }) if actual == message),
+                "{instruction:?}: {result_debug}"
+            );
+            assert_eq!(program_counter, 0);
+        }
     }
 }

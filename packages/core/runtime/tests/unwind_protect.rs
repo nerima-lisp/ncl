@@ -1,3 +1,5 @@
+//! Integration tests for unwind-protect in both execution modes.
+
 use ncl_runtime::Runtime;
 
 fn evaluate_interpreted(source: &str) -> Result<String, String> {
@@ -38,19 +40,19 @@ fn assert_interpreted_and_compiled(source: &str, expected: &str) {
 }
 
 fn assert_error_contains(source: &str, expected: &str) {
-    let interpreted = Runtime::new()
-        .eval_source(source)
-        .expect_err("interpreted evaluation should fail")
-        .to_string();
+    let interpreted = match Runtime::new().eval_source(source) {
+        Ok(_) => panic!("interpreted evaluation should fail"),
+        Err(error) => error.to_string(),
+    };
     assert!(
         interpreted.contains(expected),
         "interpreted error {interpreted:?} should contain {expected:?}"
     );
 
-    let compiled = Runtime::new()
-        .eval_compiled_source(source)
-        .expect_err("compiled evaluation should fail")
-        .to_string();
+    let compiled = match Runtime::new().eval_compiled_source(source) {
+        Ok(_) => panic!("compiled evaluation should fail"),
+        Err(error) => error.to_string(),
+    };
     assert!(
         compiled.contains(expected),
         "compiled error {compiled:?} should contain {expected:?}"
@@ -122,7 +124,7 @@ fn protected_form_is_required() {
 #[test]
 fn go_runs_cleanup_before_resuming_at_tag() {
     assert_interpreted_and_compiled(
-        r#"
+        r"
         (let ((marker nil))
           (tagbody
             start
@@ -131,7 +133,7 @@ fn go_runs_cleanup_before_resuming_at_tag() {
               (setq marker :cleaned))
             done)
           marker)
-        "#,
+        ",
         ":CLEANED",
     );
 }

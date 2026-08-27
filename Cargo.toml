@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     ".",
     "packages/core/syntax",
@@ -13,14 +13,42 @@ default-members = [
     "packages/core/runtime",
 ]
 
-[package]
-name = "ncl"
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
-description = "A Rust-native Common Lisp runtime"
+rust-version = "1.98"
 license = "MIT"
 
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+
+[package]
+name = "ncl"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "A Rust-native Common Lisp runtime"
+license.workspace = true
+
+[lints]
+workspace = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
 [dependencies]
-ncl-runtime = { path = "packages/core/runtime" }
-ncl-syntax = { path = "packages/core/syntax" }
+ncl-runtime = { path = "packages/core/runtime", version = "0.1.0" }
+ncl-syntax = { path = "packages/core/syntax", version = "0.1.0" }

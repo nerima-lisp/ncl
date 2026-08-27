@@ -1,0 +1,724 @@
+use super::*;
+
+#[test]
+fn evaluates_basic_clos_instances_and_accessors() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x)
+                    (y :initarg :y :accessor point-y)))
+                 (let ((point (make-instance 'point :x 2 :y 3)))
+                   (list (slot-value point 'x)
+                         (point-x point)
+                         (point-y point)
+                         (slot-exists-p point 'x)
+                         (slot-boundp point 'y)
+                         (typep point 'point)
+                         (class-name (class-of point))
+                         (class-name (find-class 'point)))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(2 2 3 T T T POINT POINT)");
+}
+
+#[test]
+fn rejects_invalid_make_instance_arguments() {
+    for source in [
+        "(make-instance)",
+        "(make-instance 'point :x)",
+        "(make-instance 1)",
+        "(make-instance 'missing-class-for-test)",
+    ] {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn evaluates_setf_slot_value() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass setf-point ()
+                   ((x :initarg :x)))
+                 (let ((point (make-instance 'setf-point :x 2)))
+                   (setf (slot-value point 'x) 9)
+                   (slot-value point 'x)))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "9");
+}
+
+#[test]
+fn evaluates_clos_with_slots_and_accessors() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_source(
+            r"(progn
+                 (defclass ws-point ()
+                   ((x :initarg :x :accessor ws-point-x)
+                    (y :initarg :y :accessor ws-point-y)))
+                 (let ((point (make-instance 'ws-point :x 2 :y 3)))
+                   (with-slots ((x xx) y) point
+                     (setf xx 5 y 7)
+                     (with-accessors ((ax ws-point-x) (ay ws-point-y)) point
+                       (list xx y ax ay
+                             (progn (setf ax 11) ax)
+                             (ws-point-x point)
+                             (ws-point-y point))))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
+
+    assert!(
+        runtime
+            .eval_source("(with-accessors (x) object x)")
+            .is_err()
+    );
+}
+
+#[test]
+fn evaluates_clos_slot_initialization_options() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass defaults ()
+                   ((x :initform 7 :reader defaults-x)
+                    (y :initarg :y :writer set-defaults-y)
+                    (z :initarg nil)))
+                 (let ((object (make-instance 'defaults :y 3)))
+                   (set-defaults-y 9 object)
+                   (list (defaults-x object)
+                         (slot-value object 'y)
+                         (slot-boundp object 'z)
+                         (not (ignore-errors (make-instance 'defaults :x 1))))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(7 9 NIL T)");
+}
+
+#[test]
+fn evaluates_clos_class_allocated_slots() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass counter ()
+                   ((value :allocation :class :initarg :value
+                           :initform 0 :accessor counter-value)))
+                 (defclass child-counter (counter) ())
+                 (let ((counter (make-instance 'counter))
+                       (child (make-instance 'child-counter :value 4)))
+                   (setf (counter-value counter) 7)
+                   (let ((before (list (counter-value counter)
+                                       (counter-value child)
+                                       (slot-boundp counter 'value)
+                                       (slot-boundp child 'value))))
+                     (slot-makunbound child 'value)
+                     (list before
+                           (slot-boundp counter 'value)
+                           (slot-boundp child 'value)))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "((7 7 T T) NIL NIL)");
+}
+
+#[test]
+fn evaluates_clos_default_initargs() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass defaults ()
+                   ((value :initarg :value :initform 1))
+                   (:default-initargs :value (+ 2 5)))
+                 (defclass child-defaults (defaults) ())
+                 (let ((explicit (make-instance 'child-defaults :value 9))
+                       (implicit (make-instance 'child-defaults)))
+                   (list (slot-value explicit 'value)
+                         (slot-value implicit 'value))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(9 7)");
+}
+
+#[test]
+fn evaluates_clos_setf_and_generic_methods() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x)
+                    (y :initarg :y :accessor point-y)))
+                 (defgeneric point-total (object))
+                 (defmethod point-total ((object point))
+                   (+ (point-x object) (point-y object)))
+                 (let ((point (make-instance 'point :x 2 :y 3)))
+                   (setf (point-x point) 8)
+                   (list (point-x point)
+                         (slot-value point 'x)
+                         (point-total point))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(8 8 11)");
+}
+
+#[test]
+fn evaluates_clos_methods_with_ordinary_lambda_lists() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass point () ())
+                 (defgeneric describe-point (object &optional prefix &key suffix))
+                 (defmethod describe-point
+                   ((object point)
+                    &optional (prefix "default" prefix-p)
+                    &key (suffix "suffix" suffix-p))
+                   (list prefix suffix prefix-p suffix-p))
+                 (defgeneric collect-point (object))
+                 (defmethod collect-point ((object point) &rest values)
+                   values)
+                 (let ((point (make-instance 'point)))
+                   (list (describe-point point)
+                         (describe-point point "given" :suffix "tail")
+                         (collect-point point 1 2 3))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "((\"default\" \"suffix\" NIL NIL) (\"given\" \"tail\" T T) (1 2 3))"
+    );
+}
+
+#[test]
+fn evaluates_clos_inheritance_and_specialization() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass point ()
+                   ((x :initarg :x :accessor point-x)))
+                 (defclass colored-point (point)
+                   ((color :initarg :color :accessor point-color)))
+                 (defgeneric point-coordinate (object))
+                 (defmethod point-coordinate ((object point))
+                   (list (point-x object)))
+                 (let ((point (make-instance 'colored-point :x 4 :color :red)))
+                   (list (point-x point)
+                         (point-color point)
+                         (typep point 'point)
+                         (typep point 'colored-point)
+                         (point-coordinate point))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(4 :RED T T (4))");
+}
+
+#[test]
+fn evaluates_clos_unbound_slots() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass point ()
+                   ((x :initarg :x)))
+                 (let ((point (make-instance 'point)))
+                   (list
+                     (slot-exists-p point 'x)
+                     (slot-boundp point 'x)
+                     (not (ignore-errors (slot-value point 'x)))
+                     (progn
+                       (setf (slot-value point 'x) 9)
+                       (list (slot-boundp point 'x) (slot-value point 'x)))
+                     (progn
+                       (slot-makunbound point 'x)
+                       (slot-boundp point 'x)))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T NIL T (T 9) NIL)");
+}
+
+#[test]
+fn evaluates_clos_method_combination() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass point () ((x :initarg :x)))
+                 (let ((events nil))
+                   (defgeneric point-value (object))
+                   (defmethod point-value ((object t))
+                     (setf events (cons :base events))
+                     (list :base (next-method-p)))
+                   (defmethod point-value :before ((object point))
+                     (setf events (cons :before events)))
+                   (defmethod point-value :after ((object point))
+                     (setf events (cons :after events)))
+                   (defmethod point-value ((object point))
+                     (setf events (cons :primary events))
+                     (list :primary (next-method-p) (call-next-method)))
+                   (defmethod point-value :around ((object point))
+                     (setf events (cons :around-before events))
+                     (let ((value (call-next-method)))
+                       (setf events (cons :around-after events))
+                       (list :around value)))
+                   (let ((point (make-instance 'point :x 7)))
+                     (list (point-value point) (reverse events)))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "((:AROUND (:PRIMARY T (:BASE NIL))) (:AROUND-BEFORE :BEFORE :PRIMARY :BASE :AFTER :AROUND-AFTER))"
+    );
+}
+
+#[test]
+fn evaluates_the_with_type_designators() {
+    assert_eq!(
+        evaluate(
+            "(list (the integer (+ 3 4))
+                    (the rational 1/2)
+                    (the float 0.5)
+                    (ignore-errors (the integer 1/2)))",
+        )
+        .to_string(),
+        "(7 1/2 0.5 NIL)"
+    );
+}
+
+#[test]
+fn evaluates_locally_and_eval_when() {
+    assert_eq!(
+        evaluate(
+            "(let ((seen 0))
+               (list
+                 (locally
+                   (declare (type integer seen))
+                   (setq seen 4)
+                   seen)
+                 (eval-when (:execute) (+ seen 1))
+                 (eval-when (:compile-toplevel) (setq seen 99))
+                 (progn
+                   (declaim (optimize speed))
+                   (proclaim '(inline seen))
+                   seen)))",
+        )
+        .to_string(),
+        "(4 5 NIL 4)"
+    );
+}
+
+#[test]
+fn rejects_invalid_eval_when_situations() {
+    for source in [
+        "(eval-when 1)",
+        "(eval-when (1) 42)",
+        "(eval-when (#\\a) 42)",
+        "(eval-when (#:uninterned) 42)",
+    ] {
+        let error = Runtime::new().eval_source(source).must_fail();
+        assert!(
+            matches!(error, ncl_runtime::RuntimeError::InvalidForm { .. }),
+            "{source}: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn evaluates_defstruct_constructors_accessors_and_copies() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defstruct person name (age 21))
+                 (let ((person (make-person :name "Ada")))
+                   (setf (person-name person) "Grace")
+                   (list (person-p person)
+                         (person-name person)
+                         (person-age person)
+                         (typep person 'person)
+                         (type-of person)
+                         (eq person (copy-person person))
+                         (equal person (copy-person person))
+                         (write-to-string person))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r##"(T "Grace" 21 T PERSON NIL T "#S(PERSON :NAME \"Grace\" :AGE 21)")"##,
+    );
+}
+
+#[test]
+fn evaluates_defstruct_name_and_options() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defstruct
+                   (account
+                    (:conc-name acct-)
+                    (:predicate account-p)
+                    (:copier clone-account)
+                    (:constructor make-account-record))
+                   id (balance 0))
+                 (defstruct
+                   (plain
+                    (:conc-name nil)
+                    (:predicate plain-p)
+                    (:copier clone-plain)
+                    (:constructor make-plain))
+                   amount)
+                 (defstruct
+                   (disabled
+                    (:predicate nil)
+                    (:copier nil)
+                    (:constructor nil))
+                   value)
+                 (let ((account (make-account-record :id 7))
+                       (plain (make-plain :amount 9)))
+                   (list (account-p account)
+                         (acct-id account)
+                         (acct-balance account)
+                         (equal account (clone-account account))
+                         (typep account 'account)
+                         (type-of account)
+                         (amount plain)
+                         (plain-p plain)
+                         (equal plain (clone-plain plain)))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T 7 0 T T ACCOUNT 9 T T)");
+}
+
+#[test]
+fn evaluates_defstruct_read_only_slots() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defstruct record
+                   (id 0 t)
+                   (label "initial" nil))
+                 (let ((record (make-record :id 7 :label "before")))
+                   (setf (record-label record) "after")
+                   (list (record-id record)
+                         (record-label record))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), r#"(7 "after")"#);
+
+    let error = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defstruct immutable (id 0 t))
+                 (let ((record (make-immutable :id 1)))
+                   (setf (immutable-id record) 2)))",
+        )
+        .must_fail();
+    assert!(matches!(
+        error,
+        ncl_runtime::RuntimeError::InvalidForm { message, .. }
+            if message == "cannot SETF a read-only structure slot"
+    ));
+}
+
+#[test]
+fn evaluates_defstruct_included_slots_and_type_hierarchy() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defstruct
+                   (person (:constructor nil))
+                   name (age 0))
+                 (defstruct
+                   (employee (:include person (age 21)))
+                   id)
+                 (let ((employee (make-employee :name "Ada" :id 7)))
+                   (setf (person-name employee) "Grace")
+                   (setf (employee-age employee) 42)
+                   (list (employee-name employee)
+                         (person-name employee)
+                         (employee-age employee)
+                         (person-age employee)
+                         (employee-id employee)
+                         (person-p employee)
+                         (employee-p employee)
+                         (typep employee 'person)
+                         (typep employee 'employee)
+                         (type-of employee)
+                         (equal employee (copy-person employee))
+                         (write-to-string employee))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r##"("Grace" "Grace" 42 42 7 T T T T EMPLOYEE T "#S(EMPLOYEE :NAME \"Grace\" :AGE 42 :ID 7)")"##,
+    );
+}
+
+#[test]
+fn evaluates_defstruct_boa_constructors() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defstruct
+                   (boa
+                    (:constructor make-boa
+                      (first
+                       &optional
+                       (second)
+                       (third (+ first second))
+                       &rest rest
+                       &key
+                       ((:flag flag) t)
+                       &aux
+                       (sum (+ first second)))))
+                   first (second 20) (third 30) rest flag sum)
+                 (let ((default (make-boa 1))
+                       (explicit (make-boa 1 2 3 :flag nil)))
+                   (list
+                     (list (boa-first default)
+                           (boa-second default)
+                           (boa-third default)
+                           (boa-rest default)
+                           (boa-flag default)
+                           (boa-sum default))
+                     (list (boa-first explicit)
+                           (boa-second explicit)
+                           (boa-third explicit)
+                           (boa-rest explicit)
+                           (boa-flag explicit)
+                           (boa-sum explicit)))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "((1 20 21 NIL T 21) (1 2 3 (:FLAG NIL) NIL 3))",
+    );
+}
+
+#[test]
+fn evaluates_defstruct_boa_argument_errors() {
+    let cases = [
+        r"(progn (defstruct (record (:constructor make-record (required))) required) (make-record))",
+        r"(progn (defstruct (record (:constructor make-record (required))) required) (make-record 1 2))",
+        r"(progn (defstruct (record (:constructor make-record (required &key flag))) required flag) (make-record 1 2))",
+        r"(progn (defstruct (record (:constructor make-record (required &key flag))) required flag) (make-record 1 :unknown 2))",
+    ];
+
+    for source in cases {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn rejects_malformed_structure_and_class_definitions() {
+    let cases = [
+        (
+            "defstruct option must be a list",
+            r"(defstruct record 1 value)",
+        ),
+        (
+            "defstruct option needs a name",
+            r"(defstruct record () value)",
+        ),
+        (
+            "defstruct naming option has too many names",
+            r"(defstruct (record (:predicate first second)) value)",
+        ),
+        (
+            "defstruct constructor NIL cannot have lambda list",
+            r"(defstruct (record (:constructor nil (value))) value)",
+        ),
+        (
+            "defstruct include requires an existing structure",
+            r"(defstruct (record (:include missing)) value)",
+        ),
+        (
+            "defstruct slot specification has too many elements",
+            r"(defstruct record (value 0 nil extra))",
+        ),
+        (
+            "defclass option must be a non-empty list",
+            r"(defclass record () () 1)",
+        ),
+        (
+            "defclass default initargs require pairs",
+            r"(defclass record () () (:default-initargs :value))",
+        ),
+        (
+            "defclass documentation requires a string",
+            r"(defclass record () () (:documentation 1))",
+        ),
+        (
+            "defclass slot options require values",
+            r"(defclass record () ((value :initarg)))",
+        ),
+        (
+            "defclass slot option must be supported",
+            r"(defclass record () ((value :unknown t)))",
+        ),
+    ];
+
+    for (name, source) in cases {
+        assert!(
+            Runtime::new().eval_source(source).is_err(),
+            "{name}: {source}"
+        );
+    }
+}
+
+#[test]
+fn evaluates_arrays_and_multidimensional_setf() {
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array '(2 2) :initial-element 0))
+                   (vector (make-array 3 :initial-element 5)))
+               (setf (aref array 1 0) 7
+                     (aref vector 2) 9)
+               (list (arrayp array) (array-rank array) (array-dimensions array)
+                     (array-dimension array 1) (array-total-size array)
+                     (aref array 1 0) (row-major-aref array 2)
+                     (aref vector 2) (typep array 'array)))",
+        )
+        .to_string(),
+        "(T 2 (2 2) 2 4 7 7 9 T)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array '(2 2)
+                                      :initial-contents '((1 2) (3 4)))))
+               (list (aref array 0 1) (aref array 1 0)
+                     (row-major-aref array 3)))",
+        )
+        .to_string(),
+        "(2 3 4)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array '(2 3)
+                                      :initial-contents '((0 1 2) (3 4 5)))))
+               (list (array-row-major-index array 1 2)
+                     (array-in-bounds-p array 1 2)
+                     (array-in-bounds-p array 2 0)
+                     (aref array 1 2)
+                     (row-major-aref array (array-row-major-index array 1 2))
+                     (array-element-type array)
+                     (simple-array-p array)
+                     (simple-vector-p (vector 1 2))
+                     (simple-vector-p array)))",
+        )
+        .to_string(),
+        "(5 T NIL 5 5 T T T NIL)"
+    );
+}
+
+#[test]
+fn evaluates_array_constructors_and_validation() {
+    assert_eq!(
+        evaluate(
+            "(list (vector 1 2 3)
+                   (svref (vector 4 5 6) 1)
+                   (make-array 2 :initial-element 9)
+                   (make-array 3 :initial-contents '(7 8 9)))",
+        )
+        .to_string(),
+        "(#(1 2 3) 5 #(9 9) #(7 8 9))",
+    );
+
+    for source in [
+        "(make-array)",
+        "(make-array 2 :initial-element 0 :initial-contents '(1 2))",
+        "(make-array 2 :unknown-option 0)",
+        "(aref)",
+        "(aref 1 0)",
+        "(aref #(1 2))",
+        "(aref #(1 2) 0 1)",
+        "(aref #(1 2) 2)",
+        "(svref)",
+        "(svref 1 0)",
+        "(svref '(1 2) 0)",
+        "(svref #(1 2) 2)",
+        "(row-major-aref)",
+        "(row-major-aref #(1 2) 2)",
+        "(array-row-major-index #(1 2))",
+        "(array-in-bounds-p #(1 2))",
+        "(array-dimension #(1 2) 1)",
+        "(array-element-type)",
+        "(array-element-type 1)",
+        "(simple-array-p)",
+        "(arrayp)",
+        "(array-rank)",
+        "(array-rank 1)",
+        "(array-dimensions)",
+        "(array-dimensions 1)",
+        "(array-dimension)",
+        "(array-dimension #(1 2))",
+        "(array-dimension 1 0)",
+        "(array-dimension #(1 2) -1)",
+        "(array-total-size)",
+        "(array-total-size 1)",
+        "(bit)",
+        "(bit 1 0)",
+        "(bit #(2) 0)",
+        "(bit #(0 1) 2)",
+        "(aref #(1) -1)",
+        "(aref #(1) 1.0)",
+        "(aref #(1) 999999999999999999999999999999999999999999999999999999999999)",
+        "(setf (aref #(1) 2) 3)",
+    ] {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn rejects_malformed_quasiquotes() {
+    for source in ["(quasiquote)", "(quasiquote a b)", "`,@'(1 2)"] {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn evaluates_hash_tables_and_gethash_setf() {
+    assert_eq!(
+        evaluate(
+            "(let ((eq-table (make-hash-table :test #'eq))
+                   (eql-table (make-hash-table))
+                   (equal-table (make-hash-table :test #'equal))
+                   (equalp-table (make-hash-table :test #'equalp)))
+               (setf (gethash 'key eq-table) 1
+                     (gethash 42 eql-table) 2
+                     (gethash '(a b) equal-table) 3
+                     (gethash \"Key\" equalp-table) 4)
+               (list (hash-table-p eq-table) (typep eq-table 'hash-table)
+                     (hash-table-count eq-table) (hash-table-test eq-table)
+                     (gethash 'key eq-table) (gethash 42 eql-table)
+                     (gethash '(a b) equal-table) (gethash \"key\" equalp-table)))",
+        )
+        .to_string(),
+        "(T T 1 EQ 1 2 3 4)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((table (make-hash-table :test #'equal :size 4)))
+               (setf (gethash \"key\" table) 42)
+               (multiple-value-bind (value present) (gethash \"key\" table)
+                 (list value present (gethash \"missing\" table 99)
+                       (remhash \"key\" table) (hash-table-count table)
+                       (progn (setf (gethash 'other table) 7)
+                              (clrhash table)
+                              (hash-table-count table)))))",
+        )
+        .to_string(),
+        "(42 T 99 T 0 0)"
+    );
+}

@@ -1,760 +1,147 @@
 use std::cell::RefCell;
-use std::fmt;
-use std::fmt::Write as _;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use ncl_compiler::{FunctionId, Program};
 use ncl_syntax::{
     Form, LambdaListAuxiliaryParameter, LambdaListKeywordParameter, LambdaListOptionalParameter,
-    OrdinaryLambdaList,
 };
 
 use crate::environment::Environment;
 use crate::error::{ReturnValue, RuntimeError};
 
-#[path = "value/stream.rs"]
-mod stream;
+#[path = "value_conditions.rs"]
+mod value_conditions;
+#[path = "value_display.rs"]
+mod value_display;
+#[path = "value_rational.rs"]
+mod value_rational;
+pub use value_conditions::{ConditionData, RestartData};
+pub use value_rational::Rational;
 
-#[path = "value/display.rs"]
-mod display;
+#[path = "value_comparison.rs"]
+mod value_comparison;
+#[path = "value_models.rs"]
+mod value_models;
+use value_models::SlotValues;
+pub use value_models::{
+    ClassDefinition, ClassSlot, ClosureOptions, Instance, MacroAuxiliaryParameter,
+    MacroKeywordParameter, MacroLambdaList, MacroOptionalParameter, MacroPattern, MethodDefinition,
+    StructureDefinition, StructureSlot,
+};
 
-pub use stream::Stream;
+#[path = "value_functions.rs"]
+mod value_functions;
+pub use value_functions::{Builtin, Function};
 
-pub type Builtin = fn(&[Value]) -> Result<Value, RuntimeError>;
-
-#[derive(Clone)]
-pub(crate) struct MacroBinding {
-    pub(crate) name: String,
-    pub(crate) escaped: bool,
-}
-
-#[derive(Clone)]
-pub(crate) enum MacroPattern {
-    Name(MacroBinding),
-    List(Vec<MacroPattern>),
-    Dotted {
-        items: Vec<MacroPattern>,
-        tail: Box<MacroPattern>,
-    },
-}
-
-#[derive(Clone)]
-pub(crate) struct MacroOptionalParameter {
-    pub(crate) pattern: MacroPattern,
-    pub(crate) init_form: Form,
-    pub(crate) supplied_p: Option<MacroBinding>,
-}
-
-#[derive(Clone)]
-pub(crate) struct MacroKeywordParameter {
-    pub(crate) keyword_name: String,
-    pub(crate) keyword_name_escaped: bool,
-    pub(crate) pattern: MacroPattern,
-    pub(crate) init_form: Form,
-    pub(crate) supplied_p: Option<MacroBinding>,
-}
+#[path = "value_constructors.rs"]
+mod value_constructors;
+#[path = "value_stream.rs"]
+mod value_stream;
+#[path = "value_stream_impl.rs"]
+mod value_stream_impl;
+pub use value_stream::Stream;
 
 #[derive(Clone)]
-pub(crate) struct MacroAuxiliaryParameter {
-    pub(crate) name: MacroBinding,
-    pub(crate) init_form: Form,
-}
-
-#[derive(Clone)]
-pub(crate) struct MacroLambdaList {
-    pub(crate) whole: Option<MacroBinding>,
-    pub(crate) environment: Option<MacroBinding>,
-    pub(crate) required: Vec<MacroPattern>,
-    pub(crate) optional: Vec<MacroOptionalParameter>,
-    pub(crate) rest: Option<MacroBinding>,
-    pub(crate) keywords: Vec<MacroKeywordParameter>,
-    pub(crate) has_keyword_section: bool,
-    pub(crate) allow_other_keys: bool,
-    pub(crate) auxiliary: Vec<MacroAuxiliaryParameter>,
-}
-
-#[derive(Clone)]
-pub(crate) struct DefsetfDefinition {
-    pub(crate) lambda_list: MacroLambdaList,
-    pub(crate) stores: Vec<MacroBinding>,
-    pub(crate) body: Vec<Form>,
-    pub(crate) environment: Environment,
-}
-
-#[derive(Clone)]
-pub(crate) struct StructureSlot {
-    pub(crate) name: String,
-    pub(crate) init_form: Option<Form>,
-    pub(crate) read_only: bool,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StructureRepresentation {
-    Structure,
-    List,
-    Vector,
-}
-
-#[derive(Clone)]
-pub(crate) struct StructureDefinition {
-    pub(crate) documentation: Option<String>,
-    pub(crate) slots: Vec<StructureSlot>,
-    pub(crate) type_names: Vec<String>,
-    pub(crate) representation: StructureRepresentation,
-    pub(crate) named: bool,
-}
-
-#[derive(Clone)]
-pub(crate) struct ConditionSlot {
-    pub(crate) name: String,
-    pub(crate) initarg: Option<ConditionInitarg>,
-    pub(crate) init_form: Option<Form>,
-    pub(crate) readers: Vec<String>,
-    pub(crate) writers: Vec<String>,
-}
-
-#[derive(Clone)]
-pub(crate) struct ConditionInitarg {
-    pub(crate) name: String,
-    pub(crate) escaped: bool,
-}
-
-impl ConditionInitarg {
-    pub(crate) fn matches(&self, name: &str, escaped: bool) -> bool {
-        self.escaped == escaped
-            && if escaped {
-                self.name == name
-            } else {
-                self.name.eq_ignore_ascii_case(name)
-            }
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct ConditionDefinition {
-    pub(crate) name: String,
-    pub(crate) direct_superclasses: Vec<String>,
-    pub(crate) precedence: Vec<String>,
-    pub(crate) slots: Vec<ConditionSlot>,
-    pub(crate) report: Option<String>,
-}
-
-#[derive(Clone)]
-pub(crate) struct ClassSlot {
-    pub(crate) name: String,
-    pub(crate) initarg: Option<String>,
-    pub(crate) init_form: Option<Form>,
-    pub(crate) class_value: Option<Rc<RefCell<Value>>>,
-    pub(crate) type_specifier: Option<Value>,
-}
-
-#[derive(Clone)]
-pub(crate) struct ClassDefinition {
-    pub(crate) name: String,
-    pub(crate) direct_superclasses: Vec<String>,
-    pub(crate) precedence: Vec<String>,
-    pub(crate) slots: Vec<ClassSlot>,
-    pub(crate) default_initargs: Vec<(String, Form)>,
-    pub(crate) documentation: Option<String>,
-}
-
-#[derive(Clone)]
-pub(crate) enum MethodSpecializer {
-    Type(String),
-    Eql(Value),
-}
-
-#[derive(Clone)]
-pub(crate) struct MethodDefinition {
-    pub(crate) qualifiers: Vec<String>,
-    pub(crate) specializers: Vec<MethodSpecializer>,
-    pub(crate) function: Value,
-}
-
-#[derive(Clone)]
-pub(crate) struct Instance {
-    pub(crate) class: Rc<ClassDefinition>,
-    pub(crate) slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
-}
-
-#[derive(Clone)]
-pub enum Function {
-    Builtin {
-        name: &'static str,
-        function: Builtin,
-    },
-    Primitive {
-        name: &'static str,
-    },
-    StructureConstructor {
-        name: String,
-        slots: Vec<StructureSlot>,
-        structure_types: Vec<String>,
-        representation: StructureRepresentation,
-        named: bool,
-        constructor_lambda_list: Option<OrdinaryLambdaList>,
-        environment: Environment,
-    },
-    StructurePredicate {
-        name: String,
-    },
-    StructureAccessor {
-        structure_name: String,
-        slot_name: String,
-        slot_index: usize,
-        read_only: bool,
-    },
-    StructureCopier {
-        name: String,
-    },
-    Generic {
-        name: String,
-        methods: Rc<RefCell<Vec<MethodDefinition>>>,
-    },
-    SlotReader {
-        class_name: String,
-        slot_name: String,
-    },
-    SlotWriter {
-        class_name: String,
-        slot_name: String,
-    },
-    ConditionReader {
-        condition_name: String,
-        slot_name: String,
-    },
-    ConditionWriter {
-        condition_name: String,
-        slot_name: String,
-    },
-    Closure {
-        parameters: Vec<String>,
-        required_escaped: Vec<bool>,
-        optional: Vec<LambdaListOptionalParameter>,
-        rest: Option<String>,
-        rest_escaped: bool,
-        keywords: Vec<LambdaListKeywordParameter>,
-        has_keyword_section: bool,
-        allow_other_keys: bool,
-        auxiliary: Vec<LambdaListAuxiliaryParameter>,
-        body: Vec<Form>,
-        environment: Environment,
-        documentation: Option<String>,
-    },
-    Macro {
-        lambda_list: MacroLambdaList,
-        body: Vec<Form>,
-        environment: Environment,
-    },
-    ModifyMacro {
-        lambda_list: MacroLambdaList,
-        function: Form,
-        environment: Environment,
-    },
-    Compiled {
-        program: Rc<Program>,
-        function: FunctionId,
-        environment: Environment,
-        documentation: Option<String>,
-    },
-}
-
-impl Function {
-    pub(crate) fn documentation(&self) -> Option<&str> {
-        match self {
-            Self::Closure { documentation, .. } | Self::Compiled { documentation, .. } => {
-                documentation.as_deref()
-            }
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Rational {
-    numerator: i64,
-    denominator: i64,
-}
-
-impl Rational {
-    pub(crate) fn new(numerator: i128, denominator: i128) -> Result<Self, RuntimeError> {
-        if denominator == 0 {
-            return Err(RuntimeError::DivisionByZero);
-        }
-
-        let (numerator, denominator) = if denominator < 0 {
-            (
-                numerator
-                    .checked_neg()
-                    .ok_or(RuntimeError::NumericOverflow)?,
-                denominator
-                    .checked_neg()
-                    .ok_or(RuntimeError::NumericOverflow)?,
-            )
-        } else {
-            (numerator, denominator)
-        };
-
-        let numerator_abs = if numerator < 0 {
-            numerator
-                .checked_neg()
-                .ok_or(RuntimeError::NumericOverflow)? as u128
-        } else {
-            numerator as u128
-        };
-        let denominator_abs = denominator as u128;
-        let divisor = gcd(numerator_abs, denominator_abs);
-        let numerator = i64::try_from(numerator / divisor as i128)
-            .map_err(|_| RuntimeError::NumericOverflow)?;
-        let denominator = i64::try_from(denominator / divisor as i128)
-            .map_err(|_| RuntimeError::NumericOverflow)?;
-
-        Ok(Self {
-            numerator,
-            denominator,
-        })
-    }
-
-    pub(crate) fn numerator(self) -> i64 {
-        self.numerator
-    }
-
-    pub(crate) fn denominator(self) -> i64 {
-        self.denominator
-    }
-}
-
-fn gcd(mut left: u128, mut right: u128) -> u128 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-    left
-}
-
-#[derive(Clone)]
-pub(crate) struct ConditionData {
-    actual_type: String,
-    type_names: Rc<Vec<String>>,
-    slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
-    message: Rc<str>,
-    format_control: Option<Rc<str>>,
-    format_arguments: Vec<Value>,
-}
-
-impl ConditionData {
-    fn equal_value(&self, other: &Self) -> bool {
-        self.actual_type == other.actual_type
-            && self.type_names == other.type_names
-            && self.message == other.message
-            && self.format_control == other.format_control
-            && self.format_arguments.len() == other.format_arguments.len()
-            && self
-                .format_arguments
-                .iter()
-                .zip(other.format_arguments.iter())
-                .all(|(left, right)| left.equal_value(right))
-            && {
-                let left_slots = self.slots.borrow();
-                let right_slots = other.slots.borrow();
-                left_slots.len() == right_slots.len()
-                    && left_slots.iter().zip(right_slots.iter()).all(
-                        |((left_name, left_value), (right_name, right_value))| {
-                            left_name == right_name && left_value.equal_value(right_value)
-                        },
-                    )
-            }
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct RestartData {
-    name: Rc<str>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ArrayElementType {
-    T,
-    Character,
-    Bit,
-}
-
-impl ArrayElementType {
-    pub(crate) fn name(self) -> &'static str {
-        match self {
-            Self::T => "T",
-            Self::Character => "CHARACTER",
-            Self::Bit => "BIT",
-        }
-    }
-}
-
-pub(crate) struct HashTableIteratorState {
-    entries: Vec<(Value, Value)>,
-    index: usize,
-}
-
-#[derive(Clone)]
-pub(crate) struct RandomState {
-    state: u64,
-}
-
-impl RandomState {
-    const NONZERO_SEED: u64 = 0x9E3779B97F4A7C15;
-
-    pub(crate) fn seeded() -> Self {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_nanos() as u64);
-        let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
-        Self::from_seed(time ^ counter.wrapping_mul(Self::NONZERO_SEED))
-    }
-
-    fn from_seed(seed: u64) -> Self {
-        Self {
-            state: if seed == 0 { Self::NONZERO_SEED } else { seed },
-        }
-    }
-
-    pub(crate) fn next_u64(&mut self) -> u64 {
-        let mut state = self.state;
-        state ^= state >> 12;
-        state ^= state << 25;
-        state ^= state >> 27;
-        self.state = state;
-        state.wrapping_mul(2_685_829_013_198_858_977)
-    }
-}
-
-#[derive(Clone)]
+/// A dynamically typed NCL value.
 pub enum Value {
+    /// The canonical empty value.
     Nil,
+    /// A variable marker indicating that no value is bound.
     Unbound,
+    /// A boolean value.
     Boolean(bool),
+    /// A signed machine integer.
     Integer(i64),
+    /// An exact rational number.
     Rational(Rational),
+    /// An IEEE-754 floating-point number.
     Float(f64),
-    Complex {
-        real: Box<Value>,
-        imaginary: Box<Value>,
-    },
+    /// A string value.
     String(Rc<str>),
+    /// A character value.
     Character(char),
+    /// A stream backed by runtime state.
     Stream(Rc<RefCell<Stream>>),
-    RandomState(Rc<RefCell<RandomState>>),
+    /// A package name.
     Package(Rc<str>),
+    /// A lexical environment.
     Environment(Environment),
+    /// A case-insensitive symbol.
     Symbol(Rc<str>),
+    /// A case-sensitive symbol.
     SymbolExact(Rc<str>),
-    QualifiedSymbolExact {
-        reference: Rc<str>,
-        package_len: usize,
-    },
+    /// A symbol that is not interned in a package.
     UninternedSymbol(Rc<str>),
+    /// A case-insensitive keyword symbol.
     Keyword(Rc<str>),
+    /// A case-sensitive keyword symbol.
     KeywordExact(Rc<str>),
-    List(Rc<Vec<Value>>),
+    /// A proper list.
+    List(Rc<Vec<Self>>),
+    /// A list with an explicit non-list tail.
     DottedList {
-        items: Rc<Vec<Value>>,
-        tail: Rc<Value>,
+        /// Elements preceding the dotted tail.
+        items: Rc<Vec<Self>>,
+        /// The explicit non-list tail.
+        tail: Rc<Self>,
     },
-    Vector(Rc<RefCell<Vec<Value>>>),
+    /// A one-dimensional vector.
+    Vector(Rc<Vec<Self>>),
+    /// A multidimensional array.
     Array {
+        /// Dimensions in row-major order.
         dimensions: Rc<Vec<usize>>,
-        elements: Rc<RefCell<Vec<Value>>>,
-        element_type: ArrayElementType,
-        fill_pointer: Option<Rc<RefCell<usize>>>,
-        adjustable: bool,
+        /// Elements stored in row-major order.
+        elements: Rc<Vec<Self>>,
     },
+    /// A mutable association table.
     HashTable {
+        /// Equality predicate used by the table.
         test: Rc<str>,
-        entries: Rc<RefCell<Vec<(Value, Value)>>>,
-        size: usize,
-        rehash_size: f64,
-        rehash_threshold: f64,
-        synchronized: bool,
+        /// Mutable key/value entries.
+        entries: Rc<RefCell<Vec<(Self, Self)>>>,
     },
-    HashTableIterator(Rc<RefCell<HashTableIteratorState>>),
-    Values(Rc<Vec<Value>>),
+    /// Multiple return values.
+    Values(Rc<Vec<Self>>),
+    /// A condition object.
     Condition(Rc<ConditionData>),
+    /// A restart object.
     Restart(Rc<RestartData>),
+    /// A structure instance.
     Structure {
+        /// Structure name.
         name: Rc<str>,
+        /// Included structure types.
         types: Rc<Vec<Rc<str>>>,
-        slots: Rc<RefCell<Vec<(Rc<str>, Value)>>>,
-        representation: StructureRepresentation,
-        named: bool,
-        marker: Option<Rc<RefCell<Value>>>,
+        /// Slot values in declaration order.
+        slots: SlotValues,
     },
+    /// A class definition.
     Class(Rc<ClassDefinition>),
+    /// An instance of a class.
     Instance(Instance),
+    /// A callable function.
     Function(Rc<Function>),
 }
 
 impl Value {
-    pub fn boolean(value: bool) -> Self {
-        if value {
-            Self::Boolean(true)
-        } else {
-            Self::Nil
-        }
-    }
-
-    pub fn string(value: impl Into<Rc<str>>) -> Self {
-        Self::String(value.into())
-    }
-
-    pub(crate) fn rational(numerator: i128, denominator: i128) -> Result<Self, RuntimeError> {
-        let rational = Rational::new(numerator, denominator)?;
-        if rational.denominator() == 1 {
-            Ok(Self::Integer(rational.numerator()))
-        } else {
-            Ok(Self::Rational(rational))
-        }
-    }
-
-    pub(crate) fn complex(real: Value, imaginary: Value) -> Result<Self, RuntimeError> {
-        if !real.is_real_number() || !imaginary.is_real_number() {
-            return Err(RuntimeError::Type {
-                expected: "REAL".to_string(),
-                actual: format!("{} and {}", real.type_name(), imaginary.type_name()),
-                span: None,
-            });
-        }
-        if imaginary.is_numeric_zero() {
-            return Ok(real);
-        }
-        Ok(Self::Complex {
-            real: Box::new(real),
-            imaginary: Box::new(imaginary),
-        })
-    }
-
-    pub(crate) fn is_real_number(&self) -> bool {
-        matches!(self, Self::Integer(_) | Self::Rational(_) | Self::Float(_))
-    }
-
-    pub(crate) fn is_numeric_zero(&self) -> bool {
-        match self {
-            Self::Integer(value) => *value == 0,
-            Self::Rational(value) => value.numerator() == 0,
-            Self::Float(value) => *value == 0.0,
-            _ => false,
-        }
-    }
-
-    pub(crate) fn string_input_stream(source: &str, start: usize, end: usize) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::input(source, start, end))))
-    }
-
-    pub(crate) fn random_state(state: RandomState) -> Self {
-        Self::RandomState(Rc::new(RefCell::new(state)))
-    }
-
-    pub(crate) fn random_state_value(state: Rc<RefCell<RandomState>>) -> Self {
-        Self::RandomState(state)
-    }
-
-    pub(crate) fn random_state_reference(&self) -> Option<Rc<RefCell<RandomState>>> {
-        match self {
-            Self::RandomState(state) => Some(Rc::clone(state)),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn string_output_stream() -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::output())))
-    }
-
-    pub(crate) fn file_input_stream(source: String) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::file_input(source))))
-    }
-
-    pub(crate) fn file_probe_stream() -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::file_probe())))
-    }
-
-    pub(crate) fn file_output_stream(path: PathBuf, initial: String, append: bool) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::file_output(
-            path, initial, append,
-        ))))
-    }
-
-    pub(crate) fn file_io_stream(path: PathBuf, source: String, append: bool) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::file_io(path, source, append))))
-    }
-
-    pub(crate) fn two_way_stream(input: Rc<RefCell<Stream>>, output: Rc<RefCell<Stream>>) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::two_way(input, output))))
-    }
-
-    pub(crate) fn broadcast_stream(streams: Vec<Rc<RefCell<Stream>>>) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::broadcast(streams))))
-    }
-
-    pub(crate) fn concatenated_stream(streams: Vec<Rc<RefCell<Stream>>>) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::concatenated(streams))))
-    }
-
-    pub(crate) fn echo_stream(input: Rc<RefCell<Stream>>, output: Rc<RefCell<Stream>>) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::echo(input, output))))
-    }
-
-    pub fn package(value: impl AsRef<str>) -> Self {
-        Self::Package(Rc::from(value.as_ref()))
-    }
-
-    pub(crate) fn environment(value: Environment) -> Self {
-        Self::Environment(value)
-    }
-
-    pub fn symbol(value: impl AsRef<str>) -> Self {
-        Self::Symbol(Rc::from(value.as_ref().to_ascii_uppercase().as_str()))
-    }
-
-    pub fn symbol_exact(value: impl AsRef<str>) -> Self {
-        Self::SymbolExact(Rc::from(value.as_ref()))
-    }
-
-    pub fn qualified_symbol_exact(package: impl AsRef<str>, name: impl AsRef<str>) -> Self {
-        let package = package.as_ref();
-        let name = name.as_ref();
-        Self::QualifiedSymbolExact {
-            reference: Rc::from(format!("{package}::{name}")),
-            package_len: package.len(),
-        }
-    }
-
-    pub fn uninterned_symbol(value: impl AsRef<str>) -> Self {
-        Self::UninternedSymbol(Rc::from(value.as_ref()))
-    }
-
-    pub fn keyword(value: impl AsRef<str>) -> Self {
-        let value = value.as_ref().trim_start_matches(':').to_ascii_uppercase();
-        Self::Keyword(Rc::from(value))
-    }
-
-    pub fn keyword_exact(value: impl AsRef<str>) -> Self {
-        Self::KeywordExact(Rc::from(value.as_ref().trim_start_matches(':')))
-    }
-
-    pub fn list(values: Vec<Self>) -> Self {
-        if values.is_empty() {
-            Self::Nil
-        } else {
-            Self::List(Rc::new(values))
-        }
-    }
-
-    pub fn dotted_list(items: Vec<Self>, tail: Self) -> Self {
-        Self::DottedList {
-            items: Rc::new(items),
-            tail: Rc::new(tail),
-        }
-    }
-
-    pub fn vector(values: Vec<Self>) -> Self {
-        Self::Vector(Rc::new(RefCell::new(values)))
-    }
-
-    pub fn array(dimensions: Vec<usize>, elements: Vec<Self>) -> Self {
-        Self::array_with_element_type(dimensions, elements, ArrayElementType::T)
-    }
-
-    pub(crate) fn array_with_element_type(
-        dimensions: Vec<usize>,
-        elements: Vec<Self>,
-        element_type: ArrayElementType,
-    ) -> Self {
-        Self::array_with_options(dimensions, elements, element_type, None, false)
-    }
-
-    pub(crate) fn array_with_options(
-        dimensions: Vec<usize>,
-        elements: Vec<Self>,
-        element_type: ArrayElementType,
-        fill_pointer: Option<usize>,
-        adjustable: bool,
-    ) -> Self {
-        Self::Array {
-            dimensions: Rc::new(dimensions),
-            elements: Rc::new(RefCell::new(elements)),
-            element_type,
-            fill_pointer: fill_pointer.map(|value| Rc::new(RefCell::new(value))),
-            adjustable,
-        }
-    }
-
-    pub(crate) fn hash_table(test: impl AsRef<str>) -> Self {
-        Self::hash_table_with_options(test, 16, 1.5, 0.75, false)
-    }
-
-    pub(crate) fn hash_table_with_options(
-        test: impl AsRef<str>,
-        size: usize,
-        rehash_size: f64,
-        rehash_threshold: f64,
-        synchronized: bool,
-    ) -> Self {
-        Self::HashTable {
-            test: Rc::from(test.as_ref()),
-            entries: Rc::new(RefCell::new(Vec::new())),
-            size,
-            rehash_size,
-            rehash_threshold,
-            synchronized,
-        }
-    }
-
-    pub(crate) fn hash_table_iterator(table: &Self) -> Option<Self> {
-        let entries = table.hash_table_entries()?.borrow().clone();
-        Some(Self::HashTableIterator(Rc::new(RefCell::new(
-            HashTableIteratorState { entries, index: 0 },
-        ))))
-    }
-
-    pub(crate) fn hash_table_iterator_next(&self) -> Option<Self> {
-        let Self::HashTableIterator(state) = self else {
-            return None;
-        };
-        let mut state = state.borrow_mut();
-        let index = state.index;
-        let Some((key, value)) = state.entries.get(index).cloned() else {
-            return Some(Self::Nil);
-        };
-        state.index += 1;
-        Some(Self::values(vec![Self::boolean(true), key, value]))
-    }
-
-    pub(crate) fn values(values: Vec<Self>) -> Self {
-        Self::Values(Rc::new(values))
-    }
-
     pub(crate) fn condition(error: &RuntimeError) -> Self {
         let (actual_type, type_names, message, format_control, format_arguments) = match error {
-            RuntimeError::Signaled {
-                condition,
-                condition_types,
-                message,
-                format_control,
-                format_arguments,
-                ..
-            } => (
-                error.condition_type_name(),
-                if condition_types.is_empty() {
-                    vec![condition.clone()]
+            RuntimeError::Signaled(error) => (
+                if error.warning {
+                    "SIMPLE-WARNING".to_owned()
                 } else {
-                    condition_types.clone()
+                    error.condition.clone()
                 },
-                message.clone(),
-                format_control.clone(),
-                format_arguments
+                if error.condition_types.is_empty() {
+                    vec![error.condition.clone()]
+                } else {
+                    error.condition_types.to_vec()
+                },
+                error.message.clone(),
+                error.format_control.clone(),
+                error
+                    .format_arguments
                     .iter()
                     .cloned()
                     .map(ReturnValue::into_value)
@@ -782,7 +169,7 @@ impl Value {
         actual_type: String,
         message: String,
         format_control: Option<String>,
-        format_arguments: Vec<Value>,
+        format_arguments: Vec<Self>,
     ) -> Self {
         Self::condition_from_parts_with_types(
             actual_type.clone(),
@@ -794,48 +181,13 @@ impl Value {
         )
     }
 
-    pub(crate) fn condition_from_parts_with_slots(
-        actual_type: String,
-        slots: Vec<(String, Value)>,
-        message: String,
-        format_control: Option<String>,
-        format_arguments: Vec<Value>,
-    ) -> Self {
-        Self::condition_from_parts_with_types(
-            actual_type.clone(),
-            vec![actual_type],
-            slots,
-            message,
-            format_control,
-            format_arguments,
-        )
-    }
-
-    pub(crate) fn condition_from_definition(
-        actual_type: String,
-        type_names: Vec<String>,
-        slots: Vec<(String, Value)>,
-        message: String,
-        format_control: Option<String>,
-        format_arguments: Vec<Value>,
-    ) -> Self {
-        Self::condition_from_parts_with_types(
-            actual_type,
-            type_names,
-            slots,
-            message,
-            format_control,
-            format_arguments,
-        )
-    }
-
     fn condition_from_parts_with_types(
         actual_type: String,
         type_names: Vec<String>,
-        slots: Vec<(String, Value)>,
+        slots: Vec<(String, Self)>,
         message: String,
         format_control: Option<String>,
-        format_arguments: Vec<Value>,
+        format_arguments: Vec<Self>,
     ) -> Self {
         Self::Condition(Rc::new(ConditionData {
             actual_type,
@@ -846,7 +198,7 @@ impl Value {
                     .map(|(name, value)| (Rc::from(name.as_str()), value))
                     .collect(),
             )),
-            message: Rc::from(message.as_str()),
+            message: Rc::from(message),
             format_control: format_control.map(|value| Rc::from(value.as_str())),
             format_arguments,
         }))
@@ -858,6 +210,7 @@ impl Value {
         }))
     }
 
+    /// Creates a callable value backed by a runtime builtin.
     pub fn builtin(name: &'static str, function: Builtin) -> Self {
         Self::Function(Rc::new(Function::Builtin { name, function }))
     }
@@ -887,37 +240,10 @@ impl Value {
         }))
     }
 
-    pub(crate) fn condition_reader(
-        condition_name: impl Into<String>,
-        slot_name: impl Into<String>,
-    ) -> Self {
-        Self::Function(Rc::new(Function::ConditionReader {
-            condition_name: condition_name.into(),
-            slot_name: slot_name.into(),
-        }))
-    }
-
-    pub(crate) fn condition_writer(
-        condition_name: impl Into<String>,
-        slot_name: impl Into<String>,
-    ) -> Self {
-        Self::Function(Rc::new(Function::ConditionWriter {
-            condition_name: condition_name.into(),
-            slot_name: slot_name.into(),
-        }))
-    }
-
+    /// Creates a closure with required parameters and a lexical environment.
+    #[must_use]
     pub fn closure(parameters: Vec<String>, body: Vec<Form>, environment: Environment) -> Self {
         Self::closure_with_optional(parameters, Vec::new(), None, body, environment)
-    }
-
-    pub(crate) fn closure_with_rest(
-        parameters: Vec<String>,
-        rest: Option<String>,
-        body: Vec<Form>,
-        environment: Environment,
-    ) -> Self {
-        Self::closure_with_optional(parameters, Vec::new(), rest, body, environment)
     }
 
     pub(crate) fn closure_with_optional(
@@ -940,76 +266,39 @@ impl Value {
     ) -> Self {
         let required_escaped = vec![false; parameters.len()];
         Self::closure_with_keywords(
-            parameters,
-            required_escaped,
-            optional,
-            rest,
-            false,
-            Vec::new(),
-            false,
-            false,
-            auxiliary,
+            ClosureOptions {
+                parameters,
+                required_escaped,
+                optional,
+                rest,
+                rest_escaped: false,
+                keywords: Vec::new(),
+                has_keyword_section: false,
+                allow_other_keys: false,
+                auxiliary,
+            },
             body,
             environment,
         )
     }
 
     pub(crate) fn closure_with_keywords(
-        parameters: Vec<String>,
-        required_escaped: Vec<bool>,
-        optional: Vec<LambdaListOptionalParameter>,
-        rest: Option<String>,
-        rest_escaped: bool,
-        keywords: Vec<LambdaListKeywordParameter>,
-        has_keyword_section: bool,
-        allow_other_keys: bool,
-        auxiliary: Vec<LambdaListAuxiliaryParameter>,
+        options: ClosureOptions,
         body: Vec<Form>,
         environment: Environment,
-    ) -> Self {
-        Self::closure_with_keywords_and_documentation(
-            parameters,
-            required_escaped,
-            optional,
-            rest,
-            rest_escaped,
-            keywords,
-            has_keyword_section,
-            allow_other_keys,
-            auxiliary,
-            body,
-            environment,
-            None,
-        )
-    }
-
-    pub(crate) fn closure_with_keywords_and_documentation(
-        parameters: Vec<String>,
-        required_escaped: Vec<bool>,
-        optional: Vec<LambdaListOptionalParameter>,
-        rest: Option<String>,
-        rest_escaped: bool,
-        keywords: Vec<LambdaListKeywordParameter>,
-        has_keyword_section: bool,
-        allow_other_keys: bool,
-        auxiliary: Vec<LambdaListAuxiliaryParameter>,
-        body: Vec<Form>,
-        environment: Environment,
-        documentation: Option<String>,
     ) -> Self {
         Self::Function(Rc::new(Function::Closure {
-            parameters,
-            required_escaped,
-            optional,
-            rest,
-            rest_escaped,
-            keywords,
-            has_keyword_section,
-            allow_other_keys,
-            auxiliary,
+            parameters: options.parameters,
+            required_escaped: options.required_escaped,
+            optional: options.optional,
+            rest: options.rest,
+            rest_escaped: options.rest_escaped,
+            keywords: options.keywords,
+            has_keyword_section: options.has_keyword_section,
+            allow_other_keys: options.allow_other_keys,
+            auxiliary: options.auxiliary,
             body,
             environment,
-            documentation,
         }))
     }
 
@@ -1042,43 +331,17 @@ impl Value {
         function: FunctionId,
         environment: Environment,
     ) -> Self {
-        let documentation = program
-            .functions
-            .get(function)
-            .and_then(|function| function.documentation.clone());
         Self::Function(Rc::new(Function::Compiled {
             program,
             function,
             environment,
-            documentation,
         }))
-    }
-
-    pub(crate) fn structure(name: impl AsRef<str>, slots: Vec<(String, Value)>) -> Self {
-        let name = name.as_ref().to_string();
-        Self::structure_with_types(name.clone(), slots, vec![name])
     }
 
     pub(crate) fn structure_with_types(
         name: impl AsRef<str>,
-        slots: Vec<(String, Value)>,
-        type_names: Vec<String>,
-    ) -> Self {
-        Self::structure_with_representation(
-            name,
-            slots,
-            type_names,
-            StructureRepresentation::Structure,
-            false,
-        )
-    }
-
-    pub(crate) fn structure_with_representation(
-        name: impl AsRef<str>,
-        slots: Vec<(String, Value)>,
+        slots: Vec<(String, Self)>,
         mut type_names: Vec<String>,
-        representation: StructureRepresentation,
-        named: bool,
     ) -> Self {
         let name = name.as_ref().to_string();
         if !type_names
@@ -1087,8 +350,6 @@ impl Value {
         {
             type_names.insert(0, name.clone());
         }
-        let marker = (named && representation != StructureRepresentation::Structure)
-            .then(|| Rc::new(RefCell::new(Self::symbol(&name))));
         Self::Structure {
             name: Rc::from(name),
             types: Rc::new(type_names.into_iter().map(Rc::<str>::from).collect()),
@@ -1098,17 +359,14 @@ impl Value {
                     .map(|(slot_name, value)| (Rc::from(slot_name), value))
                     .collect(),
             )),
-            representation,
-            named,
-            marker,
         }
     }
 
-    pub(crate) fn class_object(definition: Rc<ClassDefinition>) -> Self {
+    pub(crate) const fn class_object(definition: Rc<ClassDefinition>) -> Self {
         Self::Class(definition)
     }
 
-    pub(crate) fn instance(definition: Rc<ClassDefinition>, slots: Vec<(String, Value)>) -> Self {
+    pub(crate) fn instance(definition: Rc<ClassDefinition>, slots: Vec<(String, Self)>) -> Self {
         Self::Instance(Instance {
             class: definition,
             slots: Rc::new(RefCell::new(
@@ -1118,13 +376,6 @@ impl Value {
                     .collect(),
             )),
         })
-    }
-
-    pub(crate) fn class_definition(&self) -> Option<Rc<ClassDefinition>> {
-        match self {
-            Self::Class(definition) => Some(definition.clone()),
-            _ => None,
-        }
     }
 
     pub(crate) fn instance_class_definition(&self) -> Option<Rc<ClassDefinition>> {
@@ -1145,7 +396,7 @@ impl Value {
             .any(|class_name| class_name.eq_ignore_ascii_case(expected))
     }
 
-    pub(crate) fn instance_slot(&self, slot_name: &str) -> Option<Value> {
+    pub(crate) fn instance_slot(&self, slot_name: &str) -> Option<Self> {
         let Self::Instance(instance) = self else {
             return None;
         };
@@ -1154,10 +405,9 @@ impl Value {
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+            && let Some(class_value) = &slot.class_value
         {
-            if let Some(class_value) = &slot.class_value {
-                return Some(class_value.borrow().clone());
-            }
+            return Some(class_value.borrow().clone());
         }
         instance
             .slots
@@ -1183,12 +433,7 @@ impl Value {
             .map(|value| !matches!(value, Self::Unbound))
     }
 
-    pub(crate) fn set_instance_slot(
-        &self,
-        class_name: &str,
-        slot_name: &str,
-        value: Value,
-    ) -> bool {
+    pub(crate) fn set_instance_slot(&self, class_name: &str, slot_name: &str, value: Self) -> bool {
         let Self::Instance(instance) = self else {
             return false;
         };
@@ -1200,11 +445,10 @@ impl Value {
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+            && let Some(class_value) = &slot.class_value
         {
-            if let Some(class_value) = &slot.class_value {
-                *class_value.borrow_mut() = value;
-                return true;
-            }
+            *class_value.borrow_mut() = value;
+            return true;
         }
         let mut slots = instance.slots.borrow_mut();
         let Some((_, slot_value)) = slots
@@ -1224,35 +468,6 @@ impl Value {
         }
     }
 
-    pub(crate) fn type_of_name(&self) -> &str {
-        match self {
-            Self::Structure {
-                name,
-                representation: StructureRepresentation::Structure,
-                ..
-            } => name,
-            Self::Structure {
-                representation: StructureRepresentation::List,
-                named: true,
-                ..
-            } => "CONS",
-            Self::Structure {
-                representation: StructureRepresentation::List,
-                ..
-            } => "LIST",
-            Self::Structure {
-                representation: StructureRepresentation::Vector,
-                named: true,
-                ..
-            } => "SIMPLE-VECTOR",
-            Self::Structure {
-                representation: StructureRepresentation::Vector,
-                ..
-            } => "VECTOR",
-            _ => self.type_name(),
-        }
-    }
-
     pub(crate) fn structure_is_type(&self, expected: &str) -> bool {
         match self {
             Self::Structure { types, .. } => types
@@ -1262,28 +477,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn structure_typep_is_type(&self, expected: &str) -> bool {
-        self.structure_is_type(expected) && self.structure_discriminator_matches()
-    }
-
-    fn structure_discriminator_matches(&self) -> bool {
-        let Self::Structure {
-            name,
-            representation: StructureRepresentation::List | StructureRepresentation::Vector,
-            named: true,
-            marker: Some(marker),
-            ..
-        } = self
-        else {
-            return true;
-        };
-        let marker = marker.borrow();
-        marker
-            .symbol_name()
-            .is_some_and(|marker_name| marker_name.eq_ignore_ascii_case(name))
-    }
-
-    pub(crate) fn structure_slot(&self, index: usize) -> Option<Value> {
+    pub(crate) fn structure_slot(&self, index: usize) -> Option<Self> {
         match self {
             Self::Structure { slots, .. } => {
                 slots.borrow().get(index).map(|(_, value)| value.clone())
@@ -1296,7 +490,7 @@ impl Value {
         &self,
         structure_name: &str,
         index: usize,
-        value: Value,
+        value: Self,
     ) -> bool {
         let Self::Structure { slots, .. } = self else {
             return false;
@@ -1313,26 +507,13 @@ impl Value {
     }
 
     pub(crate) fn copy_structure(&self) -> Option<Self> {
-        let Self::Structure {
-            name,
-            types,
-            slots,
-            representation,
-            named,
-            marker,
-        } = self
-        else {
+        let Self::Structure { name, types, slots } = self else {
             return None;
         };
         Some(Self::Structure {
             name: name.clone(),
             types: types.clone(),
             slots: Rc::new(RefCell::new(slots.borrow().clone())),
-            representation: *representation,
-            named: *named,
-            marker: marker
-                .as_ref()
-                .map(|marker| Rc::new(RefCell::new(marker.borrow().clone()))),
         })
     }
 
@@ -1350,11 +531,15 @@ impl Value {
         }
     }
 
+    /// Returns whether this value is true in Lisp conditional contexts.
+    #[must_use]
     pub fn is_truthy(&self) -> bool {
         !matches!(self.primary_value(), Self::Nil | Self::Boolean(false))
     }
 
-    pub fn type_name(&self) -> &'static str {
+    /// Returns the implementation's canonical Lisp type name.
+    #[must_use]
+    pub const fn type_name(&self) -> &'static str {
         match self {
             Self::Nil => "NIL",
             Self::Unbound => "UNBOUND",
@@ -1362,31 +547,21 @@ impl Value {
             Self::Integer(_) => "INTEGER",
             Self::Rational(_) => "RATIO",
             Self::Float(_) => "FLOAT",
-            Self::Complex { .. } => "COMPLEX",
             Self::String(_) => "STRING",
             Self::Character(_) => "CHARACTER",
             Self::Stream(_) => "STREAM",
-            Self::RandomState(_) => "RANDOM-STATE",
             Self::Package(_) => "PACKAGE",
             Self::Environment(_) => "ENVIRONMENT",
-            Self::Symbol(_)
-            | Self::SymbolExact(_)
-            | Self::QualifiedSymbolExact { .. }
-            | Self::UninternedSymbol(_) => "SYMBOL",
+            Self::Symbol(_) | Self::SymbolExact(_) | Self::UninternedSymbol(_) => "SYMBOL",
             Self::Keyword(_) | Self::KeywordExact(_) => "KEYWORD",
             Self::List(_) | Self::DottedList { .. } => "LIST",
             Self::Vector(_) => "VECTOR",
             Self::Array { .. } => "ARRAY",
             Self::HashTable { .. } => "HASH-TABLE",
-            Self::HashTableIterator(_) => "HASH-TABLE-ITERATOR",
             Self::Values(_) => "VALUES",
             Self::Condition(_) => "CONDITION",
             Self::Restart(_) => "RESTART",
-            Self::Structure { representation, .. } => match representation {
-                StructureRepresentation::Structure => "STRUCTURE",
-                StructureRepresentation::List => "LIST",
-                StructureRepresentation::Vector => "VECTOR",
-            },
+            Self::Structure { .. } => "STRUCTURE",
             Self::Class(_) => "CLASS",
             Self::Instance(_) => "STANDARD-OBJECT",
             Self::Function(_) => "FUNCTION",
@@ -1412,10 +587,6 @@ impl Value {
             return true;
         }
         match condition.actual_type.as_str() {
-            "SIMPLE-TYPE-ERROR" => matches!(
-                expected.as_str(),
-                "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "SIMPLE-CONDITION" | "TYPE-ERROR"
-            ),
             "SIMPLE-ERROR" => matches!(
                 expected.as_str(),
                 "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "SIMPLE-CONDITION"
@@ -1442,10 +613,7 @@ impl Value {
                     "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
                 )
             }
-            "CONTROL-ERROR" => matches!(
-                expected.as_str(),
-                "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
-            ),
+            "CONTROL-ERROR" => matches!(expected.as_str(), "CONDITION"),
             _ => false,
         }
     }
@@ -1457,7 +625,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn condition_slot(&self, condition_name: &str, slot_name: &str) -> Option<Value> {
+    pub(crate) fn condition_slot(&self, condition_name: &str, slot_name: &str) -> Option<Self> {
         let Self::Condition(condition) = self else {
             return None;
         };
@@ -1476,7 +644,7 @@ impl Value {
         &self,
         condition_name: &str,
         slot_name: &str,
-        value: Value,
+        value: Self,
     ) -> bool {
         let Self::Condition(condition) = self else {
             return false;
@@ -1524,7 +692,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn simple_condition_format_arguments(&self) -> Option<Vec<Value>> {
+    pub(crate) fn simple_condition_format_arguments(&self) -> Option<Vec<Self>> {
         match self {
             Self::Condition(condition) if condition.format_control.is_some() => {
                 Some(condition.format_arguments.clone())
@@ -1533,301 +701,40 @@ impl Value {
         }
     }
 
-    pub fn list_items(&self) -> Option<Vec<Value>> {
+    /// Returns a copied proper-list payload when this value is a list.
+    #[must_use]
+    pub fn list_items(&self) -> Option<Vec<Self>> {
         match self {
             Self::Nil => Some(Vec::new()),
             Self::List(items) => Some(items.as_ref().clone()),
-            Self::Structure {
-                name,
-                slots,
-                representation: StructureRepresentation::List,
-                named,
-                marker,
-                ..
-            } => {
-                let mut values = Vec::with_capacity(slots.borrow().len() + usize::from(*named));
-                if *named {
-                    values.push(
-                        marker
-                            .as_ref()
-                            .map(|marker| marker.borrow().clone())
-                            .unwrap_or_else(|| Self::symbol(name.as_ref())),
-                    );
-                }
-                values.extend(slots.borrow().iter().map(|(_, value)| value.clone()));
-                Some(values)
-            }
             _ => None,
         }
     }
 
-    pub fn vector_items(&self) -> Option<Vec<Value>> {
+    /// Returns a copied vector payload when this value is a vector.
+    #[must_use]
+    pub fn vector_items(&self) -> Option<Vec<Self>> {
         match self {
-            Self::Vector(items) => Some(items.borrow().clone()),
-            Self::Structure {
-                name,
-                slots,
-                representation: StructureRepresentation::Vector,
-                named,
-                marker,
-                ..
-            } => {
-                let mut values = Vec::with_capacity(slots.borrow().len() + usize::from(*named));
-                if *named {
-                    values.push(
-                        marker
-                            .as_ref()
-                            .map(|marker| marker.borrow().clone())
-                            .unwrap_or_else(|| Self::symbol(name.as_ref())),
-                    );
-                }
-                values.extend(slots.borrow().iter().map(|(_, value)| value.clone()));
-                Some(values)
-            }
-            Self::Array {
-                dimensions,
-                elements,
-                fill_pointer,
-                ..
-            } if dimensions.len() == 1 => {
-                let elements = elements.borrow();
-                let end = fill_pointer
-                    .as_ref()
-                    .map(|pointer| *pointer.borrow())
-                    .unwrap_or(elements.len())
-                    .min(elements.len());
-                Some(elements[..end].to_vec())
-            }
+            Self::Vector(items) => Some(items.as_ref().clone()),
             _ => None,
         }
     }
 
-    pub(crate) fn is_typed_list(&self) -> bool {
-        matches!(
-            self,
-            Self::Structure {
-                representation: StructureRepresentation::List,
-                ..
-            }
-        )
-    }
-
-    pub(crate) fn is_typed_vector(&self) -> bool {
-        matches!(
-            self,
-            Self::Structure {
-                representation: StructureRepresentation::Vector,
-                ..
-            }
-        )
-    }
-
-    pub(crate) fn is_simple_vector(&self) -> bool {
-        match self {
-            Self::Vector(_) => true,
-            Self::Structure {
-                representation: StructureRepresentation::Vector,
-                ..
-            } => true,
-            Self::Array {
-                dimensions,
-                element_type,
-                fill_pointer,
-                adjustable,
-                ..
-            } => {
-                dimensions.len() == 1
-                    && *element_type == ArrayElementType::T
-                    && fill_pointer.is_none()
-                    && !adjustable
-            }
-            _ => false,
-        }
-    }
-
-    pub(crate) fn set_sequence_item(&self, index: usize, value: Value) -> bool {
-        match self {
-            Self::Vector(items) => {
-                let mut items = items.borrow_mut();
-                let Some(item) = items.get_mut(index) else {
-                    return false;
-                };
-                *item = value;
-                true
-            }
-            Self::Structure {
-                slots,
-                representation:
-                    StructureRepresentation::List | StructureRepresentation::Vector,
-                named,
-                marker,
-                ..
-            } => {
-                if *named && index == 0 {
-                    let Some(marker) = marker.as_ref() else {
-                        return false;
-                    };
-                    *marker.borrow_mut() = value;
-                    return true;
-                }
-                let Some(slot_index) = index.checked_sub(usize::from(*named)) else {
-                    return false;
-                };
-                let mut slots = slots.borrow_mut();
-                let Some((_, slot_value)) = slots.get_mut(slot_index) else {
-                    return false;
-                };
-                *slot_value = value;
-                true
-            }
-            Self::Array {
-                dimensions,
-                elements,
-                fill_pointer,
-                element_type: ArrayElementType::T,
-                ..
-            } if dimensions.len() == 1 => {
-                let limit = fill_pointer
-                    .as_ref()
-                    .map(|pointer| *pointer.borrow())
-                    .unwrap_or_else(|| elements.borrow().len());
-                if index >= limit {
-                    return false;
-                }
-                let mut elements = elements.borrow_mut();
-                let Some(item) = elements.get_mut(index) else {
-                    return false;
-                };
-                *item = value;
-                true
-            }
-            _ => false,
-        }
-    }
-
-    pub(crate) fn set_typed_list_cdr(&self, replacement: &[Value]) -> bool {
-        let Self::Structure {
-            slots,
-            representation: StructureRepresentation::List,
-            named,
-            ..
-        } = self
-        else {
-            return false;
-        };
-
-        let mut slots = slots.borrow_mut();
-        if *named {
-            let old_len = slots.len();
-            slots.truncate(replacement.len());
-            for (index, value) in replacement.iter().enumerate().take(old_len) {
-                let Some((_, slot_value)) = slots.get_mut(index) else {
-                    break;
-                };
-                *slot_value = value.clone();
-            }
-            for value in replacement.iter().skip(old_len) {
-                slots.push((Rc::<str>::from(""), value.clone()));
-            }
-        } else {
-            let Some((first_name, first_value)) = slots.first().cloned() else {
-                return false;
-            };
-            let mut updated = Vec::with_capacity(replacement.len() + 1);
-            updated.push((first_name, first_value));
-            for (index, value) in replacement.iter().enumerate() {
-                let slot_name = slots
-                    .get(index + 1)
-                    .map(|(name, _)| name.clone())
-                    .unwrap_or_else(|| Rc::<str>::from(""));
-                updated.push((slot_name, value.clone()));
-            }
-            *slots = updated;
-        }
-        true
-    }
-
+    /// Returns copied array dimensions when this value is an array.
+    #[must_use]
     pub fn array_dimensions(&self) -> Option<Vec<usize>> {
         match self {
-            Self::Array {
-                dimensions,
-                elements,
-                fill_pointer,
-                ..
-            } => {
-                if dimensions.len() == 1 && fill_pointer.is_some() {
-                    Some(vec![elements.borrow().len()])
-                } else {
-                    Some(dimensions.as_ref().clone())
-                }
-            }
+            Self::Array { dimensions, .. } => Some(dimensions.as_ref().clone()),
             _ => None,
         }
     }
 
-    pub(crate) fn array_fill_pointer(&self) -> Option<usize> {
+    /// Returns copied row-major array elements when this value is an array.
+    #[must_use]
+    pub fn array_items(&self) -> Option<Vec<Self>> {
         match self {
-            Self::Array {
-                fill_pointer: Some(pointer),
-                ..
-            } => Some(*pointer.borrow()),
+            Self::Array { elements, .. } => Some(elements.as_ref().clone()),
             _ => None,
-        }
-    }
-
-    pub(crate) fn has_fill_pointer(&self) -> bool {
-        self.array_fill_pointer().is_some()
-    }
-
-    pub(crate) fn is_adjustable_array(&self) -> bool {
-        matches!(self, Self::Array { adjustable: true, .. })
-    }
-
-    pub(crate) fn set_array_fill_pointer(&self, value: usize) -> bool {
-        let Self::Array {
-            dimensions,
-            elements,
-            fill_pointer: Some(pointer),
-            ..
-        } = self
-        else {
-            return false;
-        };
-        if dimensions.len() != 1 || value > elements.borrow().len() {
-            return false;
-        }
-        *pointer.borrow_mut() = value;
-        true
-    }
-
-    pub fn array_items(&self) -> Option<Vec<Value>> {
-        match self {
-            Self::Array { elements, .. } => Some(elements.borrow().clone()),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn array_element_type(&self) -> Option<ArrayElementType> {
-        match self {
-            Self::String(_) => Some(ArrayElementType::Character),
-            Self::Vector(_) => Some(ArrayElementType::T),
-            Self::Structure {
-                representation: StructureRepresentation::Vector,
-                ..
-            } => Some(ArrayElementType::T),
-            Self::Array { element_type, .. } => Some(*element_type),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn accepts_array_element(&self, value: &Self) -> bool {
-        match self.array_element_type() {
-            Some(ArrayElementType::T) => true,
-            Some(ArrayElementType::Character) => matches!(value, Self::Character(_)),
-            Some(ArrayElementType::Bit) => {
-                matches!(value, Self::Integer(bit) if *bit == 0 || *bit == 1)
-            }
-            None => false,
         }
     }
 
@@ -1838,44 +745,15 @@ impl Value {
         }
     }
 
-    pub(crate) fn hash_table_entries(&self) -> Option<&RefCell<Vec<(Value, Value)>>> {
+    pub(crate) fn hash_table_entries(&self) -> Option<&RefCell<Vec<(Self, Self)>>> {
         match self {
             Self::HashTable { entries, .. } => Some(entries),
             _ => None,
         }
     }
 
-    pub(crate) fn hash_table_size(&self) -> Option<usize> {
-        match self {
-            Self::HashTable { size, .. } => Some(*size),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn hash_table_rehash_size(&self) -> Option<f64> {
-        match self {
-            Self::HashTable { rehash_size, .. } => Some(*rehash_size),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn hash_table_rehash_threshold(&self) -> Option<f64> {
-        match self {
-            Self::HashTable {
-                rehash_threshold,
-                ..
-            } => Some(*rehash_threshold),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn hash_table_synchronized(&self) -> Option<bool> {
-        match self {
-            Self::HashTable { synchronized, .. } => Some(*synchronized),
-            _ => None,
-        }
-    }
-
+    /// Returns the symbol-like name represented by this value, if any.
+    #[must_use]
     pub fn symbol_name(&self) -> Option<&str> {
         match self {
             Self::Symbol(name)
@@ -1883,289 +761,394 @@ impl Value {
             | Self::UninternedSymbol(name)
             | Self::Keyword(name)
             | Self::KeywordExact(name) => Some(name),
-            Self::QualifiedSymbolExact {
-                reference,
-                package_len,
-            } => Some(&reference[*package_len + 2..]),
             Self::Nil | Self::Boolean(false) => Some("NIL"),
             Self::Boolean(true) => Some("T"),
             _ => None,
         }
     }
 
+    /// Returns a symbol name and whether its spelling is exact.
+    #[must_use]
     pub fn symbol_reference(&self) -> Option<(&str, bool)> {
         match self {
             Self::Symbol(name) | Self::UninternedSymbol(name) | Self::Keyword(name) => {
                 Some((name, false))
             }
             Self::SymbolExact(name) | Self::KeywordExact(name) => Some((name, true)),
-            Self::QualifiedSymbolExact { reference, .. } => Some((reference, true)),
             Self::Nil | Self::Boolean(false) => Some(("NIL", false)),
             Self::Boolean(true) => Some(("T", false)),
             _ => None,
         }
     }
+}
 
-    pub fn eq_value(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Nil, Self::Nil) => true,
-            (Self::Unbound, Self::Unbound) => true,
-            (Self::Nil, Self::Boolean(false)) | (Self::Boolean(false), Self::Nil) => true,
-            (Self::Boolean(left), Self::Boolean(right)) => left == right,
-            (Self::Integer(left), Self::Integer(right)) => left == right,
-            (Self::Rational(left), Self::Rational(right)) => left == right,
-            (Self::Float(left), Self::Float(right)) => left == right,
-            (
-                Self::Complex {
-                    real: left_real,
-                    imaginary: left_imaginary,
-                },
-                Self::Complex {
-                    real: right_real,
-                    imaginary: right_imaginary,
-                },
-            ) => left_real.eq_value(right_real) && left_imaginary.eq_value(right_imaginary),
-            (Self::Character(left), Self::Character(right)) => left == right,
-            (Self::Stream(left), Self::Stream(right)) => Rc::ptr_eq(left, right),
-            (Self::RandomState(left), Self::RandomState(right)) => Rc::ptr_eq(left, right),
-            (Self::Package(left), Self::Package(right)) => left == right,
-            (Self::String(left), Self::String(right)) => Rc::ptr_eq(left, right),
-            (Self::Symbol(left), Self::Symbol(right))
-            | (Self::Keyword(left), Self::Keyword(right)) => left == right,
-            (Self::SymbolExact(left), Self::SymbolExact(right))
-            | (Self::KeywordExact(left), Self::KeywordExact(right)) => left == right,
-            (
-                Self::Symbol(left),
-                Self::QualifiedSymbolExact {
-                    reference: right, ..
-                },
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[test]
+    fn streams_cover_input_pushback_output_and_close_state() {
+        let mut input = Stream::input("ab\ncd", 0, 5);
+        assert_eq!(input.kind_name(), "STRING-INPUT-STREAM");
+        assert!(input.is_input());
+        assert!(!input.is_output());
+        assert_eq!(input.peek_char(), Some('a'));
+        assert_eq!(input.read_char(), Some('a'));
+        assert!(!input.unread_char('x'));
+        assert!(input.unread_char('a'));
+        assert!(!input.unread_char('a'));
+        assert_eq!(input.read_line(), Some(("ab".to_owned(), false)));
+        assert_eq!(input.remaining_input(), Some("cd".to_owned()));
+        assert!(input.consume_input(2));
+        assert_eq!(input.read_char(), None);
+        assert!(!input.consume_input(1));
+        if let Err(error) = input.close(true) {
+            panic!("expected input close to succeed, got {error:?}");
+        }
+        assert!(input.peek_char().is_none());
+        assert!(!input.unread_char('c'));
+        assert!(input.close(false).is_ok());
+
+        let mut output = Stream::output();
+        assert_eq!(output.kind_name(), "STRING-OUTPUT-STREAM");
+        assert!(!output.is_input());
+        assert!(output.is_output());
+        assert!(output.fresh_line().is_some());
+        assert!(output.write("text"));
+        assert_eq!(output.fresh_line(), Some(true));
+        assert_eq!(output.take_output(), Some("text\n".to_owned()));
+        assert_eq!(output.take_output(), Some(String::new()));
+        assert!(output.read_char().is_none());
+        if let Err(error) = output.close(true) {
+            panic!("expected output close to succeed, got {error:?}");
+        }
+        assert!(!output.write("closed"));
+
+        let mut io = Stream::file_io(PathBuf::from("unused"), "abc\n", true);
+        assert_eq!(io.kind_name(), "FILE-IO-STREAM");
+        assert!(io.is_input() && io.is_output());
+        assert_eq!(io.peek_char(), None);
+        assert_eq!(io.fresh_line(), Some(false));
+        assert!(io.write("z"));
+        if let Err(error) = io.close(true) {
+            panic!("expected io close to succeed, got {error:?}");
+        }
+    }
+
+    #[test]
+    fn value_containers_and_conditions_have_stable_boundaries() {
+        let list = Value::list(vec![Value::Integer(1), Value::symbol("x")]);
+        assert_eq!(list.type_name(), "LIST");
+        let Some(list_items) = list.list_items() else {
+            panic!("expected list value");
+        };
+        assert_eq!(list_items.len(), 2);
+        assert!(Value::list(Vec::new()).equal_value(&Value::Nil));
+        let Some(vector_items) = Value::vector(vec![Value::Nil]).vector_items() else {
+            panic!("expected vector value");
+        };
+        assert_eq!(vector_items.len(), 1);
+        let array = Value::array(vec![2], vec![Value::Integer(1), Value::Integer(2)]);
+        assert_eq!(array.array_dimensions(), Some(vec![2]));
+        let Some(array_items) = array.array_items() else {
+            panic!("expected array value");
+        };
+        assert_eq!(array_items.len(), 2);
+        assert!(!Value::Nil.is_truthy());
+        assert!(Value::values(vec![Value::Integer(7)]).is_truthy());
+        assert!(
+            Value::values(vec![])
+                .primary_value()
+                .equal_value(&Value::Nil)
+        );
+
+        let condition = Value::condition_from_parts_with_types(
+            "SIMPLE-ERROR".to_owned(),
+            vec!["SIMPLE-ERROR".to_owned()],
+            vec![("DETAIL".to_owned(), Value::Integer(1))],
+            "failed".to_owned(),
+            Some("~A".to_owned()),
+            vec![Value::Integer(1)],
+        );
+        assert!(condition.condition_is_type(":error"));
+        assert!(
+            condition
+                .condition_slot("condition", "detail")
+                .is_some_and(|value| value.equal_value(&Value::Integer(1)))
+        );
+        assert!(condition.set_condition_slot("error", "detail", Value::Integer(2)));
+        assert!(
+            condition
+                .condition_slot("error", "detail")
+                .is_some_and(|value| value.equal_value(&Value::Integer(2)))
+        );
+        assert!(condition.condition_slot("unrelated", "detail").is_none());
+        assert!(!condition.set_condition_slot("error", "missing", Value::Nil));
+        assert!(!Value::Nil.set_condition_slot("error", "detail", Value::Nil));
+        assert_eq!(condition.condition_message(), Some("failed"));
+        assert_eq!(condition.simple_condition_format_control(), Some("~A"));
+        assert!(!Value::Nil.condition_is_type("error"));
+    }
+
+    #[test]
+    fn condition_equality_checks_all_data_fields() {
+        let condition = |actual_type: &str,
+                         type_names: Vec<&str>,
+                         slots: Vec<(&str, Value)>,
+                         message: &str,
+                         format_control: Option<&str>,
+                         arguments: Vec<Value>| {
+            Value::condition_from_parts_with_types(
+                actual_type.to_owned(),
+                type_names.into_iter().map(str::to_owned).collect(),
+                slots
+                    .into_iter()
+                    .map(|(name, value)| (name.to_owned(), value))
+                    .collect(),
+                message.to_owned(),
+                format_control.map(str::to_owned),
+                arguments,
             )
-            | (
-                Self::QualifiedSymbolExact {
-                    reference: right, ..
-                },
-                Self::Symbol(left),
-            ) => left == right,
+        };
+        let base = condition(
+            "SIMPLE-ERROR",
+            vec!["SIMPLE-ERROR"],
+            vec![("DETAIL", Value::Integer(2))],
+            "failed",
+            Some("~A"),
+            vec![Value::Integer(1)],
+        );
+        assert!(base.equal_value(&condition(
+            "SIMPLE-ERROR",
+            vec!["SIMPLE-ERROR"],
+            vec![("DETAIL", Value::Integer(2))],
+            "failed",
+            Some("~A"),
+            vec![Value::Integer(1)],
+        )));
+
+        let differences = [
+            condition(
+                "SIMPLE-WARNING",
+                vec!["SIMPLE-ERROR"],
+                vec![("DETAIL", Value::Integer(2))],
+                "failed",
+                Some("~A"),
+                vec![Value::Integer(1)],
+            ),
+            condition(
+                "SIMPLE-ERROR",
+                vec!["ERROR"],
+                vec![("DETAIL", Value::Integer(2))],
+                "failed",
+                Some("~A"),
+                vec![Value::Integer(1)],
+            ),
+            condition(
+                "SIMPLE-ERROR",
+                vec!["SIMPLE-ERROR"],
+                vec![("DETAIL", Value::Integer(2))],
+                "changed",
+                Some("~A"),
+                vec![Value::Integer(1)],
+            ),
+            condition(
+                "SIMPLE-ERROR",
+                vec!["SIMPLE-ERROR"],
+                vec![("DETAIL", Value::Integer(2))],
+                "failed",
+                None,
+                vec![Value::Integer(1)],
+            ),
+            condition(
+                "SIMPLE-ERROR",
+                vec!["SIMPLE-ERROR"],
+                vec![("DETAIL", Value::Integer(2))],
+                "failed",
+                Some("~A"),
+                vec![Value::Integer(2)],
+            ),
+            condition(
+                "SIMPLE-ERROR",
+                vec!["SIMPLE-ERROR"],
+                vec![("OTHER", Value::Integer(2))],
+                "failed",
+                Some("~A"),
+                vec![Value::Integer(1)],
+            ),
+        ];
+        assert!(
+            differences
+                .iter()
+                .all(|different| !base.equal_value(different))
+        );
+    }
+
+    #[test]
+    fn values_have_stable_display_and_debug_forms() {
+        #[allow(clippy::unnecessary_wraps)]
+        fn no_op(_: &[Value]) -> Result<Value, RuntimeError> {
+            Ok(Value::Nil)
+        }
+
+        let rational = match Value::rational(3, 2) {
+            Ok(value) => value,
+            Err(error) => panic!("expected valid rational, got {error:?}"),
+        };
+        let cases = [
+            (Value::Nil, "NIL"),
+            (Value::Unbound, "#<UNBOUND>"),
+            (Value::Boolean(true), "T"),
+            (Value::Boolean(false), "NIL"),
+            (Value::Integer(7), "7"),
+            (rational, "3/2"),
+            (Value::Float(2.0), "2.0"),
+            (Value::Float(2.5), "2.5"),
+            (Value::string("line\n"), "\"line\\n\""),
+            (Value::Character(' '), "#\\SPACE"),
+            (Value::Character('\n'), "#\\NEWLINE"),
+            (Value::Character('\t'), "#\\TAB"),
+            (Value::Character('\r'), "#\\RETURN"),
+            (Value::Character('x'), "#\\x"),
+            (Value::package("USER"), "#<PACKAGE \"USER\">"),
+            (Value::symbol("name"), "NAME"),
+            (Value::symbol_exact("a|b\\c"), "|a\\|b\\\\c|"),
+            (Value::uninterned_symbol("x"), "#:x"),
+            (Value::keyword("key"), ":KEY"),
+            (Value::keyword_exact("a|b"), ":|a\\|b|"),
             (
-                Self::QualifiedSymbolExact {
-                    reference: left_reference,
-                    package_len: left_package_len,
-                },
-                Self::QualifiedSymbolExact {
-                    reference: right_reference,
-                    package_len: right_package_len,
-                },
-            ) => left_package_len == right_package_len && left_reference == right_reference,
-            (Self::UninternedSymbol(left), Self::UninternedSymbol(right)) => {
-                Rc::ptr_eq(left, right)
-            }
-            (Self::List(left), Self::List(right)) => Rc::ptr_eq(left, right),
-            (Self::Vector(left), Self::Vector(right)) => Rc::ptr_eq(left, right),
+                Value::list(vec![Value::Integer(1), Value::Integer(2)]),
+                "(1 2)",
+            ),
+            (Value::list(Vec::new()), "NIL"),
             (
-                Self::Array {
-                    dimensions: left_dimensions,
-                    elements: left_elements,
-                    ..
-                },
-                Self::Array {
-                    dimensions: right_dimensions,
-                    elements: right_elements,
-                    ..
-                },
-            ) => {
-                Rc::ptr_eq(left_dimensions, right_dimensions)
-                    && Rc::ptr_eq(left_elements, right_elements)
-            }
+                Value::dotted_list(vec![Value::Integer(1)], Value::Integer(2)),
+                "(1 . 2)",
+            ),
+            (Value::dotted_list(Vec::new(), Value::Integer(2)), "(. 2)"),
+            (Value::vector(vec![Value::Integer(1)]), "#(1)"),
             (
-                Self::HashTable {
-                    entries: left_entries,
-                    ..
-                },
-                Self::HashTable {
-                    entries: right_entries,
-                    ..
-                },
-            ) => Rc::ptr_eq(left_entries, right_entries),
-            (Self::HashTableIterator(left), Self::HashTableIterator(right)) => Rc::ptr_eq(left, right),
-            (Self::Values(left), Self::Values(right)) => Rc::ptr_eq(left, right),
-            (Self::Condition(left), Self::Condition(right)) => Rc::ptr_eq(left, right),
-            (Self::Restart(left), Self::Restart(right)) => Rc::ptr_eq(left, right),
+                Value::array(vec![2], vec![Value::Nil, Value::Nil]),
+                "#<ARRAY [2]>",
+            ),
+            (Value::hash_table("EQ"), "#<HASH-TABLE EQ>"),
+            (Value::values(vec![Value::Integer(1)]), "#<VALUES 1>"),
+            (Value::values(Vec::new()), "#<VALUES>"),
+            (Value::restart("retry"), "#<RESTART retry>"),
+            (Value::builtin("NO-OP", no_op), "#<BUILTIN NO-OP>"),
+            (Value::primitive("PRIMITIVE"), "#<PRIMITIVE PRIMITIVE>"),
+            (Value::generic("combine"), "#<GENERIC-FUNCTION combine>"),
             (
-                Self::Structure {
-                    name: left_name,
-                    slots: left_slots,
-                    ..
-                },
-                Self::Structure {
-                    name: right_name,
-                    slots: right_slots,
-                    ..
-                },
-            ) => Rc::ptr_eq(left_name, right_name) && Rc::ptr_eq(left_slots, right_slots),
-            (Self::Class(left), Self::Class(right)) => Rc::ptr_eq(left, right),
-            (Self::Environment(left), Self::Environment(right)) => left.same(right),
-            (Self::Instance(left), Self::Instance(right)) => {
-                Rc::ptr_eq(&left.class, &right.class) && Rc::ptr_eq(&left.slots, &right.slots)
-            }
+                Value::slot_reader("person", "name"),
+                "#<SLOT-READER person-name>",
+            ),
             (
-                Self::DottedList {
-                    items: left,
-                    tail: left_tail,
-                },
-                Self::DottedList {
-                    items: right,
-                    tail: right_tail,
-                },
-            ) => Rc::ptr_eq(left, right) && Rc::ptr_eq(left_tail, right_tail),
-            (Self::Function(left), Self::Function(right)) => Rc::ptr_eq(left, right),
-            _ => false,
+                Value::slot_writer("person", "name"),
+                "#<SLOT-WRITER person-name>",
+            ),
+            (
+                Value::closure(Vec::new(), Vec::new(), Environment::new()),
+                "#<FUNCTION>",
+            ),
+            (
+                Value::structure_with_types("point", Vec::new(), Vec::new()),
+                "#S(point)",
+            ),
+        ];
+
+        for (value, expected) in cases {
+            assert_eq!(value.to_string(), expected);
+            assert_eq!(format!("{value:?}"), format!("Value({expected})"));
         }
     }
 
-    pub fn equal_value(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::String(left), Self::String(right)) => left == right,
-            (Self::List(left), Self::List(right)) => {
-                left.len() == right.len()
-                    && left
-                        .iter()
-                        .zip(right.iter())
-                        .all(|(left, right)| left.equal_value(right))
-            }
-            (Self::Vector(left), Self::Vector(right)) => {
-                let left = left.borrow();
-                let right = right.borrow();
-                left.len() == right.len()
-                    && left
-                        .iter()
-                        .zip(right.iter())
-                        .all(|(left, right)| left.equal_value(right))
-            }
+    #[test]
+    fn function_display_forms_cover_generated_function_kinds() {
+        let cases = [
             (
-                Self::Complex {
-                    real: left_real,
-                    imaginary: left_imaginary,
+                Function::StructureConstructor {
+                    name: "MAKE-POINT".to_string(),
+                    slots: Vec::new(),
+                    structure_types: Vec::new(),
+                    constructor_lambda_list: None,
+                    environment: Environment::new(),
                 },
-                Self::Complex {
-                    real: right_real,
-                    imaginary: right_imaginary,
-                },
-            ) => left_real.equal_value(right_real) && left_imaginary.equal_value(right_imaginary),
+                "#<STRUCTURE-CONSTRUCTOR MAKE-POINT>",
+            ),
             (
-                Self::Array {
-                    dimensions: left_dimensions,
-                    elements: left_elements,
-                    ..
+                Function::StructurePredicate {
+                    name: "POINT-P".to_string(),
                 },
-                Self::Array {
-                    dimensions: right_dimensions,
-                    elements: right_elements,
-                    ..
-                },
-            ) => {
-                left_dimensions == right_dimensions
-                    && left_elements.borrow().len() == right_elements.borrow().len()
-                    && left_elements
-                        .borrow()
-                        .iter()
-                        .zip(right_elements.borrow().iter())
-                        .all(|(left, right)| left.equal_value(right))
-            }
-            (Self::Values(left), Self::Values(right)) => {
-                left.len() == right.len()
-                    && left
-                        .iter()
-                        .zip(right.iter())
-                        .all(|(left, right)| left.equal_value(right))
-            }
-            (Self::Condition(left), Self::Condition(right)) => left.equal_value(right),
-            (Self::Restart(left), Self::Restart(right)) => Rc::ptr_eq(left, right),
+                "#<STRUCTURE-PREDICATE POINT-P>",
+            ),
             (
-                Self::Structure {
-                    name: left_name,
-                    slots: left_slots,
-                    ..
+                Function::StructureAccessor {
+                    structure_name: "POINT".to_string(),
+                    slot_name: "X".to_string(),
+                    slot_index: 0,
+                    read_only: false,
                 },
-                Self::Structure {
-                    name: right_name,
-                    slots: right_slots,
-                    ..
-                },
-            ) => {
-                if left_name != right_name {
-                    return false;
-                }
-                let left_slots = left_slots.borrow();
-                let right_slots = right_slots.borrow();
-                left_slots.len() == right_slots.len()
-                    && left_slots.iter().zip(right_slots.iter()).all(
-                        |((left_name, left_value), (right_name, right_value))| {
-                            left_name == right_name && left_value.equal_value(right_value)
-                        },
-                    )
-            }
-            (Self::Class(left), Self::Class(right)) => left.name.eq_ignore_ascii_case(&right.name),
-            (Self::Instance(left), Self::Instance(right)) => {
-                if !left.class.name.eq_ignore_ascii_case(&right.class.name) {
-                    return false;
-                }
-                let left_slots = left.slots.borrow();
-                let right_slots = right.slots.borrow();
-                left_slots.len() == right_slots.len()
-                    && left_slots.iter().zip(right_slots.iter()).all(
-                        |((left_name, left_value), (right_name, right_value))| {
-                            left_name.eq_ignore_ascii_case(right_name)
-                                && left_value.equal_value(right_value)
-                        },
-                    )
-            }
+                "#<STRUCTURE-ACCESSOR POINT-X>",
+            ),
             (
-                Self::DottedList {
-                    items: left,
-                    tail: left_tail,
+                Function::StructureCopier {
+                    name: "COPY-POINT".to_string(),
                 },
-                Self::DottedList {
-                    items: right,
-                    tail: right_tail,
+                "#<STRUCTURE-COPIER COPY-POINT>",
+            ),
+            (
+                Function::ConditionReader {
+                    condition_name: "ERROR".to_string(),
+                    slot_name: "MESSAGE".to_string(),
                 },
-            ) => {
-                left.len() == right.len()
-                    && left
-                        .iter()
-                        .zip(right.iter())
-                        .all(|(left, right)| left.equal_value(right))
-                    && left_tail.equal_value(right_tail)
-            }
-            _ => self.eq_value(other),
+                "#<CONDITION-READER ERROR-MESSAGE>",
+            ),
+            (
+                Function::ConditionWriter {
+                    condition_name: "ERROR".to_string(),
+                    slot_name: "MESSAGE".to_string(),
+                },
+                "#<CONDITION-WRITER ERROR-MESSAGE>",
+            ),
+        ];
+
+        for (function, expected) in cases {
+            assert_eq!(Value::Function(Rc::new(function)).to_string(), expected);
         }
     }
-}
 
-impl fmt::Debug for Value {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("Value(")?;
-        fmt::Display::fmt(self, formatter)?;
-        formatter.write_str(")")
-    }
-}
+    #[test]
+    fn display_covers_exact_numeric_and_runtime_boundaries() {
+        let cases = [
+            (
+                Value::rational(3, 2)
+                    .unwrap_or_else(|error| panic!("rational should be valid: {error}")),
+                "3/2",
+            ),
+            (Value::Character('\t'), "#\\TAB"),
+            (Value::Character('\r'), "#\\RETURN"),
+            (Value::keyword_exact("a|b"), ":|a\\|b|"),
+            (Value::list(vec![Value::Integer(1)]), "(1)"),
+            (
+                Value::vector(vec![Value::Integer(1), Value::Integer(2)]),
+                "#(1 2)",
+            ),
+            (Value::Environment(Environment::new()), "#<ENVIRONMENT>"),
+            (
+                Value::condition_from_parts(
+                    "ERROR".to_owned(),
+                    "failure".to_owned(),
+                    None,
+                    Vec::new(),
+                ),
+                "#<CONDITION failure>",
+            ),
+        ];
 
-fn write_sequence(formatter: &mut fmt::Formatter<'_>, values: &[Value]) -> fmt::Result {
-    for (index, value) in values.iter().enumerate() {
-        if index != 0 {
-            formatter.write_str(" ")?;
+        for (value, expected) in cases {
+            assert_eq!(value.to_string(), expected);
         }
-        fmt::Display::fmt(value, formatter)?;
     }
-    Ok(())
-}
-
-fn write_escaped_symbol(formatter: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
-    formatter.write_char('|')?;
-    for character in value.chars() {
-        if matches!(character, '|' | '\\') {
-            formatter.write_char('\\')?;
-        }
-        formatter.write_char(character)?;
-    }
-    formatter.write_char('|')
 }

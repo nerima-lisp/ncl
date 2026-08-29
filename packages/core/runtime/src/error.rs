@@ -111,7 +111,15 @@ pub enum RuntimeError {
     /// An arithmetic operation exceeded its representation limits.
     NumericOverflow,
     /// An I/O operation failed.
-    Io(String),
+    Io {
+        /// The underlying error kind, preserved so callers can distinguish
+        /// e.g. a missing file from a permissions failure without
+        /// re-parsing the message text.
+        kind: std::io::ErrorKind,
+        /// A human-readable explanation, typically naming the operation
+        /// and path that failed.
+        message: String,
+    },
 }
 
 impl Error for RuntimeError {

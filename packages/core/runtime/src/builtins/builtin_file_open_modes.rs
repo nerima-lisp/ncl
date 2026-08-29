@@ -7,15 +7,16 @@ pub(super) fn open_input_file(path: &Path, if_does_not_exist: &str) -> Result<Va
         match if_does_not_exist {
             "NIL" => return Ok(Value::Nil),
             "CREATE" => {
-                std::fs::write(path, []).map_err(|error| {
-                    RuntimeError::Io(format!("open {}: {error}", path.display()))
+                std::fs::write(path, []).map_err(|error| RuntimeError::Io {
+                    kind: error.kind(),
+                    message: format!("open {}: {error}", path.display()),
                 })?;
             }
             "ERROR" => {
-                return Err(RuntimeError::Io(format!(
-                    "open {}: file does not exist",
-                    path.display()
-                )));
+                return Err(RuntimeError::Io {
+                    kind: std::io::ErrorKind::NotFound,
+                    message: format!("open {}: file does not exist", path.display()),
+                });
             }
             _ => {
                 return Err(RuntimeError::InvalidForm {
@@ -27,8 +28,10 @@ pub(super) fn open_input_file(path: &Path, if_does_not_exist: &str) -> Result<Va
             }
         }
     }
-    let source = std::fs::read_to_string(path)
-        .map_err(|error| RuntimeError::Io(format!("open {}: {error}", path.display())))?;
+    let source = std::fs::read_to_string(path).map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: format!("open {}: {error}", path.display()),
+    })?;
     Ok(Value::file_input_stream(&source))
 }
 
@@ -41,14 +44,15 @@ pub(super) fn open_output_file(
         match if_exists {
             "NIL" => return Ok(Value::Nil),
             "ERROR" => {
-                return Err(RuntimeError::Io(format!(
-                    "open {}: file already exists",
-                    path.display()
-                )));
+                return Err(RuntimeError::Io {
+                    kind: std::io::ErrorKind::AlreadyExists,
+                    message: format!("open {}: file already exists", path.display()),
+                });
             }
             "APPEND" => {
-                let source = std::fs::read_to_string(path).map_err(|error| {
-                    RuntimeError::Io(format!("open {}: {error}", path.display()))
+                let source = std::fs::read_to_string(path).map_err(|error| RuntimeError::Io {
+                    kind: error.kind(),
+                    message: format!("open {}: {error}", path.display()),
                 })?;
                 return Ok(Value::file_output_stream(path.to_path_buf(), source));
             }
@@ -65,10 +69,10 @@ pub(super) fn open_output_file(
             "CREATE" => {}
             "NIL" => return Ok(Value::Nil),
             "ERROR" => {
-                return Err(RuntimeError::Io(format!(
-                    "open {}: file does not exist",
-                    path.display()
-                )));
+                return Err(RuntimeError::Io {
+                    kind: std::io::ErrorKind::NotFound,
+                    message: format!("open {}: file does not exist", path.display()),
+                });
             }
             _ => {
                 return Err(RuntimeError::InvalidForm {
@@ -93,20 +97,22 @@ pub(super) fn open_io_file(
         match if_exists {
             "NIL" => return Ok(Value::Nil),
             "ERROR" => {
-                return Err(RuntimeError::Io(format!(
-                    "open {}: file already exists",
-                    path.display()
-                )));
+                return Err(RuntimeError::Io {
+                    kind: std::io::ErrorKind::AlreadyExists,
+                    message: format!("open {}: file already exists", path.display()),
+                });
             }
             "APPEND" => {
                 append = true;
-                std::fs::read_to_string(path).map_err(|error| {
-                    RuntimeError::Io(format!("open {}: {error}", path.display()))
+                std::fs::read_to_string(path).map_err(|error| RuntimeError::Io {
+                    kind: error.kind(),
+                    message: format!("open {}: {error}", path.display()),
                 })?
             }
             "NEW-VERSION" | "RENAME" | "RENAME-AND-DELETE" | "OVERWRITE" | "SUPERSEDE" => {
-                std::fs::read_to_string(path).map_err(|error| {
-                    RuntimeError::Io(format!("open {}: {error}", path.display()))
+                std::fs::read_to_string(path).map_err(|error| RuntimeError::Io {
+                    kind: error.kind(),
+                    message: format!("open {}: {error}", path.display()),
                 })?
             }
             _ => {
@@ -121,10 +127,10 @@ pub(super) fn open_io_file(
             "CREATE" => String::new(),
             "NIL" => return Ok(Value::Nil),
             "ERROR" => {
-                return Err(RuntimeError::Io(format!(
-                    "open {}: file does not exist",
-                    path.display()
-                )));
+                return Err(RuntimeError::Io {
+                    kind: std::io::ErrorKind::NotFound,
+                    message: format!("open {}: file does not exist", path.display()),
+                });
             }
             _ => {
                 return Err(RuntimeError::InvalidForm {

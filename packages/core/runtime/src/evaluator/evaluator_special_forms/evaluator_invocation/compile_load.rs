@@ -91,8 +91,10 @@ impl Runtime {
                 });
             }
         };
-        let source = fs::read_to_string(&path)
-            .map_err(|error| RuntimeError::Io(format!("cannot load {path}: {error}")))?;
+        let source = fs::read_to_string(&path).map_err(|error| RuntimeError::Io {
+            kind: error.kind(),
+            message: format!("cannot load {path}: {error}"),
+        })?;
         self.eval_source(&source)?;
         Ok(Value::boolean(true))
     }

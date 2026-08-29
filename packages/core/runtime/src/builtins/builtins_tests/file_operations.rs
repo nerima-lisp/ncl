@@ -100,8 +100,10 @@ fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeErr
     let suffix = nanosecond_suffix()?;
     let missing_path = std::env::temp_dir().join(format!("ncl-open-options-{suffix}-missing"));
     let existing_path = std::env::temp_dir().join(format!("ncl-open-options-{suffix}-existing"));
-    std::fs::write(&existing_path, "content")
-        .map_err(|error| RuntimeError::Io(error.to_string()))?;
+    std::fs::write(&existing_path, "content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
     let missing = Value::string(missing_path.to_string_lossy().to_string());
     let existing = Value::string(existing_path.to_string_lossy().to_string());
 

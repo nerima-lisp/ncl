@@ -23,7 +23,7 @@ impl RuntimeError {
             | Self::InvokeRestart { .. } => "CONTROL-ERROR".to_owned(),
             Self::DivisionByZero => "DIVISION-BY-ZERO".to_owned(),
             Self::NumericOverflow => "ARITHMETIC-ERROR".to_owned(),
-            Self::Io(_) => "FILE-ERROR".to_owned(),
+            Self::Io { .. } => "FILE-ERROR".to_owned(),
         }
     }
 

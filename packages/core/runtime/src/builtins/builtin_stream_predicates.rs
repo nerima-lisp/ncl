@@ -20,7 +20,10 @@ pub(super) fn close_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
     stream
         .borrow_mut()
         .close(abort)
-        .map_err(|error| RuntimeError::Io(format!("close: {error}")))?;
+        .map_err(|error| RuntimeError::Io {
+            kind: error.kind(),
+            message: format!("close: {error}"),
+        })?;
     Ok(Value::boolean(true))
 }
 

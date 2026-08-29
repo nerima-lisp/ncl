@@ -63,7 +63,14 @@ fn condition_matching_covers_builtin_condition_hierarchy() {
             "program-error",
             true,
         ),
-        (RuntimeError::Io("failed".to_owned()), "file-error", true),
+        (
+            RuntimeError::Io {
+                kind: std::io::ErrorKind::Other,
+                message: "failed".to_owned(),
+            },
+            "file-error",
+            true,
+        ),
     ];
 
     for (error, condition, expected) in cases {
@@ -145,7 +152,13 @@ fn condition_type_names_cover_all_runtime_error_categories() {
             "CONTROL-ERROR",
         ),
         (RuntimeError::NumericOverflow, "ARITHMETIC-ERROR"),
-        (RuntimeError::Io("io".into()), "FILE-ERROR"),
+        (
+            RuntimeError::Io {
+                kind: std::io::ErrorKind::Other,
+                message: "io".into(),
+            },
+            "FILE-ERROR",
+        ),
     ];
     for (error, expected) in cases {
         assert_eq!(error.condition_type_name(), expected);

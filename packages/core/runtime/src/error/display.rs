@@ -59,7 +59,7 @@ impl fmt::Display for RuntimeError {
             }
             Self::DivisionByZero => formatter.write_str("division by zero"),
             Self::NumericOverflow => formatter.write_str("numeric overflow"),
-            Self::Io(message) => formatter.write_str(message),
+            Self::Io { message, .. } => formatter.write_str(message),
         }
     }
 }

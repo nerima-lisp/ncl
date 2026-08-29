@@ -51,7 +51,13 @@ fn runtime_error_display_includes_spans_and_variant_messages() {
             "bad package at byte 1..4",
         ),
         (RuntimeError::NumericOverflow, "numeric overflow"),
-        (RuntimeError::Io("io failed".to_owned()), "io failed"),
+        (
+            RuntimeError::Io {
+                kind: std::io::ErrorKind::Other,
+                message: "io failed".to_owned(),
+            },
+            "io failed",
+        ),
     ];
     for (error, expected) in errors {
         assert_eq!(error.to_string(), expected);

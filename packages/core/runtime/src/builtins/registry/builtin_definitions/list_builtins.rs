@@ -1,0 +1,31 @@
+#![allow(clippy::wildcard_imports)]
+use super::*;
+
+pub(super) const LIST_BUILTINS: &[BuiltinDefinition] = &[
+    ("list", list as _),
+    ("list*", list_star as _),
+    ("make-list", make_list as _),
+    ("values-list", values_list as _),
+    ("list-length", list_length as _),
+    ("nthcdr", nthcdr as _),
+    ("acons", acons as _),
+    ("pairlis", pairlis as _),
+    ("cons", cons as _),
+    ("car", car as _),
+    ("cdr", cdr as _),
+    ("first", first as _),
+    ("rest", rest as _),
+    ("append", append as _),
+    ("nconc", nconc as _),
+    ("revappend", revappend as _),
+    ("nreconc", nreconc as _),
+    ("length", length as _),
+    ("reverse", reverse as _),
+    ("nreverse", nreverse as _),
+    ("last", last as _),
+    ("butlast", butlast as _),
+    ("nbutlast", nbutlast as _),
+    ("copy-list", copy_list as _),
+    ("copy-alist", copy_alist as _),
+    ("copy-tree", copy_tree as _),
+];

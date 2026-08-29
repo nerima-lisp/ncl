@@ -3,14 +3,16 @@
 mod error;
 mod form;
 mod lambda_list;
+mod lambda_list_types;
 mod reader;
 mod symbol;
 
 pub use error::{ReadError, ReadErrorKind};
 pub use form::{Form, FormKind, Span};
-pub use lambda_list::{
+pub use lambda_list::parse_ordinary_lambda_list;
+pub use lambda_list_types::{
     LambdaListAuxiliaryParameter, LambdaListError, LambdaListErrorKind, LambdaListKeywordParameter,
-    LambdaListOptionalParameter, OrdinaryLambdaList, parse_ordinary_lambda_list,
+    LambdaListOptionalParameter, OrdinaryLambdaList,
 };
 pub use reader::{MAX_NESTING_DEPTH, Reader, read};
 pub use symbol::{SymbolToken, SymbolTokenError, SymbolTokenKind, parse_symbol_token};

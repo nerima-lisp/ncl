@@ -106,3 +106,51 @@ impl Runtime {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_setf_expansion_rejects_a_non_function_expander() {
+        let runtime = Runtime::new();
+        let environment = runtime.global_environment();
+        environment.define_setf_expander("NOT-A-FUNCTION-PLACE", Value::Integer(1));
+
+        let error = runtime
+            .eval_source("(setf (not-a-function-place) 1)")
+            .map_or_else(
+                |error| error,
+                |value| panic!("a non-function expander must be rejected, got {value:?}"),
+            );
+
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "SETF expander is not a function"
+        ));
+    }
+
+    #[test]
+    fn custom_setf_expansion_rejects_a_non_macro_function_expander() {
+        let runtime = Runtime::new();
+        let environment = runtime.global_environment();
+        let car_function = runtime
+            .lookup_function_in("CAR", &environment)
+            .unwrap_or_else(|| panic!("CAR must be a builtin function"));
+        environment.define_setf_expander("NOT-A-MACRO-PLACE", car_function);
+
+        let error = runtime
+            .eval_source("(setf (not-a-macro-place) 1)")
+            .map_or_else(
+                |error| error,
+                |value| panic!("a non-macro-function expander must be rejected, got {value:?}"),
+            );
+
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "SETF expander is not a macro function"
+        ));
+    }
+}

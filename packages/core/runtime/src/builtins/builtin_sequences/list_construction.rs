@@ -118,3 +118,29 @@ pub fn pairlis(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
     Ok(Value::list(result))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn acons_rejects_a_non_list_alist_argument() {
+        assert!(matches!(
+            acons(&[Value::Integer(1), Value::Integer(2), Value::Integer(3)]),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
+
+    #[test]
+    fn pairlis_rejects_non_list_keys_and_values() {
+        let list = Value::list(vec![Value::Integer(1)]);
+        assert!(matches!(
+            pairlis(&[Value::Integer(1), list.clone()]),
+            Err(RuntimeError::Type { .. })
+        ));
+        assert!(matches!(
+            pairlis(&[list, Value::Integer(1)]),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
+}

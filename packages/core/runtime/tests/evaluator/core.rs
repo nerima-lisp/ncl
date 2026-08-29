@@ -148,6 +148,19 @@ fn evaluates_define_symbol_macro_and_generalized_places() {
 }
 
 #[test]
+fn evaluates_escaped_local_macro_symbol_macro_and_define_symbol_macro_names() {
+    assert_eq!(evaluate("(macrolet ((|m| () 5)) (|m|))").to_string(), "5");
+    assert_eq!(
+        evaluate("(symbol-macrolet ((|s| 42)) |s|)").to_string(),
+        "42"
+    );
+    assert_eq!(
+        evaluate("(progn (define-symbol-macro |q| 7) |q|)").to_string(),
+        "7"
+    );
+}
+
+#[test]
 fn macro_rest_parameters_receive_unquoted_forms() {
     let values = Runtime::new()
         .eval_source(
@@ -876,6 +889,45 @@ fn validates_function_designators_and_argument_lists_from_table_cases() {
 }
 
 #[test]
+fn propagates_errors_raised_while_evaluating_function_call_operands() {
+    for source in [
+        "(funcall (error \"boom\"))",
+        "(funcall #'+ (error \"boom\"))",
+        "(eval (error \"boom\"))",
+        "(apply (error \"boom\") '())",
+        "(apply #'+ (error \"boom\") '(1))",
+    ] {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn resolves_escaped_function_designators_and_reports_matching_errors() {
+    let unbound = Runtime::new()
+        .eval_source("(funcall '|TotallyMissingExactFn|)")
+        .must_fail();
+    assert!(matches!(
+        unbound,
+        ncl_runtime::RuntimeError::UnboundVariable { name, .. }
+            if name == "TotallyMissingExactFn"
+    ));
+
+    let not_callable = Runtime::new()
+        .eval_source("(progn (defvar |ExactVar| 9) (funcall '|ExactVar|))")
+        .must_fail();
+    assert!(matches!(
+        not_callable,
+        ncl_runtime::RuntimeError::NotCallable { .. }
+    ));
+
+    assert_evaluates_to(
+        Runtime::eval_source,
+        "(progn (defun |ExactFn| (x) (* x 2)) (funcall '|ExactFn| 5))",
+        "10",
+    );
+}
+
+#[test]
 fn eval_reconstructs_supported_literal_form_shapes() {
     let cases = [
         ("(eval 42)", "42"),
@@ -886,6 +938,8 @@ fn eval_reconstructs_supported_literal_form_shapes() {
         ("(eval #\\A)", "#\\A"),
         ("(eval '#(1 2))", "#(1 2)"),
         ("(eval (find-package \"COMMON-LISP-USER\"))", "NIL"),
+        ("(eval :|foo|)", ":|foo|"),
+        ("(let ((|foo| 42)) (eval '|foo|))", "42"),
     ];
 
     for (source, expected) in cases {
@@ -893,4 +947,243 @@ fn eval_reconstructs_supported_literal_form_shapes() {
     }
 
     assert!(Runtime::new().eval_source("(eval '(1 . 2))").is_err());
+}
+
+#[test]
+fn eval_reconstructs_uninterned_symbols_and_rejects_unformable_values() {
+    let unbound = Runtime::new()
+        .eval_source(r#"(eval (make-symbol "foo"))"#)
+        .must_fail();
+    assert!(matches!(
+        unbound,
+        ncl_runtime::RuntimeError::UnboundVariable { .. }
+    ));
+
+    let unformable = Runtime::new()
+        .eval_source("(eval (make-hash-table))")
+        .must_fail();
+    assert!(matches!(
+        unformable,
+        ncl_runtime::RuntimeError::Type { expected, actual, .. }
+            if expected == "FORM" && actual == "HASH-TABLE"
+    ));
+}
+
+#[test]
+fn setq_defines_a_previously_unbound_global_variable() {
+    assert_eq!(
+        evaluate("(progn (setq newly-declared-global-variable 99) newly-declared-global-variable)")
+            .to_string(),
+        "99"
+    );
+}
+
+#[test]
+fn setq_updates_a_let_bound_special_variable_and_restores_it_afterwards() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defvar *dynamic-setq-target* 1)
+               (list (let ((*dynamic-setq-target* 2))
+                       (setq *dynamic-setq-target* 3)
+                       *dynamic-setq-target*)
+                     *dynamic-setq-target*))"
+        )
+        .to_string(),
+        "(3 1)"
+    );
+}
+
+#[test]
+fn setq_updates_a_let_bound_escaped_special_variable_and_restores_it_afterwards() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defvar |EscapedDynamicSetq| 1)
+               (list (let ((|EscapedDynamicSetq| 2))
+                       (setq |EscapedDynamicSetq| 3)
+                       |EscapedDynamicSetq|)
+                     |EscapedDynamicSetq|))"
+        )
+        .to_string(),
+        "(3 1)"
+    );
+}
+
+#[test]
+fn setq_declares_a_new_global_escaped_special_variable_outside_any_let() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defvar |EscapedGlobalSetq| 1)
+               (setq |EscapedGlobalSetq| 5)
+               |EscapedGlobalSetq|)"
+        )
+        .to_string(),
+        "5"
+    );
+}
+
+#[test]
+fn defvar_preserves_and_defparameter_replaces_values_through_the_compiled_engine() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(defvar compiled-answer 1) (defvar compiled-answer 2) compiled-answer \
+             (defparameter compiled-answer 3) compiled-answer",
+        )
+        .must_exist();
+
+    assert_eq!(values[1].to_string(), "1");
+    assert_eq!(values[2].to_string(), "1");
+    assert_eq!(values[4].to_string(), "3");
+}
+
+#[test]
+fn defvar_preserves_an_escaped_special_variable_through_the_compiled_engine() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(defvar |CompiledEscaped| 1) (defvar |CompiledEscaped| 2) |CompiledEscaped|",
+        )
+        .must_exist();
+
+    assert_eq!(values[2].to_string(), "1");
+}
+
+#[test]
+fn evaluates_defconstant_and_constantp_for_escaped_symbols() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defconstant |ExactAnswer| 42)
+               (list |ExactAnswer| (constantp '|ExactAnswer|)))"
+        )
+        .to_string(),
+        "(42 T)"
+    );
+
+    assert!(
+        Runtime::new()
+            .eval_source("(defconstant |ExactAnswer| 42) (setq |ExactAnswer| 7)")
+            .is_err()
+    );
+}
+
+#[test]
+fn set_updates_a_let_shadowed_dynamic_variable_via_symbol_value() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defvar *set-dynamic-target* 1)
+               (let ((*set-dynamic-target* 2))
+                 (set '*set-dynamic-target* 3)
+                 *set-dynamic-target*))"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[test]
+fn set_updates_a_let_shadowed_escaped_dynamic_variable_via_symbol_value() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defvar |SetExactDynamicTarget| 1)
+               (let ((|SetExactDynamicTarget| 2))
+                 (set '|SetExactDynamicTarget| 3)
+                 |SetExactDynamicTarget|))"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[test]
+fn do_loop_supports_an_escaped_step_variable() {
+    assert_eq!(
+        evaluate("(do ((|i| 0 (1+ |i|))) ((>= |i| 3) |i|))").to_string(),
+        "3"
+    );
+}
+
+#[test]
+fn makunbound_and_fmakunbound_support_escaped_symbol_names() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defvar |MakunboundExactTarget| 1)
+               (makunbound '|MakunboundExactTarget|)
+               (boundp '|MakunboundExactTarget|))"
+        )
+        .to_string(),
+        "NIL"
+    );
+
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defun |FmakunboundExactTarget| () 1)
+               (fmakunbound '|FmakunboundExactTarget|)
+               (fboundp '|FmakunboundExactTarget|))"
+        )
+        .to_string(),
+        "NIL"
+    );
+}
+
+#[test]
+fn references_to_an_unknown_package_are_rejected() {
+    let error = Runtime::new()
+        .eval_source("no-such-package-in-this-test:foo")
+        .must_fail();
+    assert!(matches!(error, ncl_runtime::RuntimeError::Package { .. }));
+}
+
+#[test]
+fn funcalling_map_into_as_a_primitive_reports_a_missing_argument() {
+    let error = Runtime::new()
+        .eval_source("(funcall #'map-into (list 1))")
+        .must_fail();
+    assert!(matches!(
+        error,
+        ncl_runtime::RuntimeError::Arity { function, actual: 1, .. }
+            if function == "map-into"
+    ));
+}
+
+#[test]
+fn call_next_method_fails_when_no_further_method_is_applicable() {
+    let error = Runtime::new()
+        .eval_source(
+            "(progn
+               (defgeneric call-next-method-base-only (object))
+               (defmethod call-next-method-base-only ((object t))
+                 (call-next-method))
+               (call-next-method-base-only 1))",
+        )
+        .must_fail();
+    assert!(matches!(
+        error,
+        ncl_runtime::RuntimeError::InvalidForm { .. }
+    ));
+}
+
+#[test]
+fn call_next_method_accepts_explicit_override_arguments() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defclass call-next-method-override-class () ())
+               (defgeneric call-next-method-override (object))
+               (defmethod call-next-method-override ((object t))
+                 (list :base object))
+               (defmethod call-next-method-override
+                   ((object call-next-method-override-class))
+                 (call-next-method 42))
+               (call-next-method-override
+                 (make-instance 'call-next-method-override-class)))"
+        )
+        .to_string(),
+        "(:BASE 42)"
+    );
 }

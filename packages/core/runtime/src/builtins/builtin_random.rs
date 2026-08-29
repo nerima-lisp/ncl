@@ -137,4 +137,9 @@ mod tests {
         assert!(make_random_state(&[Value::Integer(1), Value::Integer(2)]).is_err());
         assert!(make_random_state(&[Value::Integer(1)]).is_err());
     }
+
+    #[test]
+    fn random_rejects_a_second_argument_that_is_not_a_random_state() {
+        assert!(random(&[Value::Integer(10), Value::Integer(1)]).is_err());
+    }
 }

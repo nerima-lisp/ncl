@@ -1,6 +1,43 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
+use ncl_compiler::Constant;
+
+fn constant_function(value: i64) -> FunctionCode {
+    FunctionCode {
+        name: None,
+        parameters: Vec::new(),
+        required_escaped: Vec::new(),
+        optional: Vec::new(),
+        keywords: Vec::new(),
+        has_keyword_section: false,
+        allow_other_keys: false,
+        rest: None,
+        rest_escaped: false,
+        auxiliary: Vec::new(),
+        instructions: vec![
+            Instruction::Constant(Constant::Integer(value)),
+            Instruction::Return,
+        ],
+    }
+}
+
+fn identity_function() -> FunctionCode {
+    FunctionCode {
+        name: None,
+        parameters: vec!["x".to_string()],
+        required_escaped: vec![false],
+        optional: Vec::new(),
+        keywords: Vec::new(),
+        has_keyword_section: false,
+        allow_other_keys: false,
+        rest: None,
+        rest_escaped: false,
+        auxiliary: Vec::new(),
+        instructions: vec![Instruction::Load("x".to_string()), Instruction::Return],
+    }
+}
+
 fn assert_invalid(result: Result<(), RuntimeError>, expected: &str) {
     assert!(matches!(
         result,
@@ -74,4 +111,47 @@ fn stack_operations_reject_invalid_sequence_shapes() {
         );
         assert!(!name.is_empty());
     }
+}
+
+#[test]
+fn apply_instruction_calls_the_function_with_the_expanded_final_list() {
+    let runtime = Runtime::new();
+    let environment = Environment::new();
+    let span = Span::new(0, 1);
+    let program = Rc::new(Program {
+        functions: vec![constant_function(42)],
+        entry: 0,
+    });
+    let function_value = Value::compiled(program, 0, environment.clone());
+    let mut stack = vec![function_value, Value::Nil];
+
+    let result = execute_apply_instruction(&runtime, 1, &mut stack, &environment, span);
+
+    assert!(result.is_ok());
+    assert_eq!(stack.len(), 1);
+    assert!(matches!(stack[0], Value::Integer(42)));
+}
+
+#[test]
+fn mapcar_instruction_applies_the_function_across_the_sequence() {
+    let runtime = Runtime::new();
+    let environment = Environment::new();
+    let span = Span::new(0, 1);
+    let program = Rc::new(Program {
+        functions: vec![identity_function()],
+        entry: 0,
+    });
+    let function_value = Value::compiled(program, 0, environment.clone());
+    let sequence = Value::list(vec![
+        Value::Integer(1),
+        Value::Integer(2),
+        Value::Integer(3),
+    ]);
+    let mut stack = vec![function_value, sequence];
+
+    let result = execute_mapcar_instruction(&runtime, 1, &mut stack, &environment, span);
+
+    assert!(result.is_ok());
+    assert_eq!(stack.len(), 1);
+    assert_eq!(stack[0].to_string(), "(1 2 3)");
 }

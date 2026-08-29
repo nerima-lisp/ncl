@@ -47,7 +47,7 @@ pub(super) enum MarkerOutcome {
 /// Returns `Ok(None)` when `marker` is an ordinary parameter name rather
 /// than a recognized marker, in which case the caller should continue
 /// parsing `parameter` as a regular section item.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub(super) fn recognize_marker(
     marker: &str,
     parameter: &Form,

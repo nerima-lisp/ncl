@@ -1,5 +1,49 @@
 use crate::Value;
-use crate::error::{ReturnValue, RuntimeError, ThrowTag};
+use crate::error::{ReturnValue, RuntimeError, SignaledError, ThrowTag};
+use ncl_compiler::{CompileError, CompileErrorKind};
+use ncl_syntax::{ReadError, ReadErrorKind, Span};
+
+#[test]
+fn condition_type_names_cover_read_and_compile_errors() {
+    let read = RuntimeError::Read(Box::new(ReadError::new(
+        ReadErrorKind::MissingDottedTail,
+        Span::new(0, 1),
+    )));
+    assert_eq!(read.condition_type_name(), "READER-ERROR");
+
+    let compile = RuntimeError::Compile(Box::new(CompileError::new(
+        CompileErrorKind::Internal {
+            message: "bad".to_owned(),
+        },
+        Span::new(0, 1),
+    )));
+    assert_eq!(compile.condition_type_name(), "COMPILER-ERROR");
+}
+
+#[test]
+fn condition_type_names_cover_signaled_warning_and_error_variants() {
+    let warning = RuntimeError::Signaled(Box::new(SignaledError {
+        condition: "CUSTOM-CONDITION".to_owned(),
+        condition_types: Box::default(),
+        message: "warned".to_owned(),
+        format_control: None,
+        format_arguments: Box::default(),
+        warning: true,
+        span: None,
+    }));
+    assert_eq!(warning.condition_type_name(), "SIMPLE-WARNING");
+
+    let error = RuntimeError::Signaled(Box::new(SignaledError {
+        condition: "CUSTOM-ERROR".to_owned(),
+        condition_types: Box::default(),
+        message: "failed".to_owned(),
+        format_control: None,
+        format_arguments: Box::default(),
+        warning: false,
+        span: None,
+    }));
+    assert_eq!(error.condition_type_name(), "CUSTOM-ERROR");
+}
 
 #[test]
 fn condition_type_names_cover_all_runtime_error_categories() {

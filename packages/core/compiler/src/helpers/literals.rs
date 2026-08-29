@@ -129,6 +129,12 @@ mod tests {
             ("1/0", None),
             ("1/2/3", None),
             ("9223372036854775808/1", None),
+            ("6x/8", None),
+            ("6/8x", None),
+            ("1/9223372036854775808", None),
+            ("-170141183460469231731687303715884105728/1", None),
+            ("-170141183460469231731687303715884105728/-1", None),
+            ("1/-170141183460469231731687303715884105728", None),
         ];
 
         for (source, expected) in cases {
@@ -138,5 +144,10 @@ mod tests {
                 "source={source:?}"
             );
         }
+    }
+
+    #[test]
+    fn literal_constant_rejects_a_token_that_fails_to_parse() {
+        assert_eq!(literal_constant(""), None);
     }
 }

@@ -50,3 +50,49 @@ pub fn get_properties(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
     Ok(Value::values(vec![Value::Nil, Value::Nil, Value::Nil]))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn getf_reports_arity_type_and_odd_length_errors() {
+        assert!(matches!(getf(&[]), Err(RuntimeError::Arity { .. })));
+        assert!(matches!(
+            getf(&[Value::Integer(1), Value::keyword("a")]),
+            Err(RuntimeError::Type { .. })
+        ));
+        let odd_plist = Value::list(vec![Value::keyword("a")]);
+        assert!(matches!(
+            getf(&[odd_plist, Value::keyword("a")]),
+            Err(RuntimeError::InvalidForm { .. })
+        ));
+    }
+
+    #[test]
+    fn getf_falls_back_to_the_supplied_default() {
+        let plist = Value::list(vec![Value::keyword("a"), Value::Integer(1)]);
+        match getf(&[plist, Value::keyword("b"), Value::Integer(42)]) {
+            Ok(value) => assert_eq!(value.to_string(), "42"),
+            Err(error) => panic!("expected Ok, got {error:?}"),
+        }
+    }
+
+    #[test]
+    fn get_properties_reports_type_and_odd_length_errors() {
+        let list = Value::list(vec![Value::keyword("a")]);
+        assert!(matches!(
+            get_properties(&[Value::Integer(1), list.clone()]),
+            Err(RuntimeError::Type { .. })
+        ));
+        assert!(matches!(
+            get_properties(&[list.clone(), Value::Integer(1)]),
+            Err(RuntimeError::Type { .. })
+        ));
+        let odd_plist = Value::list(vec![Value::keyword("a")]);
+        assert!(matches!(
+            get_properties(&[odd_plist, list]),
+            Err(RuntimeError::InvalidForm { .. })
+        ));
+    }
+}

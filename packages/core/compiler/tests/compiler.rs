@@ -1511,3 +1511,134 @@ fn lowers_dynamic_condition_restart_and_catch_forms() {
             .any(|instruction| matches!(instruction, Instruction::Progv { .. }))
     );
 }
+
+#[test]
+fn lowers_do_star_with_omitted_init_and_escaped_stepped_variable() {
+    let program = compile("(do* ((i) (|Mixed| 1 (1+ |Mixed|))) ((> |Mixed| 0) |Mixed|) nil)");
+
+    assert!(program.functions.iter().any(|function| {
+        function
+            .instructions
+            .windows(2)
+            .any(|window| matches!(window, [Instruction::Constant(Constant::Nil), Instruction::Define(name)] if name == "I"))
+    }), "missing DO* variable should default its init to NIL");
+    assert!(program.functions.iter().any(|function| {
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::DefineExact(name) if name == "Mixed"))
+    }), "escaped DO* variable should bind with DefineExact");
+    assert!(
+        program.functions.iter().any(|function| {
+            function.instructions.iter().any(
+                |instruction| matches!(instruction, Instruction::SetExact(name) if name == "Mixed"),
+            )
+        }),
+        "escaped DO* stepped variable should update with SetExact"
+    );
+}
+
+#[test]
+fn lowers_do_with_omitted_init_and_escaped_stepped_variable() {
+    let program = compile("(do ((i) (|Mixed| 1 (1+ |Mixed|))) ((> |Mixed| 0) |Mixed|) nil)");
+
+    assert!(
+        program.functions.iter().any(|function| {
+            function.instructions.windows(2).any(|window| {
+                matches!(
+                    window,
+                    [Instruction::Constant(Constant::Nil), Instruction::Define(name)]
+                        if name.starts_with("__NCL_DO_INIT_")
+                )
+            })
+        }),
+        "missing DO variable should default its init temporary to NIL"
+    );
+    assert!(program.functions.iter().any(|function| {
+        function
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::DefineExact(name) if name == "Mixed"))
+    }), "escaped DO variable should bind with DefineExact");
+    assert!(
+        program.functions.iter().any(|function| {
+            function.instructions.iter().any(
+                |instruction| matches!(instruction, Instruction::SetExact(name) if name == "Mixed"),
+            )
+        }),
+        "escaped DO stepped variable should update with SetExact"
+    );
+}
+
+#[test]
+fn lowers_dolist_without_a_result_form_to_nil() {
+    let program = compile("(dolist (item (list 1)) item)");
+    let instructions = &program.functions[0].instructions;
+
+    assert_eq!(
+        &instructions[instructions.len() - 6..],
+        [
+            Instruction::Constant(Constant::Nil),
+            Instruction::Set("ITEM".to_string()),
+            Instruction::Pop,
+            Instruction::Constant(Constant::Nil),
+            Instruction::ExitScope,
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
+fn rejects_malformed_multiple_value_control_forms_from_table_cases() {
+    for source in [
+        "(multiple-value-bind (a))",
+        "(multiple-value-bind (1) (values 1) nil)",
+        "(multiple-value-call)",
+        "(multiple-value-prog1)",
+    ] {
+        let forms = read(source).expect("test source should parse");
+        assert!(Compiler::compile_forms(&forms).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn lowers_multiple_value_prog1_with_an_empty_tail() {
+    let program = compile("(multiple-value-prog1 1)");
+    let instructions = &program.functions[0].instructions;
+
+    assert_eq!(instructions.len(), 7, "{instructions:?}");
+    assert!(matches!(instructions[0], Instruction::EnterScope));
+    assert!(matches!(
+        instructions[1],
+        Instruction::Constant(Constant::Integer(1))
+    ));
+    assert!(matches!(instructions[2], Instruction::DefineValues(_)));
+    assert!(matches!(instructions[3], Instruction::Pop));
+    assert!(matches!(instructions[4], Instruction::Load(_)));
+    assert!(matches!(instructions[5], Instruction::ExitScope));
+    assert!(matches!(instructions[6], Instruction::Return));
+}
+
+#[test]
+fn rejects_malformed_block_and_return_forms_from_table_cases() {
+    for source in ["(block)", "(return 1 2)", "(return-from name 1 2)"] {
+        let forms = read(source).expect("test source should parse");
+        assert!(Compiler::compile_forms(&forms).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn lowers_return_from_without_a_value_to_nil() {
+    let program = compile("(block done (return-from done))");
+
+    assert_eq!(
+        program.functions[1].instructions,
+        vec![
+            Instruction::Constant(Constant::Nil),
+            Instruction::ReturnFrom {
+                name: "DONE".to_string(),
+            },
+            Instruction::Return,
+        ]
+    );
+}

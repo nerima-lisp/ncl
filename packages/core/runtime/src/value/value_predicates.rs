@@ -53,3 +53,47 @@ impl Value {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use super::super::{ClassDefinition, Environment, RandomState, Value};
+
+    #[test]
+    fn type_name_covers_every_value_variant() {
+        let class_definition = Rc::new(ClassDefinition {
+            name: "POINT".to_owned(),
+            precedence: Vec::new(),
+            slots: Vec::new(),
+            default_initargs: Vec::new(),
+        });
+        let cases = [
+            (Value::Unbound, "UNBOUND"),
+            (Value::Boolean(true), "BOOLEAN"),
+            (Value::string_output_stream(), "STREAM"),
+            (Value::random_state(RandomState::seeded()), "RANDOM-STATE"),
+            (Value::package("USER"), "PACKAGE"),
+            (Value::Environment(Environment::new()), "ENVIRONMENT"),
+            (Value::keyword("key"), "KEYWORD"),
+            (Value::keyword_exact("key"), "KEYWORD"),
+            (Value::array(vec![1], vec![Value::Nil]), "ARRAY"),
+            (Value::hash_table("EQ"), "HASH-TABLE"),
+            (Value::values(vec![Value::Integer(1)]), "VALUES"),
+            (Value::restart("retry"), "RESTART"),
+            (
+                Value::structure_with_types("point", Vec::new(), Vec::new()),
+                "STRUCTURE",
+            ),
+            (Value::class_object(class_definition.clone()), "CLASS"),
+            (
+                Value::instance(class_definition, Vec::new()),
+                "STANDARD-OBJECT",
+            ),
+            (Value::primitive("PRIM"), "FUNCTION"),
+        ];
+        for (value, expected) in cases {
+            assert_eq!(value.type_name(), expected);
+        }
+    }
+}

@@ -28,7 +28,7 @@ pub(super) enum DefpackageOperation {
 /// The `saw_*` flags each independently guard against one `DEFPACKAGE`
 /// clause repeating, which is why there are four of them rather than one
 /// combined state.
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 pub(super) struct DefpackageBuilder {
     pub(super) nicknames: Vec<String>,
     pub(super) use_packages: Vec<String>,
@@ -74,5 +74,24 @@ impl DefpackageBuilder {
 impl Default for DefpackageBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DefpackageBuilder;
+
+    #[test]
+    fn default_builder_matches_a_freshly_constructed_builder() {
+        let default_builder = DefpackageBuilder::default();
+        let new_builder = DefpackageBuilder::new();
+
+        assert_eq!(default_builder.use_packages, new_builder.use_packages);
+        assert!(!default_builder.saw_nicknames);
+        assert!(!default_builder.saw_use);
+        assert!(!default_builder.saw_documentation);
+        assert!(!default_builder.saw_size);
+        assert!(default_builder.nicknames.is_empty());
+        assert!(default_builder.local_nicknames.is_empty());
     }
 }

@@ -92,6 +92,7 @@ impl Runtime {
 
 #[cfg(test)]
 mod tests {
+    #[allow(clippy::wildcard_imports)]
     use super::*;
 
     fn atom(name: &str) -> Form {

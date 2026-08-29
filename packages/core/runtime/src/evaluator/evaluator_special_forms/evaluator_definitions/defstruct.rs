@@ -3,8 +3,10 @@ use super::*;
 
 mod option_values;
 mod options;
+mod options_tests;
 mod registration;
 mod slots;
+mod slots_tests;
 
 use options::DefstructOptions;
 use registration::DefstructRegistration;

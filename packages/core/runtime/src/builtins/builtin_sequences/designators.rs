@@ -42,3 +42,52 @@ pub fn string_designator(function: &str, value: &Value) -> Result<String, Runtim
         value => Err(type_error(function, "string designator", value)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ok_string(result: Result<String, RuntimeError>) -> String {
+        match result {
+            Ok(value) => value,
+            Err(error) => panic!("expected Ok, got {error:?}"),
+        }
+    }
+
+    #[test]
+    fn character_designator_rejects_multi_character_strings() {
+        assert!(matches!(
+            character_designator("test", &Value::string("ab")),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
+
+    #[test]
+    fn string_designator_normalizes_booleans_and_symbol_kinds() {
+        assert_eq!(ok_string(string_designator("test", &Value::Nil)), "NIL");
+        assert_eq!(
+            ok_string(string_designator("test", &Value::Boolean(false))),
+            "NIL"
+        );
+        assert_eq!(
+            ok_string(string_designator("test", &Value::Boolean(true))),
+            "T"
+        );
+        assert_eq!(
+            ok_string(string_designator("test", &Value::uninterned_symbol("x"))),
+            "x"
+        );
+        assert_eq!(
+            ok_string(string_designator("test", &Value::keyword("x"))),
+            "X"
+        );
+        assert_eq!(
+            ok_string(string_designator("test", &Value::symbol_exact("x"))),
+            "x"
+        );
+        assert_eq!(
+            ok_string(string_designator("test", &Value::keyword_exact("x"))),
+            "x"
+        );
+    }
+}

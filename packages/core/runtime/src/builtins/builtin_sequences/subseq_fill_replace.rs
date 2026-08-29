@@ -100,3 +100,59 @@ pub fn replace(arguments: &[Value]) -> Result<Value, RuntimeError> {
     result[start1..start1 + count].clone_from_slice(&source[start2..start2 + count]);
     rebuild_sequence("replace", &arguments[0], result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subseq_reports_arity_and_type_errors() {
+        assert!(matches!(subseq(&[]), Err(RuntimeError::Arity { .. })));
+        assert!(matches!(
+            subseq(&[Value::Integer(1), Value::Integer(0)]),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
+
+    #[test]
+    fn subseq_of_nil_is_nil() {
+        assert!(matches!(
+            subseq(&[Value::Nil, Value::Integer(0)]),
+            Ok(Value::Nil)
+        ));
+    }
+
+    #[test]
+    fn fill_reports_arity_and_type_errors() {
+        assert!(matches!(
+            fill(&[Value::Integer(1)]),
+            Err(RuntimeError::Arity { .. })
+        ));
+        assert!(matches!(
+            fill(&[Value::Integer(1), Value::Nil, Value::keyword("a")]),
+            Err(RuntimeError::Arity { .. })
+        ));
+        assert!(matches!(
+            fill(&[Value::Integer(1), Value::string("ab")]),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
+
+    #[test]
+    fn replace_reports_arity_and_type_errors() {
+        assert!(matches!(
+            replace(&[Value::Nil]),
+            Err(RuntimeError::Arity { .. })
+        ));
+        assert!(matches!(
+            replace(&[Value::Nil, Value::Nil, Value::keyword("a")]),
+            Err(RuntimeError::Arity { .. })
+        ));
+        let destination = Value::string("ab");
+        let source = Value::list(vec![Value::Integer(1), Value::Integer(2)]);
+        assert!(matches!(
+            replace(&[destination, source]),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
+}

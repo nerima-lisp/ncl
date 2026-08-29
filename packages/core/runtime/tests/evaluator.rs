@@ -15,6 +15,8 @@ mod conditions;
 mod control;
 #[path = "evaluator/core.rs"]
 mod core;
+#[path = "evaluator/macro_lambda_lists.rs"]
+mod macro_lambda_lists;
 #[path = "evaluator/objects.rs"]
 mod objects;
 #[path = "evaluator/primitives.rs"]

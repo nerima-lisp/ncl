@@ -78,4 +78,16 @@ mod tests {
         assert!(!tag.matches(&Value::symbol("OTHER")));
         assert_eq!(tag.to_string(), "TAG");
     }
+
+    #[test]
+    fn throw_tags_compare_equal_by_lisp_value_equality() {
+        assert_eq!(
+            ThrowTag::new(Value::symbol("TAG")),
+            ThrowTag::new(Value::symbol("TAG"))
+        );
+        assert_ne!(
+            ThrowTag::new(Value::symbol("TAG")),
+            ThrowTag::new(Value::symbol("OTHER"))
+        );
+    }
 }

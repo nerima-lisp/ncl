@@ -1,4 +1,4 @@
-#![allow(clippy::wildcard_imports)]
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 mod application;
@@ -11,10 +11,14 @@ mod application_tests;
 mod assignment;
 #[allow(clippy::wildcard_imports)]
 use assignment::*;
+#[cfg(test)]
+mod assignment_tests;
 
 mod bindings;
 #[allow(clippy::wildcard_imports)]
 use bindings::*;
+#[cfg(test)]
+mod bindings_tests;
 
 mod branch;
 #[allow(clippy::wildcard_imports)]
@@ -37,6 +41,8 @@ mod execution_runtime;
 mod handler_conditions;
 #[allow(clippy::wildcard_imports)]
 use handler_conditions::*;
+#[cfg(test)]
+mod handler_conditions_tests;
 
 mod handler_restart_dispatch;
 #[allow(clippy::wildcard_imports)]

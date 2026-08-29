@@ -50,6 +50,7 @@ mod tests {
             (":key", (":KEY", false)),
             ("#:temporary", ("#:TEMPORARY", false)),
             ("pkg:name", ("PKG::NAME", false)),
+            ("", ("", false)),
         ];
 
         for (source, expected) in cases {

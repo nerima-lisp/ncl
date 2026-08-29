@@ -86,11 +86,11 @@ pub(in crate::vm::execution) fn run_code_from(
 mod tests {
     use std::rc::Rc;
 
-    use ncl_compiler::{FunctionCode, Instruction, Program};
+    use ncl_compiler::{Constant, FunctionCode, Instruction, Program};
     use ncl_syntax::Span;
 
     use super::run_code_from;
-    use crate::{Environment, Runtime, RuntimeError};
+    use crate::{Environment, Runtime, RuntimeError, Value};
 
     fn function(instructions: Vec<Instruction>) -> FunctionCode {
         FunctionCode {
@@ -129,5 +129,28 @@ mod tests {
         assert!(
             matches!(error, RuntimeError::InvalidForm { message, .. } if message == "compiled function reached an invalid instruction pointer")
         );
+    }
+
+    #[test]
+    fn returns_the_top_value_when_a_function_completes_successfully() {
+        let runtime = Runtime::new();
+        let program = Rc::new(Program {
+            functions: vec![function(vec![
+                Instruction::Constant(Constant::Integer(7)),
+                Instruction::Return,
+            ])],
+            entry: 0,
+        });
+
+        let result = run_code_from(
+            &runtime,
+            &program,
+            &program.functions[0],
+            Environment::new(),
+            Span::new(0, 1),
+            0,
+        );
+
+        assert!(matches!(result, Ok(Value::Integer(7))));
     }
 }

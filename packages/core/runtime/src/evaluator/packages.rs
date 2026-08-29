@@ -3,6 +3,7 @@
 //! primitives.
 mod defpackage_eval;
 mod defpackage_metadata_options;
+mod defpackage_metadata_options_tests;
 mod defpackage_parse;
 mod defpackage_symbol_options;
 mod defpackage_types;

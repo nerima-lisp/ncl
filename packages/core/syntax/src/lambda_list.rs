@@ -34,7 +34,7 @@ use optional::parse_optional_parameter;
 /// Returns [`LambdaListError`] when the form does not follow the grammar.
 // One state machine over ~10 mutable per-section accumulators; splitting it
 // only moves the same argument list into a helper, it doesn't shorten it.
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, LambdaListError> {
     let parameters: &[Form] = match &form.kind {
         FormKind::List(parameters) => parameters,

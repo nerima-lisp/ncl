@@ -4,6 +4,7 @@ use super::*;
 mod clos_instance;
 mod closure;
 mod compile_load;
+mod condition_dispatch_tests;
 mod generic_dispatch;
 mod generic_invocation;
 mod sequence_mapping;

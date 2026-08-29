@@ -128,3 +128,6 @@ pub fn negative_real_error(function: &str) -> RuntimeError {
         span: None,
     }
 }
+
+#[cfg(test)]
+mod tests;

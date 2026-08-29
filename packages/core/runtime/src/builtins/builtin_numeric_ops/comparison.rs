@@ -129,6 +129,42 @@ mod tests {
         assert!(minimum(&[]).is_err());
     }
 
+    #[test]
+    fn public_comparison_predicates_delegate_correctly() {
+        assert_eq!(
+            numeric_result(greater_than(&[Value::Integer(3), Value::Integer(2)])),
+            "T",
+        );
+        assert_eq!(
+            numeric_result(greater_than(&[Value::Integer(2), Value::Integer(3)])),
+            "NIL",
+        );
+        assert_eq!(
+            numeric_result(less_equal(&[Value::Integer(1), Value::Integer(1)])),
+            "T",
+        );
+        assert_eq!(
+            numeric_result(less_equal(&[Value::Integer(2), Value::Integer(1)])),
+            "NIL",
+        );
+        assert_eq!(
+            numeric_result(greater_equal(&[Value::Integer(1), Value::Integer(1)])),
+            "T",
+        );
+        assert_eq!(
+            numeric_result(greater_equal(&[Value::Integer(1), Value::Integer(2)])),
+            "NIL",
+        );
+    }
+
+    #[test]
+    fn absolute_handles_rational_and_float_values() {
+        let negative_half =
+            Value::rational(-1, 2).unwrap_or_else(|error| panic!("valid rational: {error}"));
+        assert_eq!(numeric_result(absolute(&[negative_half])), "1/2");
+        assert_eq!(numeric_result(absolute(&[Value::Float(-2.5)])), "2.5");
+    }
+
     fn numeric_result(result: Result<Value, RuntimeError>) -> String {
         match result {
             Ok(value) => value.to_string(),

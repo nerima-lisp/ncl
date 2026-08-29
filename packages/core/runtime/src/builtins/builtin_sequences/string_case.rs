@@ -69,3 +69,45 @@ pub(in crate::builtins::builtin_sequences) fn string_case_transform(
     }
     Ok(Value::string(output))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ok_string(result: Result<Value, RuntimeError>) -> String {
+        match result {
+            Ok(value) => value.to_string(),
+            Err(error) => panic!("expected Ok, got {error:?}"),
+        }
+    }
+
+    #[test]
+    fn nstring_upcase_and_downcase_transform_full_strings() {
+        assert_eq!(
+            ok_string(nstring_upcase(&[Value::string("abc")])),
+            Value::string("ABC").to_string()
+        );
+        assert_eq!(
+            ok_string(nstring_downcase(&[Value::string("ABC")])),
+            Value::string("abc").to_string()
+        );
+    }
+
+    #[test]
+    fn string_upcase_reports_an_arity_error() {
+        assert!(matches!(
+            string_upcase(&[]),
+            Err(RuntimeError::Arity { .. })
+        ));
+    }
+
+    #[test]
+    fn string_capitalize_leaves_alphanumerics_outside_the_bounds_untouched() {
+        let result = ok_string(string_capitalize(&[
+            Value::string("abc def"),
+            Value::keyword("start"),
+            Value::Integer(4),
+        ]));
+        assert_eq!(result, Value::string("abc Def").to_string());
+    }
+}

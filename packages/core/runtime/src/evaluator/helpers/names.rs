@@ -64,3 +64,28 @@ pub(in crate::evaluator) fn control_tag(form: &Form) -> Option<String> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use ncl_syntax::{Form, Span};
+
+    use super::{control_tag, is_case_default_form};
+
+    const SPAN: Span = Span::new(0, 1);
+
+    #[test]
+    fn case_default_form_rejects_a_non_atom_clause_key() {
+        let key_list = Form::list(vec![Form::atom("1", SPAN)], SPAN);
+        assert!(!is_case_default_form(&key_list));
+    }
+
+    #[test]
+    fn control_tag_rejects_a_bare_colon() {
+        assert!(control_tag(&Form::atom(":", SPAN)).is_none());
+    }
+
+    #[test]
+    fn control_tag_rejects_an_empty_atom() {
+        assert!(control_tag(&Form::atom("", SPAN)).is_none());
+    }
+}

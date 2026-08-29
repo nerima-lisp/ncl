@@ -1,4 +1,4 @@
-#![allow(clippy::wildcard_imports)]
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 mod bitwise_ops;

@@ -155,5 +155,10 @@ mod tests {
                 )
                 .is_err()
         );
+        assert!(
+            runtime
+                .symbol_import_references_from_value(&Value::list(vec![Value::Integer(1)]), SPAN)
+                .is_err()
+        );
     }
 }

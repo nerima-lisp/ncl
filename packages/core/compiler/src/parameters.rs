@@ -112,4 +112,56 @@ mod tests {
         )));
         Ok(())
     }
+
+    fn expect_catch_arity(error: &CompileError) {
+        match &error.kind {
+            CompileErrorKind::Arity { operator, .. } => assert_eq!(operator, "CATCH"),
+            other => panic!("expected the nested CATCH arity error to propagate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compile_optional_parameters_propagates_malformed_default_value() -> Result<(), String> {
+        let form = read("(&optional (value (catch)))")
+            .map_err(|error| error.to_string())?
+            .remove(0);
+        let lambda_list = CompileState::parameters(&form).map_err(|error| error.to_string())?;
+        let mut state = CompileState::default();
+
+        let error = state
+            .compile_optional_parameters(&lambda_list.optional)
+            .map_or_else(|error| error, |value| panic!("a malformed &optional default value must propagate its own compile error, got {value:?}"));
+        expect_catch_arity(&error);
+        Ok(())
+    }
+
+    #[test]
+    fn compile_keyword_parameters_propagates_malformed_default_value() -> Result<(), String> {
+        let form = read("(&key (value (catch)))")
+            .map_err(|error| error.to_string())?
+            .remove(0);
+        let lambda_list = CompileState::parameters(&form).map_err(|error| error.to_string())?;
+        let mut state = CompileState::default();
+
+        let error = state
+            .compile_keyword_parameters(&lambda_list.keywords)
+            .map_or_else(|error| error, |value| panic!("a malformed &key default value must propagate its own compile error, got {value:?}"));
+        expect_catch_arity(&error);
+        Ok(())
+    }
+
+    #[test]
+    fn compile_auxiliary_parameters_propagates_malformed_default_value() -> Result<(), String> {
+        let form = read("(&aux (value (catch)))")
+            .map_err(|error| error.to_string())?
+            .remove(0);
+        let lambda_list = CompileState::parameters(&form).map_err(|error| error.to_string())?;
+        let mut state = CompileState::default();
+
+        let error = state
+            .compile_auxiliary_parameters(&lambda_list.auxiliary)
+            .map_or_else(|error| error, |value| panic!("a malformed &aux default value must propagate its own compile error, got {value:?}"));
+        expect_catch_arity(&error);
+        Ok(())
+    }
 }

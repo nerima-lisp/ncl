@@ -126,3 +126,26 @@ impl Runtime {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use ncl_syntax::Span;
+
+    use crate::{Runtime, RuntimeError};
+
+    const SPAN: Span = Span::new(0, 1);
+
+    #[test]
+    fn resolve_atom_rejects_a_package_qualifier_that_normalizes_to_empty() {
+        // The package half of this atom is a single escaped colon, which is a
+        // non-empty token to `parse_symbol_token` but collapses to the empty
+        // string once `normalize_package_name` strips its own leading colon.
+        let runtime = Runtime::new();
+        match runtime.resolve_atom("\\::sym", "NCL-USER", SPAN) {
+            Err(RuntimeError::Package { message, .. }) => {
+                assert_eq!(message, "invalid package-qualified symbol");
+            }
+            other => panic!("expected an invalid package-qualified symbol error, got {other:?}"),
+        }
+    }
+}

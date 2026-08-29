@@ -78,3 +78,30 @@ impl CompileState {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_if_without_an_else_branch_defaults_to_nil() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let items = vec![
+            Form::atom("IF", span),
+            Form::atom("T", span),
+            Form::atom("1", span),
+        ];
+
+        let Ok(()) = state.compile_if(function, span, &items) else {
+            panic!("a two-armed IF is well formed");
+        };
+
+        let instructions = &state.functions[function].instructions;
+        assert!(
+            instructions.contains(&Instruction::Constant(Constant::Nil)),
+            "missing else branch should default to a NIL constant, got {instructions:?}"
+        );
+    }
+}

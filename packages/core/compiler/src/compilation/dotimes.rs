@@ -115,3 +115,26 @@ impl CompileState {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_dotimes_spec_reports_missing_binding_when_called_without_one() {
+        let span = Span::new(0, 1);
+        let items = vec![Form::atom("DOTIMES", span)];
+
+        let Err(error) = CompileState::parse_dotimes_spec(&items, span) else {
+            panic!("a DOTIMES form without a binding form has nothing to parse");
+        };
+
+        match error.kind {
+            CompileErrorKind::Internal { message } => {
+                assert_eq!(message, "missing DOTIMES binding after arity check");
+            }
+            other => panic!("expected an internal error, got {other:?}"),
+        }
+        assert_eq!(error.span, span);
+    }
+}

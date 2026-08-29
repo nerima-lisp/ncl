@@ -57,3 +57,25 @@ pub fn revappend_like(function: &str, arguments: &[Value]) -> Result<Value, Runt
     let append_arguments = [Value::list(items), arguments[1].clone()];
     append_lists(function, &append_arguments)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn append_returns_a_lone_dotted_list_argument_unchanged() {
+        let dotted = Value::dotted_list(vec![], Value::Integer(5));
+        match append(&[dotted]) {
+            Ok(value) => assert_eq!(value.to_string(), "(. 5)"),
+            Err(error) => panic!("expected Ok, got {error:?}"),
+        }
+    }
+
+    #[test]
+    fn revappend_rejects_a_non_list_first_argument() {
+        assert!(matches!(
+            revappend(&[Value::Integer(1), Value::Nil]),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
+}

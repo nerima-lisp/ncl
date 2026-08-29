@@ -112,3 +112,24 @@ impl Runtime {
         Ok(Some(expansion))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use ncl_syntax::{Form, FormKind, Span};
+
+    use crate::{Environment, Runtime};
+
+    const SPAN: Span = Span::new(0, 1);
+
+    #[test]
+    fn expand_macro_once_leaves_an_empty_list_form_alone() {
+        let runtime = Runtime::new();
+        let environment = Environment::new();
+        let empty_list = Form::new(FormKind::List(Vec::new()), SPAN);
+
+        let expansion = runtime
+            .expand_macro_once(&empty_list, &environment)
+            .unwrap_or_else(|error| panic!("expected expansion to succeed: {error}"));
+        assert!(expansion.is_none());
+    }
+}

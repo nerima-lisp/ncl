@@ -76,3 +76,39 @@ fn condition_matching_covers_builtin_condition_hierarchy() {
         assert_eq!(error.matches_condition(condition), expected, "{condition}");
     }
 }
+
+#[test]
+fn condition_matching_checks_error_hierarchy_for_non_warning_signaled_conditions() {
+    let via_condition_types = RuntimeError::Signaled(Box::new(SignaledError {
+        condition: "APP-ERROR".to_owned(),
+        condition_types: vec!["TYPE-ERROR".to_owned()].into_boxed_slice(),
+        message: "bad type".to_owned(),
+        format_control: None,
+        format_arguments: Box::default(),
+        warning: false,
+        span: None,
+    }));
+    assert!(via_condition_types.matches_condition("error"));
+
+    let via_builtin_condition_name = RuntimeError::Signaled(Box::new(SignaledError {
+        condition: "SIMPLE-ERROR".to_owned(),
+        condition_types: Box::default(),
+        message: "bad".to_owned(),
+        format_control: None,
+        format_arguments: Box::default(),
+        warning: false,
+        span: None,
+    }));
+    assert!(via_builtin_condition_name.matches_condition("serious-condition"));
+
+    let unrelated_condition = RuntimeError::Signaled(Box::new(SignaledError {
+        condition: "APP-SPECIFIC-ERROR".to_owned(),
+        condition_types: Box::default(),
+        message: "bad".to_owned(),
+        format_control: None,
+        format_arguments: Box::default(),
+        warning: false,
+        span: None,
+    }));
+    assert!(!unrelated_condition.matches_condition("error"));
+}

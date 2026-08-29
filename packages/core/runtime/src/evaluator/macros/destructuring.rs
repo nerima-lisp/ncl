@@ -106,3 +106,40 @@ impl Runtime {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Runtime;
+
+    fn last_result_string(runtime: &Runtime, source: &str) -> String {
+        let values = runtime
+            .eval_source(source)
+            .unwrap_or_else(|error| panic!("expected {source} to evaluate: {error}"));
+        values
+            .last()
+            .unwrap_or_else(|| panic!("expected {source} to produce a value"))
+            .to_string()
+    }
+
+    #[test]
+    fn an_unsupplied_optional_parameter_evaluates_its_init_form() {
+        let runtime = Runtime::new();
+        assert_eq!(
+            last_result_string(
+                &runtime,
+                "(destructuring-bind (&optional (a (+ 1 2))) nil a)"
+            ),
+            "3"
+        );
+    }
+
+    #[test]
+    fn a_non_keyword_key_argument_name_is_rejected() {
+        let runtime = Runtime::new();
+        assert!(
+            runtime
+                .eval_source("(destructuring-bind (&key a) (list 1 2) a)")
+                .is_err()
+        );
+    }
+}

@@ -1,3 +1,4 @@
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 pub(super) fn format_numeric_directive(
@@ -16,7 +17,7 @@ pub(super) fn format_numeric_directive(
             'B' => 2,
             'O' => 8,
             'X' => 16,
-            _ => unreachable!(),
+            _ => unreachable!("directive was matched against D|B|O|X above"),
         };
         return format_integer_directive(
             integer,
@@ -36,7 +37,7 @@ pub(super) fn format_numeric_directive(
             format_exponential_float_directive(value, parameters, colon_modifier, at_sign_modifier)
         }
         '$' => format_dollar_float_directive(value, parameters, colon_modifier, at_sign_modifier),
-        _ => unreachable!(),
+        _ => unreachable!("directive is F|G|E|$ since D|B|O|X returned above"),
     }
 }
 

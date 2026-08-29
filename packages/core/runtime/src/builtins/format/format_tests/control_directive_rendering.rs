@@ -29,6 +29,24 @@ fn renders_case_iteration_choice_and_nested_controls() {
 }
 
 #[test]
+fn renders_escape_upward_directive_from_table_cases() {
+    let cases = [
+        ("A~0^B", "A"),
+        ("A~5^B", "AB"),
+        ("A~3,3^B", "A"),
+        ("A~3,4^B", "AB"),
+        ("A~,0^B", "A"),
+        ("A~,1^B", "AB"),
+        ("A~1,2,3^B", "A"),
+        ("A~3,2,1^B", "AB"),
+    ];
+
+    for (control, expected) in cases {
+        assert_eq!(render(control, vec![]), expected, "control: {control}");
+    }
+}
+
+#[test]
 fn formats_tab_directive_from_table_cases() {
     let cases = [
         ("~T", "abc", "abc "),
@@ -65,8 +83,33 @@ fn rounds_justification_width_to_the_column_increment() {
 }
 
 #[test]
+fn rounds_up_justification_width_when_content_is_smaller_than_the_column() {
+    assert_eq!(
+        render(
+            "~0,3<~A~;~A~>",
+            vec![Value::string("ab"), Value::string("cd")]
+        ),
+        "ab  cd"
+    );
+}
+
+#[test]
+fn renders_empty_justification_when_the_first_clause_escapes_immediately() {
+    assert_eq!(render("~<~^~>", vec![]), "");
+}
+
+#[test]
+fn renders_format_choice_default_clause_when_the_selector_is_negative() {
+    assert_eq!(
+        render("~[a~:;default~]", vec![Value::Integer(-1)]),
+        "default"
+    );
+}
+
+#[test]
 fn renders_simple_directives_from_table_cases() {
     let cases = [
+        ("~2&", vec![], "\n"),
         ("x~%", vec![], "x\n"),
         ("x~2%", vec![], "x\n\n"),
         ("x~&", vec![], "x\n"),

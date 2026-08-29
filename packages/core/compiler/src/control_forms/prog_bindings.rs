@@ -67,3 +67,28 @@ impl CompileState {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_sequential_prog_bindings_defines_escaped_names_exactly() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let bindings = [("Foo".to_string(), true, None)];
+
+        state
+            .compile_sequential_prog_bindings(function, span, &bindings)
+            .unwrap_or_else(|error| panic!("an escaped PROG binding name should compile: {error}"));
+
+        assert!(
+            state.functions[function]
+                .instructions
+                .contains(&Instruction::DefineExact("Foo".to_string())),
+            "expected DefineExact, got {:?}",
+            state.functions[function].instructions
+        );
+    }
+}

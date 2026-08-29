@@ -1,6 +1,8 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
+use ncl_compiler::{DestructurePattern, DestructureSpec};
+
 fn assert_invalid(result: Result<(), RuntimeError>, expected: &str) {
     assert!(matches!(
         result,
@@ -56,4 +58,52 @@ fn closure_instructions_reject_out_of_range_function_ids() {
             expected,
         );
     }
+}
+
+#[test]
+fn destructure_instruction_binds_the_pattern_and_advances() {
+    let runtime = Runtime::new();
+    let function = FunctionCode {
+        name: None,
+        parameters: Vec::new(),
+        required_escaped: Vec::new(),
+        optional: Vec::new(),
+        keywords: Vec::new(),
+        has_keyword_section: false,
+        allow_other_keys: false,
+        rest: None,
+        rest_escaped: false,
+        auxiliary: Vec::new(),
+        instructions: vec![Instruction::Return],
+    };
+    let program = Rc::new(Program {
+        functions: vec![function.clone()],
+        entry: 0,
+    });
+    let environment = Environment::new();
+    let span = Span::new(0, 1);
+    let mut stack = vec![Value::Integer(9)];
+    let mut program_counter = 0;
+    let mut branch_context = BranchInstructionContext {
+        runtime: &runtime,
+        program: &program,
+        function: &function,
+        stack: &mut stack,
+        environment: &environment,
+        program_counter: &mut program_counter,
+        span,
+    };
+
+    let instruction = Instruction::Destructure(DestructureSpec::Pattern(DestructurePattern::Name(
+        "value".to_string(),
+    )));
+    let result = execute_binding_and_branch_instruction(&instruction, &mut branch_context);
+
+    assert!(matches!(result, Ok(true)));
+    assert_eq!(program_counter, 1);
+    assert!(stack.is_empty());
+    assert!(matches!(
+        environment.lookup("value"),
+        Some(Value::Integer(9))
+    ));
 }

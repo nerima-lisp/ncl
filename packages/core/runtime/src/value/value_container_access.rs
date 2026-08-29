@@ -115,4 +115,36 @@ mod tests {
                 .equal_value(&Value::Nil)
         );
     }
+
+    #[test]
+    fn array_accessors_reject_non_array_values() {
+        assert!(Value::Nil.array_dimensions().is_none());
+        assert!(Value::Nil.array_items().is_none());
+    }
+
+    #[test]
+    fn symbol_name_and_reference_cover_every_symbol_like_variant() {
+        assert_eq!(
+            Value::uninterned_symbol("gensym").symbol_name(),
+            Some("gensym")
+        );
+        assert_eq!(Value::Nil.symbol_reference(), Some(("NIL", false)));
+        assert_eq!(Value::Boolean(true).symbol_reference(), Some(("T", false)));
+        assert_eq!(
+            Value::keyword("key").symbol_reference(),
+            Some(("KEY", false))
+        );
+        assert_eq!(
+            Value::uninterned_symbol("gensym").symbol_reference(),
+            Some(("gensym", false))
+        );
+        assert_eq!(
+            Value::symbol_exact("Exact").symbol_reference(),
+            Some(("Exact", true))
+        );
+        assert_eq!(
+            Value::keyword_exact("Exact").symbol_reference(),
+            Some(("Exact", true))
+        );
+    }
 }

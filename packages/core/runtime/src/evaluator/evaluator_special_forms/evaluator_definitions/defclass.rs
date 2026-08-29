@@ -2,7 +2,9 @@
 use super::*;
 
 mod options;
+mod options_tests;
 mod slots;
+mod slots_tests;
 
 impl Runtime {
     pub(crate) fn special_defclass(

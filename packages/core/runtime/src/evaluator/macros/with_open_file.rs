@@ -69,3 +69,73 @@ impl Runtime {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use ncl_syntax::{Form, Span};
+
+    use crate::Runtime;
+
+    const SPAN: Span = Span::new(0, 1);
+
+    fn atom(name: &str) -> Form {
+        Form::atom(name, SPAN)
+    }
+
+    fn valid(result: Result<Form, crate::RuntimeError>) -> Form {
+        result.unwrap_or_else(|error| panic!("expected a successful expansion: {error}"))
+    }
+
+    #[test]
+    fn a_non_list_form_passes_through_unchanged() {
+        let form = atom("X");
+        let expanded = valid(Runtime::expand_with_open_file(&form));
+        assert_eq!(expanded.to_string(), form.to_string());
+    }
+
+    #[test]
+    fn rejects_a_form_with_no_binding() {
+        let form = Form::list(vec![atom("WITH-OPEN-FILE")], SPAN);
+        assert!(Runtime::expand_with_open_file(&form).is_err());
+    }
+
+    #[test]
+    fn rejects_a_non_list_binding() {
+        let form = Form::list(vec![atom("WITH-OPEN-FILE"), atom("S")], SPAN);
+        assert!(Runtime::expand_with_open_file(&form).is_err());
+    }
+
+    #[test]
+    fn rejects_a_binding_missing_a_pathname() {
+        let form = Form::list(
+            vec![atom("WITH-OPEN-FILE"), Form::list(vec![atom("S")], SPAN)],
+            SPAN,
+        );
+        assert!(Runtime::expand_with_open_file(&form).is_err());
+    }
+
+    #[test]
+    fn rejects_a_non_symbol_stream_variable() {
+        let form = Form::list(
+            vec![
+                atom("WITH-OPEN-FILE"),
+                Form::list(vec![atom("5"), atom("FILE")], SPAN),
+            ],
+            SPAN,
+        );
+        assert!(Runtime::expand_with_open_file(&form).is_err());
+    }
+
+    #[test]
+    fn a_binding_without_a_body_expands_to_a_nil_body() {
+        let form = Form::list(
+            vec![
+                atom("WITH-OPEN-FILE"),
+                Form::list(vec![atom("S"), atom("FILE")], SPAN),
+            ],
+            SPAN,
+        );
+        let expanded = valid(Runtime::expand_with_open_file(&form));
+        assert!(expanded.to_string().contains("UNWIND-PROTECT NIL"));
+    }
+}

@@ -71,6 +71,7 @@ mod tests {
         let span = Span::new(0, 1);
         let cases = [
             (Form::atom("|name|", span), "|name|"),
+            (Form::atom("", span), ""),
             (Form::atom(":|key|", span), ":|key|"),
             (Form::atom("#:|temporary|", span), "#:temporary"),
             (Form::atom("pkg:|name|", span), "|PKG::name|"),

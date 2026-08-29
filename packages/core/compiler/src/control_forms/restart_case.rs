@@ -117,3 +117,6 @@ impl CompileState {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

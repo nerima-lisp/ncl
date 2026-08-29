@@ -6,6 +6,8 @@ mod bit_place;
 mod element_places;
 mod list_places;
 mod property_places;
+#[cfg(test)]
+mod property_places_tests;
 mod slot_places;
 mod subseq_places;
 mod symbol_cell_places;

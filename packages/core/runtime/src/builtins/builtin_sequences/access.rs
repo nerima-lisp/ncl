@@ -40,3 +40,16 @@ pub fn elt(arguments: &[Value]) -> Result<Value, RuntimeError> {
         value => Err(type_error("elt", "sequence", value)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nth_reports_a_type_error_for_a_non_list_second_argument() {
+        assert!(matches!(
+            nth(&[Value::Integer(0), Value::Integer(5)]),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
+}

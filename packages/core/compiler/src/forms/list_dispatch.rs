@@ -1,3 +1,5 @@
+#[cfg(test)]
+use crate::CompileErrorKind;
 use crate::{
     CompileError, CompileState, Constant, Form, FormKind, FunctionId, Instruction, Span,
     normalize_name, special_operator_name, symbol_reference,
@@ -66,5 +68,85 @@ impl CompileState {
             span,
         )?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_list_compiles_an_empty_list_to_nil() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 0);
+
+        state
+            .compile_list(function, span, &[])
+            .unwrap_or_else(|error| panic!("an empty list compiles to NIL: {error}"));
+
+        assert_eq!(
+            state.functions[function].instructions,
+            vec![Instruction::Constant(Constant::Nil)]
+        );
+    }
+
+    #[test]
+    fn compile_call_falls_back_to_normalized_name_for_a_keyword_operator() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let items = vec![Form::atom(":foo", span), Form::atom("1", span)];
+
+        state
+            .compile_list(function, span, &items)
+            .unwrap_or_else(|error| {
+                panic!("a keyword used as an operator still compiles as a call: {error}")
+            });
+
+        assert!(
+            state.functions[function]
+                .instructions
+                .contains(&Instruction::FunctionLoad(":FOO".to_string())),
+            "expected a normalized FunctionLoad, got {:?}",
+            state.functions[function].instructions
+        );
+    }
+
+    #[test]
+    fn compile_call_propagates_an_argument_compilation_error() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let dotted = Form::dotted_list(vec![Form::atom("a", span)], Form::atom("b", span), span);
+        let items = vec![Form::atom("FOO", span), dotted];
+
+        let error = state.compile_list(function, span, &items).map_or_else(
+            |error| error,
+            |value| panic!("a malformed argument should fail to compile, got {value:?}"),
+        );
+
+        assert!(matches!(
+            error.kind,
+            CompileErrorKind::UnsupportedForm { .. }
+        ));
+    }
+
+    #[test]
+    fn compile_call_propagates_an_error_from_a_non_atom_operator_argument() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let dotted = Form::dotted_list(vec![Form::atom("a", span)], Form::atom("b", span), span);
+        let items = vec![Form::list(Vec::new(), span), dotted];
+
+        let error = state
+            .compile_list(function, span, &items)
+            .map_or_else(|error| error, |value| panic!("a malformed trailing argument should fail even for a non-atom operator, got {value:?}"));
+
+        assert!(matches!(
+            error.kind,
+            CompileErrorKind::UnsupportedForm { .. }
+        ));
     }
 }

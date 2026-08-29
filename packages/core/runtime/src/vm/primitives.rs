@@ -54,3 +54,16 @@ pub(super) fn invalid(message: &str, span: Span) -> RuntimeError {
         span: Some(span),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constant_value_converts_an_escaped_symbol_constant() {
+        let span = Span::new(0, 1);
+        let value = constant_value(&Constant::SymbolExact("Odd-Case".to_string()), span)
+            .unwrap_or_else(|error| panic!("an escaped symbol constant must convert: {error}"));
+        assert!(matches!(value, Value::SymbolExact(name) if name.as_ref() == "Odd-Case"));
+    }
+}

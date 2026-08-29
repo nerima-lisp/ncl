@@ -72,6 +72,7 @@ pub fn execute_stack_instruction(
 
 #[cfg(test)]
 mod tests {
+    #[allow(clippy::wildcard_imports)]
     use super::*;
 
     fn assert_invalid(result: Result<(), RuntimeError>, expected: &str) {

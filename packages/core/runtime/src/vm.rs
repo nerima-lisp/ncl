@@ -22,6 +22,10 @@ use destructuring::*;
 use primitives::*;
 
 #[cfg(test)]
+mod destructuring_lambda_list_tests;
+#[cfg(test)]
+mod destructuring_pattern_dotted_tests;
+#[cfg(test)]
 mod destructuring_tests;
 #[cfg(test)]
 mod execution_call_tests;

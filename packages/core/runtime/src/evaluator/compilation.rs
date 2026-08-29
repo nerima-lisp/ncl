@@ -2,13 +2,21 @@
 use super::*;
 
 mod assignment;
+mod assignment_tests;
 mod binding_forms;
+mod binding_forms_tests;
 mod clauses;
+mod clauses_tests;
 mod dispatch;
+mod dispatch_tests;
 mod lambda;
+mod lambda_tests;
 mod local_macros;
+mod local_macros_tests;
 mod special_forms;
+mod special_forms_tests;
 mod symbol_macro;
+mod symbol_macro_tests;
 
 impl Runtime {
     pub(super) fn prepare_compiled_form(

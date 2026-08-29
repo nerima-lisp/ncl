@@ -144,3 +144,6 @@ impl From<CompileError> for RuntimeError {
         Self::Compile(Box::new(error))
     }
 }
+
+#[cfg(test)]
+mod tests;

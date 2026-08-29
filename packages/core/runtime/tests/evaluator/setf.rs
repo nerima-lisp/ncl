@@ -921,6 +921,22 @@ fn rejects_malformed_setf_places_from_table_cases() {
         "(setf (aref #(1) 0 1) 2)",
         "(setf (row-major-aref #(1) 0 1) 2)",
         "(setf (bit #(1) 0 1) 0)",
+        "(setf (aref) 1)",
+        "(setf (aref (make-array '(2 2)) 0) 9)",
+        "(setf (aref 5 0) 9)",
+        "(setf (bit) 1)",
+        "(setf (bit 5 0) 1)",
+        "(setf (elt (list 1 2)) 3)",
+        "(setf (elt (list 1 2) 5) 3)",
+        "(setf (elt \"abc\" 5) #\\X)",
+        "(setf (char \"abc\") #\\X)",
+        "(setf (subseq (list 1 2)) 5)",
+        "(setf (svref #(1) 0 1) 2)",
+        "(setf (svref #(1 2 3) 10) 9)",
+        "(setf (row-major-aref 5 0) 2)",
+        "(setf (symbol-value) 1)",
+        r#"(setf "text" 10)"#,
+        r#"(setf ("x") 10)"#,
     ];
 
     for source in cases {
@@ -937,6 +953,198 @@ fn rejects_accessor_setf_cases_from_table() {
         r"(progn (defstruct setf-accessor-record (value 0 t)) (setf (setf-accessor-record-value 1) 2))",
         r"(progn (defstruct setf-accessor-record (value 0)) (setf (setf-accessor-record-value) 2))",
         r"(progn (defstruct setf-accessor-record (value 0)) (setf (setf-accessor-record-value 1 2) 3))",
+    ];
+
+    for source in cases {
+        Runtime::new().eval_source(source).must_fail();
+    }
+}
+
+#[test]
+fn evaluates_subseq_setf_replacement_edge_cases() {
+    assert_eq!(
+        evaluate("(let ((xs nil)) (setf (subseq xs 0 0) nil) xs)").to_string(),
+        "NIL"
+    );
+    assert_eq!(
+        evaluate(r#"(let ((xs (list 1 2 3))) (setf (subseq xs 0 1) "a") xs)"#).to_string(),
+        "(#\\a 2 3)"
+    );
+}
+
+#[test]
+fn evaluates_setf_symbol_value_and_symbol_function_for_exact_symbols() {
+    assert_eq!(
+        evaluate(
+            "(progn (setf (symbol-value '|Setf-Exact-Value|) 42) (symbol-value '|Setf-Exact-Value|))",
+        )
+        .to_string(),
+        "42"
+    );
+    assert_eq!(
+        evaluate(
+            "(progn (setf (symbol-function '|Setf-Exact-Fn|) (lambda () 9)) (funcall (symbol-function '|Setf-Exact-Fn|)))",
+        )
+        .to_string(),
+        "9"
+    );
+}
+
+#[test]
+fn evaluates_row_major_aref_setf_on_a_vector() {
+    assert_eq!(
+        evaluate("(let ((v #(1 2 3))) (setf (row-major-aref v 1) 9) v)").to_string(),
+        "#(1 9 3)"
+    );
+}
+
+#[test]
+fn evaluates_rotatef_and_shiftf_generalized_places() {
+    assert_eq!(
+        evaluate("(let ((a 1) (b 2) (c 3)) (list (rotatef a b c) a b c))").to_string(),
+        "(NIL 3 1 2)"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2))) (list (shiftf (car xs) (car (cdr xs)) 9) xs))")
+            .to_string(),
+        "(1 (2 9))"
+    );
+}
+
+#[test]
+fn rejects_malformed_rotatef_and_shiftf_arguments() {
+    Runtime::new()
+        .eval_source("(shiftf (car (list 1)))")
+        .must_fail();
+}
+
+#[test]
+fn evaluates_define_modify_macro_on_a_symbol_macro_place() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (define-modify-macro bump-place (&optional (delta 1)) +)
+               (let ((cell (list 10)))
+                 (define-symbol-macro modify-macro-symbol-alias (car cell))
+                 (bump-place modify-macro-symbol-alias 5)
+                 cell))",
+        )
+        .to_string(),
+        "(15)"
+    );
+}
+
+#[test]
+fn evaluates_define_modify_macro_on_a_custom_setf_expander_place() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *custom-modify-cell* 10)
+               (define-setf-expander custom-modify-place ()
+                 (values nil nil '(new-value)
+                         '(progn
+                            (setq *custom-modify-cell* new-value)
+                            new-value)
+                         '*custom-modify-cell*))
+               (define-modify-macro bump-custom-place (&optional (delta 1)) +)
+               (bump-custom-place (custom-modify-place) 4)
+               *custom-modify-cell*)",
+        )
+        .to_string(),
+        "14"
+    );
+}
+
+#[test]
+fn evaluates_define_modify_macro_on_a_non_container_place() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *modify-symbol-value-target* 5)
+               (define-modify-macro bump-symbol-value-place (&optional (delta 1)) +)
+               (bump-symbol-value-place (symbol-value '*modify-symbol-value-target*) 3)
+               *modify-symbol-value-target*)",
+        )
+        .to_string(),
+        "8"
+    );
+}
+
+#[test]
+fn rejects_malformed_modify_macro_places_from_table_cases() {
+    let cases = [
+        r#"(progn (define-modify-macro bump-literal-place (&optional (delta 1)) +) (bump-literal-place "text" 1))"#,
+        r#"(progn (define-modify-macro bump-listy-place (&optional (delta 1)) +) (bump-listy-place ("a" "b") 1))"#,
+        "(progn
+           (define-setf-expander bad-arity-place (required-arg)
+             (values nil nil (list 'v) '(setq v v) 'v))
+           (setf (bad-arity-place) 1))",
+    ];
+
+    for source in cases {
+        Runtime::new().eval_source(source).must_fail();
+    }
+}
+
+#[test]
+fn evaluates_get_setf_expansion_for_a_symbol_macro_place() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *get-setf-expansion-alias-cell* (list 42))
+               (define-symbol-macro get-setf-expansion-alias
+                   (car *get-setf-expansion-alias-cell*))
+               (multiple-value-bind (temporaries values stores store-form access-form)
+                   (get-setf-expansion 'get-setf-expansion-alias)
+                 (list (length temporaries) (length values) (length stores))))",
+        )
+        .to_string(),
+        "(1 1 1)"
+    );
+}
+
+#[test]
+fn rejects_malformed_get_setf_expansion_targets() {
+    Runtime::new()
+        .eval_source("(get-setf-expansion 5)")
+        .must_fail();
+    Runtime::new()
+        .eval_source("(get-setf-expansion '((5) 6))")
+        .must_fail();
+}
+
+#[test]
+fn evaluates_custom_setf_expander_with_a_temporary_variable() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *custom-setf-store* (list 0))
+               (define-setf-expander custom-setf-place-with-temp (index)
+                 (values (list 'idx) (list index)
+                         '(new-value)
+                         '(progn
+                            (setf (nth idx *custom-setf-store*) new-value)
+                            new-value)
+                         '(nth idx *custom-setf-store*)))
+               (setf (custom-setf-place-with-temp 0) 99)
+               *custom-setf-store*)",
+        )
+        .to_string(),
+        "(99)"
+    );
+}
+
+#[test]
+fn rejects_malformed_pushnew_cases_from_table() {
+    let cases = [
+        "(pushnew 1)",
+        "(pushnew 1 (list 2) :test)",
+        "(pushnew 1 (list 2) foo 5)",
+        "(pushnew 1 (list 2) :bogus 5)",
+        "(pushnew 1 (list 2) :test 5)",
+        r#"(pushnew "text" (list 1 2) :key (lambda (x) (if (stringp x) (error "boom") x)))"#,
+        r#"(pushnew 1 (list "existing") :key (lambda (x) (if (stringp x) (error "boom") x)))"#,
+        r#"(pushnew 1 (list 2) :test (lambda (a b) (error "boom")))"#,
     ];
 
     for source in cases {

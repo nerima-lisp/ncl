@@ -119,6 +119,14 @@ mod tests {
         }
         assert!(Runtime::package_designator_name(&Value::Integer(1), span).is_err());
         assert!(Runtime::package_designator_name(&Value::symbol("foo:bar"), span).is_err());
+        assert!(Runtime::package_designator_name(&Value::String("".into()), span).is_err());
+
+        let runtime = Runtime::new();
+        assert!(
+            runtime
+                .package_name_from_value(&Value::String("no-such-package".into()), span)
+                .is_err()
+        );
 
         let symbol_cases = [
             (Value::String(":name".into()), "NAME"),
@@ -136,6 +144,7 @@ mod tests {
             );
         }
         assert!(Runtime::symbol_name_from_value(&Value::Integer(1), span).is_err());
+        assert!(Runtime::symbol_name_from_value(&Value::String("foo:bar".into()), span).is_err());
         assert!(Runtime::name_designator_from_value(&Value::String(":".into()), span).is_err());
     }
 }

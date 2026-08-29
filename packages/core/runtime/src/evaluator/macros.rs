@@ -3,6 +3,8 @@ mod destructuring;
 mod dispatch;
 mod keywords;
 mod modify_macro;
+mod modify_macro_tests;
 mod pattern;
 mod with_open_file;
 mod with_slots;
+mod with_slots_tests;

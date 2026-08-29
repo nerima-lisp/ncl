@@ -51,3 +51,46 @@ impl CompileState {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_destructuring_auxiliary_parameter_rejects_a_non_symbol_non_list_form() {
+        let mut state = CompileState::default();
+        let mut seen = HashSet::new();
+        let span = Span::new(0, 1);
+        let form = Form::new(FormKind::String("bad".to_string()), span);
+
+        let error = state
+            .compile_destructuring_auxiliary_parameter(&form, &mut seen)
+            .map_or_else(
+                |error| error,
+                |value| panic!("a string literal cannot be an auxiliary parameter, got {value:?}"),
+            );
+
+        assert!(matches!(error.kind, CompileErrorKind::InvalidForm { .. }));
+    }
+
+    #[test]
+    fn compile_destructuring_auxiliary_parameter_propagates_a_default_error() {
+        let mut state = CompileState::default();
+        let mut seen = HashSet::new();
+        let span = Span::new(0, 1);
+        let dotted = Form::dotted_list(vec![Form::atom("a", span)], Form::atom("b", span), span);
+        let form = Form::list(vec![Form::atom("X", span), dotted], span);
+
+        let error = state
+            .compile_destructuring_auxiliary_parameter(&form, &mut seen)
+            .map_or_else(
+                |error| error,
+                |value| panic!("a malformed default value should fail to compile, got {value:?}"),
+            );
+
+        assert!(matches!(
+            error.kind,
+            CompileErrorKind::UnsupportedForm { .. }
+        ));
+    }
+}

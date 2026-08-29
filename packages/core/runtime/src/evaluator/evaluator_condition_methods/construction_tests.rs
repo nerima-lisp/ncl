@@ -29,6 +29,56 @@ mod tests {
     }
 
     #[test]
+    fn condition_format_control_returns_none_for_non_string_values() {
+        assert_eq!(Runtime::condition_format_control(&Value::Integer(1)), None);
+    }
+
+    #[test]
+    fn condition_error_rejects_a_value_that_is_not_a_condition() {
+        let result = Runtime::condition_error(&Value::Integer(1), false, SPAN);
+        assert!(
+            matches!(result, Err(RuntimeError::Type { expected, .. }) if expected == "CONDITION")
+        );
+    }
+
+    #[test]
+    fn make_condition_rejects_an_empty_argument_list() {
+        assert!(Runtime::make_condition(&[], SPAN).is_err());
+    }
+
+    #[test]
+    fn make_condition_rejects_an_unnameable_condition_type() {
+        let result = Runtime::make_condition(&[Value::Integer(1)], SPAN);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn make_condition_rejects_an_unnameable_initarg_keyword() {
+        let result = Runtime::make_condition(
+            &[
+                Value::Symbol("simple-condition".into()),
+                Value::Integer(1),
+                Value::Nil,
+            ],
+            SPAN,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn make_condition_propagates_a_format_control_error() {
+        let result = Runtime::make_condition(
+            &[
+                Value::Symbol("simple-condition".into()),
+                Value::Keyword("format-control".into()),
+                Value::String("~A".into()),
+            ],
+            SPAN,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn make_condition_parses_format_initargs_and_rejects_invalid_pairs() {
         let result = Runtime::make_condition(
             &[

@@ -60,3 +60,53 @@ pub fn equalp_value(left: &Value, right: &Value) -> bool {
         _ => eql_value(left, right),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn equalp_value_compares_multi_dimensional_arrays_elementwise_ignoring_case() {
+        let left = Value::array(
+            vec![2, 2],
+            vec![
+                Value::Integer(1),
+                Value::string("Ab"),
+                Value::Integer(3),
+                Value::Integer(4),
+            ],
+        );
+        let right = Value::array(
+            vec![2, 2],
+            vec![
+                Value::Integer(1),
+                Value::string("aB"),
+                Value::Integer(3),
+                Value::Integer(4),
+            ],
+        );
+        assert!(equalp_value(&left, &right));
+
+        let different_elements = Value::array(
+            vec![2, 2],
+            vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3),
+                Value::Integer(5),
+            ],
+        );
+        assert!(!equalp_value(&left, &different_elements));
+
+        let different_dimensions = Value::array(
+            vec![4, 1],
+            vec![
+                Value::Integer(1),
+                Value::string("Ab"),
+                Value::Integer(3),
+                Value::Integer(4),
+            ],
+        );
+        assert!(!equalp_value(&left, &different_dimensions));
+    }
+}

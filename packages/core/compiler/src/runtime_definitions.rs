@@ -44,3 +44,38 @@ impl CompileState {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_defstruct_reports_an_internal_error_for_an_invalid_function_id() {
+        let mut state = CompileState::default();
+        let span = Span::new(0, 1);
+        let items = vec![Form::atom("DEFSTRUCT", span), Form::atom("POINT", span)];
+
+        let error = state.compile_defstruct(99, span, &items).map_or_else(
+            |error| error,
+            |value| panic!("an unknown function id cannot receive instructions, got {value:?}"),
+        );
+
+        assert!(matches!(error.kind, CompileErrorKind::Internal { .. }));
+    }
+
+    #[test]
+    fn compile_runtime_definition_reports_an_internal_error_for_an_invalid_function_id() {
+        let mut state = CompileState::default();
+        let span = Span::new(0, 1);
+        let items = vec![Form::atom("DEFPACKAGE", span), Form::atom("FOO", span)];
+
+        let error = state
+            .compile_runtime_definition(99, span, &items)
+            .map_or_else(
+                |error| error,
+                |value| panic!("an unknown function id cannot receive instructions, got {value:?}"),
+            );
+
+        assert!(matches!(error.kind, CompileErrorKind::Internal { .. }));
+    }
+}

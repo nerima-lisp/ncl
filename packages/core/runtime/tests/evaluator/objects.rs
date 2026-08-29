@@ -128,6 +128,22 @@ fn evaluates_clos_class_allocated_slots() {
 }
 
 #[test]
+fn evaluates_clos_class_allocated_slot_reuse_without_reinitializing() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass shared-counter ()
+                   ((value :allocation :class :initform 0 :accessor shared-counter-value)))
+                 (make-instance 'shared-counter)
+                 (setf (shared-counter-value (make-instance 'shared-counter)) 5)
+                 (list (shared-counter-value (make-instance 'shared-counter))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(5)");
+}
+
+#[test]
 fn evaluates_clos_default_initargs() {
     let values = Runtime::new()
         .eval_source(
@@ -614,4 +630,179 @@ fn rejects_malformed_quasiquotes() {
     for source in ["(quasiquote)", "(quasiquote a b)", "`,@'(1 2)"] {
         assert!(Runtime::new().eval_source(source).is_err(), "{source}");
     }
+}
+
+#[test]
+fn evaluates_defstruct_boa_escaped_parameter_names() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defstruct
+                   (multi
+                    (:constructor make-multi
+                      (|REQA| &optional (|OPTB| 5 |OPTBP|)
+                       &key ((:tag |KWNAME|) 9 |KWNAMEP|) bare-key)))
+                   |REQA| |OPTB| |OPTBP| |KWNAME| |KWNAMEP| (bare-key 42))
+                 (list
+                   (write-to-string (make-multi 1))
+                   (write-to-string (make-multi 1 2 :tag 7))
+                   (not (ignore-errors (make-multi 1 'tag 9)))
+                   (write-to-string (make-multi 1 :allow-other-keys t :unexpected-key 5))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "(\"#S(MULTI :REQA 1 :OPTB 5 :OPTBP NIL :KWNAME 9 :KWNAMEP NIL :BARE-KEY 42)\" \
+         \"#S(MULTI :REQA 1 :OPTB 2 :OPTBP NIL :KWNAME 7 :KWNAMEP NIL :BARE-KEY 42)\" T \
+         \"#S(MULTI :REQA 1 :OPTB 5 :OPTBP NIL :KWNAME 9 :KWNAMEP NIL :BARE-KEY 42)\")"
+    );
+}
+
+#[test]
+fn evaluates_defstruct_boa_escaped_rest_and_auxiliary_parameters() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defstruct
+                   (boa2
+                    (:constructor make-boa2
+                      (first &rest |restZ| &aux (|auxA| (+ first 1)))))
+                   first (extra 99) |restZ| |auxA|)
+                 (write-to-string (make-boa2 1 2 3)))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        r##""#S(BOA2 :FIRST 1 :EXTRA 99 :RESTZ NIL :AUXA NIL)""##
+    );
+}
+
+#[test]
+fn evaluates_defstruct_boa_arity_errors_with_optional_parameters() {
+    let cases = [
+        r"(progn (defstruct (record (:constructor make-record (required &optional opt))) required opt) (make-record))",
+        r"(progn (defstruct (record (:constructor make-record (required &optional opt))) required opt) (make-record 1 2 3))",
+    ];
+    for source in cases {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn rejects_invalid_slot_reader_and_writer_accessor_calls() {
+    for source in [
+        "(progn (defclass sa-point () ((x :accessor sa-point-x))) (sa-point-x))",
+        "(progn (defclass sa-point () ((x :accessor sa-point-x))) (sa-point-x 1))",
+        "(progn (defclass sa-point () ((x :accessor sa-point-x))) \
+         (sa-point-x (make-instance 'sa-point)))",
+        "(progn (defclass sa-point () ((x :writer set-sa-point-x))) (set-sa-point-x))",
+        "(progn (defclass sa-point () ((x :writer set-sa-point-x))) (set-sa-point-x 1))",
+        "(progn (defclass sa-point () ((x :writer set-sa-point-x))) (set-sa-point-x 1 2))",
+    ] {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn rejects_structure_predicate_accessor_and_copier_arity_errors() {
+    for source in [
+        "(progn (defstruct arity-person name) (arity-person-p))",
+        "(progn (defstruct arity-person name) (arity-person-name))",
+        "(progn (defstruct arity-person name) (copy-arity-person))",
+    ] {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn evaluates_closures_with_escaped_pipe_quoted_parameter_names() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defun mixed (|reqX| &optional (|optY| 5 |optYp|) &rest |restZ|
+                               &aux (|auxA| (+ |reqX| 1)))
+                   (list |reqX| |optY| |optYp| |restZ| |auxA|))
+                 (list (mixed 1) (mixed 1 2 3 4)))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "((1 5 NIL NIL 2) (1 2 T (3 4) 2))");
+}
+
+#[test]
+fn evaluates_closures_with_escaped_keyword_parameter_names() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defun kw (&key ((:tag |kwName|) 9 |kwNameP|))
+                   (list |kwName| |kwNameP|))
+                 (list (kw) (kw :tag 3)))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "((9 NIL) (3 T))");
+}
+
+#[test]
+fn rejects_closures_called_with_unpaired_keyword_arguments() {
+    let result = Runtime::new().eval_source("(progn (defun kw (&key x) x) (kw :x))");
+    assert!(result.is_err());
+}
+
+#[test]
+fn signals_no_applicable_method_for_generic_function_calls() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass gd-point () ())
+                 (defgeneric gd (x))
+                 (defmethod gd ((x gd-point)) x)
+                 (let ((point (make-instance 'gd-point)))
+                   (list (not (ignore-errors (gd)))
+                         (not (ignore-errors (gd point 999))))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(T T)");
+}
+
+#[test]
+fn signals_no_primary_method_when_only_auxiliary_methods_are_defined() {
+    let result = Runtime::new().eval_source(
+        r"(progn
+             (defclass np-point () ())
+             (defgeneric np (x))
+             (defmethod np :before ((x np-point)) x)
+             (np (make-instance 'np-point)))",
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn evaluates_generic_function_with_multiple_around_methods_chaining_call_next_method() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defclass mc-point () ())
+                 (let ((events nil))
+                   (defgeneric mc (x))
+                   (defmethod mc ((x mc-point))
+                     (setf events (cons :primary events))
+                     :primary)
+                   (defmethod mc :around ((x mc-point))
+                     (setf events (cons :around-point events))
+                     (call-next-method))
+                   (defmethod mc :around ((x t))
+                     (setf events (cons :around-t events))
+                     (call-next-method))
+                   (list (mc (make-instance 'mc-point)) (reverse events))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "(:PRIMARY (:AROUND-POINT :AROUND-T :PRIMARY))"
+    );
 }

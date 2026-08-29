@@ -57,9 +57,26 @@ fn rejects_invalid_destructuring_bind_shapes_and_arguments() {
         "(destructuring-bind (first &key key) (list 1 :key) key)",
         "(destructuring-bind (first &key key) (list 1 :key 2 :extra 3) key)",
         "(destructuring-bind (first &key key) (list 1 2) key)",
+        "(destructuring-bind (first))",
+        "(destructuring-bind (first &environment env) (list 1) first)",
     ] {
         assert!(Runtime::new().eval_source(source).is_err(), "{source}");
     }
+}
+
+#[test]
+fn rejects_destructuring_bind_arity_error_with_exact_shape() {
+    let error = Runtime::new()
+        .eval_source("(destructuring-bind (first))")
+        .must_fail();
+    assert!(matches!(
+        error,
+        ncl_runtime::RuntimeError::Arity {
+            function,
+            expected,
+            actual: 1,
+        } if function == "destructuring-bind" && expected == "two or more"
+    ));
 }
 
 #[test]
@@ -139,6 +156,116 @@ fn rejects_invalid_dotimes_and_dolist_forms() {
         invalid_list,
         ncl_runtime::RuntimeError::Type { expected, .. } if expected == "LIST"
     ));
+
+    let invalid_dolist_binding = Runtime::new().eval_source("(dolist item item)").must_fail();
+    assert!(matches!(
+        invalid_dolist_binding,
+        ncl_runtime::RuntimeError::InvalidForm { .. }
+    ));
+}
+
+#[test]
+fn rejects_invalid_do_and_do_star_shapes_and_arities() {
+    let do_arity = Runtime::new().eval_source("(do)").must_fail();
+    assert!(matches!(
+        do_arity,
+        ncl_runtime::RuntimeError::Arity {
+            function,
+            expected,
+            actual: 0,
+        } if function == "do" && expected == "at least two"
+    ));
+
+    let do_star_arity = Runtime::new().eval_source("(do* ((x 1)))").must_fail();
+    assert!(matches!(
+        do_star_arity,
+        ncl_runtime::RuntimeError::Arity {
+            function,
+            expected,
+            actual: 1,
+        } if function == "do*" && expected == "at least two"
+    ));
+
+    for source in [
+        "(do x (t) x)",
+        "(do ((x 1)) t x)",
+        "(do ((x 1)) () x)",
+        "(do (x) (t) x)",
+        "(do ((x 1 2 3)) (t) x)",
+        "(do ((x 1) (x 2)) (t) x)",
+    ] {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn evaluates_do_with_parallel_stepping_and_do_star_with_sequential_stepping() {
+    assert_eq!(
+        evaluate(
+            "(do ((temp-one 1 temp-two)
+                  (temp-two 1 (+ temp-one temp-two))
+                  (temp-three 0 (1+ temp-three)))
+                 ((= 10 temp-three) temp-one))"
+        )
+        .to_string(),
+        "89"
+    );
+    assert_eq!(
+        evaluate(
+            "(do* ((x 1 (+ x 1)) (y x (+ y x)))
+                  ((> x 3) y))"
+        )
+        .to_string(),
+        "10"
+    );
+    assert_eq!(
+        evaluate("(do ((|counter| 0 (+ |counter| 1))) ((= |counter| 3) |counter|))").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate("(do ((x 0 (+ x 1)) (y 5)) ((= x 3) y))").to_string(),
+        "5"
+    );
+}
+
+#[test]
+fn do_return_short_circuits_both_initialization_and_iteration() {
+    assert_eq!(evaluate("(do ((x (return 42))) (t) x)").to_string(), "42");
+    assert_eq!(
+        evaluate("(do ((x 0 (+ x 1))) ((= x 3) :not-reached) (when (= x 1) (return :stopped)))")
+            .to_string(),
+        ":STOPPED"
+    );
+}
+
+#[test]
+fn do_propagates_ordinary_errors_from_initialization_and_body() {
+    assert!(
+        Runtime::new()
+            .eval_source(r#"(do ((x (error "boom"))) (t) x)"#)
+            .is_err()
+    );
+    assert!(
+        Runtime::new()
+            .eval_source(r#"(do ((x 0)) (nil) (error "boom"))"#)
+            .is_err()
+    );
+}
+
+#[test]
+fn rejects_invalid_let_flet_macrolet_and_symbol_macrolet_binding_shapes() {
+    for source in [
+        "(let (1) 1)",
+        "(flet (x) x)",
+        "(flet ((f () 1) (f () 2)) (f))",
+        "(macrolet (x) x)",
+        "(macrolet ((m () 1) (m () 2)) (m))",
+        "(symbol-macrolet (x) x)",
+        "(symbol-macrolet ((a 1) (a 2)) a)",
+        "(define-symbol-macro x)",
+    ] {
+        assert!(Runtime::new().eval_source(source).is_err(), "{source}");
+    }
 }
 
 #[test]

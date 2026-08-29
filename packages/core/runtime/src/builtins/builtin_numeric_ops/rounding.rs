@@ -113,4 +113,37 @@ mod tests {
             Err(RuntimeError::DivisionByZero)
         ));
     }
+
+    #[test]
+    fn quotient_and_remainder_rejects_bad_arity() {
+        assert!(matches!(
+            quotient_and_remainder(&[], "floor", RoundingMode::Floor),
+            Err(RuntimeError::Arity { .. })
+        ));
+        assert!(
+            quotient_and_remainder(
+                &[Value::Integer(1), Value::Integer(2), Value::Integer(3)],
+                "floor",
+                RoundingMode::Floor
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn modulo_returns_the_bare_remainder_when_signs_agree() {
+        assert_eq!(
+            ok_string(modulo(&[Value::Integer(7), Value::Integer(2)])),
+            "1",
+        );
+    }
+
+    #[test]
+    fn integer_remainder_avoids_overflow_at_the_minimum_boundary() {
+        assert_eq!(
+            integer_remainder(i64::MIN, -1)
+                .unwrap_or_else(|error| panic!("unexpected error: {error}")),
+            0
+        );
+    }
 }

@@ -30,4 +30,22 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn eq_value_uses_rc_identity_for_streams_vectors_and_dotted_lists() {
+        let stream = Value::string_output_stream();
+        assert!(stream.eq_value(&stream));
+        assert!(!stream.eq_value(&Value::string_output_stream()));
+
+        let vector = Value::vector(vec![Value::Integer(1)]);
+        assert!(vector.eq_value(&vector));
+        assert!(!vector.eq_value(&Value::vector(vec![Value::Integer(1)])));
+
+        let dotted = Value::dotted_list(vec![Value::Integer(1)], Value::Integer(2));
+        assert!(dotted.eq_value(&dotted));
+        assert!(!dotted.eq_value(&Value::dotted_list(
+            vec![Value::Integer(1)],
+            Value::Integer(2)
+        )));
+    }
 }

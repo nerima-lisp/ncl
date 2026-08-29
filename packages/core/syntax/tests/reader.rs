@@ -123,6 +123,26 @@ fn malformed_prefix_and_dispatch_forms_report_typed_errors() {
 }
 
 #[test]
+fn unrecognized_dispatch_characters_are_rejected() {
+    let error = read("#g").unwrap_err();
+
+    assert_eq!(error.kind, ReadErrorKind::InvalidDispatch);
+    assert_eq!(error.span, Span::new(0, 1));
+}
+
+#[test]
+fn a_discarded_form_ending_the_input_reports_a_missing_list_item() {
+    let error = read("(#;1").unwrap_err();
+
+    assert_eq!(
+        error.kind,
+        ReadErrorKind::UnexpectedEnd {
+            context: "list item"
+        }
+    );
+}
+
+#[test]
 fn reads_radix_integer_dispatch() {
     let forms = read("#xFF #b1010 #o777 #3r120").unwrap();
 

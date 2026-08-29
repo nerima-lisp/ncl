@@ -69,3 +69,34 @@ impl CompileState {
         self.compile_expression(function, &expanded)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_with_open_file_expands_to_nil_when_the_body_is_empty() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let binding = Form::list(
+            vec![
+                Form::atom("S", span),
+                Form::new(FormKind::String("f.txt".to_string()), span),
+            ],
+            span,
+        );
+        let items = vec![Form::atom("WITH-OPEN-FILE", span), binding];
+
+        state
+            .compile_with_open_file(function, span, &items)
+            .unwrap_or_else(|error| {
+                panic!("an empty body expands into a NIL-returning UNWIND-PROTECT: {error}")
+            });
+
+        assert!(
+            !state.functions[function].instructions.is_empty(),
+            "expanding WITH-OPEN-FILE should emit bytecode"
+        );
+    }
+}

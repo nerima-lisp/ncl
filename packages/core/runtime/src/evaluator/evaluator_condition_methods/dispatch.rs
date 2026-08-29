@@ -60,7 +60,7 @@ impl Runtime {
         self.dispatch_condition(error, condition, environment, span)
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn signal_condition(
         &self,
         condition: &str,
@@ -82,5 +82,25 @@ impl Runtime {
         );
         let condition_value = Value::condition(&error);
         self.dispatch_condition(error, &condition_value, environment, span)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Runtime;
+
+    #[test]
+    fn signaling_a_condition_value_directly_is_a_no_op_without_a_handler() {
+        let runtime = Runtime::new();
+        let result = runtime
+            .eval_source("(signal (make-condition 'simple-condition))")
+            .unwrap_or_else(|error| panic!("expected signal to succeed: {error}"));
+        assert_eq!(
+            result
+                .last()
+                .unwrap_or_else(|| panic!("expected a returned value"))
+                .to_string(),
+            "NIL"
+        );
     }
 }

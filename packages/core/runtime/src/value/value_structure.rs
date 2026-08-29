@@ -84,3 +84,29 @@ impl Value {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Value;
+
+    #[test]
+    fn structure_accessors_reject_non_structure_and_out_of_range_targets() {
+        assert!(Value::Nil.structure_slot(0).is_none());
+        assert!(!Value::Nil.set_structure_slot("point", 0, Value::Integer(1)));
+        assert!(Value::Nil.copy_structure().is_none());
+
+        let point = Value::structure_with_types(
+            "point",
+            vec![("x".to_owned(), Value::Integer(1))],
+            Vec::new(),
+        );
+        assert!(!point.set_structure_slot("circle", 0, Value::Integer(2)));
+        assert!(!point.set_structure_slot("point", 5, Value::Integer(2)));
+        assert!(point.set_structure_slot("point", 0, Value::Integer(9)));
+        assert!(
+            point
+                .structure_slot(0)
+                .is_some_and(|value| value.equal_value(&Value::Integer(9)))
+        );
+    }
+}

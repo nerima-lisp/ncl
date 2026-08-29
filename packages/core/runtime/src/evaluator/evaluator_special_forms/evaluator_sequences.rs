@@ -1,4 +1,4 @@
-#![allow(clippy::wildcard_imports)]
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 pub mod sequence_types;

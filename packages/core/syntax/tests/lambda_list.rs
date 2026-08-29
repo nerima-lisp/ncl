@@ -215,6 +215,103 @@ fn rejects_lambda_list_boundary_and_duplicate_cases_from_a_table() {
 }
 
 #[test]
+fn rejects_keyword_parameter_forms_with_wrong_shapes() {
+    // items[0] of the keyword-spec list is neither an atom nor a two-element
+    // list naming the keyword/parameter pair.
+    let form = &read("(&key (\"s\" 1))").expect("source should parse")[0];
+    let error = parse_ordinary_lambda_list(form).unwrap_err();
+    assert_eq!(
+        error.kind,
+        LambdaListErrorKind::ExpectedSymbol {
+            context: "keyword parameter"
+        }
+    );
+
+    // A keyword-spec list outside the one-to-three element grammar.
+    let form = &read("(&key ())").expect("source should parse")[0];
+    let error = parse_ordinary_lambda_list(form).unwrap_err();
+    assert!(
+        matches!(&error.kind, LambdaListErrorKind::InvalidForm { message } if message.contains("one to three elements"))
+    );
+
+    // The keyword-spec form itself is neither an atom nor a list.
+    let form = &read("(&key \"s\")").expect("source should parse")[0];
+    let error = parse_ordinary_lambda_list(form).unwrap_err();
+    assert_eq!(
+        error.kind,
+        LambdaListErrorKind::ExpectedSymbol {
+            context: "keyword parameter"
+        }
+    );
+}
+
+#[test]
+fn rejects_explicit_keyword_names_that_are_not_plain_symbols() {
+    // ((keyword-name parameter-name) init-form) with a non-atom keyword name.
+    let form = &read("(&key ((#\\a name) 1))").expect("source should parse")[0];
+    let error = parse_ordinary_lambda_list(form).unwrap_err();
+    assert_eq!(
+        error.kind,
+        LambdaListErrorKind::ExpectedSymbol {
+            context: "keyword name"
+        }
+    );
+
+    // A keyword-name atom that fails symbol-token parsing (too many
+    // unescaped package-qualifier separators).
+    let form = &read("(&key ((a:b:c name) 1))").expect("source should parse")[0];
+    let error = parse_ordinary_lambda_list(form).unwrap_err();
+    assert_eq!(
+        error.kind,
+        LambdaListErrorKind::ExpectedSymbol {
+            context: "keyword name"
+        }
+    );
+
+    // A keyword-name atom that names a literal (e.g. NIL) or a lambda-list
+    // marker prefix is rejected too.
+    for source in ["(&key ((nil name) 1))", "(&key ((&foo name) 1))"] {
+        let form = &read(source).expect("source should parse")[0];
+        let error = parse_ordinary_lambda_list(form).unwrap_err();
+        assert_eq!(
+            error.kind,
+            LambdaListErrorKind::ExpectedSymbol {
+                context: "keyword name"
+            },
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn parameter_names_accept_escapes_and_reject_unparseable_atoms() {
+    let lambda_list = parse("(|foo|)");
+    assert_eq!(lambda_list.required, vec!["foo"]);
+    assert!(lambda_list.required_escaped[0]);
+
+    let form = &read("(a:b:c)").expect("source should parse")[0];
+    let error = parse_ordinary_lambda_list(form).unwrap_err();
+    assert_eq!(
+        error.kind,
+        LambdaListErrorKind::ExpectedSymbol {
+            context: "parameter"
+        }
+    );
+}
+
+#[test]
+fn rejects_auxiliary_parameter_forms_that_are_not_atoms_or_lists() {
+    let form = &read("(&aux \"s\")").expect("source should parse")[0];
+    let error = parse_ordinary_lambda_list(form).unwrap_err();
+    assert_eq!(
+        error.kind,
+        LambdaListErrorKind::ExpectedSymbol {
+            context: "auxiliary parameter"
+        }
+    );
+}
+
+#[test]
 fn rejects_section_markers_in_invalid_positions() {
     for source in [
         "(&rest first &rest second)",

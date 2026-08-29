@@ -1,3 +1,4 @@
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 const MAX_FORMAT_FIELD_WIDTH: usize = 1_000_000;

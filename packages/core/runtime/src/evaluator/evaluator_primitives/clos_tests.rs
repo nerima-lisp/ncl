@@ -1,0 +1,83 @@
+#[cfg(test)]
+mod tests {
+    use super::super::*;
+
+    const SPAN: Span = Span::new(0, 0);
+
+    fn empty_class(name: &str) -> Rc<ClassDefinition> {
+        Rc::new(ClassDefinition {
+            name: name.to_string(),
+            precedence: vec![name.to_string(), "STANDARD-OBJECT".to_string()],
+            slots: Vec::new(),
+            default_initargs: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn slot_primitive_rejects_the_wrong_argument_count() {
+        let result = Runtime::apply_slot_primitive("SLOT-VALUE", &[Value::Integer(1)], SPAN)
+            .unwrap_or_else(|| panic!("SLOT-VALUE is a recognized slot primitive"));
+        assert!(matches!(
+            result,
+            Err(RuntimeError::Arity { function, .. }) if function == "slot operation"
+        ));
+    }
+
+    #[test]
+    fn slot_primitive_rejects_a_non_instance_receiver() {
+        let arguments = [Value::Integer(1), Value::symbol("name")];
+        let result = Runtime::apply_slot_primitive("SLOT-VALUE", &arguments, SPAN)
+            .unwrap_or_else(|| panic!("SLOT-VALUE is a recognized slot primitive"));
+        assert!(matches!(
+            result,
+            Err(RuntimeError::Type { expected, actual, .. })
+                if expected == "STANDARD-OBJECT" && actual == "INTEGER"
+        ));
+    }
+
+    #[test]
+    fn slot_makunbound_rejects_an_undefined_slot() {
+        let instance = Value::instance(empty_class("POINT"), Vec::new());
+        let arguments = [instance, Value::symbol("missing")];
+        let result = Runtime::apply_slot_primitive("SLOT-MAKUNBOUND", &arguments, SPAN)
+            .unwrap_or_else(|| panic!("SLOT-MAKUNBOUND is a recognized slot primitive"));
+        assert!(matches!(
+            result,
+            Err(RuntimeError::InvalidForm { message, .. })
+                if message == "slot is not defined for this class"
+        ));
+    }
+
+    #[test]
+    fn class_of_a_non_instance_value_synthesizes_a_class_definition() {
+        let environment = Environment::new();
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-OF",
+            &[Value::Integer(1)],
+            &environment,
+            SPAN,
+        )
+        .unwrap_or_else(|| panic!("CLASS-OF is a recognized introspection primitive"))
+        .unwrap_or_else(|error| panic!("CLASS-OF on a non-instance value succeeds: {error}"));
+        match result {
+            Value::Class(definition) => assert_eq!(definition.name, "INTEGER"),
+            other => panic!("expected a class value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn class_name_rejects_a_non_class_argument() {
+        let environment = Environment::new();
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-NAME",
+            &[Value::Integer(1)],
+            &environment,
+            SPAN,
+        )
+        .unwrap_or_else(|| panic!("CLASS-NAME is a recognized introspection primitive"));
+        assert!(matches!(
+            result,
+            Err(RuntimeError::Type { expected, .. }) if expected == "CLASS"
+        ));
+    }
+}

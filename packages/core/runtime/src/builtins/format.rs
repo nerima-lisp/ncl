@@ -1,4 +1,4 @@
-#![allow(clippy::wildcard_imports)]
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 mod general;
@@ -38,32 +38,46 @@ mod boundaries;
 use boundaries::*;
 
 mod dispatch;
+#[allow(clippy::wildcard_imports)]
 use dispatch::*;
 mod simple_directives;
+#[allow(clippy::wildcard_imports)]
 use simple_directives::*;
 mod choice_directive;
+#[allow(clippy::wildcard_imports)]
 use choice_directive::*;
 mod case_directive;
+#[allow(clippy::wildcard_imports)]
 use case_directive::*;
 mod iteration_directive;
+#[allow(clippy::wildcard_imports)]
 use iteration_directive::*;
 mod nested_directive;
+#[allow(clippy::wildcard_imports)]
 use nested_directive::*;
 mod justification_clauses;
+#[allow(clippy::wildcard_imports)]
 use justification_clauses::*;
 mod justification_layout;
+#[allow(clippy::wildcard_imports)]
 use justification_layout::*;
 mod value_directives;
+#[allow(clippy::wildcard_imports)]
 use value_directives::*;
 mod output_directives;
+#[allow(clippy::wildcard_imports)]
 use output_directives::*;
 mod numeric_directive;
+#[allow(clippy::wildcard_imports)]
 use numeric_directive::*;
 mod float_fixed;
+#[allow(clippy::wildcard_imports)]
 use float_fixed::*;
 mod float_dollar;
+#[allow(clippy::wildcard_imports)]
 use float_dollar::*;
 mod float_exponential;
+#[allow(clippy::wildcard_imports)]
 use float_exponential::*;
 
 #[cfg(test)]

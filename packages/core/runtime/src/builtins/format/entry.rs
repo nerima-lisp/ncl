@@ -1,3 +1,4 @@
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 pub fn format_value(arguments: &[Value]) -> Result<Value, RuntimeError> {

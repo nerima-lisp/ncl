@@ -85,4 +85,17 @@ mod tests {
         assert!(character(&[Value::string("rust"), Value::Integer(9)]).is_err());
         assert!(simple_character(&[Value::Integer(1), Value::Integer(0)]).is_err());
     }
+
+    #[test]
+    fn make_string_rejects_wrong_argument_counts() {
+        assert!(matches!(
+            make_string(&[]),
+            Err(RuntimeError::Arity { function, expected, actual })
+                if function == "make-string" && expected == "1 or 2" && actual == 0
+        ));
+        assert!(matches!(
+            make_string(&[Value::Integer(1), Value::Character('x'), Value::Integer(2)]),
+            Err(RuntimeError::Arity { function, .. }) if function == "make-string"
+        ));
+    }
 }

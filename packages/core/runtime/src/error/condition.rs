@@ -50,23 +50,30 @@ impl RuntimeError {
                     } else if error.warning {
                         false
                     } else {
-                        error
-                            .condition_types
-                            .iter()
-                            .any(|type_name| type_name.as_str() == condition)
-                            || matches!(
-                                error.condition.as_str(),
-                                "SIMPLE-ERROR"
-                                    | "DIVISION-BY-ZERO"
-                                    | "ARITHMETIC-ERROR"
-                                    | "TYPE-ERROR"
-                                    | "PROGRAM-ERROR"
-                                    | "PACKAGE-ERROR"
-                                    | "READER-ERROR"
-                                    | "COMPILER-ERROR"
-                                    | "FILE-ERROR"
-                                    | "UNBOUND-VARIABLE"
-                            )
+                        // A condition's own name and every entry in its
+                        // condition_types (its full ancestor chain) can each
+                        // independently place it in the ERROR hierarchy: an
+                        // application-defined condition whose condition_types
+                        // includes the built-in TYPE-ERROR is itself a
+                        // type-error, even though its own name is not.
+                        std::iter::once(error.condition.as_str())
+                            .chain(error.condition_types.iter().map(String::as_str))
+                            .any(|name| {
+                                name == condition
+                                    || matches!(
+                                        name,
+                                        "SIMPLE-ERROR"
+                                            | "DIVISION-BY-ZERO"
+                                            | "ARITHMETIC-ERROR"
+                                            | "TYPE-ERROR"
+                                            | "PROGRAM-ERROR"
+                                            | "PACKAGE-ERROR"
+                                            | "READER-ERROR"
+                                            | "COMPILER-ERROR"
+                                            | "FILE-ERROR"
+                                            | "UNBOUND-VARIABLE"
+                                    )
+                            })
                     }
                 }
                 _ => true,

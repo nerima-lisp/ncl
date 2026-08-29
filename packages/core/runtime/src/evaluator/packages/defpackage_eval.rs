@@ -87,3 +87,65 @@ impl Runtime {
         Ok(Value::package(&canonical_name))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Runtime;
+
+    #[test]
+    fn defpackage_rejects_a_name_only_form() {
+        assert!(Runtime::new().eval_source("(defpackage)").is_err());
+    }
+
+    #[test]
+    fn defpackage_rejects_use_of_an_unknown_package() {
+        let runtime = Runtime::new();
+        assert!(
+            runtime
+                .eval_source("(defpackage \"DEFPKG-EVAL-USE\" (:use \"NO-SUCH-PACKAGE\"))")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn defpackage_rejects_import_from_an_unknown_package() {
+        let runtime = Runtime::new();
+        assert!(
+            runtime
+                .eval_source(
+                    "(defpackage \"DEFPKG-EVAL-IMPORT\" (:import-from \"NO-SUCH-PACKAGE\" \"X\"))"
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn defpackage_rejects_import_of_an_unknown_symbol() {
+        let runtime = Runtime::new();
+        runtime
+            .eval_source("(defpackage \"DEFPKG-EVAL-SRC\" (:export \"KNOWN\"))")
+            .unwrap_or_else(|error| panic!("expected setup defpackage form to succeed: {error}"));
+        assert!(
+            runtime
+                .eval_source(
+                    "(defpackage \"DEFPKG-EVAL-SYMBOL\" (:import-from \"DEFPKG-EVAL-SRC\" \"NO-SUCH-SYMBOL-XYZ\"))"
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn defpackage_rejects_a_nickname_already_claimed_by_another_package() {
+        let runtime = Runtime::new();
+        runtime
+            .eval_source("(defpackage \"DEFPKG-EVAL-NICK-A\" (:nicknames \"DEFPKG-EVAL-NICK\"))")
+            .unwrap_or_else(|error| panic!("expected setup defpackage form to succeed: {error}"));
+        assert!(
+            runtime
+                .eval_source(
+                    "(defpackage \"DEFPKG-EVAL-NICK-B\" (:nicknames \"DEFPKG-EVAL-NICK\"))"
+                )
+                .is_err()
+        );
+    }
+}

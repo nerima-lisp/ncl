@@ -68,3 +68,55 @@ impl CompileState {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_tagbody_forms_propagates_a_body_expression_error() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let dotted = Form::dotted_list(vec![Form::atom("a", span)], Form::atom("b", span), span);
+
+        let error = state
+            .compile_tagbody_forms(function, span, &[dotted])
+            .map_or_else(
+                |error| error,
+                |value| panic!("a malformed body form should fail to compile, got {value:?}"),
+            );
+
+        assert!(matches!(
+            error.kind,
+            CompileErrorKind::UnsupportedForm { .. }
+        ));
+    }
+
+    #[test]
+    fn compile_tagbody_forms_reports_an_internal_error_for_an_invalid_function_id() {
+        let mut state = CompileState::default();
+        let span = Span::new(0, 1);
+
+        let error = state.compile_tagbody_forms(99, span, &[]).map_or_else(
+            |error| error,
+            |value| panic!("an unknown function id cannot receive instructions, got {value:?}"),
+        );
+
+        assert!(matches!(error.kind, CompileErrorKind::Internal { .. }));
+    }
+
+    #[test]
+    fn compile_go_reports_an_internal_error_for_an_invalid_function_id() {
+        let mut state = CompileState::default();
+        let span = Span::new(0, 1);
+        let items = vec![Form::atom("GO", span), Form::atom("DONE", span)];
+
+        let error = state.compile_go(99, span, &items).map_or_else(
+            |error| error,
+            |value| panic!("an unknown function id cannot receive instructions, got {value:?}"),
+        );
+
+        assert!(matches!(error.kind, CompileErrorKind::Internal { .. }));
+    }
+}

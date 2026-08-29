@@ -117,6 +117,33 @@ fn evaluates_compile_function() {
 }
 
 #[test]
+fn compiles_an_existing_function_looked_up_by_an_escaped_exact_name() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defun |ExactCompileFn| (value) (* value 2))
+               (compile '|ExactCompileFn|)
+               (funcall (function |ExactCompileFn|) 5))"
+        )
+        .to_string(),
+        "10"
+    );
+}
+
+#[test]
+fn rejects_compiling_a_name_that_is_bound_to_a_non_function_value() {
+    let error = Runtime::new()
+        .eval_source(
+            "(progn (defvar compile-non-function-value 5) (compile 'compile-non-function-value))",
+        )
+        .must_fail();
+    assert!(matches!(
+        error,
+        ncl_runtime::RuntimeError::NotCallable { .. }
+    ));
+}
+
+#[test]
 fn evaluates_load_file() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/load.lisp")
         .replace('\\', "\\\\")

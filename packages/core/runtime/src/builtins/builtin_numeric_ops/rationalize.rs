@@ -102,4 +102,19 @@ mod tests {
         assert!(simplest_rational(0.6, 0.4).is_err());
         assert!(rationalize_float(f64::NAN).is_err());
     }
+
+    #[test]
+    fn rationalize_of_zero_float_is_the_exact_integer_zero() {
+        assert_eq!(ok(rationalize(&[Value::Float(0.0)])).to_string(), "0");
+    }
+
+    #[test]
+    fn simplest_rational_negates_a_wholly_negative_interval() {
+        assert_eq!(ok(simplest_rational(-0.6, -0.4)), (-1, 2));
+    }
+
+    #[test]
+    fn simplest_positive_rational_rejects_excessive_recursion_depth() {
+        assert!(simplest_positive_rational(0.5, 0.5, 200).is_err());
+    }
 }

@@ -63,6 +63,27 @@ fn rejects_incompatible_format_modifiers_from_table_cases() {
 }
 
 #[test]
+fn rejects_malformed_case_conversion_directives_from_table_cases() {
+    let cases: [(&str, &str); 2] = [
+        (
+            "~1(foo~)",
+            "format case conversion does not accept parameters",
+        ),
+        ("~(~Z~)", "unsupported format directive ~Z"),
+    ];
+
+    for (control, expected_message) in cases {
+        let Err(error) = format_control(control, &[]) else {
+            panic!("malformed case conversion control should fail: {control}");
+        };
+        assert!(
+            error.to_string().contains(expected_message),
+            "{control}: {error}"
+        );
+    }
+}
+
+#[test]
 fn rejects_invalid_format_invocation_shapes_from_table_cases() {
     let cases = [
         vec![],

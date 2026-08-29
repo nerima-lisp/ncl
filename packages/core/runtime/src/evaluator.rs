@@ -132,3 +132,6 @@ use helpers::{
 };
 mod evaluator_literals;
 pub use evaluator_literals::{literal_atom, quoted_form_value, resolved_symbol};
+
+#[cfg(test)]
+mod tests;

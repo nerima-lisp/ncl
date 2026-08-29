@@ -97,4 +97,34 @@ mod tests {
         assert!(rational_from_float(f64::NAN).is_err());
         assert!(rational_from_float(f64::INFINITY).is_err());
     }
+
+    #[test]
+    fn float_rejects_a_non_float_prototype() {
+        assert!(matches!(
+            float_value(&[Value::Integer(4), Value::Integer(5)]),
+            Err(RuntimeError::Type { .. })
+        ));
+        assert_eq!(
+            ok_string(float_value(&[Value::Integer(4), Value::Float(1.0)])),
+            "4.0",
+        );
+    }
+
+    #[test]
+    fn rational_of_zero_float_is_the_exact_integer_zero() {
+        assert_eq!(ok_string(rational(&[Value::Float(0.0)])), "0");
+    }
+
+    #[test]
+    fn rational_from_float_normalizes_negative_integral_values() {
+        assert_eq!(ok_string(rational(&[Value::Float(-4.0)])), "-4");
+    }
+
+    #[test]
+    fn rational_from_float_overflows_on_the_smallest_subnormal() {
+        assert!(matches!(
+            rational_from_float(f64::from_bits(1)),
+            Err(RuntimeError::NumericOverflow)
+        ));
+    }
 }

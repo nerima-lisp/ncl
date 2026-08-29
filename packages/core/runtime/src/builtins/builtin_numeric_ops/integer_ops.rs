@@ -127,4 +127,64 @@ mod tests {
         assert!(numerator(&[Value::Nil]).is_err());
         assert!(arithmetic_shift(&[Value::Integer(1)]).is_err());
     }
+
+    #[test]
+    fn lcm_short_circuits_to_zero_when_any_argument_is_zero() {
+        assert_eq!(
+            ok_string(least_common_multiple(&[
+                Value::Integer(0),
+                Value::Integer(6)
+            ])),
+            "0",
+        );
+        assert_eq!(
+            ok_string(least_common_multiple(&[
+                Value::Integer(4),
+                Value::Integer(0)
+            ])),
+            "0",
+        );
+    }
+
+    #[test]
+    fn denominator_rejects_non_rational_arguments() {
+        assert!(denominator(&[Value::Nil]).is_err());
+    }
+
+    #[test]
+    fn arithmetic_shift_left_saturates_and_overflows_at_boundary() {
+        assert_eq!(
+            ok_string(arithmetic_shift(&[Value::Integer(0), Value::Integer(64)])),
+            "0",
+        );
+        assert!(matches!(
+            arithmetic_shift(&[Value::Integer(1), Value::Integer(64)]),
+            Err(RuntimeError::NumericOverflow)
+        ));
+    }
+
+    #[test]
+    fn arithmetic_shift_right_handles_large_and_minimal_counts() {
+        assert_eq!(
+            ok_string(arithmetic_shift(&[
+                Value::Integer(5),
+                Value::Integer(i64::MIN)
+            ])),
+            "0",
+        );
+        assert_eq!(
+            ok_string(arithmetic_shift(&[
+                Value::Integer(-5),
+                Value::Integer(i64::MIN)
+            ])),
+            "-1",
+        );
+        assert_eq!(
+            ok_string(arithmetic_shift(&[
+                Value::Integer(-5),
+                Value::Integer(-100)
+            ])),
+            "-1",
+        );
+    }
 }

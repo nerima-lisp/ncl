@@ -77,3 +77,46 @@ pub fn nthcdr(arguments: &[Value]) -> Result<Value, RuntimeError> {
         value => Err(type_error("nthcdr", "list", value)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ok_string(result: Result<Value, RuntimeError>) -> String {
+        match result {
+            Ok(value) => value.to_string(),
+            Err(error) => panic!("expected Ok, got {error:?}"),
+        }
+    }
+
+    #[test]
+    fn cons_onto_a_non_list_builds_a_dotted_pair() {
+        assert_eq!(
+            ok_string(cons(&[Value::Integer(1), Value::Integer(2)])),
+            "(1 . 2)"
+        );
+    }
+
+    #[test]
+    fn car_reads_the_head_of_a_dotted_list() {
+        let dotted = Value::dotted_list(
+            vec![Value::Integer(1), Value::Integer(2)],
+            Value::Integer(3),
+        );
+        assert_eq!(ok_string(car(&[dotted])), "1");
+    }
+
+    #[test]
+    fn cdr_returns_the_tail_when_a_single_item_dotted_list_shrinks_to_it() {
+        let dotted = Value::dotted_list(vec![Value::Integer(1)], Value::Integer(2));
+        assert_eq!(ok_string(cdr(&[dotted])), "2");
+    }
+
+    #[test]
+    fn cdr_reports_a_type_error_for_a_non_list_argument() {
+        assert!(matches!(
+            cdr(&[Value::Integer(1)]),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
+}

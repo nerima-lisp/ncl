@@ -119,4 +119,21 @@ mod tests {
             Err(RuntimeError::NumericOverflow)
         );
     }
+
+    #[test]
+    fn rejects_unrepresentable_numerators_and_denominators_after_sign_normalization() {
+        // A negative denominator negates the numerator first; i128::MIN has no
+        // positive counterpart, so that negation must fail before normalization
+        // proceeds any further.
+        assert_eq!(
+            Rational::new(i128::MIN, -1),
+            Err(RuntimeError::NumericOverflow)
+        );
+        // The reduced denominator can still overflow i64 even when the
+        // reduced numerator fits, since gcd-reduction is independent per side.
+        assert_eq!(
+            Rational::new(1, i128::from(i64::MAX) + 1),
+            Err(RuntimeError::NumericOverflow)
+        );
+    }
 }

@@ -75,3 +75,98 @@ fn character_stream_builtins_cover_eof_states_and_stream_types() -> Result<(), R
     assert!(write_line(&[Value::string("x"), Value::Integer(1)]).is_err());
     Ok(())
 }
+
+#[test]
+fn reading_builtins_reject_bad_arity_and_stream_arguments() -> Result<(), RuntimeError> {
+    let five_nils = [Value::Nil, Value::Nil, Value::Nil, Value::Nil, Value::Nil];
+    assert!(
+        read_char(&five_nils).is_err(),
+        "read-char takes at most 4 arguments"
+    );
+    assert!(
+        read_line(&five_nils).is_err(),
+        "read-line takes at most 4 arguments"
+    );
+    assert!(
+        peek_char(&[
+            Value::Nil,
+            Value::Nil,
+            Value::Nil,
+            Value::Nil,
+            Value::Nil,
+            Value::Nil
+        ])
+        .is_err(),
+        "peek-char takes at most 5 arguments"
+    );
+    assert!(
+        unread_char(&[Value::Character('a'), Value::Nil, Value::Nil]).is_err(),
+        "unread-char takes at most 2 arguments"
+    );
+
+    assert!(
+        read_char(&[]).is_err(),
+        "read-char requires an explicit stream"
+    );
+    assert!(
+        read_char(&[Value::Integer(1)]).is_err(),
+        "read-char rejects a non-stream argument"
+    );
+    assert!(
+        unread_char(&[Value::Integer(1)]).is_err(),
+        "unread-char rejects a non-character argument"
+    );
+
+    let output = make_string_output_stream(&[])?;
+    assert!(
+        peek_char(std::slice::from_ref(&output)).is_err(),
+        "peek-char rejects an output-only stream"
+    );
+    assert!(
+        unread_char(&[Value::Character('a'), output.clone()]).is_err(),
+        "unread-char rejects an output-only stream"
+    );
+    assert!(
+        read_line(std::slice::from_ref(&output)).is_err(),
+        "read-line rejects an output-only stream"
+    );
+
+    let fresh_input = make_string_input_stream(&[Value::string("ab")])?;
+    assert!(
+        unread_char(&[Value::Character('a'), fresh_input]).is_err(),
+        "unread-char fails before any character has been read"
+    );
+
+    let empty_input = make_string_input_stream(&[Value::string("")])?;
+    assert!(
+        peek_char(std::slice::from_ref(&empty_input)).is_err(),
+        "peek-char signals EOF by default"
+    );
+    Ok(())
+}
+
+#[test]
+fn writing_builtins_reject_bad_arity_and_argument_types() -> Result<(), RuntimeError> {
+    assert!(write_char(&[Value::Character('a'), Value::Nil, Value::Nil]).is_err());
+    assert!(write_string(&[Value::string("a"), Value::Nil, Value::Nil]).is_err());
+    assert!(terpri(&[Value::Nil, Value::Nil]).is_err());
+    assert!(fresh_line(&[Value::Nil, Value::Nil]).is_err());
+    assert!(write_line(&[Value::string("a"), Value::Nil, Value::Nil]).is_err());
+
+    assert!(write_char(&[Value::Integer(1)]).is_err());
+    assert!(write_string(&[Value::Integer(1)]).is_err());
+    assert!(write_line(&[Value::Integer(1)]).is_err());
+
+    let input = make_string_input_stream(&[Value::string("z")])?;
+    assert!(
+        write_char(&[Value::Character('z'), input.clone()]).is_err(),
+        "write-char rejects an input-only stream destination"
+    );
+    assert!(
+        write_string(&[Value::string("z"), input]).is_err(),
+        "write-string rejects an input-only stream destination"
+    );
+
+    assert!(matches!(fresh_line(&[])?, Value::Boolean(true)));
+    Ok(())
+}

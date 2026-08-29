@@ -137,3 +137,17 @@ impl Runtime {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Runtime;
+
+    #[test]
+    fn a_required_destructuring_pattern_that_does_not_match_the_argument_fails() {
+        let runtime = Runtime::new();
+        let result = runtime.eval_source(
+            "(progn (defmacro binding-mismatch ((a b)) (list 'quote (list a b))) (binding-mismatch 1))",
+        );
+        assert!(result.is_err());
+    }
+}

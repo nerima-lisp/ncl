@@ -1,3 +1,4 @@
+#[allow(clippy::wildcard_imports)]
 use super::*;
 
 pub(super) fn format_justification_clauses(body: &[char]) -> Result<Vec<&[char]>, RuntimeError> {

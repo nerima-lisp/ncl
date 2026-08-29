@@ -49,3 +49,26 @@ pub(super) fn state_reference(
         .random_state_reference()
         .ok_or_else(|| type_error(function, "a random-state", value))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use super::bounded_u64;
+    use crate::value::RandomState;
+
+    #[test]
+    fn bounded_u64_retries_when_the_sample_falls_below_the_rejection_threshold() {
+        // `threshold = 2^64 mod bound`, and the loop retries while the drawn
+        // sample is below it. Picking a bound just past 2^63 makes the
+        // threshold roughly 2^63, so the retry branch fires on about half of
+        // all draws; 128 draws makes missing it as unlikely as any test here.
+        let bound = (1u64 << 63) + 1;
+        let state = Rc::new(RefCell::new(RandomState::seeded()));
+        for _ in 0..128 {
+            let value = bounded_u64(&state, bound);
+            assert!(value < bound, "value out of range: {value}");
+        }
+    }
+}

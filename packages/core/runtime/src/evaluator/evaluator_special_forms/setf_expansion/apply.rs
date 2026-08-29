@@ -1,3 +1,5 @@
+#[cfg(test)]
+use super::Form;
 use super::{Environment, Runtime, RuntimeError, SetfExpansion, Span, Value};
 
 impl Runtime {
@@ -26,5 +28,37 @@ impl Runtime {
         self.define_variable_in(&store_name, store_escaped, value, &local);
         self.eval_in(&expansion.store_form, &local)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_setf_expansion_rejects_mismatched_temporary_and_value_lists() {
+        let runtime = Runtime::new();
+        let environment = runtime.global_environment();
+        let span = Span::new(0, 0);
+        let expansion = SetfExpansion {
+            temporaries: vec![Form::atom("NCL-SETF-TEMP-MISMATCH", span)],
+            values: Vec::new(),
+            store: Form::atom("NCL-SETF-STORE-MISMATCH", span),
+            store_form: Form::atom("NCL-SETF-STORE-MISMATCH", span),
+            access_form: Form::atom("NCL-SETF-ACCESS-MISMATCH", span),
+        };
+
+        let error = runtime
+            .apply_setf_expansion(&expansion, Value::Integer(1), &environment, span)
+            .map_or_else(
+                |error| error,
+                |value| panic!("mismatched temporary/value lists must be rejected, got {value:?}"),
+            );
+
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "SETF expansion temporary and value lists must have the same length"
+        ));
     }
 }

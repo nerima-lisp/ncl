@@ -75,6 +75,13 @@ mod tests {
     }
 
     #[test]
+    fn signum_of_negative_float_is_negative_one() {
+        assert_eq!(ok_string(signum(&[Value::Float(-2.5)])), "-1.0");
+        assert_eq!(ok_string(signum(&[Value::Float(2.5)])), "1.0");
+        assert_eq!(ok_string(signum(&[Value::Float(0.0)])), "0.0");
+    }
+
+    #[test]
     fn rejects_invalid_predicate_arguments() {
         assert!(zerop(&[]).is_err());
         assert!(evenp(&[Value::Float(1.5)]).is_err());

@@ -58,3 +58,70 @@ impl CompileState {
         Ok(name)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_destructuring_pattern_rejects_a_non_symbol_non_list_form() {
+        let mut seen = HashSet::new();
+        let span = Span::new(0, 1);
+        let form = Form::new(FormKind::String("bad".to_string()), span);
+
+        let error = CompileState::compile_destructuring_pattern(&form, &mut seen).map_or_else(
+            |error| error,
+            |value| panic!("a string literal cannot be a destructuring pattern, got {value:?}"),
+        );
+
+        assert!(matches!(error.kind, CompileErrorKind::InvalidForm { .. }));
+    }
+
+    #[test]
+    fn compile_destructuring_pattern_propagates_a_dotted_items_error() {
+        let mut seen = HashSet::new();
+        let span = Span::new(0, 1);
+        let bad_item = Form::new(FormKind::String("bad".to_string()), span);
+        let form = Form::dotted_list(vec![bad_item], Form::atom("REST", span), span);
+
+        let error = CompileState::compile_destructuring_pattern(&form, &mut seen).map_or_else(
+            |error| error,
+            |value| panic!("a malformed dotted item should fail to compile, got {value:?}"),
+        );
+
+        assert!(matches!(error.kind, CompileErrorKind::InvalidForm { .. }));
+    }
+
+    #[test]
+    fn compile_destructuring_pattern_propagates_a_dotted_tail_error() {
+        let mut seen = HashSet::new();
+        let span = Span::new(0, 1);
+        let bad_tail = Form::new(FormKind::String("bad".to_string()), span);
+        let form = Form::dotted_list(vec![Form::atom("HEAD", span)], bad_tail, span);
+
+        let error = CompileState::compile_destructuring_pattern(&form, &mut seen).map_or_else(
+            |error| error,
+            |value| panic!("a malformed dotted tail should fail to compile, got {value:?}"),
+        );
+
+        assert!(matches!(error.kind, CompileErrorKind::InvalidForm { .. }));
+    }
+
+    #[test]
+    fn compile_destructuring_binding_name_rejects_lambda_list_markers() {
+        let mut seen = HashSet::new();
+        let span = Span::new(0, 1);
+        let form = Form::atom("&rest", span);
+
+        let error = CompileState::compile_destructuring_binding_name(&form, &mut seen, "context")
+            .map_or_else(
+                |error| error,
+                |value| panic!("a lambda-list marker cannot be a binding name, got {value:?}"),
+            );
+
+        assert!(matches!(
+            error.kind,
+            CompileErrorKind::InvalidForm { message } if message.contains("lambda-list markers")
+        ));
+    }
+}

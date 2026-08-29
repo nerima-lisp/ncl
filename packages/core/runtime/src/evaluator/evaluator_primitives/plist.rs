@@ -83,7 +83,7 @@ impl Runtime {
             .step_by(2)
             .find(|index| properties[*index].eq_value(&arguments[2]))
         {
-            properties[index] = arguments[1].clone();
+            properties[index + 1] = arguments[1].clone();
         } else {
             properties.extend([arguments[2].clone(), arguments[1].clone()]);
         }

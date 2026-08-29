@@ -8,7 +8,9 @@ Common Lisp-oriented surface.
 
 NCL uses the stable Rust toolchain with the Rust 2024 edition. The required
 components are declared in `rust-toolchain.toml`; `nix develop` provides the
-same tools through the flake.
+same tools through the flake. A local `rustup` install also honors
+`rust-toolchain.toml` automatically, so `cargo` commands run directly against
+a bare `rustup`-managed toolchain (outside `nix develop`) are supported too.
 
 ~~~sh
 cargo run -- --eval '(+ 1 2)'

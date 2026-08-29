@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -18,6 +22,32 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Verify toolchain version consistency
+        run: |
+          set -euo pipefail
+          expected="$(grep -m1 '^channel' rust-toolchain.toml | perl -pe 's/channel = "(.*)"/\1/')"
+          tool_versions="$(grep -m1 '^rust ' .tool-versions | perl -lane 'print $F[1]')"
+          cargo_toml="$(grep -m1 '^rust-version' Cargo.toml | perl -pe 's/.*"(.*)".*/\1/')"
+          flake_versions="$(grep -o 'rust-bin\.stable\."[0-9.]*"' flake.nix | perl -pe 's/.*"(.*)"/\1/' | sort -u)"
+          ci_versions="$(grep -A2 'dtolnay/rust-toolchain@stable' .github/workflows/ci.yml | grep 'toolchain:' | perl -lane 'print $F[1]' | sort -u)"
+          fail=0
+          if [ "$tool_versions" != "$expected" ]; then
+            echo "::error::.tool-versions rust=$tool_versions does not match rust-toolchain.toml channel=$expected"
+            fail=1
+          fi
+          if [ "${expected%.*}" != "$cargo_toml" ]; then
+            echo "::error::Cargo.toml rust-version=$cargo_toml does not match rust-toolchain.toml channel=$expected (expected prefix ${expected%.*})"
+            fail=1
+          fi
+          if [ "$(printf '%s\n' "$flake_versions" | wc -l | tr -d ' ')" != "1" ] || [ "$flake_versions" != "$expected" ]; then
+            echo "::error::flake.nix rust-bin version(s) [$flake_versions] do not all match rust-toolchain.toml channel=$expected"
+            fail=1
+          fi
+          if [ "$(printf '%s\n' "$ci_versions" | wc -l | tr -d ' ')" != "1" ] || [ "$ci_versions" != "$expected" ]; then
+            echo "::error::ci.yml dtolnay/rust-toolchain toolchain(s) [$ci_versions] do not all match rust-toolchain.toml channel=$expected"
+            fail=1
+          fi
+          exit $fail
       - run: python3 scripts/reachability.py
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -28,6 +58,9 @@ jobs:
       - run: cargo check --locked --workspace --all-targets --all-features
       - run: cargo test --locked --workspace --all-features --all-targets
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      # Smoke-check that a release build succeeds; artifacts are not uploaded because
+      # they warm the incremental cache for the release test run below and are not
+      # meant to be distributable (see Install section in README.md for that path).
       - run: cargo build --locked --workspace --release
       - run: cargo test --locked --workspace --all-features --all-targets --release
 
@@ -40,7 +73,7 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - run: nix flake check --all-systems --no-build
+      - run: nix flake check --all-systems
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.0
@@ -67,7 +100,9 @@ jobs:
           path: lcov.info
 
   security:
-    name: Dependency audit
+    # cargo audit scans every dependency reachable via Cargo.lock, which includes
+    # dev-only dependencies (e.g. criterion) alongside release-binary dependencies.
+    name: Dependency audit (full lockfile, incl. dev-only deps)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

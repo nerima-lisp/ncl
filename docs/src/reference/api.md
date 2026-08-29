@@ -13,7 +13,6 @@ Common Lisp specification.
 | <code>--file</code>, <code>-f</code> <em>path</em> | Read and evaluate a Lisp file. |
 | <code>--repl</code> | Start the interactive REPL. |
 | <code>--compiled</code> | Use the stack-bytecode compiler and VM for evaluation. |
-| <code>--compile</code> | Compile input and report bytecode artifact sizes without executing ordinary runtime forms. Supported compile-time preparation may still run. Requires <code>--eval</code> or <code>--file</code>. |
 | <code>--quiet</code>, <code>-q</code> | Suppress normal value output and REPL prompts. |
 | <code>--help</code>, <code>-h</code> | Print usage information. |
 | <code>--version</code>, <code>-V</code> | Print the package version. |
@@ -365,18 +364,11 @@ Sequence traversal and transformation also include <code>map-into</code>,
 operations <code>every</code>, <code>some</code>, <code>notany</code>, and
 <code>notevery</code>.
 
-## Runtime API boundary
-
-The direct Common Lisp API is the `ncl` package and is documented in the
-[Common Lisp core guide](../guide/common-lisp-core.md). The Rust API below is
-the embedding surface for the production runtime; it is separate from the
-direct SBCL-loaded core.
-
 ## Rust runtime API
 
 The root Rust crate re-exports these convenience types:
 
-- <code>CompiledForm</code>, <code>Environment</code>, <code>Function</code>, <code>Runtime</code>,
+- <code>Environment</code>, <code>Function</code>, <code>Runtime</code>,
   <code>RuntimeError</code>, and <code>Value</code> from the runtime;
 - <code>Form</code>, <code>FormKind</code>, <code>ReadError</code>,
   <code>ReadErrorKind</code>, <code>Span</code>, and <code>read</code> from the
@@ -389,18 +381,8 @@ workspace.
 
 ### Compilation API
 
-<code>Runtime::compile</code> compiles one parsed <code>Form</code> and
-<code>Runtime::compile_source</code> reads and compiles all forms in a source
-string. Both return <code>CompiledForm</code> values without executing ordinary
-runtime forms. Compilation may evaluate supported compile-time forms, so
-macro and package definitions can affect later forms on the same runtime. A
-compiled form exposes its macro-expanded form through
-<code>form()</code>, its bytecode program through <code>program()</code>, and
-summary metrics through <code>function_count()</code> and
-<code>instruction_count()</code>.
-
-Compilation runs in order on one runtime, so compile-time macro and package
-state can affect later forms. <code>eval_compiled</code> and
-<code>eval_compiled_source</code> are the execution APIs; the source variant
-compiles and executes each form in order so definitions and package operations
-remain visible to subsequent forms.
+<code>eval_compiled</code> and <code>eval_compiled_source</code> are the
+execution APIs for the stack-bytecode compiler and VM. Compilation runs in
+order on one runtime, so compile-time macro and package state can affect
+later forms; the source variant compiles and executes each form in order so
+definitions and package operations remain visible to subsequent forms.

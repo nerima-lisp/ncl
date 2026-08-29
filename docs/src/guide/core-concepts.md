@@ -40,14 +40,11 @@ remaining compiled-language boundary is described in the
 
 The normal evaluator executes forms directly in the caller's runtime. The
 <code>--compiled</code> CLI option selects the stack-bytecode compiler and VM.
-Macro expansion is available in both routes. The <code>--compile</code> CLI
-option stops after compilation and reports the number of forms, functions, and
-instructions produced; it does not execute runtime forms. The Rust API exposes
-the same boundary through <code>Runtime::compile</code> and
-<code>Runtime::compile_source</code>, returning <code>CompiledForm</code>
-values for embedding applications. The compiler is an execution backend for
-the current language surface; it is not an implementation of SBCL's
-optimizing compiler.
+Macro expansion is available in both routes. The Rust API exposes the same
+boundary through <code>eval_compiled</code> and
+<code>eval_compiled_source</code> for embedding applications. The compiler is
+an execution backend for the current language surface; it is not an
+implementation of SBCL's optimizing compiler.
 
 ## Packages and macros
 

@@ -1,10 +1,8 @@
 # Compatibility
 
-NCL has a production-oriented Rust runtime and a direct Common Lisp core. Both
-are bounded Common Lisp-oriented implementations, not SBCL-compatible
-implementations. The table below describes the runtime feature boundary; the
-direct core's source layout and entry points are covered in the
-[Common Lisp core guide](../guide/common-lisp-core.md).
+NCL has a production-oriented Rust runtime. It is a bounded Common
+Lisp-oriented implementation, not an SBCL-compatible implementation. The
+table below describes the runtime feature boundary.
 
 | Area | Implemented surface | Current boundary |
 | --- | --- | --- |
@@ -19,10 +17,10 @@ direct core's source layout and entry points are covered in the
 <code>FINISH-OUTPUT</code>/<code>CLEAR-OUTPUT</code>, <code>LISTEN</code>/<code>READ-CHAR-NO-HANG</code>/<code>CLEAR-INPUT</code> for modeled character streams, <code>WRITE-SEQUENCE</code> for character sequences, duplex <code>:io</code> streams, adjustable string designators, and formatted output. | The general stream protocol, binary streams, full file-option/version semantics, byte-oriented position/length semantics for multibyte external formats, precise buffered-output discard semantics, and the remaining <code>format</code> directives are incomplete; stream resource-management options remain bounded. |
 | Arrays and tables | Simple and multidimensional arrays plus hash tables with <code>eq</code>, <code>eql</code>, <code>equal</code>, and <code>equalp</code> tests; bounded rank-1 fill-pointer/adjustable vectors with <code>:fill-pointer</code>, <code>:adjustable</code>, <code>fill-pointer</code>, <code>vector-push</code>, <code>vector-push-extend</code>, and <code>adjust-array</code>; bounded <code>T</code>, <code>BIT</code>, <code>CHARACTER</code>, <code>BASE-CHAR</code>, <code>FIXNUM</code>, <code>SINGLE-FLOAT</code>, and <code>DOUBLE-FLOAT</code> element-type metadata with SBCL-observed upgrade aliases plus initial-value and write validation; adjustable character strings and adjustable multidimensional general arrays with alias-preserving <code>aref</code>/<code>row-major-aref</code>/<code>bit</code> updates; bounded displacement through <code>:displaced-to</code> and <code>:displaced-index-offset</code>; bounded <code>MAPHASH</code> and hash-table iterator access. | General compound element types currently use the bounded upgrade-to-<code>T</code> behavior rather than preserving full specialized constraints; multidimensional fill-pointer arrays, displacement/adjustment combinations outside the tested paths, complete sequence edge cases, hash-table mutation during iteration, and standard array semantics remain incomplete. |
 | Structures and objects | Basic <code>defstruct</code> support plus classes, instances, generic functions, methods, slot access, and bounded class introspection. | The full MOP, all slot allocation/options, method qualifiers, and standard object-protocol details remain partial. |
-| Compiler | Stack bytecode compiler and VM selected by <code>--compiled</code>; <code>Runtime::compile</code>, <code>Runtime::compile_source</code>, and <code>--compile</code> expose macro-expanded bytecode artifacts. <code>NTH-VALUE</code> plus <code>PUSH</code>/<code>POP</code>/<code>PUSHNEW</code> with simple symbol places are lowered to native VM instructions. | Compilation performs supported compile-time preparation, but does not execute ordinary runtime forms. Generalized-place <code>PUSH</code>/<code>POP</code>/<code>PUSHNEW</code> and other compiler paths still use evaluator-backed fallbacks; the compiler covers only the tested language subset, is not optimizing, and is not SBCL-compatible. Artifact counts do not establish whole-program conformance. |
+| Compiler | Stack bytecode compiler and VM selected by <code>--compiled</code>, executed through <code>eval_compiled</code>/<code>eval_compiled_source</code>. <code>NTH-VALUE</code> plus <code>PUSH</code>/<code>POP</code>/<code>PUSHNEW</code> with simple symbol places are lowered to native VM instructions. | Generalized-place <code>PUSH</code>/<code>POP</code>/<code>PUSHNEW</code> and other compiler paths still use evaluator-backed fallbacks; the compiler covers only the tested language subset, is not optimizing, and is not SBCL-compatible. |
 
-Both interpreted and compiled execution, as well as compile-only artifact
-generation, are covered by the repository's local tests where the
-corresponding feature is supported. Passing the test suite does not establish
-conformance with SBCL or the full Common Lisp standard. Compatibility claims
-should be made only for behavior backed by executable tests.
+Both interpreted and compiled execution are covered by the repository's local
+tests where the corresponding feature is supported. Passing the test suite
+does not establish conformance with SBCL or the full Common Lisp standard.
+Compatibility claims should be made only for behavior backed by executable
+tests.

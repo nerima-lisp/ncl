@@ -1,7 +1,7 @@
 # Development
 
-This page collects the local verification commands for the Rust workspace, the
-direct Common Lisp core, and the documentation site.
+This page collects the local verification commands for the Rust workspace and
+the documentation site.
 
 ## Isolated worktrees
 
@@ -93,19 +93,6 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 Use `nix develop path:.` when the Rust tools are not installed locally or when
 you want the same toolchain and supporting programs used by the project gates.
 
-## Common Lisp core
-
-The direct Common Lisp core is declared by `ncl.asd`. Run its ASDF entry points
-with the Common Lisp implementation and dependencies installed locally:
-
-~~~sh
-sbcl --script run.lisp --eval '(+ 1 2)'
-~~~
-
-The Common Lisp test entry point currently reports test results only; it does
-not generate coverage artifacts. See [Common Lisp core](../guide/common-lisp-core.md)
-for the source boundaries and test workflow.
-
 ## Rust coverage
 
 Run the Rust workspace tests with LLVM coverage and the current ratchet floors:
@@ -137,7 +124,7 @@ mkdocs build --strict --config-file docs/mkdocs.yml
 ~~~
 
 The configuration reads from `docs/src` and writes the ignored `site/`
-directory. The `ncl-docs` flake check runs the same strict build.
+directory.
 
 ## Full local gate
 

@@ -53,23 +53,15 @@ nix run path:. -- --eval '(+ 2 3)'
 
 Tests are written with cl-weave. The standalone `run-tests.lisp` entry point
 loads the declared source sequence and then the test definitions. Run it
-directly with SBCL (or another supported Common Lisp implementation):
+directly with SBCL:
 
 ~~~sh
 sbcl --script run-tests.lisp
 ~~~
 
-The coverage runner fails when no tests are discovered and writes a raw
-coverage artifact plus a report directory under `artifacts/ncl-coverage/`.
-Set `NCL_COVERAGE_DIR` when the output should live elsewhere.
-The test runner's options are passed directly to the script and cl-weave.
-
-Coverage is measured for executable implementation paths. The package,
-constant, CPS-macro, and base-condition files are load-time declarations and
-are excluded from the instrumented source set; macro expansions and condition
-behavior remain covered through the tests that use them. The report shows
-expression coverage for every instrumented file and branch coverage where a
-file has branch points.
+The Common Lisp test entry point does not generate a coverage report. Rust
+coverage is provided separately by the `rust-coverage` flake app described in
+the development guide.
 
 ## Editing workflow
 

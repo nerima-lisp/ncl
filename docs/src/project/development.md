@@ -83,8 +83,8 @@ with the Common Lisp implementation and dependencies installed locally:
 sbcl --script run.lisp --eval '(+ 1 2)'
 ~~~
 
-Coverage defaults to `artifacts/ncl-coverage/`; set `NCL_COVERAGE_DIR` to use a
-different output directory. See [Common Lisp core](../guide/common-lisp-core.md)
+The Common Lisp test entry point currently reports test results only; it does
+not generate coverage artifacts. See [Common Lisp core](../guide/common-lisp-core.md)
 for the source boundaries and test workflow.
 
 ## Rust coverage

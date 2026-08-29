@@ -52,20 +52,17 @@ nix run path:. -- --eval '(+ 2 3)'
 ## Tests and coverage
 
 Tests are written with cl-weave. The standalone `run-tests.lisp` entry point
-loads the declared source sequence and then the test definitions. The flake
-exposes both the normal suite and a coverage runner; the latter loads the
-ASDF declaration before the test files so the current source is instrumented:
+loads the declared source sequence and then the test definitions. Run it
+directly with SBCL (or another supported Common Lisp implementation):
 
 ~~~sh
-nix run path:.#test
-nix run path:.#coverage
+sbcl --script run-tests.lisp
 ~~~
 
 The coverage runner fails when no tests are discovered and writes a raw
 coverage artifact plus a report directory under `artifacts/ncl-coverage/`.
 Set `NCL_COVERAGE_DIR` when the output should live elsewhere.
-The test and coverage apps use one worker and a 5000 ms per-test timeout by
-default; additional cl-weave options can be passed after the app name.
+The test runner's options are passed directly to the script and cl-weave.
 
 Coverage is measured for executable implementation paths. The package,
 constant, CPS-macro, and base-condition files are load-time declarations and

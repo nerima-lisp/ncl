@@ -61,7 +61,7 @@ until documentation updates and final verification are complete.
 
 ## Rust workspace
 
-The workspace requires Rust 1.97 or newer and pins Rust 1.97.1 in
+The workspace requires Rust 1.98.0 and pins Rust 1.98.0 in
 `rust-toolchain.toml`. Run the Rust checks from the repository root:
 
 ~~~sh
@@ -76,14 +76,11 @@ you want the same toolchain and supporting programs used by the project gates.
 
 ## Common Lisp core
 
-The direct Common Lisp core is declared by `ncl.asd`. The development shell
-provides SBCL, cl-weave, paredit-cli, and the documentation tools:
+The direct Common Lisp core is declared by `ncl.asd`. Run its ASDF entry points
+with the Common Lisp implementation and dependencies installed locally:
 
 ~~~sh
-nix develop path:.
-nix run path:. -- --eval '(+ 1 2)'
-nix run path:.#test
-nix run path:.#coverage
+sbcl --script run.lisp --eval '(+ 1 2)'
 ~~~
 
 Coverage defaults to `artifacts/ncl-coverage/`; set `NCL_COVERAGE_DIR` to use a
@@ -98,10 +95,9 @@ Run the Rust workspace tests with LLVM coverage and the current ratchet floors:
 nix run path:.#rust-coverage -- --summary-only
 ~~~
 
-The command requires at least 75% line, 78% function, and 75% region coverage.
 For a browsable report, use `--html --output-dir artifacts/rust-coverage` in
-place of `--summary-only`. The same ratchet is enforced by the
-`ncl-rust-coverage` flake check.
+place of `--summary-only`. The flake app supplies the pinned Rust and LLVM
+tools; CI remains the authoritative 88.4% line-coverage regression gate.
 
 ## Documentation
 
@@ -116,8 +112,8 @@ directory. The `ncl-docs` flake check runs the same strict build.
 
 ## Full local gate
 
-The repository-wide Nix check includes the Rust, Common Lisp, coverage, and
-documentation gates:
+The repository-wide Nix check validates the flake outputs. Run the Rust and
+documentation gates explicitly as shown above:
 
 ~~~sh
 nix flake check --no-write-lock-file

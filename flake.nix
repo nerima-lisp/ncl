@@ -57,6 +57,32 @@
             meta.mainProgram = "ncl";
           };
       });
+      apps = forAllSystems (pkgs: {
+        rust-coverage =
+          let
+            rust = pkgs.rust-bin.stable."1.98.0".default;
+          in
+          {
+            type = "app";
+            program = "${
+              pkgs.writeShellApplication {
+                name = "ncl-rust-coverage";
+                runtimeInputs = [
+                  rust
+                  pkgs.cargo-llvm-cov
+                  pkgs.llvmPackages_20.llvm
+                ];
+                text = ''
+                  export LLVM_COV="${pkgs.llvmPackages_20.llvm}/bin/llvm-cov"
+                  export LLVM_PROFDATA="${pkgs.llvmPackages_20.llvm}/bin/llvm-profdata"
+                  export NIX_LDFLAGS="-L${pkgs.libiconv}/lib ''${NIX_LDFLAGS:-}"
+                  export RUSTFLAGS="-C link-arg=-L${pkgs.libiconv}/lib ''${RUSTFLAGS:-}"
+                  exec cargo llvm-cov --locked --workspace --all-features --all-targets "$@"
+                '';
+              }
+            }/bin/ncl-rust-coverage";
+          };
+      });
       devShells = forAllSystems (pkgs: {
         default =
           let

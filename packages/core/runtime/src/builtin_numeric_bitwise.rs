@@ -77,10 +77,11 @@ mod tests {
         ];
 
         for (result, expected) in cases {
-            assert_eq!(
-                result.expect("valid bitwise arguments").as_integer(),
-                expected.as_integer()
-            );
+            let actual = match result {
+                Ok(value) => value,
+                Err(error) => panic!("valid bitwise arguments failed: {error}"),
+            };
+            assert_eq!(actual.as_integer(), expected.as_integer());
         }
     }
 

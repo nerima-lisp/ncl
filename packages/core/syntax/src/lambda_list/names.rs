@@ -59,6 +59,9 @@ pub(super) fn literal_atom(name: &str) -> bool {
         || token.name.parse::<f64>().is_ok()
 }
 
-pub(super) fn normalize_name(name: &str) -> String {
+/// Upper-cases `name` to the canonical form NCL uses for case-insensitive
+/// symbol comparisons.
+#[must_use]
+pub fn normalize_name(name: &str) -> String {
     name.to_ascii_uppercase()
 }

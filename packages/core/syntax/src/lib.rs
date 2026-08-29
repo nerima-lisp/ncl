@@ -10,7 +10,7 @@ mod symbol;
 
 pub use error::{ReadError, ReadErrorKind};
 pub use form::{Form, FormKind, Span};
-pub use lambda_list::parse_ordinary_lambda_list;
+pub use lambda_list::{normalize_name, parse_ordinary_lambda_list};
 pub use lambda_list_types::{
     LambdaListAuxiliaryParameter, LambdaListError, LambdaListErrorKind, LambdaListKeywordParameter,
     LambdaListOptionalParameter, OrdinaryLambdaList,

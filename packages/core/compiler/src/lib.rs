@@ -1,5 +1,6 @@
 //! Compiler data structures and bytecode generation for NCL forms.
 
+pub(crate) use ncl_syntax::normalize_name;
 use ncl_syntax::{
     Form, FormKind, LambdaListAuxiliaryParameter, LambdaListErrorKind, LambdaListKeywordParameter,
     LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind, parse_float_literal,

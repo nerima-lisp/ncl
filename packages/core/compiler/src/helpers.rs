@@ -1,7 +1,6 @@
 mod naming;
 pub use naming::{
-    case_default_clause, normalize_name, operator_span, special_operator_name, symbol_reference,
-    tag_name,
+    case_default_clause, operator_span, special_operator_name, symbol_reference, tag_name,
 };
 
 mod literals;

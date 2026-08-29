@@ -2,9 +2,7 @@ use crate::{Form, FormKind, Span, SymbolTokenKind, parse_symbol_token};
 
 use super::literals::literal_constant;
 
-pub fn normalize_name(name: &str) -> String {
-    name.to_ascii_uppercase()
-}
+use crate::normalize_name;
 
 pub fn operator_span(items: &[Form], fallback: Span) -> Span {
     items.first().map_or(fallback, |form| form.span)

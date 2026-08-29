@@ -6,7 +6,6 @@ use super::{
     Value,
 };
 
-#[path = "value_macro_models.rs"]
 mod macro_models;
 pub use macro_models::{
     MacroAuxiliaryParameter, MacroKeywordParameter, MacroLambdaList, MacroOptionalParameter,

@@ -9,18 +9,13 @@ use ncl_syntax::{
 use crate::environment::Environment;
 use crate::error::{ReturnValue, RuntimeError};
 
-#[path = "value_conditions.rs"]
 mod value_conditions;
-#[path = "value_display.rs"]
 mod value_display;
-#[path = "value_rational.rs"]
 mod value_rational;
 pub use value_conditions::{ConditionData, RestartData};
 pub use value_rational::Rational;
 
-#[path = "value_comparison.rs"]
 mod value_comparison;
-#[path = "value_models.rs"]
 mod value_models;
 use value_models::SlotValues;
 pub use value_models::{
@@ -29,15 +24,11 @@ pub use value_models::{
     StructureDefinition, StructureSlot,
 };
 
-#[path = "value_functions.rs"]
 mod value_functions;
 pub use value_functions::{Builtin, Function};
 
-#[path = "value_constructors.rs"]
 mod value_constructors;
-#[path = "value_stream.rs"]
 mod value_stream;
-#[path = "value_stream_impl.rs"]
 mod value_stream_impl;
 pub use value_stream::Stream;
 

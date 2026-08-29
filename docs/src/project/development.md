@@ -59,6 +59,11 @@ the workspace tests again on `main`. The source worktree can then be removed
 once `git status --short --branch` is clean. Keep the integration worktree
 until documentation updates and final verification are complete.
 
+Recent runtime refactors keep evaluator and builtin sequence responsibilities in
+separate modules. When splitting another large module, preserve the existing
+public(super) builtin surface, run the focused runtime tests, and integrate the
+change as its own commit before removing the source worktree.
+
 ## Rust workspace
 
 The workspace requires Rust 1.98.0 and pins Rust 1.98.0 in

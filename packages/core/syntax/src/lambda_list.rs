@@ -6,12 +6,11 @@ use crate::{Form, FormKind};
 mod auxiliary;
 mod keyword;
 mod markers;
-mod names;
+pub mod names;
 mod optional;
 use auxiliary::parse_auxiliary_parameter;
 use keyword::parse_keyword_parameter;
 use markers::{LambdaListSection, MarkerOutcome, insert_unique, recognize_marker};
-pub use names::normalize_name;
 use names::{marker_name, parse_name};
 use optional::parse_optional_parameter;
 /// Parse the Common Lisp ordinary lambda-list subset supported by ncl.

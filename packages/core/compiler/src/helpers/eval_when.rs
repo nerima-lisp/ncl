@@ -2,7 +2,7 @@ use crate::{CompileError, CompileErrorKind, Form, FormKind, SymbolTokenKind, par
 
 use super::literals::literal_constant;
 
-pub(super) fn compile_eval_when_executes(form: &Form) -> Result<bool, CompileError> {
+pub fn compile_eval_when_executes(form: &Form) -> Result<bool, CompileError> {
     let FormKind::List(situations) = &form.kind else {
         return Err(CompileError::new(
             CompileErrorKind::ExpectedList {

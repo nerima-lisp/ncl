@@ -1,5 +1,5 @@
-use super::{Form, normalize_name};
 use super::form_predicates::atom_name;
+use super::{Form, normalize_name};
 
 const SPECIAL_FORM_NAMES: &[&str] = &[
     "QUOTE",

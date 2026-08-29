@@ -3,7 +3,7 @@ use crate::builtins::builtin_helpers::{arity, exact, type_error};
 use crate::builtins::integer_from_usize;
 use crate::{RuntimeError, Value};
 
-pub(super) fn gethash(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn gethash(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() != 2 && arguments.len() != 3 {
         return Err(arity("gethash", "two or three", arguments.len()));
     }
@@ -32,7 +32,7 @@ pub(super) fn gethash(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )
 }
 
-pub(super) fn remhash(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn remhash(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "remhash", 2)?;
     let table = &arguments[1];
     let Some(test) = table.hash_table_test() else {
@@ -49,7 +49,7 @@ pub(super) fn remhash(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::boolean(entries.len() != previous_length))
 }
 
-pub(super) fn clrhash(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn clrhash(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "clrhash", 1)?;
     let table = &arguments[0];
     let Some(entries) = table.hash_table_entries() else {
@@ -59,7 +59,7 @@ pub(super) fn clrhash(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(table.clone())
 }
 
-pub(super) fn hash_table_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn hash_table_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "hash-table-p", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
@@ -67,7 +67,7 @@ pub(super) fn hash_table_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
-pub(super) fn hash_table_count(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn hash_table_count(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "hash-table-count", 1)?;
     let table = &arguments[0];
     let Some(entries) = table.hash_table_entries() else {
@@ -76,7 +76,7 @@ pub(super) fn hash_table_count(arguments: &[Value]) -> Result<Value, RuntimeErro
     integer_from_usize("hash-table-count", entries.borrow().len())
 }
 
-pub(super) fn hash_table_test_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn hash_table_test_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "hash-table-test", 1)?;
     let table = &arguments[0];
     let Some(test) = table.hash_table_test() else {

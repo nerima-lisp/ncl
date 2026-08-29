@@ -3,7 +3,7 @@ use crate::builtins::builtin_helpers::{arity, type_error};
 use crate::builtins::{index_argument, number_argument};
 use crate::{RuntimeError, Value};
 
-pub(super) fn make_hash_table(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn make_hash_table(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !arguments.len().is_multiple_of(2) {
         return Err(arity(
             "make-hash-table",

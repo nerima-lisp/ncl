@@ -7,7 +7,9 @@ use crate::builtins::types::type_matching::cons_vector_specs::{
 use crate::builtins::types::type_matching::numeric_specs::{
     integer_type_matches, mod_type_matches, signed_byte_type_matches, unsigned_byte_type_matches,
 };
-use crate::builtins::types::type_matching::spec_utils::{invalid_type_spec, require_type_spec_arity};
+use crate::builtins::types::type_matching::spec_utils::{
+    invalid_type_spec, require_type_spec_arity,
+};
 use crate::builtins::types::type_matching::type_name_table::type_matches;
 use crate::{RuntimeError, Value};
 

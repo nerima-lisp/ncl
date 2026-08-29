@@ -1,11 +1,10 @@
 use crate::{
-    Constant, SymbolTokenKind, parse_float_literal, parse_radix_integer_literal,
-    parse_symbol_token,
+    Constant, SymbolTokenKind, parse_float_literal, parse_radix_integer_literal, parse_symbol_token,
 };
 
 use super::naming::normalize_name;
 
-pub(super) fn literal_constant(atom: &str) -> Option<Constant> {
+pub fn literal_constant(atom: &str) -> Option<Constant> {
     let token = parse_symbol_token(atom).ok()?;
     match token.kind {
         SymbolTokenKind::Keyword => {

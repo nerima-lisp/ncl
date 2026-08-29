@@ -3,10 +3,7 @@ use crate::builtins::type_predicates::{eql_value, equalp_value};
 use crate::environment::normalize_name;
 use crate::{Function, RuntimeError, Value};
 
-pub(super) fn hash_table_option_name(
-    function: &str,
-    value: &Value,
-) -> Result<String, RuntimeError> {
+pub fn hash_table_option_name(function: &str, value: &Value) -> Result<String, RuntimeError> {
     match value {
         Value::Keyword(name)
         | Value::Symbol(name)
@@ -17,7 +14,7 @@ pub(super) fn hash_table_option_name(
     }
 }
 
-pub(super) fn hash_table_test_name(function: &str, value: &Value) -> Result<String, RuntimeError> {
+pub fn hash_table_test_name(function: &str, value: &Value) -> Result<String, RuntimeError> {
     let name = match value {
         Value::Keyword(name)
         | Value::Symbol(name)
@@ -46,7 +43,7 @@ pub(super) fn hash_table_test_name(function: &str, value: &Value) -> Result<Stri
     }
 }
 
-pub(super) fn hash_table_key_equal(test: &str, left: &Value, right: &Value) -> bool {
+pub fn hash_table_key_equal(test: &str, left: &Value, right: &Value) -> bool {
     match test {
         "EQ" => left.eq_value(right),
         "EQUAL" => left.equal_value(right),

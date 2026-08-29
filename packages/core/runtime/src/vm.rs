@@ -1,16 +1,10 @@
-use std::collections::HashMap;
 use std::rc::Rc;
 
-use ncl_compiler::{
-    DestructureLambdaList, DestructurePattern, DestructureSpec, FunctionCode, FunctionId,
-    HandlerBindClause, HandlerCaseClause, Instruction, Program, RestartBindClause,
-    RestartCaseClause,
-};
+use ncl_compiler::{FunctionCode, HandlerBindClause, HandlerCaseClause, Instruction, Program};
 use ncl_syntax::Span;
 
-use crate::environment::normalize_name;
 use crate::error::ThrowTag;
-use crate::evaluator::{ConditionHandlerBinding, RestartBinding};
+use crate::evaluator::ConditionHandlerBinding;
 use crate::{Environment, ReturnValue, Runtime, RuntimeError, Value};
 
 mod argument_binding;

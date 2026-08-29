@@ -1,4 +1,5 @@
 use crate::RuntimeError;
+use crate::builtins::builtin_hash_tables::{hash_table_option_name, hash_table_test_name};
 use crate::builtins::*;
 
 #[test]

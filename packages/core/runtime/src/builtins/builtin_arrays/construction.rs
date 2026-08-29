@@ -1,15 +1,14 @@
 use crate::builtins::{
-    arity, array_option_name, array_total_size_for, flatten_array_contents,
-    parse_array_dimensions,
+    arity, array_option_name, array_total_size_for, flatten_array_contents, parse_array_dimensions,
 };
 use crate::{RuntimeError, Value};
 
 #[allow(clippy::unnecessary_wraps)]
-pub(super) fn vector(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn vector(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::vector(arguments.to_vec()))
 }
 
-pub(super) fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("make-array", "at least one", 0));
     }

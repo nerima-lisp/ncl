@@ -2,15 +2,15 @@
 
 use super::*;
 
-mod numeric_builtins;
-mod list_builtins;
 mod array_hash_builtins;
-mod sequence_builtins;
 mod char_string_builtins;
-mod predicate_builtins;
-mod special_form_builtins;
 mod io_builtins;
+mod list_builtins;
+mod numeric_builtins;
+mod predicate_builtins;
 mod primitive_names;
+mod sequence_builtins;
+mod special_form_builtins;
 
 pub(super) type BuiltinDefinition = (&'static str, fn(&[Value]) -> Result<Value, RuntimeError>);
 

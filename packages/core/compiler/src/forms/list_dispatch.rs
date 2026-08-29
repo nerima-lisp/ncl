@@ -24,8 +24,7 @@ impl CompileState {
             {
                 return result;
             }
-            if let Some(result) =
-                self.dispatch_logic_and_binding_forms(name, function, span, items)
+            if let Some(result) = self.dispatch_logic_and_binding_forms(name, function, span, items)
             {
                 return result;
             }

@@ -34,6 +34,11 @@ use optional::parse_optional_parameter;
 /// # Errors
 ///
 /// Returns [`LambdaListError`] when the form does not follow the grammar.
+// One state machine threading ~10 mutable locals (the accumulators for each
+// lambda-list section) through a single left-to-right pass; splitting it
+// would mean either a mutable-accumulator struct or an equally long
+// argument list on a helper, neither of which shortens the real logic.
+#[allow(clippy::too_many_lines)]
 pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, LambdaListError> {
     let parameters: &[Form] = match &form.kind {
         FormKind::List(parameters) => parameters,
@@ -64,8 +69,8 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
 
     while index < parameters.len() {
         let parameter = &parameters[index];
-        if let Some(marker) = marker_name(parameter) {
-            if let Some((outcome, next_index)) = recognize_marker(
+        if let Some(marker) = marker_name(parameter)
+            && let Some((outcome, next_index)) = recognize_marker(
                 &marker,
                 parameter,
                 parameters,
@@ -75,24 +80,24 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                 has_keyword_section,
                 allow_other_keys,
                 &mut names,
-            )? {
-                match outcome {
-                    MarkerOutcome::Optional => section = LambdaListSection::Optional,
-                    MarkerOutcome::Rest { name, escaped } => {
-                        rest = Some(name);
-                        rest_escaped = escaped;
-                        section = LambdaListSection::Rest;
-                    }
-                    MarkerOutcome::Key => {
-                        has_keyword_section = true;
-                        section = LambdaListSection::Keyword;
-                    }
-                    MarkerOutcome::AllowOtherKeys => allow_other_keys = true,
-                    MarkerOutcome::Aux => section = LambdaListSection::Auxiliary,
+            )?
+        {
+            match outcome {
+                MarkerOutcome::Optional => section = LambdaListSection::Optional,
+                MarkerOutcome::Rest { name, escaped } => {
+                    rest = Some(name);
+                    rest_escaped = escaped;
+                    section = LambdaListSection::Rest;
                 }
-                index = next_index;
-                continue;
+                MarkerOutcome::Key => {
+                    has_keyword_section = true;
+                    section = LambdaListSection::Keyword;
+                }
+                MarkerOutcome::AllowOtherKeys => allow_other_keys = true,
+                MarkerOutcome::Aux => section = LambdaListSection::Auxiliary,
             }
+            index = next_index;
+            continue;
         }
 
         match section {

@@ -1,8 +1,7 @@
 use crate::Value;
 use crate::builtins::types::predicates::{
-    characterp, endp, keywordp, simple_condition_format_arguments,
-    simple_condition_format_control, simple_vector_p, symbol_name_value, symbol_package_value,
-    vectorp,
+    characterp, endp, keywordp, simple_condition_format_arguments, simple_condition_format_control,
+    simple_vector_p, symbol_name_value, symbol_package_value, vectorp,
 };
 use crate::builtins::types::special_form_support::{ecase_error, etypecase_error, the_check};
 use crate::builtins::types::type_designator::type_designator_name;

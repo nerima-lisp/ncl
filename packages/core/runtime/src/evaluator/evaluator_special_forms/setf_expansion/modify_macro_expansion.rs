@@ -1,4 +1,6 @@
-use super::{Environment, Form, FormKind, Runtime, RuntimeError, SetfExpansion, atom_name, unqualified_name};
+use super::{
+    Environment, Form, FormKind, Runtime, RuntimeError, SetfExpansion, atom_name, unqualified_name,
+};
 
 impl Runtime {
     pub(crate) fn get_modify_macro_setf_expansion(

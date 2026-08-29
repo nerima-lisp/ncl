@@ -3,7 +3,6 @@ use super::RoundingMode;
 
 mod float_quotient;
 pub use float_quotient::float_quotient_and_remainder;
-use float_quotient::{float_integer, round_float};
 
 pub fn exact_quotient_and_remainder(
     dividend: Number,
@@ -85,6 +84,7 @@ pub fn adjust_exact_quotient(
 
 #[cfg(test)]
 mod tests {
+    use super::float_quotient::{float_integer, round_float};
     use super::*;
 
     #[test]

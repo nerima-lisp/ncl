@@ -79,13 +79,8 @@ fn parses_format_parameters_through_shared_boundary_cases() {
         let mut character_index = 1;
         let mut argument_index = 0;
         assert!(
-            parse_format_directive(
-                &characters,
-                &mut character_index,
-                &[],
-                &mut argument_index,
-            )
-            .is_err(),
+            parse_format_directive(&characters, &mut character_index, &[], &mut argument_index,)
+                .is_err(),
             "{control}"
         );
     }

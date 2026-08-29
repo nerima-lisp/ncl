@@ -2,7 +2,9 @@ use crate::builtins::format::float_dollar::format_dollar_float_directive;
 use crate::builtins::format::float_helpers::{
     general_float_decimal_exponent, general_float_default_fractional_digits,
 };
-use crate::builtins::format::general::{format_general_float_directive, parse_general_float_parameters};
+use crate::builtins::format::general::{
+    format_general_float_directive, parse_general_float_parameters,
+};
 use crate::builtins::format::model::FormatParameter;
 
 #[test]

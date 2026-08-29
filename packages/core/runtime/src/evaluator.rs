@@ -6,19 +6,18 @@ use std::rc::Rc;
 use ncl_compiler::Compiler;
 use ncl_syntax::{
     Form, FormKind, LambdaListAuxiliaryParameter, LambdaListKeywordParameter,
-    LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind,
-    parse_ordinary_lambda_list, parse_symbol_token, read,
+    LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind, parse_symbol_token,
+    read,
 };
 
 use crate::builtins;
 use crate::environment::normalize_name;
-use crate::error::SignaledError;
 use crate::package::{self, PackageState};
 use crate::value::{
-    ClassDefinition, ClassSlot, MacroAuxiliaryParameter, MacroKeywordParameter, MacroLambdaList,
-    MacroOptionalParameter, MacroPattern, MethodDefinition, StructureDefinition, StructureSlot,
+    ClassDefinition, ClassSlot, MacroLambdaList, MacroPattern, MethodDefinition,
+    StructureDefinition, StructureSlot,
 };
-use crate::{Environment, ReturnValue, RuntimeError, Value};
+use crate::{Environment, RuntimeError, Value};
 
 const MAX_MACRO_EXPANSIONS: usize = 64;
 
@@ -40,8 +39,8 @@ mod variable_binding;
 mod variable_lookup;
 use evaluator_state::{
     ConditionHandlerGuard, ConditionHandlerSuspension, ConditionRestartBinding,
-    ConditionRestartGuard, DynamicGuard, DynamicState, MacroLambdaListSection, MethodContext,
-    MethodContinuation, RestartGuard, SetfExpansion,
+    ConditionRestartGuard, DynamicGuard, DynamicState, MethodContext, MethodContinuation,
+    RestartGuard, SetfExpansion,
 };
 
 #[derive(Clone, Copy)]
@@ -128,11 +127,8 @@ impl Default for Runtime {
 
 mod helpers;
 use helpers::{
-    atom_name, is_case_default_form, is_nil_form, is_operator_form, is_special_form,
-    is_special_operator_name, macro_keyword_name, prefix_argument, quasiquote_marker,
-    unqualified_name,
+    atom_name, is_nil_form, is_operator_form, is_special_form, is_special_operator_name,
+    macro_keyword_name, prefix_argument, quasiquote_marker, unqualified_name,
 };
 mod evaluator_literals;
-pub use evaluator_literals::{
-    escaped_symbol_atom, literal_atom, quoted_form_value, resolved_symbol,
-};
+pub use evaluator_literals::{literal_atom, quoted_form_value, resolved_symbol};

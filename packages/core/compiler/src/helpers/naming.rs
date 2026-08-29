@@ -2,15 +2,15 @@ use crate::{Form, FormKind, Span, SymbolTokenKind, parse_symbol_token};
 
 use super::literals::literal_constant;
 
-pub(super) fn normalize_name(name: &str) -> String {
+pub fn normalize_name(name: &str) -> String {
     name.to_ascii_uppercase()
 }
 
-pub(super) fn operator_span(items: &[Form], fallback: Span) -> Span {
+pub fn operator_span(items: &[Form], fallback: Span) -> Span {
     items.first().map_or(fallback, |form| form.span)
 }
 
-pub(super) fn symbol_reference(atom: &str) -> Option<(String, bool)> {
+pub fn symbol_reference(atom: &str) -> Option<(String, bool)> {
     let token = parse_symbol_token(atom).ok()?;
     if token.kind != SymbolTokenKind::Symbol {
         return None;
@@ -21,7 +21,7 @@ pub(super) fn symbol_reference(atom: &str) -> Option<(String, bool)> {
     Some((normalize_name(atom), false))
 }
 
-pub(super) fn special_operator_name(atom: &str) -> Option<String> {
+pub fn special_operator_name(atom: &str) -> Option<String> {
     let token = parse_symbol_token(atom).ok()?;
     if token.kind == SymbolTokenKind::Symbol && token.package.is_none() && !token.escaped {
         Some(normalize_name(&token.name))
@@ -30,7 +30,7 @@ pub(super) fn special_operator_name(atom: &str) -> Option<String> {
     }
 }
 
-pub(super) fn case_default_clause(form: &Form) -> bool {
+pub fn case_default_clause(form: &Form) -> bool {
     let FormKind::Atom(atom) = &form.kind else {
         return false;
     };
@@ -42,7 +42,7 @@ pub(super) fn case_default_clause(form: &Form) -> bool {
         && (token.name.eq_ignore_ascii_case("T") || token.name.eq_ignore_ascii_case("OTHERWISE"))
 }
 
-pub(super) fn tag_name(form: &Form) -> Option<String> {
+pub fn tag_name(form: &Form) -> Option<String> {
     let FormKind::Atom(name) = &form.kind else {
         return None;
     };

@@ -2,6 +2,7 @@
 use super::*;
 
 mod application;
+#[cfg(test)]
 #[allow(clippy::wildcard_imports)]
 pub(super) use application::*;
 #[cfg(test)]
@@ -42,8 +43,6 @@ mod handler_restart_dispatch;
 use handler_restart_dispatch::*;
 
 mod pre_control;
-#[allow(clippy::wildcard_imports)]
-use pre_control::*;
 
 mod stack_ops;
 #[allow(clippy::wildcard_imports)]

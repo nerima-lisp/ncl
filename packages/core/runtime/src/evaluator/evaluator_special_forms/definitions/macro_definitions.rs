@@ -1,4 +1,6 @@
-use super::{Environment, Form, MacroPattern, Runtime, RuntimeError, Value, atom_name, resolved_symbol};
+use super::{
+    Environment, Form, MacroPattern, Runtime, RuntimeError, Value, atom_name, resolved_symbol,
+};
 
 impl Runtime {
     pub(crate) fn special_defmacro(

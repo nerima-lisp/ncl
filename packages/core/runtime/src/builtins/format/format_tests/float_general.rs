@@ -1,4 +1,6 @@
-use crate::builtins::format::general::{format_general_float_directive, parse_general_float_parameters};
+use crate::builtins::format::general::{
+    format_general_float_directive, parse_general_float_parameters,
+};
 use crate::builtins::format::model::FormatParameter;
 
 #[test]
@@ -38,13 +40,10 @@ fn formats_general_float_non_finite_values_and_rejects_colon_modifier() {
         "unexpected output: {formatted:?}"
     );
     assert!(format_general_float_directive(1.0, &[], true, false).is_err());
-    assert!(format_general_float_directive(
-        1.0,
-        &[FormatParameter::Number(i64::MAX)],
-        false,
-        false,
-    )
-    .is_err());
+    assert!(
+        format_general_float_directive(1.0, &[FormatParameter::Number(i64::MAX)], false, false,)
+            .is_err()
+    );
     assert!(
         format_general_float_directive(
             1.0,
@@ -92,11 +91,8 @@ fn formats_general_float_fixed_and_exponential_forms_and_validates_parameters() 
     );
 
     assert!(
-        parse_general_float_parameters(&[
-            FormatParameter::Missing,
-            FormatParameter::Number(-1),
-        ])
-        .is_err()
+        parse_general_float_parameters(&[FormatParameter::Missing, FormatParameter::Number(-1),])
+            .is_err()
     );
     assert!(
         parse_general_float_parameters(&[

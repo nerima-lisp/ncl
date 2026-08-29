@@ -1,4 +1,6 @@
-use super::{Environment, Form, Runtime, RuntimeError, Value, atom_name, resolved_symbol, unqualified_name};
+use super::{
+    Environment, Form, Runtime, RuntimeError, Value, atom_name, resolved_symbol, unqualified_name,
+};
 
 impl Runtime {
     pub(crate) fn special_defsetf(

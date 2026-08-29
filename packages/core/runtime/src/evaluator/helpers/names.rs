@@ -1,5 +1,5 @@
-use super::{Form, SymbolTokenKind, literal_atom, normalize_name, package, parse_symbol_token};
 use super::form_predicates::atom_name;
+use super::{Form, SymbolTokenKind, literal_atom, normalize_name, package, parse_symbol_token};
 
 pub(in crate::evaluator) fn unqualified_name(name: &str) -> String {
     let normalized = normalize_name(name);

@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::environment::normalize_name;
 use crate::evaluator::quoted_form_value;
 use crate::package::{self, COMMON_LISP_PACKAGE, KEYWORD_PACKAGE};
@@ -31,7 +29,7 @@ use builtin_arrays::{
 };
 
 mod builtin_helpers;
-use builtin_helpers::{arity, exact, number_error, type_error};
+use builtin_helpers::{arity, exact, type_error};
 
 mod builtin_reading;
 use builtin_reading::{read, read_from_string, read_preserving_whitespace};

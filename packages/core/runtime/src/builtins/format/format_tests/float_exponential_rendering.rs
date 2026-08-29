@@ -41,13 +41,8 @@ fn formats_exponential_float_boundary_cases_from_table() {
     }
 
     assert!(
-        format_exponential_float_directive(
-            1.0,
-            &[FormatParameter::Character('x')],
-            false,
-            false,
-        )
-        .is_err()
+        format_exponential_float_directive(1.0, &[FormatParameter::Character('x')], false, false,)
+            .is_err()
     );
     assert!(
         format_exponential_float_directive(

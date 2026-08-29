@@ -28,10 +28,8 @@ use justification::*;
 mod exponential;
 #[allow(clippy::wildcard_imports)]
 use exponential::*;
-mod float_helpers;
-#[allow(clippy::wildcard_imports)]
-use float_helpers::*;
 mod entry;
+mod float_helpers;
 pub use entry::format_control;
 pub(super) use entry::format_value;
 

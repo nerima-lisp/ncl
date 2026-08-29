@@ -4,7 +4,7 @@ use crate::builtins::{
 };
 use crate::{RuntimeError, Value};
 
-pub(super) fn aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("aref", "at least one", 0));
     }
@@ -23,7 +23,7 @@ pub(super) fn aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .ok_or_else(|| out_of_bounds("aref", index))
 }
 
-pub(super) fn svref(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn svref(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "svref", 2)?;
     let index = index_argument("svref", &arguments[1])?;
     let Value::Vector(items) = &arguments[0] else {
@@ -42,7 +42,7 @@ fn bit_value(function: &str, value: &Value) -> Result<(), RuntimeError> {
     }
 }
 
-pub(super) fn bit(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn bit(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("bit", "array and subscripts", 0));
     }
@@ -63,7 +63,7 @@ pub(super) fn bit(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(value)
 }
 
-pub(super) fn row_major_aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn row_major_aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "row-major-aref", 2)?;
     let dimensions = dimensions_for_array(&arguments[0])
         .ok_or_else(|| type_error("row-major-aref", "array", &arguments[0]))?;
@@ -77,7 +77,7 @@ pub(super) fn row_major_aref(arguments: &[Value]) -> Result<Value, RuntimeError>
         .ok_or_else(|| out_of_bounds("row-major-aref", index))
 }
 
-pub(super) fn array_row_major_index(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn array_row_major_index(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("array-row-major-index", "array and subscripts", 0));
     }
@@ -96,7 +96,7 @@ pub(super) fn array_row_major_index(arguments: &[Value]) -> Result<Value, Runtim
     )
 }
 
-pub(super) fn array_in_bounds_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn array_in_bounds_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("array-in-bounds-p", "array and subscripts", 0));
     }

@@ -28,6 +28,7 @@ impl fmt::Display for Value {
                 value => write!(formatter, "#\\{value}"),
             },
             Self::Stream(stream) => write!(formatter, "#<{}>", stream.borrow().kind_name()),
+            Self::RandomState(_) => formatter.write_str("#<RANDOM-STATE>"),
             Self::Package(value) => write!(formatter, "#<PACKAGE \"{value}\">"),
             Self::Environment(_) => formatter.write_str("#<ENVIRONMENT>"),
             Self::Symbol(value) => formatter.write_str(value),

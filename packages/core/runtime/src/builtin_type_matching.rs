@@ -455,6 +455,7 @@ pub(super) fn type_matches(value: &Value, type_name: &str) -> Result<bool, Runti
             matches!(value, Value::String(_))
         }
         "STREAM" => matches!(value, Value::Stream(_)),
+        "RANDOM-STATE" => matches!(value, Value::RandomState(_)),
         "SYMBOL" => matches!(
             value,
             Value::Nil

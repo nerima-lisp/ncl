@@ -41,6 +41,9 @@ mod value_stream;
 mod value_stream_impl;
 pub use value_stream::Stream;
 
+mod random_state;
+pub use random_state::RandomState;
+
 #[derive(Clone)]
 /// A dynamically typed NCL value.
 pub enum Value {
@@ -62,6 +65,8 @@ pub enum Value {
     Character(char),
     /// A stream backed by runtime state.
     Stream(Rc<RefCell<Stream>>),
+    /// A `RANDOM-STATE` object backing the `RANDOM` family of functions.
+    RandomState(Rc<RefCell<RandomState>>),
     /// A package name.
     Package(Rc<str>),
     /// A lexical environment.
@@ -550,6 +555,7 @@ impl Value {
             Self::String(_) => "STRING",
             Self::Character(_) => "CHARACTER",
             Self::Stream(_) => "STREAM",
+            Self::RandomState(_) => "RANDOM-STATE",
             Self::Package(_) => "PACKAGE",
             Self::Environment(_) => "ENVIRONMENT",
             Self::Symbol(_) | Self::SymbolExact(_) | Self::UninternedSymbol(_) => "SYMBOL",

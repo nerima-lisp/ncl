@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use super::{Environment, Rational, RuntimeError, Stream, Value};
+use super::{Environment, RandomState, Rational, RuntimeError, Stream, Value};
 
 impl Value {
     /// Converts a Rust boolean to the Lisp truth value representation.
@@ -49,6 +49,17 @@ impl Value {
 
     pub(crate) fn file_io_stream(path: PathBuf, source: &str, append: bool) -> Self {
         Self::Stream(Rc::new(RefCell::new(Stream::file_io(path, source, append))))
+    }
+
+    pub(crate) fn random_state(state: RandomState) -> Self {
+        Self::RandomState(Rc::new(RefCell::new(state)))
+    }
+
+    pub(crate) fn random_state_reference(&self) -> Option<Rc<RefCell<RandomState>>> {
+        match self {
+            Self::RandomState(state) => Some(Rc::clone(state)),
+            _ => None,
+        }
     }
 
     /// Creates a package designator with the supplied name.

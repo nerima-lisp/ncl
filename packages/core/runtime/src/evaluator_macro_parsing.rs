@@ -486,6 +486,7 @@ impl Runtime {
             Value::Array { .. }
             | Value::HashTable { .. }
             | Value::Stream(_)
+            | Value::RandomState(_)
             | Value::Values(_)
             | Value::Condition(_)
             | Value::Restart(_)

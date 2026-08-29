@@ -62,6 +62,10 @@ use builtin_array_helpers::*;
 mod builtin_stream_predicates;
 use builtin_stream_predicates::{close_stream, input_stream_p, output_stream_p, streamp};
 
+#[path = "builtin_random.rs"]
+mod builtin_random;
+use builtin_random::{make_random_state, random, random_state_p};
+
 #[path = "builtin_format_data.rs"]
 mod builtin_format_data;
 use builtin_format_data::{ENGLISH_NUMBER_GROUPS, FORMAT_DIGITS};

@@ -230,6 +230,9 @@ pub(super) const BUILTIN_DEFINITIONS: &[BuiltinDefinition] = &[
     ("streamp", streamp as _),
     ("input-stream-p", input_stream_p as _),
     ("output-stream-p", output_stream_p as _),
+    ("random", random as _),
+    ("make-random-state", make_random_state as _),
+    ("random-state-p", random_state_p as _),
 ];
 
 pub(super) const PRIMITIVE_NAMES: &[&str] = &[

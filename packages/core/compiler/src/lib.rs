@@ -2,9 +2,8 @@
 
 use ncl_syntax::{
     Form, FormKind, LambdaListAuxiliaryParameter, LambdaListErrorKind, LambdaListKeywordParameter,
-    LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind,
-    parse_float_literal, parse_ordinary_lambda_list, parse_radix_integer_literal,
-    parse_symbol_token,
+    LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind, parse_float_literal,
+    parse_ordinary_lambda_list, parse_radix_integer_literal, parse_symbol_token,
 };
 use std::collections::HashSet;
 

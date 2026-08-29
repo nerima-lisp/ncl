@@ -1,18 +1,20 @@
 /// Parse a Common Lisp fixed- or general-radix integer literal.
+#[must_use]
 pub fn parse_radix_integer_literal(name: &str) -> Option<i64> {
     let (base, digits_start) = radix_integer_parts(name)?;
     parse_signed_digits(&name[digits_start..], base)
 }
 
 /// Parse a Common Lisp floating-point literal using any standard exponent marker.
+#[must_use]
 pub fn parse_float_literal(name: &str) -> Option<f64> {
     if let Ok(value) = name.parse::<f64>() {
         return Some(value);
     }
 
-    let (marker, _) = name
-        .char_indices()
-        .find(|(_, character)| matches!(character, 's' | 'S' | 'f' | 'F' | 'd' | 'D' | 'l' | 'L'))?;
+    let (marker, _) = name.char_indices().find(|(_, character)| {
+        matches!(character, 's' | 'S' | 'f' | 'F' | 'd' | 'D' | 'l' | 'L')
+    })?;
     let mut normalized = String::with_capacity(name.len());
     normalized.push_str(&name[..marker]);
     normalized.push('e');
@@ -20,7 +22,7 @@ pub fn parse_float_literal(name: &str) -> Option<f64> {
     normalized.parse::<f64>().ok()
 }
 
-pub(crate) fn is_valid_radix_integer_literal(name: &str) -> bool {
+pub fn is_valid_radix_integer_literal(name: &str) -> bool {
     let Some((base, digits_start)) = radix_integer_parts(name) else {
         return false;
     };
@@ -83,9 +85,7 @@ fn valid_signed_digits(digits: &str, base: u32) -> bool {
     };
     !digits.is_empty()
         && digits.is_ascii()
-        && digits
-            .bytes()
-            .all(|digit| char::from(digit).to_digit(base).is_some())
+        && digits.bytes().all(|digit| char::from(digit).is_digit(base))
 }
 
 #[cfg(test)]
@@ -95,14 +95,7 @@ mod tests {
     #[test]
     fn parses_common_lisp_float_exponent_markers() {
         for literal in [
-            "1.25s0",
-            "1.25S0",
-            "1.25f0",
-            "1.25F0",
-            "1.25d0",
-            "1.25D0",
-            "1.25l0",
-            "1.25L0",
+            "1.25s0", "1.25S0", "1.25f0", "1.25F0", "1.25d0", "1.25D0", "1.25l0", "1.25L0",
         ] {
             assert_eq!(parse_float_literal(literal), Some(1.25), "{literal}");
         }

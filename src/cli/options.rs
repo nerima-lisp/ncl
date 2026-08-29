@@ -13,9 +13,12 @@ impl CliOptions {
     pub(super) fn parse(arguments: &[String]) -> Result<Self, CliError> {
         let mut options = Self::default();
         let mut index = 0;
+        let mut options_ended = false;
         while index < arguments.len() {
-            match arguments[index].as_str() {
-                "--eval" | "-e" => {
+            let argument = arguments[index].as_str();
+            match argument {
+                "--" if !options_ended => options_ended = true,
+                "--eval" | "-e" if !options_ended => {
                     index += 1;
                     let Some(source) = arguments.get(index) else {
                         return Err(CliError::Usage(
@@ -24,17 +27,20 @@ impl CliOptions {
                     };
                     options.evaluations.push(source.clone());
                 }
-                "--file" | "-f" => {
+                "--file" | "-f" if !options_ended => {
                     index += 1;
                     let Some(path) = arguments.get(index) else {
                         return Err(CliError::Usage("--file requires a path".to_string()));
                     };
+                    if options.file.is_some() {
+                        return Err(CliError::Usage("--file may only be given once".to_string()));
+                    }
                     options.file = Some(path.clone());
                 }
-                "--repl" => options.repl = true,
-                "--compiled" => options.compiled = true,
-                "--quiet" | "-q" => options.quiet = true,
-                argument if argument.starts_with('-') => {
+                "--repl" if !options_ended => options.repl = true,
+                "--compiled" if !options_ended => options.compiled = true,
+                "--quiet" | "-q" if !options_ended => options.quiet = true,
+                _ if !options_ended && argument.starts_with('-') => {
                     return Err(CliError::Usage(format!("unknown option {argument}")));
                 }
                 path => {
@@ -101,6 +107,37 @@ mod tests {
             .err()
             .ok_or_else(|| "unknown options should fail".to_string())?;
         assert!(format!("{error:?}").contains("unknown option --unknown"));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_a_repeated_file_option() -> Result<(), String> {
+        let error = CliOptions::parse(&arguments(&["--file", "a", "--file", "b"]))
+            .err()
+            .ok_or_else(|| "repeated --file should fail".to_string())?;
+        assert!(format!("{error:?}").contains("--file may only be given once"));
+        Ok(())
+    }
+
+    #[test]
+    fn double_dash_ends_option_parsing() -> Result<(), String> {
+        let error = CliOptions::parse(&arguments(&["--", "--repl"]))
+            .err()
+            .ok_or_else(|| "an argument after -- should not be parsed as an option".to_string())?;
+        assert!(
+            format!("{error:?}").contains("unexpected argument --repl"),
+            "a flag-shaped argument after -- must be treated as a positional argument, not \
+             re-enter option parsing"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_second_double_dash_after_the_first_is_a_positional_argument() -> Result<(), String> {
+        let error = CliOptions::parse(&arguments(&["--", "--"]))
+            .err()
+            .ok_or_else(|| "a second -- should be a positional argument".to_string())?;
+        assert!(format!("{error:?}").contains("unexpected argument --"));
         Ok(())
     }
 }

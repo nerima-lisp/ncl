@@ -4,6 +4,8 @@ mod define;
 mod mutations;
 mod names;
 mod queries;
+#[cfg(test)]
+mod tests;
 
 pub use names::{
     canonical_symbol_name, normalize_package_name, normalize_symbol_name, split_symbol,

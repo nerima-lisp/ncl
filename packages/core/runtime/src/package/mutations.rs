@@ -79,10 +79,18 @@ impl PackageState {
         let package = self.canonical_package_name(package);
         let name = normalize_symbol_name(name);
         self.packages.get_mut(&package).is_some_and(|entry| {
-            entry.symbols.remove(&name)
-                || entry.exports.remove(&name)
-                || entry.imports.remove(&name).is_some()
-                || entry.shadows.remove(&name)
+            // Every removal must run unconditionally: a name can be present
+            // in more than one of these sets at once (e.g. exported AND
+            // shadowed), and `||` would short-circuit after the first hit,
+            // leaving the rest of the stale entries behind.
+            let removed_from_symbols = entry.symbols.remove(&name);
+            let removed_from_exports = entry.exports.remove(&name);
+            let removed_from_imports = entry.imports.remove(&name).is_some();
+            let removed_from_shadows = entry.shadows.remove(&name);
+            removed_from_symbols
+                || removed_from_exports
+                || removed_from_imports
+                || removed_from_shadows
         })
     }
 

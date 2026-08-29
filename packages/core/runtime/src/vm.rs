@@ -846,16 +846,12 @@ mod tests {
         ];
 
         for (pattern, value, expected_bindings) in cases {
-            destructure_value(&pattern, value, &runtime, &environment, span)
-                .expect("valid destructure pattern");
+            assert!(destructure_value(&pattern, value, &runtime, &environment, span).is_ok());
             for (name, expected) in expected_bindings {
-                assert_eq!(
-                    environment
-                        .lookup(name)
-                        .expect("binding exists")
-                        .to_string(),
-                    expected
-                );
+                let Some(actual) = environment.lookup(name) else {
+                    panic!("binding {name} was not created");
+                };
+                assert_eq!(actual.to_string(), expected);
             }
         }
     }

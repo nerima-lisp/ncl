@@ -13,7 +13,6 @@ use crate::error::ThrowTag;
 use crate::evaluator::{ConditionHandlerBinding, RestartBinding};
 use crate::{Environment, ReturnValue, Runtime, RuntimeError, Value};
 
-#[path = "vm_destructuring.rs"]
 mod destructuring;
 #[allow(clippy::wildcard_imports)]
 use destructuring::*;
@@ -370,7 +369,6 @@ fn run_code(
     run_code_from(runtime, program, function, environment, span, 0)
 }
 
-#[path = "vm_execution.rs"]
 mod execution;
 #[allow(clippy::wildcard_imports)]
 use execution::*;

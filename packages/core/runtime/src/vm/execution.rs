@@ -1,9 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-#[path = "vm_execution_branch.rs"]
 mod branch;
-#[path = "vm_execution_runtime.rs"]
 mod execution_runtime;
 #[allow(clippy::wildcard_imports)]
 use branch::*;
@@ -619,7 +617,6 @@ pub(super) fn execute_stack_instruction(
     }
 }
 
-#[path = "vm_control_scopes.rs"]
 mod control_scopes;
 #[allow(clippy::wildcard_imports)]
 use control_scopes::*;

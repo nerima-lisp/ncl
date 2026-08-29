@@ -813,6 +813,54 @@ mod tests {
     }
 
     #[test]
+    fn binds_nested_destructure_patterns() {
+        let runtime = Runtime::new();
+        let environment = Environment::new();
+        let span = Span::new(0, 1);
+        let cases = [
+            (
+                DestructurePattern::Name("value".to_string()),
+                Value::Integer(1),
+                vec![("value", "1")],
+            ),
+            (
+                DestructurePattern::List(vec![
+                    DestructurePattern::Name("first".to_string()),
+                    DestructurePattern::Name("second".to_string()),
+                ]),
+                Value::list(vec![Value::Integer(1), Value::Integer(2)]),
+                vec![("first", "1"), ("second", "2")],
+            ),
+            (
+                DestructurePattern::Dotted {
+                    items: vec![DestructurePattern::Name("first".to_string())],
+                    tail: Box::new(DestructurePattern::Name("rest".to_string())),
+                },
+                Value::list(vec![
+                    Value::Integer(1),
+                    Value::Integer(2),
+                    Value::Integer(3),
+                ]),
+                vec![("first", "1"), ("rest", "(2 3)")],
+            ),
+        ];
+
+        for (pattern, value, expected_bindings) in cases {
+            destructure_value(&pattern, value, &runtime, &environment, span)
+                .expect("valid destructure pattern");
+            for (name, expected) in expected_bindings {
+                assert_eq!(
+                    environment
+                        .lookup(name)
+                        .expect("binding exists")
+                        .to_string(),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
     fn executes_stack_transformations_as_a_table() {
         let runtime = Runtime::new();
         let span = Span::new(0, 1);

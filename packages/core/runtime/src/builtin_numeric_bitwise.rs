@@ -54,3 +54,40 @@ pub fn integer_length(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let magnitude = (if value < 0 { !value } else { value }).cast_unsigned();
     Ok(Value::Integer(i64::from(64 - magnitude.leading_zeros())))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bitwise_operations_cover_identities_and_boundaries() {
+        let cases = [
+            (logand(&[]), Value::Integer(-1)),
+            (logior(&[]), Value::Integer(0)),
+            (
+                logxor(&[Value::Integer(0b1010), Value::Integer(0b0110)]),
+                Value::Integer(0b1100),
+            ),
+            (lognot(&[Value::Integer(0)]), Value::Integer(-1)),
+            (logcount(&[Value::Integer(-1)]), Value::Integer(0)),
+            (
+                integer_length(&[Value::Integer(i64::MIN)]),
+                Value::Integer(63),
+            ),
+        ];
+
+        for (result, expected) in cases {
+            assert_eq!(
+                result.expect("valid bitwise arguments").as_integer(),
+                expected.as_integer()
+            );
+        }
+    }
+
+    #[test]
+    fn bitwise_operations_reject_invalid_shapes() {
+        assert!(lognot(&[]).is_err());
+        assert!(logtest(&[Value::Integer(1)]).is_err());
+        assert!(logand(&[Value::Nil]).is_err());
+    }
+}

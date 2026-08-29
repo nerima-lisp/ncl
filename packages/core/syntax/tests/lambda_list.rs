@@ -195,3 +195,26 @@ fn rejects_lambda_list_boundary_and_duplicate_cases_from_a_table() {
         );
     }
 }
+
+#[test]
+fn rejects_section_markers_in_invalid_positions() {
+    for source in [
+        "(&rest first &rest second)",
+        "(&key first &rest rest)",
+        "(&aux first &rest rest)",
+        "(&rest rest extra)",
+        "(&allow-other-keys)",
+        "(&key first &allow-other-keys second)",
+        "(&key first &allow-other-keys &allow-other-keys)",
+        "(&aux first &aux second)",
+        "(&key first &key second)",
+        "(&key first &aux second &key third)",
+    ] {
+        let form = &read(source).expect("source should parse")[0];
+        let error = parse_ordinary_lambda_list(form).unwrap_err();
+        assert!(
+            matches!(error.kind, LambdaListErrorKind::InvalidForm { .. }),
+            "{source}"
+        );
+    }
+}

@@ -56,9 +56,18 @@ mod tests {
     #[test]
     fn converts_between_characters_codes_and_ints() {
         let cases = [
-            (character_value(&[Value::string("A")]), Value::Character('A')),
-            (character_value(&[Value::Character('A')]), Value::Character('A')),
-            (code_char(&[Value::Integer(0x1f600)]), Value::Character('😀')),
+            (
+                character_value(&[Value::string("A")]),
+                Value::Character('A'),
+            ),
+            (
+                character_value(&[Value::Character('A')]),
+                Value::Character('A'),
+            ),
+            (
+                code_char(&[Value::Integer(0x1f600)]),
+                Value::Character('😀'),
+            ),
             (char_code(&[Value::Character('A')]), Value::Integer(65)),
             (char_int(&[Value::Character('A')]), Value::Integer(65)),
             (int_char(&[Value::Integer(65)]), Value::Character('A')),

@@ -1,7 +1,7 @@
 use ncl_syntax::{Form, FormKind};
 
 use crate::environment::normalize_name;
-use crate::{RuntimeError, Runtime, package};
+use crate::{Runtime, RuntimeError, package};
 
 impl Runtime {
     pub(super) fn package_name_from_form(form: &Form) -> Result<String, RuntimeError> {

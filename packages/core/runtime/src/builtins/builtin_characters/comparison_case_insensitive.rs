@@ -33,6 +33,8 @@ pub fn character_case_greater_equal(arguments: &[Value]) -> Result<Value, Runtim
 mod tests {
     use super::*;
 
+    type CharComparisonFn = fn(&[Value]) -> Result<Value, RuntimeError>;
+
     fn ok_string(result: Result<Value, RuntimeError>) -> String {
         match result {
             Ok(value) => value.to_string(),
@@ -57,7 +59,7 @@ mod tests {
             ok_string(character_case_not_equal(&[cv('A'), cv('a')])),
             Value::Nil.to_string()
         );
-        let unary_functions: [fn(&[Value]) -> Result<Value, RuntimeError>; 6] = [
+        let unary_functions: [CharComparisonFn; 6] = [
             character_case_equal,
             character_case_not_equal,
             character_case_less_than,

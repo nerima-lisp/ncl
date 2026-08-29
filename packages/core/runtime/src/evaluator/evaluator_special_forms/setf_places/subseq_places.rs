@@ -1,10 +1,10 @@
-use super::{Environment, Form, RuntimeError, Runtime, Span, Value};
+use super::{Environment, Form, Runtime, RuntimeError, Span, Value};
 
 impl Runtime {
     pub(super) fn set_subseq_place(
         &self,
         args: &[Form],
-        value: Value,
+        value: &Value,
         environment: &Environment,
         place_span: Span,
     ) -> Result<(), RuntimeError> {
@@ -37,7 +37,7 @@ impl Runtime {
             return Err(Self::invalid("SETF SUBSEQ bounds are invalid", place_span));
         }
 
-        let replacement = match &value {
+        let replacement = match value {
             Value::Nil => Vec::new(),
             Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
             Value::String(text) => text.chars().map(Value::Character).collect(),

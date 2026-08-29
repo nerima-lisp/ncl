@@ -79,7 +79,7 @@ impl Runtime {
             "ELT" | "CHAR" | "SCHAR" => {
                 self.set_element_place(lookup_name.as_str(), args, value, environment, place.span)
             }
-            "SUBSEQ" => self.set_subseq_place(args, value, environment, place.span),
+            "SUBSEQ" => self.set_subseq_place(args, &value, environment, place.span),
             "SVREF" | "ROW-MAJOR-AREF" => self.set_vector_index_place(
                 lookup_name.as_str(),
                 args,

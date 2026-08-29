@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(crate) fn ecase_error(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn ecase_error(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "__NCL_ECASE_ERROR", 0)?;
     Err(RuntimeError::InvalidForm {
         message: "ecase fell through".to_string(),
@@ -9,7 +9,7 @@ pub(crate) fn ecase_error(arguments: &[Value]) -> Result<Value, RuntimeError> {
     })
 }
 
-pub(crate) fn etypecase_error(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn etypecase_error(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "__NCL_ETYPECASE_ERROR", 0)?;
     Err(RuntimeError::InvalidForm {
         message: "etypecase fell through".to_string(),

@@ -1,4 +1,4 @@
-use super::{Environment, Form, RuntimeError, Runtime, Span, Value};
+use super::{Environment, Form, Runtime, RuntimeError, Span, Value};
 use crate::environment::normalize_name;
 
 impl Runtime {

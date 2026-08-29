@@ -2,10 +2,7 @@ use std::path::Path;
 
 use crate::{RuntimeError, Value};
 
-pub(super) fn open_input_file(
-    path: &Path,
-    if_does_not_exist: &str,
-) -> Result<Value, RuntimeError> {
+pub(super) fn open_input_file(path: &Path, if_does_not_exist: &str) -> Result<Value, RuntimeError> {
     if !path.exists() {
         match if_does_not_exist {
             "NIL" => return Ok(Value::Nil),

@@ -1,9 +1,9 @@
 use ncl_syntax::{Form, FormKind};
 
 use crate::environment::normalize_name;
-use crate::evaluator::helpers::atom_name;
 use crate::evaluator::evaluator_literals::resolved_symbol;
-use crate::evaluator::{MacroBindingContext, ModifyMacroContext, MAX_MACRO_EXPANSIONS};
+use crate::evaluator::helpers::atom_name;
+use crate::evaluator::{MAX_MACRO_EXPANSIONS, MacroBindingContext, ModifyMacroContext};
 use crate::{Environment, Runtime, RuntimeError, Value};
 
 impl Runtime {

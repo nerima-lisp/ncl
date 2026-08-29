@@ -2,18 +2,8 @@
 
 use crate::FunctionId;
 
-/// `Constant`, `Quote`, `QuasiQuote`, `Load`, `FunctionLoad`, `IsBound`, and
-/// `MakeClosure` push one value. `Define`, `Set`, and `Setf` install the
-/// primary value at the top of the stack and leave that value on the stack.
-/// `DefineFunction` consumes a closure and stores it in the lexical function
-/// namespace. `DefineValues` preserves a multiple-value carrier. `Psetq`
-/// consumes all RHS values and leaves `NIL`; `MultipleValueSetq` consumes one
-/// carrier and leaves its primary value. `JumpIfFalse` consumes its condition.
-/// Scope operations do not alter the value stack, and call-like instructions
-/// replace their callee and arguments with a result. `Values` creates one
-/// carrier stack entry, `MultipleValueList` converts one carrier to a list,
-/// while `BindValues` and `Destructure` consume one carrier without pushing a
-/// result.
+/// A recursive `DESTRUCTURING-BIND` binding pattern: a single name, a nested
+/// proper-list pattern, or a dotted-list pattern with its own tail pattern.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DestructurePattern {
     /// A single symbol binding.
@@ -96,7 +86,7 @@ pub enum DestructureSpec {
 ///
 /// Internal to [`crate::destructuring`]; not part of the crate's public API.
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub(super) enum DestructureLambdaListSection {
+pub enum DestructureLambdaListSection {
     Required,
     Optional,
     Rest,

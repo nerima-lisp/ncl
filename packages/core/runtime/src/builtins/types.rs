@@ -7,19 +7,19 @@ use type_matching::*;
 
 mod special_form_support;
 #[allow(clippy::wildcard_imports)]
-pub(crate) use special_form_support::*;
+pub use special_form_support::*;
 
 mod type_designator;
 #[allow(clippy::wildcard_imports)]
-pub(crate) use type_designator::*;
+pub use type_designator::*;
 
 mod predicates;
 #[allow(clippy::wildcard_imports)]
-pub(crate) use predicates::*;
+pub use predicates::*;
 
 mod subtype_entry;
 #[allow(clippy::wildcard_imports)]
-pub(crate) use subtype_entry::*;
+pub use subtype_entry::*;
 
 mod subtype_validation;
 #[allow(clippy::wildcard_imports)]

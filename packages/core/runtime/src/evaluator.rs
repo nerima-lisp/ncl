@@ -12,7 +12,7 @@ use ncl_syntax::{
 
 use crate::builtins;
 use crate::environment::normalize_name;
-use crate::error::{SignaledError, ThrowTag};
+use crate::error::SignaledError;
 use crate::package::{self, PackageState};
 use crate::value::{
     ClassDefinition, ClassSlot, MacroAuxiliaryParameter, MacroKeywordParameter, MacroLambdaList,
@@ -128,9 +128,9 @@ impl Default for Runtime {
 
 mod helpers;
 use helpers::{
-    atom_name, control_tag, is_case_default_form, is_macro_keyword_form, is_nil_form,
-    is_operator_form, is_special_form, is_special_operator_name, macro_dotted_parts,
-    macro_keyword_name, prefix_argument, quasiquote_marker, unqualified_name,
+    atom_name, is_case_default_form, is_nil_form, is_operator_form, is_special_form,
+    is_special_operator_name, macro_keyword_name, prefix_argument, quasiquote_marker,
+    unqualified_name,
 };
 mod evaluator_literals;
 pub use evaluator_literals::{

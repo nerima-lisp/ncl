@@ -5,7 +5,10 @@ impl CompileState {
     /// Applies one `&`-prefixed lambda-list marker (`marker` must already be
     /// known to start with `&`) and returns the index to resume scanning
     /// from.
-    #[allow(clippy::too_many_arguments)]
+    // A single match over the closed set of CL lambda-list markers reads
+    // more clearly as one dispatch than as eight near-identical helpers
+    // each re-threading the same six parameters.
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     pub(super) fn compile_destructuring_apply_marker(
         marker: &str,
         parameter: &Form,
@@ -58,8 +61,7 @@ impl CompileState {
                 {
                     return Err(CompileError::new(
                         CompileErrorKind::InvalidForm {
-                            message: "&rest or &body must be followed by one parameter"
-                                .to_string(),
+                            message: "&rest or &body must be followed by one parameter".to_string(),
                         },
                         parameter.span,
                     ));
@@ -82,8 +84,9 @@ impl CompileState {
                 {
                     return Err(CompileError::new(
                         CompileErrorKind::InvalidForm {
-                            message: "&key is out of order or repeated in destructuring lambda list"
-                                .to_string(),
+                            message:
+                                "&key is out of order or repeated in destructuring lambda list"
+                                    .to_string(),
                         },
                         parameter.span,
                     ));

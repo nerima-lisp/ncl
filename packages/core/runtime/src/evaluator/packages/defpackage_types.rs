@@ -24,6 +24,11 @@ pub(super) enum DefpackageOperation {
 
 /// Accumulates `DEFPACKAGE` option state across a single left-to-right pass
 /// over the option forms, before being converted into a [`DefpackageSpec`].
+///
+/// The `saw_*` flags each independently guard against one `DEFPACKAGE`
+/// clause repeating, which is why there are four of them rather than one
+/// combined state.
+#[allow(clippy::struct_excessive_bools)]
 pub(super) struct DefpackageBuilder {
     pub(super) nicknames: Vec<String>,
     pub(super) use_packages: Vec<String>,

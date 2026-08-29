@@ -1,4 +1,4 @@
-use super::{Environment, Form, RuntimeError, Runtime, Span, Value};
+use super::{Environment, Form, Runtime, RuntimeError, Span, Value};
 
 impl Runtime {
     pub(super) fn set_vector_index_place(

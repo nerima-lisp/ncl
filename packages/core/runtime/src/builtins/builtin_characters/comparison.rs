@@ -88,6 +88,8 @@ pub(super) fn compare_characters_distinct(
 mod tests {
     use super::*;
 
+    type CharComparisonFn = fn(&[Value]) -> Result<Value, RuntimeError>;
+
     fn ok_string(result: Result<Value, RuntimeError>) -> String {
         match result {
             Ok(value) => value.to_string(),
@@ -113,7 +115,7 @@ mod tests {
             ok_string(character_not_equal(&[cv('a'), cv('a')])),
             Value::Nil.to_string()
         );
-        let unary_functions: [fn(&[Value]) -> Result<Value, RuntimeError>; 6] = [
+        let unary_functions: [CharComparisonFn; 6] = [
             character_equal,
             character_not_equal,
             character_less_than,

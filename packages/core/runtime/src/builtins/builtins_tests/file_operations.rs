@@ -1,5 +1,6 @@
-use crate::builtins::*;
 use crate::RuntimeError;
+use crate::builtins::builtin_printer::parse_print_options;
+use crate::builtins::*;
 
 fn nanosecond_suffix() -> Result<u128, RuntimeError> {
     std::time::SystemTime::now()

@@ -5,8 +5,8 @@
 //! than being split in a way that would change the type's definition.
 
 use crate::{
-    Constant, DestructureSpec, FunctionId, HandlerBindClause, HandlerCaseClause,
-    RestartBindClause, RestartCaseClause,
+    Constant, DestructureSpec, FunctionId, HandlerBindClause, HandlerCaseClause, RestartBindClause,
+    RestartCaseClause,
 };
 use ncl_syntax::{Form, Span};
 

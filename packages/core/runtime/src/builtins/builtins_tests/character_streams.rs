@@ -1,5 +1,5 @@
-use crate::builtins::*;
 use crate::RuntimeError;
+use crate::builtins::*;
 
 #[test]
 fn character_stream_builtins_cover_peek_unread_and_output_boundaries() -> Result<(), RuntimeError> {

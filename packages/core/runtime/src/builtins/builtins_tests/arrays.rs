@@ -1,5 +1,5 @@
-use crate::builtins::*;
 use crate::RuntimeError;
+use crate::builtins::*;
 
 #[test]
 fn array_helpers_validate_dimensions_contents_and_indices() -> Result<(), RuntimeError> {

@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(crate) fn type_designator_name(function: &str, value: &Value) -> Result<String, RuntimeError> {
+pub fn type_designator_name(function: &str, value: &Value) -> Result<String, RuntimeError> {
     let type_name = match value {
         Value::Nil | Value::Boolean(false) => "NIL",
         Value::Boolean(true) => "T",

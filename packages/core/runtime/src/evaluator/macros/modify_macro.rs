@@ -1,8 +1,8 @@
 use ncl_syntax::{Form, Span};
 
+use crate::evaluator::ModifyMacroContext;
 use crate::evaluator::evaluator_state::SetfExpansion;
 use crate::evaluator::helpers::is_operator_form;
-use crate::evaluator::{MacroBindingContext, ModifyMacroContext};
 use crate::value::{MacroLambdaList, MacroPattern};
 use crate::{Environment, Runtime, RuntimeError};
 

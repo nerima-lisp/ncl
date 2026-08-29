@@ -1,5 +1,5 @@
-use crate::builtins::*;
 use crate::RuntimeError;
+use crate::builtins::*;
 
 #[test]
 fn hash_table_options_and_operations_cover_invalid_designators() {

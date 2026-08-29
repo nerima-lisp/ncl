@@ -25,11 +25,11 @@ pub use handler_clauses::{
 };
 
 mod destructure_types;
+use destructure_types::DestructureLambdaListSection;
 pub use destructure_types::{
     DestructureAuxiliaryParameter, DestructureKeywordParameter, DestructureLambdaList,
     DestructureOptionalParameter, DestructurePattern, DestructureSpec,
 };
-use destructure_types::DestructureLambdaListSection;
 
 mod instruction;
 pub use instruction::Instruction;
@@ -82,8 +82,8 @@ mod validation;
 
 mod destructuring;
 
-mod let_binding;
 mod flet_binding;
+mod let_binding;
 
 mod forms;
 mod helpers;

@@ -62,7 +62,7 @@ pub(super) fn write_to_string(arguments: &[Value]) -> Result<Value, RuntimeError
     Ok(Value::string(printed_value(&arguments[0], escape)))
 }
 
-pub(super) fn parse_print_options(
+pub fn parse_print_options(
     function: &str,
     options: &[Value],
     allow_stream: bool,

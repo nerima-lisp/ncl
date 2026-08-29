@@ -44,11 +44,7 @@ pub fn digit_character_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-fn radix_argument(
-    function: &str,
-    arguments: &[Value],
-    index: usize,
-) -> Result<u32, RuntimeError> {
+fn radix_argument(function: &str, arguments: &[Value], index: usize) -> Result<u32, RuntimeError> {
     let radix = arguments
         .get(index)
         .map(|value| integer_argument(function, value))

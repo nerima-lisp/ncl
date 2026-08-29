@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(crate) fn endp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn endp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "endp", 1)?;
     match &arguments[0] {
         Value::Nil => Ok(Value::boolean(true)),
@@ -10,12 +10,12 @@ pub(crate) fn endp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(crate) fn characterp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn characterp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "characterp", 1)?;
     Ok(Value::boolean(matches!(&arguments[0], Value::Character(_))))
 }
 
-pub(crate) fn keywordp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn keywordp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "keywordp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
@@ -23,7 +23,7 @@ pub(crate) fn keywordp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
-pub(crate) fn symbol_name_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn symbol_name_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "symbol-name", 1)?;
     let name = match &arguments[0] {
         Value::UninternedSymbol(name) => name.to_string(),
@@ -41,7 +41,7 @@ pub(crate) fn symbol_name_value(arguments: &[Value]) -> Result<Value, RuntimeErr
     Ok(Value::string(name))
 }
 
-pub(crate) fn symbol_package_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn symbol_package_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "symbol-package", 1)?;
     let package_name = match &arguments[0] {
         Value::UninternedSymbol(_) => return Ok(Value::Nil),
@@ -58,22 +58,22 @@ pub(crate) fn symbol_package_value(arguments: &[Value]) -> Result<Value, Runtime
     Ok(Value::symbol(package_name))
 }
 
-pub(crate) fn vectorp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn vectorp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "vectorp", 1)?;
     Ok(Value::boolean(matches!(&arguments[0], Value::Vector(_))))
 }
 
-pub(crate) fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-vector-p", 1)?;
     Ok(Value::boolean(matches!(&arguments[0], Value::Vector(_))))
 }
 
-pub(crate) fn typep(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn typep(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "typep", 2)?;
     Ok(Value::boolean(typep_value(&arguments[0], &arguments[1])?))
 }
 
-pub(crate) fn simple_condition_format_control(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn simple_condition_format_control(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-condition-format-control", 1)?;
     arguments[0]
         .simple_condition_format_control()
@@ -87,9 +87,7 @@ pub(crate) fn simple_condition_format_control(arguments: &[Value]) -> Result<Val
         })
 }
 
-pub(crate) fn simple_condition_format_arguments(
-    arguments: &[Value],
-) -> Result<Value, RuntimeError> {
+pub fn simple_condition_format_arguments(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-condition-format-arguments", 1)?;
     arguments[0]
         .simple_condition_format_arguments()

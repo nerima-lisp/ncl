@@ -1,8 +1,8 @@
 use ncl_syntax::Form;
 
 use crate::environment::normalize_name;
-use crate::evaluator::helpers::is_macro_keyword_form;
 use crate::evaluator::MacroBindingContext;
+use crate::evaluator::helpers::is_macro_keyword_form;
 use crate::value::MacroAuxiliaryParameter;
 use crate::{Environment, Runtime, RuntimeError, Value};
 

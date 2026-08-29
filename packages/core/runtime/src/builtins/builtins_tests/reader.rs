@@ -1,5 +1,5 @@
-use crate::builtins::*;
 use crate::RuntimeError;
+use crate::builtins::*;
 
 #[test]
 fn reader_and_stream_builtins_cover_bounds_and_eof_modes() -> Result<(), RuntimeError> {

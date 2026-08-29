@@ -79,8 +79,7 @@ use type_predicates::*;
 
 mod builtin_printer;
 use builtin_printer::{
-    identity, parse_print_options, prin1, princ, print_value, printed_value, type_of,
-    write_to_string, write_value,
+    identity, prin1, princ, print_value, printed_value, type_of, write_to_string, write_value,
 };
 
 mod builtin_stream_constructors;
@@ -102,8 +101,7 @@ use builtin_file_open::open_file;
 
 mod builtin_stream_helpers;
 use builtin_stream_helpers::{
-    end_of_file_error, input_stream_reference, peek_character, stream_reference,
-    stream_state_error,
+    end_of_file_error, input_stream_reference, peek_character, stream_reference, stream_state_error,
 };
 
 mod builtin_stream_reading;

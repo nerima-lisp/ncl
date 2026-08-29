@@ -1,5 +1,8 @@
-use crate::builtins::*;
+use std::rc::Rc;
+
 use crate::RuntimeError;
+use crate::builtins::builtin_printer::parse_print_options;
+use crate::builtins::*;
 
 #[test]
 fn core_printing_wrappers_cover_success_and_argument_errors() -> Result<(), RuntimeError> {

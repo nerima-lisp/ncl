@@ -1,5 +1,10 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+
+#[path = "builtin_numeric_bitwise.rs"]
+mod bitwise_ops;
+#[allow(clippy::wildcard_imports)]
+pub use bitwise_ops::*;
 pub(super) fn add(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut result = Number::Integer(0);
     for argument in arguments {
@@ -798,61 +803,6 @@ pub(super) fn arithmetic_shift(arguments: &[Value]) -> Result<Value, RuntimeErro
     } else {
         value >> u32::try_from(shift).map_err(|_| RuntimeError::NumericOverflow)?
     }))
-}
-
-pub(super) fn logand(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    bitwise(arguments, "logand", -1, |left, right| left & right)
-}
-
-pub(super) fn logior(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    bitwise(arguments, "logior", 0, |left, right| left | right)
-}
-
-pub(super) fn logxor(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    bitwise(arguments, "logxor", 0, |left, right| left ^ right)
-}
-
-pub(super) fn bitwise(
-    arguments: &[Value],
-    function: &str,
-    identity: i64,
-    operation: fn(i64, i64) -> i64,
-) -> Result<Value, RuntimeError> {
-    let mut result = identity;
-    for argument in arguments {
-        result = operation(result, integer_argument(function, argument)?);
-    }
-    Ok(Value::Integer(result))
-}
-
-pub(super) fn lognot(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "lognot", 1)?;
-    Ok(Value::Integer(!integer_argument("lognot", &arguments[0])?))
-}
-
-pub(super) fn logtest(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "logtest", 2)?;
-    let left = integer_argument("logtest", &arguments[0])?;
-    let right = integer_argument("logtest", &arguments[1])?;
-    Ok(Value::boolean((left & right) != 0))
-}
-
-pub(super) fn logcount(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "logcount", 1)?;
-    let value = integer_argument("logcount", &arguments[0])?;
-    let count = if value < 0 {
-        (!value).count_ones()
-    } else {
-        value.count_ones()
-    };
-    Ok(Value::Integer(i64::from(count)))
-}
-
-pub(super) fn integer_length(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "integer-length", 1)?;
-    let value = integer_argument("integer-length", &arguments[0])?;
-    let magnitude = (if value < 0 { !value } else { value }).cast_unsigned();
-    Ok(Value::Integer(i64::from(64 - magnitude.leading_zeros())))
 }
 
 #[cfg(test)]

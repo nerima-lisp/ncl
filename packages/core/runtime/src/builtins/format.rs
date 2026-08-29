@@ -3,52 +3,40 @@ use super::*;
 
 const MAX_FORMAT_FIELD_WIDTH: usize = 1_000_000;
 
-#[path = "builtin_format_general.rs"]
 mod general;
 #[allow(clippy::wildcard_imports)]
 use general::*;
-#[path = "builtin_format_english.rs"]
 mod english;
 #[allow(clippy::wildcard_imports)]
 use english::*;
-#[path = "builtin_format_integer_helpers.rs"]
 mod integer_helpers;
 #[allow(clippy::wildcard_imports)]
 use integer_helpers::*;
-#[path = "builtin_format_output.rs"]
 mod output;
 #[allow(clippy::wildcard_imports)]
 use output::*;
-#[path = "builtin_format_model.rs"]
 mod model;
 #[allow(clippy::wildcard_imports)]
 use model::*;
-#[path = "builtin_format_parameters.rs"]
 mod parameters;
 #[allow(clippy::wildcard_imports)]
 use parameters::*;
-#[path = "builtin_format_parser.rs"]
 mod parser;
 #[allow(clippy::wildcard_imports)]
 use parser::*;
-#[path = "builtin_format_justification.rs"]
 mod justification;
 #[allow(clippy::wildcard_imports)]
 use justification::*;
-#[path = "builtin_format_exponential.rs"]
 mod exponential;
 #[allow(clippy::wildcard_imports)]
 use exponential::*;
-#[path = "builtin_format_float_helpers.rs"]
 mod float_helpers;
 #[allow(clippy::wildcard_imports)]
 use float_helpers::*;
-#[path = "builtin_format_entry.rs"]
 mod entry;
 pub use entry::format_control;
 pub(super) use entry::format_value;
 
-#[path = "builtin_format_boundaries.rs"]
 mod boundaries;
 #[allow(clippy::wildcard_imports)]
 use boundaries::*;
@@ -1284,5 +1272,4 @@ pub(super) fn format_exponential_float_directive(
 }
 
 #[cfg(test)]
-#[path = "builtin_format_tests.rs"]
 mod format_tests;

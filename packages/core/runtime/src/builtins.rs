@@ -11,14 +11,11 @@ use crate::package::{self, COMMON_LISP_PACKAGE, KEYWORD_PACKAGE};
 use crate::{Environment, Rational, RuntimeError, Stream, Value};
 
 #[cfg(test)]
-#[path = "file_tests.rs"]
 mod file_tests;
 
-#[path = "builtin_integer.rs"]
 mod builtin_integer;
 use builtin_integer::parse_integer;
 
-#[path = "builtin_characters.rs"]
 mod builtin_characters;
 use builtin_characters::{
     alpha_character_p, alphanumeric_p, both_case_p, char_code, char_int, character,
@@ -31,7 +28,6 @@ use builtin_characters::{
     standard_character_p, string_value, upper_case_p,
 };
 
-#[path = "builtin_arrays.rs"]
 mod builtin_arrays;
 use builtin_arrays::{
     aref, array_dimension, array_dimensions, array_element_type, array_in_bounds_p, array_rank,
@@ -39,62 +35,48 @@ use builtin_arrays::{
     simple_array_p, svref, vector,
 };
 
-#[path = "builtin_helpers.rs"]
 mod builtin_helpers;
 use builtin_helpers::{arity, exact, number_error, type_error};
 
-#[path = "builtin_reading.rs"]
 mod builtin_reading;
 use builtin_reading::{read, read_from_string, read_preserving_whitespace};
 
-#[path = "builtin_hash_tables.rs"]
 mod builtin_hash_tables;
 pub use builtin_hash_tables::hash_table_key_equal;
 #[allow(clippy::wildcard_imports)]
 use builtin_hash_tables::*;
 
-#[path = "builtin_array_helpers.rs"]
 mod builtin_array_helpers;
 #[allow(clippy::wildcard_imports)]
 use builtin_array_helpers::*;
 
-#[path = "builtin_stream_predicates.rs"]
 mod builtin_stream_predicates;
 use builtin_stream_predicates::{close_stream, input_stream_p, output_stream_p, streamp};
 
-#[path = "builtin_random.rs"]
 mod builtin_random;
 use builtin_random::{make_random_state, random, random_state_p};
 
-#[path = "builtin_format_data.rs"]
 mod builtin_format_data;
 use builtin_format_data::{ENGLISH_NUMBER_GROUPS, FORMAT_DIGITS};
 
-#[path = "builtin_registry.rs"]
 mod registry;
 pub use registry::install;
-#[path = "builtin_numeric_ops.rs"]
 mod builtin_numeric_ops;
 #[allow(clippy::wildcard_imports)]
 use builtin_numeric_ops::*;
-#[path = "builtin_sequences.rs"]
 mod builtin_sequences;
 #[allow(clippy::wildcard_imports)]
 use builtin_sequences::*;
-#[path = "builtin_list_ops.rs"]
 mod builtin_list_ops;
 #[allow(clippy::wildcard_imports)]
 use builtin_list_ops::*;
-#[path = "builtin_types.rs"]
 mod types;
 #[allow(clippy::wildcard_imports)]
 pub use types::*;
 
 #[cfg(test)]
-#[path = "builtin_tests.rs"]
 mod builtins_tests;
 
-#[path = "builtin_type_predicates.rs"]
 pub mod type_predicates;
 pub use type_predicates::eql_value;
 #[allow(clippy::wildcard_imports)]
@@ -828,11 +810,9 @@ fn write_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(arguments[0].clone())
 }
 
-#[path = "builtin_format.rs"]
 mod format;
 pub use format::format_control;
 use format::format_value;
-#[path = "builtin_numbers.rs"]
 mod numbers;
 #[allow(clippy::wildcard_imports)]
 use numbers::*;

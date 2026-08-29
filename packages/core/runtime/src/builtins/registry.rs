@@ -1,10 +1,8 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-#[path = "builtin_constants.rs"]
 mod builtin_constants;
 use builtin_constants::constant_bindings;
-#[path = "builtin_definitions.rs"]
 mod builtin_definitions;
 use builtin_definitions::{BUILTIN_DEFINITIONS, PRIMITIVE_NAMES};
 

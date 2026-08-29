@@ -502,5 +502,4 @@ pub(super) fn type_matches(value: &Value, type_name: &str) -> Result<bool, Runti
 }
 
 #[cfg(test)]
-#[path = "builtin_types_tests.rs"]
 mod builtin_types_tests;

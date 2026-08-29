@@ -1,7 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-#[path = "builtin_type_matching.rs"]
 mod type_matching;
 #[allow(clippy::wildcard_imports)]
 use type_matching::*;

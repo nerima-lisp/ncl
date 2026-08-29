@@ -1,7 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-#[path = "builtin_numeric_bitwise.rs"]
 mod bitwise_ops;
 #[allow(clippy::wildcard_imports)]
 pub use bitwise_ops::*;

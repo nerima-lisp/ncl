@@ -5,7 +5,6 @@ use super::{
 };
 use crate::{RuntimeError, Value};
 
-#[path = "builtin_array_metadata.rs"]
 mod metadata;
 #[allow(clippy::wildcard_imports)]
 pub(super) use metadata::*;

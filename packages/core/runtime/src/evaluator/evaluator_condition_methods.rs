@@ -1,12 +1,15 @@
+#![allow(clippy::wildcard_imports)]
+use super::*;
+
 impl Runtime {
-    fn condition_format_control(value: &Value) -> Option<String> {
+    pub(crate) fn condition_format_control(value: &Value) -> Option<String> {
         match value {
             Value::String(control) => Some(control.to_string()),
             _ => None,
         }
     }
 
-    fn condition_message(
+    pub(crate) fn condition_message(
         value: &Value,
         arguments: &[Value],
         span: Span,
@@ -22,7 +25,7 @@ impl Runtime {
         }
     }
 
-    fn signaled_error(
+    pub(crate) fn signaled_error(
         condition: &str,
         condition_types: Vec<String>,
         message: String,
@@ -32,9 +35,7 @@ impl Runtime {
         span: Span,
     ) -> RuntimeError {
         RuntimeError::Signaled(Box::new(SignaledError {
-            condition: normalize_name(condition)
-                .trim_start_matches(':')
-                .to_owned(),
+            condition: normalize_name(condition).trim_start_matches(':').to_owned(),
             condition_types: condition_types.into(),
             message,
             format_control,
@@ -48,7 +49,7 @@ impl Runtime {
         }))
     }
 
-    fn condition_error(
+    pub(crate) fn condition_error(
         value: &Value,
         warning: bool,
         span: Span,
@@ -78,12 +79,13 @@ impl Runtime {
         ))
     }
 
-    fn make_condition(
-        arguments: &[Value],
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
+    pub(crate) fn make_condition(arguments: &[Value], span: Span) -> Result<Value, RuntimeError> {
         if arguments.is_empty() {
-            return Err(Self::arity("make-condition", "at least one", arguments.len()));
+            return Err(Self::arity(
+                "make-condition",
+                "at least one",
+                arguments.len(),
+            ));
         }
         let initargs = &arguments[1..];
         if !initargs.len().is_multiple_of(2) {
@@ -110,12 +112,10 @@ impl Runtime {
                     format_control = Some(control.to_string());
                 }
                 "FORMAT-ARGUMENTS" => {
-                    format_arguments = pair[1].list_items().ok_or_else(|| {
-                        RuntimeError::Type {
-                            expected: "PROPER-LIST".to_owned(),
-                            actual: pair[1].type_name().to_owned(),
-                            span: Some(span),
-                        }
+                    format_arguments = pair[1].list_items().ok_or_else(|| RuntimeError::Type {
+                        expected: "PROPER-LIST".to_owned(),
+                        actual: pair[1].type_name().to_owned(),
+                        span: Some(span),
                     })?;
                 }
                 _ => {
@@ -139,7 +139,7 @@ impl Runtime {
         ))
     }
 
-    fn dispatch_condition(
+    pub(crate) fn dispatch_condition(
         &self,
         error: RuntimeError,
         condition: &Value,
@@ -160,30 +160,32 @@ impl Runtime {
         let Some(function) = binding.function else {
             return Ok(());
         };
-        let result = self.suspend_condition_handler(&binding.condition).map_or_else(
-            || {
-                self.apply_in(
-                    &function,
-                    std::slice::from_ref(condition),
-                    span,
-                    environment,
-                )
-            },
-            |suspension| {
-            let result = self.apply_in(
-                &function,
-                std::slice::from_ref(condition),
-                span,
-                environment,
+        let result = self
+            .suspend_condition_handler(&binding.condition)
+            .map_or_else(
+                || {
+                    self.apply_in(
+                        &function,
+                        std::slice::from_ref(condition),
+                        span,
+                        environment,
+                    )
+                },
+                |suspension| {
+                    let result = self.apply_in(
+                        &function,
+                        std::slice::from_ref(condition),
+                        span,
+                        environment,
+                    );
+                    drop(suspension);
+                    result
+                },
             );
-            drop(suspension);
-            result
-            },
-        );
         result.map(|_| ())
     }
 
-    fn signal_condition_value(
+    pub(crate) fn signal_condition_value(
         &self,
         condition: &Value,
         warning: bool,
@@ -195,7 +197,7 @@ impl Runtime {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn signal_condition(
+    pub(crate) fn signal_condition(
         &self,
         condition: &str,
         message: String,
@@ -218,11 +220,7 @@ impl Runtime {
         self.dispatch_condition(error, &condition_value, environment, span)
     }
 
-    fn restart_invocation_error(
-        name: &str,
-        arguments: &[Value],
-        span: Span,
-    ) -> RuntimeError {
+    fn restart_invocation_error(name: &str, arguments: &[Value], span: Span) -> RuntimeError {
         let value = match arguments {
             [] => Value::Nil,
             [value] => value.clone(),
@@ -231,16 +229,12 @@ impl Runtime {
         RuntimeError::InvokeRestart {
             name: normalize_name(name),
             value: ReturnValue::new(value),
-            arguments: arguments
-                .iter()
-                .cloned()
-                .map(ReturnValue::new)
-                .collect(),
+            arguments: arguments.iter().cloned().map(ReturnValue::new).collect(),
             span: Some(span),
         }
     }
 
-    fn restart_binding_for_designator_in(
+    pub(crate) fn restart_binding_for_designator_in(
         designator: &Value,
         bindings: &[RestartBinding],
         span: Span,
@@ -260,10 +254,13 @@ impl Runtime {
                 .find(|binding| binding.restart.eq_value(designator))
                 .cloned());
         }
-        Err(Self::invalid("restart designator must be a symbol or restart", span))
+        Err(Self::invalid(
+            "restart designator must be a symbol or restart",
+            span,
+        ))
     }
 
-    fn restart_binding_for_designator(
+    pub(crate) fn restart_binding_for_designator(
         &self,
         designator: &Value,
         span: Span,
@@ -272,7 +269,7 @@ impl Runtime {
         Self::restart_binding_for_designator_in(designator, &bindings, span)
     }
 
-    fn invoke_restart_binding(
+    pub(crate) fn invoke_restart_binding(
         &self,
         binding: RestartBinding,
         arguments: &[Value],
@@ -289,7 +286,7 @@ impl Runtime {
         self.apply_in(&function, arguments, span, environment)
     }
 
-    fn invoke_restart_named(
+    pub(crate) fn invoke_restart_named(
         &self,
         name: &str,
         arguments: &[Value],
@@ -307,7 +304,6 @@ impl Runtime {
         };
         self.invoke_restart_binding(binding, arguments, environment, span)
     }
-
 }
 
 #[cfg(test)]
@@ -331,13 +327,11 @@ mod tests {
 
     #[test]
     fn condition_message_rejects_non_string_controls_with_arguments() {
-        let result = Runtime::condition_message(
-            &Value::Integer(42),
-            &[Value::Integer(1)],
-            SPAN,
-        );
+        let result = Runtime::condition_message(&Value::Integer(42), &[Value::Integer(1)], SPAN);
 
-        assert!(matches!(result, Err(RuntimeError::Type { expected, .. }) if expected == "a string format control"));
+        assert!(
+            matches!(result, Err(RuntimeError::Type { expected, .. }) if expected == "a string format control")
+        );
     }
 
     #[test]
@@ -355,8 +349,15 @@ mod tests {
         assert!(matches!(result, Ok(value) if value.condition_message() == Some("value: 7")));
 
         for arguments in [
-            vec![Value::Symbol("condition".into()), Value::Keyword("unknown".into()), Value::Nil],
-            vec![Value::Symbol("condition".into()), Value::Keyword("format-control".into())],
+            vec![
+                Value::Symbol("condition".into()),
+                Value::Keyword("unknown".into()),
+                Value::Nil,
+            ],
+            vec![
+                Value::Symbol("condition".into()),
+                Value::Keyword("format-control".into()),
+            ],
         ] {
             assert!(Runtime::make_condition(&arguments, SPAN).is_err());
         }
@@ -370,8 +371,10 @@ mod tests {
             SPAN,
         );
 
-        assert!(matches!(error, RuntimeError::InvokeRestart { name, arguments, .. }
-            if name == ":CONTINUE" && arguments.len() == 2));
+        assert!(
+            matches!(error, RuntimeError::InvokeRestart { name, arguments, .. }
+            if name == ":CONTINUE" && arguments.len() == 2)
+        );
     }
 
     #[test]
@@ -389,7 +392,9 @@ mod tests {
             assert!(matches!(result, Ok(Some(binding)) if binding.name == "continue"));
         }
 
-        assert!(Runtime::restart_binding_for_designator_in(&Value::Integer(1), &bindings, SPAN)
-            .is_err());
+        assert!(
+            Runtime::restart_binding_for_designator_in(&Value::Integer(1), &bindings, SPAN)
+                .is_err()
+        );
     }
 }

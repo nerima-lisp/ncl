@@ -1,5 +1,8 @@
+#![allow(clippy::wildcard_imports)]
+use super::*;
+
 impl Runtime {
-    fn apply_primitive(
+    pub(crate) fn apply_primitive(
         &self,
         name: &str,
         arguments: &[Value],

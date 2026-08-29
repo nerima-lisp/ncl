@@ -1,5 +1,8 @@
+#![allow(clippy::wildcard_imports)]
+use super::*;
+
 impl Runtime {
-    fn apply_package_listing_primitive(
+    pub(crate) fn apply_package_listing_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -38,7 +41,7 @@ impl Runtime {
         Some(result)
     }
 
-    fn apply_method_primitive(
+    pub(crate) fn apply_method_primitive(
         &self,
         name: &str,
         arguments: &[Value],

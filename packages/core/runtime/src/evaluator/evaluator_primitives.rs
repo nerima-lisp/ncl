@@ -1,5 +1,9 @@
+#![allow(clippy::wildcard_imports)]
+use super::evaluator_special_forms::evaluator_sequences::sequence_types::SequenceSubstituteContext;
+use super::*;
+
 impl Runtime {
-    fn apply_evaluation_primitive(
+    pub(crate) fn apply_evaluation_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -23,7 +27,7 @@ impl Runtime {
         Some(result)
     }
 
-    fn apply_condition_primitive(
+    pub(crate) fn apply_condition_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -41,57 +45,170 @@ impl Runtime {
         Some(result)
     }
 
-    fn primitive_error(&self, arguments: &[Value], environment: &Environment, span: Span) -> Result<Value, RuntimeError> {
-        if arguments.is_empty() { return Err(Self::arity("error", "at least one", arguments.len())); }
+    fn primitive_error(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() {
+            return Err(Self::arity("error", "at least one", arguments.len()));
+        }
         if arguments[0].condition_type_name().is_some() {
             let error = Self::condition_error(&arguments[0], false, span)?;
-            return match self.dispatch_condition(error.clone(), &arguments[0], environment, span) { Ok(()) | Err(_) => Err(error) };
+            return match self.dispatch_condition(error.clone(), &arguments[0], environment, span) {
+                Ok(()) | Err(_) => Err(error),
+            };
         }
         let format_arguments = &arguments[1..];
         let format_control = Self::condition_format_control(&arguments[0]);
         let message = Self::condition_message(&arguments[0], format_arguments, span)?;
-        let error = Self::signaled_error("SIMPLE-ERROR", Vec::new(), message.clone(), format_control.clone(), format_arguments, false, span);
-        match self.signal_condition("SIMPLE-ERROR", message, format_control, format_arguments, false, environment, span) { Ok(()) => Err(error), Err(error) => Err(error) }
+        let error = Self::signaled_error(
+            "SIMPLE-ERROR",
+            Vec::new(),
+            message.clone(),
+            format_control.clone(),
+            format_arguments,
+            false,
+            span,
+        );
+        match self.signal_condition(
+            "SIMPLE-ERROR",
+            message,
+            format_control,
+            format_arguments,
+            false,
+            environment,
+            span,
+        ) {
+            Ok(()) => Err(error),
+            Err(error) => Err(error),
+        }
     }
 
-    fn primitive_signal(&self, arguments: &[Value], environment: &Environment, span: Span) -> Result<Value, RuntimeError> {
-        if arguments.is_empty() { return Err(Self::arity("signal", "at least one", arguments.len())); }
+    fn primitive_signal(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() {
+            return Err(Self::arity("signal", "at least one", arguments.len()));
+        }
         if arguments[0].condition_type_name().is_some() {
-            if arguments.len() != 1 { return Err(Self::invalid("signal does not accept format arguments with a condition object", span)); }
+            if arguments.len() != 1 {
+                return Err(Self::invalid(
+                    "signal does not accept format arguments with a condition object",
+                    span,
+                ));
+            }
             self.signal_condition_value(&arguments[0], false, environment, span)?;
             return Ok(Value::Nil);
         }
         let format_arguments = &arguments[1..];
-        self.signal_condition("SIMPLE-CONDITION", Self::condition_message(&arguments[0], format_arguments, span)?, Self::condition_format_control(&arguments[0]), format_arguments, false, environment, span)?;
+        self.signal_condition(
+            "SIMPLE-CONDITION",
+            Self::condition_message(&arguments[0], format_arguments, span)?,
+            Self::condition_format_control(&arguments[0]),
+            format_arguments,
+            false,
+            environment,
+            span,
+        )?;
         Ok(Value::Nil)
     }
 
-    fn primitive_warn(&self, arguments: &[Value], environment: &Environment, span: Span) -> Result<Value, RuntimeError> {
-        if arguments.is_empty() { return Err(Self::arity("warn", "at least one", arguments.len())); }
+    fn primitive_warn(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() {
+            return Err(Self::arity("warn", "at least one", arguments.len()));
+        }
         if arguments[0].condition_type_name().is_some() {
-            if arguments.len() != 1 { return Err(Self::invalid("warn does not accept format arguments with a condition object", span)); }
+            if arguments.len() != 1 {
+                return Err(Self::invalid(
+                    "warn does not accept format arguments with a condition object",
+                    span,
+                ));
+            }
             self.signal_condition_value(&arguments[0], true, environment, span)?;
             return Ok(Value::Nil);
         }
         let format_arguments = &arguments[1..];
-        self.signal_condition("SIMPLE-WARNING", Self::condition_message(&arguments[0], format_arguments, span)?, Self::condition_format_control(&arguments[0]), format_arguments, true, environment, span)?;
+        self.signal_condition(
+            "SIMPLE-WARNING",
+            Self::condition_message(&arguments[0], format_arguments, span)?,
+            Self::condition_format_control(&arguments[0]),
+            format_arguments,
+            true,
+            environment,
+            span,
+        )?;
         Ok(Value::Nil)
     }
 
-    fn primitive_cerror(&self, arguments: &[Value], environment: &Environment, span: Span) -> Result<Value, RuntimeError> {
-        if arguments.len() < 2 { return Err(Self::arity("cerror", "at least two", arguments.len())); }
+    fn primitive_cerror(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() < 2 {
+            return Err(Self::arity("cerror", "at least two", arguments.len()));
+        }
         let format_arguments = &arguments[2..];
         let _continue_message = Self::condition_message(&arguments[0], format_arguments, span)?;
         let condition_object = arguments[1].condition_type_name().is_some();
-        if condition_object && !format_arguments.is_empty() { return Err(Self::invalid("cerror does not accept format arguments with a condition object", span)); }
+        if condition_object && !format_arguments.is_empty() {
+            return Err(Self::invalid(
+                "cerror does not accept format arguments with a condition object",
+                span,
+            ));
+        }
         let format_control = Self::condition_format_control(&arguments[1]);
         let message = Self::condition_message(&arguments[1], format_arguments, span)?;
-        let result = if condition_object { self.dispatch_condition(Self::condition_error(&arguments[1], false, span)?, &arguments[1], environment, span) } else { self.signal_condition("SIMPLE-ERROR", message.clone(), format_control, format_arguments, false, environment, span) };
-        match result { Ok(()) => {}, Err(RuntimeError::InvokeRestart { name, .. }) if normalize_name(&name) == "CONTINUE" => return Ok(Value::Nil), Err(error) => return Err(error) }
-        if self.restart_bindings().iter().any(|binding| normalize_name(&binding.name) == "CONTINUE") { self.invoke_restart_named("CONTINUE", &[], environment, span) } else { Err(Self::invalid(&message, span)) }
+        let result = if condition_object {
+            self.dispatch_condition(
+                Self::condition_error(&arguments[1], false, span)?,
+                &arguments[1],
+                environment,
+                span,
+            )
+        } else {
+            self.signal_condition(
+                "SIMPLE-ERROR",
+                message.clone(),
+                format_control,
+                format_arguments,
+                false,
+                environment,
+                span,
+            )
+        };
+        match result {
+            Ok(()) => {}
+            Err(RuntimeError::InvokeRestart { name, .. })
+                if normalize_name(&name) == "CONTINUE" =>
+            {
+                return Ok(Value::Nil);
+            }
+            Err(error) => return Err(error),
+        }
+        if self
+            .restart_bindings()
+            .iter()
+            .any(|binding| normalize_name(&binding.name) == "CONTINUE")
+        {
+            self.invoke_restart_named("CONTINUE", &[], environment, span)
+        } else {
+            Err(Self::invalid(&message, span))
+        }
     }
 
-    fn apply_package_use_primitive(
+    pub(crate) fn apply_package_use_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -144,7 +261,7 @@ impl Runtime {
         Some(result)
     }
 
-    fn apply_package_symbol_primitive(
+    pub(crate) fn apply_package_symbol_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -214,7 +331,7 @@ impl Runtime {
         Some(result)
     }
 
-    fn apply_slot_primitive(
+    pub(crate) fn apply_slot_primitive(
         name: &str,
         arguments: &[Value],
         span: Span,
@@ -276,7 +393,7 @@ impl Runtime {
         Some(result)
     }
 
-    fn apply_symbol_value_primitive(
+    pub(crate) fn apply_symbol_value_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -334,7 +451,7 @@ impl Runtime {
         Some(result)
     }
 
-    fn apply_symbol_function_primitive(
+    pub(crate) fn apply_symbol_function_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -467,7 +584,7 @@ impl Runtime {
         }
     }
 
-    fn apply_package_introspection_primitive(
+    pub(crate) fn apply_package_introspection_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -528,7 +645,7 @@ impl Runtime {
         })())
     }
 
-    fn apply_symbol_creation_primitive(
+    pub(crate) fn apply_symbol_creation_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -612,7 +729,7 @@ impl Runtime {
         })())
     }
 
-    fn apply_class_introspection_primitive(
+    pub(crate) fn apply_class_introspection_primitive(
         name: &str,
         arguments: &[Value],
         environment: &Environment,
@@ -675,7 +792,7 @@ impl Runtime {
         })())
     }
 
-    fn apply_restart_primitive(
+    pub(crate) fn apply_restart_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -777,7 +894,7 @@ impl Runtime {
         })
     }
 
-    fn apply_sequence_primitive(
+    pub(crate) fn apply_sequence_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -949,7 +1066,7 @@ impl Runtime {
         })
     }
 
-    fn apply_symbol_property_primitive(
+    pub(crate) fn apply_symbol_property_primitive(
         &self,
         name: &str,
         arguments: &[Value],
@@ -1139,7 +1256,7 @@ impl Runtime {
                 self.makunbound_exact_symbol(symbol_name);
             } else {
                 self.makunbound_symbol(symbol_name);
- }
+            }
         } else if exact {
             self.fmakunbound_exact_symbol(symbol_name);
         } else {

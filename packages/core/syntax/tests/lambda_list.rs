@@ -175,6 +175,24 @@ fn rejects_malformed_keyword_name_specifications() {
 }
 
 #[test]
+fn rejects_literal_parameter_names() {
+    for source in [
+        "(&optional nil)",
+        "(&optional t)",
+        "(&optional 42)",
+        "(&optional 3.14)",
+        "(&optional :keyword)",
+    ] {
+        let form = &read(source).expect("source should parse")[0];
+        let error = parse_ordinary_lambda_list(form).unwrap_err();
+        assert!(
+            matches!(error.kind, LambdaListErrorKind::ExpectedSymbol { .. }),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn rejects_lambda_list_boundary_and_duplicate_cases_from_a_table() {
     let non_list = &read("value").expect("source should parse")[0];
     let error = parse_ordinary_lambda_list(non_list).unwrap_err();

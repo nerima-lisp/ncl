@@ -1,8 +1,9 @@
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
 
-use super::{Environment, RandomState, Rational, RuntimeError, Stream, Value};
+use super::{Environment, Rational, RuntimeError, Value};
+
+mod stream_constructors;
 
 impl Value {
     /// Converts a Rust boolean to the Lisp truth value representation.
@@ -28,37 +29,6 @@ impl Value {
             Ok(Self::Integer(rational.numerator()))
         } else {
             Ok(Self::Rational(rational))
-        }
-    }
-
-    pub(crate) fn string_input_stream(source: &str, start: usize, end: usize) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::input(source, start, end))))
-    }
-
-    pub(crate) fn string_output_stream() -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::output())))
-    }
-
-    pub(crate) fn file_input_stream(source: &str) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::file_input(source))))
-    }
-
-    pub(crate) fn file_output_stream(path: PathBuf, initial: String) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::file_output(path, initial))))
-    }
-
-    pub(crate) fn file_io_stream(path: PathBuf, source: &str, append: bool) -> Self {
-        Self::Stream(Rc::new(RefCell::new(Stream::file_io(path, source, append))))
-    }
-
-    pub(crate) fn random_state(state: RandomState) -> Self {
-        Self::RandomState(Rc::new(RefCell::new(state)))
-    }
-
-    pub(crate) fn random_state_reference(&self) -> Option<Rc<RefCell<RandomState>>> {
-        match self {
-            Self::RandomState(state) => Some(Rc::clone(state)),
-            _ => None,
         }
     }
 

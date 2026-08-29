@@ -245,6 +245,16 @@ fn evaluates_clos_unbound_slots() {
 }
 
 #[test]
+fn rejects_setting_an_undefined_clos_slot() {
+    let result = Runtime::new().eval_source(
+        r"(progn
+             (defclass point () ((x)))
+             (setf (slot-value (make-instance 'point) 'missing) 9))",
+    );
+    assert!(result.is_err());
+}
+
+#[test]
 fn evaluates_clos_method_combination() {
     let values = Runtime::new()
         .eval_source(

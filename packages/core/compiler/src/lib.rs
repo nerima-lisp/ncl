@@ -496,26 +496,17 @@ impl Compiler {
     }
 }
 
-#[path = "compiler_state.rs"]
 mod state;
 #[allow(clippy::wildcard_imports)]
 use state::*;
-#[path = "compiler_branching.rs"]
 mod branching;
-#[path = "compiler_compilation.rs"]
 mod compilation;
-#[path = "compiler_control_forms.rs"]
 mod control_forms;
-#[path = "compiler_logical_forms.rs"]
 mod logical_forms;
-#[path = "compiler_parameters.rs"]
 mod parameters;
-#[path = "compiler_runtime_definitions.rs"]
 mod runtime_definitions;
-#[path = "compiler_validation.rs"]
 mod validation;
 
-#[path = "compiler_destructuring.rs"]
 mod destructuring;
 
 impl CompileState {
@@ -762,9 +753,7 @@ impl CompileState {
     }
 }
 
-#[path = "compiler_forms.rs"]
 mod forms;
-#[path = "compiler_helpers.rs"]
 mod helpers;
 #[allow(clippy::wildcard_imports)]
 use helpers::*;

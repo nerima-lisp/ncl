@@ -4,6 +4,12 @@ use std::rc::Rc;
 use crate::value::RandomState;
 use crate::{RuntimeError, Value};
 
+mod helpers;
+mod sampling;
+
+use helpers::{arity, exact, type_error};
+use sampling::{random_limit, state_reference};
+
 thread_local! {
     static DEFAULT_RANDOM_STATE: Rc<RefCell<RandomState>> =
         Rc::new(RefCell::new(RandomState::seeded()));
@@ -59,72 +65,6 @@ pub fn random_state_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
         arguments[0],
         Value::RandomState(_)
     )))
-}
-
-fn random_limit(limit: &Value, state: &Rc<RefCell<RandomState>>) -> Result<Value, RuntimeError> {
-    match limit {
-        Value::Integer(limit) if *limit > 0 => {
-            let value = bounded_u64(state, limit.cast_unsigned());
-            Ok(Value::Integer(value.cast_signed()))
-        }
-        Value::Float(limit) if limit.is_finite() && *limit > 0.0 => {
-            let sample = state.borrow_mut().next_u64();
-            // Deliberately keep only the top 53 bits: an f64 mantissa can't
-            // hold more, and this is the standard technique for mapping a
-            // 64-bit sample onto a uniform float in [0, 1).
-            #[allow(clippy::cast_precision_loss)]
-            let unit = (sample >> 11) as f64 / 9_007_199_254_740_992.0;
-            Ok(Value::Float(unit * *limit))
-        }
-        value => Err(type_error(
-            "random",
-            "a positive integer or positive float",
-            value,
-        )),
-    }
-}
-
-fn bounded_u64(state: &Rc<RefCell<RandomState>>, bound: u64) -> u64 {
-    let threshold = bound.wrapping_neg() % bound;
-    loop {
-        let sample = state.borrow_mut().next_u64();
-        if sample >= threshold {
-            return sample % bound;
-        }
-    }
-}
-
-fn state_reference(
-    function: &str,
-    value: &Value,
-) -> Result<Rc<RefCell<RandomState>>, RuntimeError> {
-    value
-        .random_state_reference()
-        .ok_or_else(|| type_error(function, "a random-state", value))
-}
-
-fn exact(arguments: &[Value], function: &str, expected: usize) -> Result<(), RuntimeError> {
-    if arguments.len() == expected {
-        Ok(())
-    } else {
-        Err(arity(function, expected.to_string(), arguments.len()))
-    }
-}
-
-fn arity(function: &str, expected: impl Into<String>, actual: usize) -> RuntimeError {
-    RuntimeError::Arity {
-        function: function.to_string(),
-        expected: expected.into(),
-        actual,
-    }
-}
-
-fn type_error(function: &str, expected: &str, value: &Value) -> RuntimeError {
-    RuntimeError::Type {
-        expected: format!("{function} requires {expected}"),
-        actual: value.type_name().to_string(),
-        span: None,
-    }
 }
 
 #[cfg(test)]

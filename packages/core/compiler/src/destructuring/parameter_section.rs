@@ -56,7 +56,9 @@ impl CompileState {
             DestructureLambdaListSection::Auxiliary => lambda_list
                 .auxiliary
                 .push(self.compile_destructuring_auxiliary_parameter(parameter, seen)?),
-            DestructureLambdaListSection::Rest => unreachable!(),
+            DestructureLambdaListSection::Rest => unreachable!(
+                "the early return above already rejected DestructureLambdaListSection::Rest"
+            ),
         }
         Ok(())
     }

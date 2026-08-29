@@ -63,7 +63,9 @@ pub(super) fn format_radix_directive(
                     span: None,
                 })?
             }
-            FormatParameter::Missing => unreachable!(),
+            FormatParameter::Missing => unreachable!(
+                "the enclosing if already excluded FormatParameter::Missing via matches!"
+            ),
             FormatParameter::Character(_) => {
                 return Err(RuntimeError::InvalidForm {
                     message: "format radix must be numeric".to_string(),

@@ -81,7 +81,7 @@ impl Runtime {
                             )
                     }
                 }
-                _ => unreachable!(),
+                _ => unreachable!("symbol creation primitive name was prevalidated"),
             }
         })())
     }

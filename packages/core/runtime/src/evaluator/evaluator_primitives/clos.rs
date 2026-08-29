@@ -122,7 +122,7 @@ impl Runtime {
                     };
                     Ok(Value::symbol(c.name.clone()))
                 }
-                _ => unreachable!(),
+                _ => unreachable!("class introspection primitive name was prevalidated"),
             }
         })())
     }

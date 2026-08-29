@@ -56,7 +56,9 @@ pub(super) fn format_directive_end(
                     ']' => '[',
                     '>' => '<',
                     ')' => '(',
-                    _ => unreachable!(),
+                    _ => unreachable!(
+                        "the outer match arm already narrowed directive to a closing bracket"
+                    ),
                 };
                 if stack.last().copied() == Some(expected_opening) {
                     stack.pop();
@@ -103,7 +105,9 @@ pub(super) fn format_choice_clauses(body: &[char]) -> Result<Vec<(&[char], bool)
                     ']' => '[',
                     '>' => '<',
                     ')' => '(',
-                    _ => unreachable!(),
+                    _ => unreachable!(
+                        "the outer match arm already narrowed directive to a closing bracket"
+                    ),
                 };
                 if stack.last().copied() == Some(expected_opening) {
                     stack.pop();

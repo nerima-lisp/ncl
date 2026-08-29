@@ -61,7 +61,12 @@ impl Runtime {
                     (normalize_name(name), pattern, 1)
                 }
             }
-            FormKind::List(_) => unreachable!(),
+            FormKind::List(_) => {
+                return Err(Self::invalid(
+                    "macro keyword parameter must not be empty",
+                    form.span,
+                ));
+            }
             _ => {
                 return Err(Self::invalid(
                     "macro keyword parameter must be a symbol or list",
@@ -73,7 +78,9 @@ impl Runtime {
         let item_count = match &form.kind {
             FormKind::Atom(_) => 0,
             FormKind::List(items) => items.len(),
-            _ => unreachable!(),
+            _ => unreachable!(
+                "the match above already returned Err for every form.kind other than Atom or List"
+            ),
         };
         if item_count > trailing_start + 2 {
             return Err(Self::invalid(
@@ -90,7 +97,9 @@ impl Runtime {
                     .map(|item| Self::macro_binding_name(item, seen))
                     .transpose()?,
             ),
-            _ => unreachable!(),
+            _ => unreachable!(
+                "the match above already returned Err for every form.kind other than Atom or List"
+            ),
         };
         Ok(MacroKeywordParameter {
             keyword_name,

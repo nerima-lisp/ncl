@@ -102,7 +102,9 @@ impl Runtime {
                     .auxiliary
                     .push(Self::parse_macro_auxiliary_parameter(parameter, seen)?);
             }
-            MacroLambdaListSection::Rest => unreachable!(),
+            MacroLambdaListSection::Rest => {
+                unreachable!("the early return above already rejected MacroLambdaListSection::Rest")
+            }
         }
         Ok(())
     }

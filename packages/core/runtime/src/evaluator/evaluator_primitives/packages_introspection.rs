@@ -58,7 +58,7 @@ impl Runtime {
                         }),
                     }
                 }
-                _ => unreachable!(),
+                _ => unreachable!("package introspection primitive name was prevalidated"),
             }
         })())
     }

@@ -91,7 +91,14 @@ impl CompileState {
                     (normalize_name(name), pattern, 1)
                 }
             }
-            FormKind::List(_) => unreachable!(),
+            FormKind::List(_) => {
+                return Err(CompileError::new(
+                    CompileErrorKind::InvalidForm {
+                        message: "destructuring keyword parameter must not be empty".to_string(),
+                    },
+                    form.span,
+                ));
+            }
             _ => {
                 return Err(CompileError::new(
                     CompileErrorKind::InvalidForm {
@@ -106,7 +113,9 @@ impl CompileState {
         let item_count = match &form.kind {
             FormKind::Atom(_) => 0,
             FormKind::List(items) => items.len(),
-            _ => unreachable!(),
+            _ => unreachable!(
+                "the match above already returned Err for every form.kind other than Atom or List"
+            ),
         };
         if item_count > trailing_start + 2 {
             return Err(CompileError::new(
@@ -131,7 +140,9 @@ impl CompileState {
                     })
                     .transpose()?,
             ),
-            _ => unreachable!(),
+            _ => unreachable!(
+                "the match above already returned Err for every form.kind other than Atom or List"
+            ),
         };
         let default_function = self.compile_destructuring_default(&init_form)?;
         Ok(DestructureKeywordParameter {

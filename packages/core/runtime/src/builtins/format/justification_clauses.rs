@@ -29,7 +29,9 @@ pub(super) fn format_justification_clauses(body: &[char]) -> Result<Vec<&[char]>
                     ']' => '[',
                     '>' => '<',
                     ')' => '(',
-                    _ => unreachable!(),
+                    _ => unreachable!(
+                        "the outer match arm already narrowed directive to a closing bracket"
+                    ),
                 };
                 if stack.last().copied() == Some(expected_opening) {
                     stack.pop();

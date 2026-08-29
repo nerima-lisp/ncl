@@ -8,13 +8,11 @@ mod keyword;
 mod markers;
 mod names;
 mod optional;
-
 use auxiliary::parse_auxiliary_parameter;
 use keyword::parse_keyword_parameter;
 use markers::{LambdaListSection, MarkerOutcome, insert_unique, recognize_marker};
 use names::{marker_name, parse_name};
 use optional::parse_optional_parameter;
-
 /// Parse the Common Lisp ordinary lambda-list subset supported by ncl.
 ///
 /// The accepted grammar is:
@@ -34,10 +32,8 @@ use optional::parse_optional_parameter;
 /// # Errors
 ///
 /// Returns [`LambdaListError`] when the form does not follow the grammar.
-// One state machine threading ~10 mutable locals (the accumulators for each
-// lambda-list section) through a single left-to-right pass; splitting it
-// would mean either a mutable-accumulator struct or an equally long
-// argument list on a helper, neither of which shortens the real logic.
+// One state machine over ~10 mutable per-section accumulators; splitting it
+// only moves the same argument list into a helper, it doesn't shorten it.
 #[allow(clippy::too_many_lines)]
 pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, LambdaListError> {
     let parameters: &[Form] = match &form.kind {

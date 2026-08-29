@@ -22,6 +22,20 @@ work unit.
 
 ### Porting work from a stale worktree
 
+Before porting anything, confirm the worktree actually diverges from `main`:
+
+~~~sh
+git merge-base --is-ancestor <worktree-head> main && echo "already merged"
+git diff --stat main...<worktree-head>
+~~~
+
+When `<worktree-head>` is already an ancestor of `main` and the diffstat is
+empty, the snapshot has been fully superseded — there is no work to port.
+Skip the procedure below and remove the worktree directly. An untracked
+planning document left in such a worktree (for example a next-step execution
+spec) describes future work, not a deliverable to merge; read it for context,
+then discard the worktree with `git worktree remove`.
+
 When a detached worktree was started from an older `main`, inspect its changes
 before integrating them. Staged and unstaged changes may be separate work
 units. Preserve that boundary by committing and testing each unit

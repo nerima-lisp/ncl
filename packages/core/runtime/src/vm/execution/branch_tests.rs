@@ -52,8 +52,7 @@ fn closure_instructions_reject_out_of_range_function_ids() {
         ),
     ] {
         assert_invalid(
-            execute_binding_and_branch_instruction(&instruction, &mut branch_context)
-                .map(|_| ()),
+            execute_binding_and_branch_instruction(&instruction, &mut branch_context).map(|_| ()),
             expected,
         );
     }

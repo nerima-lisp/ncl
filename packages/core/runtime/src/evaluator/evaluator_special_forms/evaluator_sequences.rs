@@ -18,14 +18,14 @@ mod sequence_kind_conversion;
 #[allow(clippy::wildcard_imports)]
 use sequence_kind_conversion::*;
 
-mod sequence_search;
+mod sequence_association;
+mod sequence_map_into;
+mod sequence_membership;
 mod sequence_pair_search;
 mod sequence_pair_search_algorithm;
 mod sequence_quantifiers;
-mod sequence_membership;
-mod sequence_association;
 mod sequence_removal;
 mod sequence_removal_marking;
+mod sequence_search;
 mod sequence_substitute;
 mod sequence_substitute_matching;
-mod sequence_map_into;

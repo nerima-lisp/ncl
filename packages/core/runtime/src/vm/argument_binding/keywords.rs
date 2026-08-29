@@ -8,7 +8,7 @@ use crate::{Environment, Runtime, RuntimeError, Value};
 
 use super::support::{default_value, define_binding};
 
-pub(super) fn bind_keywords(
+pub fn bind_keywords(
     runtime: &Runtime,
     program: &Rc<Program>,
     function: &FunctionCode,
@@ -88,7 +88,7 @@ pub(super) fn bind_keywords(
     Ok(())
 }
 
-pub(super) fn bind_auxiliary(
+pub fn bind_auxiliary(
     runtime: &Runtime,
     program: &Rc<Program>,
     function: &FunctionCode,

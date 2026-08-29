@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use ncl_compiler::{
-    Constant, DestructureLambdaList, DestructurePattern, DestructureSpec, FunctionCode, FunctionId,
+    DestructureLambdaList, DestructurePattern, DestructureSpec, FunctionCode, FunctionId,
     HandlerBindClause, HandlerCaseClause, Instruction, Program, RestartBindClause,
     RestartCaseClause,
 };
@@ -19,13 +19,11 @@ mod entry;
 mod execution;
 mod primitives;
 
-pub use entry::{run, run_entry};
 use entry::run_code;
+pub use entry::{run, run_entry};
 
 #[allow(clippy::wildcard_imports)]
 use destructuring::*;
-#[allow(clippy::wildcard_imports)]
-use execution::*;
 #[allow(clippy::wildcard_imports)]
 use primitives::*;
 

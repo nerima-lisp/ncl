@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn execute_stack_instruction(
+pub fn execute_stack_instruction(
     runtime: &Runtime,
     instruction: &Instruction,
     stack: &mut Vec<Value>,

@@ -1,5 +1,5 @@
 #![allow(clippy::wildcard_imports)]
-use super::*;
+use crate::*;
 
 impl CompileState {
     pub(super) fn compile_sequential_prog_bindings(

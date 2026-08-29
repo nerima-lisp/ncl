@@ -13,7 +13,10 @@ pub(super) struct DefstructRegistration {
 }
 
 impl Runtime {
-    pub(super) fn register_defstruct(environment: &Environment, registration: DefstructRegistration) {
+    pub(super) fn register_defstruct(
+        environment: &Environment,
+        registration: DefstructRegistration,
+    ) {
         let DefstructRegistration {
             structure_name,
             structure_types,

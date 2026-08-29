@@ -1,12 +1,12 @@
 use super::{arity, exact, index_argument, type_error};
 use crate::{RuntimeError, Value};
 
-pub(super) fn reverse(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn reverse(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "reverse", 1)?;
     reverse_list("reverse", &arguments[0])
 }
 
-pub(super) fn nreverse(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn nreverse(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "nreverse", 1)?;
     reverse_list("nreverse", &arguments[0])
 }
@@ -19,7 +19,7 @@ fn reverse_list(function: &str, value: &Value) -> Result<Value, RuntimeError> {
     Ok(Value::list(items))
 }
 
-pub(super) fn last(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn last(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("last", "one or two", arguments.len()));
     }
@@ -38,11 +38,11 @@ pub(super) fn last(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::list(items[start..].to_vec()))
 }
 
-pub(super) fn butlast(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn butlast(arguments: &[Value]) -> Result<Value, RuntimeError> {
     butlast_like("butlast", arguments)
 }
 
-pub(super) fn nbutlast(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn nbutlast(arguments: &[Value]) -> Result<Value, RuntimeError> {
     butlast_like("nbutlast", arguments)
 }
 
@@ -62,7 +62,7 @@ fn butlast_like(function: &str, arguments: &[Value]) -> Result<Value, RuntimeErr
     Ok(Value::list(items[..end].to_vec()))
 }
 
-pub(super) fn copy_list(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn copy_list(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "copy-list", 1)?;
     let Some(items) = arguments[0].list_items() else {
         return Err(type_error("copy-list", "list", &arguments[0]));
@@ -70,7 +70,7 @@ pub(super) fn copy_list(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::list(items))
 }
 
-pub(super) fn copy_alist(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn copy_alist(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "copy-alist", 1)?;
     let Some(entries) = arguments[0].list_items() else {
         return Err(type_error("copy-alist", "association list", &arguments[0]));
@@ -89,7 +89,7 @@ pub(super) fn copy_alist(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::list(copied))
 }
 
-pub(super) fn copy_tree(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn copy_tree(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "copy-tree", 1)?;
     Ok(copy_tree_value(&arguments[0]))
 }

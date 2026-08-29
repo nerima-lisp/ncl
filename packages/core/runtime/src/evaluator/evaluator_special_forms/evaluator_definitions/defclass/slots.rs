@@ -1,4 +1,7 @@
-use super::{ClassSlot, Form, FormKind, Rc, RefCell, Runtime, RuntimeError, Value, is_nil_form, unqualified_name};
+use super::{
+    ClassSlot, Form, FormKind, Rc, RefCell, Runtime, RuntimeError, Value, is_nil_form,
+    unqualified_name,
+};
 
 pub(super) struct DefclassSlotRegistration {
     pub(super) slot: ClassSlot,
@@ -7,7 +10,9 @@ pub(super) struct DefclassSlotRegistration {
 }
 
 impl Runtime {
-    pub(super) fn parse_defclass_slot(slot_form: &Form) -> Result<DefclassSlotRegistration, RuntimeError> {
+    pub(super) fn parse_defclass_slot(
+        slot_form: &Form,
+    ) -> Result<DefclassSlotRegistration, RuntimeError> {
         let (slot_name_form, options) = match &slot_form.kind {
             FormKind::Atom(_) => (slot_form, &[][..]),
             FormKind::List(slot_items) if !slot_items.is_empty() => {

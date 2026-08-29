@@ -1,11 +1,11 @@
 use super::{exact, type_error};
 use crate::{RuntimeError, Value};
 
-pub(super) fn append(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn append(arguments: &[Value]) -> Result<Value, RuntimeError> {
     append_lists("append", arguments)
 }
 
-pub(super) fn append_lists(function: &str, arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn append_lists(function: &str, arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Ok(Value::Nil);
     }
@@ -36,19 +36,19 @@ pub(super) fn append_lists(function: &str, arguments: &[Value]) -> Result<Value,
     }
 }
 
-pub(super) fn nconc(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn nconc(arguments: &[Value]) -> Result<Value, RuntimeError> {
     append_lists("nconc", arguments)
 }
 
-pub(super) fn revappend(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn revappend(arguments: &[Value]) -> Result<Value, RuntimeError> {
     revappend_like("revappend", arguments)
 }
 
-pub(super) fn nreconc(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn nreconc(arguments: &[Value]) -> Result<Value, RuntimeError> {
     revappend_like("nreconc", arguments)
 }
 
-pub(super) fn revappend_like(function: &str, arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn revappend_like(function: &str, arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, function, 2)?;
     let Some(mut items) = arguments[0].list_items() else {
         return Err(type_error(function, "list", &arguments[0]));

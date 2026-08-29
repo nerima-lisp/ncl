@@ -3,39 +3,39 @@ use std::cmp::Ordering;
 use super::{exact, integer_from_usize, string_designator};
 use crate::{RuntimeError, Value};
 
-pub(super) fn string_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     string_equality("string=", arguments, false)
 }
 
-pub(super) fn string_case_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_case_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     string_equality("string-equal", arguments, true)
 }
 
-pub(super) fn string_less_than(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_less_than(arguments: &[Value]) -> Result<Value, RuntimeError> {
     compare_strings("string<", arguments, false, |ordering| {
         ordering == Ordering::Less
     })
 }
 
-pub(super) fn string_greater_than(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_greater_than(arguments: &[Value]) -> Result<Value, RuntimeError> {
     compare_strings("string>", arguments, false, |ordering| {
         ordering == Ordering::Greater
     })
 }
 
-pub(super) fn string_less_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_less_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     compare_strings("string<=", arguments, false, |ordering| {
         ordering != Ordering::Greater
     })
 }
 
-pub(super) fn string_greater_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_greater_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     compare_strings("string>=", arguments, false, |ordering| {
         ordering != Ordering::Less
     })
 }
 
-pub(super) fn compare_strings(
+pub fn compare_strings(
     function: &str,
     arguments: &[Value],
     ignore_case: bool,
@@ -52,7 +52,7 @@ pub(super) fn compare_strings(
     }
 }
 
-pub(super) fn string_equality(
+pub fn string_equality(
     function: &str,
     arguments: &[Value],
     ignore_case: bool,
@@ -64,7 +64,7 @@ pub(super) fn string_equality(
     Ok(Value::boolean(ordering == Ordering::Equal))
 }
 
-pub(super) fn string_order(left: &str, right: &str, ignore_case: bool) -> (usize, Ordering) {
+pub fn string_order(left: &str, right: &str, ignore_case: bool) -> (usize, Ordering) {
     let left = left.chars().collect::<Vec<_>>();
     let right = right.chars().collect::<Vec<_>>();
     for (index, (left, right)) in left.iter().zip(&right).enumerate() {

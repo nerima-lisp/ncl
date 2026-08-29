@@ -1,5 +1,5 @@
 #![allow(clippy::wildcard_imports)]
-use super::*;
+use crate::*;
 
 impl CompileState {
     #[allow(clippy::too_many_lines)]

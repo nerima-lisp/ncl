@@ -1,16 +1,16 @@
 use super::{
-    array_option_name, arity, character_argument, exact, index_argument, rebuild_sequence,
+    arity, array_option_name, character_argument, exact, index_argument, rebuild_sequence,
     sequence_elements, string_designator, type_designator_name, type_error,
 };
 use crate::{RuntimeError, Value};
 
-pub(super) fn copy_seq(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn copy_seq(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "copy-seq", 1)?;
     let items = sequence_elements("copy-seq", &arguments[0])?;
     rebuild_sequence("copy-seq", &arguments[0], items)
 }
 
-pub(super) fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("concatenate", "at least one", 0));
     }
@@ -45,7 +45,7 @@ pub(super) fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() < 2 || !(arguments.len() - 2).is_multiple_of(2) {
         return Err(arity(
             "make-sequence",
@@ -85,7 +85,7 @@ pub(super) fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> 
     }
 }
 
-pub(super) fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "coerce", 2)?;
     let result_type = type_designator_name("coerce", &arguments[1])?;
     match result_type.as_str() {

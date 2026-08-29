@@ -4,7 +4,10 @@ use super::{
 };
 
 impl Runtime {
-    pub(super) fn list_form_items<'a>(form: &'a Form, context: &str) -> Result<&'a [Form], RuntimeError> {
+    pub(super) fn list_form_items<'a>(
+        form: &'a Form,
+        context: &str,
+    ) -> Result<&'a [Form], RuntimeError> {
         match &form.kind {
             FormKind::List(items) => Ok(items),
             FormKind::Atom(name) if normalize_name(name) == "NIL" => Ok(&[]),
@@ -12,7 +15,10 @@ impl Runtime {
         }
     }
 
-    pub(super) fn definition_name_from_form(form: &Form, context: &str) -> Result<String, RuntimeError> {
+    pub(super) fn definition_name_from_form(
+        form: &Form,
+        context: &str,
+    ) -> Result<String, RuntimeError> {
         let Some(raw_name) = atom_name(form) else {
             return Err(Self::invalid(context, form.span));
         };

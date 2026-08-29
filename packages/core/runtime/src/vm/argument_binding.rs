@@ -6,8 +6,8 @@ mod keywords;
 mod positional;
 mod support;
 
-pub(crate) use keywords::{bind_auxiliary, bind_keywords};
-pub(crate) use positional::{argument_layout, bind_optional, bind_required, bind_rest};
+pub use keywords::{bind_auxiliary, bind_keywords};
+pub use positional::{argument_layout, bind_optional, bind_required, bind_rest};
 
 #[cfg(test)]
 mod tests;

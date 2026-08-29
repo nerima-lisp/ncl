@@ -1,5 +1,5 @@
 #![allow(clippy::wildcard_imports)]
-use super::*;
+use crate::*;
 
 impl CompileState {
     pub(crate) fn compile_handler_bind(

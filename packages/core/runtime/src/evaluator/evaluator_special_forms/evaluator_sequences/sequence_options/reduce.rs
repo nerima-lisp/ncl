@@ -3,7 +3,7 @@ use super::super::*;
 
 use super::search::parse_sequence_index;
 
-pub(crate) fn reduce_initial_value(
+pub fn reduce_initial_value(
     initial_value: Option<Value>,
     first_value: Option<&Value>,
     apply_key: &dyn Fn(&Value) -> Result<Value, RuntimeError>,
@@ -20,7 +20,7 @@ pub(crate) fn reduce_initial_value(
     )
 }
 
-pub(crate) fn parse_sequence_reduce_options(
+pub fn parse_sequence_reduce_options(
     options: &[Value],
     span: Span,
 ) -> Result<SequenceReduceOptions, RuntimeError> {

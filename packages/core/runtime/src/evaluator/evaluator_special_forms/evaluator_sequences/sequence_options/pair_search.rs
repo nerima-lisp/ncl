@@ -3,7 +3,7 @@ use super::super::*;
 
 use super::search::parse_sequence_index;
 
-pub(crate) fn parse_sequence_pair_search_options(
+pub fn parse_sequence_pair_search_options(
     options: &[Value],
     span: Span,
 ) -> Result<SequencePairSearchOptions, RuntimeError> {

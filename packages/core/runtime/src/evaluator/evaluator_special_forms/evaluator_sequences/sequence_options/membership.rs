@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::super::*;
 
-pub(crate) fn parse_list_membership_options(
+pub fn parse_list_membership_options(
     options: &[Value],
     is_predicate: bool,
     span: Span,
@@ -58,7 +58,7 @@ pub(crate) fn parse_list_membership_options(
     Ok(parsed)
 }
 
-pub(crate) fn parse_association_search_options(
+pub fn parse_association_search_options(
     options: &[Value],
     is_predicate: bool,
     span: Span,

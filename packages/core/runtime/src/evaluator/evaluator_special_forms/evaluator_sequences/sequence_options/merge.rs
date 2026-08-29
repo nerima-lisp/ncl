@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::super::*;
 
-pub(crate) fn parse_sequence_merge_key(
+pub fn parse_sequence_merge_key(
     options: &[Value],
     span: Span,
 ) -> Result<Option<Value>, RuntimeError> {
@@ -33,7 +33,7 @@ pub(crate) fn parse_sequence_merge_key(
     Ok(key)
 }
 
-pub(crate) fn sequence_items(value: &Value, span: Span) -> Result<Vec<Value>, RuntimeError> {
+pub fn sequence_items(value: &Value, span: Span) -> Result<Vec<Value>, RuntimeError> {
     match value {
         Value::Nil => Ok(Vec::new()),
         Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
@@ -46,10 +46,7 @@ pub(crate) fn sequence_items(value: &Value, span: Span) -> Result<Vec<Value>, Ru
     }
 }
 
-pub(crate) fn merge_result_kind(
-    result_type: &Value,
-    span: Span,
-) -> Result<&'static str, RuntimeError> {
+pub fn merge_result_kind(result_type: &Value, span: Span) -> Result<&'static str, RuntimeError> {
     match result_type.symbol_name().map(normalize_name).as_deref() {
         Some("NIL") => Ok("NIL"),
         Some("LIST") => Ok("LIST"),
@@ -62,7 +59,7 @@ pub(crate) fn merge_result_kind(
     }
 }
 
-pub(crate) fn sequence_merge_result(
+pub fn sequence_merge_result(
     result_kind: &str,
     merged: Vec<Value>,
     span: Span,

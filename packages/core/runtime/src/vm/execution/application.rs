@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn execute_call_instruction(
+pub fn execute_call_instruction(
     runtime: &Runtime,
     argument_count: usize,
     stack: &mut Vec<Value>,
@@ -29,7 +29,7 @@ pub(super) fn execute_call_instruction(
     Ok(())
 }
 
-pub(super) fn execute_apply_instruction(
+pub fn execute_apply_instruction(
     runtime: &Runtime,
     argument_count: usize,
     stack: &mut Vec<Value>,
@@ -65,7 +65,7 @@ pub(super) fn execute_apply_instruction(
     Ok(())
 }
 
-pub(super) fn execute_mapcar_instruction(
+pub fn execute_mapcar_instruction(
     runtime: &Runtime,
     sequence_count: usize,
     stack: &mut Vec<Value>,
@@ -111,7 +111,7 @@ pub(super) fn execute_mapcar_instruction(
     Ok(())
 }
 
-pub(super) fn execute_multiple_value_call_instruction(
+pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,
     stack: &mut Vec<Value>,

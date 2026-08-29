@@ -1,7 +1,7 @@
 use super::{arity, exact, type_error};
 use crate::{RuntimeError, Value};
 
-pub(super) fn getf(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn getf(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(2..=3).contains(&arguments.len()) {
         return Err(arity("getf", "2 or 3", arguments.len()));
     }
@@ -22,7 +22,7 @@ pub(super) fn getf(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(arguments.get(2).cloned().unwrap_or(Value::Nil))
 }
 
-pub(super) fn get_properties(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn get_properties(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "get-properties", 2)?;
     let Some(plist) = arguments[0].list_items() else {
         return Err(type_error("get-properties", "property list", &arguments[0]));

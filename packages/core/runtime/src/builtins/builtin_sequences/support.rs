@@ -1,7 +1,7 @@
 use super::{array_option_name, integer_argument, type_error};
 use crate::{RuntimeError, Value};
 
-pub(super) fn sequence_bounds(
+pub fn sequence_bounds(
     function: &str,
     length: usize,
     options: &[Value],
@@ -29,7 +29,7 @@ pub(super) fn sequence_bounds(
     Ok((start, end))
 }
 
-pub(super) fn replace_bounds(
+pub fn replace_bounds(
     first_length: usize,
     second_length: usize,
     options: &[Value],
@@ -62,7 +62,7 @@ pub(super) fn replace_bounds(
     Ok((start1, end1, start2, end2))
 }
 
-pub(super) fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Value>, RuntimeError> {
+pub fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Value>, RuntimeError> {
     match value {
         Value::Nil => Ok(Vec::new()),
         Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
@@ -71,7 +71,7 @@ pub(super) fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Val
     }
 }
 
-pub(super) fn rebuild_sequence(
+pub fn rebuild_sequence(
     function: &str,
     template: &Value,
     items: Vec<Value>,
@@ -97,7 +97,7 @@ pub(super) fn rebuild_sequence(
     }
 }
 
-pub(super) fn sequence_length(value: &Value) -> Option<usize> {
+pub fn sequence_length(value: &Value) -> Option<usize> {
     match value {
         Value::Nil => Some(0),
         Value::List(items) | Value::Vector(items) => Some(items.len()),
@@ -106,7 +106,7 @@ pub(super) fn sequence_length(value: &Value) -> Option<usize> {
     }
 }
 
-pub(super) fn index_argument(function: &str, value: &Value) -> Result<usize, RuntimeError> {
+pub fn index_argument(function: &str, value: &Value) -> Result<usize, RuntimeError> {
     let index = integer_argument(function, value)?;
     usize::try_from(index).map_err(|_| RuntimeError::InvalidForm {
         message: format!("{function} index must be non-negative"),
@@ -114,7 +114,7 @@ pub(super) fn index_argument(function: &str, value: &Value) -> Result<usize, Run
     })
 }
 
-pub(super) fn integer_from_usize(function: &str, value: usize) -> Result<Value, RuntimeError> {
+pub fn integer_from_usize(function: &str, value: usize) -> Result<Value, RuntimeError> {
     i64::try_from(value)
         .map(Value::Integer)
         .map_err(|_| RuntimeError::InvalidForm {
@@ -123,7 +123,7 @@ pub(super) fn integer_from_usize(function: &str, value: usize) -> Result<Value, 
         })
 }
 
-pub(super) fn out_of_bounds(function: &str, index: usize) -> RuntimeError {
+pub fn out_of_bounds(function: &str, index: usize) -> RuntimeError {
     RuntimeError::InvalidForm {
         message: format!("{function} index {index} is out of bounds"),
         span: None,

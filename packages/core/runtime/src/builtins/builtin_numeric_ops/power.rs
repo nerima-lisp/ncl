@@ -1,4 +1,6 @@
-use super::{Number, RuntimeError, Value, exact, number_argument, number_to_value, rational_number};
+use super::{
+    Number, RuntimeError, Value, exact, number_argument, number_to_value, rational_number,
+};
 
 pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "expt", 2)?;
@@ -15,7 +17,10 @@ pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Float(base.as_float().powf(exponent.as_float())))
 }
 
-pub fn exact_power(base: Number, exponent: i64) -> Result<Number, RuntimeError> {
+pub(in crate::builtins) fn exact_power(
+    base: Number,
+    exponent: i64,
+) -> Result<Number, RuntimeError> {
     let (mut numerator, mut denominator) =
         base.exact_parts()
             .ok_or_else(|| RuntimeError::InvalidForm {

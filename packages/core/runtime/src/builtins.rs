@@ -63,13 +63,13 @@ mod registry;
 pub use registry::install;
 mod builtin_numeric_ops;
 #[allow(clippy::wildcard_imports)]
-use builtin_numeric_ops::*;
+pub use builtin_numeric_ops::*;
 mod builtin_sequences;
 #[allow(clippy::wildcard_imports)]
-use builtin_sequences::*;
+pub use builtin_sequences::*;
 mod builtin_list_ops;
 #[allow(clippy::wildcard_imports)]
-use builtin_list_ops::*;
+pub use builtin_list_ops::*;
 mod types;
 #[allow(clippy::wildcard_imports)]
 pub use types::*;

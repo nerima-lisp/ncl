@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::super::*;
 
-pub(crate) fn parse_sequence_substitute_options(
+pub fn parse_sequence_substitute_options(
     options: &[Value],
     is_predicate: bool,
     span: Span,

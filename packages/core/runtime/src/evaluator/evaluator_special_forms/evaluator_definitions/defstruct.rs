@@ -44,8 +44,12 @@ impl Runtime {
             constructor_options,
             included_structure,
         } = options;
-        let (structure_types, slots) =
-            self.collect_defstruct_slots(&structure_name, included_structure, slot_forms, environment)?;
+        let (structure_types, slots) = self.collect_defstruct_slots(
+            &structure_name,
+            included_structure,
+            slot_forms,
+            environment,
+        )?;
 
         Self::register_defstruct(
             environment,

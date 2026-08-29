@@ -77,11 +77,18 @@ pub fn rational_from_float(value: f64) -> Result<Value, RuntimeError> {
 mod tests {
     use super::*;
 
+    fn ok_string(result: Result<Value, RuntimeError>) -> String {
+        match result {
+            Ok(value) => value.to_string(),
+            Err(error) => panic!("expected Ok, got {error:?}"),
+        }
+    }
+
     #[test]
     fn coerces_between_float_and_rational() {
-        assert_eq!(float_value(&[Value::Integer(4)]).unwrap().to_string(), "4.0");
-        assert_eq!(rational(&[Value::Float(0.5)]).unwrap().to_string(), "1/2");
-        assert_eq!(rational(&[Value::Integer(3)]).unwrap().to_string(), "3");
+        assert_eq!(ok_string(float_value(&[Value::Integer(4)])), "4.0");
+        assert_eq!(ok_string(rational(&[Value::Float(0.5)])), "1/2");
+        assert_eq!(ok_string(rational(&[Value::Integer(3)])), "3");
     }
 
     #[test]

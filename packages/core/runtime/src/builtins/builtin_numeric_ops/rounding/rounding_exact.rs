@@ -1,5 +1,5 @@
-use super::RoundingMode;
 use super::super::{Number, RuntimeError, Value, number_to_value, rational_number};
+use super::RoundingMode;
 
 pub fn exact_quotient_and_remainder(
     dividend: Number,
@@ -137,15 +137,28 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn rounds_exact_and_float_quotients_by_mode() {
         assert_eq!(round_float(2.5), 2.0);
         assert_eq!(round_float(3.5), 4.0);
         assert!(float_integer(f64::INFINITY).is_err());
-        let exact_zero_divisor =
-            exact_quotient_and_remainder(Number::Integer(1), Number::Integer(0), RoundingMode::Floor);
-        assert!(matches!(exact_zero_divisor, Err(RuntimeError::DivisionByZero)));
-        let float_zero_divisor =
-            float_quotient_and_remainder(Number::Float(1.0), Number::Float(0.0), RoundingMode::Floor);
-        assert!(matches!(float_zero_divisor, Err(RuntimeError::DivisionByZero)));
+        let exact_zero_divisor = exact_quotient_and_remainder(
+            Number::Integer(1),
+            Number::Integer(0),
+            RoundingMode::Floor,
+        );
+        assert!(matches!(
+            exact_zero_divisor,
+            Err(RuntimeError::DivisionByZero)
+        ));
+        let float_zero_divisor = float_quotient_and_remainder(
+            Number::Float(1.0),
+            Number::Float(0.0),
+            RoundingMode::Floor,
+        );
+        assert!(matches!(
+            float_zero_divisor,
+            Err(RuntimeError::DivisionByZero)
+        ));
     }
 }

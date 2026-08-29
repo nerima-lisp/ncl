@@ -84,19 +84,22 @@ pub fn integer_remainder(left: i64, right: i64) -> Result<i64, RuntimeError> {
 mod tests {
     use super::*;
 
+    fn ok_string(result: Result<Value, RuntimeError>) -> String {
+        match result {
+            Ok(value) => value.to_string(),
+            Err(error) => panic!("expected Ok, got {error:?}"),
+        }
+    }
+
     #[test]
     fn rounds_and_divides_with_remainder() {
         assert!(floor(&[Value::Integer(7), Value::Integer(2)]).is_ok());
         assert_eq!(
-            modulo(&[Value::Integer(-7), Value::Integer(2)])
-                .unwrap()
-                .to_string(),
+            ok_string(modulo(&[Value::Integer(-7), Value::Integer(2)])),
             "1",
         );
         assert_eq!(
-            remainder(&[Value::Integer(-7), Value::Integer(2)])
-                .unwrap()
-                .to_string(),
+            ok_string(remainder(&[Value::Integer(-7), Value::Integer(2)])),
             "-1",
         );
     }

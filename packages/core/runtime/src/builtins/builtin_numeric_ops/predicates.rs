@@ -57,14 +57,21 @@ pub fn signum(arguments: &[Value]) -> Result<Value, RuntimeError> {
 mod tests {
     use super::*;
 
+    fn ok_string(result: Result<Value, RuntimeError>) -> String {
+        match result {
+            Ok(value) => value.to_string(),
+            Err(error) => panic!("expected Ok, got {error:?}"),
+        }
+    }
+
     #[test]
     fn classifies_numeric_signs_and_parity() {
-        assert_eq!(zerop(&[Value::Integer(0)]).unwrap().to_string(), "T");
-        assert_eq!(plusp(&[Value::Integer(1)]).unwrap().to_string(), "T");
-        assert_eq!(minusp(&[Value::Integer(-1)]).unwrap().to_string(), "T");
-        assert_eq!(evenp(&[Value::Integer(2)]).unwrap().to_string(), "T");
-        assert_eq!(oddp(&[Value::Integer(3)]).unwrap().to_string(), "T");
-        assert_eq!(signum(&[Value::Integer(-5)]).unwrap().to_string(), "-1");
+        assert_eq!(ok_string(zerop(&[Value::Integer(0)])), "T");
+        assert_eq!(ok_string(plusp(&[Value::Integer(1)])), "T");
+        assert_eq!(ok_string(minusp(&[Value::Integer(-1)])), "T");
+        assert_eq!(ok_string(evenp(&[Value::Integer(2)])), "T");
+        assert_eq!(ok_string(oddp(&[Value::Integer(3)])), "T");
+        assert_eq!(ok_string(signum(&[Value::Integer(-5)])), "-1");
     }
 
     #[test]

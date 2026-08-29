@@ -2,37 +2,37 @@
 use super::*;
 
 mod list_construction;
-pub(super) use list_construction::*;
+pub use list_construction::*;
 
 mod cons_access;
-pub(super) use cons_access::*;
+pub use cons_access::*;
 
 mod append;
-pub(super) use append::*;
+pub use append::*;
 
 mod access;
-pub(super) use access::*;
+pub use access::*;
 
 mod string_compare;
-pub(super) use string_compare::*;
+pub use string_compare::*;
 
 mod string_case;
-pub(super) use string_case::*;
+pub use string_case::*;
 
 mod string_trim;
-pub(super) use string_trim::*;
+pub use string_trim::*;
 
 mod designators;
-pub(super) use designators::*;
+pub use designators::*;
 
 mod subseq_fill_replace;
-pub(super) use subseq_fill_replace::*;
+pub use subseq_fill_replace::*;
 
 mod sequence_convert;
-pub(super) use sequence_convert::*;
+pub use sequence_convert::*;
 
 mod support;
-pub(super) use support::*;
+pub use support::*;
 
 mod plist;
-pub(super) use plist::*;
+pub use plist::*;

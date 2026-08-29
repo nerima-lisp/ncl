@@ -1,4 +1,6 @@
-use super::{Number, RuntimeError, Value, exact, number_argument, number_to_value, rational_number};
+use super::{
+    Number, RuntimeError, Value, exact, number_argument, number_to_value, rational_number,
+};
 
 pub fn rationalize(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "rationalize", 1)?;
@@ -80,11 +82,18 @@ pub fn simplest_positive_rational(
 mod tests {
     use super::*;
 
+    fn ok<T: std::fmt::Debug>(result: Result<T, RuntimeError>) -> T {
+        match result {
+            Ok(value) => value,
+            Err(error) => panic!("expected Ok, got {error:?}"),
+        }
+    }
+
     #[test]
     fn finds_simplest_rational_approximation() {
-        assert_eq!(rationalize(&[Value::Float(0.5)]).unwrap().to_string(), "1/2");
-        assert_eq!(simplest_rational(0.4, 0.6).unwrap(), (1, 2));
-        assert_eq!(simplest_rational(-0.1, 0.1).unwrap(), (0, 1));
+        assert_eq!(ok(rationalize(&[Value::Float(0.5)])).to_string(), "1/2");
+        assert_eq!(ok(simplest_rational(0.4, 0.6)), (1, 2));
+        assert_eq!(ok(simplest_rational(-0.1, 0.1)), (0, 1));
     }
 
     #[test]

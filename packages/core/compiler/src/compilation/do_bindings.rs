@@ -3,6 +3,11 @@ use super::*;
 
 type DoBinding = (String, bool, Option<Form>, Option<Form>);
 
+/// The binding list's span, the termination form, its test/result forms,
+/// and the per-variable `(name, escaped, init, step)` tuples parsed from a
+/// `DO`/`DO*` form.
+type ParsedDoForm<'a> = (Span, &'a Form, &'a [Form], Vec<DoBinding>);
+
 impl CompileState {
     /// Parses and validates a `DO`/`DO*` form's bindings and termination
     /// clause, returning the pieces `compile_do` needs to emit code:
@@ -12,7 +17,7 @@ impl CompileState {
         items: &'a [Form],
         span: Span,
         operator: &str,
-    ) -> Result<(Span, &'a Form, &'a [Form], Vec<DoBinding>), CompileError> {
+    ) -> Result<ParsedDoForm<'a>, CompileError> {
         if items.len() < 3 {
             return Err(Self::arity_error(items, operator, "at least two", span));
         }

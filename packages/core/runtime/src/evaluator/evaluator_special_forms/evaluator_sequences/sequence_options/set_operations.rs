@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::super::*;
 
-pub(crate) fn parse_list_set_options(
+pub fn parse_list_set_options(
     options: &[Value],
     span: Span,
 ) -> Result<ListSetOptions, RuntimeError> {

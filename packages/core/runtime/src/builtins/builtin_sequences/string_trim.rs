@@ -1,19 +1,19 @@
 use super::{character_argument, exact, sequence_elements, string_designator};
 use crate::{RuntimeError, Value};
 
-pub(super) fn string_trim(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_trim(arguments: &[Value]) -> Result<Value, RuntimeError> {
     trim_string(arguments, "string-trim", true, true)
 }
 
-pub(super) fn string_left_trim(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_left_trim(arguments: &[Value]) -> Result<Value, RuntimeError> {
     trim_string(arguments, "string-left-trim", true, false)
 }
 
-pub(super) fn string_right_trim(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_right_trim(arguments: &[Value]) -> Result<Value, RuntimeError> {
     trim_string(arguments, "string-right-trim", false, true)
 }
 
-pub(super) fn trim_string(
+pub fn trim_string(
     arguments: &[Value],
     function: &str,
     trim_left: bool,

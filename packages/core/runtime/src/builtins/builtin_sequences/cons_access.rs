@@ -1,7 +1,7 @@
 use super::{exact, index_argument, type_error};
 use crate::{RuntimeError, Value};
 
-pub(super) fn cons(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn cons(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "cons", 2)?;
     match &arguments[1] {
         Value::Nil => Ok(Value::list(vec![arguments[0].clone()])),
@@ -24,7 +24,7 @@ pub(super) fn cons(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn car(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn car(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "car", 1)?;
     match &arguments[0] {
         Value::Nil => Ok(Value::Nil),
@@ -40,7 +40,7 @@ pub(super) fn car(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn cdr(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn cdr(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "cdr", 1)?;
     match &arguments[0] {
         Value::Nil => Ok(Value::Nil),
@@ -54,15 +54,15 @@ pub(super) fn cdr(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn first(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn first(arguments: &[Value]) -> Result<Value, RuntimeError> {
     car(arguments)
 }
 
-pub(super) fn rest(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn rest(arguments: &[Value]) -> Result<Value, RuntimeError> {
     cdr(arguments)
 }
 
-pub(super) fn nthcdr(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn nthcdr(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "nthcdr", 2)?;
     let index = index_argument("nthcdr", &arguments[0])?;
     match &arguments[1] {

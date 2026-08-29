@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::super::*;
 
-pub(crate) fn parse_sequence_sort_key(
+pub fn parse_sequence_sort_key(
     options: &[Value],
     span: Span,
 ) -> Result<Option<Value>, RuntimeError> {
@@ -35,7 +35,7 @@ pub(crate) fn parse_sequence_sort_key(
     Ok(key)
 }
 
-pub(crate) fn sequence_sort_result(
+pub fn sequence_sort_result(
     kind: SequenceKind,
     sorted: Vec<Value>,
     span: Span,

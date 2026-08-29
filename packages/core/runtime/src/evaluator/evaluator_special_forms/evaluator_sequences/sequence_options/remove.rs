@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::super::*;
 
-pub(crate) fn parse_sequence_remove_options(
+pub fn parse_sequence_remove_options(
     options: &[Value],
     is_predicate: bool,
     removes_duplicates: bool,
@@ -96,7 +96,7 @@ pub(crate) fn parse_sequence_remove_options(
     Ok(parsed)
 }
 
-pub(crate) fn sequence_removal_options(
+pub fn sequence_removal_options(
     options: &SequenceRemoveOptions,
     end: usize,
 ) -> SequenceRemoveOptions {

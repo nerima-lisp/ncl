@@ -7,7 +7,7 @@ use crate::{Environment, Runtime, RuntimeError, Value};
 
 use super::support::{default_value, define_binding};
 
-pub(super) fn argument_layout(
+pub fn argument_layout(
     function: &FunctionCode,
     arguments: &[Value],
 ) -> Result<(usize, usize), RuntimeError> {
@@ -73,7 +73,7 @@ fn supplied_optional_count(
         .count()
 }
 
-pub(super) fn bind_required(
+pub fn bind_required(
     runtime: &Runtime,
     function: &FunctionCode,
     arguments: &[Value],
@@ -93,7 +93,7 @@ pub(super) fn bind_required(
     }
 }
 
-pub(super) fn bind_optional(
+pub fn bind_optional(
     runtime: &Runtime,
     program: &Rc<Program>,
     function: &FunctionCode,
@@ -136,7 +136,7 @@ pub(super) fn bind_optional(
     Ok(())
 }
 
-pub(super) fn bind_rest(
+pub fn bind_rest(
     runtime: &Runtime,
     function: &FunctionCode,
     arguments: &[Value],

@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{RuntimeError, Value};
 
-pub(super) fn subseq(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn subseq(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(2..=3).contains(&arguments.len()) {
         return Err(arity("subseq", "2 or 3", arguments.len()));
     }
@@ -38,7 +38,7 @@ pub(super) fn subseq(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn fill(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn fill(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() < 2 {
         return Err(arity("fill", "at least two", arguments.len()));
     }
@@ -66,7 +66,7 @@ pub(super) fn fill(arguments: &[Value]) -> Result<Value, RuntimeError> {
     rebuild_sequence("fill", &arguments[1], items)
 }
 
-pub(super) fn replace(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn replace(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() < 2 {
         return Err(arity("replace", "at least two", arguments.len()));
     }

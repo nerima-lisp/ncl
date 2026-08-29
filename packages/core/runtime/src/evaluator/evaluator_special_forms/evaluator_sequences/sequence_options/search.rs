@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::super::*;
 
-pub(crate) fn parse_sequence_search_options(
+pub fn parse_sequence_search_options(
     options: &[Value],
     span: Span,
 ) -> Result<SequenceSearchOptions, RuntimeError> {
@@ -68,7 +68,7 @@ pub(crate) fn parse_sequence_search_options(
     Ok(parsed)
 }
 
-pub(crate) fn parse_sequence_index(
+pub fn parse_sequence_index(
     option: &str,
     value: &Value,
     span: Span,

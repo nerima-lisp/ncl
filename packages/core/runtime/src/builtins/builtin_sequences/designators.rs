@@ -1,14 +1,14 @@
 use super::type_error;
 use crate::{RuntimeError, Value};
 
-pub(super) fn character_argument(function: &str, value: &Value) -> Result<char, RuntimeError> {
+pub fn character_argument(function: &str, value: &Value) -> Result<char, RuntimeError> {
     match value {
         Value::Character(value) => Ok(*value),
         value => Err(type_error(function, "character", value)),
     }
 }
 
-pub(super) fn character_designator(function: &str, value: &Value) -> Result<char, RuntimeError> {
+pub fn character_designator(function: &str, value: &Value) -> Result<char, RuntimeError> {
     match value {
         Value::Character(value) => Ok(*value),
         Value::String(_)
@@ -28,7 +28,7 @@ pub(super) fn character_designator(function: &str, value: &Value) -> Result<char
     }
 }
 
-pub(super) fn string_designator(function: &str, value: &Value) -> Result<String, RuntimeError> {
+pub fn string_designator(function: &str, value: &Value) -> Result<String, RuntimeError> {
     match value {
         Value::Nil | Value::Boolean(false) => Ok("NIL".to_string()),
         Value::Boolean(true) => Ok("T".to_string()),

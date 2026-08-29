@@ -1,27 +1,27 @@
 use super::{arity, sequence_bounds, string_designator};
 use crate::{RuntimeError, Value};
 
-pub(super) fn string_upcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_upcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
     string_case_transform(arguments, "string-upcase", StringCase::Upper)
 }
 
-pub(super) fn string_downcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_downcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
     string_case_transform(arguments, "string-downcase", StringCase::Lower)
 }
 
-pub(super) fn string_capitalize(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn string_capitalize(arguments: &[Value]) -> Result<Value, RuntimeError> {
     string_case_transform(arguments, "string-capitalize", StringCase::Capitalize)
 }
 
-pub(super) fn nstring_upcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn nstring_upcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
     string_case_transform(arguments, "nstring-upcase", StringCase::Upper)
 }
 
-pub(super) fn nstring_downcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn nstring_downcase(arguments: &[Value]) -> Result<Value, RuntimeError> {
     string_case_transform(arguments, "nstring-downcase", StringCase::Lower)
 }
 
-pub(super) fn nstring_capitalize(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn nstring_capitalize(arguments: &[Value]) -> Result<Value, RuntimeError> {
     string_case_transform(arguments, "nstring-capitalize", StringCase::Capitalize)
 }
 
@@ -32,7 +32,7 @@ pub(super) enum StringCase {
     Capitalize,
 }
 
-pub(super) fn string_case_transform(
+pub(in crate::builtins::builtin_sequences) fn string_case_transform(
     arguments: &[Value],
     function: &str,
     case: StringCase,

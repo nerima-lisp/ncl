@@ -227,9 +227,18 @@ fn repl_evaluates_input_and_reports_errors() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ncl> ncl> 5\nncl> ncl> "
+        "ncl> ncl> 5\nncl> "
     );
     assert!(!output.stderr.is_empty());
+}
+
+#[test]
+fn repl_reads_a_form_split_across_multiple_lines() {
+    let output = run_with_stdin(&["--repl"], "(+ 1\n   2\n   3)\n");
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "ncl> 6\nncl> ");
+    assert!(output.stderr.is_empty());
 }
 
 #[test]
@@ -246,10 +255,7 @@ fn compiled_repl_prints_values_and_reports_errors() {
     let output = run_with_stdin(&["--repl", "--compiled"], "(+ 2 3)\n(\n");
 
     assert!(output.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
-        "ncl> 5\nncl> ncl> "
-    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "ncl> 5\nncl> ");
     assert!(!output.stderr.is_empty());
 }
 

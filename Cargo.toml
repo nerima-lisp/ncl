@@ -52,3 +52,4 @@ strip = "symbols"
 [dependencies]
 ncl-runtime = { path = "packages/core/runtime", version = "0.1.0" }
 ncl-syntax = { path = "packages/core/syntax", version = "0.1.0" }
+reedline = "0.42.0"

@@ -1,5 +1,3 @@
-use std::io::{self, Write};
-
 use ncl_runtime::Runtime;
 
 use super::VERSION;
@@ -20,45 +18,6 @@ pub(super) fn print_values(
     for value in values {
         if !quiet {
             println!("{value}");
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn repl_loop(runtime: &Runtime, quiet: bool, compiled: bool) -> Result<(), CliError> {
-    let mut line = String::new();
-    loop {
-        if !quiet {
-            print!("ncl> ");
-            io::stdout()
-                .flush()
-                .map_err(|error| CliError::Io(error.to_string()))?;
-        }
-        line.clear();
-        if io::stdin()
-            .read_line(&mut line)
-            .map_err(|error| CliError::Io(error.to_string()))?
-            == 0
-        {
-            break;
-        }
-        if line.trim().is_empty() {
-            continue;
-        }
-        let result = if compiled {
-            runtime.eval_compiled_source(&line)
-        } else {
-            runtime.eval_source(&line)
-        };
-        match result {
-            Ok(values) => {
-                if !quiet {
-                    for value in values {
-                        println!("{value}");
-                    }
-                }
-            }
-            Err(error) => eprintln!("{error}"),
         }
     }
     Ok(())

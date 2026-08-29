@@ -6,10 +6,12 @@ use ncl_runtime::Runtime;
 mod error;
 mod options;
 mod output;
+mod repl;
 
 use error::CliError;
 use options::CliOptions;
-use output::{print_help, print_values, repl_loop};
+use output::{print_help, print_values};
+use repl::repl_loop;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

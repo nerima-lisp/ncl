@@ -101,9 +101,9 @@ To inspect coverage against the configured CI minimum, include the threshold:
 nix run path:.#rust-coverage -- --summary-only --fail-under-lines 88.4
 ~~~
 
-CI enforces 88.4% line coverage. The current local report is below that
-minimum, so additional runtime-path tests are still required; check the
-summary together with the command exit status.
+CI enforces 88.4% line coverage. The displayed workspace `TOTAL` can differ
+from the value used by cargo-llvm-cov for the threshold check; verify both the
+reported summary and the command exit status.
 
 For a browsable report, use `--html --output-dir artifacts/rust-coverage` in
 place of `--summary-only`. The flake app supplies the pinned Rust and LLVM

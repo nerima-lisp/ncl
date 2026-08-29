@@ -1,0 +1,132 @@
+#![allow(clippy::wildcard_imports)]
+use super::*;
+
+pub(super) fn compound_subtype_named(operator: &str, supertype_name: &str) -> bool {
+    match operator {
+        "INTEGER" => matches!(
+            supertype_name,
+            "INTEGER" | "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
+        ),
+        "MOD" | "SIGNED-BYTE" | "UNSIGNED-BYTE" => matches!(
+            supertype_name,
+            "INTEGER" | "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
+        ),
+        "CONS" => matches!(supertype_name, "CONS" | "LIST" | "SEQUENCE"),
+        "VECTOR" | "SIMPLE-VECTOR" => matches!(
+            supertype_name,
+            "VECTOR" | "SIMPLE-VECTOR" | "ARRAY" | "SIMPLE-ARRAY" | "SEQUENCE" | "ATOM"
+        ),
+        "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => matches!(
+            supertype_name,
+            "BIT-VECTOR"
+                | "SIMPLE-BIT-VECTOR"
+                | "VECTOR"
+                | "SIMPLE-VECTOR"
+                | "ARRAY"
+                | "SIMPLE-ARRAY"
+                | "SEQUENCE"
+                | "ATOM"
+        ),
+        "ARRAY" | "SIMPLE-ARRAY" => {
+            matches!(supertype_name, "ARRAY" | "SIMPLE-ARRAY" | "ATOM")
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn named_subtype_relation(
+    subtype_name: &str,
+    supertype_name: &str,
+    environment: &Environment,
+) -> Option<bool> {
+    if subtype_name == supertype_name
+        || matches!(supertype_name, "T" | "OBJECT")
+        || builtin_subtype(subtype_name, supertype_name)
+    {
+        return Some(true);
+    }
+
+    if let Some(class) = environment.lookup_class(subtype_name)
+        && class
+            .precedence
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(supertype_name))
+    {
+        return Some(true);
+    }
+    if let Some(structure) = environment.lookup_structure(subtype_name)
+        && (supertype_name == "STRUCTURE"
+            || structure
+                .type_names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(supertype_name)))
+    {
+        return Some(true);
+    }
+    if known_type_name(subtype_name, environment) && known_type_name(supertype_name, environment) {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
+    match subtype_name {
+        "NIL" | "NULL" => matches!(
+            supertype_name,
+            "SYMBOL" | "LIST" | "SEQUENCE" | "ATOM" | "BOOLEAN" | "NIL" | "NULL"
+        ),
+        "BOOLEAN" => matches!(supertype_name, "SYMBOL" | "ATOM"),
+        "NUMBER" => matches!(supertype_name, "REAL" | "ATOM"),
+        "REAL" => matches!(supertype_name, "NUMBER" | "ATOM"),
+        "FIXNUM" | "BIGNUM" | "BIT" => matches!(
+            supertype_name,
+            "INTEGER" | "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
+        ),
+        "INTEGER" => matches!(supertype_name, "RATIONAL" | "NUMBER" | "REAL" | "ATOM"),
+        "RATIO" => matches!(supertype_name, "RATIONAL" | "NUMBER" | "REAL" | "ATOM"),
+        "RATIONAL" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
+        "FLOAT" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
+        "BASE-CHAR" => matches!(supertype_name, "CHARACTER" | "ATOM"),
+        "STANDARD-CHAR" => matches!(supertype_name, "BASE-CHAR" | "CHARACTER" | "ATOM"),
+        "EXTENDED-CHAR" => matches!(supertype_name, "CHARACTER" | "ATOM"),
+        "CHARACTER" | "SYMBOL" => supertype_name == "ATOM",
+        "STRING" | "BASE-STRING" => {
+            matches!(
+                supertype_name,
+                "STRING" | "BASE-STRING" | "SEQUENCE" | "ATOM"
+            )
+        }
+        "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => matches!(
+            supertype_name,
+            "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" | "SEQUENCE" | "ATOM"
+        ),
+        "KEYWORD" => matches!(supertype_name, "SYMBOL" | "ATOM"),
+        "CONS" => matches!(supertype_name, "LIST" | "SEQUENCE"),
+        "LIST" => supertype_name == "SEQUENCE",
+        "VECTOR" | "SIMPLE-VECTOR" => matches!(
+            supertype_name,
+            "VECTOR" | "SIMPLE-VECTOR" | "ARRAY" | "SIMPLE-ARRAY" | "SEQUENCE" | "ATOM"
+        ),
+        "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => matches!(
+            supertype_name,
+            "BIT-VECTOR"
+                | "SIMPLE-BIT-VECTOR"
+                | "VECTOR"
+                | "SIMPLE-VECTOR"
+                | "ARRAY"
+                | "SIMPLE-ARRAY"
+                | "SEQUENCE"
+                | "ATOM"
+        ),
+        "ARRAY" | "SIMPLE-ARRAY" => {
+            matches!(supertype_name, "ARRAY" | "SIMPLE-ARRAY" | "ATOM")
+        }
+        "COMPILED-FUNCTION" => matches!(supertype_name, "FUNCTION" | "ATOM"),
+        "FUNCTION" | "STREAM" | "PACKAGE" | "ENVIRONMENT" | "HASH-TABLE" | "CONDITION"
+        | "RESTART" | "STRUCTURE" | "UNBOUND" | "VALUES" | "CLASS" | "STANDARD-OBJECT" => {
+            supertype_name == "ATOM"
+        }
+        _ => false,
+    }
+}

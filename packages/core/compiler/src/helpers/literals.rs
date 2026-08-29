@@ -26,6 +26,9 @@ pub fn literal_constant(atom: &str) -> Option<Constant> {
             if let Ok(value) = token.name.parse::<i64>() {
                 return Some(Constant::Integer(value));
             }
+            if let Some(digits) = big_integer_literal(&token.name) {
+                return Some(Constant::BigInteger(digits));
+            }
             if let Some((numerator, denominator)) = rational_literal_parts(&token.name) {
                 return if denominator == 1 {
                     Some(Constant::Integer(numerator))
@@ -40,6 +43,22 @@ pub fn literal_constant(atom: &str) -> Option<Constant> {
         }
         _ => None,
     }
+}
+
+/// Recognizes a decimal integer literal that overflowed `i64` (already
+/// tried by the caller), returning its normalized sign-and-digits text.
+/// Anything not composed purely of an optional sign followed by digits
+/// (e.g. a rational's `/` or a float's `.`/exponent marker) is rejected so
+/// those literals keep falling through to their own parsers.
+fn big_integer_literal(name: &str) -> Option<String> {
+    let digits = name.strip_prefix(['+', '-']).unwrap_or(name);
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    Some(
+        name.strip_prefix('-')
+            .map_or_else(|| digits.to_string(), |digits| format!("-{digits}")),
+    )
 }
 
 fn rational_literal_parts(name: &str) -> Option<(i64, i64)> {

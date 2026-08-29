@@ -28,7 +28,7 @@ impl Value {
             Self::Nil => "NIL",
             Self::Unbound => "UNBOUND",
             Self::Boolean(_) => "BOOLEAN",
-            Self::Integer(_) => "INTEGER",
+            Self::Integer(_) | Self::BigInteger(_) => "INTEGER",
             Self::Rational(_) => "RATIO",
             Self::Float(_) => "FLOAT",
             Self::String(_) => "STRING",

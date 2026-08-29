@@ -112,7 +112,7 @@ jobs:
       # more accurate signal. This is a ratchet: lower this number only
       # if you can point to a specific line:reachability change that makes
       # the number correct, never to make an unrelated PR pass. Measured
-      # region coverage as of the floor below was 92.69%; the project's
+      # region coverage as of the floor below was 92.45%; the project's
       # target is >=95%, not yet reached -- raise the floor as further work
       # closes the gap.
       - run: cargo llvm-cov --locked --workspace --all-features --all-targets --ignore-filename-regex 'src/cli/repl/interactive\.rs|packages/core/runtime/src/builtins/registry/builtin_definitions\.rs' --summary-only --fail-under-regions 92.0

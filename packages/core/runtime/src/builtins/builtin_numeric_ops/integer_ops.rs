@@ -41,19 +41,20 @@ pub const fn integer_gcd(mut left: i128, mut right: i128) -> i128 {
 
 pub fn numerator(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "numerator", 1)?;
-    match arguments[0] {
-        Value::Integer(value) => Ok(Value::Integer(value)),
+    match &arguments[0] {
+        Value::Integer(value) => Ok(Value::Integer(*value)),
+        Value::BigInteger(value) => Ok(Value::BigInteger(value.clone())),
         Value::Rational(value) => Ok(Value::Integer(value.numerator())),
-        ref value => Err(type_error("numerator", "rational", value)),
+        value => Err(type_error("numerator", "rational", value)),
     }
 }
 
 pub fn denominator(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "denominator", 1)?;
-    match arguments[0] {
-        Value::Integer(_) => Ok(Value::Integer(1)),
+    match &arguments[0] {
+        Value::Integer(_) | Value::BigInteger(_) => Ok(Value::Integer(1)),
         Value::Rational(value) => Ok(Value::Integer(value.denominator())),
-        ref value => Err(type_error("denominator", "rational", value)),
+        value => Err(type_error("denominator", "rational", value)),
     }
 }
 

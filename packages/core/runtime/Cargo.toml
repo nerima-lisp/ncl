@@ -10,6 +10,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+ibig = { version = "0.3.6", default-features = false, features = ["std"] }
 ncl-compiler = { path = "../compiler", version = "0.1.0" }
 ncl-syntax = { path = "../syntax", version = "0.1.0" }
 

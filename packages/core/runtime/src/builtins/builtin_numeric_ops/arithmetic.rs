@@ -10,7 +10,7 @@ pub fn add(arguments: &[Value]) -> Result<Value, RuntimeError> {
         result = if result.is_float() || value.is_float() {
             Number::Float(result.as_float() + value.as_float())
         } else {
-            exact_binary(result, value, '+')?
+            exact_binary(&result, &value, '+')?
         };
     }
     number_to_value(result)
@@ -24,7 +24,7 @@ pub fn subtract(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .iter()
         .map(|value| number_argument("-", value))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut result = values[0];
+    let mut result = values[0].clone();
     if values.len() == 1 {
         result = negate_number(result)?;
     } else {
@@ -32,7 +32,7 @@ pub fn subtract(arguments: &[Value]) -> Result<Value, RuntimeError> {
             result = if result.is_float() || value.is_float() {
                 Number::Float(result.as_float() - value.as_float())
             } else {
-                exact_binary(result, *value, '-')?
+                exact_binary(&result, value, '-')?
             };
         }
     }
@@ -46,7 +46,7 @@ pub fn multiply(arguments: &[Value]) -> Result<Value, RuntimeError> {
         result = if result.is_float() || value.is_float() {
             Number::Float(result.as_float() * value.as_float())
         } else {
-            exact_binary(result, value, '*')?
+            exact_binary(&result, &value, '*')?
         };
     }
     number_to_value(result)
@@ -69,10 +69,10 @@ pub fn divide(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
             Number::Float(1.0 / divisor)
         } else {
-            exact_binary(Number::Integer(1), values[0], '/')?
+            exact_binary(&Number::Integer(1), &values[0], '/')?
         };
     } else {
-        result = values[0];
+        result = values[0].clone();
         for value in &values[1..] {
             result = if result.is_float() || value.is_float() {
                 let divisor = value.as_float();
@@ -81,7 +81,7 @@ pub fn divide(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 }
                 Number::Float(result.as_float() / divisor)
             } else {
-                exact_binary(result, *value, '/')?
+                exact_binary(&result, value, '/')?
             };
         }
     }

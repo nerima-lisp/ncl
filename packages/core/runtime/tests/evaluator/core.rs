@@ -820,12 +820,24 @@ fn evaluates_defconstant_and_constantp() {
 }
 
 #[test]
-fn arithmetic_reports_overflow_and_comparisons_require_an_argument() {
-    let overflow = Runtime::new()
-        .eval_source("(+ 9223372036854775807 1)")
-        .must_fail();
+fn arithmetic_promotes_overflow_to_a_bignum_and_comparisons_require_an_argument() {
+    // FR-017: exact arithmetic that overflows i64 promotes to an
+    // arbitrary-precision integer instead of erroring.
+    assert_eq!(
+        evaluate("(+ 9223372036854775807 1)").to_string(),
+        "9223372036854775808"
+    );
+    assert_eq!(
+        evaluate("(* (expt 2 64) (expt 2 64))").to_string(),
+        "340282366920938463463374607431768211456"
+    );
+
+    // A bignum-denominator ratio is still out of scope: this codebase's
+    // Rational only stores i64 numerator/denominator, so an uneven bignum
+    // division still reports NumericOverflow rather than a wrong answer.
+    let uneven_bignum_ratio = Runtime::new().eval_source("(/ (expt 2 100) 3)").must_fail();
     assert!(matches!(
-        overflow,
+        uneven_bignum_ratio,
         ncl_runtime::RuntimeError::NumericOverflow
     ));
 

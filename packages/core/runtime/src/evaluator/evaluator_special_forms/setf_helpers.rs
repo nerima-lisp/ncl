@@ -8,6 +8,7 @@ impl Runtime {
                 usize::try_from(index).map_err(|_| Self::invalid("SETF index is too large", span))
             }
             Value::Integer(_) => Err(Self::invalid("SETF index must be non-negative", span)),
+            Value::BigInteger(_) => Err(Self::invalid("SETF index is too large", span)),
             other => Err(RuntimeError::Type {
                 expected: "INTEGER".to_string(),
                 actual: other.type_name().to_string(),

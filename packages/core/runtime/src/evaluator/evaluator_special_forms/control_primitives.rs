@@ -67,6 +67,7 @@ impl Runtime {
                     items[1].span,
                 ));
             }
+            Value::BigInteger(_) => return Err(RuntimeError::NumericOverflow),
             value => {
                 return Err(RuntimeError::Type {
                     expected: "INTEGER".to_string(),

@@ -24,6 +24,9 @@ pub fn literal_atom(atom: &str) -> Option<Value> {
             if let Ok(value) = token.name.parse::<i64>() {
                 return Some(Value::Integer(value));
             }
+            if let Some(value) = big_integer_literal(&token.name) {
+                return Some(Value::big_integer(value));
+            }
             if let Some((numerator, denominator)) = token.name.split_once('/')
                 && let (Ok(numerator), Ok(denominator)) =
                     (numerator.parse::<i128>(), denominator.parse::<i128>())
@@ -34,6 +37,22 @@ pub fn literal_atom(atom: &str) -> Option<Value> {
         }
         _ => None,
     }
+}
+
+/// Recognizes a decimal integer literal that overflowed `i64` (already
+/// tried by the caller), parsing it as an arbitrary-precision integer.
+/// Anything not composed purely of an optional sign followed by digits
+/// (e.g. a rational's `/` or a float's `.`/exponent marker) is rejected so
+/// those literals keep falling through to their own parsers.
+fn big_integer_literal(name: &str) -> Option<ibig::IBig> {
+    let digits = name.strip_prefix(['+', '-']).unwrap_or(name);
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    name.strip_prefix('-').map_or_else(
+        || digits.parse().ok(),
+        |digits| format!("-{digits}").parse().ok(),
+    )
 }
 
 #[cfg(test)]

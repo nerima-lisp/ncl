@@ -8,6 +8,15 @@ pub(super) fn constant_value(constant: &Constant, span: Span) -> Result<Value, R
         Constant::Nil => Ok(Value::Nil),
         Constant::Boolean(value) => Ok(Value::boolean(*value)),
         Constant::Integer(value) => Ok(Value::Integer(*value)),
+        Constant::BigInteger(digits) => {
+            digits
+                .parse()
+                .map(Value::big_integer)
+                .map_err(|_| RuntimeError::InvalidForm {
+                    message: "compiled bignum constant is invalid".to_owned(),
+                    span: Some(span),
+                })
+        }
         Constant::Rational {
             numerator,
             denominator,

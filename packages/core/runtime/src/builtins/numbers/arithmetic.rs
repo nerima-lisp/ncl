@@ -1,13 +1,63 @@
+use ibig::IBig;
+
 use crate::RuntimeError;
 
 use super::Number;
-use super::conversions::rational_number;
+use super::conversions::{number_from_big, rational_number};
+
+/// Common Lisp's exact division of two arbitrary-precision integers is only
+/// representable here when it comes out even: a bignum numerator/denominator
+/// ratio has no home in [`crate::value::Rational`], which stores `i64`
+/// parts. An uneven bignum division is therefore a real, documented gap
+/// (reported as [`RuntimeError::NumericOverflow`]) rather than a silently
+/// wrong answer.
+fn exact_binary_big(left: IBig, right: IBig, operation: char) -> Result<Number, RuntimeError> {
+    let result = match operation {
+        '+' => left + right,
+        '-' => left - right,
+        '*' => left * right,
+        '/' => {
+            if right == IBig::from(0) {
+                return Err(RuntimeError::DivisionByZero);
+            }
+            let (quotient, remainder) = (&left / &right, &left % &right);
+            if remainder != IBig::from(0) {
+                return Err(RuntimeError::NumericOverflow);
+            }
+            quotient
+        }
+        _ => {
+            return Err(RuntimeError::InvalidForm {
+                message: "unsupported exact numeric operation".to_string(),
+                span: None,
+            });
+        }
+    };
+    Ok(number_from_big(result))
+}
+
+fn as_big(value: &Number) -> Option<IBig> {
+    match value {
+        Number::Integer(value) => Some(IBig::from(*value)),
+        Number::Big(value) => Some(value.clone()),
+        Number::Rational(_) | Number::Float(_) => None,
+    }
+}
 
 pub(in crate::builtins) fn exact_binary(
-    left: Number,
-    right: Number,
+    left: &Number,
+    right: &Number,
     operation: char,
 ) -> Result<Number, RuntimeError> {
+    if matches!(left, Number::Big(_)) || matches!(right, Number::Big(_)) {
+        let (Some(left_big), Some(right_big)) = (as_big(left), as_big(right)) else {
+            return Err(RuntimeError::InvalidForm {
+                message: "exact numeric operation received a float or bignum ratio".to_string(),
+                span: None,
+            });
+        };
+        return exact_binary_big(left_big, right_big, operation);
+    }
     let Some((left_numerator, left_denominator)) = left.exact_parts() else {
         return Err(RuntimeError::InvalidForm {
             message: "exact numeric operation received a float".to_string(),
@@ -57,6 +107,7 @@ pub(in crate::builtins) fn negate_number(value: Number) -> Result<Number, Runtim
             .checked_neg()
             .map(Number::Integer)
             .ok_or(RuntimeError::NumericOverflow),
+        Number::Big(value) => Ok(Number::Big(-value)),
         Number::Rational(value) => rational_number(
             -i128::from(value.numerator()),
             i128::from(value.denominator()),
@@ -79,7 +130,7 @@ mod tests {
 
     #[test]
     fn exact_binary_rejects_a_float_left_operand() {
-        match exact_binary(Number::Float(1.5), Number::Integer(2), '+') {
+        match exact_binary(&Number::Float(1.5), &Number::Integer(2), '+') {
             Err(RuntimeError::InvalidForm { .. }) => {}
             other => panic!("expected an InvalidForm error, got {}", describe(&other)),
         }
@@ -87,7 +138,7 @@ mod tests {
 
     #[test]
     fn exact_binary_rejects_a_float_right_operand() {
-        match exact_binary(Number::Integer(2), Number::Float(1.5), '+') {
+        match exact_binary(&Number::Integer(2), &Number::Float(1.5), '+') {
             Err(RuntimeError::InvalidForm { .. }) => {}
             other => panic!("expected an InvalidForm error, got {}", describe(&other)),
         }
@@ -95,7 +146,7 @@ mod tests {
 
     #[test]
     fn exact_binary_rejects_an_unsupported_operation() {
-        match exact_binary(Number::Integer(2), Number::Integer(3), '%') {
+        match exact_binary(&Number::Integer(2), &Number::Integer(3), '%') {
             Err(RuntimeError::InvalidForm { .. }) => {}
             other => panic!("expected an InvalidForm error, got {}", describe(&other)),
         }
@@ -123,6 +174,7 @@ mod tests {
     fn describe(result: &Result<Number, RuntimeError>) -> &'static str {
         match result {
             Ok(Number::Integer(_)) => "an integer",
+            Ok(Number::Big(_)) => "a bignum",
             Ok(Number::Rational(_)) => "a rational",
             Ok(Number::Float(_)) => "a float",
             Err(_) => "an error",

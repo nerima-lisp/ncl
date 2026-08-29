@@ -61,6 +61,9 @@ pub enum Value {
     Boolean(bool),
     /// A signed machine integer.
     Integer(i64),
+    /// An arbitrary-precision integer, used once exact arithmetic overflows
+    /// `i64` (a Common Lisp bignum).
+    BigInteger(Rc<ibig::IBig>),
     /// An exact rational number.
     Rational(Rational),
     /// An IEEE-754 floating-point number.

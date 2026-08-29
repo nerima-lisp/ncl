@@ -1,5 +1,6 @@
 use super::{
-    Number, RuntimeError, Value, exact, number_argument, number_to_value, rational_number,
+    Number, RuntimeError, Value, exact, number_argument, number_from_big, number_to_value,
+    rational_number,
 };
 
 pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -21,6 +22,16 @@ pub(in crate::builtins) fn exact_power(
     base: Number,
     exponent: i64,
 ) -> Result<Number, RuntimeError> {
+    if let Number::Big(base) = base {
+        if exponent < 0 {
+            // A negative exponent on a bignum base would need a
+            // bignum-denominator ratio, which this codebase's Rational
+            // (i64 numerator/denominator) cannot represent.
+            return Err(RuntimeError::NumericOverflow);
+        }
+        return Ok(number_from_big(ibig_power(base, exponent.unsigned_abs())));
+    }
+
     let (mut numerator, mut denominator) =
         base.exact_parts()
             .ok_or_else(|| RuntimeError::InvalidForm {
@@ -36,10 +47,37 @@ pub(in crate::builtins) fn exact_power(
     }
 
     let magnitude = exponent.unsigned_abs();
+    if denominator == 1 {
+        return match checked_power(i128::from(numerator), magnitude) {
+            Ok(value) => rational_number(value, 1),
+            Err(RuntimeError::NumericOverflow) => Ok(number_from_big(ibig_power(
+                ibig::IBig::from(numerator),
+                magnitude,
+            ))),
+            Err(error) => Err(error),
+        };
+    }
     rational_number(
         checked_power(i128::from(numerator), magnitude)?,
         checked_power(i128::from(denominator), magnitude)?,
     )
+}
+
+/// Computes `base^exponent` with arbitrary precision via binary
+/// exponentiation, so a large `expt` result (e.g. `(expt 2 100)`) never
+/// overflows the way [`checked_power`]'s `i128` accumulator can.
+fn ibig_power(mut base: ibig::IBig, mut exponent: u64) -> ibig::IBig {
+    let mut result = ibig::IBig::from(1);
+    while exponent != 0 {
+        if exponent & 1 == 1 {
+            result *= &base;
+        }
+        exponent >>= 1;
+        if exponent != 0 {
+            base = &base * &base;
+        }
+    }
+    result
 }
 
 pub fn checked_power(base: i128, mut exponent: u64) -> Result<i128, RuntimeError> {
@@ -101,10 +139,33 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
         }
         Number::Float(value) if value >= 0.0 => Ok(Value::Float(value.sqrt())),
-        Number::Integer(_) | Number::Rational(_) | Number::Float(_) => {
+        Number::Big(value) if value >= ibig::IBig::from(0) => {
+            let root = ibig_square_root(&value);
+            if &root * &root == value {
+                Ok(Value::big_integer(root))
+            } else {
+                Ok(Value::Float(Number::Big(value).as_float().sqrt()))
+            }
+        }
+        Number::Integer(_) | Number::Rational(_) | Number::Float(_) | Number::Big(_) => {
             Err(negative_real_error("sqrt"))
         }
     }
+}
+
+/// Computes `floor(sqrt(value))` for a non-negative arbitrary-precision
+/// integer via Newton's method, converging in `O(log value)` iterations.
+fn ibig_square_root(value: &ibig::IBig) -> ibig::IBig {
+    if *value < ibig::IBig::from(2) {
+        return value.clone();
+    }
+    let mut estimate = value.clone();
+    let mut next = (&estimate + ibig::IBig::from(1)) / ibig::IBig::from(2);
+    while next < estimate {
+        estimate = next.clone();
+        next = (&estimate + value / &estimate) / ibig::IBig::from(2);
+    }
+    estimate
 }
 
 pub const fn integer_square_root(value: u128) -> u128 {

@@ -39,6 +39,11 @@ pub fn signum(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "signum", 1)?;
     match number_argument("signum", &arguments[0])? {
         Number::Integer(value) => Ok(Value::Integer(value.signum())),
+        Number::Big(value) => Ok(Value::Integer(if value < ibig::IBig::from(0) {
+            -1
+        } else {
+            1
+        })),
         Number::Rational(value) => Ok(Value::Integer(value.numerator().signum())),
         Number::Float(value) if value.is_nan() => Err(RuntimeError::InvalidForm {
             message: "signum of NaN is undefined".to_owned(),

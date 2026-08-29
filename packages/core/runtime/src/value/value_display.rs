@@ -9,6 +9,7 @@ impl fmt::Display for Value {
             Self::Unbound => formatter.write_str("#<UNBOUND>"),
             Self::Boolean(true) => formatter.write_str("T"),
             Self::Integer(value) => value.fmt(formatter),
+            Self::BigInteger(value) => value.fmt(formatter),
             Self::Rational(value) => {
                 write!(formatter, "{}/{}", value.numerator(), value.denominator())
             }

@@ -17,6 +17,7 @@ pub fn rational(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "rational", 1)?;
     match number_argument("rational", &arguments[0])? {
         Number::Integer(value) => Ok(Value::Integer(value)),
+        Number::Big(value) => Ok(Value::big_integer(value)),
         Number::Rational(value) => Value::rational(
             i128::from(value.numerator()),
             i128::from(value.denominator()),

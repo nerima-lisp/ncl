@@ -9,6 +9,11 @@ pub enum Constant {
     Boolean(bool),
     /// A signed integer literal.
     Integer(i64),
+    /// An integer literal too large for `i64`, stored as its validated
+    /// decimal digits (optionally sign-prefixed). Parsed into an
+    /// arbitrary-precision integer at the point the constant is loaded into
+    /// a `Value`, since `ncl-compiler` itself has no bignum dependency.
+    BigInteger(String),
     /// A rational literal in normalized numerator/denominator form.
     Rational {
         /// Normalized numerator.

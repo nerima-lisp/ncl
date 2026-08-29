@@ -37,13 +37,16 @@ pub(super) fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "numberp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
-        Value::Integer(_) | Value::Rational(_) | Value::Float(_)
+        Value::Integer(_) | Value::BigInteger(_) | Value::Rational(_) | Value::Float(_)
     )))
 }
 
 pub(super) fn integerp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "integerp", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::Integer(_))))
+    Ok(Value::boolean(matches!(
+        &arguments[0],
+        Value::Integer(_) | Value::BigInteger(_)
+    )))
 }
 
 pub(super) fn floatp(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -55,7 +58,7 @@ pub(super) fn rationalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "rationalp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
-        Value::Integer(_) | Value::Rational(_)
+        Value::Integer(_) | Value::BigInteger(_) | Value::Rational(_)
     )))
 }
 

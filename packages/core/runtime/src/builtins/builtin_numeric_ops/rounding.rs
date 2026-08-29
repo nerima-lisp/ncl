@@ -42,9 +42,9 @@ pub fn quotient_and_remainder(
         Number::Integer(1)
     };
     if dividend.is_float() || divisor.is_float() {
-        float_quotient_and_remainder(dividend, divisor, mode)
+        float_quotient_and_remainder(&dividend, &divisor, mode)
     } else {
-        exact_quotient_and_remainder(dividend, divisor, mode)
+        exact_quotient_and_remainder(&dividend, &divisor, mode)
     }
 }
 

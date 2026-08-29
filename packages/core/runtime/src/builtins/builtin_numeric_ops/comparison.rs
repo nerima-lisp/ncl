@@ -38,7 +38,7 @@ pub fn compare_numbers(
         .map(|value| number_argument(function, value))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Value::boolean(values.windows(2).all(|window| {
-        comparison(compare_number_values(window[0], window[1]))
+        comparison(compare_number_values(&window[0], &window[1]))
     })))
 }
 
@@ -62,13 +62,13 @@ pub fn extreme(
         .iter()
         .map(|value| number_argument(function, value))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut result = values[0];
+    let mut result = values[0].clone();
     for value in &values[1..] {
-        let ordering = compare_number_values(*value, result);
+        let ordering = compare_number_values(value, &result);
         if (choose_minimum && ordering == Ordering::Less)
             || (!choose_minimum && ordering == Ordering::Greater)
         {
-            result = *value;
+            result = value.clone();
         }
     }
     number_to_value(result)
@@ -81,6 +81,11 @@ pub fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {
             .checked_abs()
             .map(Value::Integer)
             .ok_or(RuntimeError::NumericOverflow),
+        Number::Big(value) => Ok(Value::big_integer(if value < ibig::IBig::from(0) {
+            -value
+        } else {
+            value
+        })),
         Number::Rational(value) => number_to_value(rational_number(
             i128::from(value.numerator()).abs(),
             i128::from(value.denominator()),

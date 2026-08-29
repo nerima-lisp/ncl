@@ -32,6 +32,7 @@ impl Runtime {
             Value::Nil | Value::Boolean(false) => Ok(Form::atom("NIL", span)),
             Value::Boolean(true) => Ok(Form::atom("T", span)),
             Value::Integer(value) => Ok(Form::atom(value.to_string(), span)),
+            Value::BigInteger(value) => Ok(Form::atom(value.to_string(), span)),
             Value::Rational(value) => Ok(Form::atom(
                 format!("{}/{}", value.numerator(), value.denominator()),
                 span,

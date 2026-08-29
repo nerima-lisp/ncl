@@ -3,8 +3,8 @@ use crate::builtins::numbers::Number;
 use crate::{RuntimeError, Value};
 
 pub fn float_quotient_and_remainder(
-    dividend: Number,
-    divisor: Number,
+    dividend: &Number,
+    divisor: &Number,
     mode: RoundingMode,
 ) -> Result<Value, RuntimeError> {
     let dividend = dividend.as_float();

@@ -13,11 +13,16 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
         "BOOLEAN" => matches!(value, Value::Nil | Value::Boolean(_)),
         "NUMBER" | "REAL" => matches!(
             value,
-            Value::Integer(_) | Value::Rational(_) | Value::Float(_)
+            Value::Integer(_) | Value::BigInteger(_) | Value::Rational(_) | Value::Float(_)
         ),
-        "RATIONAL" => matches!(value, Value::Integer(_) | Value::Rational(_)),
+        "RATIONAL" => matches!(
+            value,
+            Value::Integer(_) | Value::BigInteger(_) | Value::Rational(_)
+        ),
         "RATIO" => matches!(value, Value::Rational(_)),
-        "INTEGER" | "FIXNUM" | "BIGNUM" => matches!(value, Value::Integer(_)),
+        "INTEGER" => matches!(value, Value::Integer(_) | Value::BigInteger(_)),
+        "FIXNUM" => matches!(value, Value::Integer(_)),
+        "BIGNUM" => matches!(value, Value::BigInteger(_)),
         "BIT" => is_bit_value(value),
         "FLOAT" => matches!(value, Value::Float(_)),
         "CHARACTER" | "BASE-CHAR" | "STANDARD-CHAR" | "EXTENDED-CHAR" => {

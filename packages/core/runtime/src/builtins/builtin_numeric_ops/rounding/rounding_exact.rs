@@ -5,8 +5,8 @@ mod float_quotient;
 pub use float_quotient::float_quotient_and_remainder;
 
 pub fn exact_quotient_and_remainder(
-    dividend: Number,
-    divisor: Number,
+    dividend: &Number,
+    divisor: &Number,
     mode: RoundingMode,
 ) -> Result<Value, RuntimeError> {
     let Some((dividend_numerator, dividend_denominator)) = dividend.exact_parts() else {
@@ -94,8 +94,8 @@ mod tests {
         assert_eq!(round_float(3.5), 4.0);
         assert!(float_integer(f64::INFINITY).is_err());
         let exact_zero_divisor = exact_quotient_and_remainder(
-            Number::Integer(1),
-            Number::Integer(0),
+            &Number::Integer(1),
+            &Number::Integer(0),
             RoundingMode::Floor,
         );
         assert!(matches!(
@@ -103,8 +103,8 @@ mod tests {
             Err(RuntimeError::DivisionByZero)
         ));
         let float_zero_divisor = float_quotient_and_remainder(
-            Number::Float(1.0),
-            Number::Float(0.0),
+            &Number::Float(1.0),
+            &Number::Float(0.0),
             RoundingMode::Floor,
         );
         assert!(matches!(
@@ -117,16 +117,16 @@ mod tests {
     fn exact_quotient_rejects_non_exact_dividend_or_divisor() {
         assert!(matches!(
             exact_quotient_and_remainder(
-                Number::Float(1.0),
-                Number::Integer(1),
+                &Number::Float(1.0),
+                &Number::Integer(1),
                 RoundingMode::Floor
             ),
             Err(RuntimeError::InvalidForm { .. })
         ));
         assert!(matches!(
             exact_quotient_and_remainder(
-                Number::Integer(1),
-                Number::Float(1.0),
+                &Number::Integer(1),
+                &Number::Float(1.0),
                 RoundingMode::Floor
             ),
             Err(RuntimeError::InvalidForm { .. })
@@ -136,8 +136,8 @@ mod tests {
     #[test]
     fn exact_quotient_normalizes_a_negative_quotient_denominator() {
         let result = exact_quotient_and_remainder(
-            Number::Integer(1),
-            Number::Integer(-2),
+            &Number::Integer(1),
+            &Number::Integer(-2),
             RoundingMode::Truncate,
         );
         assert!(result.is_ok());
@@ -146,8 +146,8 @@ mod tests {
     #[test]
     fn float_quotient_supports_ceiling_and_truncate_modes() {
         let ceiling_result = float_quotient_and_remainder(
-            Number::Float(5.0),
-            Number::Float(2.0),
+            &Number::Float(5.0),
+            &Number::Float(2.0),
             RoundingMode::Ceiling,
         );
         assert!(matches!(
@@ -156,8 +156,8 @@ mod tests {
         ));
 
         let truncate_result = float_quotient_and_remainder(
-            Number::Float(-5.0),
-            Number::Float(2.0),
+            &Number::Float(-5.0),
+            &Number::Float(2.0),
             RoundingMode::Truncate,
         );
         assert!(matches!(
@@ -169,8 +169,8 @@ mod tests {
     #[test]
     fn float_quotient_overflows_when_the_rounded_ratio_exceeds_i64_range() {
         let result = float_quotient_and_remainder(
-            Number::Float(f64::MAX),
-            Number::Float(1.0),
+            &Number::Float(f64::MAX),
+            &Number::Float(1.0),
             RoundingMode::Floor,
         );
         assert!(matches!(result, Err(RuntimeError::NumericOverflow)));

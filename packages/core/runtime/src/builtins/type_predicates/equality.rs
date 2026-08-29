@@ -4,6 +4,7 @@ use crate::builtins::numbers::{number, numeric_equalp};
 pub fn eql_value(left: &Value, right: &Value) -> bool {
     let numeric_equal = match (left, right) {
         (Value::Integer(left), Value::Integer(right)) => left == right,
+        (Value::BigInteger(left), Value::BigInteger(right)) => left == right,
         (Value::Rational(left), Value::Rational(right)) => left == right,
         #[expect(
             clippy::float_cmp,
@@ -17,7 +18,7 @@ pub fn eql_value(left: &Value, right: &Value) -> bool {
 
 pub fn equalp_value(left: &Value, right: &Value) -> bool {
     if let (Ok(left), Ok(right)) = (number(left), number(right)) {
-        return numeric_equalp(left, right);
+        return numeric_equalp(&left, &right);
     }
     match (left, right) {
         (Value::String(left), Value::String(right)) => left.eq_ignore_ascii_case(right),

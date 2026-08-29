@@ -23,6 +23,13 @@ impl Value {
         Self::String(value.into())
     }
 
+    /// Creates an integer value, demoting back to a machine integer when the
+    /// arbitrary-precision value still fits in `i64` (e.g. after a bignum
+    /// division reduces the magnitude).
+    pub(crate) fn big_integer(value: ibig::IBig) -> Self {
+        i64::try_from(&value).map_or_else(|_| Self::BigInteger(Rc::new(value)), Self::Integer)
+    }
+
     pub(crate) fn rational(numerator: i128, denominator: i128) -> Result<Self, RuntimeError> {
         let rational = Rational::new(numerator, denominator)?;
         if rational.denominator() == 1 {

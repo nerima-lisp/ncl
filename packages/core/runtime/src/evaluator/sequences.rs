@@ -258,7 +258,11 @@ impl Runtime {
             let mut values = selected.iter().rev();
             let mut accumulator = match initial_value {
                 Some(value) => value,
-                None => apply_key(values.next().expect("non-empty REDUCE selection"))?,
+                None => apply_key(
+                    values
+                        .next()
+                        .ok_or_else(|| self.invalid("reduce of an empty sequence", span))?,
+                )?,
             };
             for value in values {
                 let value = apply_key(value)?;
@@ -271,7 +275,11 @@ impl Runtime {
             let mut values = selected.iter();
             let mut accumulator = match initial_value {
                 Some(value) => value,
-                None => apply_key(values.next().expect("non-empty REDUCE selection"))?,
+                None => apply_key(
+                    values
+                        .next()
+                        .ok_or_else(|| self.invalid("reduce of an empty sequence", span))?,
+                )?,
             };
             for value in values {
                 let value = apply_key(value)?;

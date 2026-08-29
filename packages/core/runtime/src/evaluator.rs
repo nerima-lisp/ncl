@@ -25,10 +25,10 @@ const MAX_MACRO_EXPANSIONS: usize = 64;
 pub mod evaluator_state;
 pub use evaluator_state::{ConditionHandlerBinding, RestartBinding};
 mod compilation;
+mod evaluator_package_primitives;
+mod evaluator_primitive_dispatch;
 mod evaluator_resolution;
 mod packages;
-include!("evaluator_primitive_dispatch.rs");
-include!("evaluator_package_primitives.rs");
 use evaluator_state::{
     ConditionHandlerGuard, ConditionHandlerSuspension, ConditionRestartBinding,
     ConditionRestartGuard, DynamicGuard, DynamicState, MacroLambdaListSection, MethodContext,
@@ -1021,8 +1021,8 @@ impl Runtime {
     }
 }
 
+mod evaluator_special_forms;
 mod macros;
-include!("evaluator_special_forms.rs");
 mod validation;
 
 impl Runtime {
@@ -1096,8 +1096,8 @@ impl Runtime {
 }
 
 mod collection_primitives;
-include!("evaluator_condition_methods.rs");
-include!("evaluator_primitives.rs");
+mod evaluator_condition_methods;
+mod evaluator_primitives;
 
 impl Default for Runtime {
     fn default() -> Self {

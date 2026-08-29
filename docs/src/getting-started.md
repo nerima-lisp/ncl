@@ -80,6 +80,9 @@ cargo check --workspace --all-targets
 cargo test --workspace --all-targets
 ~~~
 
+For the release gate, also run `cargo audit`, a locked release build, and the
+CLI smoke checks for interpreted and compiled evaluation.
+
 Coverage is measured with LLVM instrumentation:
 
 ~~~sh

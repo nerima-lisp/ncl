@@ -732,6 +732,7 @@ mod tests {
             ],
             vec![atom("TOOLS"), Form::list(vec![atom(":import-from")], SPAN)],
             vec![atom("TOOLS"), Form::list(vec![atom(":unknown")], SPAN)],
+            vec![Form::new(FormKind::String(String::new()), SPAN)],
         ];
 
         for items in cases {

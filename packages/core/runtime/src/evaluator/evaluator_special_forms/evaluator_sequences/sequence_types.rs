@@ -10,25 +10,25 @@ pub(super) enum SequenceKind {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SequenceMergeContext<'a> {
-    pub(super) result_type: &'a Value,
-    pub(super) sequence1: &'a Value,
-    pub(super) sequence2: &'a Value,
-    pub(super) predicate: &'a Value,
-    pub(super) options: &'a [Value],
-    pub(super) environment: &'a Environment,
-    pub(super) span: Span,
+pub struct SequenceMergeContext<'a> {
+    pub(crate) result_type: &'a Value,
+    pub(crate) sequence1: &'a Value,
+    pub(crate) sequence2: &'a Value,
+    pub(crate) predicate: &'a Value,
+    pub(crate) options: &'a [Value],
+    pub(crate) environment: &'a Environment,
+    pub(crate) span: Span,
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SequenceSubstituteContext<'a> {
-    pub(super) operation: &'a str,
-    pub(super) new_item: &'a Value,
-    pub(super) old_or_predicate: &'a Value,
-    pub(super) sequence: &'a Value,
-    pub(super) options: &'a [Value],
-    pub(super) environment: &'a Environment,
-    pub(super) span: Span,
+pub struct SequenceSubstituteContext<'a> {
+    pub(crate) operation: &'a str,
+    pub(crate) new_item: &'a Value,
+    pub(crate) old_or_predicate: &'a Value,
+    pub(crate) sequence: &'a Value,
+    pub(crate) options: &'a [Value],
+    pub(crate) environment: &'a Environment,
+    pub(crate) span: Span,
 }
 
 pub(super) struct SequenceSubstituteOptions {

@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn special_macroexpand(
+    pub(crate) fn special_macroexpand(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -44,7 +44,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_define(
+    pub(crate) fn special_define(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -58,7 +58,7 @@ impl Runtime {
         Ok(value)
     }
 
-    pub(super) fn special_setq(
+    pub(crate) fn special_setq(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -90,7 +90,7 @@ impl Runtime {
         Ok(result)
     }
 
-    pub(super) fn special_psetq(
+    pub(crate) fn special_psetq(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -110,7 +110,8 @@ impl Runtime {
             ));
         }
         let values = items[1..]
-            .as_chunks::<2>().0
+            .as_chunks::<2>()
+            .0
             .iter()
             .map(|pair| {
                 self.eval_values_in(&pair[1], environment)
@@ -127,7 +128,7 @@ impl Runtime {
         Ok(Value::Nil)
     }
 
-    pub(super) fn special_multiple_value_setq(
+    pub(crate) fn special_multiple_value_setq(
         &self,
         items: &[Form],
         environment: &Environment,

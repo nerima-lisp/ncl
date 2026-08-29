@@ -1,4 +1,7 @@
-mod sequence_types;
+#![allow(clippy::wildcard_imports)]
+use super::*;
+
+pub mod sequence_types;
 #[allow(clippy::wildcard_imports)]
 use sequence_types::*;
 mod sequence_options;
@@ -7,12 +10,12 @@ use sequence_options::*;
 mod sequence_mapping;
 mod sequence_mapping_result;
 mod sequence_ordering;
+mod sequence_reduce;
 mod sequence_set_operations;
 mod sequence_substitution;
-mod sequence_reduce;
 
 impl Runtime {
-    fn apply_sequence_search(
+    pub(crate) fn apply_sequence_search(
         &self,
         operation: &str,
         item: &Value,
@@ -201,7 +204,7 @@ impl Runtime {
         }
     }
 
-    fn apply_sequence_pair_search(
+    pub(crate) fn apply_sequence_pair_search(
         &self,
         operation: &str,
         sequence1: &Value,
@@ -312,7 +315,7 @@ impl Runtime {
         )
     }
 
-    fn apply_sequence_quantifier(
+    pub(crate) fn apply_sequence_quantifier(
         &self,
         operation: &str,
         predicate: &Value,
@@ -365,7 +368,7 @@ impl Runtime {
         }
     }
 
-    fn apply_list_membership(
+    pub(crate) fn apply_list_membership(
         &self,
         operation: &str,
         item_or_predicate: &Value,
@@ -483,7 +486,7 @@ impl Runtime {
         }
     }
 
-    fn apply_association_search(
+    pub(crate) fn apply_association_search(
         &self,
         operation: &str,
         item_or_predicate: &Value,
@@ -706,7 +709,7 @@ impl Runtime {
         }
     }
 
-    fn apply_sequence_remove(
+    pub(crate) fn apply_sequence_remove(
         &self,
         operation: &str,
         item_or_predicate: &Value,
@@ -801,7 +804,7 @@ impl Runtime {
         Self::build_sequence_result(kind, result, span)
     }
 
-    fn apply_sequence_substitute(
+    pub(crate) fn apply_sequence_substitute(
         &self,
         context: SequenceSubstituteContext<'_>,
     ) -> Result<Value, RuntimeError> {
@@ -956,7 +959,7 @@ impl Runtime {
         Ok(matched)
     }
 
-    fn apply_sequence_map_into(
+    pub(crate) fn apply_sequence_map_into(
         &self,
         destination: &Value,
         function: &Value,

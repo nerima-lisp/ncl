@@ -85,7 +85,7 @@ impl Runtime {
         Ok(Value::list(result))
     }
 
-    pub(super) fn apply_list_set_operation(
+    pub(crate) fn apply_list_set_operation(
         &self,
         operation: &str,
         first: &Value,

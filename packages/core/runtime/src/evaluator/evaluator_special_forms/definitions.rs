@@ -24,7 +24,7 @@ impl Runtime {
         )
     }
 
-    pub(super) fn special_lambda(
+    pub(crate) fn special_lambda(
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
@@ -42,7 +42,7 @@ impl Runtime {
         ))
     }
 
-    pub(super) fn special_function(
+    pub(crate) fn special_function(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -73,7 +73,7 @@ impl Runtime {
         self.eval_in(&items[1], environment)
     }
 
-    pub(super) fn special_defun(
+    pub(crate) fn special_defun(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -102,7 +102,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_defsetf(
+    pub(crate) fn special_defsetf(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -144,7 +144,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_define_setf_expander(
+    pub(crate) fn special_define_setf_expander(
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
@@ -171,7 +171,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_get_setf_expansion(
+    pub(crate) fn special_get_setf_expansion(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -195,7 +195,7 @@ impl Runtime {
         Self::setf_expansion_value(&expansion, items[0].span)
     }
 
-    pub(super) fn special_defmacro(
+    pub(crate) fn special_defmacro(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -227,7 +227,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_define_modify_macro(
+    pub(crate) fn special_define_modify_macro(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -263,7 +263,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_macroexpand_1(
+    pub(crate) fn special_macroexpand_1(
         &self,
         items: &[Form],
         environment: &Environment,

@@ -1,7 +1,7 @@
 use super::{Environment, Runtime, RuntimeError, Span, Value, normalize_name};
 
 impl Runtime {
-    pub(super) fn apply_sequence_mapping(
+    pub(crate) fn apply_sequence_mapping(
         &self,
         result_type: &Value,
         function: &Value,

@@ -1,3 +1,6 @@
+#![allow(clippy::wildcard_imports)]
+use super::*;
+
 struct DefmethodParameters {
     required: Vec<String>,
     required_escaped: Vec<bool>,
@@ -31,7 +34,7 @@ struct DefclassSlotRegistration {
 }
 
 impl Runtime {
-    fn special_defvar(
+    pub(crate) fn special_defvar(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -80,7 +83,7 @@ impl Runtime {
         })
     }
 
-    fn special_defconstant(
+    pub(crate) fn special_defconstant(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -109,7 +112,7 @@ impl Runtime {
         })
     }
 
-    fn special_defstruct(
+    pub(crate) fn special_defstruct(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -390,7 +393,10 @@ impl Runtime {
         }
     }
 
-    fn special_defclass(items: &[Form], environment: &Environment) -> Result<Value, RuntimeError> {
+    pub(crate) fn special_defclass(
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
         if items.len() < 4 {
             return Err(Self::arity(
                 "defclass",
@@ -629,7 +635,7 @@ impl Runtime {
         })
     }
 
-    fn special_defgeneric(
+    pub(crate) fn special_defgeneric(
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
@@ -647,7 +653,10 @@ impl Runtime {
         Ok(Value::symbol(name))
     }
 
-    fn special_defmethod(items: &[Form], environment: &Environment) -> Result<Value, RuntimeError> {
+    pub(crate) fn special_defmethod(
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
         if items.len() < 3 {
             return Err(Self::arity(
                 "defmethod",

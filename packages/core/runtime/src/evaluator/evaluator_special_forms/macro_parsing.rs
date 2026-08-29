@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn parameters(form: &Form) -> Result<OrdinaryLambdaList, RuntimeError> {
+    pub(crate) fn parameters(form: &Form) -> Result<OrdinaryLambdaList, RuntimeError> {
         parse_ordinary_lambda_list(form).map_err(|error| {
             let message = error.kind.to_string();
             Self::invalid(&message, error.span)
@@ -116,7 +116,7 @@ impl Runtime {
         Ok(Some(next))
     }
 
-    pub(super) fn macro_parameters(form: &Form) -> Result<MacroLambdaList, RuntimeError> {
+    pub(crate) fn macro_parameters(form: &Form) -> Result<MacroLambdaList, RuntimeError> {
         let FormKind::List(parameters) = &form.kind else {
             return Err(Self::invalid("macro parameters must be a list", form.span));
         };
@@ -417,7 +417,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn eval_sequence_values(
+    pub(crate) fn eval_sequence_values(
         &self,
         forms: &[Form],
         environment: &Environment,

@@ -3,7 +3,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn apply_sequence_sort(
+    pub(crate) fn apply_sequence_sort(
         &self,
         operation: &str,
         sequence: &Value,
@@ -78,7 +78,7 @@ impl Runtime {
         )
     }
 
-    pub(super) fn apply_sequence_merge(
+    pub(crate) fn apply_sequence_merge(
         &self,
         context: SequenceMergeContext<'_>,
     ) -> Result<Value, RuntimeError> {

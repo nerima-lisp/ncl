@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn special_quote(items: &[Form], span: Span) -> Result<Value, RuntimeError> {
+    pub(crate) fn special_quote(items: &[Form], span: Span) -> Result<Value, RuntimeError> {
         if items.len() != 2 {
             return Err(Self::arity("quote", "one", items.len().saturating_sub(1)));
         }
@@ -12,7 +12,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_the(
+    pub(crate) fn special_the(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -25,7 +25,7 @@ impl Runtime {
         builtins::the_check(&[value, type_designator])
     }
 
-    pub(super) fn special_load_time_value(
+    pub(crate) fn special_load_time_value(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -44,7 +44,7 @@ impl Runtime {
         Ok(value)
     }
 
-    pub(super) fn special_nth_value(
+    pub(crate) fn special_nth_value(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -81,7 +81,7 @@ impl Runtime {
         Ok(values.get(index).cloned().unwrap_or(Value::Nil))
     }
 
-    pub(super) fn special_locally(
+    pub(crate) fn special_locally(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -89,7 +89,7 @@ impl Runtime {
         self.eval_sequence_values(items.get(1..).unwrap_or(&[]), environment)
     }
 
-    pub(super) fn special_eval_when(
+    pub(crate) fn special_eval_when(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -108,7 +108,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn eval_when_executes(form: &Form) -> Result<bool, RuntimeError> {
+    pub(crate) fn eval_when_executes(form: &Form) -> Result<bool, RuntimeError> {
         let FormKind::List(situations) = &form.kind else {
             return Err(Self::invalid(
                 "eval-when situations must be a list",

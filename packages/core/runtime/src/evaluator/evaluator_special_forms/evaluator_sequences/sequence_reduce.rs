@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn apply_sequence_reduce(
+    pub(crate) fn apply_sequence_reduce(
         &self,
         function: &Value,
         sequence: &Value,
@@ -17,11 +17,13 @@ impl Runtime {
             Value::Nil => Vec::new(),
             Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
             Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => return Err(RuntimeError::Type {
-                expected: "SEQUENCE".to_string(),
-                actual: value.type_name().to_string(),
-                span: Some(span),
-            }),
+            value => {
+                return Err(RuntimeError::Type {
+                    expected: "SEQUENCE".to_string(),
+                    actual: value.type_name().to_string(),
+                    span: Some(span),
+                });
+            }
         };
         let end = reduce_options.end.unwrap_or(items.len());
         if reduce_options.start > end || end > items.len() {

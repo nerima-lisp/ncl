@@ -841,19 +841,24 @@ mod tests {
         );
         let first_value = Value::Integer(3);
         assert_eq!(
-            reduce_initial_value(None, Some(&first_value), &|_| {
-                Ok(Value::Integer(4))
-            }, SPAN)
+            reduce_initial_value(
+                None,
+                Some(&first_value),
+                &|_| { Ok(Value::Integer(4)) },
+                SPAN
+            )
             .map(|value| value.to_string()),
             Ok("4".to_string())
         );
-        assert!(reduce_initial_value(
-            None,
-            Some(&first_value),
-            &|_| Err(Runtime::invalid("reduce key failed", SPAN)),
-            SPAN
-        )
-        .is_err());
+        assert!(
+            reduce_initial_value(
+                None,
+                Some(&first_value),
+                &|_| Err(Runtime::invalid("reduce key failed", SPAN)),
+                SPAN
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -920,7 +925,12 @@ mod tests {
             (
                 "list set",
                 parse_list_set_options(
-                    &[Value::keyword("test-not"), Value::Nil, Value::keyword("key"), Value::Nil],
+                    &[
+                        Value::keyword("test-not"),
+                        Value::Nil,
+                        Value::keyword("key"),
+                        Value::Nil,
+                    ],
                     SPAN,
                 )
                 .map(|_| ()),
@@ -953,8 +963,14 @@ mod tests {
     fn sequence_result_helpers_cover_supported_kinds_and_type_errors() {
         let characters = vec![Value::Character('a'), Value::Character('b')];
         let cases = [
-            ("NIL", sequence_merge_result("NIL", characters.clone(), SPAN)),
-            ("LIST", sequence_merge_result("LIST", characters.clone(), SPAN)),
+            (
+                "NIL",
+                sequence_merge_result("NIL", characters.clone(), SPAN),
+            ),
+            (
+                "LIST",
+                sequence_merge_result("LIST", characters.clone(), SPAN),
+            ),
             (
                 "VECTOR",
                 sequence_merge_result("VECTOR", characters.clone(), SPAN),
@@ -965,7 +981,10 @@ mod tests {
             assert!(result.is_ok(), "{kind}: {result:?}");
         }
         assert!(sequence_merge_result("STRING", vec![Value::Nil], SPAN).is_err());
-        assert_eq!(merge_result_kind(&Value::symbol("simple-vector"), SPAN), Ok("VECTOR"));
+        assert_eq!(
+            merge_result_kind(&Value::symbol("simple-vector"), SPAN),
+            Ok("VECTOR")
+        );
         assert!(merge_result_kind(&Value::Integer(1), SPAN).is_err());
         assert!(sequence_items(&Value::Nil, SPAN).is_ok_and(|items| items.is_empty()));
         assert!(sequence_items(&Value::Integer(1), SPAN).is_err());

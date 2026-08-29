@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn special_ignore_errors(
+    pub(crate) fn special_ignore_errors(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -18,7 +18,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_handler_case(
+    pub(crate) fn special_handler_case(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -103,7 +103,7 @@ impl Runtime {
         Err(protected)
     }
 
-    pub(super) fn special_handler_bind(
+    pub(crate) fn special_handler_bind(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -174,7 +174,7 @@ impl Runtime {
         Err(body)
     }
 
-    pub(super) fn special_restart_bind(
+    pub(crate) fn special_restart_bind(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -246,7 +246,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_catch(
+    pub(crate) fn special_catch(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -267,7 +267,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_with_simple_restart(
+    pub(crate) fn special_with_simple_restart(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -306,7 +306,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_with_condition_restarts(
+    pub(crate) fn special_with_condition_restarts(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -350,7 +350,7 @@ impl Runtime {
         result
     }
 
-    pub(super) fn special_restart_case(
+    pub(crate) fn special_restart_case(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -438,7 +438,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_throw(
+    pub(crate) fn special_throw(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -456,7 +456,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_progv(
+    pub(crate) fn special_progv(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -497,7 +497,7 @@ impl Runtime {
         self.eval_sequence_values(&items[3..], environment)
     }
 
-    pub(super) fn special_unwind_protect(
+    pub(crate) fn special_unwind_protect(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -518,7 +518,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_block(
+    pub(crate) fn special_block(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -545,7 +545,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_return_from(
+    pub(crate) fn special_return_from(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -570,7 +570,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_return(
+    pub(crate) fn special_return(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -595,7 +595,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_tagbody(
+    pub(crate) fn special_tagbody(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -652,7 +652,7 @@ impl Runtime {
         Ok(Value::Nil)
     }
 
-    pub(super) fn special_go(
+    pub(crate) fn special_go(
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
@@ -668,7 +668,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_multiple_value_bind(
+    pub(crate) fn special_multiple_value_bind(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -707,7 +707,7 @@ impl Runtime {
         self.eval_sequence_values(&items[3..], &local)
     }
 
-    pub(super) fn special_multiple_value_call(
+    pub(crate) fn special_multiple_value_call(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -727,7 +727,7 @@ impl Runtime {
         self.apply_in(&function, &arguments, items[0].span, environment)
     }
 
-    pub(super) fn special_multiple_value_prog1(
+    pub(crate) fn special_multiple_value_prog1(
         &self,
         items: &[Form],
         environment: &Environment,

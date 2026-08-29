@@ -179,7 +179,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn get_modify_macro_setf_expansion(
+    pub(crate) fn get_modify_macro_setf_expansion(
         &self,
         place: &Form,
         environment: &Environment,

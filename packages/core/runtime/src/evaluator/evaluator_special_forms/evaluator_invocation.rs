@@ -1,3 +1,6 @@
+#![allow(clippy::wildcard_imports)]
+use super::*;
+
 struct StructureBoaConstructorContext<'a> {
     name: &'a str,
     slots: &'a [StructureSlot],
@@ -74,7 +77,7 @@ where
 }
 
 impl Runtime {
-    fn special_mapcar(
+    pub(crate) fn special_mapcar(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -94,7 +97,7 @@ impl Runtime {
         self.apply_list_mapping("MAPCAR", &function, &sequences, environment, items[0].span)
     }
 
-    fn special_map_into(
+    pub(crate) fn special_map_into(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -124,7 +127,7 @@ impl Runtime {
         Ok(result)
     }
 
-    fn make_instance(
+    pub(crate) fn make_instance(
         &self,
         arguments: &[Value],
         environment: &Environment,
@@ -216,7 +219,7 @@ impl Runtime {
         Ok(instance)
     }
 
-    fn compile_function(
+    pub(crate) fn compile_function(
         &self,
         arguments: &[Value],
         environment: &Environment,
@@ -292,7 +295,7 @@ impl Runtime {
         Ok(Value::values(vec![function, Value::Nil, Value::Nil]))
     }
 
-    fn load_file(&self, arguments: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    pub(crate) fn load_file(&self, arguments: &[Value], span: Span) -> Result<Value, RuntimeError> {
         if arguments.len() != 1 {
             return Err(Self::arity("load", "one", arguments.len()));
         }
@@ -396,7 +399,7 @@ impl Runtime {
         Ok(result)
     }
 
-    fn invoke_continuation(
+    pub(crate) fn invoke_continuation(
         &self,
         continuation: MethodContinuation,
         arguments: &[Value],

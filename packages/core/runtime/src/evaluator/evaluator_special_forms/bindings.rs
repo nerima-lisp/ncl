@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn special_destructuring_bind(
+    pub(crate) fn special_destructuring_bind(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -48,7 +48,7 @@ impl Runtime {
         self.eval_sequence_values(&items[3..], &local)
     }
 
-    pub(super) fn special_let(
+    pub(crate) fn special_let(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -86,7 +86,7 @@ impl Runtime {
         self.eval_sequence_values(&items[2..], &local)
     }
 
-    pub(super) fn special_flet(
+    pub(crate) fn special_flet(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -169,7 +169,7 @@ impl Runtime {
         self.eval_sequence_values(&items[2..], &local)
     }
 
-    pub(super) fn special_macrolet(
+    pub(crate) fn special_macrolet(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -224,7 +224,7 @@ impl Runtime {
         self.eval_sequence_values(&items[2..], &local)
     }
 
-    pub(super) fn special_symbol_macrolet(
+    pub(crate) fn special_symbol_macrolet(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -275,7 +275,7 @@ impl Runtime {
         self.eval_sequence_values(&items[2..], &local)
     }
 
-    pub(super) fn special_define_symbol_macro(
+    pub(crate) fn special_define_symbol_macro(
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
@@ -300,7 +300,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_dotimes(
+    pub(crate) fn special_dotimes(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -352,7 +352,7 @@ impl Runtime {
             .map_or(Ok(Value::Nil), |result| self.eval_values_in(result, &local))
     }
 
-    pub(super) fn special_dolist(
+    pub(crate) fn special_dolist(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -401,7 +401,7 @@ impl Runtime {
             .map_or(Ok(Value::Nil), |result| self.eval_values_in(result, &local))
     }
 
-    pub(super) fn special_do(
+    pub(crate) fn special_do(
         &self,
         items: &[Form],
         environment: &Environment,

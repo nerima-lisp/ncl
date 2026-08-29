@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn special_setf(
+    pub(crate) fn special_setf(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -19,7 +19,7 @@ impl Runtime {
         Ok(result)
     }
 
-    pub(super) fn special_psetf(
+    pub(crate) fn special_psetf(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -45,7 +45,7 @@ impl Runtime {
         Ok(result)
     }
 
-    pub(super) fn special_push(
+    pub(crate) fn special_push(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -65,7 +65,7 @@ impl Runtime {
         Ok(result)
     }
 
-    pub(super) fn special_pop(
+    pub(crate) fn special_pop(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -87,7 +87,7 @@ impl Runtime {
         Ok(popped)
     }
 
-    pub(super) fn special_pushnew(
+    pub(crate) fn special_pushnew(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -223,7 +223,7 @@ impl Runtime {
         })
     }
 
-    pub(super) fn special_rotatef(
+    pub(crate) fn special_rotatef(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -244,7 +244,7 @@ impl Runtime {
         Ok(Value::Nil)
     }
 
-    pub(super) fn special_shiftf(
+    pub(crate) fn special_shiftf(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -273,7 +273,7 @@ impl Runtime {
         Ok(old_values.into_iter().next().unwrap_or(Value::Nil))
     }
 
-    pub(super) fn special_modify_symbol(
+    pub(crate) fn special_modify_symbol(
         &self,
         items: &[Form],
         environment: &Environment,

@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn special_quasiquote(
+    pub(crate) fn special_quasiquote(
         &self,
         items: &[Form],
         environment: &Environment,

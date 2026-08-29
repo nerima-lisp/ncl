@@ -1,5 +1,8 @@
+#![allow(clippy::wildcard_imports)]
+use super::*;
+
 impl Runtime {
-    fn special_funcall(
+    pub(crate) fn special_funcall(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -15,7 +18,7 @@ impl Runtime {
         self.apply_in(&function, &arguments, items[0].span, environment)
     }
 
-    fn special_eval(
+    pub(crate) fn special_eval(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -28,7 +31,7 @@ impl Runtime {
         self.eval_values_in(&form, environment)
     }
 
-    fn special_apply(
+    pub(crate) fn special_apply(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -59,7 +62,7 @@ impl Runtime {
         self.apply_in(&function, &arguments, items[0].span, environment)
     }
 
-    fn resolve_function_designator(
+    pub(crate) fn resolve_function_designator(
         &self,
         function: &Value,
         span: Span,

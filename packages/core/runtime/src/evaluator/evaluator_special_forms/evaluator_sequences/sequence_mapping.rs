@@ -8,7 +8,7 @@ struct ListMappingMode {
 }
 
 impl Runtime {
-    pub(super) fn apply_list_mapping(
+    pub(crate) fn apply_list_mapping(
         &self,
         operation: &str,
         function: &Value,

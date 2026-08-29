@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn special_if(
+    pub(crate) fn special_if(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -24,7 +24,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_progn(
+    pub(crate) fn special_progn(
         &self,
         forms: &[Form],
         environment: &Environment,
@@ -32,7 +32,7 @@ impl Runtime {
         self.eval_sequence_values(forms, environment)
     }
 
-    pub(super) fn special_prog1(
+    pub(crate) fn special_prog1(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -49,7 +49,7 @@ impl Runtime {
         Ok(result)
     }
 
-    pub(super) fn special_prog2(
+    pub(crate) fn special_prog2(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -67,7 +67,7 @@ impl Runtime {
         Ok(result)
     }
 
-    pub(super) fn special_prog(
+    pub(crate) fn special_prog(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -161,7 +161,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_values(
+    pub(crate) fn special_values(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -173,7 +173,7 @@ impl Runtime {
         Ok(Value::values(values))
     }
 
-    pub(super) fn special_multiple_value_list(
+    pub(crate) fn special_multiple_value_list(
         &self,
         items: &[Form],
         environment: &Environment,

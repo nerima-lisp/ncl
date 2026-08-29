@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn special_and(
+    pub(crate) fn special_and(
         &self,
         forms: &[Form],
         environment: &Environment,
@@ -21,7 +21,7 @@ impl Runtime {
         Ok(result)
     }
 
-    pub(super) fn special_or(
+    pub(crate) fn special_or(
         &self,
         forms: &[Form],
         environment: &Environment,
@@ -39,7 +39,7 @@ impl Runtime {
         Ok(Value::Nil)
     }
 
-    pub(super) fn special_when(
+    pub(crate) fn special_when(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -60,7 +60,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn special_cond(
+    pub(crate) fn special_cond(
         &self,
         clauses: &[Form],
         environment: &Environment,
@@ -84,7 +84,7 @@ impl Runtime {
         Ok(Value::Nil)
     }
 
-    pub(super) fn special_case(
+    pub(crate) fn special_case(
         &self,
         items: &[Form],
         environment: &Environment,
@@ -93,7 +93,7 @@ impl Runtime {
         self.special_case_like(items, environment, error_on_miss, false)
     }
 
-    pub(super) fn special_typecase(
+    pub(crate) fn special_typecase(
         &self,
         items: &[Form],
         environment: &Environment,

@@ -1,9 +1,8 @@
-#![allow(clippy::redundant_pub_crate)]
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
 impl CompileState {
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     pub(super) fn compile_flet(
         &mut self,
         function: FunctionId,

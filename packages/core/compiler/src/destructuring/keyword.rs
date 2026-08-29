@@ -31,7 +31,7 @@ impl CompileState {
         Ok(normalize_name(keyword))
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     pub(super) fn compile_destructuring_keyword_parameter(
         &mut self,
         form: &Form,

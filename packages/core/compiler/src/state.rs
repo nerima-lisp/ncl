@@ -1,4 +1,4 @@
-#![allow(clippy::redundant_pub_crate)]
+#![expect(clippy::redundant_pub_crate)]
 #[allow(clippy::wildcard_imports)]
 use super::*;
 

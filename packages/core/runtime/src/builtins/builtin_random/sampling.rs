@@ -19,7 +19,7 @@ pub(super) fn random_limit(
             // Deliberately keep only the top 53 bits: an f64 mantissa can't
             // hold more, and this is the standard technique for mapping a
             // 64-bit sample onto a uniform float in [0, 1).
-            #[allow(clippy::cast_precision_loss)]
+            #[expect(clippy::cast_precision_loss)]
             let unit = (sample >> 11) as f64 / 9_007_199_254_740_992.0;
             Ok(Value::Float(unit * *limit))
         }

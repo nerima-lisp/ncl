@@ -2,7 +2,7 @@
 use super::*;
 
 impl CompileState {
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     pub(crate) fn compile_dolist(
         &mut self,
         function: FunctionId,

@@ -1,7 +1,7 @@
 use super::{arity, array_option_name, exact, index_argument, integer_from_usize, type_error};
 use crate::{RuntimeError, Value};
 
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 pub fn list(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::list(arguments.to_vec()))
 }

@@ -4,7 +4,7 @@ use crate::{
 };
 
 impl CompileState {
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     pub(crate) fn compile_case(
         &mut self,
         function: FunctionId,

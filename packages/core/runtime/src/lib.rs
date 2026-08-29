@@ -1,6 +1,5 @@
 //! Evaluation runtime and standard primitives for NCL.
 
-#[allow(clippy::result_large_err)]
 pub(crate) mod builtins;
 pub(crate) mod environment;
 pub(crate) mod error;

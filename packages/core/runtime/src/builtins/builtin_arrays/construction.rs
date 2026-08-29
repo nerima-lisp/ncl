@@ -3,7 +3,7 @@ use crate::builtins::{
 };
 use crate::{RuntimeError, Value};
 
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 pub fn vector(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::vector(arguments.to_vec()))
 }

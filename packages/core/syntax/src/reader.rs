@@ -162,10 +162,26 @@ impl<'source> Reader<'source> {
                 self.ensure_dispatch_boundary(start)?;
                 Ok(Some(Form::atom("#f", Span::new(start, self.position))))
             }
+            'b' | 'B' | 'o' | 'O' | 'x' | 'X' | '0'..='9' => {
+                self.parse_radix_integer(start).map(Some)
+            }
             _ => Err(Self::error(
                 ReadErrorKind::InvalidDispatch,
                 Span::new(start, start + 1),
             )),
+        }
+    }
+
+    fn parse_radix_integer(&mut self, start: usize) -> Result<Form, ReadError> {
+        self.scan_symbol_token(start)?;
+        let token = &self.source[start..self.position];
+        if crate::numeric::is_valid_radix_integer_literal(token) {
+            Ok(Form::atom(token, Span::new(start, self.position)))
+        } else {
+            Err(Self::error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            ))
         }
     }
 

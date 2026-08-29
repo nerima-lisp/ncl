@@ -103,6 +103,9 @@ pub(super) fn literal_constant(atom: &str) -> Option<Constant> {
             if token.name.eq_ignore_ascii_case("t") || token.name.eq_ignore_ascii_case("#t") {
                 return Some(Constant::Boolean(true));
             }
+            if let Some(value) = parse_radix_integer_literal(&token.name) {
+                return Some(Constant::Integer(value));
+            }
             if let Ok(value) = token.name.parse::<i64>() {
                 return Some(Constant::Integer(value));
             }
@@ -116,7 +119,7 @@ pub(super) fn literal_constant(atom: &str) -> Option<Constant> {
                     })
                 };
             }
-            token.name.parse::<f64>().ok().map(Constant::Float)
+            parse_float_literal(&token.name).map(Constant::Float)
         }
         _ => None,
     }
@@ -205,6 +208,11 @@ mod tests {
                 },
             ),
             ("-6/3", Constant::Integer(-2)),
+            ("#xFF", Constant::Integer(255)),
+            ("#b1010", Constant::Integer(10)),
+            ("#o777", Constant::Integer(511)),
+            ("#3r120", Constant::Integer(15)),
+            ("1.25s0", Constant::Float(1.25)),
         ];
 
         for (source, expected) in cases {

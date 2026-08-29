@@ -123,6 +123,28 @@ fn malformed_prefix_and_dispatch_forms_report_typed_errors() {
 }
 
 #[test]
+fn reads_radix_integer_dispatch() {
+    let forms = read("#xFF #b1010 #o777 #3r120").unwrap();
+
+    let atoms = forms
+        .iter()
+        .map(|form| match &form.kind {
+            FormKind::Atom(atom) => atom.as_str(),
+            _ => panic!("expected atom form"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(atoms, ["#xFF", "#b1010", "#o777", "#3r120"]);
+
+    for source in ["#b", "#x-", "#b2", "#o8", "#37r1"] {
+        assert_eq!(
+            read(source).unwrap_err().kind,
+            ReadErrorKind::InvalidDispatch,
+            "source: {source}"
+        );
+    }
+}
+
+#[test]
 fn reads_uninterned_symbol_dispatch() {
     let forms = read("#:foo #:Bar").unwrap();
 

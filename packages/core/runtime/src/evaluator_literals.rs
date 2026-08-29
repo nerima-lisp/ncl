@@ -1,4 +1,7 @@
-use ncl_syntax::{Form, FormKind, SymbolTokenKind, parse_symbol_token};
+use ncl_syntax::{
+    Form, FormKind, SymbolTokenKind, parse_float_literal, parse_radix_integer_literal,
+    parse_symbol_token,
+};
 
 use crate::environment::normalize_name;
 use crate::package;
@@ -87,6 +90,9 @@ pub fn literal_atom(atom: &str) -> Option<Value> {
                 "T" | "#T" => return Some(Value::boolean(true)),
                 _ => {}
             }
+            if let Some(value) = parse_radix_integer_literal(&token.name) {
+                return Some(Value::Integer(value));
+            }
             if let Ok(value) = token.name.parse::<i64>() {
                 return Some(Value::Integer(value));
             }
@@ -96,7 +102,7 @@ pub fn literal_atom(atom: &str) -> Option<Value> {
             {
                 return Value::rational(numerator, denominator).ok();
             }
-            token.name.parse::<f64>().ok().map(Value::Float)
+            parse_float_literal(&token.name).map(Value::Float)
         }
         _ => None,
     }
@@ -171,6 +177,12 @@ mod tests {
             ("3/6", "1/2"),
             ("1.5", "1.5"),
             (":name", ":NAME"),
+            ("#xFF", "255"),
+            ("#b1010", "10"),
+            ("#o777", "511"),
+            ("#3r120", "15"),
+            ("1.25s0", "1.25"),
+            ("1.25d0", "1.25"),
         ];
 
         for (source, expected) in cases {

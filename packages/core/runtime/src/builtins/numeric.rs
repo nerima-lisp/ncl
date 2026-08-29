@@ -1495,24 +1495,42 @@ fn replace_field_value(
     if size == 0 {
         return Ok(integer);
     }
-    let field_end = position.checked_add(size);
-    if field_end.map_or(true, |end| end > 63) {
-        let source_start = if position >= 63 {
-            source_position
-        } else {
-            source_position + (63 - position)
-        };
-        if !integer_bits_match(newbyte, source_start, source_end, integer < 0) {
-            return Err(RuntimeError::NumericOverflow);
-        }
+    if field_overflows(position, size)
+        && !integer_bits_match(
+            newbyte,
+            source_position_for_overflow(position, source_position),
+            source_end,
+            integer < 0,
+        )
+    {
+        return Err(RuntimeError::NumericOverflow);
     }
     if position >= 63 {
         return Ok(integer);
     }
-    let width = size.min(63 - position);
+    Ok(merge_field_bits(
+        integer,
+        integer_bits(newbyte, source_position, size.min(63 - position)),
+        size.min(63 - position),
+        position,
+    ))
+}
+
+fn field_overflows(position: i64, size: i64) -> bool {
+    position.checked_add(size).map_or(true, |end| end > 63)
+}
+
+fn source_position_for_overflow(position: i64, source_position: i64) -> i64 {
+    if position >= 63 {
+        source_position
+    } else {
+        source_position + (63 - position)
+    }
+}
+
+fn merge_field_bits(integer: i64, new_bits: u64, width: i64, position: i64) -> i64 {
     let mask = low_bits_mask(width) << position as u32;
-    let new_bits = integer_bits(newbyte, source_position, width) << position as u32;
-    Ok(((integer as u64 & !mask) | (new_bits & mask)) as i64)
+    ((integer as u64 & !mask) | (new_bits << position as u32 & mask)) as i64
 }
 
 pub(super) fn parse_integer(arguments: &[Value]) -> Result<Value, RuntimeError> {

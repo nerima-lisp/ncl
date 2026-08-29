@@ -233,12 +233,7 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                         ));
                     }
                     let (rest_name, escaped) = parse_name(rest_parameter, "&rest parameter")?;
-                    if !names.insert(rest_name.clone()) {
-                        return Err(LambdaListError::invalid(
-                            "parameter names must be unique",
-                            rest_parameter.span,
-                        ));
-                    }
+                    insert_unique(&mut names, &rest_name, rest_parameter.span)?;
                     rest = Some(rest_name);
                     rest_escaped = escaped;
                     section = LambdaListSection::Rest;
@@ -295,30 +290,15 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
         match section {
             LambdaListSection::Required => {
                 let (name, escaped) = parse_name(parameter, "parameter")?;
-                if !names.insert(name.clone()) {
-                    return Err(LambdaListError::invalid(
-                        "parameter names must be unique",
-                        parameter.span,
-                    ));
-                }
+                insert_unique(&mut names, &name, parameter.span)?;
                 required.push(name);
                 required_escaped.push(escaped);
             }
             LambdaListSection::Optional => {
                 let specification = parse_optional_parameter(parameter)?;
-                if !names.insert(specification.name.clone()) {
-                    return Err(LambdaListError::invalid(
-                        "parameter names must be unique",
-                        parameter.span,
-                    ));
-                }
-                if let Some(supplied_p) = &specification.supplied_p
-                    && !names.insert(supplied_p.clone())
-                {
-                    return Err(LambdaListError::invalid(
-                        "parameter names must be unique",
-                        parameter.span,
-                    ));
+                insert_unique(&mut names, &specification.name, parameter.span)?;
+                if let Some(supplied_p) = &specification.supplied_p {
+                    insert_unique(&mut names, supplied_p, parameter.span)?;
                 }
                 optional.push(specification);
             }
@@ -342,30 +322,15 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
                         parameter.span,
                     ));
                 }
-                if !names.insert(specification.name.clone()) {
-                    return Err(LambdaListError::invalid(
-                        "parameter names must be unique",
-                        parameter.span,
-                    ));
-                }
-                if let Some(supplied_p) = &specification.supplied_p
-                    && !names.insert(supplied_p.clone())
-                {
-                    return Err(LambdaListError::invalid(
-                        "parameter names must be unique",
-                        parameter.span,
-                    ));
+                insert_unique(&mut names, &specification.name, parameter.span)?;
+                if let Some(supplied_p) = &specification.supplied_p {
+                    insert_unique(&mut names, supplied_p, parameter.span)?;
                 }
                 keywords.push(specification);
             }
             LambdaListSection::Auxiliary => {
                 let specification = parse_auxiliary_parameter(parameter)?;
-                if !names.insert(specification.name.clone()) {
-                    return Err(LambdaListError::invalid(
-                        "parameter names must be unique",
-                        parameter.span,
-                    ));
-                }
+                insert_unique(&mut names, &specification.name, parameter.span)?;
                 auxiliary.push(specification);
             }
         }
@@ -383,6 +348,21 @@ pub fn parse_ordinary_lambda_list(form: &Form) -> Result<OrdinaryLambdaList, Lam
         allow_other_keys,
         auxiliary,
     })
+}
+
+fn insert_unique(
+    names: &mut HashSet<String>,
+    name: &str,
+    span: Span,
+) -> Result<(), LambdaListError> {
+    if names.insert(name.to_owned()) {
+        Ok(())
+    } else {
+        Err(LambdaListError::invalid(
+            "parameter names must be unique",
+            span,
+        ))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

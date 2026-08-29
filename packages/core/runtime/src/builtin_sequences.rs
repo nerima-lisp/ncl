@@ -19,10 +19,7 @@ pub(super) fn list_star(arguments: &[Value]) -> Result<Value, RuntimeError> {
     };
     match last {
         Value::Nil | Value::List(_) => {
-            let Some(items) = arguments.last().and_then(Value::list_items) else {
-                unreachable!();
-            };
-            values.extend(items);
+            values.extend(last.list_items().unwrap_or_default());
             Ok(Value::list(values))
         }
         Value::DottedList { items, tail } => {
@@ -218,10 +215,7 @@ pub(super) fn append_lists(function: &str, arguments: &[Value]) -> Result<Value,
     };
     match last {
         Value::Nil | Value::List(_) => {
-            let Some(items) = arguments.last().and_then(Value::list_items) else {
-                unreachable!();
-            };
-            values.extend(items);
+            values.extend(last.list_items().unwrap_or_default());
             Ok(Value::list(values))
         }
         Value::DottedList { items, tail } => {

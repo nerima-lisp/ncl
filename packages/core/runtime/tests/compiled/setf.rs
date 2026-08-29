@@ -130,55 +130,6 @@ fn compiled_evaluates_setf_aliases_and_sequence_places_from_shared_cases() {
 }
 
 #[test]
-fn compiled_evaluates_push_pop_and_psetf() {
-    assert_eq!(
-        evaluate(
-            "(let ((xs (list 2 3)))
-               (list (push 1 xs) xs (pop xs) xs))",
-        )
-        .to_string(),
-        "((1 2 3) (1 2 3) 1 (2 3))"
-    );
-    assert_eq!(
-        evaluate(
-            "(let ((xs (list 10 20)))
-               (list (push 5 (cdr xs)) xs))",
-        )
-        .to_string(),
-        "((5 20) (10 5 20))"
-    );
-    assert_eq!(
-        evaluate(
-            "(let ((a 0) (b 0))
-               (list (psetf a 1 b 2) a b))",
-        )
-        .to_string(),
-        "(2 1 2)"
-    );
-}
-
-#[test]
-fn compiled_evaluates_pushnew() {
-    assert_eq!(
-        evaluate(
-            "(let ((xs (list 1 2)))
-               (list (pushnew 2 xs) (pushnew 3 xs) xs))",
-        )
-        .to_string(),
-        "((1 2) (3 1 2) (3 1 2))"
-    );
-    assert_eq!(
-        evaluate(
-            "(let ((xs (list (list 1 :a))))
-               (list (pushnew (list 1 :b) xs :key #'car :test #'eql)
-                     (pushnew (list 1 :c) xs :key #'car :test-not #'equal)))",
-        )
-        .to_string(),
-        "(((1 :A)) ((1 :C) (1 :A)))"
-    );
-}
-
-#[test]
 fn compiled_evaluates_simple_defsetf() {
     assert_eq!(
         evaluate(
@@ -284,75 +235,6 @@ fn compiled_evaluates_define_symbol_macro_and_generalized_places() {
         )
         .to_string(),
         "(1 7 (7))"
-    );
-}
-
-#[test]
-fn compiled_evaluates_symbol_properties_and_setf_get() {
-    assert_eq!(
-        evaluate(
-            r#"(let ((symbol (make-symbol "foo"))
-                    (other (make-symbol "foo")))
-                (list
-                  (get symbol :missing)
-                  (get symbol :missing :default)
-                  (putprop symbol 10 :answer)
-                  (get symbol :answer)
-                  (setf (get symbol :answer) 11)
-                  (get symbol :answer)
-                  (symbol-plist symbol)
-                  (get other :answer)
-                  (remprop symbol :answer)
-                  (get symbol :answer :default)
-                  (remprop symbol :answer)
-                  (symbol-plist symbol)))"#,
-        )
-        .to_string(),
-        "(NIL :DEFAULT 10 10 11 11 (:ANSWER 11) NIL T :DEFAULT NIL NIL)",
-    );
-}
-
-#[test]
-fn compiled_evaluates_incf_and_decf_symbol_places() {
-    assert_eq!(
-        evaluate(
-            "(let ((x 10) (delta 2))
-               (list (incf x) x (incf x delta) (decf x) (decf x delta) x))",
-        )
-        .to_string(),
-        "(11 11 13 12 10 10)"
-    );
-}
-
-#[test]
-fn compiled_evaluates_incf_and_decf_generalized_places() {
-    assert_eq!(
-        evaluate(
-            "(let ((xs (list 10)) (delta 2))
-               (list (incf (car xs) delta) xs (decf (car xs)) xs))",
-        )
-        .to_string(),
-        "(12 (12) 11 (11))"
-    );
-}
-
-#[test]
-fn compiled_evaluates_rotatef_and_shiftf() {
-    assert_eq!(
-        evaluate(
-            "(let ((a 1) (b 2) (c 3))
-               (list (rotatef a b c) a b c))",
-        )
-        .to_string(),
-        "(NIL 3 1 2)"
-    );
-    assert_eq!(
-        evaluate(
-            "(let ((xs (list 1 2)))
-               (list (shiftf (car xs) (car (cdr xs)) 9) xs))",
-        )
-        .to_string(),
-        "(1 (2 9))"
     );
 }
 

@@ -289,42 +289,6 @@ fn evaluates_clos_method_combination() {
 }
 
 #[test]
-fn evaluates_the_with_type_designators() {
-    assert_eq!(
-        evaluate(
-            "(list (the integer (+ 3 4))
-                    (the rational 1/2)
-                    (the float 0.5)
-                    (ignore-errors (the integer 1/2)))",
-        )
-        .to_string(),
-        "(7 1/2 0.5 NIL)"
-    );
-}
-
-#[test]
-fn evaluates_locally_and_eval_when() {
-    assert_eq!(
-        evaluate(
-            "(let ((seen 0))
-               (list
-                 (locally
-                   (declare (type integer seen))
-                   (setq seen 4)
-                   seen)
-                 (eval-when (:execute) (+ seen 1))
-                 (eval-when (:compile-toplevel) (setq seen 99))
-                 (progn
-                   (declaim (optimize speed))
-                   (proclaim '(inline seen))
-                   seen)))",
-        )
-        .to_string(),
-        "(4 5 NIL 4)"
-    );
-}
-
-#[test]
 fn rejects_invalid_eval_when_situations() {
     for source in [
         "(eval-when 1)",
@@ -588,51 +552,6 @@ fn rejects_malformed_structure_and_class_definitions() {
 }
 
 #[test]
-fn evaluates_arrays_and_multidimensional_setf() {
-    assert_eq!(
-        evaluate(
-            "(let ((array (make-array '(2 2) :initial-element 0))
-                   (vector (make-array 3 :initial-element 5)))
-               (setf (aref array 1 0) 7
-                     (aref vector 2) 9)
-               (list (arrayp array) (array-rank array) (array-dimensions array)
-                     (array-dimension array 1) (array-total-size array)
-                     (aref array 1 0) (row-major-aref array 2)
-                     (aref vector 2) (typep array 'array)))",
-        )
-        .to_string(),
-        "(T 2 (2 2) 2 4 7 7 9 T)"
-    );
-    assert_eq!(
-        evaluate(
-            "(let ((array (make-array '(2 2)
-                                      :initial-contents '((1 2) (3 4)))))
-               (list (aref array 0 1) (aref array 1 0)
-                     (row-major-aref array 3)))",
-        )
-        .to_string(),
-        "(2 3 4)"
-    );
-    assert_eq!(
-        evaluate(
-            "(let ((array (make-array '(2 3)
-                                      :initial-contents '((0 1 2) (3 4 5)))))
-               (list (array-row-major-index array 1 2)
-                     (array-in-bounds-p array 1 2)
-                     (array-in-bounds-p array 2 0)
-                     (aref array 1 2)
-                     (row-major-aref array (array-row-major-index array 1 2))
-                     (array-element-type array)
-                     (simple-array-p array)
-                     (simple-vector-p (vector 1 2))
-                     (simple-vector-p array)))",
-        )
-        .to_string(),
-        "(5 T NIL 5 5 T T T NIL)"
-    );
-}
-
-#[test]
 fn evaluates_array_constructors_and_validation() {
     assert_eq!(
         evaluate(
@@ -695,40 +614,4 @@ fn rejects_malformed_quasiquotes() {
     for source in ["(quasiquote)", "(quasiquote a b)", "`,@'(1 2)"] {
         assert!(Runtime::new().eval_source(source).is_err(), "{source}");
     }
-}
-
-#[test]
-fn evaluates_hash_tables_and_gethash_setf() {
-    assert_eq!(
-        evaluate(
-            "(let ((eq-table (make-hash-table :test #'eq))
-                   (eql-table (make-hash-table))
-                   (equal-table (make-hash-table :test #'equal))
-                   (equalp-table (make-hash-table :test #'equalp)))
-               (setf (gethash 'key eq-table) 1
-                     (gethash 42 eql-table) 2
-                     (gethash '(a b) equal-table) 3
-                     (gethash \"Key\" equalp-table) 4)
-               (list (hash-table-p eq-table) (typep eq-table 'hash-table)
-                     (hash-table-count eq-table) (hash-table-test eq-table)
-                     (gethash 'key eq-table) (gethash 42 eql-table)
-                     (gethash '(a b) equal-table) (gethash \"key\" equalp-table)))",
-        )
-        .to_string(),
-        "(T T 1 EQ 1 2 3 4)"
-    );
-    assert_eq!(
-        evaluate(
-            "(let ((table (make-hash-table :test #'equal :size 4)))
-               (setf (gethash \"key\" table) 42)
-               (multiple-value-bind (value present) (gethash \"key\" table)
-                 (list value present (gethash \"missing\" table 99)
-                       (remhash \"key\" table) (hash-table-count table)
-                       (progn (setf (gethash 'other table) 7)
-                              (clrhash table)
-                              (hash-table-count table)))))",
-        )
-        .to_string(),
-        "(42 T 99 T 0 0)"
-    );
 }

@@ -1,0 +1,128 @@
+#[allow(clippy::wildcard_imports)]
+use super::*;
+
+pub(super) fn execute_set_instruction(
+    runtime: &Runtime,
+    instruction: &Instruction,
+    stack: &mut [Value],
+    environment: &Environment,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    match instruction {
+        Instruction::Set(name) | Instruction::SetExact(name) => {
+            let value = stack
+                .last()
+                .cloned()
+                .ok_or_else(|| invalid("setq has no value on the stack", span))?
+                .primary_value();
+            if matches!(instruction, Instruction::Set(_)) {
+                runtime.set_or_define_in(name, value.clone(), environment, span)?;
+            } else {
+                runtime.set_or_define_exact_in(name, value.clone(), environment, span)?;
+            }
+            *stack
+                .last_mut()
+                .ok_or_else(|| invalid("setq has no value on the stack", span))? = value;
+            *program_counter += 1;
+            Ok(true)
+        }
+        Instruction::Setf(place) | Instruction::MapIntoSetf(place) => {
+            let map_into = matches!(instruction, Instruction::MapIntoSetf(_));
+            let value = stack
+                .last()
+                .cloned()
+                .ok_or_else(|| {
+                    invalid(
+                        if map_into {
+                            "map-into has no value on the stack"
+                        } else {
+                            "setf has no value on the stack"
+                        },
+                        span,
+                    )
+                })?
+                .primary_value();
+            if map_into {
+                runtime.set_map_into_destination(place, value.clone(), environment)?;
+            } else {
+                runtime.set_place(place, value.clone(), environment)?;
+            }
+            *stack
+                .last_mut()
+                .ok_or_else(|| invalid("setf has no value on the stack", span))? = value;
+            *program_counter += 1;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+pub(super) fn execute_parallel_set_instruction(
+    runtime: &Runtime,
+    instruction: &Instruction,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    match instruction {
+        Instruction::Psetq(names) => {
+            if stack.len() < names.len() {
+                return Err(invalid("psetq has fewer values than targets", span));
+            }
+            let values = stack.split_off(stack.len() - names.len());
+            for (name, value) in names.iter().zip(values) {
+                let value = value.primary_value();
+                runtime.set_or_define_in(name, value, environment, span)?;
+            }
+            stack.push(Value::Nil);
+            *program_counter += 1;
+            Ok(true)
+        }
+        Instruction::PsetqExact(names) => {
+            if stack.len() < names.len() {
+                return Err(invalid("psetq has fewer values than targets", span));
+            }
+            let values = stack.split_off(stack.len() - names.len());
+            for ((name, escaped), value) in names.iter().zip(values) {
+                let value = value.primary_value();
+                if *escaped {
+                    runtime.set_or_define_exact_in(name, value, environment, span)?;
+                } else {
+                    runtime.set_or_define_in(name, value, environment, span)?;
+                }
+            }
+            stack.push(Value::Nil);
+            *program_counter += 1;
+            Ok(true)
+        }
+        Instruction::MultipleValueSetq(names) => {
+            let source = pop_value(stack, span, "multiple-value-setq")?;
+            let values = source.multiple_values();
+            for (index, name) in names.iter().enumerate() {
+                let value = values.get(index).cloned().unwrap_or(Value::Nil);
+                runtime.set_or_define_in(name, value, environment, span)?;
+            }
+            stack.push(source.primary_value());
+            *program_counter += 1;
+            Ok(true)
+        }
+        Instruction::MultipleValueSetqExact(names) => {
+            let source = pop_value(stack, span, "multiple-value-setq")?;
+            let values = source.multiple_values();
+            for (index, (name, escaped)) in names.iter().enumerate() {
+                let value = values.get(index).cloned().unwrap_or(Value::Nil);
+                if *escaped {
+                    runtime.set_or_define_exact_in(name, value, environment, span)?;
+                } else {
+                    runtime.set_or_define_in(name, value, environment, span)?;
+                }
+            }
+            stack.push(source.primary_value());
+            *program_counter += 1;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}

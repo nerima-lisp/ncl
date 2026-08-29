@@ -40,7 +40,7 @@ impl Runtime {
         let message = Self::condition_message(&arguments[0], format_arguments, span)?;
         let error = Self::signaled_error(
             "SIMPLE-ERROR",
-            Vec::new(),
+            &[],
             message.clone(),
             format_control.clone(),
             format_arguments,

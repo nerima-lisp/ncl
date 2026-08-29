@@ -73,7 +73,7 @@ impl Runtime {
     ) -> Result<(), RuntimeError> {
         let error = Self::signaled_error(
             condition,
-            Vec::new(),
+            &[],
             message,
             format_control,
             format_arguments,

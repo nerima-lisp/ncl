@@ -8,6 +8,7 @@ mod control;
 mod display;
 mod signaled;
 
+pub use condition::normalize_condition_name;
 pub use control::{ReturnValue, ThrowTag};
 pub use signaled::SignaledError;
 

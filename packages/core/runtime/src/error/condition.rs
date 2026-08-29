@@ -53,9 +53,9 @@ impl RuntimeError {
                         error
                             .condition_types
                             .iter()
-                            .any(|type_name| normalize_condition_name(type_name) == condition)
+                            .any(|type_name| type_name.as_str() == condition)
                             || matches!(
-                                normalize_condition_name(&error.condition).as_str(),
+                                error.condition.as_str(),
                                 "SIMPLE-ERROR"
                                     | "DIVISION-BY-ZERO"
                                     | "ARITHMETIC-ERROR"
@@ -75,11 +75,11 @@ impl RuntimeError {
 
         match self {
             Self::Signaled(error) => {
-                condition == normalize_condition_name(&error.condition)
+                condition == error.condition
                     || error
                         .condition_types
                         .iter()
-                        .any(|type_name| normalize_condition_name(type_name) == condition)
+                        .any(|type_name| type_name.as_str() == condition)
                     || (error.warning && condition == "WARNING")
                     || (!error.warning && condition == "SIMPLE-CONDITION")
             }
@@ -92,7 +92,13 @@ impl RuntimeError {
     }
 }
 
-fn normalize_condition_name(condition: &str) -> String {
+/// Canonicalizes a condition-type name to the form [`SignaledError`]'s
+/// `condition` and `condition_types` fields are stored in: uppercase, with
+/// any leading keyword-package colon stripped. Callers that build a
+/// [`SignaledError`] must normalize through this function so that
+/// [`RuntimeError::matches_condition`] can compare stored names directly
+/// without re-normalizing them on every lookup.
+pub fn normalize_condition_name(condition: &str) -> String {
     condition.trim_start_matches(':').to_ascii_uppercase()
 }
 

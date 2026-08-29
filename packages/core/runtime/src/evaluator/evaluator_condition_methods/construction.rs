@@ -1,7 +1,6 @@
 use ncl_syntax::Span;
 
-use crate::environment::normalize_name;
-use crate::error::SignaledError;
+use crate::error::{SignaledError, normalize_condition_name};
 use crate::{ReturnValue, Runtime, RuntimeError, Value, builtins};
 
 impl Runtime {
@@ -30,7 +29,7 @@ impl Runtime {
 
     pub(crate) fn signaled_error(
         condition: &str,
-        condition_types: Vec<String>,
+        condition_types: &[String],
         message: String,
         format_control: Option<String>,
         format_arguments: &[Value],
@@ -38,8 +37,11 @@ impl Runtime {
         span: Span,
     ) -> RuntimeError {
         RuntimeError::Signaled(Box::new(SignaledError {
-            condition: normalize_name(condition).trim_start_matches(':').to_owned(),
-            condition_types: condition_types.into(),
+            condition: normalize_condition_name(condition),
+            condition_types: condition_types
+                .iter()
+                .map(|name| normalize_condition_name(name))
+                .collect(),
             message,
             format_control,
             format_arguments: format_arguments
@@ -73,7 +75,7 @@ impl Runtime {
             .unwrap_or_default();
         Ok(Self::signaled_error(
             condition,
-            value.condition_type_names().unwrap_or_default(),
+            &value.condition_type_names().unwrap_or_default(),
             message,
             format_control,
             &format_arguments,

@@ -3,11 +3,12 @@ use std::io::{self, IsTerminal, Write};
 
 use ncl_runtime::Runtime;
 use ncl_syntax::{ReadError, ReadErrorKind};
-use reedline::{
-    Prompt, PromptEditMode, PromptHistorySearch, Reedline, Signal, ValidationResult, Validator,
-};
+use reedline::{Prompt, PromptEditMode, PromptHistorySearch, ValidationResult, Validator};
 
 use super::error::CliError;
+use interactive::interactive_repl_loop;
+
+mod interactive;
 
 /// Runs the REPL, reading from a real terminal with line editing and
 /// multi-line continuation via reedline, or falling back to a plain
@@ -19,24 +20,6 @@ pub(super) fn repl_loop(runtime: &Runtime, quiet: bool, compiled: bool) -> Resul
     } else {
         piped_repl_loop(runtime, quiet, compiled)
     }
-}
-
-fn interactive_repl_loop(runtime: &Runtime, quiet: bool, compiled: bool) -> Result<(), CliError> {
-    let mut line_editor = Reedline::create().with_validator(Box::new(FormValidator));
-    let prompt = NclPrompt { quiet };
-    loop {
-        match line_editor.read_line(&prompt) {
-            Ok(Signal::Success(buffer)) => {
-                if !buffer.trim().is_empty() {
-                    evaluate_repl_input(runtime, &buffer, quiet, compiled);
-                }
-            }
-            Ok(Signal::CtrlC) => {}
-            Ok(Signal::CtrlD) => break,
-            Err(error) => return Err(CliError::Io(error.to_string())),
-        }
-    }
-    Ok(())
 }
 
 fn piped_repl_loop(runtime: &Runtime, quiet: bool, compiled: bool) -> Result<(), CliError> {
@@ -148,3 +131,6 @@ impl Prompt for NclPrompt {
         Cow::Owned(format!("(reverse-search: {}) ", history_search.term))
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -23,6 +23,12 @@ const TOTAL_BUILTIN_DEFINITIONS: usize = numeric_builtins::NUMERIC_BUILTINS.len(
     + special_form_builtins::SPECIAL_FORM_BUILTINS.len()
     + io_builtins::IO_BUILTINS.len();
 
+// Invoked exactly once, in BUILTIN_DEFINITIONS's const initializer below, so
+// it runs entirely during const evaluation at compile time and never as
+// instrumented runtime code -- llvm-cov reports every region here as 0 hits
+// even though BUILTIN_DEFINITIONS itself (its output) backs every builtin
+// call in the runtime and is exhaustively exercised. This file is excluded
+// from the coverage gate in .github/workflows/ci.yml for that reason.
 const fn combine_builtin_definitions() -> [BuiltinDefinition; TOTAL_BUILTIN_DEFINITIONS] {
     let mut result = [numeric_builtins::NUMERIC_BUILTINS[0]; TOTAL_BUILTIN_DEFINITIONS];
     let mut offset = 0;

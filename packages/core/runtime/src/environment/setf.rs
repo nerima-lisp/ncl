@@ -1,14 +1,14 @@
 use crate::Value;
-use crate::environment::{Environment, normalize_name};
+use crate::environment::{Environment, intern_name};
 
 impl Environment {
     pub(crate) fn define_setf_function(&self, name: impl AsRef<str>, value: Value) {
-        let key = normalize_name(name.as_ref());
+        let key = intern_name(name.as_ref());
         self.0.borrow_mut().setf_functions.insert(key, value);
     }
 
     pub(crate) fn lookup_setf_function(&self, name: &str) -> Option<Value> {
-        let key = normalize_name(name);
+        let key = intern_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
             (
@@ -20,12 +20,12 @@ impl Environment {
     }
 
     pub(crate) fn define_setf_expander(&self, name: impl AsRef<str>, value: Value) {
-        let key = normalize_name(name.as_ref());
+        let key = intern_name(name.as_ref());
         self.0.borrow_mut().setf_expanders.insert(key, value);
     }
 
     pub(crate) fn lookup_setf_expander(&self, name: &str) -> Option<Value> {
-        let key = normalize_name(name);
+        let key = intern_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
             (

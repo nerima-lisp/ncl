@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use ncl_syntax::Form;
+pub use ncl_syntax::normalize_name;
 
 use crate::Value;
 use crate::value::{ClassDefinition, StructureDefinition};
@@ -10,10 +11,13 @@ use crate::value::{ClassDefinition, StructureDefinition};
 mod control_targets;
 mod definitions;
 mod functions;
+mod interner;
 mod properties;
 mod setf;
 mod symbol_macros;
 mod variables;
+
+pub use interner::intern_name;
 
 #[derive(Clone, Debug)]
 /// Lexically nested bindings and runtime metadata.
@@ -21,19 +25,19 @@ pub struct Environment(Rc<RefCell<Frame>>);
 
 #[derive(Debug)]
 struct Frame {
-    values: HashMap<String, Value>,
+    values: HashMap<Rc<str>, Value>,
     exact_values: HashMap<String, Value>,
-    symbol_macros: HashMap<String, Form>,
+    symbol_macros: HashMap<Rc<str>, Form>,
     exact_symbol_macros: HashMap<String, Form>,
-    functions: HashMap<String, Value>,
+    functions: HashMap<Rc<str>, Value>,
     exact_functions: HashMap<String, Value>,
-    setf_functions: HashMap<String, Value>,
-    setf_expanders: HashMap<String, Value>,
-    structures: HashMap<String, StructureDefinition>,
-    classes: HashMap<String, Rc<ClassDefinition>>,
+    setf_functions: HashMap<Rc<str>, Value>,
+    setf_expanders: HashMap<Rc<str>, Value>,
+    structures: HashMap<Rc<str>, StructureDefinition>,
+    classes: HashMap<Rc<str>, Rc<ClassDefinition>>,
     symbol_properties: Vec<(Value, Value)>,
-    block_targets: HashMap<String, u64>,
-    tag_targets: HashMap<String, u64>,
+    block_targets: HashMap<Rc<str>, u64>,
+    tag_targets: HashMap<Rc<str>, u64>,
     parent: Option<Environment>,
 }
 
@@ -89,8 +93,4 @@ impl Default for Environment {
     fn default() -> Self {
         Self::new()
     }
-}
-
-pub fn normalize_name(name: &str) -> String {
-    name.to_ascii_uppercase()
 }

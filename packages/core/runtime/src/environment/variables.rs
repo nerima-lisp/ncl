@@ -1,10 +1,10 @@
 use crate::Value;
-use crate::environment::{Environment, normalize_name};
+use crate::environment::{Environment, intern_name};
 
 impl Environment {
     /// Defines a case-insensitive variable binding.
     pub fn define(&self, name: impl AsRef<str>, value: Value) {
-        let key = normalize_name(name.as_ref());
+        let key = intern_name(name.as_ref());
         self.0.borrow_mut().values.insert(key, value);
     }
 
@@ -18,7 +18,7 @@ impl Environment {
     /// Looks up a case-insensitive variable binding through the parent chain.
     #[must_use]
     pub fn lookup(&self, name: &str) -> Option<Value> {
-        let key = normalize_name(name);
+        let key = intern_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
             (frame.values.get(&key).cloned(), frame.parent.clone())
@@ -37,7 +37,7 @@ impl Environment {
     /// Updates the nearest existing case-insensitive variable binding.
     #[must_use]
     pub fn set(&self, name: &str, value: Value) -> bool {
-        let key = normalize_name(name);
+        let key = intern_name(name);
         if self.0.borrow().values.contains_key(&key) {
             self.0.borrow_mut().values.insert(key, value);
             true
@@ -48,7 +48,7 @@ impl Environment {
     }
 
     pub(crate) fn remove(&self, name: &str) -> bool {
-        let key = normalize_name(name);
+        let key = intern_name(name);
         let (removed, parent) = {
             let mut frame = self.0.borrow_mut();
             (frame.values.remove(&key).is_some(), frame.parent.clone())

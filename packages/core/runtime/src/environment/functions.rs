@@ -1,9 +1,9 @@
 use crate::Value;
-use crate::environment::{Environment, normalize_name};
+use crate::environment::{Environment, intern_name};
 
 impl Environment {
     pub(crate) fn define_function(&self, name: impl AsRef<str>, value: Value) {
-        let key = normalize_name(name.as_ref());
+        let key = intern_name(name.as_ref());
         self.0.borrow_mut().functions.insert(key, value);
     }
 
@@ -15,7 +15,7 @@ impl Environment {
     }
 
     pub(crate) fn lookup_function(&self, name: &str) -> Option<Value> {
-        let key = normalize_name(name);
+        let key = intern_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
             (frame.functions.get(&key).cloned(), frame.parent.clone())
@@ -35,7 +35,7 @@ impl Environment {
     }
 
     pub(crate) fn remove_function(&self, name: &str) -> bool {
-        let key = normalize_name(name);
+        let key = intern_name(name);
         let (removed, parent) = {
             let mut frame = self.0.borrow_mut();
             (frame.functions.remove(&key).is_some(), frame.parent.clone())

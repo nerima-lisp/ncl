@@ -1,5 +1,4 @@
-#![allow(clippy::wildcard_imports)]
-use super::*;
+use super::{RuntimeError, Value, exact, integer_argument};
 
 pub fn logand(arguments: &[Value]) -> Result<Value, RuntimeError> {
     bitwise(arguments, "logand", -1, |left, right| left & right)

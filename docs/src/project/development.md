@@ -95,14 +95,15 @@ Run the Rust workspace tests with LLVM coverage and the current ratchet floors:
 nix run path:.#rust-coverage -- --summary-only
 ~~~
 
-To run the same regression check used by CI, add the configured minimum:
+To inspect coverage against the configured CI minimum, include the threshold:
 
 ~~~sh
 nix run path:.#rust-coverage -- --summary-only --fail-under-lines 88.4
 ~~~
 
-The current branch is below that minimum, so this command is expected to
-fail until the uncovered runtime paths are tested.
+CI enforces 88.4% line coverage. The current local report is below that
+minimum, so additional runtime-path tests are still required; check the
+summary together with the command exit status.
 
 For a browsable report, use `--html --output-dir artifacts/rust-coverage` in
 place of `--summary-only`. The flake app supplies the pinned Rust and LLVM

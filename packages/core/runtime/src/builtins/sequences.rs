@@ -13,12 +13,12 @@ pub(super) fn list_star(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 
     let mut values = arguments[..arguments.len() - 1].to_vec();
-    match arguments.last().expect("arguments is non-empty") {
+    let Some(last) = arguments.last() else {
+        return Err(arity("list*", "at least one", 0));
+    };
+    match last {
         Value::Nil | Value::List(_) => {
-            let Some(items) = arguments.last().and_then(Value::list_items) else {
-                unreachable!();
-            };
-            values.extend(items);
+            values.extend(last.list_items().unwrap_or_default());
             Ok(Value::list(values))
         }
         value if value.is_typed_list() => {
@@ -247,12 +247,12 @@ pub(super) fn append_lists(function: &str, arguments: &[Value]) -> Result<Value,
         };
         values.extend(items);
     }
-    match arguments.last().expect("arguments is non-empty") {
+    let Some(last) = arguments.last() else {
+        return Ok(Value::Nil);
+    };
+    match last {
         Value::Nil | Value::List(_) => {
-            let Some(items) = arguments.last().and_then(Value::list_items) else {
-                unreachable!();
-            };
-            values.extend(items);
+            values.extend(last.list_items().unwrap_or_default());
             Ok(Value::list(values))
         }
         value if value.is_typed_list() => {
@@ -261,7 +261,7 @@ pub(super) fn append_lists(function: &str, arguments: &[Value]) -> Result<Value,
         }
         Value::DottedList { items, tail } => {
             if values.is_empty() && items.is_empty() {
-                return Ok(arguments.last().expect("arguments is non-empty").clone());
+                return Ok(last.clone());
             }
             values.extend(items.iter().cloned());
             Ok(Value::dotted_list(values, tail.as_ref().clone()))

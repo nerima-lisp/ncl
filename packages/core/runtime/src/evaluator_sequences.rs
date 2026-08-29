@@ -1,22 +1,14 @@
-#[path = "evaluator_sequence_types.rs"]
 mod sequence_types;
 #[allow(clippy::wildcard_imports)]
 use sequence_types::*;
-#[path = "evaluator_sequence_options.rs"]
 mod sequence_options;
 #[allow(clippy::wildcard_imports)]
 use sequence_options::*;
-#[path = "evaluator_sequence_mapping.rs"]
 mod sequence_mapping;
-#[path = "evaluator_sequence_mapping_result.rs"]
 mod sequence_mapping_result;
-#[path = "evaluator_sequence_ordering.rs"]
 mod sequence_ordering;
-#[path = "evaluator_sequence_set_operations.rs"]
 mod sequence_set_operations;
-#[path = "evaluator_sequence_substitution.rs"]
 mod sequence_substitution;
-#[path = "evaluator_sequence_reduce.rs"]
 mod sequence_reduce;
 
 impl Runtime {

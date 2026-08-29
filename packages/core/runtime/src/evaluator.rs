@@ -22,14 +22,10 @@ use crate::{Environment, ReturnValue, RuntimeError, Value};
 
 const MAX_MACRO_EXPANSIONS: usize = 64;
 
-#[path = "evaluator_state.rs"]
 pub mod evaluator_state;
 pub use evaluator_state::{ConditionHandlerBinding, RestartBinding};
-#[path = "evaluator_compilation.rs"]
 mod compilation;
-#[path = "evaluator_resolution.rs"]
 mod evaluator_resolution;
-#[path = "evaluator_packages.rs"]
 mod packages;
 include!("evaluator_primitive_dispatch.rs");
 include!("evaluator_package_primitives.rs");
@@ -1025,10 +1021,8 @@ impl Runtime {
     }
 }
 
-#[path = "evaluator_macros.rs"]
 mod macros;
 include!("evaluator_special_forms.rs");
-#[path = "evaluator_validation.rs"]
 mod validation;
 
 impl Runtime {
@@ -1101,7 +1095,6 @@ impl Runtime {
     }
 }
 
-#[path = "evaluator_collection_primitives.rs"]
 mod collection_primitives;
 include!("evaluator_condition_methods.rs");
 include!("evaluator_primitives.rs");
@@ -1112,14 +1105,12 @@ impl Default for Runtime {
     }
 }
 
-#[path = "evaluator_helpers.rs"]
 mod helpers;
 use helpers::{
     atom_name, control_tag, is_case_default_form, is_macro_keyword_form, is_nil_form,
     is_operator_form, is_special_form, is_special_operator_name, macro_dotted_parts,
     macro_keyword_name, prefix_argument, quasiquote_marker, unqualified_name,
 };
-#[path = "evaluator_literals.rs"]
 mod evaluator_literals;
 pub use evaluator_literals::{
     escaped_symbol_atom, literal_atom, quoted_form_value, resolved_symbol,

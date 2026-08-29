@@ -1037,7 +1037,5 @@ impl Runtime {
         Ok(())
     }
 }
-#[path = "evaluator_closure.rs"]
 mod closure;
-#[path = "evaluator_structure_boa.rs"]
 mod structure_boa;

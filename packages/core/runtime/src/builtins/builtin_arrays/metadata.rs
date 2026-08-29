@@ -1,4 +1,4 @@
-use super::{
+use crate::builtins::{
     array_total_size_for, dimensions_for_array, exact, index_argument, integer_from_usize,
     out_of_bounds, type_error,
 };

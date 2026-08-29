@@ -93,7 +93,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       - run: cargo llvm-cov --locked --workspace --all-features --all-targets --lcov --output-path lcov.info
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --summary-only --fail-under-lines 88.4
+      # Region coverage, not line coverage: a line with an untaken branch
+      # (e.g. one arm of a match) counts as fully covered by line metrics
+      # but only partially by region metrics, so region is the stricter and
+      # more accurate signal. Measured region coverage as of this gate's
+      # introduction was 87.90%; the floor below is set with a small buffer
+      # under that so environment-to-environment measurement noise doesn't
+      # produce a flaky failure. This is a ratchet: lower this number only
+      # if you can point to a specific line:reachability change that makes
+      # the number correct, never to make an unrelated PR pass.
+      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --summary-only --fail-under-regions 87.5
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov

@@ -72,16 +72,7 @@ pub(in crate::builtins) const MAX_EXACT_BIGNUM_DIGITS: usize = 100_000;
 /// calls, since a value only approaches the cap right before it would be
 /// rejected) the O(1) estimate alone is conclusive.
 pub(in crate::builtins) fn exceeds_exact_bignum_digit_cap(value: &ibig::IBig) -> bool {
-    let magnitude = if *value < ibig::IBig::from(0) {
-        ibig::UBig::try_from(-value)
-    } else {
-        ibig::UBig::try_from(value)
-    };
-    let Ok(magnitude) = magnitude else {
-        // Unreachable: the sign check above guarantees a match. Fail closed
-        // (reject) rather than open, since this is a resource-limit gate.
-        return true;
-    };
+    let magnitude = ibig::ops::UnsignedAbs::unsigned_abs(value);
     #[expect(
         clippy::cast_precision_loss,
         clippy::cast_sign_loss,
@@ -147,15 +138,16 @@ mod tests {
     use super::exceeds_exact_bignum_digit_cap;
 
     /// A non-round-leading-digit value (`9 * 10^150000`, 150,001 decimal
-    /// digits) whose bit-length estimate lands 50,001 digits past
-    /// `MAX_EXACT_BIGNUM_DIGITS + 1` -- far outside the +/-1 ambiguous
-    /// margin the exact `.to_string()` fallback exists for. Confirms the
-    /// fast-reject arm (`approx_digits > MAX_EXACT_BIGNUM_DIGITS + 1`)
-    /// itself correctly rejects, not merely that the exact fallback would
-    /// have (the existing boundary tests -- `10^100000` and `9 *
-    /// 10^99999` -- both have estimates within 1 of the cap and so are
-    /// necessarily decided by the exact fallback, never the fast-reject
-    /// arm).
+    /// digits) whose bit-length estimate lands 50,001 digits past the
+    /// single ambiguous estimate value (`MAX_EXACT_BIGNUM_DIGITS + 1` --
+    /// see the function's own doc comment for why only that one estimate
+    /// is ambiguous). Pins the correct final answer for a value the
+    /// fast-reject arm is meant to handle. Note this cannot distinguish
+    /// the fast-reject arm actually firing from a hypothetical fall-through
+    /// to the exact `.to_string()` fallback, since that fallback is
+    /// unconditionally correct and would return the same answer either
+    /// way -- isolating which arm executed would need a `#[cfg(test)]`
+    /// call counter in production code, which this test does not add.
     #[test]
     fn exceeds_exact_bignum_digit_cap_fast_rejects_a_non_round_value_far_over_the_cap() {
         let value = ibig::IBig::from(9) * ibig::IBig::from(10).pow(150_000);
@@ -164,10 +156,10 @@ mod tests {
     }
 
     /// The mirror case: a non-round-leading-digit value (`9 * 10^50000`,
-    /// 50,001 digits) whose estimate lands 50,001 digits under the cap --
-    /// far outside the ambiguous margin on the accept side. Confirms the
-    /// fast-accept arm (`approx_digits <= MAX_EXACT_BIGNUM_DIGITS`) itself
-    /// correctly accepts.
+    /// 50,001 digits) whose estimate lands 50,001 digits under the cap.
+    /// Pins the correct final answer for a value the fast-accept arm is
+    /// meant to handle; same arm-isolation caveat as the far-over-the-cap
+    /// test above applies.
     #[test]
     fn exceeds_exact_bignum_digit_cap_fast_accepts_a_non_round_value_far_under_the_cap() {
         let value = ibig::IBig::from(9) * ibig::IBig::from(10).pow(50_000);

@@ -1079,6 +1079,29 @@ fn multiplication_cap_boundary_is_exact_for_a_negative_value() {
 }
 
 #[test]
+fn multiplication_cap_boundary_is_exact_for_a_negative_round_power_of_ten() {
+    // Regression: -9 * 10^99999 above has a non-round leading digit, whose
+    // bit-length estimate lands at exactly MAX_EXACT_BIGNUM_DIGITS + 1 --
+    // the sole value ambiguous under both the old and the tightened margin,
+    // so it never exercised the tightened fast-accept arm
+    // (`approx_digits <= MAX_EXACT_BIGNUM_DIGITS`) at all. -1 * 10^99999 is
+    // a round power of ten whose estimate lands at exactly
+    // MAX_EXACT_BIGNUM_DIGITS (not +1): before the margin was tightened,
+    // this fell inside the wider ambiguous band (`approx_digits + 1 <
+    // MAX_EXACT_BIGNUM_DIGITS` failed) and so still hit the buggy signed
+    // `.to_string()` fallback, spuriously rejecting it; the tightened
+    // margin now fast-accepts it directly, without ever reaching the exact
+    // fallback. Verified this genuinely discriminates the fix: fails
+    // against the pre-fix commit (72c87a3) and passes against the fixed
+    // one (2fcab1d).
+    assert_eq!(
+        evaluate("(integerp (* -1 (expt 10 99999)))").to_string(),
+        "T",
+        "-1 * 10^99999 has exactly 100,000 digits and must not be rejected"
+    );
+}
+
+#[test]
 fn abs_and_negate_promote_i64_min_instead_of_overflowing() {
     // Regression: i64::MIN is the one integer whose absolute value/negation
     // doesn't fit back in i64 (i64::MAX == 9223372036854775807, but

@@ -971,6 +971,45 @@ fn expt_with_an_astronomically_large_exponent_reports_overflow_instead_of_runnin
 }
 
 #[test]
+fn sqrt_of_an_oversized_bignum_reports_overflow_instead_of_running_unbounded() {
+    // Regression: sqrt was the one exact-arithmetic entry point that never
+    // consulted the digit cap, because the cap is applied to results and a
+    // square root's result is always smaller than its operand. Since
+    // literals are deliberately uncapped, a caller could hand sqrt an
+    // arbitrarily wide literal and reach ibig_square_root directly --
+    // measured at 144s of CPU and still climbing for a 100,000-digit
+    // operand before being force-killed, against 0.11s for an equal-width
+    // addition. The cap now applies to sqrt's operand.
+    let digits = "9".repeat(100_001);
+    let overflow = Runtime::new()
+        .eval_source(&format!("(sqrt {digits})"))
+        .must_fail();
+    assert!(matches!(
+        overflow,
+        ncl_runtime::RuntimeError::NumericOverflow
+    ));
+}
+
+#[test]
+fn sqrt_of_a_cap_sized_bignum_stays_fast_enough_to_be_a_real_answer() {
+    // The companion to the overflow test above: fixing the DoS by rejecting
+    // oversized operands would be worthless if everything *under* the cap
+    // stayed unusably slow. The original Newton's-method seed (the operand
+    // itself) needed ~bit_len/2 full-width bignum divisions before it even
+    // reached the quadratic-convergence basin; seeding just above the root
+    // instead makes an at-the-cap operand resolve in well under a second.
+    // Asserting the value rather than the clock, since a wall-clock bound
+    // would be flaky on a loaded machine -- but note that pre-fix this
+    // assertion could not have completed at all within a test timeout.
+    let root = "3".repeat(50_000);
+    let square = format!("(* {root} {root})");
+    assert_eq!(
+        evaluate(&format!("(= (sqrt {square}) {root})")).to_string(),
+        "T"
+    );
+}
+
+#[test]
 fn bignum_vs_rational_comparisons_are_order_independent_and_handle_negatives() {
     // The astronomically-large-exponent test above only exercises
     // min(bignum, rational) and max(rational, bignum). The pre-fix bug's

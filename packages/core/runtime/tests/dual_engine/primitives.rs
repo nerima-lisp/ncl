@@ -172,10 +172,27 @@ fn evaluates_common_lisp_sqrt_across_exact_and_float_numbers(#[case] eval_fn: Ev
         evaluate(
             "(list (sqrt 0) (sqrt 4) (sqrt 1/4)
                         (rationalp (sqrt 2)) (floatp (sqrt 2))
-                        (= (sqrt 4.0) 2.0))",
+                        (= (sqrt 4.0) 2.0)
+                        (sqrt (expt 2 100)) (typep (sqrt (expt 2 100)) 'fixnum)
+                        (floatp (sqrt (expt 2 101))))",
         )
         .to_string(),
-        "(0 2 1/2 NIL T T)"
+        "(0 2 1/2 NIL T T 1125899906842624 T T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_abs_across_numeric_types(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (abs -5) (abs 5) (abs -1/2) (abs 2.5)
+                        (abs (expt 2 100)) (abs (- (expt 2 100))))",
+        )
+        .to_string(),
+        "(5 5 1/2 2.5 1267650600228229401496703205376 1267650600228229401496703205376)"
     );
 }
 

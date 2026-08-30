@@ -16,6 +16,12 @@ pub(super) use comparison::{compare_number_values, numeric_equalp};
 #[derive(Clone)]
 pub(super) enum Number {
     Integer(i64),
+    /// Never holds a value that fits in `i64` -- every construction site
+    /// routes through [`Value::big_integer`] or [`number_from_big`], both
+    /// of which demote such a value to [`Number::Integer`] first. Match
+    /// arms may therefore rely on this being large in magnitude, and in
+    /// particular on it never being zero: `signum`'s two-way sign test
+    /// would otherwise report `1` for a bignum-typed zero.
     Big(ibig::IBig),
     Rational(Rational),
     Float(f64),

@@ -88,11 +88,7 @@ pub fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {
             || Value::big_integer(-ibig::IBig::from(value)),
             Value::Integer,
         )),
-        Number::Big(value) => Ok(Value::big_integer(if value < ibig::IBig::from(0) {
-            -value
-        } else {
-            value
-        })),
+        Number::Big(value) => Ok(Value::big_integer(ibig::ops::Abs::abs(value))),
         Number::Rational(value) => number_to_value(rational_number(
             i128::from(value.numerator()).abs(),
             i128::from(value.denominator()),

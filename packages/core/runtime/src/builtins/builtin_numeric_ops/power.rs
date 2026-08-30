@@ -150,6 +150,18 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
         }
         Number::Float(value) if value >= 0.0 => Ok(Value::Float(value.sqrt())),
         Number::Big(value) if value >= ibig::IBig::from(0) => {
+            // Checked against the *input*, unlike every other cap site,
+            // which checks the result: a square root only ever shrinks its
+            // operand, so a result-side check could never fire. The cost
+            // that needs bounding here is the computation itself --
+            // ibig_square_root divides by a full-width bignum once per
+            // iteration -- and its driver is the input's width. Without
+            // this, an uncapped literal (literals are deliberately not
+            // capped) reaches ibig_square_root directly and burns
+            // unbounded CPU time for a small answer.
+            if exceeds_exact_bignum_digit_cap(&value) {
+                return Err(RuntimeError::NumericOverflow);
+            }
             let root = ibig_square_root(&value);
             if &root * &root == value {
                 Ok(Value::big_integer(root))
@@ -164,18 +176,35 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 /// Computes `floor(sqrt(value))` for a non-negative arbitrary-precision
-/// integer via Newton's method, converging in `O(log value)` iterations.
+/// integer via Newton's method, seeded from the input's bit length exactly
+/// as [`integer_square_root`] seeds its own `u128` loop.
+///
+/// The seed is what makes this cheap. Seeding with `value` itself is the
+/// textbook presentation and is equally correct, but it starts the
+/// iteration a full factor of `sqrt(value)` away from the answer, so the
+/// loop spends its first ~`bit_len/2` iterations merely halving toward the
+/// quadratic-convergence basin -- each of those iterations paying for a
+/// division by a full-width bignum. That made the whole function scale
+/// about `O(digits^2.4)` in measurement: a 100,000-digit input ran over
+/// 144s of CPU and was still climbing. Seeding just above `sqrt(value)`
+/// instead puts the first iteration already inside the basin, so the count
+/// drops to `O(log bit_len)`.
 fn ibig_square_root(value: &ibig::IBig) -> ibig::IBig {
     if *value < ibig::IBig::from(2) {
         return value.clone();
     }
-    let mut estimate = value.clone();
-    let mut next = (&estimate + ibig::IBig::from(1)) / ibig::IBig::from(2);
-    while next < estimate {
-        estimate = next.clone();
-        next = (&estimate + value / &estimate) / ibig::IBig::from(2);
+    let bits = ibig::ops::UnsignedAbs::unsigned_abs(value).bit_len();
+    // 2^(bits/2 + 1) > sqrt(value), since value < 2^bits. Newton's method
+    // for an integer square root converges monotonically downward from any
+    // overestimate, so this both terminates and lands on the true floor.
+    let mut root = ibig::IBig::from(2).pow(bits / 2 + 1);
+    loop {
+        let next = (&root + value / &root) / ibig::IBig::from(2);
+        if next >= root {
+            return root;
+        }
+        root = next;
     }
-    estimate
 }
 
 pub const fn integer_square_root(value: u128) -> u128 {

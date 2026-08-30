@@ -121,7 +121,11 @@ pub(in crate::builtins) fn negate_number(value: Number) -> Result<Number, Runtim
             || Number::Big(-ibig::IBig::from(value)),
             Number::Integer,
         )),
-        Number::Big(value) => Ok(Number::Big(-value)),
+        // number_from_big (not a bare Number::Big) since negating e.g.
+        // exactly i64::MAX + 1 (the promoted |i64::MIN|) yields i64::MIN,
+        // which fits back in i64 and must demote -- every other
+        // bignum-producing path in this file already normalizes this way.
+        Number::Big(value) => Ok(number_from_big(-value)),
         Number::Rational(value) => rational_number(
             -i128::from(value.numerator()),
             i128::from(value.denominator()),

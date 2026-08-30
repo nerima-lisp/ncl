@@ -1039,22 +1039,60 @@ fn repeated_bignum_multiplication_reports_overflow_instead_of_running_unbounded(
 }
 
 #[test]
+fn multiplication_cap_boundary_is_exact_for_a_non_round_leading_digit() {
+    // Regression: exceeds_exact_bignum_digit_cap's bit-length-based estimate
+    // overestimates the true decimal digit count by up to 1 for any value
+    // that isn't a "round" power of 10 -- 9 * 10^99999 has exactly the same
+    // 100,000 digit count as 10^99999 (the existing expt boundary test's
+    // value), but a larger bit length, so a naive `estimate >
+    // MAX_EXACT_BIGNUM_DIGITS` check spuriously rejected it even though it's
+    // legitimately at the cap, not over it. This exercises that boundary
+    // through `*` specifically (not `expt`), with a leading digit that
+    // defeats the "always starts with 1" blind spot the expt test alone has.
+    assert_eq!(
+        evaluate("(integerp (* 9 (expt 10 99999)))").to_string(),
+        "T",
+        "9 * 10^99999 has exactly 100,000 digits and must not be rejected"
+    );
+    let overflow = Runtime::new()
+        .eval_source("(* (expt 10 50000) (expt 10 50000))")
+        .must_fail();
+    assert!(matches!(
+        overflow,
+        ncl_runtime::RuntimeError::NumericOverflow
+    ));
+}
+
+#[test]
 fn abs_and_negate_promote_i64_min_instead_of_overflowing() {
     // Regression: i64::MIN is the one integer whose absolute value/negation
     // doesn't fit back in i64 (i64::MAX == 9223372036854775807, but
     // |i64::MIN| == 9223372036854775808). abs/unary `-` used to report
     // NumericOverflow for exactly this value instead of promoting, breaking
     // the documented "exact arithmetic promotes on i64 overflow" guarantee.
+    // Both engines share absolute/negate_number, so both are exercised here
+    // rather than just the interpreter.
+    for evaluator in [Runtime::eval_source, Runtime::eval_compiled_source] {
+        assert_evaluates_to(
+            evaluator,
+            "(list (abs -9223372036854775808) (- -9223372036854775808) (typep (abs -9223372036854775808) 'bignum))",
+            "(9223372036854775808 9223372036854775808 T)",
+        );
+    }
+}
+
+#[test]
+fn negate_of_the_promoted_i64_min_bignum_demotes_back_to_a_fixnum() {
+    // Regression: negate_number's Number::Big arm constructed Number::Big
+    // directly instead of routing through number_from_big, so negating the
+    // promoted |i64::MIN| bignum (which equals i64::MIN again, fitting i64)
+    // stayed a de-normalized bignum instead of demoting.
     assert_eq!(
-        evaluate("(abs -9223372036854775808)").to_string(),
-        "9223372036854775808"
+        evaluate("(- (abs -9223372036854775808))").to_string(),
+        "-9223372036854775808"
     );
     assert_eq!(
-        evaluate("(- -9223372036854775808)").to_string(),
-        "9223372036854775808"
-    );
-    assert_eq!(
-        evaluate("(typep (abs -9223372036854775808) 'bignum)").to_string(),
+        evaluate("(typep (- (abs -9223372036854775808)) 'fixnum)").to_string(),
         "T"
     );
 }

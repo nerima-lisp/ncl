@@ -53,13 +53,21 @@ pub(in crate::builtins) fn number_to_value(number: Number) -> Result<Value, Runt
 pub(in crate::builtins) const MAX_EXACT_BIGNUM_DIGITS: usize = 100_000;
 
 /// Returns whether `value`'s magnitude exceeds [`MAX_EXACT_BIGNUM_DIGITS`]
-/// decimal digits, checked via its bit length rather than a full decimal
-/// conversion (`.to_string().len()`). Bit length is effectively O(1) (reads
-/// the buffer's limb count), whereas decimal conversion is asymptotically
-/// expensive -- calling it after every step of a computation that might be
-/// growing unboundedly means the cap-check itself becomes the dominant cost
-/// for any legitimate large-but-under-cap result (measured: ~7-10x slower
-/// for results tens of thousands of digits long, well under the cap).
+/// decimal digits. Uses `value`'s bit length (`O(limb count)`, dominated by
+/// one buffer clone -- cheap relative to the arithmetic operation that
+/// produced `value` in the first place) as a fast pre-filter rather than a
+/// full decimal conversion (`.to_string().len()`, asymptotically far more
+/// expensive: measured 60x-12,000x slower at sizes from just over
+/// `i64::MAX` up to the cap). Because `bits * log10(2)` never exactly equals a decimal
+/// digit-count boundary for values that aren't a round power of 10, the
+/// bit-length estimate can overestimate the true digit count by up to 1 (it
+/// never underestimates) -- e.g. `9 * 10^99999` has exactly 100,000 digits,
+/// same as `10^99999`, but a larger bit length, so a naive
+/// `estimate > MAX_EXACT_BIGNUM_DIGITS` check spuriously rejected it. Only
+/// values whose estimate falls within that +/-1 margin of the cap fall back
+/// to the exact decimal check; everywhere else (the overwhelming majority
+/// of calls, since a value only approaches the cap right before it would be
+/// rejected) the O(1) estimate alone is conclusive.
 pub(in crate::builtins) fn exceeds_exact_bignum_digit_cap(value: &ibig::IBig) -> bool {
     let magnitude = if *value < ibig::IBig::from(0) {
         ibig::UBig::try_from(-value)
@@ -67,16 +75,24 @@ pub(in crate::builtins) fn exceeds_exact_bignum_digit_cap(value: &ibig::IBig) ->
         ibig::UBig::try_from(value)
     };
     let Ok(magnitude) = magnitude else {
-        return false; // Unreachable: the sign check above guarantees a match.
+        // Unreachable: the sign check above guarantees a match. Fail closed
+        // (reject) rather than open, since this is a resource-limit gate.
+        return true;
     };
     #[expect(
         clippy::cast_precision_loss,
         clippy::cast_sign_loss,
         clippy::cast_possible_truncation,
-        reason = "an approximate, deliberately-overestimating digit-count bound for a size check, not an exact conversion"
+        reason = "an approximate digit-count bound used only to decide whether the exact check below is needed"
     )]
     let approx_digits = (magnitude.bit_len() as f64 * std::f64::consts::LOG10_2) as usize + 1;
-    approx_digits > MAX_EXACT_BIGNUM_DIGITS
+    if approx_digits + 1 < MAX_EXACT_BIGNUM_DIGITS {
+        return false;
+    }
+    if approx_digits > MAX_EXACT_BIGNUM_DIGITS + 1 {
+        return true;
+    }
+    value.to_string().len() > MAX_EXACT_BIGNUM_DIGITS
 }
 
 /// Wraps an arbitrary-precision integer result as a [`Number`], demoting it

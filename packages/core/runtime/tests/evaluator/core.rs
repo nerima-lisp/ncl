@@ -1064,6 +1064,21 @@ fn multiplication_cap_boundary_is_exact_for_a_non_round_leading_digit() {
 }
 
 #[test]
+fn multiplication_cap_boundary_is_exact_for_a_negative_value() {
+    // Regression: the exact fallback in exceeds_exact_bignum_digit_cap used
+    // to check `value.to_string().len()` -- for a negative value this
+    // string includes a leading '-', inflating the length by 1 and
+    // spuriously rejecting a legitimate negative result whose true digit
+    // count is exactly the cap, even though the equal-magnitude positive
+    // value was correctly accepted.
+    assert_eq!(
+        evaluate("(integerp (* -9 (expt 10 99999)))").to_string(),
+        "T",
+        "-9 * 10^99999 has exactly 100,000 digits (the sign doesn't count as a digit) and must not be rejected"
+    );
+}
+
+#[test]
 fn abs_and_negate_promote_i64_min_instead_of_overflowing() {
     // Regression: i64::MIN is the one integer whose absolute value/negation
     // doesn't fit back in i64 (i64::MAX == 9223372036854775807, but
@@ -1083,10 +1098,14 @@ fn abs_and_negate_promote_i64_min_instead_of_overflowing() {
 
 #[test]
 fn negate_of_the_promoted_i64_min_bignum_demotes_back_to_a_fixnum() {
-    // Regression: negate_number's Number::Big arm constructed Number::Big
-    // directly instead of routing through number_from_big, so negating the
-    // promoted |i64::MIN| bignum (which equals i64::MIN again, fitting i64)
-    // stayed a de-normalized bignum instead of demoting.
+    // End-to-end sanity check for the same fix that
+    // negate_number_demotes_a_bignum_that_fits_back_into_i64 (in
+    // numbers/arithmetic.rs) actually regression-guards: this Lisp-level
+    // version does NOT discriminate the bug on its own, since
+    // number_to_value's Value::big_integer conversion independently
+    // re-normalizes every Number before it's observable through evaluate(),
+    // masking a denormalized intermediate Number::Big regardless of whether
+    // negate_number's own demotion is correct.
     assert_eq!(
         evaluate("(- (abs -9223372036854775808))").to_string(),
         "-9223372036854775808"

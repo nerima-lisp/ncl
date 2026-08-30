@@ -171,6 +171,24 @@ mod tests {
     }
 
     #[test]
+    fn negate_number_demotes_a_bignum_that_fits_back_into_i64() {
+        // Regression: negate_number's Number::Big arm used to build
+        // Number::Big(-value) directly instead of routing through
+        // number_from_big, so negating the promoted |i64::MIN| bignum (which
+        // equals i64::MIN again, fitting i64) stayed a de-normalized bignum
+        // at the Number level. Exercised here rather than through evaluate(),
+        // because every builtin's Value-conversion boundary (number_to_value
+        // -> Value::big_integer) independently re-normalizes, which masks
+        // this regression completely when observed only through the public
+        // Lisp-evaluation API.
+        let promoted_i64_min_magnitude = -ibig::IBig::from(i64::MIN);
+        match negate_number(Number::Big(promoted_i64_min_magnitude)) {
+            Ok(Number::Integer(value)) => assert_eq!(value, i64::MIN),
+            other => panic!("expected a demoted fixnum, got {}", describe(&other)),
+        }
+    }
+
+    #[test]
     fn negate_number_negates_a_rational_and_preserves_normalization() {
         match negate_number(rational(3, 4)) {
             Ok(Number::Rational(value)) => {

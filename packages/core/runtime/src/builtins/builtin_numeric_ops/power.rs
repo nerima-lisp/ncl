@@ -1,6 +1,6 @@
 use super::{
-    Number, RuntimeError, Value, exact, number_argument, number_from_big, number_to_value,
-    rational_number,
+    Number, RuntimeError, Value, exact, exceeds_exact_bignum_digit_cap, number_argument,
+    number_from_big, number_to_value, rational_number,
 };
 
 pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -63,40 +63,26 @@ pub(in crate::builtins) fn exact_power(
     )
 }
 
-/// A result past this many decimal digits is rejected as
-/// [`RuntimeError::NumericOverflow`] rather than computed. Without a cap, an
-/// innocuous-looking expression like `(expt 2 1000000000)` runs for an
-/// unbounded amount of time and memory (verified: RSS climbing indefinitely,
-/// no completion after 16s) -- a trivial denial-of-service against anything
-/// that evaluates untrusted or semi-trusted Lisp source. The check runs
-/// after every squaring/multiply step inside the loop, not just once at the
-/// end, so the computation aborts as soon as it crosses the cap rather than
-/// completing an unboundedly large multiplication first. 100,000 digits is
-/// generous relative to any realistic legitimate use (e.g. 30000! has about
-/// 130,000 digits) while keeping the worst-case rejection latency bounded to
-/// a small number of seconds rather than growing without limit -- binary
-/// exponentiation's per-step squaring means the operand size roughly
-/// doubles each iteration, so the cap is reached in only a handful of
-/// iterations regardless of how large the exponent itself is.
-const MAX_EXACT_POWER_DIGITS: usize = 100_000;
-
 /// Computes `base^exponent` with arbitrary precision via binary
 /// exponentiation, so a large `expt` result (e.g. `(expt 2 100)`) never
 /// overflows the way [`checked_power`]'s `i128` accumulator can. Bounded by
-/// [`MAX_EXACT_POWER_DIGITS`].
+/// [`MAX_EXACT_BIGNUM_DIGITS`], checked after every squaring/multiply step
+/// (not just once at the end) so the computation aborts as soon as it
+/// crosses the cap rather than completing an unboundedly large multiply
+/// first.
 fn ibig_power(mut base: ibig::IBig, mut exponent: u64) -> Result<ibig::IBig, RuntimeError> {
     let mut result = ibig::IBig::from(1);
     while exponent != 0 {
         if exponent & 1 == 1 {
             result *= &base;
-            if result.to_string().len() > MAX_EXACT_POWER_DIGITS {
+            if exceeds_exact_bignum_digit_cap(&result) {
                 return Err(RuntimeError::NumericOverflow);
             }
         }
         exponent >>= 1;
         if exponent != 0 {
             base = &base * &base;
-            if base.to_string().len() > MAX_EXACT_POWER_DIGITS {
+            if exceeds_exact_bignum_digit_cap(&base) {
                 return Err(RuntimeError::NumericOverflow);
             }
         }

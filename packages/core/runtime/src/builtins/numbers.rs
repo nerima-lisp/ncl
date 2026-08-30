@@ -3,7 +3,8 @@ use super::*;
 
 mod conversions;
 pub(super) use conversions::{
-    integer_argument, number, number_argument, number_from_big, number_to_value, rational_number,
+    exceeds_exact_bignum_digit_cap, integer_argument, number, number_argument, number_from_big,
+    number_to_value, rational_number,
 };
 
 mod arithmetic;

@@ -81,10 +81,13 @@ pub fn extreme(
 pub fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "abs", 1)?;
     match number_argument("abs", &arguments[0])? {
-        Number::Integer(value) => value
-            .checked_abs()
-            .map(Value::Integer)
-            .ok_or(RuntimeError::NumericOverflow),
+        Number::Integer(value) => Ok(value.checked_abs().map_or_else(
+            // i64::MIN is the one integer whose absolute value doesn't fit
+            // back in i64 -- promote rather than erroring, consistent with
+            // every other exact-arithmetic overflow in this codebase.
+            || Value::big_integer(-ibig::IBig::from(value)),
+            Value::Integer,
+        )),
         Number::Big(value) => Ok(Value::big_integer(if value < ibig::IBig::from(0) {
             -value
         } else {

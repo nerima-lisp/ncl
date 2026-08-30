@@ -3,7 +3,7 @@ use ibig::IBig;
 use crate::RuntimeError;
 
 use super::Number;
-use super::conversions::{number_from_big, rational_number};
+use super::conversions::{exceeds_exact_bignum_digit_cap, number_from_big, rational_number};
 
 /// Common Lisp's exact division of two arbitrary-precision integers is only
 /// representable here when it comes out even: a bignum numerator/denominator
@@ -33,6 +33,15 @@ fn exact_binary_big(left: IBig, right: IBig, operation: char) -> Result<Number, 
             });
         }
     };
+    // Ordinary +/-/* on bignums have no built-in ceiling the way `expt`'s
+    // binary exponentiation does: repeated squaring via `*` (e.g.
+    // `(dotimes (i 10) (setf x (* x x)))`) grows just as unboundedly and
+    // is just as reachable from ordinary Lisp source -- verified: 10
+    // squarings from a ~90,000-digit start took 51.55s and 143MB, still
+    // growing. This check closes that gap the same way ibig_power's does.
+    if exceeds_exact_bignum_digit_cap(&result) {
+        return Err(RuntimeError::NumericOverflow);
+    }
     Ok(number_from_big(result))
 }
 
@@ -105,10 +114,13 @@ pub(in crate::builtins) fn exact_binary(
 
 pub(in crate::builtins) fn negate_number(value: Number) -> Result<Number, RuntimeError> {
     match value {
-        Number::Integer(value) => value
-            .checked_neg()
-            .map(Number::Integer)
-            .ok_or(RuntimeError::NumericOverflow),
+        Number::Integer(value) => Ok(value.checked_neg().map_or_else(
+            // i64::MIN is the one integer whose negation doesn't fit back
+            // in i64 -- promote rather than erroring, consistent with
+            // every other exact-arithmetic overflow in this codebase.
+            || Number::Big(-ibig::IBig::from(value)),
+            Number::Integer,
+        )),
         Number::Big(value) => Ok(Number::Big(-value)),
         Number::Rational(value) => rational_number(
             -i128::from(value.numerator()),

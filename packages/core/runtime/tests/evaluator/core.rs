@@ -971,6 +971,146 @@ fn expt_with_an_astronomically_large_exponent_reports_overflow_instead_of_runnin
 }
 
 #[test]
+fn bignum_vs_rational_comparisons_are_order_independent_and_handle_negatives() {
+    // The astronomically-large-exponent test above only exercises
+    // min(bignum, rational) and max(rational, bignum). The pre-fix bug's
+    // Equal fallback kept whichever argument came *first*, so it happened
+    // to produce the right answer by luck when the smaller value was
+    // already first -- min(rational, bignum) and max(bignum, rational) are
+    // exactly that lucky ordering and would not have caught the original
+    // bug. They still guard against a fix that is asymmetric in argument
+    // order (e.g. a cross-multiplication that swaps a numerator/denominator
+    // pair on only one side).
+    assert_eq!(evaluate("(min 1/2 (expt 10 30))").to_string(), "1/2");
+    assert_eq!(
+        evaluate("(max (expt 10 30) 1/2)").to_string(),
+        "1000000000000000000000000000000"
+    );
+
+    // Negative bignum vs. negative rational: the fix cross-multiplies
+    // numerator/denominator pairs, which is a place a sign handling bug
+    // could hide even though the positive-vs-positive cases above pass.
+    assert_eq!(evaluate("(< (- (expt 10 30)) -1/2)").to_string(), "T");
+    assert_eq!(evaluate("(> (- (expt 10 30)) -1/2)").to_string(), "NIL");
+    assert_eq!(
+        evaluate("(min (- (expt 10 30)) -1/2)").to_string(),
+        "-1000000000000000000000000000000"
+    );
+    assert_eq!(evaluate("(max -1/2 (- (expt 10 30)))").to_string(), "-1/2");
+}
+
+#[test]
+fn expt_cap_boundary_is_exact_not_merely_far_from_the_limit() {
+    // The astronomically-large-exponent test above uses an exponent so
+    // large the cap trips after a handful of squaring steps -- it would
+    // not catch an off-by-one in the `> MAX_EXACT_BIGNUM_DIGITS` check.
+    // 10^99999 is exactly 100_000 decimal digits (a 1 followed by 99999
+    // zeros): right at the documented cap, so it must still succeed.
+    assert_eq!(
+        evaluate("(integerp (expt 10 99999))").to_string(),
+        "T",
+        "a result exactly at the 100,000-digit cap must not be rejected"
+    );
+    // 10^100000 is exactly 100_001 digits: one over the cap, so it must be
+    // rejected. Together these two pin the boundary exactly rather than
+    // merely confirming that *some* sufficiently large exponent overflows.
+    let overflow = Runtime::new().eval_source("(expt 10 100000)").must_fail();
+    assert!(matches!(
+        overflow,
+        ncl_runtime::RuntimeError::NumericOverflow
+    ));
+}
+
+#[test]
+fn repeated_bignum_multiplication_reports_overflow_instead_of_running_unbounded() {
+    // Regression: expt's digit cap does not protect ordinary +/-/* on
+    // bignums, since they go through a separate function (exact_binary_big)
+    // that originally had no cap at all. Verified separately: 10 squarings
+    // starting from a ~90,000-digit value took 51.55s and 143MB, still
+    // growing -- reachable from a trivial loop over ordinary arithmetic,
+    // not just from `expt` with an absurd exponent.
+    let overflow = Runtime::new()
+        .eval_source("(let ((x (expt 2 300000))) (dotimes (i 20) (setf x (* x x))) x)")
+        .must_fail();
+    assert!(matches!(
+        overflow,
+        ncl_runtime::RuntimeError::NumericOverflow
+    ));
+}
+
+#[test]
+fn abs_and_negate_promote_i64_min_instead_of_overflowing() {
+    // Regression: i64::MIN is the one integer whose absolute value/negation
+    // doesn't fit back in i64 (i64::MAX == 9223372036854775807, but
+    // |i64::MIN| == 9223372036854775808). abs/unary `-` used to report
+    // NumericOverflow for exactly this value instead of promoting, breaking
+    // the documented "exact arithmetic promotes on i64 overflow" guarantee.
+    assert_eq!(
+        evaluate("(abs -9223372036854775808)").to_string(),
+        "9223372036854775808"
+    );
+    assert_eq!(
+        evaluate("(- -9223372036854775808)").to_string(),
+        "9223372036854775808"
+    );
+    assert_eq!(
+        evaluate("(typep (abs -9223372036854775808) 'bignum)").to_string(),
+        "T"
+    );
+}
+
+#[test]
+fn min_max_handle_ties_and_a_single_argument() {
+    // extreme() was rewritten from clone-per-improvement to index-tracking.
+    // A single argument exercises the loop running zero iterations
+    // (values.iter().enumerate().skip(1) is empty), and a tie exercises
+    // whether the index is left alone on Ordering::Equal rather than
+    // drifting to the wrong element -- both are edge cases an off-by-one
+    // in the index bookkeeping would plausibly get wrong while every
+    // strictly-ordered multi-argument case still passes.
+    assert_eq!(evaluate("(min 5)").to_string(), "5");
+    assert_eq!(evaluate("(max 5)").to_string(), "5");
+    assert_eq!(evaluate("(min 3 3 3)").to_string(), "3");
+    assert_eq!(evaluate("(max 1 5 5 2)").to_string(), "5");
+    assert_eq!(evaluate("(min 5 3 3 7)").to_string(), "3");
+}
+
+#[test]
+fn reworded_exact_arithmetic_error_messages_name_bignums_not_just_floats() {
+    // Regression: exact_binary's bignum branch and exact_quotient's
+    // exact_parts() branch used to describe the rejected operand only as
+    // "a non-exact number" / imply "a float", which was actively wrong
+    // once bignums became a possible exact operand that still can't be
+    // combined with a Rational or a Float here. Assert the new wording so
+    // a future edit can't silently revert to the old misleading text --
+    // matching only the error *variant* (as the pre-existing tests for
+    // these functions do) would not catch that regression.
+    let add_error = Runtime::new()
+        .eval_source("(+ (expt 2 100) 1/2)")
+        .must_fail();
+    assert!(
+        matches!(
+            &add_error,
+            ncl_runtime::RuntimeError::InvalidForm { message, .. }
+                if message == "exact arithmetic between a bignum and a float or rational is not supported"
+        ),
+        "unexpected error: {add_error:?}"
+    );
+
+    let floor_error = Runtime::new()
+        .eval_source("(floor (expt 2 100))")
+        .must_fail();
+    assert!(
+        matches!(
+            &floor_error,
+            ncl_runtime::RuntimeError::InvalidForm { message, .. }
+                if message == "exact quotient does not support a float or a bignum"
+        ),
+        "unexpected error: {floor_error:?}"
+    );
+}
+
+#[test]
 fn evaluates_common_sequence_and_conversion_builtins_in_both_engines() {
     for evaluator in [Runtime::eval_source, Runtime::eval_compiled_source] {
         assert_evaluates_to(evaluator, "(append '(1 2) '(3 4))", "(1 2 3 4)");

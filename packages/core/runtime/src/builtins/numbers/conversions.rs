@@ -156,14 +156,26 @@ mod tests {
     }
 
     /// The mirror case: a non-round-leading-digit value (`9 * 10^50000`,
-    /// 50,001 digits) whose estimate lands 50,001 digits under the cap.
-    /// Pins the correct final answer for a value the fast-accept arm is
-    /// meant to handle; same arm-isolation caveat as the far-over-the-cap
-    /// test above applies.
+    /// 50,001 digits) whose estimate (`50,002`, one over the true digit
+    /// count per this function's own overestimate-by-at-most-1 guarantee)
+    /// lands 49,998 digits under the cap. Pins the correct final answer
+    /// for a value the fast-accept arm is meant to handle; same
+    /// arm-isolation caveat as the far-over-the-cap test above applies.
     #[test]
     fn exceeds_exact_bignum_digit_cap_fast_accepts_a_non_round_value_far_under_the_cap() {
         let value = ibig::IBig::from(9) * ibig::IBig::from(10).pow(50_000);
         assert_eq!(value.to_string().len(), 50_001);
         assert!(!exceeds_exact_bignum_digit_cap(&value));
+    }
+
+    /// Zero is the value whose sign the old manual check (`*value <
+    /// IBig::from(0)`, replaced by this file's `ibig::ops::UnsignedAbs`
+    /// refactor) and the new code must agree is non-negative: `0 < 0` is
+    /// false, so the old code took the same "already non-negative" branch
+    /// `unsigned_abs` takes. Pins that zero's magnitude is computed as 0
+    /// (not spuriously treated as negative) and so is trivially accepted.
+    #[test]
+    fn exceeds_exact_bignum_digit_cap_accepts_zero() {
+        assert!(!exceeds_exact_bignum_digit_cap(&ibig::IBig::from(0)));
     }
 }

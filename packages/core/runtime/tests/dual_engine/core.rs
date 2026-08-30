@@ -1,8 +1,8 @@
-use ncl_runtime::Runtime;
+use ncl_runtime::{Runtime, RuntimeError};
 use rstest::rstest;
 
 use super::EvalFn;
-use super::support::evaluate_with;
+use super::support::{MustFail, evaluate_with};
 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
@@ -363,4 +363,35 @@ fn special_variables_are_dynamically_bound_and_accessible_by_symbol_primitives(
         .to_string(),
         "2"
     );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn bignum_digit_cap_boundary_and_overflow_are_exact(#[case] eval_fn: EvalFn) {
+    // The bignum digit-cap boundary tests in evaluator/core.rs
+    // (expt_cap_boundary_is_exact_not_merely_far_from_the_limit and its
+    // multiplication-cap-boundary siblings) predate this file's rstest
+    // convention and so were only ever run through Runtime::eval_source,
+    // never through Runtime::eval_compiled_source -- despite
+    // exceeds_exact_bignum_digit_cap and the RuntimeError::NumericOverflow
+    // it produces being shared by both engines (the "+"/"*"/"expt"
+    // builtins are plain fn pointers looked up by symbol, not
+    // engine-specific dispatch). That sharing had never actually been
+    // exercised through the compiled path: compiled/core.rs's own
+    // compiled_promotes_overflowing_arithmetic_and_large_literals_to_bignums
+    // test exists precisely because a prior commit claimed both engines
+    // were verified when only the interpreter actually was. Pins that a
+    // result exactly at the 100,000-digit cap still succeeds, and one
+    // digit over is reported as NumericOverflow specifically (not
+    // silently truncated, not a different error variant), under both
+    // engines.
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(integerp (expt 10 99999))").to_string(),
+        "T",
+        "a result exactly at the 100,000-digit cap must not be rejected"
+    );
+    let overflow = eval_fn(&Runtime::new(), "(expt 10 100000)").must_fail();
+    assert!(matches!(overflow, RuntimeError::NumericOverflow));
 }

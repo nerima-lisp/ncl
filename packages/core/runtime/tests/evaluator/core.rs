@@ -1102,6 +1102,24 @@ fn multiplication_cap_boundary_is_exact_for_a_negative_round_power_of_ten() {
 }
 
 #[test]
+fn multiplication_by_zero_is_exact_even_when_the_other_operand_is_a_cap_sized_bignum() {
+    // exceeds_exact_bignum_digit_cap's sign handling (the function this
+    // commit refactored: a manual `*value < IBig::from(0)` branch replaced
+    // with ibig::ops::UnsignedAbs::unsigned_abs) is only reachable through
+    // `*` for an operand that is itself a bignum; multiplying a cap-sized
+    // bignum by 0 exercises it with a zero *result*, which is neither
+    // negative nor positive -- the one value where "is this negative" and
+    // "is this non-negative" both trivially hold. Not a known prior bug;
+    // pins that the refactor still treats zero as non-negative (as the old
+    // `0 < 0`-is-false branch did) rather than regressing on this boundary.
+    assert_eq!(
+        evaluate("(* 0 (expt 10 99999))").to_string(),
+        "0",
+        "multiplying by zero must not be spuriously rejected by the bignum digit cap"
+    );
+}
+
+#[test]
 fn abs_and_negate_promote_i64_min_instead_of_overflowing() {
     // Regression: i64::MIN is the one integer whose absolute value/negation
     // doesn't fit back in i64 (i64::MAX == 9223372036854775807, but

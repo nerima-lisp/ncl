@@ -29,7 +29,7 @@ pub(in crate::builtins) fn exact_power(
             // (i64 numerator/denominator) cannot represent.
             return Err(RuntimeError::NumericOverflow);
         }
-        return Ok(number_from_big(ibig_power(base, exponent.unsigned_abs())));
+        return Ok(number_from_big(ibig_power(base, exponent.unsigned_abs())?));
     }
 
     let (mut numerator, mut denominator) =
@@ -53,7 +53,7 @@ pub(in crate::builtins) fn exact_power(
             Err(RuntimeError::NumericOverflow) => Ok(number_from_big(ibig_power(
                 ibig::IBig::from(numerator),
                 magnitude,
-            ))),
+            )?)),
             Err(error) => Err(error),
         };
     }
@@ -63,21 +63,45 @@ pub(in crate::builtins) fn exact_power(
     )
 }
 
+/// A result past this many decimal digits is rejected as
+/// [`RuntimeError::NumericOverflow`] rather than computed. Without a cap, an
+/// innocuous-looking expression like `(expt 2 1000000000)` runs for an
+/// unbounded amount of time and memory (verified: RSS climbing indefinitely,
+/// no completion after 16s) -- a trivial denial-of-service against anything
+/// that evaluates untrusted or semi-trusted Lisp source. The check runs
+/// after every squaring/multiply step inside the loop, not just once at the
+/// end, so the computation aborts as soon as it crosses the cap rather than
+/// completing an unboundedly large multiplication first. 100,000 digits is
+/// generous relative to any realistic legitimate use (e.g. 30000! has about
+/// 130,000 digits) while keeping the worst-case rejection latency bounded to
+/// a small number of seconds rather than growing without limit -- binary
+/// exponentiation's per-step squaring means the operand size roughly
+/// doubles each iteration, so the cap is reached in only a handful of
+/// iterations regardless of how large the exponent itself is.
+const MAX_EXACT_POWER_DIGITS: usize = 100_000;
+
 /// Computes `base^exponent` with arbitrary precision via binary
 /// exponentiation, so a large `expt` result (e.g. `(expt 2 100)`) never
-/// overflows the way [`checked_power`]'s `i128` accumulator can.
-fn ibig_power(mut base: ibig::IBig, mut exponent: u64) -> ibig::IBig {
+/// overflows the way [`checked_power`]'s `i128` accumulator can. Bounded by
+/// [`MAX_EXACT_POWER_DIGITS`].
+fn ibig_power(mut base: ibig::IBig, mut exponent: u64) -> Result<ibig::IBig, RuntimeError> {
     let mut result = ibig::IBig::from(1);
     while exponent != 0 {
         if exponent & 1 == 1 {
             result *= &base;
+            if result.to_string().len() > MAX_EXACT_POWER_DIGITS {
+                return Err(RuntimeError::NumericOverflow);
+            }
         }
         exponent >>= 1;
         if exponent != 0 {
             base = &base * &base;
+            if base.to_string().len() > MAX_EXACT_POWER_DIGITS {
+                return Err(RuntimeError::NumericOverflow);
+            }
         }
     }
-    result
+    Ok(result)
 }
 
 pub fn checked_power(base: i128, mut exponent: u64) -> Result<i128, RuntimeError> {

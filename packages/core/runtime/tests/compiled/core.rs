@@ -24,6 +24,33 @@ fn compiled_evaluates_arithmetic() {
 }
 
 #[test]
+fn compiled_promotes_overflowing_arithmetic_and_large_literals_to_bignums() {
+    // FR-017: the VM has its own literal-parsing path (constant_value's
+    // Constant::BigInteger arm) and its own arithmetic path, independent of
+    // the interpreted evaluator's. Neither was exercised by any prior test
+    // in this file, despite the commit claiming both engines were verified.
+    assert_eq!(
+        evaluate("(+ 9223372036854775807 1)").to_string(),
+        "9223372036854775808"
+    );
+
+    // A decimal literal too large for i64 must parse as a bignum directly,
+    // not silently misparse as a float.
+    assert_eq!(
+        evaluate("99999999999999999999999999").to_string(),
+        "99999999999999999999999999"
+    );
+    assert_eq!(
+        evaluate("(typep 99999999999999999999999999 'bignum)").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(integerp 99999999999999999999999999)").to_string(),
+        "T"
+    );
+}
+
+#[test]
 fn compiled_flet_uses_a_separate_function_namespace() {
     assert_eq!(
         evaluate(

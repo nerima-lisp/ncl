@@ -4,11 +4,19 @@ use ibig::IBig;
 
 use super::Number;
 
-fn as_big(value: &Number) -> Option<IBig> {
+/// Converts any non-float exact `Number` into an `(numerator, denominator)`
+/// pair over arbitrary-precision integers, so a bignum can be compared
+/// exactly against a plain integer or a rational rather than only against
+/// another bignum.
+fn as_big_ratio(value: &Number) -> Option<(IBig, IBig)> {
     match value {
-        Number::Integer(value) => Some(IBig::from(*value)),
-        Number::Big(value) => Some(value.clone()),
-        Number::Rational(_) | Number::Float(_) => None,
+        Number::Integer(value) => Some((IBig::from(*value), IBig::from(1))),
+        Number::Big(value) => Some((value.clone(), IBig::from(1))),
+        Number::Rational(value) => Some((
+            IBig::from(value.numerator()),
+            IBig::from(value.denominator()),
+        )),
+        Number::Float(_) => None,
     }
 }
 
@@ -19,11 +27,20 @@ pub(in crate::builtins) fn compare_number_values(left: &Number, right: &Number) 
             .partial_cmp(&right.as_float())
             .unwrap_or(Ordering::Equal);
     }
+    if let (Number::Big(left), Number::Big(right)) = (left, right) {
+        // Both operands are already bare integers: compare by reference
+        // directly rather than padding each into a ratio and cloning.
+        return left.cmp(right);
+    }
     if matches!(left, Number::Big(_)) || matches!(right, Number::Big(_)) {
-        return match (as_big(left), as_big(right)) {
-            (Some(left), Some(right)) => left.cmp(&right),
-            _ => Ordering::Equal,
+        let (Some((left_numerator, left_denominator)), Some((right_numerator, right_denominator))) =
+            (as_big_ratio(left), as_big_ratio(right))
+        else {
+            // The is_float() check above already handled the only case
+            // (a Float operand) that as_big_ratio cannot convert.
+            return Ordering::Equal;
         };
+        return (left_numerator * right_denominator).cmp(&(right_numerator * left_denominator));
     }
     let Some((left_numerator, left_denominator)) = left.exact_parts() else {
         return Ordering::Equal;

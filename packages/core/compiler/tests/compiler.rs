@@ -319,6 +319,7 @@ fn rejects_malformed_destructuring_lambda_lists() {
         "(destructuring-bind (value &key (:item (value other))) 1 1)",
         "(destructuring-bind (value &key (: value)) 1 1)",
         "(destructuring-bind (value &key (()) 1 1) 1 1)",
+        "(destructuring-bind (value &key ()) 1 1)",
         "(destructuring-bind (value &key ((:item item) 1 supplied extra)) 1 1)",
         "(destructuring-bind (value &key (:item item) (:item other)) 1 1)",
         "(destructuring-bind (value &allow-other-keys) 1 1)",

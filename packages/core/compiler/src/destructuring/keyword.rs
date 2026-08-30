@@ -196,6 +196,29 @@ mod tests {
     }
 
     #[test]
+    fn compile_destructuring_keyword_parameter_rejects_an_empty_list_instead_of_panicking() {
+        // FR-012 regression: this form's FormKind::List(_) arm used to be a
+        // bare unreachable!() -- reachable via `(destructuring-bind (&key
+        // ()) ...)`, which panicked the whole process before the fix.
+        let mut state = CompileState::default();
+        let mut seen = HashSet::new();
+        let span = Span::new(0, 1);
+        let form = Form::list(Vec::new(), span);
+
+        let error = state
+            .compile_destructuring_keyword_parameter(&form, &mut seen)
+            .map_or_else(
+                |error| error,
+                |value| panic!("an empty list cannot be a keyword parameter, got {value:?}"),
+            );
+
+        assert!(matches!(
+            &error.kind,
+            CompileErrorKind::InvalidForm { message } if message.contains("must not be empty")
+        ));
+    }
+
+    #[test]
     fn compile_destructuring_keyword_parameter_propagates_a_key_specification_pattern_error() {
         let mut state = CompileState::default();
         let mut seen = HashSet::new();

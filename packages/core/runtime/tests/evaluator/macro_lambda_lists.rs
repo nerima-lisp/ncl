@@ -46,3 +46,29 @@ fn rejects_a_top_level_macro_destructuring_pattern_that_is_not_a_symbol_or_list(
         ncl_runtime::RuntimeError::InvalidForm { .. }
     ));
 }
+
+#[test]
+fn rejects_an_empty_list_as_a_macro_keyword_parameter_instead_of_panicking() {
+    // FR-012 regression: parse_macro_keyword_parameter's `FormKind::List(_)`
+    // arm (an empty-list keyword-parameter spec) used to fall through to a
+    // bare `unreachable!()` and crash the process. Both call paths that
+    // reach it -- destructuring-bind and defmacro -- must now report a
+    // typed error instead.
+    let destructuring_error = Runtime::new()
+        .eval_source("(destructuring-bind (&key ()) nil 1)")
+        .must_fail();
+    assert!(matches!(
+        destructuring_error,
+        ncl_runtime::RuntimeError::InvalidForm { message, .. }
+            if message.contains("must not be empty")
+    ));
+
+    let defmacro_error = Runtime::new()
+        .eval_source("(defmacro m (&key ()) 1)")
+        .must_fail();
+    assert!(matches!(
+        defmacro_error,
+        ncl_runtime::RuntimeError::InvalidForm { message, .. }
+            if message.contains("must not be empty")
+    ));
+}

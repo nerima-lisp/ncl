@@ -62,16 +62,20 @@ pub fn extreme(
         .iter()
         .map(|value| number_argument(function, value))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut result = values[0].clone();
-    for value in &values[1..] {
-        let ordering = compare_number_values(value, &result);
+    // Track the extremum by index rather than cloning on every improving
+    // comparison, so an n-argument call clones once (at the end) instead of
+    // up to n times -- the difference matters once bignums are involved,
+    // where a clone is a real heap allocation rather than a bitwise copy.
+    let mut extreme_index = 0;
+    for (index, value) in values.iter().enumerate().skip(1) {
+        let ordering = compare_number_values(value, &values[extreme_index]);
         if (choose_minimum && ordering == Ordering::Less)
             || (!choose_minimum && ordering == Ordering::Greater)
         {
-            result = value.clone();
+            extreme_index = index;
         }
     }
-    number_to_value(result)
+    number_to_value(values[extreme_index].clone())
 }
 
 pub fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {

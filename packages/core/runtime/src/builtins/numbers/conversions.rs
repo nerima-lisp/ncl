@@ -40,13 +40,11 @@ pub(in crate::builtins) fn number_to_value(number: Number) -> Result<Value, Runt
 
 /// Wraps an arbitrary-precision integer result as a [`Number`], demoting it
 /// back to [`Number::Integer`] when it still fits in `i64` (e.g. a bignum
-/// subtraction or division that reduces the magnitude).
+/// subtraction or division that reduces the magnitude). Checks the `i64`
+/// fit directly rather than routing through [`Value::big_integer`], which
+/// would require an extra clone to unwrap its `Rc` back out again.
 pub(in crate::builtins) fn number_from_big(value: ibig::IBig) -> Number {
-    match Value::big_integer(value) {
-        Value::Integer(value) => Number::Integer(value),
-        Value::BigInteger(value) => Number::Big(value.as_ref().clone()),
-        _ => unreachable!("Value::big_integer only ever returns Integer or BigInteger"),
-    }
+    i64::try_from(&value).map_or_else(|_| Number::Big(value), Number::Integer)
 }
 
 pub(in crate::builtins) fn rational_number(
@@ -67,7 +65,15 @@ pub(in crate::builtins) fn integer_argument(
     function: &str,
     value: &Value,
 ) -> Result<i64, RuntimeError> {
-    value
-        .as_integer()
-        .ok_or_else(|| type_error(function, "integer", value))
+    if let Some(integer) = value.as_integer() {
+        return Ok(integer);
+    }
+    if matches!(value, Value::BigInteger(_)) {
+        // type_error's generic "requires integer, received INTEGER" would
+        // be self-contradictory here: Value::BigInteger's type_name() is
+        // correctly "INTEGER" (per CL semantics), so the real problem is
+        // magnitude, not type.
+        return Err(RuntimeError::NumericOverflow);
+    }
+    Err(type_error(function, "integer", value))
 }

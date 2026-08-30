@@ -853,6 +853,124 @@ fn arithmetic_promotes_overflow_to_a_bignum_and_comparisons_require_an_argument(
 }
 
 #[test]
+fn bignum_arithmetic_demotes_back_to_a_fixnum_when_the_result_fits() {
+    // FR-017: promotion to Value::BigInteger must not be one-directional --
+    // an operation on two bignums whose exact result fits back in i64 has to
+    // demote to Value::Integer again, not stay a bignum representation of a
+    // small value.
+    assert_eq!(
+        evaluate("(- (* (expt 2 64) (expt 2 64)) (- (* (expt 2 64) (expt 2 64)) 5))").to_string(),
+        "5"
+    );
+    assert_eq!(
+        evaluate("(+ (expt 2 100) (- (expt 2 100)))").to_string(),
+        "0"
+    );
+
+    // A demoted result must be typep FIXNUM, not BIGNUM: demotion has to
+    // actually change representation, not just print the small value.
+    assert_eq!(
+        evaluate(
+            "(list (typep (+ (expt 2 100) (- (expt 2 100))) 'fixnum) (typep (+ (expt 2 100) (- (expt 2 100))) 'bignum))"
+        )
+        .to_string(),
+        "(T NIL)"
+    );
+}
+
+#[test]
+fn typep_distinguishes_fixnum_from_bignum() {
+    // FR-017: FIXNUM and BIGNUM used to alias to the same i64-only check.
+    // A machine-width integer must be a FIXNUM and not a BIGNUM, and an
+    // overflow-promoted integer must be the reverse.
+    assert_eq!(
+        evaluate("(list (typep 5 'fixnum) (typep 5 'bignum))").to_string(),
+        "(T NIL)"
+    );
+    assert_eq!(
+        evaluate("(list (typep (expt 2 100) 'fixnum) (typep (expt 2 100) 'bignum))").to_string(),
+        "(NIL T)"
+    );
+}
+
+#[test]
+fn bignum_supports_a_known_factorial_value_and_numeric_predicates() {
+    // FR-017: a factorial pinned against its known correct value, not just
+    // "some bignum came out" -- and the numeric functions the commit claims
+    // were "manually verified": sqrt, abs, signum, numerator, denominator.
+    let factorial_source = "\
+(defun fact (n) (if (<= n 1) 1 (* n (fact (- n 1)))))
+(fact 30)";
+    assert_eq!(
+        evaluate(factorial_source).to_string(),
+        "265252859812191058636308480000000"
+    );
+
+    assert_eq!(
+        evaluate("(list (abs (- (expt 2 100))) (signum (- (expt 2 100))) (signum (expt 2 100)))")
+            .to_string(),
+        "(1267650600228229401496703205376 -1 1)"
+    );
+    assert_eq!(
+        evaluate("(list (numerator (expt 2 100)) (denominator (expt 2 100)))").to_string(),
+        "(1267650600228229401496703205376 1)"
+    );
+    assert_eq!(
+        evaluate("(integerp (expt 2 100))").to_string(),
+        "T",
+        "integerp on a bignum used to return NIL from a non-exhaustive matches! call"
+    );
+
+    // (expt 2 100) is a perfect square (2^50)^2 == 2^100, so an exact
+    // bignum sqrt must both compute the correct root and demote it, since
+    // 2^50 fits back in i64.
+    assert_eq!(
+        evaluate("(sqrt (expt 2 100))").to_string(),
+        "1125899906842624"
+    );
+    assert_eq!(
+        evaluate("(typep (sqrt (expt 2 100)) 'fixnum)").to_string(),
+        "T"
+    );
+}
+
+#[test]
+fn bignum_vs_rational_comparisons_compute_a_real_answer_instead_of_reporting_equal() {
+    // Regression: compare_number_values's bignum branch used to fall back to
+    // Ordering::Equal for any operand it couldn't convert via as_big, which
+    // silently included every non-integer-valued Rational (not just Float).
+    // (expt 10 30) is astronomically larger than 1/2 in both directions.
+    assert_eq!(evaluate("(= (expt 10 30) 1/2)").to_string(), "NIL");
+    assert_eq!(evaluate("(< 1/2 (expt 10 30))").to_string(), "T");
+    assert_eq!(evaluate("(> (expt 10 30) 1/2)").to_string(), "T");
+    assert_eq!(evaluate("(equalp (expt 10 30) 1/2)").to_string(), "NIL");
+
+    // min/max order-dependence was exactly how this bug hid: replacement
+    // only happens on Less/Greater, so returning Equal for every comparison
+    // meant the *first* argument always "won" regardless of its real value.
+    assert_eq!(evaluate("(min (expt 10 30) 1/2)").to_string(), "1/2");
+    assert_eq!(
+        evaluate("(max 1/2 (expt 10 30))").to_string(),
+        "1000000000000000000000000000000"
+    );
+}
+
+#[test]
+fn expt_with_an_astronomically_large_exponent_reports_overflow_instead_of_running_unbounded() {
+    // Regression: ibig_power had no bound, so (expt 2 1000000000) ran with
+    // ever-growing memory and never completed (verified separately: RSS
+    // climbing indefinitely, no completion after 16s, had to be
+    // force-killed). It must now return a typed error promptly instead.
+    let overflow = Runtime::new()
+        .eval_source("(expt 2 1000000000)")
+        .must_fail();
+    assert!(matches!(
+        overflow,
+        ncl_runtime::RuntimeError::NumericOverflow
+    ));
+}
+
+#[test]
 fn evaluates_common_sequence_and_conversion_builtins_in_both_engines() {
     for evaluator in [Runtime::eval_source, Runtime::eval_compiled_source] {
         assert_evaluates_to(evaluator, "(append '(1 2) '(3 4))", "(1 2 3 4)");

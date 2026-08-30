@@ -52,7 +52,9 @@ pub(in crate::builtins) fn exact_binary(
     if matches!(left, Number::Big(_)) || matches!(right, Number::Big(_)) {
         let (Some(left_big), Some(right_big)) = (as_big(left), as_big(right)) else {
             return Err(RuntimeError::InvalidForm {
-                message: "exact numeric operation received a float or bignum ratio".to_string(),
+                message:
+                    "exact arithmetic between a bignum and a float or rational is not supported"
+                        .to_string(),
                 span: None,
             });
         };

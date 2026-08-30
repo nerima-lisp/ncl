@@ -11,13 +11,13 @@ pub fn exact_quotient_and_remainder(
 ) -> Result<Value, RuntimeError> {
     let Some((dividend_numerator, dividend_denominator)) = dividend.exact_parts() else {
         return Err(RuntimeError::InvalidForm {
-            message: "exact quotient received a non-exact number".to_string(),
+            message: "exact quotient does not support a float or a bignum".to_string(),
             span: None,
         });
     };
     let Some((divisor_numerator, divisor_denominator)) = divisor.exact_parts() else {
         return Err(RuntimeError::InvalidForm {
-            message: "exact quotient received a non-exact number".to_string(),
+            message: "exact quotient does not support a float or a bignum".to_string(),
             span: None,
         });
     };

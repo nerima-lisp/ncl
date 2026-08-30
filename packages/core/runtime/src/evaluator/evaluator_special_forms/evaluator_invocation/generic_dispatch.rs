@@ -29,7 +29,7 @@ impl Runtime {
             .iter()
             .zip(arguments.iter().take(required_count))
         {
-            if specializer == "T" || specializer == "OBJECT" {
+            if specializer.as_ref() == "T" || specializer.as_ref() == "OBJECT" {
                 score = score.saturating_add(1_000_000);
                 continue;
             }

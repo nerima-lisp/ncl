@@ -75,7 +75,7 @@ impl Runtime {
         match result {
             Ok(()) => {}
             Err(RuntimeError::InvokeRestart { name, .. })
-                if normalize_name(&name) == "CONTINUE" =>
+                if crate::environment::names_equal(&name, "CONTINUE") =>
             {
                 return Ok(Value::Nil);
             }
@@ -84,7 +84,7 @@ impl Runtime {
         if self
             .restart_bindings()
             .iter()
-            .any(|binding| normalize_name(&binding.name) == "CONTINUE")
+            .any(|binding| crate::environment::names_equal(&binding.name, "CONTINUE"))
         {
             self.invoke_restart_named("CONTINUE", &[], environment, span)
         } else {

@@ -2,6 +2,8 @@
 mod tests {
     use super::super::*;
 
+    mod symbol_macrolet;
+
     const SPAN: Span = Span::new(0, 0);
 
     fn atom(text: &str) -> Form {
@@ -141,21 +143,5 @@ mod tests {
                 |value| panic!("duplicate symbol macro names are rejected, got {value:?}"),
             );
         assert_eq!(invalid_message(&error), "symbol macro names must be unique");
-    }
-
-    #[test]
-    fn symbol_macrolet_defines_escaped_names_case_sensitively() {
-        let runtime = Runtime::new();
-        let environment = Environment::new();
-        let form = list(vec![
-            atom("SYMBOL-MACROLET"),
-            list(vec![list(vec![atom("|s|"), atom("42")])]),
-            atom("|s|"),
-        ]);
-
-        let result = runtime
-            .prepare_compiled_symbol_macrolet(&form, &environment)
-            .unwrap_or_else(|error| panic!("an escaped symbol macro name compiles: {error}"));
-        assert_eq!(result.to_string(), "(PROGN 42)");
     }
 }

@@ -1,6 +1,6 @@
-use super::{
-    Environment, Form, FormKind, Runtime, RuntimeError, SetfExpansion, atom_name, unqualified_name,
-};
+use super::{Environment, Form, FormKind, Runtime, RuntimeError, SetfExpansion, atom_name};
+use crate::environment::{intern_name, names_equal};
+use crate::package;
 
 impl Runtime {
     pub(crate) fn get_modify_macro_setf_expansion(
@@ -105,11 +105,32 @@ impl Runtime {
     }
 
     fn modify_macro_container_index(operator: &str, argument_count: usize) -> Option<usize> {
-        let index = match unqualified_name(operator).as_str() {
-            "CAR" | "FIRST" | "CDR" | "REST" | "GETF" | "ELT" | "CHAR" | "SCHAR" | "BIT"
-            | "AREF" | "ROW-MAJOR-AREF" | "SVREF" | "SUBSEQ" => 0,
-            "NTH" => 1,
-            _ => return None,
+        let normalized = intern_name(operator);
+        let candidate = package::split_symbol(normalized.as_ref())
+            .map_or_else(|| normalized.as_ref(), |(_, symbol, _)| symbol);
+        let index = if [
+            "CAR",
+            "FIRST",
+            "CDR",
+            "REST",
+            "GETF",
+            "ELT",
+            "CHAR",
+            "SCHAR",
+            "BIT",
+            "AREF",
+            "ROW-MAJOR-AREF",
+            "SVREF",
+            "SUBSEQ",
+        ]
+        .iter()
+        .any(|name| names_equal(candidate, name))
+        {
+            0
+        } else if names_equal(candidate, "NTH") {
+            1
+        } else {
+            return None;
         };
         (index < argument_count).then_some(index)
     }

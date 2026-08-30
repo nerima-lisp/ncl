@@ -1,5 +1,4 @@
 use super::{Environment, Form, Runtime, RuntimeError, Span, Value};
-use crate::environment::normalize_name;
 
 impl Runtime {
     pub(super) fn set_symbol_cell_place(
@@ -49,7 +48,7 @@ impl Runtime {
                         .dynamic_candidates(name)
                         .into_iter()
                         .next()
-                        .unwrap_or_else(|| normalize_name(name));
+                        .unwrap_or_else(|| crate::environment::intern_name(name));
                     self.global.define_function(function_name, value);
                 }
                 Ok(())

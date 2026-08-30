@@ -1,6 +1,6 @@
 use ncl_syntax::{Form, FormKind};
 
-use crate::environment::normalize_name;
+use crate::environment::names_equal;
 use crate::evaluator::evaluator_literals::resolved_symbol;
 use crate::evaluator::helpers::atom_name;
 use crate::evaluator::{MAX_MACRO_EXPANSIONS, MacroBindingContext, ModifyMacroContext};
@@ -57,14 +57,11 @@ impl Runtime {
         };
         let Some(function) = function else {
             if !escaped {
-                match normalize_name(&resolved_name).as_str() {
-                    "WITH-SLOTS" => {
-                        return Self::expand_builtin_with_slots(form, false).map(Some);
-                    }
-                    "WITH-ACCESSORS" => {
-                        return Self::expand_builtin_with_slots(form, true).map(Some);
-                    }
-                    _ => {}
+                if names_equal(&resolved_name, "WITH-SLOTS") {
+                    return Self::expand_builtin_with_slots(form, false).map(Some);
+                }
+                if names_equal(&resolved_name, "WITH-ACCESSORS") {
+                    return Self::expand_builtin_with_slots(form, true).map(Some);
                 }
             }
             return Ok(None);

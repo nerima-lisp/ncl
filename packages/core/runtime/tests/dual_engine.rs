@@ -8,6 +8,7 @@
 mod support;
 
 use ncl_runtime::{Runtime, RuntimeError, Value};
+use proptest::prelude::*;
 
 type EvalFn = fn(&Runtime, &str) -> Result<Vec<Value>, RuntimeError>;
 
@@ -25,3 +26,17 @@ mod primitives;
 mod sequences;
 #[path = "dual_engine/setf.rs"]
 mod setf;
+
+proptest! {
+    #[test]
+    fn arithmetic_has_equal_interpreter_and_compiler_results(
+        left in -1000i64..1000,
+        right in -1000i64..1000,
+    ) {
+        let source = format!("(+ {left} {right})");
+        let runtime = Runtime::new();
+        let interpreted = runtime.eval_source(&source);
+        let compiled = runtime.eval_compiled_source(&source);
+        prop_assert_eq!(format!("{interpreted:?}"), format!("{compiled:?}"));
+    }
+}

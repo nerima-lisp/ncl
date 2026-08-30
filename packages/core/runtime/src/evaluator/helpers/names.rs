@@ -1,5 +1,6 @@
 use super::form_predicates::atom_name;
 use super::{Form, SymbolTokenKind, literal_atom, normalize_name, package, parse_symbol_token};
+use crate::environment::{intern_name, names_equal};
 
 pub(in crate::evaluator) fn unqualified_name(name: &str) -> String {
     let normalized = normalize_name(name);
@@ -8,30 +9,45 @@ pub(in crate::evaluator) fn unqualified_name(name: &str) -> String {
         .unwrap_or(normalized)
 }
 
+fn is_unqualified_name_in(name: &str, expected: &[&str]) -> bool {
+    let normalized = intern_name(name);
+    let candidate = package::split_symbol(normalized.as_ref())
+        .map_or_else(|| normalized.as_ref(), |(_, symbol, _)| symbol);
+    expected
+        .iter()
+        .any(|expected| names_equal(candidate, expected))
+}
+
 pub(in crate::evaluator) fn is_special_operator_name(name: &str) -> bool {
-    matches!(unqualified_name(name).as_str(), |"BLOCK"| "CATCH"
-        | "EVAL-WHEN"
-        | "FLET"
-        | "FUNCTION"
-        | "GO"
-        | "IF"
-        | "LABELS"
-        | "LET"
-        | "LET*"
-        | "LOAD-TIME-VALUE"
-        | "LOCALLY"
-        | "MACROLET"
-        | "MULTIPLE-VALUE-CALL"
-        | "MULTIPLE-VALUE-PROG1"
-        | "PROGN"
-        | "PROGV"
-        | "QUOTE"
-        | "SETQ"
-        | "SYMBOL-MACROLET"
-        | "TAGBODY"
-        | "THE"
-        | "THROW"
-        | "UNWIND-PROTECT")
+    is_unqualified_name_in(
+        name,
+        &[
+            "BLOCK",
+            "CATCH",
+            "EVAL-WHEN",
+            "FLET",
+            "FUNCTION",
+            "GO",
+            "IF",
+            "LABELS",
+            "LET",
+            "LET*",
+            "LOAD-TIME-VALUE",
+            "LOCALLY",
+            "MACROLET",
+            "MULTIPLE-VALUE-CALL",
+            "MULTIPLE-VALUE-PROG1",
+            "PROGN",
+            "PROGV",
+            "QUOTE",
+            "SETQ",
+            "SYMBOL-MACROLET",
+            "TAGBODY",
+            "THE",
+            "THROW",
+            "UNWIND-PROTECT",
+        ],
+    )
 }
 
 pub(in crate::evaluator) fn is_case_default_form(form: &Form) -> bool {
@@ -43,7 +59,7 @@ pub(in crate::evaluator) fn is_case_default_form(form: &Form) -> bool {
     };
     token.kind == SymbolTokenKind::Symbol
         && !token.escaped
-        && matches!(unqualified_name(name).as_str(), "T" | "OTHERWISE")
+        && is_unqualified_name_in(name, &["T", "OTHERWISE"])
 }
 
 pub(in crate::evaluator) fn control_tag(form: &Form) -> Option<String> {

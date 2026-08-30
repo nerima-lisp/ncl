@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use super::{ClassSlot, Environment, Form, FormKind, Runtime, RuntimeError, Span};
 
 impl Runtime {
@@ -56,12 +58,15 @@ impl Runtime {
         default_initargs: &mut Vec<(String, Form)>,
         environment: &Environment,
         span: Span,
-    ) -> Result<Vec<String>, RuntimeError> {
-        let mut precedence = vec![class_name.to_owned()];
+    ) -> Result<Vec<Rc<str>>, RuntimeError> {
+        let mut precedence = vec![class_name.to_owned().into()];
         for superclass in direct_superclasses {
             if superclass == "OBJECT" || superclass == "STANDARD-OBJECT" {
-                if !precedence.iter().any(|name| name == "STANDARD-OBJECT") {
-                    precedence.push("STANDARD-OBJECT".to_owned());
+                if !precedence
+                    .iter()
+                    .any(|name: &Rc<str>| name.as_ref() == "STANDARD-OBJECT")
+                {
+                    precedence.push("STANDARD-OBJECT".to_owned().into());
                 }
                 continue;
             }
@@ -69,7 +74,10 @@ impl Runtime {
                 return Err(Self::invalid("unknown defclass superclass", span));
             };
             for name in &definition.precedence {
-                if !precedence.iter().any(|existing| existing == name) {
+                if !precedence
+                    .iter()
+                    .any(|existing| existing.as_ref() == name.as_ref())
+                {
                     precedence.push(name.clone());
                 }
             }
@@ -87,8 +95,11 @@ impl Runtime {
                 }
             }
         }
-        if !precedence.iter().any(|name| name == "STANDARD-OBJECT") {
-            precedence.push("STANDARD-OBJECT".to_owned());
+        if !precedence
+            .iter()
+            .any(|name| name.as_ref() == "STANDARD-OBJECT")
+        {
+            precedence.push("STANDARD-OBJECT".to_owned().into());
         }
         Ok(precedence)
     }

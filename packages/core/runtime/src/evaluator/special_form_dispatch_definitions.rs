@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::environment::special_form_name;
 
 impl Runtime {
     pub(super) fn eval_special_form_mutation(
@@ -8,7 +9,7 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Result<Option<Value>, RuntimeError> {
-        let value = match normalize_name(name).as_str() {
+        let value = match special_form_name(name).unwrap_or(name) {
             "MACROLET" => Some(self.special_macrolet(items, environment)?),
             "SYMBOL-MACROLET" => Some(self.special_symbol_macrolet(items, environment)?),
             "DEFPACKAGE" => Some(self.special_defpackage(items)?),
@@ -53,7 +54,7 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Result<Option<Value>, RuntimeError> {
-        let value = match normalize_name(name).as_str() {
+        let value = match special_form_name(name).unwrap_or(name) {
             "MACROEXPAND-1" => Some(self.special_macroexpand_1(items, environment)?),
             "MACROEXPAND" => Some(self.special_macroexpand(items, environment)?),
             _ => None,
@@ -67,7 +68,7 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Result<Option<Value>, RuntimeError> {
-        let value = match normalize_name(name).as_str() {
+        let value = match special_form_name(name).unwrap_or(name) {
             "DEFMACRO" => Some(self.special_defmacro(items, environment)?),
             "DEFINE-MODIFY-MACRO" => Some(self.special_define_modify_macro(items, environment)?),
             _ => None,
@@ -81,7 +82,7 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Result<Option<Value>, RuntimeError> {
-        let value = match normalize_name(name).as_str() {
+        let value = match special_form_name(name).unwrap_or(name) {
             "LAMBDA" => Some(Self::special_lambda(items, environment)?),
             "FUNCTION" => Some(self.special_function(items, environment)?),
             "DEFUN" => Some(self.special_defun(items, environment)?),

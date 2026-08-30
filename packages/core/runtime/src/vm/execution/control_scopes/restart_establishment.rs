@@ -3,7 +3,7 @@ use std::rc::Rc;
 use ncl_compiler::{FunctionId, Program, RestartBindClause};
 use ncl_syntax::Span;
 
-use crate::environment::normalize_name;
+use crate::environment::names_equal;
 use crate::evaluator::RestartBinding;
 use crate::vm::entry::run_code;
 use crate::vm::primitives::invalid;
@@ -59,7 +59,7 @@ pub(in crate::vm::execution) fn execute_restart_bind_instruction(
             };
             let Some((_, function)) = restarts
                 .iter()
-                .find(|(restart_name, _)| normalize_name(name.as_str()) == *restart_name)
+                .find(|(restart_name, _)| names_equal(name.as_str(), restart_name))
             else {
                 return Err(error);
             };
@@ -96,7 +96,7 @@ pub(in crate::vm::execution) fn execute_with_simple_restart_instruction(
             name: invoked,
             value,
             ..
-        }) if normalize_name(invoked.as_str()) == name => stack.push(value.into_value()),
+        }) if names_equal(invoked.as_str(), name) => stack.push(value.into_value()),
         Err(error) => return Err(error),
     }
     Ok(())

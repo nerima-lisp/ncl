@@ -1,29 +1,32 @@
-use crate::error::RuntimeError;
+use std::borrow::Cow;
+
+use crate::environment::{intern_name, names_equal};
+use crate::error::{ConditionName, RuntimeError};
 
 impl RuntimeError {
-    pub(crate) fn condition_type_name(&self) -> String {
+    pub(crate) fn condition_type_name(&self) -> Cow<'_, str> {
         match self {
-            Self::Read(_) => "READER-ERROR".to_owned(),
-            Self::Compile(_) => "COMPILER-ERROR".to_owned(),
-            Self::UnboundVariable { .. } => "UNBOUND-VARIABLE".to_owned(),
-            Self::NotCallable { .. } | Self::Type { .. } => "TYPE-ERROR".to_owned(),
-            Self::Arity { .. } => "PROGRAM-ERROR".to_owned(),
-            Self::InvalidForm { .. } => "SIMPLE-ERROR".to_owned(),
+            Self::Read(_) => Cow::Borrowed("READER-ERROR"),
+            Self::Compile(_) => Cow::Borrowed("COMPILER-ERROR"),
+            Self::UnboundVariable { .. } => Cow::Borrowed("UNBOUND-VARIABLE"),
+            Self::NotCallable { .. } | Self::Type { .. } => Cow::Borrowed("TYPE-ERROR"),
+            Self::Arity { .. } => Cow::Borrowed("PROGRAM-ERROR"),
+            Self::InvalidForm { .. } => Cow::Borrowed("SIMPLE-ERROR"),
             Self::Signaled(error) => {
                 if error.warning {
-                    "SIMPLE-WARNING".to_owned()
+                    Cow::Borrowed("SIMPLE-WARNING")
                 } else {
-                    error.condition.clone()
+                    Cow::Borrowed(error.condition.as_ref())
                 }
             }
-            Self::Package { .. } => "PACKAGE-ERROR".to_owned(),
+            Self::Package { .. } => Cow::Borrowed("PACKAGE-ERROR"),
             Self::ReturnFrom { .. }
             | Self::Go { .. }
             | Self::Throw { .. }
-            | Self::InvokeRestart { .. } => "CONTROL-ERROR".to_owned(),
-            Self::DivisionByZero => "DIVISION-BY-ZERO".to_owned(),
-            Self::NumericOverflow => "ARITHMETIC-ERROR".to_owned(),
-            Self::Io { .. } => "FILE-ERROR".to_owned(),
+            | Self::InvokeRestart { .. } => Cow::Borrowed("CONTROL-ERROR"),
+            Self::DivisionByZero => Cow::Borrowed("DIVISION-BY-ZERO"),
+            Self::NumericOverflow => Cow::Borrowed("ARITHMETIC-ERROR"),
+            Self::Io { .. } => Cow::Borrowed("FILE-ERROR"),
         }
     }
 
@@ -38,14 +41,14 @@ impl RuntimeError {
             return false;
         }
 
-        let condition = normalize_condition_name(condition);
-        if matches!(
-            condition.as_str(),
-            "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
-        ) {
+        let condition = condition.trim_start_matches(':');
+        if names_equal(condition, "CONDITION")
+            || names_equal(condition, "ERROR")
+            || names_equal(condition, "SERIOUS-CONDITION")
+        {
             return match self {
                 Self::Signaled(error) => {
-                    if condition == "CONDITION" {
+                    if names_equal(condition, "CONDITION") {
                         true
                     } else if error.warning {
                         false
@@ -56,10 +59,15 @@ impl RuntimeError {
                         // application-defined condition whose condition_types
                         // includes the built-in TYPE-ERROR is itself a
                         // type-error, even though its own name is not.
-                        std::iter::once(error.condition.as_str())
-                            .chain(error.condition_types.iter().map(String::as_str))
+                        std::iter::once(error.condition.as_ref())
+                            .chain(
+                                error
+                                    .condition_types
+                                    .iter()
+                                    .map(std::convert::AsRef::as_ref),
+                            )
                             .any(|name| {
-                                name == condition
+                                names_equal(name, condition)
                                     || matches!(
                                         name,
                                         "SIMPLE-ERROR"
@@ -82,19 +90,20 @@ impl RuntimeError {
 
         match self {
             Self::Signaled(error) => {
-                condition == error.condition
+                names_equal(condition, error.condition.as_ref())
                     || error
                         .condition_types
                         .iter()
-                        .any(|type_name| type_name.as_str() == condition)
-                    || (error.warning && condition == "WARNING")
-                    || (!error.warning && condition == "SIMPLE-CONDITION")
+                        .any(|type_name| names_equal(type_name.as_ref(), condition))
+                    || (error.warning && names_equal(condition, "WARNING"))
+                    || (!error.warning && names_equal(condition, "SIMPLE-CONDITION"))
             }
             Self::DivisionByZero => {
-                matches!(condition.as_str(), "DIVISION-BY-ZERO" | "ARITHMETIC-ERROR")
+                names_equal(condition, "DIVISION-BY-ZERO")
+                    || names_equal(condition, "ARITHMETIC-ERROR")
             }
-            Self::NumericOverflow => condition == "ARITHMETIC-ERROR",
-            _ => condition == self.condition_type_name(),
+            Self::NumericOverflow => names_equal(condition, "ARITHMETIC-ERROR"),
+            _ => names_equal(condition, self.condition_type_name().as_ref()),
         }
     }
 }
@@ -105,8 +114,8 @@ impl RuntimeError {
 /// [`SignaledError`] must normalize through this function so that
 /// [`RuntimeError::matches_condition`] can compare stored names directly
 /// without re-normalizing them on every lookup.
-pub fn normalize_condition_name(condition: &str) -> String {
-    condition.trim_start_matches(':').to_ascii_uppercase()
+pub fn normalize_condition_name(condition: &str) -> ConditionName {
+    intern_name(condition.trim_start_matches(':'))
 }
 
 #[cfg(test)]

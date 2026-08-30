@@ -51,9 +51,16 @@ impl Value {
         }
     }
 
-    pub(crate) fn condition_type_names(&self) -> Option<Vec<String>> {
+    pub(crate) fn condition_type_names(&self) -> Option<Vec<crate::error::ConditionName>> {
         match self {
-            Self::Condition(condition) => Some(condition.type_names.as_ref().clone()),
+            Self::Condition(condition) => Some(
+                condition
+                    .type_names
+                    .iter()
+                    .cloned()
+                    .map(Into::into)
+                    .collect(),
+            ),
             _ => None,
         }
     }

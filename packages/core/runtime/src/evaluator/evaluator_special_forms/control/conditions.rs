@@ -64,7 +64,7 @@ impl Runtime {
                 Self::variable_name_info(variable, "handler-case condition variable")?;
             }
             handlers.push(ConditionHandlerBinding {
-                condition,
+                condition: condition.into(),
                 function: None,
                 catch: true,
             });

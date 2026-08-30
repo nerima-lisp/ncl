@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::environment::names_equal;
 
 impl Runtime {
     pub(super) fn prepare_lambda(
@@ -93,10 +94,13 @@ impl Runtime {
         let mut default_section = false;
         for (index, parameter) in parameters.iter().enumerate() {
             if let Some(name) = atom_name(parameter) {
-                match normalize_name(name).as_str() {
-                    "&OPTIONAL" | "&KEY" | "&AUX" => default_section = true,
-                    "&REST" => default_section = false,
-                    _ => {}
+                if names_equal(name, "&OPTIONAL")
+                    || names_equal(name, "&KEY")
+                    || names_equal(name, "&AUX")
+                {
+                    default_section = true;
+                } else if names_equal(name, "&REST") {
+                    default_section = false;
                 }
                 continue;
             }

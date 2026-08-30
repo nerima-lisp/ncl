@@ -91,7 +91,7 @@ impl Runtime {
                         let n = arguments[0].type_name().to_owned();
                         Rc::new(ClassDefinition {
                             name: n.clone(),
-                            precedence: vec![n, "STANDARD-OBJECT".into()],
+                            precedence: vec![n.into(), "STANDARD-OBJECT".into()],
                             slots: Vec::new(),
                             default_initargs: Vec::new(),
                         })

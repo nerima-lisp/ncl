@@ -36,7 +36,7 @@ pub struct ClassSlot {
 #[derive(Clone, Debug)]
 pub struct ClassDefinition {
     pub(crate) name: String,
-    pub(crate) precedence: Vec<String>,
+    pub(crate) precedence: Vec<Rc<str>>,
     pub(crate) slots: Vec<ClassSlot>,
     pub(crate) default_initargs: Vec<(String, Form)>,
 }
@@ -44,7 +44,7 @@ pub struct ClassDefinition {
 #[derive(Clone, Debug)]
 pub struct MethodDefinition {
     pub(crate) qualifiers: Vec<String>,
-    pub(crate) specializers: Vec<String>,
+    pub(crate) specializers: Vec<Rc<str>>,
     pub(crate) function: Value,
 }
 

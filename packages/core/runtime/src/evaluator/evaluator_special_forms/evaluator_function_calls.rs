@@ -92,7 +92,7 @@ impl Runtime {
                 name: if exact {
                     name.to_string()
                 } else {
-                    normalize_name(name)
+                    crate::environment::intern_name(name).to_string()
                 },
                 span: Some(span),
             }),

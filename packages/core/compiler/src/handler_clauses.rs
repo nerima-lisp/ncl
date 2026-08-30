@@ -1,12 +1,17 @@
 //! Clause metadata for the condition-system compiled instructions.
 
+use std::rc::Rc;
+
 use crate::FunctionId;
+
+/// Interned condition type name carried by compiled condition clauses.
+pub type ConditionName = Rc<str>;
 
 /// One compiled `HANDLER-CASE` clause.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HandlerCaseClause {
     /// Condition type name.
-    pub condition: String,
+    pub condition: ConditionName,
     /// Optional handler variable name.
     pub variable: Option<String>,
     /// Function containing the handler body.
@@ -17,7 +22,7 @@ pub struct HandlerCaseClause {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HandlerBindClause {
     /// Condition type name.
-    pub condition: String,
+    pub condition: ConditionName,
     /// Function containing the handler body.
     pub function: FunctionId,
 }

@@ -1,6 +1,6 @@
 use ncl_syntax::{Form, FormKind};
 
-use crate::environment::normalize_name;
+use crate::environment::names_equal;
 use crate::evaluator::evaluator_state::RestartBinding;
 use crate::{Environment, ReturnValue, Runtime, RuntimeError, Value};
 
@@ -120,10 +120,9 @@ impl Runtime {
                     arguments,
                     ..
                 } = &error
-                    && let Some((_, closure, clause_span)) =
-                        clauses.iter().find(|(restart, _, _)| {
-                            normalize_name(invoked.as_str()) == restart.as_str()
-                        })
+                    && let Some((_, closure, clause_span)) = clauses
+                        .iter()
+                        .find(|(restart, _, _)| names_equal(invoked.as_str(), restart.as_str()))
                 {
                     let argument_values = arguments
                         .iter()

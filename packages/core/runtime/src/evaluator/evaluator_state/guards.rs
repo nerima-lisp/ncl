@@ -86,7 +86,7 @@ mod tests {
 
     fn handler(condition: &str) -> ConditionHandlerBinding {
         ConditionHandlerBinding {
-            condition: condition.to_string(),
+            condition: condition.to_string().into(),
             function: None,
             catch: false,
         }
@@ -112,7 +112,10 @@ mod tests {
             .iter()
             .map(|binding| binding.condition.clone())
             .collect::<Vec<_>>();
-        assert_eq!(conditions, ["FIRST".to_string(), "LAST".to_string()]);
+        assert_eq!(
+            conditions,
+            ["FIRST".to_string().into(), "LAST".to_string().into()]
+        );
     }
 
     #[test]
@@ -144,7 +147,10 @@ mod tests {
                 .iter()
                 .map(|binding| binding.condition.clone())
                 .collect::<Vec<_>>();
-            assert_eq!(conditions, expected);
+            assert_eq!(
+                conditions.iter().map(Rc::as_ref).collect::<Vec<_>>(),
+                expected.iter().map(String::as_str).collect::<Vec<_>>()
+            );
         }
     }
 }

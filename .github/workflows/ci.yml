@@ -48,7 +48,9 @@ jobs:
             fail=1
           fi
           exit $fail
+      - run: python3 scripts/reachability.py --self-test
       - run: python3 scripts/reachability.py
+      - run: python3 scripts/check_symbol_lookup.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.0
@@ -92,6 +94,7 @@ jobs:
           toolchain: 1.98.0
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
+      - run: python3 scripts/check_coverage_exclusions.py
       # Two files excluded, each for a structural (not laziness) reason:
       # - src/cli/repl/interactive.rs's interactive_repl_loop drives a live
       #   reedline session, which enables raw terminal mode on its first read
@@ -109,13 +112,9 @@ jobs:
       # Region coverage, not line coverage: a line with an untaken branch
       # (e.g. one arm of a match) counts as fully covered by line metrics
       # but only partially by region metrics, so region is the stricter and
-      # more accurate signal. This is a ratchet: lower this number only
-      # if you can point to a specific line:reachability change that makes
-      # the number correct, never to make an unrelated PR pass. Measured
-      # region coverage as of the floor below was 92.45%; the project's
-      # target is >=95%, not yet reached -- raise the floor as further work
-      # closes the gap.
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --ignore-filename-regex 'src/cli/repl/interactive\.rs|packages/core/runtime/src/builtins/registry/builtin_definitions\.rs' --summary-only --fail-under-regions 92.0
+      # more accurate signal. This ratchet must remain at the production
+      # target; lowering it would hide an untested branch.
+      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --ignore-filename-regex 'src/cli/repl/interactive\.rs|packages/core/runtime/src/builtins/registry/builtin_definitions\.rs' --summary-only --fail-under-regions 95.0
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov

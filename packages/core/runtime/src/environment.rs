@@ -17,7 +17,7 @@ mod setf;
 mod symbol_macros;
 mod variables;
 
-pub use interner::intern_name;
+pub use interner::{intern_exact_name, intern_name, names_equal, special_form_name};
 
 #[derive(Clone, Debug)]
 /// Lexically nested bindings and runtime metadata.
@@ -26,11 +26,11 @@ pub struct Environment(Rc<RefCell<Frame>>);
 #[derive(Debug)]
 struct Frame {
     values: HashMap<Rc<str>, Value>,
-    exact_values: HashMap<String, Value>,
+    exact_values: HashMap<Rc<str>, Value>,
     symbol_macros: HashMap<Rc<str>, Form>,
-    exact_symbol_macros: HashMap<String, Form>,
+    exact_symbol_macros: HashMap<Rc<str>, Form>,
     functions: HashMap<Rc<str>, Value>,
-    exact_functions: HashMap<String, Value>,
+    exact_functions: HashMap<Rc<str>, Value>,
     setf_functions: HashMap<Rc<str>, Value>,
     setf_expanders: HashMap<Rc<str>, Value>,
     structures: HashMap<Rc<str>, StructureDefinition>,

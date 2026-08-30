@@ -34,4 +34,23 @@ mod tests {
             assert_eq!(stream.read_line(), None);
         }
     }
+
+    #[test]
+    fn line_and_consumption_operations_cover_io_and_output_streams() {
+        let mut io = Stream::file_io("unused".into(), "ab\ncd", false);
+        assert_eq!(io.remaining_input(), Some("ab\ncd".into()));
+        assert!(io.consume_input(2));
+        assert_eq!(io.remaining_input(), Some("\ncd".into()));
+        assert!(!io.consume_input(4));
+        assert_eq!(io.read_line(), Some((String::new(), false)));
+
+        let mut output = Stream::output();
+        assert_eq!(output.remaining_input(), None);
+        assert!(!output.consume_input(0));
+
+        let mut closed = Stream::input("x", 0, 1);
+        assert!(closed.close(false).is_ok(), "input stream should close");
+        assert_eq!(closed.remaining_input(), None);
+        assert!(!closed.consume_input(0));
+    }
 }

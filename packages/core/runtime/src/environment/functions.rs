@@ -1,5 +1,5 @@
 use crate::Value;
-use crate::environment::{Environment, intern_name};
+use crate::environment::{Environment, intern_exact_name, intern_name};
 
 impl Environment {
     pub(crate) fn define_function(&self, name: impl AsRef<str>, value: Value) {
@@ -11,23 +11,27 @@ impl Environment {
         self.0
             .borrow_mut()
             .exact_functions
-            .insert(name.as_ref().to_string(), value);
+            .insert(intern_exact_name(name.as_ref()), value);
     }
 
     pub(crate) fn lookup_function(&self, name: &str) -> Option<Value> {
-        let key = intern_name(name);
+        self.lookup_function_interned(&intern_name(name))
+    }
+
+    pub(crate) fn lookup_function_interned(&self, key: &std::rc::Rc<str>) -> Option<Value> {
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.functions.get(&key).cloned(), frame.parent.clone())
+            (frame.functions.get(key).cloned(), frame.parent.clone())
         };
-        value.or_else(|| parent.and_then(|environment| environment.lookup_function(name)))
+        value.or_else(|| parent.and_then(|environment| environment.lookup_function_interned(key)))
     }
 
     pub(crate) fn lookup_function_exact(&self, name: &str) -> Option<Value> {
+        let key = intern_exact_name(name);
         let (value, parent) = {
             let frame = self.0.borrow();
             (
-                frame.exact_functions.get(name).cloned(),
+                frame.exact_functions.get(&key).cloned(),
                 frame.parent.clone(),
             )
         };
@@ -44,10 +48,11 @@ impl Environment {
     }
 
     pub(crate) fn remove_function_exact(&self, name: &str) -> bool {
+        let key = intern_exact_name(name);
         let (removed, parent) = {
             let mut frame = self.0.borrow_mut();
             (
-                frame.exact_functions.remove(name).is_some(),
+                frame.exact_functions.remove(&key).is_some(),
                 frame.parent.clone(),
             )
         };

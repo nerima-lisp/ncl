@@ -26,8 +26,9 @@ pub fn canonical_symbol_name(package: &str, name: &str) -> String {
 
 pub fn split_symbol(name: &str) -> Option<(&str, &str, bool)> {
     if let Some((package, symbol)) = name.split_once("::") {
-        return Some((package, symbol, false));
+        return (!package.is_empty() && !symbol.is_empty()).then_some((package, symbol, false));
     }
-    name.split_once(':')
-        .map(|(package, symbol)| (package, symbol, true))
+    name.split_once(':').and_then(|(package, symbol)| {
+        (!package.is_empty() && !symbol.is_empty()).then_some((package, symbol, true))
+    })
 }

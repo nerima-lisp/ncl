@@ -10,7 +10,7 @@ mod signaled;
 
 pub use condition::normalize_condition_name;
 pub use control::{ReturnValue, ThrowTag};
-pub use signaled::SignaledError;
+pub use signaled::{ConditionName, SignaledError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// An error produced while reading, compiling, or evaluating NCL code.

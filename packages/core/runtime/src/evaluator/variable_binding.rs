@@ -1,13 +1,16 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::environment::intern_name;
 
 impl Runtime {
     pub(crate) fn define_in(&self, name: &str, value: Value, environment: &Environment) {
         let candidates = self.dynamic_candidates(name);
-        if let Some(binding_name) = candidates
-            .into_iter()
-            .find(|candidate| self.dynamic.borrow().special_names.contains(candidate))
-        {
+        if let Some(binding_name) = candidates.into_iter().find(|candidate| {
+            self.dynamic
+                .borrow()
+                .special_names
+                .contains(candidate.as_ref())
+        }) {
             self.dynamic
                 .borrow_mut()
                 .bindings
@@ -21,14 +24,14 @@ impl Runtime {
         let candidates = self.dynamic_candidates(name);
         {
             let mut dynamic = self.dynamic.borrow_mut();
-            if let Some(index) =
-                dynamic.bindings.iter().rev().position(|(binding, _)| {
-                    candidates.iter().any(|candidate| candidate == binding)
-                })
-            {
+            if let Some(index) = dynamic.bindings.iter().rev().position(|(binding, _)| {
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.as_ref() == binding.as_ref())
+            }) {
                 let index = dynamic.bindings.len() - 1 - index;
                 let binding = dynamic.bindings[index].0.clone();
-                if dynamic.constants.contains(&binding) {
+                if dynamic.constants.contains(binding.as_ref()) {
                     return false;
                 }
                 dynamic.bindings[index].1 = value;
@@ -36,9 +39,9 @@ impl Runtime {
             }
             if let Some(candidate) = candidates
                 .iter()
-                .find(|candidate| dynamic.special_names.contains(*candidate))
+                .find(|candidate| dynamic.special_names.contains(candidate.as_ref()))
             {
-                if dynamic.constants.contains(candidate) {
+                if dynamic.constants.contains(candidate.as_ref()) {
                     return false;
                 }
                 dynamic.globals.insert(candidate.clone(), value);
@@ -97,7 +100,7 @@ impl Runtime {
             .dynamic_candidates(name)
             .into_iter()
             .next()
-            .unwrap_or_else(|| normalize_name(name));
+            .unwrap_or_else(|| intern_name(name));
         self.dynamic
             .borrow_mut()
             .bindings

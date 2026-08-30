@@ -1,4 +1,6 @@
+use super::exponentiation::{checked_power, exact_power};
 use super::*;
+use crate::builtins::Number;
 
 fn ok_string(result: Result<Value, RuntimeError>) -> String {
     match result {

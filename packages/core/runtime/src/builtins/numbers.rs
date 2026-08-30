@@ -2,6 +2,8 @@
 use super::*;
 
 mod conversions;
+#[cfg(test)]
+mod conversions_tests;
 pub(super) use conversions::{
     exceeds_exact_bignum_digit_cap, integer_argument, number, number_argument, number_from_big,
     number_to_value, rational_number,

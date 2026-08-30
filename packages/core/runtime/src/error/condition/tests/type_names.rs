@@ -1,5 +1,5 @@
 use crate::Value;
-use crate::error::{ReturnValue, RuntimeError, SignaledError, ThrowTag};
+use crate::error::{ReturnValue, RuntimeError, SignaledError, ThrowTag, normalize_condition_name};
 use ncl_compiler::{CompileError, CompileErrorKind};
 use ncl_syntax::{ReadError, ReadErrorKind, Span};
 
@@ -21,9 +21,18 @@ fn condition_type_names_cover_read_and_compile_errors() {
 }
 
 #[test]
+fn normalize_condition_name_interns_canonical_names() {
+    let keyword = normalize_condition_name(":type-error");
+    let plain = normalize_condition_name("TYPE-ERROR");
+
+    assert_eq!(keyword.as_ref(), "TYPE-ERROR");
+    assert!(std::rc::Rc::ptr_eq(&keyword, &plain));
+}
+
+#[test]
 fn condition_type_names_cover_signaled_warning_and_error_variants() {
     let warning = RuntimeError::Signaled(Box::new(SignaledError {
-        condition: "CUSTOM-CONDITION".to_owned(),
+        condition: "CUSTOM-CONDITION".to_owned().into(),
         condition_types: Box::default(),
         message: "warned".to_owned(),
         format_control: None,
@@ -34,7 +43,7 @@ fn condition_type_names_cover_signaled_warning_and_error_variants() {
     assert_eq!(warning.condition_type_name(), "SIMPLE-WARNING");
 
     let error = RuntimeError::Signaled(Box::new(SignaledError {
-        condition: "CUSTOM-ERROR".to_owned(),
+        condition: "CUSTOM-ERROR".to_owned().into(),
         condition_types: Box::default(),
         message: "failed".to_owned(),
         format_control: None,

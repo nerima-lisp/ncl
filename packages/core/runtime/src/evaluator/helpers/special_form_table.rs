@@ -1,5 +1,5 @@
+use super::Form;
 use super::form_predicates::atom_name;
-use super::{Form, normalize_name};
 
 const SPECIAL_FORM_NAMES: &[&str] = &[
     "QUOTE",
@@ -101,6 +101,9 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
 ];
 
 pub(in crate::evaluator) fn is_special_form(form: &Form) -> bool {
-    atom_name(form)
-        .is_some_and(|operator| SPECIAL_FORM_NAMES.contains(&normalize_name(operator).as_str()))
+    atom_name(form).is_some_and(|operator| {
+        SPECIAL_FORM_NAMES
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(operator))
+    })
 }

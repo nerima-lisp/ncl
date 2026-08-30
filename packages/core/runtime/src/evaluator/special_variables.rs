@@ -1,12 +1,13 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::environment::intern_name;
 
 impl Runtime {
     pub(crate) fn define_special_value(&self, name: &str, value: Value, force: bool) -> Value {
-        let name = normalize_name(name);
+        let name = intern_name(name);
         let mut dynamic = self.dynamic.borrow_mut();
         dynamic.special_names.insert(name.clone());
-        if !force && let Some(existing) = dynamic.globals.get(&name) {
+        if !force && let Some(existing) = dynamic.globals.get(name.as_ref()) {
             return existing.clone();
         }
         dynamic.globals.insert(name, value.clone());
@@ -31,10 +32,10 @@ impl Runtime {
     }
 
     pub(crate) fn define_constant_value(&self, name: &str, value: Value) -> Value {
-        let name = normalize_name(name);
+        let name = intern_name(name);
         let mut dynamic = self.dynamic.borrow_mut();
         dynamic.special_names.insert(name.clone());
-        dynamic.constants.insert(name.clone());
+        dynamic.constants.insert(name.to_string());
         dynamic.globals.insert(name, value.clone());
         value
     }
@@ -51,9 +52,13 @@ impl Runtime {
 
     pub(crate) fn lookup_special(&self, name: &str) -> Option<Value> {
         let candidates = self.dynamic_candidates(name);
-        candidates
-            .iter()
-            .find_map(|candidate| self.dynamic.borrow().globals.get(candidate).cloned())
+        candidates.iter().find_map(|candidate| {
+            self.dynamic
+                .borrow()
+                .globals
+                .get(candidate.as_ref())
+                .cloned()
+        })
     }
 
     pub(crate) fn lookup_special_exact(&self, name: &str) -> Option<Value> {
@@ -63,7 +68,7 @@ impl Runtime {
     pub(crate) fn is_constant_in(&self, name: &str) -> bool {
         self.dynamic_candidates(name)
             .into_iter()
-            .any(|candidate| self.dynamic.borrow().constants.contains(&candidate))
+            .any(|candidate| self.dynamic.borrow().constants.contains(candidate.as_ref()))
     }
 
     pub(crate) fn is_constant_exact_in(&self, name: &str) -> bool {
@@ -106,7 +111,7 @@ impl Runtime {
         let candidates = self.dynamic_candidates(name);
         let mut dynamic = self.dynamic.borrow_mut();
         for candidate in candidates {
-            dynamic.globals.remove(&candidate);
+            dynamic.globals.remove(candidate.as_ref());
         }
     }
 
@@ -126,8 +131,8 @@ impl Runtime {
 
     pub(crate) fn fmakunbound_symbol(&self, name: &str) {
         for candidate in self.dynamic_candidates(name) {
-            self.global.remove(&candidate);
-            self.global.remove_function(&candidate);
+            self.global.remove(candidate.as_ref());
+            self.global.remove_function(candidate.as_ref());
         }
     }
 

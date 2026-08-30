@@ -1,6 +1,6 @@
 use ncl_syntax::Form;
 
-use crate::environment::{Environment, intern_name};
+use crate::environment::{Environment, intern_exact_name, intern_name};
 
 impl Environment {
     pub(crate) fn define_symbol_macro(&self, name: impl AsRef<str>, expansion: Form) {
@@ -12,7 +12,7 @@ impl Environment {
         self.0
             .borrow_mut()
             .exact_symbol_macros
-            .insert(name.as_ref().to_string(), expansion);
+            .insert(intern_exact_name(name.as_ref()), expansion);
     }
 
     pub(crate) fn lookup_symbol_macro(&self, name: &str) -> Option<Form> {
@@ -34,11 +34,12 @@ impl Environment {
     }
 
     pub(crate) fn lookup_symbol_macro_exact(&self, name: &str) -> Option<Form> {
+        let key = intern_exact_name(name);
         let (expansion, shadowed, parent) = {
             let frame = self.0.borrow();
             (
-                frame.exact_symbol_macros.get(name).cloned(),
-                frame.exact_values.contains_key(name),
+                frame.exact_symbol_macros.get(&key).cloned(),
+                frame.exact_values.contains_key(&key),
                 frame.parent.clone(),
             )
         };

@@ -13,10 +13,11 @@ impl Runtime {
         };
 
         let mut prepared = items.to_vec();
-        if Self::is_compiled_opaque_operator(normalize_name(operator).as_str()) {
+        let operator = normalize_name(operator);
+        if Self::is_compiled_opaque_operator(&operator) {
             return Ok(form.clone());
         }
-        match normalize_name(operator).as_str() {
+        match operator.as_str() {
             "THE"
             | "WITH-SIMPLE-RESTART"
             | "BLOCK"
@@ -66,7 +67,7 @@ impl Runtime {
                         &current,
                         &prepared,
                         environment,
-                        normalize_name(operator) == "LET*",
+                        operator == "LET*",
                     );
                 }
                 self.prepare_tail(&mut prepared, 2, environment)?;

@@ -7,7 +7,10 @@ mod tests {
     fn empty_class(name: &str) -> Rc<ClassDefinition> {
         Rc::new(ClassDefinition {
             name: name.to_string(),
-            precedence: vec![name.to_string(), "STANDARD-OBJECT".to_string()],
+            precedence: vec![
+                name.to_string().into(),
+                "STANDARD-OBJECT".to_string().into(),
+            ],
             slots: Vec::new(),
             default_initargs: Vec::new(),
         })

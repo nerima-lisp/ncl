@@ -12,7 +12,7 @@ impl Value {
                 if error.warning {
                     "SIMPLE-WARNING".to_owned()
                 } else {
-                    error.condition.clone()
+                    error.condition.to_string()
                 },
                 if error.condition_types.is_empty() {
                     vec![error.condition.clone()]
@@ -29,8 +29,8 @@ impl Value {
                     .collect(),
             ),
             _ => (
-                error.condition_type_name(),
-                vec![error.condition_type_name()],
+                error.condition_type_name().into_owned(),
+                vec![error.condition_type_name().into_owned().into()],
                 error.to_string(),
                 None,
                 Vec::new(),
@@ -38,7 +38,10 @@ impl Value {
         };
         Self::condition_from_parts_with_types(
             actual_type,
-            type_names,
+            type_names
+                .into_iter()
+                .map(|name| name.to_string())
+                .collect(),
             Vec::new(),
             message,
             format_control,

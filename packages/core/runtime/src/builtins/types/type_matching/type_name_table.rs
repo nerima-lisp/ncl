@@ -77,3 +77,6 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
     };
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::environment::names_equal;
 
 impl Runtime {
     pub(crate) fn dynamic_guard(&self) -> DynamicGuard {
@@ -31,12 +32,11 @@ impl Runtime {
         &self,
         condition: &str,
     ) -> Option<ConditionHandlerSuspension> {
-        let condition = normalize_name(condition);
         let mut state = self.dynamic.borrow_mut();
         let index = state
             .condition_handlers
             .iter()
-            .rposition(|handler| normalize_name(&handler.condition) == condition)?;
+            .rposition(|handler| names_equal(&handler.condition, condition))?;
         let binding = state.condition_handlers.remove(index);
         Some(ConditionHandlerSuspension {
             state: self.dynamic.clone(),

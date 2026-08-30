@@ -1,7 +1,8 @@
 use super::{
     Environment, OrdinaryLambdaList, Runtime, RuntimeError, Span, StructureSlot, Value,
-    normalize_name, structure_boa_apply::StructureBoaConstructorContext,
+    structure_boa_apply::StructureBoaConstructorContext,
 };
+use crate::environment::names_equal;
 
 pub(super) struct StructureConstructorContext<'a> {
     pub(super) name: &'a str,
@@ -47,16 +48,17 @@ impl Runtime {
         }
         let mut supplied = vec![None; slots.len()];
         for pair in arguments.as_chunks::<2>().0 {
-            let keyword_name = match &pair[0] {
-                Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
-                _ => {
-                    return Err(Self::invalid(
-                        "structure constructor keyword name must be a keyword",
-                        span,
-                    ));
-                }
+            let (Value::Keyword(keyword_name) | Value::KeywordExact(keyword_name)) = &pair[0]
+            else {
+                return Err(Self::invalid(
+                    "structure constructor keyword name must be a keyword",
+                    span,
+                ));
             };
-            let Some(index) = slots.iter().position(|slot| slot.name == keyword_name) else {
+            let Some(index) = slots
+                .iter()
+                .position(|slot| names_equal(&slot.name, keyword_name))
+            else {
                 return Err(RuntimeError::InvalidForm {
                     message: format!("unknown structure keyword :{keyword_name}"),
                     span: Some(span),

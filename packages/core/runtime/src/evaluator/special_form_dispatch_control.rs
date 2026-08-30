@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::environment::special_form_name;
 
 impl Runtime {
     pub(super) fn eval_special_form_iteration(
@@ -8,7 +9,7 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Result<Option<Value>, RuntimeError> {
-        let value = match normalize_name(name).as_str() {
+        let value = match special_form_name(name).unwrap_or(name) {
             "DOTIMES" => Some(self.special_dotimes(items, environment)?),
             "DOLIST" => Some(self.special_dolist(items, environment)?),
             "DO" => Some(self.special_do(items, environment, false)?),
@@ -24,7 +25,7 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Result<Option<Value>, RuntimeError> {
-        let value = match normalize_name(name).as_str() {
+        let value = match special_form_name(name).unwrap_or(name) {
             "DESTRUCTURING-BIND" => Some(self.special_destructuring_bind(items, environment)?),
             "LET" => Some(self.special_let(items, environment, false)?),
             "LET*" => Some(self.special_let(items, environment, true)?),
@@ -41,7 +42,7 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Result<Option<Value>, RuntimeError> {
-        let value = match normalize_name(name).as_str() {
+        let value = match special_form_name(name).unwrap_or(name) {
             "AND" => Some(self.special_and(&items[1..], environment)?),
             "OR" => Some(self.special_or(&items[1..], environment)?),
             "WHEN" => Some(self.special_when(items, environment, true)?),
@@ -63,7 +64,7 @@ impl Runtime {
         name: &str,
         environment: &Environment,
     ) -> Result<Option<Value>, RuntimeError> {
-        let value = match normalize_name(name).as_str() {
+        let value = match special_form_name(name).unwrap_or(name) {
             "QUOTE" => Some(Self::special_quote(items, form.span)?),
             "QUASIQUOTE" => Some(self.special_quasiquote(items, environment)?),
             "DECLARE" | "DECLAIM" | "PROCLAIM" => Some(Value::Nil),

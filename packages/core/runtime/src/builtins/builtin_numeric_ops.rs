@@ -8,12 +8,16 @@ pub use bitwise_ops::*;
 mod arithmetic;
 #[allow(clippy::wildcard_imports)]
 pub use arithmetic::*;
+#[cfg(test)]
+mod arithmetic_tests;
 
 mod power;
 #[allow(clippy::wildcard_imports)]
 pub use power::*;
 
 mod comparison;
+#[cfg(test)]
+mod comparison_tests;
 #[allow(clippy::wildcard_imports)]
 pub use comparison::*;
 
@@ -34,5 +38,7 @@ mod rationalize;
 pub use rationalize::*;
 
 mod integer_ops;
+#[cfg(test)]
+mod integer_ops_tests;
 #[allow(clippy::wildcard_imports)]
 pub use integer_ops::*;

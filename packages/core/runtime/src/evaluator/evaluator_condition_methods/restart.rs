@@ -1,6 +1,6 @@
 use ncl_syntax::Span;
 
-use crate::environment::normalize_name;
+use crate::environment::{names_equal, normalize_name};
 use crate::evaluator::RestartBinding;
 use crate::{Environment, ReturnValue, Runtime, RuntimeError, Value};
 
@@ -29,11 +29,10 @@ impl Runtime {
         span: Span,
     ) -> Result<Option<RestartBinding>, RuntimeError> {
         if let Some((name, _)) = designator.symbol_reference() {
-            let normalized = normalize_name(name);
             return Ok(bindings
                 .iter()
                 .rev()
-                .find(|binding| normalize_name(&binding.name) == normalized)
+                .find(|binding| names_equal(&binding.name, name))
                 .cloned());
         }
         if designator.restart_name().is_some() {
@@ -82,14 +81,13 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        let normalized = normalize_name(name);
         let Some(binding) = self
             .restart_bindings()
             .into_iter()
             .rev()
-            .find(|binding| normalize_name(&binding.name) == normalized)
+            .find(|binding| names_equal(&binding.name, name))
         else {
-            return Err(Self::restart_invocation_error(&normalized, arguments, span));
+            return Err(Self::restart_invocation_error(name, arguments, span));
         };
         self.invoke_restart_binding(binding, arguments, environment, span)
     }

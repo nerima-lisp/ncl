@@ -1,113 +1,11 @@
 use super::{
     Number, RuntimeError, Value, exact, exceeds_exact_bignum_digit_cap, number_argument,
-    number_from_big, number_to_value, rational_number,
+    number_to_value, rational_number,
 };
 
-pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "expt", 2)?;
-    let base = number_argument("expt", &arguments[0])?;
-    let exponent = number_argument("expt", &arguments[1])?;
+mod exponentiation;
 
-    if !base.is_float()
-        && let Some((exponent_numerator, exponent_denominator)) = exponent.exact_parts()
-        && exponent_denominator == 1
-    {
-        return number_to_value(exact_power(base, exponent_numerator)?);
-    }
-
-    Ok(Value::Float(base.as_float().powf(exponent.as_float())))
-}
-
-pub(in crate::builtins) fn exact_power(
-    base: Number,
-    exponent: i64,
-) -> Result<Number, RuntimeError> {
-    if let Number::Big(base) = base {
-        if exponent < 0 {
-            // A negative exponent on a bignum base would need a
-            // bignum-denominator ratio, which this codebase's Rational
-            // (i64 numerator/denominator) cannot represent.
-            return Err(RuntimeError::NumericOverflow);
-        }
-        return Ok(number_from_big(ibig_power(base, exponent.unsigned_abs())?));
-    }
-
-    let (mut numerator, mut denominator) =
-        base.exact_parts()
-            .ok_or_else(|| RuntimeError::InvalidForm {
-                message: "exact power requires an exact base".to_owned(),
-                span: None,
-            })?;
-    let negative_exponent = exponent < 0;
-    if negative_exponent && numerator == 0 {
-        return Err(RuntimeError::DivisionByZero);
-    }
-    if negative_exponent {
-        std::mem::swap(&mut numerator, &mut denominator);
-    }
-
-    let magnitude = exponent.unsigned_abs();
-    if denominator == 1 {
-        return match checked_power(i128::from(numerator), magnitude) {
-            Ok(value) => rational_number(value, 1),
-            Err(RuntimeError::NumericOverflow) => Ok(number_from_big(ibig_power(
-                ibig::IBig::from(numerator),
-                magnitude,
-            )?)),
-            Err(error) => Err(error),
-        };
-    }
-    rational_number(
-        checked_power(i128::from(numerator), magnitude)?,
-        checked_power(i128::from(denominator), magnitude)?,
-    )
-}
-
-/// Computes `base^exponent` with arbitrary precision via binary
-/// exponentiation, so a large `expt` result (e.g. `(expt 2 100)`) never
-/// overflows the way [`checked_power`]'s `i128` accumulator can. Bounded by
-/// [`MAX_EXACT_BIGNUM_DIGITS`], checked after every squaring/multiply step
-/// (not just once at the end) so the computation aborts as soon as it
-/// crosses the cap rather than completing an unboundedly large multiply
-/// first.
-fn ibig_power(mut base: ibig::IBig, mut exponent: u64) -> Result<ibig::IBig, RuntimeError> {
-    let mut result = ibig::IBig::from(1);
-    while exponent != 0 {
-        if exponent & 1 == 1 {
-            result *= &base;
-            if exceeds_exact_bignum_digit_cap(&result) {
-                return Err(RuntimeError::NumericOverflow);
-            }
-        }
-        exponent >>= 1;
-        if exponent != 0 {
-            base = &base * &base;
-            if exceeds_exact_bignum_digit_cap(&base) {
-                return Err(RuntimeError::NumericOverflow);
-            }
-        }
-    }
-    Ok(result)
-}
-
-pub fn checked_power(base: i128, mut exponent: u64) -> Result<i128, RuntimeError> {
-    let mut result = 1i128;
-    let mut factor = base;
-    while exponent != 0 {
-        if exponent & 1 == 1 {
-            result = result
-                .checked_mul(factor)
-                .ok_or(RuntimeError::NumericOverflow)?;
-        }
-        exponent >>= 1;
-        if exponent != 0 {
-            factor = factor
-                .checked_mul(factor)
-                .ok_or(RuntimeError::NumericOverflow)?;
-        }
-    }
-    Ok(result)
-}
+pub use exponentiation::exponentiate;
 
 #[expect(
     clippy::cast_precision_loss,

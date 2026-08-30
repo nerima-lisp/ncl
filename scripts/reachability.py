@@ -13,6 +13,7 @@ a CI gate (FR-016).
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -109,10 +110,14 @@ def scan_crate(src_root: Path):
             # standard resolution: <mod_dir>/<name>.rs or <mod_dir>/<name>/mod.rs
             flat = mod_dir / f"{name}.rs"
             nested = mod_dir / name / "mod.rs"
-            if flat.exists():
-                stack.append((flat, flat.parent, False))
-            elif nested.exists():
-                stack.append((nested, nested.parent, False))
+            inline_test_flat = mod_dir / "tests" / f"{name}.rs"
+            inline_test_nested = mod_dir / "tests" / name / "mod.rs"
+            candidate = next(
+                (path for path in (flat, nested, inline_test_flat, inline_test_nested) if path.exists()),
+                None,
+            )
+            if candidate is not None:
+                stack.append((candidate, candidate.parent, False))
             else:
                 print(f"WARN: cannot resolve `mod {name};` declared in {current}", file=sys.stderr)
 
@@ -128,7 +133,24 @@ def scan_crate(src_root: Path):
     return reached, all_rs
 
 
+def self_test():
+    """Exercise the orphan failure condition without touching the repository."""
+    with tempfile.TemporaryDirectory() as directory:
+        src_root = Path(directory) / "src"
+        src_root.mkdir()
+        (src_root / "lib.rs").write_text("mod live;\n", encoding="utf-8")
+        (src_root / "live.rs").write_text("", encoding="utf-8")
+        (src_root / "orphan.rs").write_text("", encoding="utf-8")
+        reached, all_rs = scan_crate(src_root)
+        if not all_rs - reached:
+            raise AssertionError("orphan fixture was not detected")
+
+
 def main():
+    if sys.argv[1:] == ["--self-test"]:
+        self_test()
+        print("reachability self-test: ok")
+        return
     any_orphan = False
     for crate_root in CRATES:
         src_root = crate_root / "src"

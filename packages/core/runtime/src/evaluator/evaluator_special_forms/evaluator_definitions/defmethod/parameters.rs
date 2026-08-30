@@ -3,7 +3,7 @@ use super::{Environment, Form, FormKind, Runtime, RuntimeError, normalize_name, 
 pub(super) struct DefmethodParameters {
     pub(super) required: Vec<String>,
     pub(super) required_escaped: Vec<bool>,
-    pub(super) specializers: Vec<String>,
+    pub(super) specializers: Vec<std::rc::Rc<str>>,
     pub(super) normalized: Vec<Form>,
     pub(super) required_count: usize,
 }
@@ -53,7 +53,7 @@ impl Runtime {
                     parameter.span,
                 ));
             }
-            specializers.push(specializer);
+            specializers.push(specializer.into());
             normalized_parameters.push(name_form.clone());
             required_parameter_count += 1;
         }

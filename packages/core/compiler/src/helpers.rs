@@ -4,6 +4,8 @@ pub use naming::{
 };
 
 mod literals;
+#[cfg(test)]
+mod literals_tests;
 pub use literals::literal_constant;
 
 mod eval_when;

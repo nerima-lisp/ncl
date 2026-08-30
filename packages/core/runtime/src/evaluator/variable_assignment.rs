@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::environment::intern_name;
 
 impl Runtime {
     pub(crate) fn set_or_define_in(
@@ -39,20 +40,19 @@ impl Runtime {
     pub(crate) fn set_symbol_value(&self, name: &str, value: Value) -> Value {
         let candidates = self.dynamic_candidates(name);
         let mut dynamic = self.dynamic.borrow_mut();
-        if let Some((_, current)) = dynamic
-            .bindings
-            .iter_mut()
-            .rev()
-            .find(|(binding, _)| candidates.iter().any(|candidate| candidate == binding))
-        {
+        if let Some((_, current)) = dynamic.bindings.iter_mut().rev().find(|(binding, _)| {
+            candidates
+                .iter()
+                .any(|candidate| candidate.as_ref() == binding.as_ref())
+        }) {
             *current = value.clone();
             return value;
         }
         let global_name = candidates
             .iter()
-            .find(|candidate| dynamic.special_names.contains(*candidate))
+            .find(|candidate| dynamic.special_names.contains(candidate.as_ref()))
             .cloned()
-            .unwrap_or_else(|| normalize_name(name));
+            .unwrap_or_else(|| intern_name(name));
         dynamic.special_names.insert(global_name.clone());
         dynamic.globals.insert(global_name, value.clone());
         value

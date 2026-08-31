@@ -169,13 +169,17 @@ fn evaluates_common_lisp_quotients_gcd_and_rational_parts(#[case] eval_fn: EvalF
                         (multiple-value-bind (q r) (ceiling 7/3) (list q r))
                         (multiple-value-bind (q r) (floor 3.5 2.0) (list q r))
                         (multiple-value-bind (q r) (round 2.5) (list q r))
+                        (multiple-value-bind (q r) (floor (expt 2 70) 3) (list q r))
+                        (multiple-value-bind (q r) (ceiling (- (expt 2 70)) 3) (list q r))
+                        (multiple-value-bind (q r) (truncate (expt 2 70) 3) (list q r))
+                        (multiple-value-bind (q r) (round (expt 2 70) 3) (list q r))
                         (gcd 18 -24 30) (gcd) (lcm 6 -8 15) (lcm)
                         (gcd (expt 2 70) 6) (lcm (expt 2 70) 3)
                         (numerator -6/8) (denominator -6/8)
                         (numerator 7) (denominator 7))",
         )
         .to_string(),
-        "((2 1) (-3 2) (-2 -1) (-2 -1) (2 1) (4 -1) (-3 2/3) (3 -2/3) (1 1.5) (2 0.5) 6 0 120 1 2 3541774862152233910272 -3 4 7 1)"
+        "((2 1) (-3 2) (-2 -1) (-2 -1) (2 1) (4 -1) (-3 2/3) (3 -2/3) (1 1.5) (2 0.5) (393530540239137101141 1) (-393530540239137101141 -1) (393530540239137101141 1) (393530540239137101141 1) 6 0 120 1 2 3541774862152233910272 -3 4 7 1)"
     );
 }
 

@@ -1,4 +1,8 @@
-use super::super::{Number, RuntimeError, Value, number_to_value, rational_number};
+use ibig::{IBig, ops::Abs};
+
+use super::super::{
+    Number, RuntimeError, Value, number_from_big, number_to_value, rational_number,
+};
 use super::RoundingMode;
 
 mod float_quotient;
@@ -9,6 +13,9 @@ pub fn exact_quotient_and_remainder(
     divisor: &Number,
     mode: RoundingMode,
 ) -> Result<Value, RuntimeError> {
+    if let (Some(dividend), Some(divisor)) = (integer_part(dividend), integer_part(divisor)) {
+        return exact_integer_quotient_and_remainder(dividend, divisor, mode);
+    }
     let Some((dividend_numerator, dividend_denominator)) = dividend.exact_parts() else {
         return Err(RuntimeError::InvalidForm {
             message: "exact quotient does not support a float or a bignum".to_string(),
@@ -47,6 +54,52 @@ pub fn exact_quotient_and_remainder(
     Ok(Value::values(vec![
         Value::Integer(quotient),
         number_to_value(remainder)?,
+    ]))
+}
+
+fn integer_part(number: &Number) -> Option<IBig> {
+    match number {
+        Number::Integer(value) => Some(IBig::from(*value)),
+        Number::Big(value) => Some(value.clone()),
+        Number::Rational(_) | Number::Float(_) => None,
+    }
+}
+
+fn exact_integer_quotient_and_remainder(
+    dividend: IBig,
+    divisor: IBig,
+    mode: RoundingMode,
+) -> Result<Value, RuntimeError> {
+    if divisor == IBig::from(0) {
+        return Err(RuntimeError::DivisionByZero);
+    }
+    let truncated = &dividend / &divisor;
+    let remainder = &dividend % &divisor;
+    let direction = if (dividend < IBig::from(0)) != (divisor < IBig::from(0)) {
+        -1
+    } else {
+        1
+    };
+    let quotient = match mode {
+        RoundingMode::Floor if direction < 0 && remainder != IBig::from(0) => &truncated - 1,
+        RoundingMode::Ceiling if direction > 0 && remainder != IBig::from(0) => &truncated + 1,
+        RoundingMode::Round if remainder != IBig::from(0) => {
+            let distance = remainder.clone().abs() * 2;
+            let divisor_magnitude = divisor.clone().abs();
+            if distance > divisor_magnitude
+                || (distance == divisor_magnitude && truncated.clone() % 2 != 0)
+            {
+                &truncated + direction
+            } else {
+                truncated.clone()
+            }
+        }
+        _ => truncated.clone(),
+    };
+    let remainder = dividend - &quotient * divisor;
+    Ok(Value::values(vec![
+        number_to_value(number_from_big(quotient))?,
+        number_to_value(number_from_big(remainder))?,
     ]))
 }
 

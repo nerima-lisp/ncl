@@ -8,7 +8,7 @@ pub(super) fn execute_return_instruction(
     instruction: &Instruction,
     stack: &mut Vec<Value>,
     environment: &Environment,
-    scopes: &[(Environment, usize, usize)],
+    scopes: &[(Environment, usize, usize, usize)],
     span: Span,
 ) -> Result<Option<Value>, RuntimeError> {
     match instruction {
@@ -49,7 +49,7 @@ mod tests {
             &Instruction::Return,
             &mut vec![Value::Nil],
             &Environment::new(),
-            &[(Environment::new(), 0, 0)],
+            &[(Environment::new(), 0, 0, 0)],
             span,
         ) {
             Err(error) => error,

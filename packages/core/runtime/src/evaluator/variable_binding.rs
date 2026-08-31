@@ -14,7 +14,10 @@ impl Runtime {
             self.dynamic
                 .borrow_mut()
                 .bindings
-                .push((binding_name, value));
+                .push((binding_name.clone(), value.clone()));
+            if binding_name.as_ref().eq_ignore_ascii_case("*RANDOM-STATE*") {
+                crate::builtins::bind_dynamic_random_state(&value);
+            }
             return;
         }
         environment.define(name, value);
@@ -35,6 +38,11 @@ impl Runtime {
                     return false;
                 }
                 dynamic.bindings[index].1 = value.clone();
+                let updates_random_state = binding.as_ref().eq_ignore_ascii_case("*RANDOM-STATE*");
+                drop(dynamic);
+                if updates_random_state {
+                    crate::builtins::set_dynamic_random_state(&value);
+                }
                 return true;
             }
             if let Some(candidate) = candidates
@@ -61,7 +69,10 @@ impl Runtime {
             self.dynamic
                 .borrow_mut()
                 .exact_bindings
-                .push((name.to_string(), value));
+                .push((name.to_string(), value.clone()));
+            if name.eq_ignore_ascii_case("*RANDOM-STATE*") {
+                crate::builtins::bind_dynamic_random_state(&value);
+            }
             return;
         }
         environment.define_exact(name, value);
@@ -81,7 +92,11 @@ impl Runtime {
                 if dynamic.exact_constants.contains(&binding) {
                     return false;
                 }
-                dynamic.exact_bindings[index].1 = value;
+                dynamic.exact_bindings[index].1 = value.clone();
+                if binding.eq_ignore_ascii_case("*RANDOM-STATE*") {
+                    drop(dynamic);
+                    crate::builtins::set_dynamic_random_state(&value);
+                }
                 return true;
             }
             if dynamic.exact_special_names.contains(name) {
@@ -114,6 +129,9 @@ impl Runtime {
         self.dynamic
             .borrow_mut()
             .exact_bindings
-            .push((name.to_string(), value));
+            .push((name.to_string(), value.clone()));
+        if name.eq_ignore_ascii_case("*RANDOM-STATE*") {
+            crate::builtins::bind_dynamic_random_state(&value);
+        }
     }
 }

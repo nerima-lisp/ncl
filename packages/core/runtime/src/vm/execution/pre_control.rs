@@ -6,7 +6,7 @@ pub(super) struct PreControlInstructionContext<'a> {
     pub(super) program: &'a Rc<Program>,
     pub(super) function: &'a FunctionCode,
     pub(super) stack: &'a mut Vec<Value>,
-    pub(super) scopes: &'a mut Vec<(Environment, usize, usize)>,
+    pub(super) scopes: &'a mut Vec<(Environment, usize, usize, usize)>,
     pub(super) environment: &'a mut Environment,
     pub(super) program_counter: &'a mut usize,
     pub(super) span: Span,

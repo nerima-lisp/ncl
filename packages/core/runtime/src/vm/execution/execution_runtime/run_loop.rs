@@ -23,7 +23,7 @@ pub(in crate::vm::execution) fn run_code_from(
     start_program_counter: usize,
 ) -> Result<Value, RuntimeError> {
     let mut stack = Vec::with_capacity(function.instructions.len());
-    let mut scopes: Vec<(Environment, usize, usize)> = Vec::new();
+    let mut scopes: Vec<(Environment, usize, usize, usize)> = Vec::new();
     let _dynamic_guard = runtime.dynamic_guard();
     let mut program_counter = start_program_counter;
 

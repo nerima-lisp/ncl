@@ -114,6 +114,31 @@ pub(super) fn execute_definition_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::DefineDynamicSpecial(name) | Instruction::DefineDynamicSpecialExact(name) => {
+            let value = stack
+                .last()
+                .cloned()
+                .ok_or_else(|| invalid("define-dynamic-special has no value on the stack", span))?
+                .primary_value();
+            let exact = matches!(instruction, Instruction::DefineDynamicSpecialExact(_));
+            if if exact {
+                runtime.is_constant_exact_in(name)
+            } else {
+                runtime.is_constant_in(name)
+            } {
+                return Err(Runtime::constant_modification_error(name, span));
+            }
+            if exact {
+                runtime.define_dynamic_exact(name, value.clone());
+            } else {
+                runtime.define_dynamic(name, value.clone());
+            }
+            *stack.last_mut().ok_or_else(|| {
+                invalid("define-dynamic-special has no value on the stack", span)
+            })? = value;
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::DefineValues(name) | Instruction::DefineValuesExact(name) => {
             let value = stack
                 .last()

@@ -5,7 +5,7 @@ pub fn execute_stack_instruction(
     runtime: &Runtime,
     instruction: &Instruction,
     stack: &mut Vec<Value>,
-    scopes: &mut Vec<(Environment, usize, usize)>,
+    scopes: &mut Vec<(Environment, usize, usize, usize)>,
     environment: &mut Environment,
     program_counter: &mut usize,
     span: Span,
@@ -16,17 +16,19 @@ pub fn execute_stack_instruction(
                 environment.clone(),
                 runtime.dynamic_depth(),
                 runtime.exact_dynamic_depth(),
+                crate::builtins::dynamic_random_state_depth(),
             ));
             *environment = environment.child();
             *program_counter += 1;
             Ok(true)
         }
         Instruction::ExitScope => {
-            let (parent, depth, exact_depth) = scopes
+            let (parent, depth, exact_depth, random_state_depth) = scopes
                 .pop()
                 .ok_or_else(|| invalid("scope exit has no matching scope", span))?;
             runtime.truncate_dynamic(depth);
             runtime.truncate_exact_dynamic(exact_depth);
+            crate::builtins::truncate_dynamic_random_states(random_state_depth);
             *environment = parent;
             *program_counter += 1;
             Ok(true)

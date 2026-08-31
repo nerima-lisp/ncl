@@ -33,6 +33,8 @@ pub enum Instruction {
         /// Whether to force special binding semantics.
         force: bool,
     },
+    #[doc = "Push a dynamically bound special variable."] DefineDynamicSpecial(String),
+    #[doc = "Push an escaped dynamically bound special variable."] DefineDynamicSpecialExact(String),
     #[doc = "Define multiple values."] DefineValues(String),
     #[doc = "Define multiple values using escaped names."] DefineValuesExact(String),
     #[doc = "Set a variable."] Set(String),

@@ -104,6 +104,33 @@ impl CompileState {
             parsed.push((name, escaped, binding_items.get(1)));
         }
 
+        let is_special = |name: &str, escaped: bool| {
+            special_names.contains(&(name.to_string(), escaped))
+                || (!escaped && name.starts_with('*') && name.ends_with('*'))
+        };
+
+        let binding_instruction = |name: &String, escaped: bool| {
+            if special_names.contains(&(name.clone(), escaped)) {
+                if escaped {
+                    Instruction::DefineSpecialExact {
+                        name: name.clone(),
+                        force: true,
+                    }
+                } else {
+                    Instruction::DefineSpecial {
+                        name: name.clone(),
+                        force: true,
+                    }
+                }
+            } else if is_special(name, escaped) {
+                Instruction::DefineDynamicSpecial(name.clone())
+            } else if escaped {
+                Instruction::DefineExact(name.clone())
+            } else {
+                Instruction::Define(name.clone())
+            }
+        };
+
         self.emit(function, Instruction::EnterScope, binding_form.span)?;
         if sequential {
             for (name, escaped, value) in &parsed {
@@ -118,21 +145,7 @@ impl CompileState {
                 }
                 self.emit(
                     function,
-                    if special_names.contains(&(name.clone(), *escaped)) {
-                        if *escaped {
-                            Instruction::DefineSpecialExact {
-                                name: name.clone(),
-                                force: true,
-                            }
-                        } else {
-                            Instruction::DefineSpecial {
-                                name: name.clone(),
-                                force: true,
-                            }
-                        }
-                    } else {
-                        Instruction::Define(name.clone())
-                    },
+                    binding_instruction(name, *escaped),
                     binding_form.span,
                 )?;
                 self.emit(function, Instruction::Pop, binding_form.span)?;
@@ -152,21 +165,7 @@ impl CompileState {
             for (name, escaped, _) in parsed.iter().rev() {
                 self.emit(
                     function,
-                    if special_names.contains(&(name.clone(), *escaped)) {
-                        if *escaped {
-                            Instruction::DefineSpecialExact {
-                                name: name.clone(),
-                                force: true,
-                            }
-                        } else {
-                            Instruction::DefineSpecial {
-                                name: name.clone(),
-                                force: true,
-                            }
-                        }
-                    } else {
-                        Instruction::Define(name.clone())
-                    },
+                    binding_instruction(name, *escaped),
                     binding_form.span,
                 )?;
                 self.emit(function, Instruction::Pop, binding_form.span)?;

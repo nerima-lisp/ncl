@@ -30,6 +30,10 @@ impl Value {
         Self::RandomState(Rc::new(RefCell::new(state)))
     }
 
+    pub(crate) fn random_state_from_reference(state: Rc<RefCell<RandomState>>) -> Self {
+        Self::RandomState(state)
+    }
+
     pub(crate) fn random_state_reference(&self) -> Option<Rc<RefCell<RandomState>>> {
         match self {
             Self::RandomState(state) => Some(Rc::clone(state)),

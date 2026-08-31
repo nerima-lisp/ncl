@@ -13,10 +13,35 @@ use sampling::{random_limit, state_reference};
 thread_local! {
     static DEFAULT_RANDOM_STATE: Rc<RefCell<RandomState>> =
         Rc::new(RefCell::new(RandomState::seeded()));
+    static DYNAMIC_RANDOM_STATES: RefCell<Vec<Rc<RefCell<RandomState>>>> = RefCell::new(Vec::new());
+}
+
+pub fn default_random_state_value() -> Value {
+    DEFAULT_RANDOM_STATE.with(|state| Value::random_state_from_reference(Rc::clone(state)))
+}
+
+pub(crate) fn dynamic_random_state_depth() -> usize {
+    DYNAMIC_RANDOM_STATES.with(|states| states.borrow().len())
+}
+
+pub(crate) fn bind_dynamic_random_state(value: &Value) {
+    if let Value::RandomState(state) = value {
+        DYNAMIC_RANDOM_STATES.with(|states| states.borrow_mut().push(Rc::clone(state)));
+    }
+}
+
+pub(crate) fn truncate_dynamic_random_states(depth: usize) {
+    DYNAMIC_RANDOM_STATES.with(|states| states.borrow_mut().truncate(depth));
 }
 
 pub fn random(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    DEFAULT_RANDOM_STATE.with(|state| random_with_state(arguments, state))
+    DYNAMIC_RANDOM_STATES.with(|states| {
+        if let Some(state) = states.borrow().last() {
+            random_with_state(arguments, state)
+        } else {
+            DEFAULT_RANDOM_STATE.with(|state| random_with_state(arguments, state))
+        }
+    })
 }
 
 pub fn random_with_state(
@@ -34,7 +59,13 @@ pub fn random_with_state(
 }
 
 pub fn make_random_state(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    DEFAULT_RANDOM_STATE.with(|state| make_random_state_with_state(arguments, state))
+    DYNAMIC_RANDOM_STATES.with(|states| {
+        if let Some(state) = states.borrow().last() {
+            make_random_state_with_state(arguments, state)
+        } else {
+            DEFAULT_RANDOM_STATE.with(|state| make_random_state_with_state(arguments, state))
+        }
+    })
 }
 
 pub fn make_random_state_with_state(

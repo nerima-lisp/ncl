@@ -47,7 +47,10 @@ mod builtin_stream_predicates;
 use builtin_stream_predicates::{close_stream, input_stream_p, output_stream_p, streamp};
 
 mod builtin_random;
-use builtin_random::{make_random_state, random, random_state_p};
+pub(crate) use builtin_random::{
+    bind_dynamic_random_state, default_random_state_value, dynamic_random_state_depth,
+    make_random_state, random, random_state_p, truncate_dynamic_random_states,
+};
 
 mod builtin_format_data;
 use builtin_format_data::{ENGLISH_NUMBER_GROUPS, FORMAT_DIGITS};

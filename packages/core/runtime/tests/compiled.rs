@@ -21,6 +21,8 @@ mod format;
 mod objects;
 #[path = "compiled/primitives.rs"]
 mod primitives;
+#[path = "compiled/random.rs"]
+mod random;
 #[path = "compiled/sequences.rs"]
 mod sequences;
 #[path = "compiled/setf.rs"]

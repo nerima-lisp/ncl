@@ -39,6 +39,19 @@ impl Runtime {
                 environment,
                 span,
             ),
+            "FIND-IF" | "POSITION-IF" | "COUNT-IF" | "FIND-IF-NOT" | "POSITION-IF-NOT"
+            | "COUNT-IF-NOT"
+                if arguments.len() >= 2 =>
+            {
+                self.apply_sequence_search_if(
+                    name,
+                    &arguments[0],
+                    &arguments[1],
+                    &arguments[2..],
+                    environment,
+                    span,
+                )
+            }
             "SEARCH" | "MISMATCH" if arguments.len() >= 2 => self.apply_sequence_pair_search(
                 name,
                 &arguments[0],
@@ -64,9 +77,10 @@ impl Runtime {
             }
             "MEMBER" | "MEMBER-IF" | "MEMBER-IF-NOT" | "ADJOIN" | "ASSOC" | "ASSOC-IF"
             | "ASSOC-IF-NOT" | "RASSOC" | "RASSOC-IF" | "RASSOC-IF-NOT" | "FIND" | "POSITION"
-            | "COUNT" | "SEARCH" | "MISMATCH" | "SORT" | "STABLE-SORT" | "EVERY" | "SOME"
-            | "NOTANY" | "NOTEVERY" | "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN"
-            | "MAPCON" => Err(Self::arity(
+            | "COUNT" | "FIND-IF" | "POSITION-IF" | "COUNT-IF" | "FIND-IF-NOT"
+            | "POSITION-IF-NOT" | "COUNT-IF-NOT" | "SEARCH" | "MISMATCH" | "SORT"
+            | "STABLE-SORT" | "EVERY" | "SOME" | "NOTANY" | "NOTEVERY" | "MAPCAR" | "MAPC"
+            | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => Err(Self::arity(
                 &name.to_ascii_lowercase(),
                 "at least two",
                 arguments.len(),

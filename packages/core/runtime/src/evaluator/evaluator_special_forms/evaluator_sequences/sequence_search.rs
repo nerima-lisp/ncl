@@ -3,6 +3,92 @@
 use super::*;
 
 impl Runtime {
+    pub(crate) fn apply_sequence_search_if(
+        &self,
+        operation: &str,
+        predicate: &Value,
+        sequence: &Value,
+        options: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let search_options = parse_sequence_search_options(options, span)?;
+        let predicate =
+            Value::Function(self.resolve_function_designator(predicate, span, environment)?);
+        let items = match sequence {
+            Value::Nil => Vec::new(),
+            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+            Value::String(value) => value.chars().map(Value::Character).collect(),
+            value => {
+                return Err(RuntimeError::Type {
+                    expected: "SEQUENCE".to_string(),
+                    actual: value.type_name().to_string(),
+                    span: Some(span),
+                });
+            }
+        };
+        let end = search_options.end.unwrap_or(items.len());
+        if search_options.start > end || end > items.len() {
+            return Err(Self::invalid("sequence search bounds are invalid", span));
+        }
+        let key_function = match search_options.key {
+            Some(value) if value.is_truthy() => {
+                Some(self.resolve_function_designator(&value, span, environment)?)
+            }
+            _ => None,
+        };
+        let invert = operation.ends_with("-IF-NOT");
+        let operation = operation
+            .strip_suffix("-IF-NOT")
+            .or_else(|| operation.strip_suffix("-IF"))
+            .unwrap_or(operation);
+        let indexes: Box<dyn Iterator<Item = usize>> = if search_options.from_end {
+            Box::new((search_options.start..end).rev())
+        } else {
+            Box::new(search_options.start..end)
+        };
+        let mut count = 0;
+        for index in indexes {
+            let candidate = match &key_function {
+                Some(key) => self
+                    .apply_in(
+                        &Value::Function(key.clone()),
+                        std::slice::from_ref(&items[index]),
+                        span,
+                        environment,
+                    )?
+                    .primary_value(),
+                None => items[index].clone(),
+            };
+            let matched = self
+                .apply_in(
+                    &predicate,
+                    std::slice::from_ref(&candidate),
+                    span,
+                    environment,
+                )?
+                .primary_value()
+                .is_truthy();
+            if matched != invert {
+                match operation {
+                    "FIND" => return Ok(items[index].clone()),
+                    "POSITION" => {
+                        return Ok(Value::Integer(i64::try_from(index).map_err(|_| {
+                            Self::invalid("sequence position is too large", span)
+                        })?));
+                    }
+                    "COUNT" => count += 1,
+                    _ => return Err(Self::invalid("unknown sequence search operation", span)),
+                }
+            }
+        }
+        match operation {
+            "FIND" | "POSITION" => Ok(Value::Nil),
+            "COUNT" => Ok(Value::Integer(count)),
+            _ => Err(Self::invalid("unknown sequence search operation", span)),
+        }
+    }
+
     pub(crate) fn apply_sequence_search(
         &self,
         operation: &str,

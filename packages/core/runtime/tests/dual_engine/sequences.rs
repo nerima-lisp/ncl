@@ -244,4 +244,10 @@ fn evaluates_sequence_searches(#[case] eval_fn: EvalFn) {
     );
     assert_eq!(evaluate("(count 2 '(1 2 3 2) :key #'1+)").to_string(), "1");
     assert_eq!(evaluate("(find 9 '(1 2 3))").to_string(), "NIL");
+    assert_eq!(evaluate("(find-if #'evenp '(1 3 4 6))").to_string(), "4");
+    assert_eq!(
+        evaluate("(position-if-not #'evenp '(2 4 5 6))").to_string(),
+        "2"
+    );
+    assert_eq!(evaluate("(count-if #'evenp '(1 2 4 5 6))").to_string(), "3");
 }

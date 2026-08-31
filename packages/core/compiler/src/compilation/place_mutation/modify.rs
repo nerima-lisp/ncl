@@ -37,20 +37,18 @@ impl CompileState {
                 return Err(Self::arity_error(items, operator, "one or two", span));
             }
             self.emit(function, Instruction::Load(name.clone()), place.span)?;
-            self.compile_expression(function, place)?;
-            self.emit(function, Instruction::Dup, place.span)?;
             self.emit(
                 function,
                 Instruction::FunctionLoad(arithmetic.to_string()),
                 span,
             )?;
+            self.compile_expression(function, place)?;
             if let Some(delta) = items.get(2) {
                 self.compile_expression(function, delta)?;
             } else {
                 self.emit(function, Instruction::Constant(Constant::Integer(1)), span)?;
             }
             self.emit(function, Instruction::Call(2), span)?;
-            self.emit(function, Instruction::Pop, span)?;
             self.emit(
                 function,
                 Instruction::SetfNestedList {

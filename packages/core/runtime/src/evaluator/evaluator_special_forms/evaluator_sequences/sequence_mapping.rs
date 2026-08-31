@@ -54,7 +54,10 @@ impl Runtime {
             .iter()
             .map(|value| {
                 value.list_items().ok_or_else(|| {
-                    Self::invalid(&format!("{operation_name} arguments must be lists"), span)
+                    Self::invalid(
+                        &format!("{operation_name} arguments must be proper lists"),
+                        span,
+                    )
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;

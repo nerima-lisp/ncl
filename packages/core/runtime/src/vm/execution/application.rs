@@ -74,13 +74,22 @@ pub fn execute_list_mapping_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if sequence_count == 0 || stack.len() < sequence_count.saturating_add(1) {
-        return Err(invalid("list mapping has too few stack values", span));
+        return Err(invalid(
+            &format!(
+                "{} has too few stack values",
+                operation.to_ascii_lowercase()
+            ),
+            span,
+        ));
     }
     let sequences_start = stack.len() - sequence_count;
     let sequences = stack.split_off(sequences_start);
-    let function_value = stack
-        .pop()
-        .ok_or_else(|| invalid("list mapping has no function value", span))?;
+    let function_value = stack.pop().ok_or_else(|| {
+        invalid(
+            &format!("{} has no function value", operation.to_ascii_lowercase()),
+            span,
+        )
+    })?;
     let result = runtime.apply_list_mapping(
         operation,
         &function_value.primary_value(),

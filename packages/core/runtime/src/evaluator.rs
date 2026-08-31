@@ -67,6 +67,7 @@ pub struct Runtime {
     next_block_target: Cell<u64>,
     gensym_counter: Cell<u64>,
     method_context: RefCell<Vec<MethodContext>>,
+    load_time_values: RefCell<HashMap<((usize, usize), String), Value>>,
 }
 
 impl Runtime {
@@ -82,6 +83,7 @@ impl Runtime {
             next_block_target: Cell::new(1),
             gensym_counter: Cell::new(0),
             method_context: RefCell::new(Vec::new()),
+            load_time_values: RefCell::new(HashMap::new()),
         }
     }
 

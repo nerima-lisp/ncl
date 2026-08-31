@@ -37,10 +37,20 @@ impl Runtime {
                 items.len().saturating_sub(1),
             ));
         }
+        let key = (
+            (items[1].span.start, items[1].span.end),
+            items[1].to_string(),
+        );
+        if let Some(value) = self.load_time_values.borrow().get(&key) {
+            return Ok(value.clone());
+        }
         let value = self.eval_values_in(&items[1], environment)?;
         if let Some(read_only_p) = items.get(2) {
             let _ = self.eval_in(read_only_p, environment)?;
         }
+        self.load_time_values
+            .borrow_mut()
+            .insert(key, value.clone());
         Ok(value)
     }
 

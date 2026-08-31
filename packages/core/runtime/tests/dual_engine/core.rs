@@ -384,6 +384,27 @@ fn declare_special_makes_a_let_binding_dynamic(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn load_time_value_is_evaluated_once_per_form(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(defvar *load-time-value-counter* 0)
+             (let ((function (lambda ()
+                               (load-time-value
+                                 (progn (incf *load-time-value-counter*)
+                                        *load-time-value-counter*)))))
+               (list (funcall function)
+                     (funcall function)
+                     *load-time-value-counter*))",
+        )
+        .to_string(),
+        "(1 1 1)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn bignum_digit_cap_boundary_and_overflow_are_exact(#[case] eval_fn: EvalFn) {
     // The bignum digit-cap boundary tests in evaluator/core.rs
     // (expt_cap_boundary_is_exact_not_merely_far_from_the_limit and its

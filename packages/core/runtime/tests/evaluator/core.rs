@@ -1235,7 +1235,7 @@ fn reworded_exact_arithmetic_error_messages_name_bignums_not_just_floats() {
     );
 
     let floor_error = Runtime::new()
-        .eval_source("(floor (expt 2 100))")
+        .eval_source("(floor (expt 2 100) 3/2)")
         .must_fail();
     assert!(
         matches!(

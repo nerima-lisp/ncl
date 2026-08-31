@@ -4,6 +4,7 @@ use super::*;
 mod array;
 mod list;
 mod property;
+mod rotate_shift;
 mod sequence;
 mod symbol_cell;
 

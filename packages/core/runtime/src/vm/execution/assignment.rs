@@ -721,6 +721,23 @@ pub(super) fn execute_set_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::MapIntoSetfSymbol { name, escaped } => {
+            let value = stack
+                .last()
+                .cloned()
+                .ok_or_else(|| invalid("map-into has no value on the stack", span))?
+                .primary_value();
+            if *escaped {
+                runtime.set_or_define_exact_in(name, value.clone(), environment, span)?;
+            } else {
+                runtime.set_or_define_in(name, value.clone(), environment, span)?;
+            }
+            *stack
+                .last_mut()
+                .ok_or_else(|| invalid("map-into has no value on the stack", span))? = value;
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::Setf(place) | Instruction::MapIntoSetf(place) => {
             let map_into = matches!(instruction, Instruction::MapIntoSetf(_));
             let value = stack

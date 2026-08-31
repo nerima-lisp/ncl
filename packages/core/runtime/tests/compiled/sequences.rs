@@ -288,6 +288,15 @@ fn compiled_evaluates_map_into_over_sequences() {
     );
     assert_eq!(
         evaluate(
+            "(let ((result (vector 0 0)))
+               (map-into result #'1+ '(1 2))
+               result)",
+        )
+        .to_string(),
+        "#(2 3)"
+    );
+    assert_eq!(
+        evaluate(
             "(let ((result (list 9 9 9)))
                (map-into result #'1+ '(1 2))
                result)",

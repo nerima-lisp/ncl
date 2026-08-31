@@ -117,6 +117,12 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update a symbol with the result of `MAP-INTO`."] MapIntoSetfSymbol {
+        /// The symbol receiving the mapped sequence.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Perform a place update with `MAP-INTO` semantics."] MapIntoSetf(Form),
     #[doc = "Perform parallel assignment."] Psetq(Vec<String>),
     #[doc = "Perform escaped parallel assignment."] PsetqExact(Vec<(String, bool)>),

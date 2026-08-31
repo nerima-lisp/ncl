@@ -946,6 +946,19 @@ fn emits_eval_and_mapcar_instructions() {
             .iter()
             .any(|instruction| { matches!(instruction, Instruction::MapCar(2)) })
     );
+
+    let map_into = compile("(map-into result #'1+ '(1 2))");
+    assert!(
+        map_into.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| {
+                matches!(
+                    instruction,
+                    Instruction::MapIntoSetfSymbol { name, escaped: false } if name == "RESULT"
+                )
+            })
+    );
 }
 
 #[test]

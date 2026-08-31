@@ -105,7 +105,10 @@ impl CompileState {
         )?;
         self.emit(
             function,
-            Instruction::MapIntoSetf(destination.clone()),
+            match Self::symbol_name_info(&destination, "MAP-INTO destination") {
+                Ok((name, escaped)) => Instruction::MapIntoSetfSymbol { name, escaped },
+                Err(_) => Instruction::MapIntoSetf(destination.clone()),
+            },
             destination.span,
         )?;
         Ok(())

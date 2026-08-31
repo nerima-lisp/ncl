@@ -235,6 +235,11 @@ fn compiled_evaluates_pushnew_on_a_generalized_place() {
         .to_string(),
         "((1 2 3) (1 2 3) ((1 2 3)))"
     );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2 3))) (list (pushnew 0 (cdr xs)) (pushnew 0 (cdr xs)) xs))")
+            .to_string(),
+        "((0 2 3) (0 2 3) (1 0 2 3))"
+    );
 }
 
 #[test]

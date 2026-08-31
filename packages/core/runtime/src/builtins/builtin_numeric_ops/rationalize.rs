@@ -1,5 +1,6 @@
 use super::{
     Number, RuntimeError, Value, exact, number_argument, number_to_value, rational_number,
+    rational_number_big,
 };
 
 pub fn rationalize(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -7,10 +8,10 @@ pub fn rationalize(arguments: &[Value]) -> Result<Value, RuntimeError> {
     match number_argument("rationalize", &arguments[0])? {
         Number::Integer(value) => Ok(Value::Integer(value)),
         Number::Big(value) => Ok(Value::big_integer(value)),
-        Number::Rational(value) => Value::rational(
-            i128::try_from(value.numerator()).map_err(|_| RuntimeError::NumericOverflow)?,
-            i128::try_from(value.denominator()).map_err(|_| RuntimeError::NumericOverflow)?,
-        ),
+        Number::Rational(value) => number_to_value(rational_number_big(
+            value.numerator().clone(),
+            value.denominator().clone(),
+        )?),
         Number::Float(value) => rationalize_float(value),
     }
 }
@@ -117,5 +118,19 @@ mod tests {
     #[test]
     fn simplest_positive_rational_rejects_excessive_recursion_depth() {
         assert!(simplest_positive_rational(0.5, 0.5, 200).is_err());
+    }
+
+    #[test]
+    fn rationalize_preserves_large_existing_rationals() {
+        let value = match rational_number_big(ibig::IBig::from(1) << 200, ibig::IBig::from(3))
+            .and_then(number_to_value)
+        {
+            Ok(value) => value,
+            Err(error) => panic!("valid large rational: {error:?}"),
+        };
+        assert_eq!(
+            ok(rationalize(&[value])).to_string(),
+            format!("{}/3", ibig::IBig::from(1) << 200)
+        );
     }
 }

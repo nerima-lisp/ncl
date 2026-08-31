@@ -1,4 +1,7 @@
-use super::{Number, RuntimeError, Value, arity, exact, number_argument, type_error};
+use super::{
+    Number, RuntimeError, Value, arity, exact, number_argument, number_to_value,
+    rational_number_big, type_error,
+};
 
 pub fn float_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() || arguments.len() > 2 {
@@ -18,10 +21,10 @@ pub fn rational(arguments: &[Value]) -> Result<Value, RuntimeError> {
     match number_argument("rational", &arguments[0])? {
         Number::Integer(value) => Ok(Value::Integer(value)),
         Number::Big(value) => Ok(Value::big_integer(value)),
-        Number::Rational(value) => Value::rational(
-            i128::try_from(value.numerator()).map_err(|_| RuntimeError::NumericOverflow)?,
-            i128::try_from(value.denominator()).map_err(|_| RuntimeError::NumericOverflow)?,
-        ),
+        Number::Rational(value) => number_to_value(rational_number_big(
+            value.numerator().clone(),
+            value.denominator().clone(),
+        )?),
         Number::Float(value) => rational_from_float(value),
     }
 }
@@ -127,5 +130,19 @@ mod tests {
             rational_from_float(f64::from_bits(1)),
             Err(RuntimeError::NumericOverflow)
         ));
+    }
+
+    #[test]
+    fn rational_preserves_large_existing_rationals() {
+        let value = match rational_number_big(ibig::IBig::from(1) << 200, ibig::IBig::from(3))
+            .and_then(number_to_value)
+        {
+            Ok(value) => value,
+            Err(error) => panic!("valid large rational: {error:?}"),
+        };
+        assert_eq!(
+            ok_string(rational(&[value])),
+            format!("{}/3", ibig::IBig::from(1) << 200)
+        );
     }
 }

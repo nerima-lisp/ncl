@@ -111,6 +111,25 @@ fn compiled_evaluates_setf_places() {
     );
     assert_eq!(
         evaluate(
+            "(let ((table (make-hash-table :test #'equal)))
+               (setf (gethash \"key\" table) 7)
+               (list (gethash \"key\" table) (hash-table-count table)))",
+        )
+        .to_string(),
+        "(7 1)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((table (make-hash-table :test #'equal)))
+               (setf (gethash \"key\" table) 7)
+               (setf (gethash \"key\" table) 9)
+               (list (gethash \"key\" table) (hash-table-count table)))",
+        )
+        .to_string(),
+        "(9 1)"
+    );
+    assert_eq!(
+        evaluate(
             "(progn
                (defparameter *compiled-setf-symbol-value-target* 1)
                (list

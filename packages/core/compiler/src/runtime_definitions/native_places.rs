@@ -1,6 +1,21 @@
 #[allow(clippy::wildcard_imports)]
 use super::super::*;
 
+fn generalized_list_place(form: &Form) -> Option<(String, String, bool)> {
+    let FormKind::List(items) = &form.kind else {
+        return None;
+    };
+    if items.len() != 2 {
+        return None;
+    }
+    let (accessor, _) = CompileState::symbol_name_info(&items[0], "list accessor").ok()?;
+    if !matches!(accessor.as_str(), "CAR" | "FIRST" | "CDR" | "REST") {
+        return None;
+    }
+    let (name, escaped) = CompileState::symbol_name_info(&items[1], "list place target").ok()?;
+    Some((accessor, name, escaped))
+}
+
 impl CompileState {
     pub(super) fn compile_native_push_pop(
         &mut self,
@@ -80,22 +95,7 @@ impl CompileState {
             ));
         }
         let place = &items[expected - 1];
-        let generalized = match &place.kind {
-            FormKind::List(place_items) if place_items.len() == 2 => {
-                let accessor = Self::symbol_name_info(&place_items[0], "list accessor")
-                    .ok()
-                    .map(|(name, _)| name);
-                accessor.and_then(|accessor| {
-                    if !matches!(accessor.as_str(), "CAR" | "FIRST" | "CDR" | "REST") {
-                        return None;
-                    }
-                    Self::symbol_name_info(&place_items[1], "list place target")
-                        .ok()
-                        .map(|(name, escaped)| (accessor, name, escaped))
-                })
-            }
-            _ => None,
-        };
+        let generalized = generalized_list_place(place);
         let symbol_place = Self::symbol_name_info(place, "list place").ok();
         if generalized.is_none() && symbol_place.is_none() {
             return Ok(None);

@@ -2,33 +2,28 @@ use super::{
     RuntimeError, Value, exact, integer_argument, number_from_big, number_to_value, type_error,
 };
 use crate::builtins::numbers::big_integer_argument;
+use ibig::ops::Abs;
 
 pub fn greatest_common_divisor(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    let mut result = 0i128;
+    let mut result = ibig::IBig::from(0);
     for argument in arguments {
-        result = integer_gcd(result, i128::from(integer_argument("gcd", argument)?));
+        result = result.gcd(&big_integer_argument("gcd", argument)?);
     }
-    i64::try_from(result)
-        .map(Value::Integer)
-        .map_err(|_| RuntimeError::NumericOverflow)
+    number_to_value(number_from_big(result))
 }
 
 pub fn least_common_multiple(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    let mut result = 1i128;
+    let mut result = ibig::IBig::from(1);
     for argument in arguments {
-        let value = i128::from(integer_argument("lcm", argument)?);
-        if result == 0 || value == 0 {
-            result = 0;
+        let value = big_integer_argument("lcm", argument)?;
+        if result == ibig::IBig::from(0) || value == ibig::IBig::from(0) {
+            result = ibig::IBig::from(0);
             continue;
         }
-        let divisor = integer_gcd(result, value);
-        result = (result / divisor)
-            .checked_mul(value.abs())
-            .ok_or(RuntimeError::NumericOverflow)?;
+        let divisor = result.gcd(&value);
+        result = (result / divisor) * value.abs();
     }
-    i64::try_from(result)
-        .map(Value::Integer)
-        .map_err(|_| RuntimeError::NumericOverflow)
+    number_to_value(number_from_big(result))
 }
 
 pub const fn integer_gcd(mut left: i128, mut right: i128) -> i128 {

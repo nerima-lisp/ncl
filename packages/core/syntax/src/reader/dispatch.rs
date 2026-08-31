@@ -37,6 +37,7 @@ impl Reader<'_> {
             '\\' => self.parse_character(start).map(Some),
             'c' | 'C' => self.parse_complex_literal(start),
             ':' => self.parse_uninterned_symbol(start).map(Some),
+            '+' | '-' => self.parse_reader_conditional(start),
             't' | 'T' => {
                 self.position += 1;
                 self.ensure_dispatch_boundary(start)?;
@@ -54,6 +55,55 @@ impl Reader<'_> {
                 ReadErrorKind::InvalidDispatch,
                 Span::new(start, start + 1),
             )),
+        }
+    }
+
+    fn parse_reader_conditional(&mut self, start: usize) -> Result<Option<Form>, ReadError> {
+        let include = self.peek_char() == Some('+');
+        self.position += 1;
+        let Some(feature) = self.parse_form()? else {
+            return Err(Self::error(
+                ReadErrorKind::UnexpectedEnd {
+                    context: "reader conditional feature",
+                },
+                Span::new(start, self.position),
+            ));
+        };
+        let enabled = self.feature_enabled(&feature)?;
+        let Some(form) = self.parse_form()? else {
+            return Err(Self::error(
+                ReadErrorKind::UnexpectedEnd {
+                    context: "reader conditional form",
+                },
+                Span::new(start, self.position),
+            ));
+        };
+        if enabled == include {
+            Ok(Some(form))
+        } else {
+            self.parse_form()
+        }
+    }
+
+    fn feature_enabled(&self, feature: &Form) -> Result<bool, ReadError> {
+        match &feature.kind {
+            FormKind::Atom(name) => Ok(self.features.contains(&Self::normalize_feature(name))),
+            FormKind::List(items) if !items.is_empty() => {
+                let FormKind::Atom(operator) = &items[0].kind else {
+                    return Err(Self::error(ReadErrorKind::InvalidDispatch, feature.span));
+                };
+                let values = items[1..]
+                    .iter()
+                    .map(|item| self.feature_enabled(item))
+                    .collect::<Result<Vec<_>, _>>()?;
+                match operator.to_ascii_lowercase().as_str() {
+                    "and" => Ok(values.into_iter().all(|value| value)),
+                    "or" => Ok(values.into_iter().any(|value| value)),
+                    "not" if values.len() == 1 => Ok(!values[0]),
+                    _ => Err(Self::error(ReadErrorKind::InvalidDispatch, feature.span)),
+                }
+            }
+            _ => Err(Self::error(ReadErrorKind::InvalidDispatch, feature.span)),
         }
     }
 

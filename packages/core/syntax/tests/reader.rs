@@ -20,6 +20,33 @@ fn expands_complex_dispatch_literal_to_constructor_form() {
 }
 
 #[test]
+fn reader_conditionals_include_or_skip_one_form() {
+    let forms = read("#+:ncl active #-:ncl skipped after").unwrap();
+
+    assert_eq!(
+        forms.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        ["active", "after"]
+    );
+}
+
+#[test]
+fn reader_conditionals_support_boolean_feature_expressions() {
+    let forms = read("#+(and :ncl (not :other)) yes #- (or :ncl :other) no").unwrap();
+
+    assert_eq!(forms.len(), 1);
+    assert_eq!(forms[0].to_string(), "yes");
+}
+
+#[test]
+fn reader_conditionals_accept_custom_features_case_insensitively() {
+    let forms = ncl_syntax::Reader::with_features("#+:Custom yes", ["custom"])
+        .read_all()
+        .unwrap();
+
+    assert_eq!(forms[0].to_string(), "yes");
+}
+
+#[test]
 fn comments_are_ignored_and_spans_are_source_offsets() {
     let forms = read("; comment\n(+ 1 2)").unwrap();
 

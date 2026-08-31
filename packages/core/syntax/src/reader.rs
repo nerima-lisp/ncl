@@ -1,4 +1,5 @@
 use crate::{Form, ReadError, ReadErrorKind, Span};
+use std::collections::HashSet;
 
 mod dispatch;
 mod sequence;
@@ -15,17 +16,35 @@ pub struct Reader<'source> {
     source: &'source str,
     position: usize,
     nesting_depth: usize,
+    features: HashSet<String>,
 }
 
 impl<'source> Reader<'source> {
     /// Creates a reader positioned at the beginning of `source`.
     #[must_use]
-    pub const fn new(source: &'source str) -> Self {
+    pub fn new(source: &'source str) -> Self {
+        Self::with_features(source, [":ncl"])
+    }
+
+    /// Creates a reader with the supplied reader conditional features.
+    pub fn with_features<I, S>(source: &'source str, features: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
         Self {
             source,
             position: 0,
             nesting_depth: 0,
+            features: features
+                .into_iter()
+                .map(|feature| Self::normalize_feature(feature.as_ref()))
+                .collect(),
         }
+    }
+
+    fn normalize_feature(feature: &str) -> String {
+        feature.trim_start_matches(':').to_ascii_lowercase()
     }
 
     /// Returns the current byte position.

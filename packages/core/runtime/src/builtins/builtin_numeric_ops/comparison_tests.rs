@@ -75,6 +75,12 @@ fn absolute_handles_rational_and_float_values() {
 }
 
 #[test]
+fn absolute_returns_complex_magnitude() {
+    let value = Value::complex(Value::Integer(3), Value::Integer(4));
+    assert_eq!(numeric_result(absolute(&[value])), "5.0");
+}
+
+#[test]
 fn numeric_equal_compares_complex_components() {
     let left = Value::complex(Value::Integer(2), Value::Integer(3));
     let right = Value::complex(Value::Integer(2), Value::Integer(3));

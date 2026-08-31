@@ -107,6 +107,11 @@ pub fn extreme(
 
 pub fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "abs", 1)?;
+    if let Value::Complex(value) = &arguments[0] {
+        let real = number_argument("abs", &value.real)?.as_float();
+        let imag = number_argument("abs", &value.imag)?.as_float();
+        return Ok(Value::Float(real.hypot(imag)));
+    }
     match number_argument("abs", &arguments[0])? {
         Number::Integer(value) => Ok(value.checked_abs().map_or_else(
             // i64::MIN is the one integer whose absolute value doesn't fit

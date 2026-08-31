@@ -68,6 +68,42 @@ fn compile_let_star_defaults_omitted_binding_to_nil() {
 }
 
 #[test]
+fn compile_let_uses_special_binding_for_a_leading_special_declaration() {
+    let span = Span::new(0, 1);
+    let declaration = Form::list(
+        vec![
+            Form::atom("DECLARE", span),
+            Form::list(
+                vec![Form::atom("SPECIAL", span), Form::atom("X", span)],
+                span,
+            ),
+        ],
+        span,
+    );
+    let items = vec![
+        Form::atom("LET", span),
+        Form::list(vec![binding("X", Some(Form::atom("1", span)), span)], span),
+        declaration,
+        Form::atom("X", span),
+    ];
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+
+    state
+        .compile_let(function, span, &items, false)
+        .unwrap_or_else(|error| panic!("SPECIAL declaration should compile: {error}"));
+
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::DefineSpecial {
+                name: "X".to_string(),
+                force: true,
+            })
+    );
+}
+
+#[test]
 fn compile_let_star_propagates_malformed_binding_value() {
     let span = Span::new(0, 1);
     let items = vec![

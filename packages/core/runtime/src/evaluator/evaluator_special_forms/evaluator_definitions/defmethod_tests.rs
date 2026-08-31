@@ -51,6 +51,19 @@ mod tests {
     }
 
     #[test]
+    fn defmethod_rejects_multiple_qualifiers() {
+        let error = eval_err(
+            "(defgeneric multiply-qualified (x))
+             (defmethod multiply-qualified :before :after (x) x)",
+        );
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "defmethod accepts at most one method qualifier"
+        ));
+    }
+
+    #[test]
     fn defmethod_defines_a_generic_function_implicitly() {
         let values = Runtime::new()
             .eval_source("(defmethod implicit-generic (x) x) (implicit-generic 5)")

@@ -55,6 +55,12 @@ impl Runtime {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+        if qualifiers.len() > 1 {
+            return Err(Self::invalid(
+                "defmethod accepts at most one method qualifier",
+                items[2].span,
+            ));
+        }
         let FormKind::List(parameters) = &items[lambda_index].kind else {
             return Err(Self::invalid(
                 "defmethod lambda list must be a list",

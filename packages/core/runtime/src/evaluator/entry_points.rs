@@ -18,6 +18,7 @@ impl Runtime {
     ///
     /// Returns a [`RuntimeError`] when reading or evaluating any form fails.
     pub fn eval_source(&self, source: &str) -> Result<Vec<Value>, RuntimeError> {
+        self.load_time_values.borrow_mut().clear();
         read(source)?.iter().map(|form| self.eval(form)).collect()
     }
 
@@ -40,6 +41,7 @@ impl Runtime {
     ///
     /// Returns a [`RuntimeError`] when reading, compiling, or evaluating any form fails.
     pub fn eval_compiled_source(&self, source: &str) -> Result<Vec<Value>, RuntimeError> {
+        self.load_time_values.borrow_mut().clear();
         read(source)?
             .iter()
             .map(|form| self.eval_compiled(form))

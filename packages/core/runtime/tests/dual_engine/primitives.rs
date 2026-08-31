@@ -580,6 +580,26 @@ fn evaluates_load_time_value(#[case] eval_fn: EvalFn) {
     );
 }
 
+#[test]
+fn load_time_value_cache_does_not_cross_source_evaluations() {
+    let runtime = Runtime::new();
+    let Ok(_) = runtime.eval_source("(defvar *load-time-value-source-counter* 0)") else {
+        panic!("counter definition should succeed");
+    };
+    let Ok(first) =
+        runtime.eval_source("(load-time-value (incf *load-time-value-source-counter*))")
+    else {
+        panic!("first source evaluation should succeed");
+    };
+    assert_eq!(first[0].to_string(), "1");
+    let Ok(second) =
+        runtime.eval_source("(load-time-value (incf *load-time-value-source-counter*))")
+    else {
+        panic!("second source evaluation should succeed");
+    };
+    assert_eq!(second[0].to_string(), "2");
+}
+
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]

@@ -1,12 +1,19 @@
 use ibig::ops::Abs;
 
 use super::super::{
-    Number, RuntimeError, Value, exact, exceeds_exact_bignum_digit_cap, number_argument,
-    number_from_big, number_to_value, rational_number, rational_number_big,
+    Number, RuntimeError, Value, complex_divide, complex_multiply, exact,
+    exceeds_exact_bignum_digit_cap, number_argument, number_from_big, number_to_value,
+    rational_number, rational_number_big,
 };
 
 pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "expt", 2)?;
+    if arguments[0].is_complex()
+        && let Some((exponent, denominator)) = number_argument("expt", &arguments[1])?.exact_parts()
+        && denominator == 1
+    {
+        return complex_integer_power(&arguments[0], exponent);
+    }
     let base = number_argument("expt", &arguments[0])?;
     let exponent = number_argument("expt", &arguments[1])?;
 
@@ -36,6 +43,31 @@ pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 
     Ok(Value::Float(base.as_float().powf(exponent.as_float())))
+}
+
+fn complex_integer_power(base: &Value, exponent: i64) -> Result<Value, RuntimeError> {
+    if exponent == 0 {
+        return Ok(Value::Integer(1));
+    }
+
+    let mut factor = base.clone();
+    let mut result = Value::Integer(1);
+    let mut magnitude = exponent.unsigned_abs();
+    while magnitude != 0 {
+        if magnitude & 1 == 1 {
+            result = complex_multiply(&[result, factor.clone()])?;
+        }
+        magnitude >>= 1;
+        if magnitude != 0 {
+            factor = complex_multiply(&[factor.clone(), factor])?;
+        }
+    }
+
+    if exponent < 0 {
+        complex_divide(&[result])
+    } else {
+        Ok(result)
+    }
 }
 
 fn exact_ratio(value: &Number) -> Result<(ibig::IBig, ibig::IBig), RuntimeError> {

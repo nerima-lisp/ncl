@@ -67,6 +67,23 @@ fn exponentiate_handles_rational_bignum_exponents_exactly() {
 }
 
 #[test]
+fn exponentiate_handles_complex_integer_powers() {
+    let base = Value::complex(Value::Integer(2), Value::Integer(3));
+    assert_eq!(
+        ok_string(exponentiate(&[base.clone(), Value::Integer(2)])),
+        "#C(-5 12)"
+    );
+    assert_eq!(
+        ok_string(exponentiate(&[base.clone(), Value::Integer(0)])),
+        "1"
+    );
+    assert_eq!(
+        ok_string(exponentiate(&[base, Value::Integer(-1)])),
+        "#C(2/13 -3/13)"
+    );
+}
+
+#[test]
 fn exact_power_rejects_a_non_exact_base() {
     assert!(matches!(
         exact_power(Number::Float(2.0), 2),

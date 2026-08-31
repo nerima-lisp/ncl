@@ -31,9 +31,10 @@ change as implementation and conformance work reveal the next boundary.
 - Move evaluator-backed compiler paths to native bytecode incrementally; the
   current native surface includes multiple-value selection through
   <code>nth-value</code> and <code>PUSH</code>/<code>POP</code> for simple symbol
-  places, including the default <code>PUSHNEW</code> case. Generalized-place
-  paths, keyword-option <code>PUSHNEW</code>, and remaining fallback paths stay
-  explicit in compatibility tests.
+  places, including simple-symbol <code>PUSHNEW</code> with literal
+  <code>:TEST</code>, <code>:TEST-NOT</code>, and <code>:KEY</code> options.
+  Generalized-place paths, non-literal function-designator options, and
+  remaining fallback paths stay explicit in compatibility tests.
 - Define and test a behavior matrix for interpreted execution, compiled
   execution, and compile-only artifact generation, including compile-time
   macro/package effects and runtime non-execution.

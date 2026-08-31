@@ -26,6 +26,24 @@ fn declarations_are_accepted_in_function_bodies(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn declare_special_is_honored_in_defun(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defun declared-special (value)
+                 (declare (special value))
+                 (list value (symbol-value 'value) (boundp 'value)))
+               (declared-special 30))",
+        )
+        .to_string(),
+        "(30 30 T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_condition_restart_associations(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

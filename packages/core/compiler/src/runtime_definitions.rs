@@ -107,9 +107,9 @@ mod tests {
             Form::atom("NIL", span),
         ];
 
-        let error = state
-            .compile_load_time_value(function, span, &items)
-            .expect_err("too many LOAD-TIME-VALUE arguments must fail during compilation");
+        let Err(error) = state.compile_load_time_value(function, span, &items) else {
+            panic!("too many LOAD-TIME-VALUE arguments must fail during compilation")
+        };
 
         assert!(matches!(error.kind, CompileErrorKind::Arity { .. }));
     }

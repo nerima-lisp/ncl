@@ -20,6 +20,7 @@ use crate::value::{
 use crate::{Environment, RuntimeError, Value};
 
 const MAX_MACRO_EXPANSIONS: usize = 64;
+type LoadTimeValueKey = ((usize, usize), String);
 
 pub mod evaluator_state;
 pub use evaluator_state::{ConditionHandlerBinding, RestartBinding};
@@ -67,7 +68,7 @@ pub struct Runtime {
     next_block_target: Cell<u64>,
     gensym_counter: Cell<u64>,
     method_context: RefCell<Vec<MethodContext>>,
-    load_time_values: RefCell<HashMap<((usize, usize), String), Value>>,
+    load_time_values: RefCell<HashMap<LoadTimeValueKey, Value>>,
 }
 
 impl Runtime {

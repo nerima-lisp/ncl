@@ -25,12 +25,6 @@ impl Runtime {
             let FormKind::List(declaration) = &form.kind else {
                 break;
             };
-            if !declaration
-                .first()
-                .is_some_and(|name| Self::variable_name_info(name, "declare name").is_ok())
-            {
-                break;
-            }
             let Some(FormKind::Atom(name)) = declaration.first().map(|form| &form.kind) else {
                 break;
             };

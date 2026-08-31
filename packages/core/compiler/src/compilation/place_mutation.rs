@@ -37,26 +37,37 @@ impl CompileState {
                                 _ => None,
                             },
                             _ => None,
-                        }?;
+                        };
                         Self::symbol_name_info(&items[2], "setf nth target")
                             .ok()
-                            .map(|(name, escaped)| (index, name, escaped, &items[2]))
+                            .map(|(name, escaped)| (index, name, escaped, &items[1], &items[2]))
                     })
                 }
                 _ => None,
             };
-            if let Some((nth_index, name, escaped, target)) = nth_place {
-                self.compile_expression(function, target)?;
-                self.compile_expression(function, value_form)?;
-                self.emit(
-                    function,
-                    Instruction::SetfNth {
-                        index: nth_index,
-                        name,
-                        escaped,
-                    },
-                    place.span,
-                )?;
+            if let Some((nth_index, name, escaped, index_form, target)) = nth_place {
+                if let Some(nth_index) = nth_index {
+                    self.compile_expression(function, target)?;
+                    self.compile_expression(function, value_form)?;
+                    self.emit(
+                        function,
+                        Instruction::SetfNth {
+                            index: nth_index,
+                            name,
+                            escaped,
+                        },
+                        place.span,
+                    )?;
+                } else {
+                    self.compile_expression(function, index_form)?;
+                    self.compile_expression(function, target)?;
+                    self.compile_expression(function, value_form)?;
+                    self.emit(
+                        function,
+                        Instruction::SetfNthDynamic { name, escaped },
+                        place.span,
+                    )?;
+                }
                 if index + 1 < pair_count {
                     self.emit(function, Instruction::Pop, value_form.span)?;
                 }

@@ -71,6 +71,24 @@ fn compile_setf_uses_native_nth_for_a_constant_index_and_symbol_place() {
 }
 
 #[test]
+fn compile_setf_uses_native_nth_for_a_dynamic_index_and_symbol_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (nth index xs) 9)");
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap();
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::SetfNthDynamic {
+                name: "XS".to_string(),
+                escaped: false,
+            })
+    );
+}
+
+#[test]
 fn compile_push_and_pop_use_native_list_instructions_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

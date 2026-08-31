@@ -128,6 +128,39 @@ pub(super) fn execute_set_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::SetfNthDynamic { name, escaped } => {
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("setf nth has no value on the stack", span))?
+                .primary_value();
+            let current = stack
+                .pop()
+                .ok_or_else(|| invalid("setf nth has no target on the stack", span))?
+                .primary_value();
+            let index = stack
+                .pop()
+                .ok_or_else(|| invalid("setf nth has no index on the stack", span))?
+                .primary_value();
+            let index = crate::builtins::index_argument("setf nth", &index)?;
+            let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: current.type_name().to_string(),
+                span: Some(span),
+            })?;
+            let slot = elements
+                .get_mut(index)
+                .ok_or_else(|| crate::builtins::out_of_bounds("setf nth", index))?;
+            *slot = value.clone();
+            let updated = Value::list(elements);
+            if *escaped {
+                runtime.set_or_define_exact_in(name, updated, environment, span)?;
+            } else {
+                runtime.set_or_define_in(name, updated, environment, span)?;
+            }
+            stack.push(value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PushNewList { name, escaped } => {
             let current = stack
                 .pop()

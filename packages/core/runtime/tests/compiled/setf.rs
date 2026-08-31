@@ -103,6 +103,14 @@ fn compiled_evaluates_native_nth_setf_for_a_symbol_place() {
 }
 
 #[test]
+fn compiled_evaluates_native_nth_setf_for_a_dynamic_index() {
+    assert_eq!(
+        evaluate("(let ((index 1) (xs (list 1 2 3))) (setf (nth index xs) 9) xs)").to_string(),
+        "(1 9 3)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_push_and_pop_symbol_places() {
     assert_eq!(
         evaluate("(let ((xs (list 2 3))) (list (push 1 xs) xs (pop xs) xs))").to_string(),

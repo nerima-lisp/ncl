@@ -384,6 +384,23 @@ fn declare_special_makes_a_let_binding_dynamic(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn declare_special_makes_a_lambda_parameter_dynamic(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(funcall (lambda (x)
+                       (declare (special x))
+                       (list x (symbol-value 'x) (boundp 'x)))
+                     30)",
+        )
+        .to_string(),
+        "(30 30 T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn load_time_value_is_evaluated_once_per_form(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

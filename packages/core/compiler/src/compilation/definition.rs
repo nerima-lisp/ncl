@@ -34,6 +34,67 @@ impl CompileState {
         let auxiliary = self.compile_auxiliary_parameters(&lambda_list.auxiliary)?;
         self.functions[child].auxiliary = auxiliary;
         let body = items.get(2..).unwrap_or(&[]);
+        for declaration in body
+            .iter()
+            .take_while(|form| matches!(form.kind, FormKind::List(_)))
+        {
+            let FormKind::List(parts) = &declaration.kind else {
+                continue;
+            };
+            if parts
+                .first()
+                .and_then(|form| Self::symbol_name_info(form, "declaration operator").ok())
+                .is_none_or(|(name, _)| !name.eq_ignore_ascii_case("DECLARE"))
+            {
+                continue;
+            }
+            for spec in parts.iter().skip(1) {
+                let FormKind::List(spec_parts) = &spec.kind else {
+                    continue;
+                };
+                if spec_parts
+                    .first()
+                    .and_then(|form| Self::symbol_name_info(form, "declaration type").ok())
+                    .is_none_or(|(name, _)| !name.eq_ignore_ascii_case("SPECIAL"))
+                {
+                    continue;
+                }
+                for name_form in spec_parts.iter().skip(1) {
+                    let Ok((name, escaped)) =
+                        Self::symbol_name_info(name_form, "special declaration name")
+                    else {
+                        continue;
+                    };
+                    if lambda_list
+                        .required
+                        .iter()
+                        .zip(lambda_list.required_escaped.iter())
+                        .any(|(parameter, parameter_escaped)| {
+                            parameter == &name && *parameter_escaped == escaped
+                        })
+                    {
+                        self.emit(
+                            child,
+                            if escaped {
+                                Instruction::LoadExact(name.clone())
+                            } else {
+                                Instruction::Load(name.clone())
+                            },
+                            name_form.span,
+                        )?;
+                        self.emit(
+                            child,
+                            if escaped {
+                                Instruction::DefineSpecialExact { name, force: true }
+                            } else {
+                                Instruction::DefineSpecial { name, force: true }
+                            },
+                            name_form.span,
+                        )?;
+                    }
+                }
+            }
+        }
         self.compile_sequence(child, body)?;
         self.emit(child, Instruction::Return, span)?;
         self.emit(function, Instruction::MakeClosure(child), span)?;

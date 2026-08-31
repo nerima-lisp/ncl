@@ -146,6 +146,14 @@ fn compiled_evaluates_setf_places() {
 }
 
 #[test]
+fn compiled_evaluates_native_single_place_rotatef() {
+    assert_eq!(
+        evaluate("(let ((x 7)) (list (rotatef x) x))").to_string(),
+        "(NIL 7)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_aref_setf_for_vector_and_array() {
     assert_eq!(
         evaluate("(let ((xs #(1 2 3)) (index 1)) (setf (aref xs index) 9) xs)").to_string(),

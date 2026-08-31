@@ -119,19 +119,19 @@ fn compile_runtime_definition_falls_back_for_generalized_rotate_and_shift_places
 }
 
 #[test]
-fn compile_runtime_definition_falls_back_for_single_place_rotatef() {
+fn compile_runtime_definition_uses_native_single_place_rotatef() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());
     let items = parse_items("(rotatef a)");
 
     state
         .compile_runtime_definition(function, Span::new(0, 1), &items)
-        .expect("single-place ROTATEF should use evaluator fallback");
+        .expect("single-place ROTATEF should compile natively");
     assert!(
         state.functions[function]
             .instructions
             .iter()
-            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
+            .any(|instruction| matches!(instruction, Instruction::RotatefSymbols(places) if places.len() == 1))
     );
 }
 

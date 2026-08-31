@@ -22,9 +22,6 @@ impl CompileState {
         } else {
             items.len().saturating_sub(2)
         };
-        if operator == "ROTATEF" && place_count < 2 {
-            return Ok(None);
-        }
         if operator == "SHIFTF" && place_count < 1 {
             return Err(Self::arity_error(items, &operator, "at least one", span));
         }

@@ -8,9 +8,11 @@ use ncl_syntax::{
 use crate::environment::Environment;
 use crate::error::RuntimeError;
 
+mod value_complex;
 mod value_conditions;
 mod value_display;
 mod value_rational;
+pub use value_complex::Complex;
 pub use value_conditions::{ConditionData, RestartData};
 pub use value_rational::Rational;
 
@@ -68,6 +70,8 @@ pub enum Value {
     Rational(Rational),
     /// An IEEE-754 floating-point number.
     Float(f64),
+    /// A complex number whose components are real values.
+    Complex(Rc<Complex>),
     /// A string value.
     String(Rc<str>),
     /// A character value.

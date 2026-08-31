@@ -38,6 +38,11 @@ impl Runtime {
                 span,
             )),
             Value::Float(value) => Ok(Form::atom(value.to_string(), span)),
+            Value::Complex(_) => Err(RuntimeError::Type {
+                expected: "FORM".to_string(),
+                actual: value.type_name().to_string(),
+                span: Some(span),
+            }),
             Value::String(value) => Ok(Form::new(FormKind::String(value.to_string()), span)),
             Value::Character(value) => Ok(Form::new(FormKind::Character(*value), span)),
             Value::Package(name) => Ok(Form::list(

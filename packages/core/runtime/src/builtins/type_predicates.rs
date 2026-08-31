@@ -37,7 +37,11 @@ pub(super) fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "numberp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
-        Value::Integer(_) | Value::BigInteger(_) | Value::Rational(_) | Value::Float(_)
+        Value::Integer(_)
+            | Value::BigInteger(_)
+            | Value::Rational(_)
+            | Value::Float(_)
+            | Value::Complex(_)
     )))
 }
 

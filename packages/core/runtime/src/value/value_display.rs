@@ -20,6 +20,7 @@ impl fmt::Display for Value {
                     value.fmt(formatter)
                 }
             }
+            Self::Complex(value) => write!(formatter, "#C({} {})", value.real, value.imag),
             Self::String(value) => write!(formatter, "{value:?}"),
             Self::Character(value) => match value {
                 ' ' => formatter.write_str("#\\SPACE"),

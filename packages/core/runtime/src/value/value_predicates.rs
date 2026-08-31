@@ -21,6 +21,17 @@ impl Value {
         !matches!(self.primary_value(), Self::Nil | Self::Boolean(false))
     }
 
+    pub(crate) fn is_number(&self) -> bool {
+        matches!(
+            self,
+            Self::Integer(_)
+                | Self::BigInteger(_)
+                | Self::Rational(_)
+                | Self::Float(_)
+                | Self::Complex(_)
+        )
+    }
+
     /// Returns the implementation's canonical Lisp type name.
     #[must_use]
     pub const fn type_name(&self) -> &'static str {
@@ -31,6 +42,7 @@ impl Value {
             Self::Integer(_) | Self::BigInteger(_) => "INTEGER",
             Self::Rational(_) => "RATIO",
             Self::Float(_) => "FLOAT",
+            Self::Complex(_) => "COMPLEX",
             Self::String(_) => "STRING",
             Self::Character(_) => "CHARACTER",
             Self::Stream(_) => "STREAM",

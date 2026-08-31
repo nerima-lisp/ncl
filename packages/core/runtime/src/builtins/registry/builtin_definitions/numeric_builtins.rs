@@ -6,6 +6,7 @@ pub(super) const NUMERIC_BUILTINS: &[BuiltinDefinition] = &[
     ("-", subtract as _),
     ("*", multiply as _),
     ("/", divide as _),
+    ("complex", complex as _),
     ("expt", exponentiate as _),
     ("sqrt", square_root as _),
     ("realpart", real_part as _),

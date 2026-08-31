@@ -32,6 +32,10 @@ impl Value {
         )
     }
 
+    pub(crate) const fn is_complex(&self) -> bool {
+        matches!(self, Self::Complex(_))
+    }
+
     /// Returns the implementation's canonical Lisp type name.
     #[must_use]
     pub const fn type_name(&self) -> &'static str {

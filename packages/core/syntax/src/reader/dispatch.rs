@@ -1,6 +1,8 @@
-//! Dispatch-macro (`#...`) parsing: booleans, characters, uninterned symbols, radix integers.
+//! Dispatch-macro (`#...`) parsing: booleans, characters, complex literals, uninterned symbols, radix integers.
 
-use crate::{Form, ReadError, ReadErrorKind, Reader, Span, SymbolTokenKind, parse_symbol_token};
+use crate::{
+    Form, FormKind, ReadError, ReadErrorKind, Reader, Span, SymbolTokenKind, parse_symbol_token,
+};
 
 impl Reader<'_> {
     pub(super) fn parse_dispatch(&mut self) -> Result<Option<Form>, ReadError> {
@@ -33,6 +35,7 @@ impl Reader<'_> {
                 self.parse_prefixed_form("function", start, self.position)
             }
             '\\' => self.parse_character(start).map(Some),
+            'c' | 'C' => self.parse_complex_literal(start),
             ':' => self.parse_uninterned_symbol(start).map(Some),
             't' | 'T' => {
                 self.position += 1;
@@ -52,6 +55,29 @@ impl Reader<'_> {
                 Span::new(start, start + 1),
             )),
         }
+    }
+
+    fn parse_complex_literal(&mut self, start: usize) -> Result<Option<Form>, ReadError> {
+        self.position += 1;
+        if self.peek_char() != Some('(') {
+            return Err(Self::error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, self.position),
+            ));
+        }
+        let form = self.parse_sequence(false, start)?;
+        let Form {
+            kind: FormKind::List(mut items),
+            span,
+        } = form
+        else {
+            unreachable!("complex literal parser requests a list")
+        };
+        if items.len() != 2 {
+            return Err(Self::error(ReadErrorKind::InvalidDispatch, span));
+        }
+        items.insert(0, Form::atom("complex", Span::new(start, start + 2)));
+        Ok(Some(Form::list(items, span)))
     }
 
     fn parse_radix_integer(&mut self, start: usize) -> Result<Form, ReadError> {

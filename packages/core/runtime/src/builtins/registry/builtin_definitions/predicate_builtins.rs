@@ -11,6 +11,7 @@ pub(super) const PREDICATE_BUILTINS: &[BuiltinDefinition] = &[
     ("consp", consp as _),
     ("listp", listp as _),
     ("numberp", numberp as _),
+    ("complexp", complexp as _),
     ("integerp", integerp as _),
     ("floatp", floatp as _),
     ("rationalp", rationalp as _),

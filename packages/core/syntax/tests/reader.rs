@@ -13,6 +13,13 @@ fn reads_lists_prefixes_and_literals() {
 }
 
 #[test]
+fn expands_complex_dispatch_literal_to_constructor_form() {
+    let forms = read("#C(2 3)").unwrap();
+
+    assert_eq!(forms[0].to_string(), "(complex 2 3)");
+}
+
+#[test]
 fn comments_are_ignored_and_spans_are_source_offsets() {
     let forms = read("; comment\n(+ 1 2)").unwrap();
 

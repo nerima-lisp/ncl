@@ -45,6 +45,11 @@ pub(super) fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
+pub(super) fn complexp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "complexp", 1)?;
+    Ok(Value::boolean(arguments[0].is_complex()))
+}
+
 pub(super) fn integerp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "integerp", 1)?;
     Ok(Value::boolean(matches!(

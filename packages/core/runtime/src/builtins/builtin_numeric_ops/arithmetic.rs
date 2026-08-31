@@ -4,6 +4,9 @@ use super::{
 };
 
 pub fn add(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.iter().any(Value::is_complex) {
+        return super::complex_add(arguments);
+    }
     let mut result = Number::Integer(0);
     for argument in arguments {
         let value = number_argument("+", argument)?;
@@ -19,6 +22,9 @@ pub fn add(arguments: &[Value]) -> Result<Value, RuntimeError> {
 pub fn subtract(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("-", "at least one", 0));
+    }
+    if arguments.iter().any(Value::is_complex) {
+        return super::complex_subtract(arguments);
     }
     let values = arguments
         .iter()
@@ -40,6 +46,9 @@ pub fn subtract(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 pub fn multiply(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.iter().any(Value::is_complex) {
+        return super::complex_multiply(arguments);
+    }
     let mut result = Number::Integer(1);
     for argument in arguments {
         let value = number_argument("*", argument)?;
@@ -55,6 +64,9 @@ pub fn multiply(arguments: &[Value]) -> Result<Value, RuntimeError> {
 pub fn divide(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("/", "at least one", 0));
+    }
+    if arguments.iter().any(Value::is_complex) {
+        return super::complex_divide(arguments);
     }
     let values = arguments
         .iter()

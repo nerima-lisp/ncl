@@ -118,18 +118,28 @@ pub(super) fn execute_shiftf_nested(
         .zip(roots)
         .map(|((a, _, _), root)| super::list::read_nested(root.list_items().unwrap(), a, span))
         .collect::<Result<Vec<_>, _>>()?;
+    let mut updated_roots: Vec<(&str, bool, Value)> = Vec::new();
     for (index, ((accessors, name, escaped), root)) in places.iter().zip(roots).enumerate() {
+        let current_root = updated_roots
+            .iter()
+            .rev()
+            .find(|(updated_name, updated_escaped, _)| {
+                *updated_name == name && *updated_escaped == *escaped
+            })
+            .map(|(_, _, value)| value)
+            .unwrap_or(root);
         let updated = Value::list(super::list::update_nested(
-            root.list_items().unwrap(),
+            current_root.list_items().unwrap(),
             accessors,
-            &values[index + 1],
+            old.get(index + 1).unwrap_or_else(|| values.last().unwrap()),
             span,
         )?);
         if *escaped {
-            runtime.set_or_define_exact_in(name, updated, environment, span)?;
+            runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?;
         } else {
-            runtime.set_or_define_in(name, updated, environment, span)?;
+            runtime.set_or_define_in(name, updated.clone(), environment, span)?;
         }
+        updated_roots.push((name, *escaped, updated));
     }
     stack.push(old[0].clone());
     *program_counter += 1;

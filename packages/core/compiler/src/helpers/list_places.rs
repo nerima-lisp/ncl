@@ -12,7 +12,7 @@ pub(crate) fn generalized_list_place(form: &Form) -> Option<(Vec<String>, String
         return None;
     }
     if let Some((mut accessors, name, escaped)) = generalized_list_place(&items[1]) {
-        accessors.insert(0, accessor);
+        accessors.push(accessor);
         Some((accessors, name, escaped))
     } else {
         let (name, escaped) =

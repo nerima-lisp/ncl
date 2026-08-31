@@ -38,6 +38,7 @@ struct ClosureKeywordApplicationContext<'a> {
     key_start: usize,
     allow_other_keys: bool,
     local: &'a Environment,
+    special_parameters: &'a std::collections::HashSet<(String, bool)>,
     span: Span,
 }
 

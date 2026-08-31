@@ -2,6 +2,7 @@
 use super::*;
 
 impl CompileState {
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn compile_lambda(
         &mut self,
         function: FunctionId,
@@ -34,6 +35,30 @@ impl CompileState {
         let auxiliary = self.compile_auxiliary_parameters(&lambda_list.auxiliary)?;
         self.functions[child].auxiliary = auxiliary;
         let body = items.get(2..).unwrap_or(&[]);
+        let is_parameter = |name: &str, escaped: bool| {
+            lambda_list
+                .required
+                .iter()
+                .zip(&lambda_list.required_escaped)
+                .any(|(parameter, parameter_escaped)| {
+                    parameter == name && *parameter_escaped == escaped
+                })
+                || lambda_list.optional.iter().any(|parameter| {
+                    parameter.name == name && parameter.name_escaped == escaped
+                        || parameter.supplied_p.as_deref() == Some(name)
+                            && parameter.supplied_p_escaped.unwrap_or(false) == escaped
+                })
+                || lambda_list.keywords.iter().any(|parameter| {
+                    parameter.name == name && parameter.name_escaped == escaped
+                        || parameter.supplied_p.as_deref() == Some(name)
+                            && parameter.supplied_p_escaped.unwrap_or(false) == escaped
+                })
+                || lambda_list.rest.as_deref() == Some(name) && lambda_list.rest_escaped == escaped
+                || lambda_list
+                    .auxiliary
+                    .iter()
+                    .any(|parameter| parameter.name == name && parameter.name_escaped == escaped)
+        };
         for declaration in body
             .iter()
             .take_while(|form| matches!(form.kind, FormKind::List(_)))
@@ -65,14 +90,7 @@ impl CompileState {
                     else {
                         continue;
                     };
-                    if lambda_list
-                        .required
-                        .iter()
-                        .zip(lambda_list.required_escaped.iter())
-                        .any(|(parameter, parameter_escaped)| {
-                            parameter == &name && *parameter_escaped == escaped
-                        })
-                    {
+                    if is_parameter(&name, escaped) {
                         self.emit(
                             child,
                             if escaped {
@@ -146,6 +164,7 @@ impl CompileState {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn compile_defun(
         &mut self,
         function: FunctionId,
@@ -166,9 +185,9 @@ impl CompileState {
         let lambda_list = Self::parameters(parameter_form)?;
         let child = self.reserve_function_with_rest(
             Some(name.clone()),
-            lambda_list.required,
-            lambda_list.required_escaped,
-            lambda_list.rest,
+            lambda_list.required.clone(),
+            lambda_list.required_escaped.clone(),
+            lambda_list.rest.clone(),
             lambda_list.rest_escaped,
         );
         let optional = self.compile_optional_parameters(&lambda_list.optional)?;
@@ -180,6 +199,85 @@ impl CompileState {
         let auxiliary = self.compile_auxiliary_parameters(&lambda_list.auxiliary)?;
         self.functions[child].auxiliary = auxiliary;
         let body = items.get(3..).unwrap_or(&[]);
+        let is_parameter = |name: &str, escaped: bool| {
+            lambda_list
+                .required
+                .iter()
+                .zip(&lambda_list.required_escaped)
+                .any(|(parameter, parameter_escaped)| {
+                    parameter == name && *parameter_escaped == escaped
+                })
+                || lambda_list.optional.iter().any(|parameter| {
+                    (parameter.name == name && parameter.name_escaped == escaped)
+                        || (parameter.supplied_p.as_deref() == Some(name)
+                            && parameter.supplied_p_escaped.unwrap_or(false) == escaped)
+                })
+                || lambda_list.keywords.iter().any(|parameter| {
+                    (parameter.name == name && parameter.name_escaped == escaped)
+                        || (parameter.supplied_p.as_deref() == Some(name)
+                            && parameter.supplied_p_escaped.unwrap_or(false) == escaped)
+                })
+                || (lambda_list.rest.as_deref() == Some(name)
+                    && lambda_list.rest_escaped == escaped)
+                || lambda_list
+                    .auxiliary
+                    .iter()
+                    .any(|parameter| parameter.name == name && parameter.name_escaped == escaped)
+        };
+        for declaration in body
+            .iter()
+            .take_while(|form| matches!(form.kind, FormKind::List(_)))
+        {
+            let FormKind::List(parts) = &declaration.kind else {
+                continue;
+            };
+            if parts
+                .first()
+                .and_then(|form| Self::symbol_name_info(form, "declaration operator").ok())
+                .is_none_or(|(name, _)| !name.eq_ignore_ascii_case("DECLARE"))
+            {
+                continue;
+            }
+            for spec in parts.iter().skip(1) {
+                let FormKind::List(spec_parts) = &spec.kind else {
+                    continue;
+                };
+                if spec_parts
+                    .first()
+                    .and_then(|form| Self::symbol_name_info(form, "declaration type").ok())
+                    .is_none_or(|(name, _)| !name.eq_ignore_ascii_case("SPECIAL"))
+                {
+                    continue;
+                }
+                for name_form in spec_parts.iter().skip(1) {
+                    let Ok((name, escaped)) =
+                        Self::symbol_name_info(name_form, "special declaration name")
+                    else {
+                        continue;
+                    };
+                    if is_parameter(&name, escaped) {
+                        self.emit(
+                            child,
+                            if escaped {
+                                Instruction::LoadExact(name.clone())
+                            } else {
+                                Instruction::Load(name.clone())
+                            },
+                            name_form.span,
+                        )?;
+                        self.emit(
+                            child,
+                            if escaped {
+                                Instruction::DefineSpecialExact { name, force: true }
+                            } else {
+                                Instruction::DefineSpecial { name, force: true }
+                            },
+                            name_form.span,
+                        )?;
+                    }
+                }
+            }
+        }
         self.compile_sequence(child, body)?;
         self.emit(child, Instruction::Return, span)?;
 

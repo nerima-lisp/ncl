@@ -401,6 +401,37 @@ fn declare_special_makes_a_lambda_parameter_dynamic(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn declare_special_makes_all_lambda_list_bindings_dynamic(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source).to_string();
+    assert_eq!(
+        evaluate(
+            "(funcall (lambda (&optional (x 11)) (declare (special x)) (list x (symbol-value 'x) (boundp 'x))) 30)"
+        ),
+        "(30 30 T)"
+    );
+    assert_eq!(
+        evaluate(
+            "(funcall (lambda (&key (x 11)) (declare (special x)) (list x (symbol-value 'x) (boundp 'x))) :x 30)"
+        ),
+        "(30 30 T)"
+    );
+    assert_eq!(
+        evaluate(
+            "(funcall (lambda (&rest x) (declare (special x)) (list x (symbol-value 'x) (boundp 'x))) 1 2)"
+        ),
+        "((1 2) (1 2) T)"
+    );
+    assert_eq!(
+        evaluate(
+            "(funcall (lambda (&aux (x 30)) (declare (special x)) (list x (symbol-value 'x) (boundp 'x))))"
+        ),
+        "(30 30 T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn load_time_value_is_evaluated_once_per_form(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

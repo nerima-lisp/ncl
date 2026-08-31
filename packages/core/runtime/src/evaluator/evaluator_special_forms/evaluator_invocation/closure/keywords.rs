@@ -12,6 +12,7 @@ impl Runtime {
             key_start,
             allow_other_keys,
             local,
+            special_parameters,
             span,
         } = *context;
         let keyword_arguments = &arguments[key_start..];
@@ -56,18 +57,22 @@ impl Runtime {
                 Some(argument) => argument.clone(),
                 None => self.eval_in(&specification.init_form, local)?,
             };
-            if specification.name_escaped {
-                self.define_exact_in(&specification.name, value, local);
-            } else {
-                self.define_in(&specification.name, value, local);
-            }
+            self.define_closure_binding(
+                &specification.name,
+                specification.name_escaped,
+                value,
+                local,
+                special_parameters,
+            );
             if let Some(supplied_p) = &specification.supplied_p {
                 let supplied_value = Value::boolean(supplied.is_some());
-                if specification.supplied_p_escaped.unwrap_or(false) {
-                    self.define_exact_in(supplied_p, supplied_value, local);
-                } else {
-                    self.define_in(supplied_p, supplied_value, local);
-                }
+                self.define_closure_binding(
+                    supplied_p,
+                    specification.supplied_p_escaped.unwrap_or(false),
+                    supplied_value,
+                    local,
+                    special_parameters,
+                );
             }
         }
         Ok(())

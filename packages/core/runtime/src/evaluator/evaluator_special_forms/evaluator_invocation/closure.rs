@@ -3,6 +3,7 @@ use super::{
     LambdaListAuxiliaryParameter, Runtime, RuntimeError, Value,
 };
 use crate::environment::names_equal;
+use std::collections::HashSet;
 
 mod keywords;
 
@@ -89,8 +90,15 @@ impl Runtime {
             required_count,
             arguments,
             &local,
+            &special_parameters,
         )?;
-        self.apply_closure_rest(rest, rest_escaped, &arguments[key_start..], &local);
+        self.apply_closure_rest(
+            rest,
+            rest_escaped,
+            &arguments[key_start..],
+            &local,
+            &special_parameters,
+        );
         if has_keyword_section {
             self.apply_closure_keywords(&ClosureKeywordApplicationContext {
                 keywords,
@@ -98,16 +106,15 @@ impl Runtime {
                 key_start,
                 allow_other_keys,
                 local: &local,
+                special_parameters: &special_parameters,
                 span,
             })?;
         }
-        self.apply_closure_auxiliary(auxiliary, &local)?;
+        self.apply_closure_auxiliary(auxiliary, &local, &special_parameters)?;
         self.eval_sequence_values(body, &local)
     }
 
-    fn special_parameter_names(
-        body: &[ncl_syntax::Form],
-    ) -> std::collections::HashSet<(String, bool)> {
+    fn special_parameter_names(body: &[ncl_syntax::Form]) -> HashSet<(String, bool)> {
         body.iter()
             .take_while(|form| matches!(form.kind, ncl_syntax::FormKind::List(_)))
             .filter_map(|form| {
@@ -136,6 +143,27 @@ impl Runtime {
             .collect()
     }
 
+    pub(super) fn define_closure_binding(
+        &self,
+        name: &str,
+        escaped: bool,
+        value: Value,
+        local: &Environment,
+        special_parameters: &HashSet<(String, bool)>,
+    ) {
+        if special_parameters.contains(&(name.to_owned(), escaped)) {
+            if escaped {
+                self.define_dynamic_exact(name, value);
+            } else {
+                self.define_dynamic(name, value);
+            }
+        } else if escaped {
+            self.define_exact_in(name, value, local);
+        } else {
+            self.define_in(name, value, local);
+        }
+    }
+
     fn apply_closure_optional(
         &self,
         optional: &[super::LambdaListOptionalParameter],
@@ -143,6 +171,7 @@ impl Runtime {
         required_count: usize,
         arguments: &[Value],
         local: &Environment,
+        special_parameters: &HashSet<(String, bool)>,
     ) -> Result<(), RuntimeError> {
         for (index, specification) in optional.iter().enumerate() {
             let supplied = (index < supplied_count).then(|| &arguments[required_count + index]);
@@ -150,18 +179,22 @@ impl Runtime {
                 Some(argument) => argument.clone(),
                 None => self.eval_in(&specification.init_form, local)?,
             };
-            if specification.name_escaped {
-                self.define_exact_in(&specification.name, value, local);
-            } else {
-                self.define_in(&specification.name, value, local);
-            }
+            self.define_closure_binding(
+                &specification.name,
+                specification.name_escaped,
+                value,
+                local,
+                special_parameters,
+            );
             if let Some(supplied_p) = &specification.supplied_p {
                 let supplied_value = Value::boolean(supplied.is_some());
-                if specification.supplied_p_escaped.unwrap_or(false) {
-                    self.define_exact_in(supplied_p, supplied_value, local);
-                } else {
-                    self.define_in(supplied_p, supplied_value, local);
-                }
+                self.define_closure_binding(
+                    supplied_p,
+                    specification.supplied_p_escaped.unwrap_or(false),
+                    supplied_value,
+                    local,
+                    special_parameters,
+                );
             }
         }
         Ok(())
@@ -173,14 +206,11 @@ impl Runtime {
         rest_escaped: bool,
         arguments: &[Value],
         local: &Environment,
+        special_parameters: &HashSet<(String, bool)>,
     ) {
         if let Some(rest) = rest {
             let value = Value::list(arguments.to_vec());
-            if rest_escaped {
-                self.define_exact_in(rest, value, local);
-            } else {
-                self.define_in(rest, value, local);
-            }
+            self.define_closure_binding(rest, rest_escaped, value, local, special_parameters);
         }
     }
 
@@ -188,14 +218,17 @@ impl Runtime {
         &self,
         auxiliary: &[LambdaListAuxiliaryParameter],
         local: &Environment,
+        special_parameters: &HashSet<(String, bool)>,
     ) -> Result<(), RuntimeError> {
         for specification in auxiliary {
             let value = self.eval_in(&specification.init_form, local)?;
-            if specification.name_escaped {
-                self.define_exact_in(&specification.name, value, local);
-            } else {
-                self.define_in(&specification.name, value, local);
-            }
+            self.define_closure_binding(
+                &specification.name,
+                specification.name_escaped,
+                value,
+                local,
+                special_parameters,
+            );
         }
         Ok(())
     }

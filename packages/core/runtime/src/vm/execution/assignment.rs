@@ -161,6 +161,94 @@ pub(super) fn execute_set_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::SetfArefDynamic {
+            rank,
+            name,
+            escaped,
+        } => {
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("setf aref has no value on the stack", span))?
+                .primary_value();
+            if stack.len() < rank.saturating_add(1) {
+                return Err(invalid("setf aref has an incomplete stack", span));
+            }
+            let indices = stack.split_off(stack.len() - *rank);
+            let current = stack
+                .pop()
+                .ok_or_else(|| invalid("setf aref has no target on the stack", span))?
+                .primary_value();
+            let indices = indices
+                .iter()
+                .map(|index| crate::builtins::index_argument("setf aref", index))
+                .collect::<Result<Vec<_>, _>>()?;
+            let updated = match current {
+                Value::Vector(_) => {
+                    if *rank != 1 {
+                        return Err(invalid("setf aref requires one vector index", span));
+                    }
+                    let mut elements =
+                        current.vector_items().ok_or_else(|| RuntimeError::Type {
+                            expected: "VECTOR".to_string(),
+                            actual: current.type_name().to_string(),
+                            span: Some(span),
+                        })?;
+                    let slot = elements
+                        .get_mut(indices[0])
+                        .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
+                    *slot = value.clone();
+                    Value::vector(elements)
+                }
+                Value::Array { ref dimensions, .. } => {
+                    if dimensions.len() != *rank {
+                        return Err(invalid("setf aref has the wrong number of indices", span));
+                    }
+                    let mut offset = 0_usize;
+                    for (axis, (&dimension, &index)) in dimensions.iter().zip(&indices).enumerate()
+                    {
+                        if index >= dimension {
+                            return Err(invalid("SETF index is out of bounds", span));
+                        }
+                        let stride = dimensions[axis + 1..]
+                            .iter()
+                            .try_fold(1_usize, |stride, dimension| stride.checked_mul(*dimension))
+                            .ok_or_else(|| invalid("SETF index is too large", span))?;
+                        offset = offset
+                            .checked_add(
+                                index
+                                    .checked_mul(stride)
+                                    .ok_or_else(|| invalid("SETF index is too large", span))?,
+                            )
+                            .ok_or_else(|| invalid("SETF index is too large", span))?;
+                    }
+                    let mut elements = current.array_items().ok_or_else(|| RuntimeError::Type {
+                        expected: "ARRAY".to_string(),
+                        actual: current.type_name().to_string(),
+                        span: Some(span),
+                    })?;
+                    let slot = elements
+                        .get_mut(offset)
+                        .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
+                    *slot = value.clone();
+                    Value::array(dimensions.as_ref().clone(), elements)
+                }
+                other => {
+                    return Err(RuntimeError::Type {
+                        expected: "ARRAY or VECTOR".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(span),
+                    });
+                }
+            };
+            if *escaped {
+                runtime.set_or_define_exact_in(name, updated, environment, span)?;
+            } else {
+                runtime.set_or_define_in(name, updated, environment, span)?;
+            }
+            stack.push(value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PushNewList { name, escaped } => {
             let current = stack
                 .pop()

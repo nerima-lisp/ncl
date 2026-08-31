@@ -89,6 +89,25 @@ fn compile_setf_uses_native_nth_for_a_dynamic_index_and_symbol_place() {
 }
 
 #[test]
+fn compile_setf_uses_native_aref_for_a_symbol_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (aref xs index) 9)");
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap();
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::SetfArefDynamic {
+                rank: 1,
+                name: "XS".to_string(),
+                escaped: false,
+            })
+    );
+}
+
+#[test]
 fn compile_push_and_pop_use_native_list_instructions_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

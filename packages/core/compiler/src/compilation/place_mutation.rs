@@ -73,6 +73,44 @@ impl CompileState {
                 }
                 continue;
             }
+            let aref_place = match &place.kind {
+                FormKind::List(items) if items.len() >= 3 => {
+                    let operator = Self::symbol_name_info(&items[0], "setf place operator")
+                        .ok()
+                        .map(|(name, _)| name);
+                    operator.and_then(|operator| {
+                        if operator != "AREF" {
+                            return None;
+                        }
+                        Self::symbol_name_info(&items[1], "setf aref target")
+                            .ok()
+                            .map(|(name, escaped)| {
+                                (items.len() - 2, name, escaped, &items[1], &items[2..])
+                            })
+                    })
+                }
+                _ => None,
+            };
+            if let Some((rank, name, escaped, target, indices)) = aref_place {
+                self.compile_expression(function, target)?;
+                for index_form in indices {
+                    self.compile_expression(function, index_form)?;
+                }
+                self.compile_expression(function, value_form)?;
+                self.emit(
+                    function,
+                    Instruction::SetfArefDynamic {
+                        rank,
+                        name,
+                        escaped,
+                    },
+                    place.span,
+                )?;
+                if index + 1 < pair_count {
+                    self.emit(function, Instruction::Pop, value_form.span)?;
+                }
+                continue;
+            }
             let list_place = match &place.kind {
                 FormKind::List(items) if items.len() == 2 => {
                     let operator = Self::symbol_name_info(&items[0], "setf place operator")

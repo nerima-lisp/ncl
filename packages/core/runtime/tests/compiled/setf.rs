@@ -95,6 +95,23 @@ fn compiled_evaluates_setf_places() {
 }
 
 #[test]
+fn compiled_evaluates_native_aref_setf_for_vector_and_array() {
+    assert_eq!(
+        evaluate("(let ((xs #(1 2 3)) (index 1)) (setf (aref xs index) 9) xs)").to_string(),
+        "#(1 9 3)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array '(2 2) :initial-element 0)) (row 1) (column 0))
+               (setf (aref array row column) 9)
+               (aref array 1 0))",
+        )
+        .to_string(),
+        "9"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_nth_setf_for_a_symbol_place() {
     assert_eq!(
         evaluate("(let ((xs (list 1 2 3))) (setf (nth 1 xs) 9) xs)").to_string(),

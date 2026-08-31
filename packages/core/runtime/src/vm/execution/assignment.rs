@@ -96,6 +96,38 @@ pub(super) fn execute_set_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::PushNewList { name, escaped } => {
+            let current = stack
+                .pop()
+                .ok_or_else(|| invalid("pushnew has no target on the stack", span))?
+                .primary_value();
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("pushnew has no value on the stack", span))?
+                .primary_value();
+            let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: current.type_name().to_string(),
+                span: Some(span),
+            })?;
+            if elements
+                .iter()
+                .any(|candidate| crate::builtins::type_predicates::eql_value(&value, candidate))
+            {
+                stack.push(current);
+            } else {
+                elements.insert(0, value);
+                let updated = Value::list(elements);
+                if *escaped {
+                    runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?;
+                } else {
+                    runtime.set_or_define_in(name, updated.clone(), environment, span)?;
+                }
+                stack.push(updated);
+            }
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PopList { name, escaped } => {
             let current = stack
                 .pop()

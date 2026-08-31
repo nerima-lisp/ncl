@@ -76,10 +76,13 @@ impl CompileState {
         else {
             return Ok(None);
         };
-        if !matches!(operator.as_str(), "PUSH" | "POP") {
+        if !matches!(operator.as_str(), "PUSH" | "POP" | "PUSHNEW") {
             return Ok(None);
         }
-        let expected = if operator == "PUSH" { 3 } else { 2 };
+        let expected = if operator == "POP" { 2 } else { 3 };
+        if operator == "PUSHNEW" && items.len() > expected {
+            return Ok(None);
+        }
         if items.len() != expected {
             return Err(Self::arity_error(
                 items,
@@ -92,16 +95,16 @@ impl CompileState {
         else {
             return Ok(None);
         };
-        if operator == "PUSH" {
+        if matches!(operator.as_str(), "PUSH" | "PUSHNEW") {
             self.compile_expression(function, &items[1])?;
         }
         self.compile_expression(function, &items[expected - 1])?;
         self.emit(
             function,
-            if operator == "PUSH" {
-                Instruction::PushList { name, escaped }
-            } else {
-                Instruction::PopList { name, escaped }
+            match operator.as_str() {
+                "PUSH" => Instruction::PushList { name, escaped },
+                "PUSHNEW" => Instruction::PushNewList { name, escaped },
+                _ => Instruction::PopList { name, escaped },
             },
             items[0].span,
         )?;

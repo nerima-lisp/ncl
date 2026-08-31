@@ -52,6 +52,12 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Push a value onto a list-valued symbol when absent by EQL."] PushNewList {
+        /// The symbol holding the list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Pop the first value from a list-valued symbol."] PopList {
         /// The symbol holding the list.
         name: String,

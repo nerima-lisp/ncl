@@ -77,6 +77,26 @@ fn compile_push_and_pop_use_native_list_instructions_for_symbol_places() {
 }
 
 #[test]
+fn compile_pushnew_uses_native_instruction_without_options() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let pushnew = parse_items("(pushnew 1 xs)");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
+        .unwrap();
+
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::PushNewList {
+                name: "XS".to_string(),
+                escaped: false,
+            })
+    );
+}
+
+#[test]
 fn compile_modify_symbol_rejects_too_many_operands() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

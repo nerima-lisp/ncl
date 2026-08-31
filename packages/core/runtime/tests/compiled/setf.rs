@@ -103,6 +103,14 @@ fn compiled_evaluates_native_push_and_pop_symbol_places() {
 }
 
 #[test]
+fn compiled_evaluates_native_pushnew_symbol_places() {
+    assert_eq!(
+        evaluate("(let ((xs (list 2 3))) (list (pushnew 1 xs) (pushnew 1 xs) xs))").to_string(),
+        "((1 2 3) (1 2 3) (1 2 3))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_symbol_setf_places_without_place_fallback() {
     assert_eq!(evaluate("(let ((x 1)) (setf x 2) x)").to_string(), "2");
     assert_eq!(

@@ -1231,16 +1231,17 @@ fn bignum_and_rational_exact_arithmetic_preserves_the_ratio() {
         "2535301200456458802993406410752/3"
     );
 
-    let floor_error = Runtime::new()
-        .eval_source("(floor (expt 2 100) 3/2)")
-        .must_fail();
-    assert!(
-        matches!(
-            &floor_error,
-            ncl_runtime::RuntimeError::InvalidForm { message, .. }
-                if message == "exact quotient does not support a float or a bignum"
-        ),
-        "unexpected error: {floor_error:?}"
+    assert_eq!(
+        evaluate("(multiple-value-list (floor (expt 2 100) 3/2))").to_string(),
+        "(845100400152152934331135470250 1)"
+    );
+    assert_eq!(
+        evaluate("(= (/ (expt 2 100) 3) (/ 1 3))").to_string(),
+        "NIL"
+    );
+    assert_eq!(
+        evaluate("(< (/ (expt 2 100) 3) (expt 2 100))").to_string(),
+        "T"
     );
 }
 

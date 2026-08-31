@@ -24,38 +24,12 @@ pub(in crate::builtins) fn compare_number_values(left: &Number, right: &Number) 
             .partial_cmp(&right.as_float())
             .unwrap_or(Ordering::Equal);
     }
-    if let (Number::Big(left), Number::Big(right)) = (left, right) {
-        // Both operands are already bare integers: compare by reference
-        // directly rather than padding each into a ratio and cloning.
-        return left.cmp(right);
-    }
-    if matches!(left, Number::Big(_)) || matches!(right, Number::Big(_)) {
-        let (Some((left_numerator, left_denominator)), Some((right_numerator, right_denominator))) =
-            (as_big_ratio(left), as_big_ratio(right))
-        else {
-            // Panics rather than falling back to Equal on purpose. The
-            // is_float() check above already handled the only case (a Float
-            // operand) that as_big_ratio cannot convert, so this is dead
-            // today -- but "couldn't convert, so call it Equal" is the
-            // exact shape of a wrong-answer bug this function already
-            // shipped once (see the regression test named for it in
-            // tests/evaluator/core.rs). A fifth Number variant, or a
-            // reordering of the is_float() guard, would silently revive it;
-            // a let-else takes its else branch with no compiler warning.
-            unreachable!("as_big_ratio only rejects Float, excluded above");
-        };
-        return (left_numerator * right_denominator).cmp(&(right_numerator * left_denominator));
-    }
-    // Same reasoning as the let-else above: exact_parts only rejects Float
-    // (and Big, handled by the branch above), both already excluded here.
-    let Some((left_numerator, left_denominator)) = left.exact_parts() else {
-        unreachable!("exact_parts only rejects Float and Big, both excluded above");
+    let (Some((left_numerator, left_denominator)), Some((right_numerator, right_denominator))) =
+        (as_big_ratio(left), as_big_ratio(right))
+    else {
+        unreachable!("as_big_ratio only rejects Float, excluded above");
     };
-    let Some((right_numerator, right_denominator)) = right.exact_parts() else {
-        unreachable!("exact_parts only rejects Float and Big, both excluded above");
-    };
-    (i128::from(left_numerator) * i128::from(right_denominator))
-        .cmp(&(i128::from(right_numerator) * i128::from(left_denominator)))
+    (left_numerator * right_denominator).cmp(&(right_numerator * left_denominator))
 }
 
 pub(in crate::builtins) fn numeric_equalp(left: &Number, right: &Number) -> bool {

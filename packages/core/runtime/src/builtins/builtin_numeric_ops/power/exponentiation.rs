@@ -17,12 +17,11 @@ pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
         if let Number::Big(ref exponent) = exponent
             && *exponent >= ibig::IBig::from(0)
             && let Ok(exponent) = u64::try_from(exponent)
+            && let Number::Integer(base) = base
         {
-            if let Number::Integer(base) = base {
-                return number_to_value(
-                    ibig_power(ibig::IBig::from(base), exponent).map(number_from_big)?,
-                );
-            }
+            return number_to_value(
+                ibig_power(ibig::IBig::from(base), exponent).map(number_from_big)?,
+            );
         }
     }
 

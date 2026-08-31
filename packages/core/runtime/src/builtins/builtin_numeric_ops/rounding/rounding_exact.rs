@@ -75,26 +75,26 @@ fn exact_integer_quotient_and_remainder(
     }
     let truncated = &dividend / &divisor;
     let remainder = &dividend % &divisor;
-    let direction = if (dividend < IBig::from(0)) != (divisor < IBig::from(0)) {
-        -1
-    } else {
+    let direction = if (dividend < IBig::from(0)) == (divisor < IBig::from(0)) {
         1
+    } else {
+        -1
     };
     let quotient = match mode {
         RoundingMode::Floor if direction < 0 && remainder != IBig::from(0) => &truncated - 1,
         RoundingMode::Ceiling if direction > 0 && remainder != IBig::from(0) => &truncated + 1,
         RoundingMode::Round if remainder != IBig::from(0) => {
-            let distance = remainder.clone().abs() * 2;
+            let distance = remainder.abs() * 2;
             let divisor_magnitude = divisor.clone().abs();
             if distance > divisor_magnitude
                 || (distance == divisor_magnitude && truncated.clone() % 2 != 0)
             {
                 &truncated + direction
             } else {
-                truncated.clone()
+                truncated
             }
         }
-        _ => truncated.clone(),
+        _ => truncated,
     };
     let remainder = dividend - &quotient * divisor;
     Ok(Value::values(vec![

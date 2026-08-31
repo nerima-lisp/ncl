@@ -28,7 +28,7 @@ impl CompileState {
             "DECF" => self.compile_modify(function, span, items, "DECF", "-"),
             "DEFVAR" => self.compile_defvar(function, span, items, false),
             "DEFPARAMETER" => self.compile_defvar(function, span, items, true),
-            "DEFCONSTANT" => self.compile_runtime_definition(function, span, items),
+            "DEFCONSTANT" => self.compile_defconstant(function, span, items),
             "DEFSTRUCT" => self.compile_defstruct(function, span, items),
             "DEFCLASS" => self.compile_defclass(function, span, items),
             "DEFGENERIC" => self.compile_defgeneric(function, span, items),

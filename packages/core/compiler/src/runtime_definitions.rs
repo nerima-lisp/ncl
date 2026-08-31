@@ -90,6 +90,28 @@ impl CompileState {
         Ok(())
     }
 
+    pub(super) fn compile_defconstant(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if !(items.len() == 3 || items.len() == 4) {
+            return Err(Self::arity_error(
+                items,
+                "DEFCONSTANT",
+                "two or three",
+                span,
+            ));
+        }
+        self.emit(
+            function,
+            Instruction::Defconstant(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(super) fn compile_runtime_definition(
         &mut self,
         function: FunctionId,

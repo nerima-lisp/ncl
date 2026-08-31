@@ -112,6 +112,7 @@ pub enum Instruction {
     },
     #[doc = "Update a symbol property through GET."] SetfGetDynamic,
     #[doc = "Update a hash-table-valued place through GETHASH."] SetfGethashDynamic,
+    #[doc = "Update a CLOS instance slot through SLOT-VALUE."] SetfSlotValueDynamic,
     #[doc = "Update a dynamically selected symbol value or function cell."] SetfSymbolCellDynamic {
         /// The symbol-cell accessor name.
         operator: String,

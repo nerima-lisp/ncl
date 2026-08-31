@@ -22,6 +22,21 @@ fn compiled_evaluates_basic_clos_instances_and_accessors() {
 }
 
 #[test]
+fn compiled_evaluates_clos_slot_value_setf() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r"(progn
+                 (defclass slot-value-target () ((name :initarg :name)))
+                 (let ((object (make-instance 'slot-value-target :name 1)))
+                   (list (setf (slot-value object 'name) 2)
+                         (slot-value object 'name))))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(2 2)");
+}
+
+#[test]
 fn compiled_evaluates_clos_with_slots_and_accessors() {
     let runtime = Runtime::new();
     let values = runtime
@@ -43,11 +58,9 @@ fn compiled_evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(
-        runtime
-            .eval_compiled_source("(with-accessors (x) object x)")
-            .is_err()
-    );
+    assert!(runtime
+        .eval_compiled_source("(with-accessors (x) object x)")
+        .is_err());
 }
 
 #[test]

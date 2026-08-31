@@ -1,7 +1,7 @@
 use ncl_syntax::Span;
 
 use crate::evaluator::helpers::unqualified_name;
-use crate::{Runtime, RuntimeError, Value, package};
+use crate::{package, Runtime, RuntimeError, Value};
 
 impl Runtime {
     pub(in crate::evaluator) fn package_designator_name(
@@ -83,10 +83,7 @@ impl Runtime {
         Ok(unqualified_name(name))
     }
 
-    pub(in crate::evaluator) fn slot_name_from_value(
-        value: &Value,
-        span: Span,
-    ) -> Result<String, RuntimeError> {
+    pub(crate) fn slot_name_from_value(value: &Value, span: Span) -> Result<String, RuntimeError> {
         Self::name_designator_from_value(value, span)
     }
 }
@@ -122,11 +119,9 @@ mod tests {
         assert!(Runtime::package_designator_name(&Value::String("".into()), span).is_err());
 
         let runtime = Runtime::new();
-        assert!(
-            runtime
-                .package_name_from_value(&Value::String("no-such-package".into()), span)
-                .is_err()
-        );
+        assert!(runtime
+            .package_name_from_value(&Value::String("no-such-package".into()), span)
+            .is_err());
 
         let symbol_cases = [
             (Value::String(":name".into()), "NAME"),

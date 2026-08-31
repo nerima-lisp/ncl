@@ -19,6 +19,13 @@ impl CompileState {
             return Ok(false);
         };
         match operator.as_str() {
+            "SLOT-VALUE" => {
+                self.compile_expression(function, &items[1])?;
+                self.compile_expression(function, &items[2])?;
+                self.compile_expression(function, value_form)?;
+                self.emit(function, Instruction::SetfSlotValueDynamic, place.span)?;
+                Ok(true)
+            }
             "GET" => {
                 self.compile_expression(function, &items[1])?;
                 self.compile_expression(function, &items[2])?;

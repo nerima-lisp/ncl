@@ -2,10 +2,12 @@
 use super::*;
 
 mod array;
+mod element;
 mod list;
 mod property;
 mod rotate_shift;
 mod sequence;
+mod subseq;
 mod symbol_cell;
 
 pub(super) fn execute_set_instruction(
@@ -85,7 +87,7 @@ pub(super) fn execute_set_instruction(
             operator,
             name,
             escaped,
-        } => sequence::execute_element(
+        } => element::execute(
             runtime,
             operator,
             name,
@@ -99,7 +101,7 @@ pub(super) fn execute_set_instruction(
             has_end,
             name,
             escaped,
-        } => sequence::execute_subseq(
+        } => subseq::execute(
             runtime,
             *has_end,
             name,

@@ -72,7 +72,7 @@ pub(super) fn execute_rotatef_nested(
     let roots = stack.split_off(stack.len() - places.len());
     let mut values = Vec::with_capacity(places.len());
     for ((accessors, _, _), root) in places.iter().zip(&roots) {
-        values.push(super::list::read_nested(
+        values.push(super::list::nested::read(
             root.list_items().ok_or_else(|| RuntimeError::Type {
                 expected: "LIST".to_string(),
                 actual: root.type_name().to_string(),
@@ -83,7 +83,7 @@ pub(super) fn execute_rotatef_nested(
         )?);
     }
     for (index, ((accessors, name, escaped), root)) in places.iter().zip(roots).enumerate() {
-        let updated = Value::list(super::list::update_nested(
+        let updated = Value::list(super::list::nested::update(
             root.list_items().unwrap(),
             accessors,
             &values[(index + values.len() - 1) % values.len()],
@@ -116,7 +116,7 @@ pub(super) fn execute_shiftf_nested(
     let old = places
         .iter()
         .zip(roots)
-        .map(|((a, _, _), root)| super::list::read_nested(root.list_items().unwrap(), a, span))
+        .map(|((a, _, _), root)| super::list::nested::read(root.list_items().unwrap(), a, span))
         .collect::<Result<Vec<_>, _>>()?;
     let mut updated_roots: Vec<(&str, bool, Value)> = Vec::new();
     for (index, ((accessors, name, escaped), root)) in places.iter().zip(roots).enumerate() {
@@ -128,7 +128,7 @@ pub(super) fn execute_shiftf_nested(
             })
             .map(|(_, _, value)| value)
             .unwrap_or(root);
-        let updated = Value::list(super::list::update_nested(
+        let updated = Value::list(super::list::nested::update(
             current_root.list_items().unwrap(),
             accessors,
             old.get(index + 1).unwrap_or_else(|| values.last().unwrap()),

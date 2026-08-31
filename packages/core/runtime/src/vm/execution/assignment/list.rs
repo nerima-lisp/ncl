@@ -1,6 +1,8 @@
 #[allow(clippy::wildcard_imports)]
 use super::super::*;
 
+pub(super) mod nested;
+
 pub(super) fn execute(
     runtime: &Runtime,
     operator: &str,
@@ -74,7 +76,7 @@ pub(super) fn execute_nested(
         actual: current.type_name().to_string(),
         span: Some(span),
     })?;
-    let updated = Value::list(update_nested(elements, accessors, &value, span)?);
+    let updated = Value::list(nested::update(elements, accessors, &value, span)?);
     if escaped {
         runtime.set_or_define_exact_in(name, updated, environment, span)?;
     } else {
@@ -83,74 +85,6 @@ pub(super) fn execute_nested(
     stack.push(value);
     *program_counter += 1;
     Ok(true)
-}
-
-pub(super) fn read_nested(
-    elements: Vec<Value>,
-    accessors: &[String],
-    span: Span,
-) -> Result<Value, RuntimeError> {
-    if elements.is_empty() {
-        return Err(invalid("cannot read CAR/CDR of NIL", span));
-    }
-    match (accessors.first().map(String::as_str), accessors.len()) {
-        (Some("CAR" | "FIRST"), 1) => Ok(elements[0].clone()),
-        (Some("CDR" | "REST"), 1) => Ok(Value::list(elements[1..].to_vec())),
-        (Some("CAR" | "FIRST"), _) => read_nested(
-            elements[0].list_items().ok_or_else(|| RuntimeError::Type {
-                expected: "LIST".to_string(),
-                actual: elements[0].type_name().to_string(),
-                span: Some(span),
-            })?,
-            &accessors[1..],
-            span,
-        ),
-        (Some("CDR" | "REST"), _) => read_nested(elements[1..].to_vec(), &accessors[1..], span),
-        _ => Err(invalid("unsupported native nested list accessor", span)),
-    }
-}
-
-pub(super) fn update_nested(
-    mut elements: Vec<Value>,
-    accessors: &[String],
-    value: &Value,
-    span: Span,
-) -> Result<Vec<Value>, RuntimeError> {
-    if elements.is_empty() {
-        return Err(invalid("cannot SETF CAR/CDR of NIL", span));
-    }
-    match (accessors.first().map(String::as_str), accessors.len()) {
-        (Some("CAR" | "FIRST"), 1) => elements[0] = value.clone(),
-        (Some("CDR" | "REST"), 1) => {
-            let mut replacement = value.list_items().ok_or_else(|| RuntimeError::Type {
-                expected: "LIST".to_string(),
-                actual: value.type_name().to_string(),
-                span: Some(span),
-            })?;
-            replacement.insert(0, elements[0].clone());
-            elements = replacement;
-        }
-        (Some("CAR" | "FIRST"), _) => {
-            let child = elements[0].list_items().ok_or_else(|| RuntimeError::Type {
-                expected: "LIST".to_string(),
-                actual: elements[0].type_name().to_string(),
-                span: Some(span),
-            })?;
-            elements[0] = Value::list(update_nested(child, &accessors[1..], value, span)?);
-        }
-        (Some("CDR" | "REST"), _) => {
-            let updated = update_nested(elements[1..].to_vec(), &accessors[1..], value, span)?;
-            elements.truncate(1);
-            elements.extend(updated);
-        }
-        _ => {
-            return Err(invalid(
-                "unsupported native nested list SETF operator",
-                span,
-            ));
-        }
-    }
-    Ok(elements)
 }
 
 pub(super) fn execute_place_mutation(

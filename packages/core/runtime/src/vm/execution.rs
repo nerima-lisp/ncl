@@ -11,6 +11,9 @@ mod application_tests;
 mod assignment;
 #[allow(clippy::wildcard_imports)]
 use assignment::*;
+mod parallel_assignment;
+#[allow(clippy::wildcard_imports)]
+use parallel_assignment::*;
 #[cfg(test)]
 mod assignment_tests;
 

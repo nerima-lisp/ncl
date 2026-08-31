@@ -21,7 +21,12 @@ impl CompileState {
         let pair_count = operands.len() / 2;
         for (index, [place, value_form]) in pairs.iter().enumerate() {
             self.compile_expression(function, value_form)?;
-            self.emit(function, Instruction::Setf(place.clone()), place.span)?;
+            let instruction = match Self::symbol_name_info(place, "setf place") {
+                Ok((name, escaped)) if escaped => Instruction::SetExact(name),
+                Ok((name, _)) => Instruction::Set(name),
+                Err(_) => Instruction::Setf(place.clone()),
+            };
+            self.emit(function, instruction, place.span)?;
             if index + 1 < pair_count {
                 self.emit(function, Instruction::Pop, value_form.span)?;
             }

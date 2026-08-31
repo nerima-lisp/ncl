@@ -95,6 +95,15 @@ fn compiled_evaluates_setf_places() {
 }
 
 #[test]
+fn compiled_evaluates_symbol_setf_places_without_place_fallback() {
+    assert_eq!(evaluate("(let ((x 1)) (setf x 2) x)").to_string(), "2");
+    assert_eq!(
+        evaluate("(let ((|Mixed| 1)) (setf |Mixed| 2) |Mixed|)").to_string(),
+        "2"
+    );
+}
+
+#[test]
 fn compiled_rejects_malformed_places_and_arguments() {
     for source in support::MALFORMED_GENERALIZED_ASSIGNMENT_FORMS {
         assert!(

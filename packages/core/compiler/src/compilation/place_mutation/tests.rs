@@ -32,6 +32,22 @@ fn compile_setf_propagates_a_malformed_value_form_error() {
 }
 
 #[test]
+fn compile_setf_uses_direct_assignment_for_symbol_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf x 1 |Mixed| 2 (car x) 3)");
+
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap_or_else(|error| panic!("valid SETF places should compile: {error}"));
+
+    let instructions = &state.functions[function].instructions;
+    assert!(instructions.contains(&Instruction::Set("X".to_string())));
+    assert!(instructions.contains(&Instruction::SetExact("Mixed".to_string())));
+    assert!(instructions.contains(&Instruction::Setf(items[5].clone())));
+}
+
+#[test]
 fn compile_modify_symbol_rejects_too_many_operands() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

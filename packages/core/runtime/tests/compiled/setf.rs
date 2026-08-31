@@ -195,6 +195,21 @@ fn compiled_evaluates_native_pushnew_symbol_places() {
 }
 
 #[test]
+fn compiled_evaluates_pushnew_options_in_source_order() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 1)) (events nil))
+               (pushnew 2 xs
+                        :key (progn (push :key events) #'identity)
+                        :test (progn (push :test events) #'equal))
+               (list xs (reverse events)))",
+        )
+        .to_string(),
+        "((2 1) (:KEY :TEST))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_symbol_setf_places_without_place_fallback() {
     assert_eq!(evaluate("(let ((x 1)) (setf x 2) x)").to_string(), "2");
     assert_eq!(

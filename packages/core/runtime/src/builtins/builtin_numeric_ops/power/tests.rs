@@ -95,18 +95,24 @@ fn square_root_handles_rational_and_negative_inputs() {
         Value::rational(4, 9).unwrap_or_else(|error| panic!("valid rational: {error}"));
     assert_eq!(ok_string(square_root(&[perfect_square])), "2/3");
 
-    assert!(matches!(
-        square_root(&[Value::Integer(-4)]),
-        Err(RuntimeError::InvalidForm { .. })
-    ));
-    assert!(matches!(
-        square_root(&[Value::Float(-1.0)]),
-        Err(RuntimeError::InvalidForm { .. })
-    ));
+    assert_eq!(ok_string(square_root(&[Value::Integer(-4)])), "#C(0.0 2.0)");
+    assert_eq!(ok_string(square_root(&[Value::Float(-1.0)])), "#C(0.0 1.0)");
 }
 
 #[test]
-fn negative_real_error_reports_the_offending_function() {
-    let error = negative_real_error("sqrt");
-    assert!(matches!(error, RuntimeError::InvalidForm { message, .. } if message.contains("sqrt")));
+fn square_root_handles_complex_principal_values() {
+    assert_eq!(
+        ok_string(square_root(&[Value::complex(
+            Value::Integer(3),
+            Value::Integer(4),
+        )])),
+        "#C(2.0 1.0)"
+    );
+    assert_eq!(
+        ok_string(square_root(&[Value::complex(
+            Value::Integer(-3),
+            Value::Integer(4),
+        )])),
+        "#C(1.0 2.0)"
+    );
 }

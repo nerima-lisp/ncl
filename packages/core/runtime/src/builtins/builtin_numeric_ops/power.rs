@@ -13,6 +13,9 @@ pub use exponentiation::exponentiate;
 )]
 pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "sqrt", 1)?;
+    if let Value::Complex(value) = &arguments[0] {
+        return complex_square_root(&value.real, &value.imag);
+    }
     match number_argument("sqrt", &arguments[0])? {
         Number::Integer(value) if value >= 0 => {
             let value = u128::try_from(value).map_err(|_| RuntimeError::NumericOverflow)?;
@@ -67,10 +70,35 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 Ok(Value::Float(Number::Big(value).as_float().sqrt()))
             }
         }
-        Number::Integer(_) | Number::Rational(_) | Number::Float(_) | Number::Big(_) => {
-            Err(negative_real_error("sqrt"))
-        }
+        Number::Integer(value) => Ok(Value::complex(
+            Value::Float(0.0),
+            Value::Float((-(value as f64)).sqrt()),
+        )),
+        Number::Rational(value) => Ok(Value::complex(
+            Value::Float(0.0),
+            Value::Float((-value.numerator().to_f64() / value.denominator().to_f64()).sqrt()),
+        )),
+        Number::Float(value) => Ok(Value::complex(
+            Value::Float(0.0),
+            Value::Float((-value).sqrt()),
+        )),
+        Number::Big(value) => Ok(Value::complex(
+            Value::Float(0.0),
+            Value::Float((-Number::Big(value).as_float()).sqrt()),
+        )),
     }
+}
+
+fn complex_square_root(real: &Value, imag: &Value) -> Result<Value, RuntimeError> {
+    let real = number_argument("sqrt", real)?.as_float();
+    let imag = number_argument("sqrt", imag)?.as_float();
+    let magnitude = real.hypot(imag);
+    let root_real = ((magnitude + real) / 2.0).sqrt();
+    let root_imag = ((magnitude - real) / 2.0).sqrt().copysign(imag);
+    Ok(Value::complex(
+        Value::Float(root_real),
+        Value::Float(root_imag),
+    ))
 }
 
 /// Computes `floor(sqrt(value))` for a non-negative arbitrary-precision
@@ -117,13 +145,6 @@ pub const fn integer_square_root(value: u128) -> u128 {
             return root;
         }
         root = next;
-    }
-}
-
-pub fn negative_real_error(function: &str) -> RuntimeError {
-    RuntimeError::InvalidForm {
-        message: format!("{function} of a negative real requires complex numbers"),
-        span: None,
     }
 }
 

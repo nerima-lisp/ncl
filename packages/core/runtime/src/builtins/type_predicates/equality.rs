@@ -2,6 +2,9 @@ use crate::Value;
 use crate::builtins::numbers::{number, numeric_equalp};
 
 pub fn eql_value(left: &Value, right: &Value) -> bool {
+    if let (Some(left), Some(right)) = (left.as_complex(), right.as_complex()) {
+        return eql_value(&left.real, &right.real) && eql_value(&left.imag, &right.imag);
+    }
     let numeric_equal = match (left, right) {
         (Value::Integer(left), Value::Integer(right)) => left == right,
         (Value::BigInteger(left), Value::BigInteger(right)) => left == right,
@@ -17,6 +20,9 @@ pub fn eql_value(left: &Value, right: &Value) -> bool {
 }
 
 pub fn equalp_value(left: &Value, right: &Value) -> bool {
+    if let (Some(left), Some(right)) = (left.as_complex(), right.as_complex()) {
+        return equalp_value(&left.real, &right.real) && equalp_value(&left.imag, &right.imag);
+    }
     if let (Ok(left), Ok(right)) = (number(left), number(right)) {
         return numeric_equalp(&left, &right);
     }
@@ -109,5 +115,16 @@ mod tests {
             ],
         );
         assert!(!equalp_value(&left, &different_dimensions));
+    }
+
+    #[test]
+    fn eql_and_equalp_compare_complex_components() {
+        let left = Value::complex(Value::Integer(2), Value::Integer(3));
+        let same = Value::complex(Value::Integer(2), Value::Integer(3));
+        let different = Value::complex(Value::Integer(2), Value::Integer(4));
+        assert!(eql_value(&left, &same));
+        assert!(equalp_value(&left, &same));
+        assert!(!eql_value(&left, &different));
+        assert!(!equalp_value(&left, &different));
     }
 }

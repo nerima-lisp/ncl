@@ -74,6 +74,28 @@ fn absolute_handles_rational_and_float_values() {
     assert_eq!(numeric_result(absolute(&[Value::Float(-2.5)])), "2.5");
 }
 
+#[test]
+fn numeric_equal_compares_complex_components() {
+    let left = Value::complex(Value::Integer(2), Value::Integer(3));
+    let right = Value::complex(Value::Integer(2), Value::Integer(3));
+    let different = Value::complex(Value::Integer(2), Value::Integer(4));
+    assert_eq!(numeric_result(numeric_equal(&[left, right])), "T");
+    assert_eq!(
+        numeric_result(numeric_equal(&[
+            different,
+            Value::complex(Value::Integer(2), Value::Integer(3))
+        ])),
+        "NIL"
+    );
+    assert_eq!(
+        numeric_result(numeric_equal(&[
+            Value::complex(Value::Integer(1), Value::Integer(0)),
+            Value::Integer(1)
+        ])),
+        "T"
+    );
+}
+
 fn numeric_result(result: Result<Value, RuntimeError>) -> String {
     match result {
         Ok(value) => value.to_string(),

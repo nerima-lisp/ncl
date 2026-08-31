@@ -7,7 +7,33 @@ use super::{
 };
 
 pub fn numeric_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.is_empty() {
+        return Err(arity("=", "at least one", 0));
+    }
+    if arguments.iter().any(Value::is_complex) {
+        let equal =
+            arguments
+                .windows(2)
+                .try_fold(true, |equal, window| -> Result<bool, RuntimeError> {
+                    Ok(equal && complex_numeric_equal(window[0].clone(), window[1].clone())?)
+                })?;
+        return Ok(Value::boolean(equal));
+    }
     compare_numbers("=", arguments, |ordering| ordering == Ordering::Equal)
+}
+
+fn complex_numeric_equal(left: Value, right: Value) -> Result<bool, RuntimeError> {
+    let (left_real, left_imag) = complex_components(left);
+    let (right_real, right_imag) = complex_components(right);
+    Ok(numeric_equal(&[left_real, right_real])?.is_truthy()
+        && numeric_equal(&[left_imag, right_imag])?.is_truthy())
+}
+
+fn complex_components(value: Value) -> (Value, Value) {
+    match value {
+        Value::Complex(value) => (value.real.clone(), value.imag.clone()),
+        value => (value, Value::Integer(0)),
+    }
 }
 
 pub fn less_than(arguments: &[Value]) -> Result<Value, RuntimeError> {

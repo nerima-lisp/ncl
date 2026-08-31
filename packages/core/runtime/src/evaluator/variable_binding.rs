@@ -34,7 +34,7 @@ impl Runtime {
                 if dynamic.constants.contains(binding.as_ref()) {
                     return false;
                 }
-                dynamic.bindings[index].1 = value;
+                dynamic.bindings[index].1 = value.clone();
                 return true;
             }
             if let Some(candidate) = candidates

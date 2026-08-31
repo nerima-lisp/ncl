@@ -24,6 +24,7 @@ pub(super) fn execute_set_instruction(
                 .ok_or_else(|| invalid("setf symbol cell target must be a symbol", span))?;
             match operator.as_str() {
                 "SYMBOL-VALUE" => {
+                    runtime.ensure_symbol_writable(name, exact, span)?;
                     if exact {
                         runtime.set_symbol_value_exact(name, value.clone());
                     } else {

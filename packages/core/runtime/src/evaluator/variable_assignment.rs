@@ -132,7 +132,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn ensure_symbol_writable(
+    pub(crate) fn ensure_symbol_writable(
         &self,
         name: &str,
         escaped: bool,

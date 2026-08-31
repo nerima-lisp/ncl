@@ -151,6 +151,27 @@ fn compile_setf_uses_native_bit_for_a_symbol_place() {
 }
 
 #[test]
+fn compile_setf_uses_native_element_accessors_for_symbol_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (elt xs index) 9 (char text index) #\\X)");
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap();
+    let instructions = &state.functions[function].instructions;
+    assert!(instructions.contains(&Instruction::SetfElementDynamic {
+        operator: "ELT".to_string(),
+        name: "XS".to_string(),
+        escaped: false,
+    }));
+    assert!(instructions.contains(&Instruction::SetfElementDynamic {
+        operator: "CHAR".to_string(),
+        name: "TEXT".to_string(),
+        escaped: false,
+    }));
+}
+
+#[test]
 fn compile_push_and_pop_use_native_list_instructions_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

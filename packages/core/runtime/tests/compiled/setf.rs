@@ -62,6 +62,15 @@ fn compiled_evaluates_setf_places() {
         "1"
     );
     assert_eq!(
+        evaluate(
+            "(let ((xs (list 1 2)) (index 1) (text \"abc\"))
+               (setf (elt xs index) 9 (char text index) #\\X)
+               (list xs text))",
+        )
+        .to_string(),
+        "((1 9) \"aXc\")"
+    );
+    assert_eq!(
         evaluate("(let ((xs (list (list 1 2)))) (setf (car (nth 0 xs)) 9) xs)").to_string(),
         "((9 2))"
     );

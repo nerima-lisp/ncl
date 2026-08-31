@@ -154,6 +154,39 @@ impl CompileState {
                 }
                 continue;
             }
+            let element_place = match &place.kind {
+                FormKind::List(items) if items.len() == 3 => {
+                    Self::symbol_name_info(&items[0], "setf place operator")
+                        .ok()
+                        .filter(|(name, _)| matches!(name.as_str(), "ELT" | "CHAR" | "SCHAR"))
+                        .and_then(|(operator, _)| {
+                            Self::symbol_name_info(&items[1], "setf element target")
+                                .ok()
+                                .map(|(name, escaped)| {
+                                    (operator, name, escaped, &items[1], &items[2])
+                                })
+                        })
+                }
+                _ => None,
+            };
+            if let Some((operator, name, escaped, target, index_form)) = element_place {
+                self.compile_expression(function, target)?;
+                self.compile_expression(function, index_form)?;
+                self.compile_expression(function, value_form)?;
+                self.emit(
+                    function,
+                    Instruction::SetfElementDynamic {
+                        operator,
+                        name,
+                        escaped,
+                    },
+                    place.span,
+                )?;
+                if index + 1 < pair_count {
+                    self.emit(function, Instruction::Pop, value_form.span)?;
+                }
+                continue;
+            }
             let list_place = match &place.kind {
                 FormKind::List(items) if items.len() == 2 => {
                     let operator = Self::symbol_name_info(&items[0], "setf place operator")

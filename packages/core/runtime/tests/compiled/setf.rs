@@ -203,6 +203,14 @@ fn compiled_evaluates_native_pushnew_symbol_places() {
 }
 
 #[test]
+fn compiled_evaluates_push_on_a_generalized_place() {
+    assert_eq!(
+        evaluate("(let ((xs (list (list 2 3)))) (list (push 1 (car xs)) xs))").to_string(),
+        "((1 2 3) ((1 2 3)))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_pushnew_options_in_source_order() {
     assert_eq!(
         evaluate(

@@ -51,6 +51,9 @@ impl CompileState {
                 span,
             ));
         }
+        if let Some(result) = self.compile_native_push_pop(function, span, items)? {
+            return Ok(result);
+        }
         self.emit(
             function,
             Instruction::Quote(Form::list(items.to_vec(), span)),
@@ -58,6 +61,51 @@ impl CompileState {
         )?;
         self.emit(function, Instruction::Eval(span), span)?;
         Ok(())
+    }
+
+    fn compile_native_push_pop(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<Option<()>, CompileError> {
+        let Some(operator) = items
+            .first()
+            .and_then(|form| Self::symbol_name_info(form, "runtime operator").ok())
+            .map(|(name, _)| name)
+        else {
+            return Ok(None);
+        };
+        if !matches!(operator.as_str(), "PUSH" | "POP") {
+            return Ok(None);
+        }
+        let expected = if operator == "PUSH" { 3 } else { 2 };
+        if items.len() != expected {
+            return Err(Self::arity_error(
+                items,
+                &operator,
+                if operator == "PUSH" { "two" } else { "one" },
+                span,
+            ));
+        }
+        let Some((name, escaped)) = Self::symbol_name_info(&items[expected - 1], "list place").ok()
+        else {
+            return Ok(None);
+        };
+        if operator == "PUSH" {
+            self.compile_expression(function, &items[1])?;
+        }
+        self.compile_expression(function, &items[expected - 1])?;
+        self.emit(
+            function,
+            if operator == "PUSH" {
+                Instruction::PushList { name, escaped }
+            } else {
+                Instruction::PopList { name, escaped }
+            },
+            items[0].span,
+        )?;
+        Ok(Some(()))
     }
 }
 

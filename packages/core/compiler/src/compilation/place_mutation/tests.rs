@@ -52,6 +52,31 @@ fn compile_setf_uses_direct_assignment_for_symbol_places() {
 }
 
 #[test]
+fn compile_push_and_pop_use_native_list_instructions_for_symbol_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let push = parse_items("(push 1 xs)");
+    let pop = parse_items("(pop |Mixed|)");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &push)
+        .unwrap();
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pop)
+        .unwrap();
+
+    let instructions = &state.functions[function].instructions;
+    assert!(instructions.contains(&Instruction::PushList {
+        name: "XS".to_string(),
+        escaped: false,
+    }));
+    assert!(instructions.contains(&Instruction::PopList {
+        name: "Mixed".to_string(),
+        escaped: true,
+    }));
+}
+
+#[test]
 fn compile_modify_symbol_rejects_too_many_operands() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

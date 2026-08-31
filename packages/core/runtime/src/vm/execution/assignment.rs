@@ -71,6 +71,55 @@ pub(super) fn execute_set_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::PushList { name, escaped } => {
+            let current = stack
+                .pop()
+                .ok_or_else(|| invalid("push has no target on the stack", span))?
+                .primary_value();
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("push has no value on the stack", span))?
+                .primary_value();
+            let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: current.type_name().to_string(),
+                span: Some(span),
+            })?;
+            elements.insert(0, value);
+            let updated = Value::list(elements);
+            if *escaped {
+                runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?;
+            } else {
+                runtime.set_or_define_in(name, updated.clone(), environment, span)?;
+            }
+            stack.push(updated);
+            *program_counter += 1;
+            Ok(true)
+        }
+        Instruction::PopList { name, escaped } => {
+            let current = stack
+                .pop()
+                .ok_or_else(|| invalid("pop has no target on the stack", span))?
+                .primary_value();
+            let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: current.type_name().to_string(),
+                span: Some(span),
+            })?;
+            let value = elements.first().cloned().unwrap_or(Value::Nil);
+            if !elements.is_empty() {
+                elements.remove(0);
+            }
+            let updated = Value::list(elements);
+            if *escaped {
+                runtime.set_or_define_exact_in(name, updated, environment, span)?;
+            } else {
+                runtime.set_or_define_in(name, updated, environment, span)?;
+            }
+            stack.push(value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::Setf(place) | Instruction::MapIntoSetf(place) => {
             let map_into = matches!(instruction, Instruction::MapIntoSetf(_));
             let value = stack

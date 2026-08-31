@@ -156,6 +156,25 @@ fn compile_modify_symbol_rejects_too_many_operands() {
 }
 
 #[test]
+fn compile_modify_uses_native_nested_list_instruction() {
+    let form = read("(incf (car (car xs)) 2)")
+        .unwrap_or_else(|error| panic!("test source should parse: {error}"))
+        .remove(0);
+
+    let program = Compiler::compile_form(&form)
+        .unwrap_or_else(|error| panic!("nested list INCF should compile: {error}"));
+    let instructions = &program.functions[program.entry].instructions;
+
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::SetfNestedList { accessors, name, escaped }
+            if accessors == &["CAR".to_string(), "CAR".to_string()]
+                && name == "XS"
+                && !escaped
+    )));
+}
+
+#[test]
 fn compile_modify_symbol_rejects_a_non_symbol_place() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

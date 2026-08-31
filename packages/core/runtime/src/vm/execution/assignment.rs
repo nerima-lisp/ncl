@@ -5,6 +5,7 @@ mod array;
 mod element;
 mod list;
 mod property;
+mod pushnew;
 mod rotate_shift;
 mod sequence;
 mod subseq;
@@ -106,7 +107,7 @@ pub(super) fn execute_set_instruction(
             test_not,
             has_key,
             key_before_test,
-        } => list::execute_place_pushnew_options(
+        } => pushnew::execute_place_pushnew_options(
             runtime,
             accessor,
             name,
@@ -147,7 +148,7 @@ pub(super) fn execute_set_instruction(
             program_counter,
             span,
         ),
-        Instruction::PushNewList { name, escaped } => list::execute_pushnew(
+        Instruction::PushNewList { name, escaped } => pushnew::execute_pushnew(
             runtime,
             name,
             *escaped,
@@ -162,7 +163,7 @@ pub(super) fn execute_set_instruction(
             test_not,
             has_key,
             key_before_test,
-        } => list::execute_pushnew_options(
+        } => pushnew::execute_pushnew_options(
             runtime,
             name,
             *escaped,

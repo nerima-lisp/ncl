@@ -1213,25 +1213,22 @@ fn min_max_handle_ties_and_a_single_argument() {
 }
 
 #[test]
-fn reworded_exact_arithmetic_error_messages_name_bignums_not_just_floats() {
-    // Regression: exact_binary's bignum branch and exact_quotient's
-    // exact_parts() branch used to describe the rejected operand only as
-    // "a non-exact number" / imply "a float", which was actively wrong
-    // once bignums became a possible exact operand that still can't be
-    // combined with a Rational or a Float here. Assert the new wording so
-    // a future edit can't silently revert to the old misleading text --
-    // matching only the error *variant* (as the pre-existing tests for
-    // these functions do) would not catch that regression.
-    let add_error = Runtime::new()
-        .eval_source("(+ (expt 2 100) 1/2)")
-        .must_fail();
-    assert!(
-        matches!(
-            &add_error,
-            ncl_runtime::RuntimeError::InvalidForm { message, .. }
-                if message == "exact arithmetic between a bignum and a float or rational is not supported"
-        ),
-        "unexpected error: {add_error:?}"
+fn bignum_and_rational_exact_arithmetic_preserves_the_ratio() {
+    assert_eq!(
+        evaluate("(+ (expt 2 100) 1/3)").to_string(),
+        "3802951800684688204490109616129/3"
+    );
+    assert_eq!(
+        evaluate("(- (expt 2 100) 1/3)").to_string(),
+        "3802951800684688204490109616127/3"
+    );
+    assert_eq!(
+        evaluate("(* (expt 2 100) 1/3)").to_string(),
+        "1267650600228229401496703205376/3"
+    );
+    assert_eq!(
+        evaluate("(/ (expt 2 100) 3/2)").to_string(),
+        "2535301200456458802993406410752/3"
     );
 
     let floor_error = Runtime::new()

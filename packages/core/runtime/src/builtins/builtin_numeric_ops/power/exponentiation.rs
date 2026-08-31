@@ -1,6 +1,8 @@
+use ibig::ops::Abs;
+
 use super::super::{
     Number, RuntimeError, Value, exact, exceeds_exact_bignum_digit_cap, number_argument,
-    number_from_big, number_to_value, rational_number,
+    number_from_big, number_to_value, rational_number, rational_number_big,
 };
 
 pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -15,13 +17,20 @@ pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
             return number_to_value(exact_power(base, exponent_numerator)?);
         }
         if let Number::Big(ref exponent) = exponent
-            && *exponent >= ibig::IBig::from(0)
-            && let Ok(exponent) = u64::try_from(exponent)
             && let Number::Integer(base) = base
         {
-            return number_to_value(
-                ibig_power(ibig::IBig::from(base), exponent).map(number_from_big)?,
-            );
+            let negative = exponent < &ibig::IBig::from(0);
+            if negative && base == 0 {
+                return Err(RuntimeError::DivisionByZero);
+            }
+            if let Ok(magnitude) = u64::try_from(exponent.clone().abs()) {
+                let power = ibig_power(ibig::IBig::from(base), magnitude)?;
+                return if negative {
+                    number_to_value(rational_number_big(ibig::IBig::from(1), power)?)
+                } else {
+                    number_to_value(number_from_big(power))
+                };
+            }
         }
     }
 

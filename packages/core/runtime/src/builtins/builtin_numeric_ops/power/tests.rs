@@ -40,6 +40,21 @@ fn exponentiate_zero_to_negative_power_is_division_by_zero() {
 }
 
 #[test]
+fn exponentiate_handles_negative_bignum_exponent_exactly() {
+    assert_eq!(
+        ok_string(exponentiate(&[
+            Value::Integer(2),
+            Value::big_integer(ibig::IBig::from(-3)),
+        ])),
+        "1/8",
+    );
+    assert!(matches!(
+        exponentiate(&[Value::Integer(0), Value::big_integer(ibig::IBig::from(-3)),]),
+        Err(RuntimeError::DivisionByZero)
+    ));
+}
+
+#[test]
 fn exact_power_rejects_a_non_exact_base() {
     assert!(matches!(
         exact_power(Number::Float(2.0), 2),

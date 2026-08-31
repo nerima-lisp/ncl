@@ -19,6 +19,7 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "FIND-IF-NOT",
     "POSITION-IF-NOT",
     "COUNT-IF-NOT",
+    "TREE-EQUAL",
     "SEARCH",
     "MISMATCH",
     "SORT",

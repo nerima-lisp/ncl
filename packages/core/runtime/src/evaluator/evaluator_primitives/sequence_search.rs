@@ -52,6 +52,13 @@ impl Runtime {
                     span,
                 )
             }
+            "TREE-EQUAL" if arguments.len() >= 2 => self.apply_tree_equal(
+                &arguments[0],
+                &arguments[1],
+                &arguments[2..],
+                environment,
+                span,
+            ),
             "SEARCH" | "MISMATCH" if arguments.len() >= 2 => self.apply_sequence_pair_search(
                 name,
                 &arguments[0],
@@ -85,6 +92,7 @@ impl Runtime {
                 "at least two",
                 arguments.len(),
             )),
+            "TREE-EQUAL" => Err(Self::arity("tree-equal", "at least two", arguments.len())),
             _ => return None,
         })
     }

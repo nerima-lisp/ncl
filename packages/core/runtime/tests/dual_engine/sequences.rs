@@ -251,3 +251,24 @@ fn evaluates_sequence_searches(#[case] eval_fn: EvalFn) {
     );
     assert_eq!(evaluate("(count-if #'evenp '(1 2 4 5 6))").to_string(), "3");
 }
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_tree_equal(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(evaluate("(tree-equal 1 1)").to_string(), "T");
+    assert_eq!(evaluate("(tree-equal '(1) '(1))").to_string(), "T");
+    assert_eq!(
+        evaluate("(tree-equal '(1 (2 3)) '(1 (2 3)))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(tree-equal '(1 (2 3)) '(1 (2 4)))").to_string(),
+        "NIL"
+    );
+    assert_eq!(
+        evaluate("(tree-equal '(1 2) '(3 4) :test-not #'eql)").to_string(),
+        "T"
+    );
+}

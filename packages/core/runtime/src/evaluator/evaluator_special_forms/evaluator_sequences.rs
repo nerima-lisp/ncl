@@ -29,3 +29,4 @@ mod sequence_removal_marking;
 mod sequence_search;
 mod sequence_substitute;
 mod sequence_substitute_matching;
+mod tree_equal;

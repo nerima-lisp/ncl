@@ -243,6 +243,20 @@ fn compiled_evaluates_nested_push_and_pop_places() {
 }
 
 #[test]
+fn compiled_evaluates_nested_pushnew_places() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list (list (list 1 2)))))
+               (list (pushnew 0 (car (car xs)))
+                     (pushnew 0 (car (car xs)))
+                     xs))",
+        )
+        .to_string(),
+        "((0 1 2) (0 1 2) (((0 1 2))))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_pushnew_on_a_generalized_place() {
     assert_eq!(
         evaluate(

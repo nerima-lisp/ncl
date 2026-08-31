@@ -240,7 +240,7 @@ pub(super) fn execute_nested_place_mutation(
         .pop()
         .ok_or_else(|| invalid("list place has no target", span))?
         .primary_value();
-    let value = if operator == "PUSH" {
+    let value = if matches!(operator, "PUSH" | "PUSHNEW") {
         Some(
             stack
                 .pop()
@@ -305,16 +305,37 @@ fn mutate_nested(
         actual: current.type_name().into(),
         span: Some(span),
     })?;
-    let result = if operator == "PUSH" {
-        let value = value.expect("PUSH value");
-        items.insert(0, value);
-        Value::list(items.clone())
-    } else {
-        let value = items.first().cloned().unwrap_or(Value::Nil);
-        if !items.is_empty() {
-            items.remove(0);
+    let result = match operator {
+        "PUSH" => {
+            let value = value.expect("PUSH value");
+            items.insert(0, value);
+            Value::list(items.clone())
         }
-        value
+        "PUSHNEW" => {
+            let value = value.expect("PUSHNEW value");
+            if items
+                .iter()
+                .any(|candidate| crate::builtins::type_predicates::eql_value(&value, candidate))
+            {
+                current
+            } else {
+                items.insert(0, value);
+                Value::list(items.clone())
+            }
+        }
+        "POP" => {
+            let value = items.first().cloned().unwrap_or(Value::Nil);
+            if !items.is_empty() {
+                items.remove(0);
+            }
+            value
+        }
+        _ => {
+            return Err(invalid(
+                "unsupported native nested list place mutation",
+                span,
+            ));
+        }
     };
     let updated = Value::list(items);
     match accessors[0].as_str() {

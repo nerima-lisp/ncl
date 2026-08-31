@@ -44,7 +44,11 @@ fn compile_setf_uses_direct_assignment_for_symbol_places() {
     let instructions = &state.functions[function].instructions;
     assert!(instructions.contains(&Instruction::Set("X".to_string())));
     assert!(instructions.contains(&Instruction::SetExact("Mixed".to_string())));
-    assert!(instructions.contains(&Instruction::Setf(items[5].clone())));
+    assert!(instructions.contains(&Instruction::SetfList {
+        operator: "CAR".to_string(),
+        name: "X".to_string(),
+        escaped: false,
+    }));
 }
 
 #[test]

@@ -41,7 +41,7 @@ fn set_instruction_rejects_a_missing_stack_value() {
         execute_set_instruction(
             &runtime,
             &Instruction::Set("x".to_string()),
-            &mut [],
+            &mut Vec::new(),
             &environment,
             &mut program_counter,
             span,

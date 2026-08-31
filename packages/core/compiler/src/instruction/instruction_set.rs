@@ -38,6 +38,14 @@ pub enum Instruction {
     #[doc = "Set a variable."] Set(String),
     #[doc = "Set an escaped variable."] SetExact(String),
     #[doc = "Perform a `SETF` update."] Setf(Form),
+    #[doc = "Update a list-valued symbol through CAR or CDR."] SetfList {
+        /// The list accessor name.
+        operator: String,
+        /// The symbol holding the list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Perform a place update with `MAP-INTO` semantics."] MapIntoSetf(Form),
     #[doc = "Perform parallel assignment."] Psetq(Vec<String>),
     #[doc = "Perform escaped parallel assignment."] PsetqExact(Vec<(String, bool)>),

@@ -104,7 +104,10 @@ impl Runtime {
         self.dynamic
             .borrow_mut()
             .bindings
-            .push((binding_name, value));
+            .push((binding_name.clone(), value.clone()));
+        if binding_name.as_ref().eq_ignore_ascii_case("*RANDOM-STATE*") {
+            crate::builtins::bind_dynamic_random_state(&value);
+        }
     }
 
     pub(crate) fn define_dynamic_exact(&self, name: &str, value: Value) {

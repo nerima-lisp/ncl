@@ -8,6 +8,7 @@ impl Runtime {
             state: self.dynamic.clone(),
             depth: self.dynamic.borrow().bindings.len(),
             exact_depth: self.dynamic.borrow().exact_bindings.len(),
+            random_depth: crate::builtins::dynamic_random_state_depth(),
         }
     }
 

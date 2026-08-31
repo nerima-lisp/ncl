@@ -77,7 +77,7 @@ impl Runtime {
     pub fn new() -> Self {
         let global = Environment::new();
         builtins::install(&global);
-        Self {
+        let runtime = Self {
             global,
             packages: Rc::new(RefCell::new(PackageState::new())),
             dynamic: Rc::new(RefCell::new(DynamicState::default())),
@@ -85,7 +85,13 @@ impl Runtime {
             gensym_counter: Cell::new(0),
             method_context: RefCell::new(Vec::new()),
             load_time_values: RefCell::new(HashMap::new()),
-        }
+        };
+        runtime.define_special_value(
+            "*RANDOM-STATE*",
+            builtins::default_random_state_value(),
+            false,
+        );
+        runtime
     }
 
     /// Returns a clone of the global environment handle.

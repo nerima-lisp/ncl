@@ -7,6 +7,7 @@ pub struct DynamicGuard {
     pub state: Rc<RefCell<DynamicState>>,
     pub depth: usize,
     pub exact_depth: usize,
+    pub random_depth: usize,
 }
 
 impl Drop for DynamicGuard {
@@ -14,6 +15,7 @@ impl Drop for DynamicGuard {
         let mut state = self.state.borrow_mut();
         state.bindings.truncate(self.depth);
         state.exact_bindings.truncate(self.exact_depth);
+        crate::builtins::truncate_dynamic_random_states(self.random_depth);
     }
 }
 

@@ -5,6 +5,10 @@ fn compiled_evaluates_setf_places() {
         "(9 2 7)"
     );
     assert_eq!(
+        evaluate("(let ((xs (list 1 2 3))) (setf (cdr xs) '(8 9)) xs)").to_string(),
+        "(1 8 9)"
+    );
+    assert_eq!(
         evaluate("(let ((values #(1 2))) (setf (aref values 1) 8) values)").to_string(),
         "#(1 8)"
     );

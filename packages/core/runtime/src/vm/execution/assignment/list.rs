@@ -91,3 +91,106 @@ pub(super) fn execute_pushnew(
     *program_counter += 1;
     Ok(true)
 }
+
+pub(super) fn execute_pushnew_options(
+    runtime: &Runtime,
+    name: &str,
+    escaped: bool,
+    test_not: bool,
+    has_key: bool,
+    key_before_test: bool,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let current = stack
+        .pop()
+        .ok_or_else(|| invalid("pushnew has no target on the stack", span))?
+        .primary_value();
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("pushnew has no value on the stack", span))?
+        .primary_value();
+    let (test, key) = if key_before_test {
+        let test = stack
+            .pop()
+            .ok_or_else(|| invalid("pushnew has no test on the stack", span))?
+            .primary_value();
+        let key = stack
+            .pop()
+            .ok_or_else(|| invalid("pushnew has no key on the stack", span))?
+            .primary_value();
+        (test, Some(key))
+    } else {
+        let key = if has_key {
+            Some(
+                stack
+                    .pop()
+                    .ok_or_else(|| invalid("pushnew has no key on the stack", span))?
+                    .primary_value(),
+            )
+        } else {
+            None
+        };
+        let test = stack
+            .pop()
+            .ok_or_else(|| invalid("pushnew has no test on the stack", span))?
+            .primary_value();
+        (test, key)
+    };
+    let test = Value::Function(runtime.resolve_function_designator(&test, span, environment)?);
+    let key = key
+        .filter(|key| key.is_truthy())
+        .map(|key| {
+            runtime
+                .resolve_function_designator(&key, span, environment)
+                .map(Value::Function)
+        })
+        .transpose()?;
+    let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".to_string(),
+        actual: current.type_name().to_string(),
+        span: Some(span),
+    })?;
+    let item_key = key.as_ref().map_or_else(
+        || Ok(value.clone()),
+        |key| {
+            runtime
+                .apply_in(key, std::slice::from_ref(&value), span, environment)
+                .map(|v| v.primary_value())
+        },
+    )?;
+    let found = elements
+        .iter()
+        .map(|candidate| {
+            let candidate_key = key.as_ref().map_or_else(
+                || Ok(candidate.clone()),
+                |key| {
+                    runtime
+                        .apply_in(key, std::slice::from_ref(candidate), span, environment)
+                        .map(|v| v.primary_value())
+                },
+            )?;
+            runtime
+                .apply_in(&test, &[item_key.clone(), candidate_key], span, environment)
+                .map(|v| v.primary_value().is_truthy())
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .any(|equal| if test_not { !equal } else { equal });
+    if found {
+        stack.push(current);
+    } else {
+        elements.insert(0, value);
+        let updated = Value::list(elements);
+        if escaped {
+            runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?;
+        } else {
+            runtime.set_or_define_in(name, updated.clone(), environment, span)?;
+        }
+        stack.push(updated);
+    }
+    *program_counter += 1;
+    Ok(true)
+}

@@ -11,7 +11,7 @@ impl CompileState {
         Some(match name {
             "QUOTE" => self.compile_quote(function, span, items),
             "QUASIQUOTE" => self.compile_quasiquote(function, span, items),
-            "DECLARE" | "DECLAIM" | "PROCLAIM" => self.compile_declare(function, span),
+            "DECLARE" | "DECLAIM" | "PROCLAIM" => self.compile_declare(function, span, name, items),
             "LOCALLY" | "PROGN" => self.compile_progn(function, items),
             "EVAL-WHEN" => self.compile_eval_when(function, span, items),
             "LOAD-TIME-VALUE" => self.compile_load_time_value(function, span, items),

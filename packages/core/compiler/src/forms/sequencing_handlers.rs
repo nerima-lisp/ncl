@@ -4,6 +4,7 @@ use crate::{
     CompileError, CompileState, Constant, Form, FunctionId, Instruction, Span,
     compile_eval_when_executes,
 };
+use ncl_syntax::FormKind;
 
 impl CompileState {
     pub(super) fn compile_progn(
@@ -19,7 +20,33 @@ impl CompileState {
         &mut self,
         function: FunctionId,
         span: Span,
+        operator: &str,
+        items: &[Form],
     ) -> Result<(), CompileError> {
+        if operator == "DECLAIM" {
+            for declaration in items.iter().skip(1) {
+                let FormKind::List(declaration_items) = &declaration.kind else {
+                    continue;
+                };
+                let Some(Form {
+                    kind: FormKind::Atom(kind),
+                    ..
+                }) = declaration_items.first()
+                else {
+                    continue;
+                };
+                if !kind.eq_ignore_ascii_case("SPECIAL") {
+                    continue;
+                }
+                for name in declaration_items.iter().skip(1) {
+                    if let Ok((name, escaped)) =
+                        Self::symbol_name_info(name, "special declaration name")
+                    {
+                        self.register_special(name, escaped);
+                    }
+                }
+            }
+        }
         self.emit(function, Instruction::Constant(Constant::Nil), span)?;
         Ok(())
     }
@@ -51,7 +78,7 @@ mod tests {
         let mut state = CompileState::default();
         let span = Span::new(0, 1);
 
-        let error = state.compile_declare(99, span).map_or_else(
+        let error = state.compile_declare(99, span, "DECLARE", &[]).map_or_else(
             |error| error,
             |value| panic!("an unknown function id cannot receive instructions, got {value:?}"),
         );
@@ -95,6 +122,24 @@ mod tests {
         assert_eq!(
             state.functions[function].instructions,
             vec![Instruction::Constant(Constant::Nil)]
+        );
+    }
+
+    #[test]
+    fn compile_declaim_registers_global_special_names() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let forms = ncl_syntax::read("(declaim (special *x*)) (let ((*x* 1)) *x*)")
+            .unwrap_or_else(|error| panic!("test source should parse: {error}"));
+
+        state
+            .compile_sequence(function, &forms)
+            .unwrap_or_else(|error| panic!("DECLAIM should compile: {error}"));
+
+        assert!(
+            state.functions[function]
+                .instructions
+                .contains(&Instruction::DefineDynamicSpecial("*X*".to_string()))
         );
     }
 }

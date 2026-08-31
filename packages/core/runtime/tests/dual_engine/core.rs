@@ -368,6 +368,22 @@ fn special_variables_are_dynamically_bound_and_accessible_by_symbol_primitives(
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn declare_special_makes_a_let_binding_dynamic(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((x 20))
+               (declare (special x))
+               (list x (symbol-value 'x) (boundp 'x)))",
+        )
+        .to_string(),
+        "(20 20 T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn bignum_digit_cap_boundary_and_overflow_are_exact(#[case] eval_fn: EvalFn) {
     // The bignum digit-cap boundary tests in evaluator/core.rs
     // (expt_cap_boundary_is_exact_not_merely_far_from_the_limit and its

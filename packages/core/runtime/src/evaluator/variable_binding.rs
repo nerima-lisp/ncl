@@ -106,4 +106,11 @@ impl Runtime {
             .bindings
             .push((binding_name, value));
     }
+
+    pub(crate) fn define_dynamic_exact(&self, name: &str, value: Value) {
+        self.dynamic
+            .borrow_mut()
+            .exact_bindings
+            .push((name.to_string(), value));
+    }
 }

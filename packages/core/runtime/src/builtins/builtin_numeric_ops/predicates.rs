@@ -1,4 +1,4 @@
-use super::{Number, RuntimeError, Value, exact, integer_argument, number_argument};
+use super::{Number, RuntimeError, Value, big_integer_argument, exact, number_argument};
 
 pub fn zerop(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "zerop", 1)?;
@@ -24,14 +24,14 @@ pub fn minusp(arguments: &[Value]) -> Result<Value, RuntimeError> {
 pub fn evenp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "evenp", 1)?;
     Ok(Value::boolean(
-        integer_argument("evenp", &arguments[0])? % 2 == 0,
+        big_integer_argument("evenp", &arguments[0])? % 2 == 0,
     ))
 }
 
 pub fn oddp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "oddp", 1)?;
     Ok(Value::boolean(
-        integer_argument("oddp", &arguments[0])? % 2 != 0,
+        big_integer_argument("oddp", &arguments[0])? % 2 != 0,
     ))
 }
 
@@ -77,6 +77,14 @@ mod tests {
         assert_eq!(ok_string(evenp(&[Value::Integer(2)])), "T");
         assert_eq!(ok_string(oddp(&[Value::Integer(3)])), "T");
         assert_eq!(ok_string(signum(&[Value::Integer(-5)])), "-1");
+    }
+
+    #[test]
+    fn classifies_bignum_parity() {
+        let even = Value::big_integer(ibig::IBig::from(2).pow(70));
+        let odd = Value::big_integer(ibig::IBig::from(2).pow(70) + 1);
+        assert_eq!(ok_string(evenp(&[even])), "T");
+        assert_eq!(ok_string(oddp(&[odd])), "T");
     }
 
     #[test]

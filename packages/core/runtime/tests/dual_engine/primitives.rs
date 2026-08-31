@@ -126,10 +126,26 @@ fn evaluates_integer_bit_operations_on_bignums(#[case] eval_fn: EvalFn) {
         evaluate(
             "(let ((big (expt 2 70)))
                 (list (logand big 3) (logior big 3) (logxor big 3)
-                      (lognot big) (logtest big 1)))",
+                      (lognot big) (logtest big 1)
+                      (ash big 2) (ash big -70)))",
         )
         .to_string(),
-        "(0 1180591620717411303427 1180591620717411303427 -1180591620717411303425 NIL)"
+        "(0 1180591620717411303427 1180591620717411303427 -1180591620717411303425 NIL 4722366482869645213696 1)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_integer_remainders_on_bignums(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((big (expt 2 70)))
+                (list (mod (- big) 3) (rem (- big) 3)))",
+        )
+        .to_string(),
+        "(2 -1)"
     );
 }
 

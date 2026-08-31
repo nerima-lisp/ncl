@@ -1,7 +1,10 @@
 mod rounding_exact;
 use rounding_exact::{exact_quotient_and_remainder, float_quotient_and_remainder};
 
-use super::{Number, RuntimeError, Value, arity, exact, integer_argument, number_argument};
+use super::{
+    Number, RuntimeError, Value, arity, big_integer_argument, exact, number_argument,
+    number_from_big, number_to_value,
+};
 
 #[derive(Clone, Copy)]
 pub enum RoundingMode {
@@ -50,24 +53,30 @@ pub fn quotient_and_remainder(
 
 pub fn modulo(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "mod", 2)?;
-    let left = integer_argument("mod", &arguments[0])?;
-    let right = integer_argument("mod", &arguments[1])?;
-    let remainder = integer_remainder(left, right)?;
-    if remainder != 0 && (left < 0) != (right < 0) {
-        remainder
-            .checked_add(right)
-            .map(Value::Integer)
-            .ok_or(RuntimeError::NumericOverflow)
-    } else {
-        Ok(Value::Integer(remainder))
+    let left = big_integer_argument("mod", &arguments[0])?;
+    let right = big_integer_argument("mod", &arguments[1])?;
+    if right == ibig::IBig::from(0) {
+        return Err(RuntimeError::DivisionByZero);
     }
+    let remainder = &left % &right;
+    let adjusted = if remainder != ibig::IBig::from(0)
+        && (left < ibig::IBig::from(0)) != (right < ibig::IBig::from(0))
+    {
+        remainder + right
+    } else {
+        remainder
+    };
+    number_to_value(number_from_big(adjusted))
 }
 
 pub fn remainder(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "rem", 2)?;
-    let left = integer_argument("rem", &arguments[0])?;
-    let right = integer_argument("rem", &arguments[1])?;
-    integer_remainder(left, right).map(Value::Integer)
+    let left = big_integer_argument("rem", &arguments[0])?;
+    let right = big_integer_argument("rem", &arguments[1])?;
+    if right == ibig::IBig::from(0) {
+        return Err(RuntimeError::DivisionByZero);
+    }
+    number_to_value(number_from_big(left % right))
 }
 
 pub fn integer_remainder(left: i64, right: i64) -> Result<i64, RuntimeError> {

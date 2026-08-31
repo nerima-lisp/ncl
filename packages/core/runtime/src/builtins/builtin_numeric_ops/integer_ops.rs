@@ -75,7 +75,9 @@ pub fn arithmetic_shift(arguments: &[Value]) -> Result<Value, RuntimeError> {
     } else {
         count.unsigned_abs()
     };
-    number_to_value(number_from_big(if shift >= 64 {
+    let bit_len = u64::try_from(ibig::ops::UnsignedAbs::unsigned_abs(&value).bit_len())
+        .map_err(|_| RuntimeError::NumericOverflow)?;
+    number_to_value(number_from_big(if shift >= bit_len {
         if value < ibig::IBig::from(0) {
             ibig::IBig::from(-1)
         } else {

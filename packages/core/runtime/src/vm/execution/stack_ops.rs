@@ -53,6 +53,39 @@ pub fn execute_stack_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::NthValue => {
+            let values = pop_value(stack, span, "nth-value values")?;
+            let index = pop_value(stack, span, "nth-value index")?;
+            let index = match index.primary_value() {
+                Value::Integer(index) if index >= 0 => {
+                    usize::try_from(index).map_err(|_| RuntimeError::NumericOverflow)?
+                }
+                Value::Integer(_) => {
+                    return Err(RuntimeError::Type {
+                        expected: "non-negative INTEGER".to_string(),
+                        actual: "negative INTEGER".to_string(),
+                        span: Some(span),
+                    });
+                }
+                Value::BigInteger(_) => return Err(RuntimeError::NumericOverflow),
+                value => {
+                    return Err(RuntimeError::Type {
+                        expected: "INTEGER".to_string(),
+                        actual: value.type_name().to_string(),
+                        span: Some(span),
+                    });
+                }
+            };
+            stack.push(
+                values
+                    .multiple_values()
+                    .get(index)
+                    .cloned()
+                    .unwrap_or(Value::Nil),
+            );
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::Values(value_count) => {
             if stack.len() < *value_count {
                 return Err(invalid("values has too few stack values", span));

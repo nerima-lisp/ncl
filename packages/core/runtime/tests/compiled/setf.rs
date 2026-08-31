@@ -154,6 +154,18 @@ fn compiled_evaluates_setf_places() {
 }
 
 #[test]
+fn compiled_evaluates_modify_on_nested_list_places() {
+    assert_eq!(
+        evaluate("(let ((xs (list (list 4)))) (list (incf (car (car xs))) xs))").to_string(),
+        "(5 ((5)))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 4)))) (list (decf (car (car xs)) 2) xs))").to_string(),
+        "(2 ((2)))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_single_place_rotatef() {
     assert_eq!(
         evaluate("(let ((x 7)) (list (rotatef x) x))").to_string(),

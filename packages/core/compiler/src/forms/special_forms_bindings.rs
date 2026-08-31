@@ -29,7 +29,7 @@ impl CompileState {
                     items.get(1).map(|place| &place.kind),
                     Some(FormKind::Atom(_))
                 ) {
-                    self.compile_modify_symbol(function, span, items, "INCF", "+")
+                    self.compile_modify(function, span, items, "INCF", "+")
                 } else {
                     self.compile_runtime_definition(function, span, items)
                 }
@@ -39,7 +39,7 @@ impl CompileState {
                     items.get(1).map(|place| &place.kind),
                     Some(FormKind::Atom(_))
                 ) {
-                    self.compile_modify_symbol(function, span, items, "DECF", "-")
+                    self.compile_modify(function, span, items, "DECF", "-")
                 } else {
                     self.compile_runtime_definition(function, span, items)
                 }

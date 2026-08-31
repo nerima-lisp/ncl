@@ -21,6 +21,14 @@ pub(in crate::builtins::format) fn parse_format_directive(
         })?
         .to_ascii_uppercase();
     *character_index = directive_index + 1;
+    if directive == '\n' {
+        while characters
+            .get(*character_index)
+            .is_some_and(|character| matches!(character, ' ' | '\t' | '\n' | '\r'))
+        {
+            *character_index += 1;
+        }
+    }
     let supports_modifiers = matches!(
         directive,
         '{' | '['
@@ -45,6 +53,7 @@ pub(in crate::builtins::format) fn parse_format_directive(
             | '?'
             | '_'
             | '('
+            | '\n'
     );
     if (colon_modifier || at_sign_modifier) && !supports_modifiers {
         return Err(RuntimeError::InvalidForm {

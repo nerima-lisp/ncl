@@ -430,6 +430,30 @@ fn evaluates_format_conditional_newline_directive(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_format_newline_directive(#[case] eval_fn: EvalFn) {
+    assert_eq!(
+        evaluate_with(
+            eval_fn,
+            r#"(format nil "a~
+b")"#
+        )
+        .to_string(),
+        r#""ab""#
+    );
+    assert_eq!(
+        evaluate_with(
+            eval_fn,
+            r#"(format nil "a~:
+b")"#
+        )
+        .to_string(),
+        r#""a\nb""#
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_format_escape_upward_directive(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

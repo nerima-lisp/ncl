@@ -84,6 +84,18 @@ pub(super) fn format_simple_directive(
             }
             Ok(true)
         }
+        '\n' => {
+            if !parameters.is_empty() {
+                return Err(RuntimeError::InvalidForm {
+                    message: "format newline directive does not accept parameters".to_string(),
+                    span: None,
+                });
+            }
+            if colon_modifier || at_sign_modifier {
+                output.push('\n');
+            }
+            Ok(true)
+        }
         'I' => {
             if at_sign_modifier {
                 return Err(RuntimeError::InvalidForm {

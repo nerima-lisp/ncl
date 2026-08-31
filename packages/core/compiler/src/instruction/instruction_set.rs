@@ -48,6 +48,14 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update a nested CAR/CDR list place rooted at a symbol."] SetfNestedList {
+        /// Accessors from the symbol outward to the updated value.
+        accessors: Vec<String>,
+        /// The symbol holding the outer list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Update an indexed element of a list-valued symbol through NTH."] SetfNth {
         /// Zero-based list index.
         index: usize,

@@ -79,6 +79,10 @@ fn compiled_evaluates_setf_places() {
         "((9 2))"
     );
     assert_eq!(
+        evaluate("(let ((xs (list 1 (list 2 3)))) (setf (car (cdr xs)) 9) xs)").to_string(),
+        "(1 9)"
+    );
+    assert_eq!(
         evaluate("(let ((text \"abc\")) (setf (elt text 1) #\\X) text)").to_string(),
         "\"aXc\""
     );

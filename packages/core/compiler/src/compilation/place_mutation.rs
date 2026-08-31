@@ -119,6 +119,41 @@ impl CompileState {
                 }
                 continue;
             }
+            let bit_place = match &place.kind {
+                FormKind::List(items) if items.len() >= 3 => {
+                    Self::symbol_name_info(&items[0], "setf place operator")
+                        .ok()
+                        .filter(|(name, _)| name == "BIT")
+                        .and_then(|_| {
+                            Self::symbol_name_info(&items[1], "setf bit target")
+                                .ok()
+                                .map(|(name, escaped)| {
+                                    (items.len() - 2, name, escaped, &items[1], &items[2..])
+                                })
+                        })
+                }
+                _ => None,
+            };
+            if let Some((rank, name, escaped, target, indices)) = bit_place {
+                self.compile_expression(function, target)?;
+                for index_form in indices {
+                    self.compile_expression(function, index_form)?;
+                }
+                self.compile_expression(function, value_form)?;
+                self.emit(
+                    function,
+                    Instruction::SetfBitDynamic {
+                        rank,
+                        name,
+                        escaped,
+                    },
+                    place.span,
+                )?;
+                if index + 1 < pair_count {
+                    self.emit(function, Instruction::Pop, value_form.span)?;
+                }
+                continue;
+            }
             let list_place = match &place.kind {
                 FormKind::List(items) if items.len() == 2 => {
                     let operator = Self::symbol_name_info(&items[0], "setf place operator")

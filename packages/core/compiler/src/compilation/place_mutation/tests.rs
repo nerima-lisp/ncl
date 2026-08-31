@@ -132,6 +132,25 @@ fn compile_setf_uses_native_array_accessors_for_symbol_places() {
 }
 
 #[test]
+fn compile_setf_uses_native_bit_for_a_symbol_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (bit bits index) 1)");
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap();
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::SetfBitDynamic {
+                rank: 1,
+                name: "BITS".to_string(),
+                escaped: false
+            })
+    );
+}
+
+#[test]
 fn compile_push_and_pop_use_native_list_instructions_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

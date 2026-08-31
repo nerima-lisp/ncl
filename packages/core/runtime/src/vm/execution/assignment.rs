@@ -278,6 +278,93 @@ pub(super) fn execute_set_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::SetfBitDynamic {
+            rank,
+            name,
+            escaped,
+        } => {
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("setf bit has no value on the stack", span))?
+                .primary_value();
+            if stack.len() < rank.saturating_add(1) {
+                return Err(invalid("setf bit has an incomplete stack", span));
+            }
+            let indices = stack.split_off(stack.len() - *rank);
+            let current = stack
+                .pop()
+                .ok_or_else(|| invalid("setf bit has no target on the stack", span))?
+                .primary_value();
+            let dimensions = match &current {
+                Value::Vector(items) => vec![items.len()],
+                Value::Array { dimensions, .. } => dimensions.as_ref().clone(),
+                other => {
+                    return Err(RuntimeError::Type {
+                        expected: "ARRAY".to_string(),
+                        actual: other.type_name().to_string(),
+                        span: Some(span),
+                    });
+                }
+            };
+            if dimensions.len() != *rank {
+                return Err(invalid("setf bit has the wrong number of indices", span));
+            }
+            let indices = indices
+                .iter()
+                .map(|index| crate::builtins::index_argument("setf bit", index))
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut offset = 0_usize;
+            for (axis, (&dimension, &index)) in dimensions.iter().zip(&indices).enumerate() {
+                if index >= dimension {
+                    return Err(invalid("SETF index is out of bounds", span));
+                }
+                let stride = dimensions[axis + 1..]
+                    .iter()
+                    .try_fold(1_usize, |stride, dimension| stride.checked_mul(*dimension))
+                    .ok_or_else(|| invalid("SETF index is too large", span))?;
+                offset = offset
+                    .checked_add(
+                        index
+                            .checked_mul(stride)
+                            .ok_or_else(|| invalid("SETF index is too large", span))?,
+                    )
+                    .ok_or_else(|| invalid("SETF index is too large", span))?;
+            }
+            if !matches!(&value, Value::Integer(bit) if *bit == 0 || *bit == 1) {
+                return Err(RuntimeError::Type {
+                    expected: "BIT".to_string(),
+                    actual: value.type_name().to_string(),
+                    span: Some(span),
+                });
+            }
+            let updated = match current {
+                Value::Vector(_) => {
+                    let mut elements = current.vector_items().unwrap();
+                    *elements
+                        .get_mut(offset)
+                        .ok_or_else(|| invalid("SETF index is out of bounds", span))? =
+                        value.clone();
+                    Value::vector(elements)
+                }
+                Value::Array { ref dimensions, .. } => {
+                    let mut elements = current.array_items().unwrap();
+                    *elements
+                        .get_mut(offset)
+                        .ok_or_else(|| invalid("SETF index is out of bounds", span))? =
+                        value.clone();
+                    Value::array(dimensions.as_ref().clone(), elements)
+                }
+                _ => unreachable!(),
+            };
+            if *escaped {
+                runtime.set_or_define_exact_in(name, updated, environment, span)?;
+            } else {
+                runtime.set_or_define_in(name, updated, environment, span)?;
+            }
+            stack.push(value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PushNewList { name, escaped } => {
             let current = stack
                 .pop()

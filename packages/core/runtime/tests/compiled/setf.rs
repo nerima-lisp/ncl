@@ -57,6 +57,11 @@ fn compiled_evaluates_setf_places() {
         "0"
     );
     assert_eq!(
+        evaluate("(let ((bits #(0 1 0)) (index 2)) (setf (bit bits index) 1) (bit bits 2))")
+            .to_string(),
+        "1"
+    );
+    assert_eq!(
         evaluate("(let ((xs (list (list 1 2)))) (setf (car (nth 0 xs)) 9) xs)").to_string(),
         "((9 2))"
     );

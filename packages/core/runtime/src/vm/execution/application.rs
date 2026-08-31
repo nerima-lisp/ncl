@@ -80,13 +80,16 @@ pub fn execute_mapcar_instruction(
     let function_value = stack
         .pop()
         .ok_or_else(|| invalid("mapcar has no function value", span))?;
+    let sequence_items = |value: &Value| match value.primary_value() {
+        Value::Nil | Value::List(_) => value.primary_value().list_items(),
+        Value::Vector(_) => value.primary_value().vector_items(),
+        Value::String(text) => Some(text.chars().map(Value::Character).collect()),
+        _ => None,
+    };
     let lists = sequences
         .iter()
         .map(|value| {
-            value
-                .primary_value()
-                .list_items()
-                .ok_or_else(|| invalid("mapcar arguments must be proper lists", span))
+            sequence_items(value).ok_or_else(|| invalid("mapcar arguments must be sequences", span))
         })
         .collect::<Result<Vec<_>, _>>()?;
     let length = lists.iter().map(Vec::len).min().unwrap_or(0);

@@ -100,7 +100,7 @@ fn stack_operations_reject_invalid_sequence_shapes() {
             "mapcar",
             execute_mapcar_instruction,
             vec![Value::Nil, Value::Integer(1)],
-            "mapcar arguments must be proper lists",
+            "mapcar arguments must be sequences",
         ),
     ];
 

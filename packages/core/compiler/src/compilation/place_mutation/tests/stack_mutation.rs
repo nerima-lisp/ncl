@@ -84,6 +84,28 @@ fn compile_push_and_pop_with_car_places_use_native_instructions() {
 }
 
 #[test]
+fn compile_pushnew_with_a_generalized_place_uses_native_instruction_without_options() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let pushnew = parse_items("(pushnew 1 (car xs))");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
+        .unwrap();
+
+    assert!(
+        state.functions[function]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(
+                instruction,
+                Instruction::ListPlaceMutation { operator, accessor, name, .. }
+                    if operator == "PUSHNEW" && accessor == "CAR" && name == "XS"
+            ))
+    );
+}
+
+#[test]
 fn compile_modify_symbol_rejects_too_many_operands() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

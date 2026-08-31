@@ -227,6 +227,17 @@ fn compiled_evaluates_push_and_pop_on_car_and_cdr_places() {
 }
 
 #[test]
+fn compiled_evaluates_pushnew_on_a_generalized_place() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list (list 2 3)))) (list (pushnew 1 (car xs)) (pushnew 1 (car xs)) xs))"
+        )
+        .to_string(),
+        "((1 2 3) (1 2 3) ((1 2 3)))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_pushnew_options_in_source_order() {
     assert_eq!(
         evaluate(

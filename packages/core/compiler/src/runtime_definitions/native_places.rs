@@ -96,9 +96,6 @@ impl CompileState {
             }
             _ => None,
         };
-        if generalized.is_some() && operator == "PUSHNEW" {
-            return Ok(None);
-        }
         let symbol_place = Self::symbol_name_info(place, "list place").ok();
         if generalized.is_none() && symbol_place.is_none() {
             return Ok(None);

@@ -106,6 +106,27 @@ pub(super) fn execute_place_mutation(
             }
             (value, Value::list(items))
         }
+        "PUSHNEW" => {
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("pushnew has no value", span))?
+                .primary_value();
+            let mut items = current.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: current.type_name().to_string(),
+                span: Some(span),
+            })?;
+            if items
+                .iter()
+                .any(|candidate| crate::builtins::type_predicates::eql_value(&value, candidate))
+            {
+                (current.clone(), current)
+            } else {
+                items.insert(0, value);
+                let updated = Value::list(items);
+                (updated.clone(), updated)
+            }
+        }
         _ => return Err(invalid("unsupported native list place mutation", span)),
     };
     match accessor {

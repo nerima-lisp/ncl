@@ -79,8 +79,11 @@ pub enum Instruction {
         escaped: bool,
     },
     #[doc = "Update a dynamically indexed sequence or string-valued symbol through an element accessor."] SetfElementDynamic {
+        /// The sequence element accessor name.
         operator: String,
+        /// The symbol holding the sequence.
         name: String,
+        /// Whether the symbol name is escaped.
         escaped: bool,
     },
     #[doc = "Update a dynamically bounded subsequence-valued symbol through SUBSEQ."] SetfSubseqDynamic {

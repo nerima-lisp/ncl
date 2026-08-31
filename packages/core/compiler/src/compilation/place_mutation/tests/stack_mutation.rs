@@ -106,6 +106,28 @@ fn compile_pushnew_with_a_generalized_place_uses_native_instruction_without_opti
 }
 
 #[test]
+fn compile_pushnew_with_options_and_a_generalized_place_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let pushnew = parse_items("(pushnew 1 (car xs) :test #'equal)");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
+        .unwrap();
+
+    assert!(
+        state.functions[function]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(
+                instruction,
+                Instruction::ListPlacePushNewOptions { accessor, name, test_not, has_key, .. }
+                    if accessor == "CAR" && name == "XS" && !test_not && !has_key
+            ))
+    );
+}
+
+#[test]
 fn compile_modify_symbol_rejects_too_many_operands() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

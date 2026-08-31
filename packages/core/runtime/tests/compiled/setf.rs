@@ -240,6 +240,11 @@ fn compiled_evaluates_pushnew_on_a_generalized_place() {
             .to_string(),
         "((0 2 3) (0 2 3) (1 0 2 3))"
     );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 1)))) (list (pushnew 2 (car xs) :test #'equal) xs))")
+            .to_string(),
+        "((2 1) ((2 1)))"
+    );
 }
 
 #[test]

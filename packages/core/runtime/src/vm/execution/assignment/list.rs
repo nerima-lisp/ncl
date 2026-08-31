@@ -189,6 +189,83 @@ pub(super) fn execute_pushnew(
     Ok(true)
 }
 
+pub(super) fn execute_place_pushnew_options(
+    runtime: &Runtime,
+    accessor: &str,
+    name: &str,
+    escaped: bool,
+    test_not: bool,
+    has_key: bool,
+    key_before_test: bool,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let _inner = stack
+        .pop()
+        .ok_or_else(|| invalid("list place has no target", span))?
+        .primary_value();
+    let outer = if escaped {
+        runtime.lookup_exact_in(name, environment)
+    } else {
+        runtime.lookup_in(name, environment)
+    }
+    .ok_or_else(|| invalid("list place has no outer target", span))?
+    .primary_value();
+    let mut outer_items = outer.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".to_string(),
+        actual: outer.type_name().to_string(),
+        span: Some(span),
+    })?;
+    if outer_items.is_empty() {
+        return Err(invalid("cannot mutate a list place of NIL", span));
+    }
+    let current = match accessor {
+        "CAR" | "FIRST" => outer_items[0].clone(),
+        "CDR" | "REST" => Value::list(outer_items[1..].to_vec()),
+        _ => return Err(invalid("unsupported native list accessor", span)),
+    };
+    let value = stack
+        .last()
+        .cloned()
+        .ok_or_else(|| invalid("pushnew has no value", span))?;
+    stack.pop();
+    stack.push(value);
+    stack.push(current);
+    execute_pushnew_options(
+        runtime,
+        name,
+        escaped,
+        test_not,
+        has_key,
+        key_before_test,
+        stack,
+        environment,
+        program_counter,
+        span,
+    )?;
+    let updated_place = stack
+        .pop()
+        .ok_or_else(|| invalid("pushnew produced no result", span))?;
+    match accessor {
+        "CAR" | "FIRST" => outer_items[0] = updated_place.clone(),
+        "CDR" | "REST" => {
+            outer_items = vec![outer_items[0].clone()];
+            outer_items.extend(updated_place.list_items().unwrap_or_default());
+        }
+        _ => unreachable!(),
+    }
+    let updated_outer = Value::list(outer_items);
+    if escaped {
+        runtime.set_or_define_exact_in(name, updated_outer, environment, span)?;
+    } else {
+        runtime.set_or_define_in(name, updated_outer, environment, span)?;
+    }
+    stack.push(updated_place);
+    Ok(true)
+}
+
 pub(super) fn execute_pushnew_options(
     runtime: &Runtime,
     name: &str,

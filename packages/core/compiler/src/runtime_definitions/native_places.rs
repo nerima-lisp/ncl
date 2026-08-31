@@ -35,9 +35,11 @@ impl CompileState {
         }
         let expected = if operator == "POP" { 2 } else { 3 };
         if operator == "PUSHNEW" && items.len() > expected {
-            let Some((name, escaped)) = Self::symbol_name_info(&items[2], "list place").ok() else {
+            let generalized = generalized_list_place(&items[2]);
+            let symbol_place = Self::symbol_name_info(&items[2], "list place").ok();
+            if generalized.is_none() && symbol_place.is_none() {
                 return Ok(None);
-            };
+            }
             if !(items.len() - 3).is_multiple_of(2) {
                 return Ok(None);
             }
@@ -72,15 +74,34 @@ impl CompileState {
                 )?;
             }
             self.compile_expression(function, &items[1])?;
-            self.compile_expression(function, &items[2])?;
+            if generalized.is_some() {
+                let FormKind::List(place_items) = &items[2].kind else {
+                    unreachable!()
+                };
+                self.compile_expression(function, &place_items[1])?;
+            } else {
+                self.compile_expression(function, &items[2])?;
+            }
             self.emit(
                 function,
-                Instruction::PushNewListOptions {
-                    name,
-                    escaped,
-                    test_not,
-                    has_key,
-                    key_before_test,
+                if let Some((accessor, name, escaped)) = generalized {
+                    Instruction::ListPlacePushNewOptions {
+                        accessor,
+                        name,
+                        escaped,
+                        test_not,
+                        has_key,
+                        key_before_test,
+                    }
+                } else {
+                    let (name, escaped) = symbol_place.expect("checked above");
+                    Instruction::PushNewListOptions {
+                        name,
+                        escaped,
+                        test_not,
+                        has_key,
+                        key_before_test,
+                    }
                 },
                 items[0].span,
             )?;

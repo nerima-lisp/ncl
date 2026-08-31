@@ -57,6 +57,29 @@ fn compile_pushnew_uses_native_instruction_without_options() {
 }
 
 #[test]
+fn compile_push_with_a_generalized_place_uses_evaluator_fallback() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let push = parse_items("(push 1 (car xs))");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &push)
+        .expect("generalized PUSH should use evaluator fallback");
+
+    let instructions = &state.functions[function].instructions;
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
+    );
+    assert!(
+        !instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::PushList { .. }))
+    );
+}
+
+#[test]
 fn compile_modify_symbol_rejects_too_many_operands() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

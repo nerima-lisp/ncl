@@ -4,5 +4,6 @@ use super::*;
 
 mod modify;
 mod setf;
+mod setf_fallback;
 #[cfg(test)]
 mod tests;

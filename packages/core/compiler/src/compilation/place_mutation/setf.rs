@@ -306,44 +306,7 @@ impl CompileState {
                 emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
                 continue;
             }
-            let list_place = match &place.kind {
-                FormKind::List(items) if items.len() == 2 => {
-                    let operator = Self::symbol_name_info(&items[0], "setf place operator")
-                        .ok()
-                        .map(|(name, _)| name);
-                    operator.and_then(|operator| {
-                        if matches!(operator.as_str(), "CAR" | "FIRST" | "CDR" | "REST") {
-                            Self::symbol_name_info(&items[1], "setf list target")
-                                .ok()
-                                .map(|(name, escaped)| (operator, name, escaped, &items[1]))
-                        } else {
-                            None
-                        }
-                    })
-                }
-                _ => None,
-            };
-            if let Some((operator, name, escaped, target)) = list_place {
-                self.compile_expression(function, target)?;
-                self.compile_expression(function, value_form)?;
-                self.emit(
-                    function,
-                    Instruction::SetfList {
-                        operator,
-                        name,
-                        escaped,
-                    },
-                    place.span,
-                )?;
-            } else {
-                self.compile_expression(function, value_form)?;
-                let instruction = match Self::symbol_name_info(place, "setf place") {
-                    Ok((name, escaped)) if escaped => Instruction::SetExact(name),
-                    Ok((name, _)) => Instruction::Set(name),
-                    Err(_) => Instruction::Setf(place.clone()),
-                };
-                self.emit(function, instruction, place.span)?;
-            }
+            self.compile_setf_fallback(function, place, value_form)?;
             if index + 1 < pair_count {
                 self.emit(function, Instruction::Pop, value_form.span)?;
             }

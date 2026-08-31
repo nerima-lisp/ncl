@@ -4,6 +4,19 @@ use super::*;
 use crate::Function;
 
 impl Runtime {
+    pub(crate) fn copy_tree(&self, value: &Value) -> Value {
+        match value {
+            Value::List(items) => {
+                Value::list(items.iter().map(|item| self.copy_tree(item)).collect())
+            }
+            Value::DottedList { items, tail } => Value::dotted_list(
+                items.iter().map(|item| self.copy_tree(item)).collect(),
+                self.copy_tree(tail),
+            ),
+            _ => value.clone(),
+        }
+    }
+
     pub(crate) fn apply_tree_equal(
         &self,
         first: &Value,

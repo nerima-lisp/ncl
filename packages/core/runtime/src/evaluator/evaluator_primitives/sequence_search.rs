@@ -59,6 +59,7 @@ impl Runtime {
                 environment,
                 span,
             ),
+            "COPY-TREE" if arguments.len() == 1 => Ok(self.copy_tree(&arguments[0])),
             "SEARCH" | "MISMATCH" if arguments.len() >= 2 => self.apply_sequence_pair_search(
                 name,
                 &arguments[0],
@@ -93,6 +94,7 @@ impl Runtime {
                 arguments.len(),
             )),
             "TREE-EQUAL" => Err(Self::arity("tree-equal", "at least two", arguments.len())),
+            "COPY-TREE" => Err(Self::arity("copy-tree", "exactly one", arguments.len())),
             _ => return None,
         })
     }

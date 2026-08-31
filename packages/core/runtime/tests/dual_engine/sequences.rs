@@ -272,3 +272,13 @@ fn evaluates_tree_equal(#[case] eval_fn: EvalFn) {
         "T"
     );
 }
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_copy_tree(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(evaluate("(copy-tree '(1 (2 3)))").to_string(), "(1 (2 3))");
+    assert_eq!(evaluate("(copy-tree '(1 2 . 3))").to_string(), "(1 2 . 3)");
+    assert_eq!(evaluate("(copy-tree 42)").to_string(), "42");
+}

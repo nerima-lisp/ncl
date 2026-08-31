@@ -55,6 +55,18 @@ fn exponentiate_handles_negative_bignum_exponent_exactly() {
 }
 
 #[test]
+fn exponentiate_handles_rational_bignum_exponents_exactly() {
+    let base = Value::rational(2, 3).unwrap_or_else(|error| panic!("valid rational: {error}"));
+    assert_eq!(
+        ok_string(exponentiate(&[
+            base,
+            Value::big_integer(ibig::IBig::from(3)),
+        ])),
+        "8/27",
+    );
+}
+
+#[test]
 fn exact_power_rejects_a_non_exact_base() {
     assert!(matches!(
         exact_power(Number::Float(2.0), 2),

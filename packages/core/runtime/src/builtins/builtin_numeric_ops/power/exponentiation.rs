@@ -16,25 +16,38 @@ pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
         {
             return number_to_value(exact_power(base, exponent_numerator)?);
         }
-        if let Number::Big(ref exponent) = exponent
-            && let Number::Integer(base) = base
-        {
+        if let Number::Big(ref exponent) = exponent {
             let negative = exponent < &ibig::IBig::from(0);
-            if negative && base == 0 {
+            let (numerator, denominator) = exact_ratio(&base)?;
+            if negative && numerator == ibig::IBig::from(0) {
                 return Err(RuntimeError::DivisionByZero);
             }
             if let Ok(magnitude) = u64::try_from(exponent.clone().abs()) {
-                let power = ibig_power(ibig::IBig::from(base), magnitude)?;
-                return if negative {
-                    number_to_value(rational_number_big(ibig::IBig::from(1), power)?)
+                let (numerator, denominator) = if negative {
+                    (denominator, numerator)
                 } else {
-                    number_to_value(number_from_big(power))
+                    (numerator, denominator)
                 };
+                let numerator = ibig_power(numerator, magnitude)?;
+                let denominator = ibig_power(denominator, magnitude)?;
+                return number_to_value(rational_number_big(numerator, denominator)?);
             }
         }
     }
 
     Ok(Value::Float(base.as_float().powf(exponent.as_float())))
+}
+
+fn exact_ratio(value: &Number) -> Result<(ibig::IBig, ibig::IBig), RuntimeError> {
+    match value {
+        Number::Integer(value) => Ok((ibig::IBig::from(*value), ibig::IBig::from(1))),
+        Number::Big(value) => Ok((value.clone(), ibig::IBig::from(1))),
+        Number::Rational(value) => Ok((value.numerator().clone(), value.denominator().clone())),
+        Number::Float(_) => Err(RuntimeError::InvalidForm {
+            message: "exact power requires an exact base".to_owned(),
+            span: None,
+        }),
+    }
 }
 
 pub(in crate::builtins) fn exact_power(

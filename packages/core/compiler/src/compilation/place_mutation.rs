@@ -249,6 +249,30 @@ impl CompileState {
                 }
                 continue;
             }
+            let symbol_cell_place = match &place.kind {
+                FormKind::List(items) if items.len() == 2 => {
+                    Self::symbol_name_info(&items[0], "setf symbol cell place operator")
+                        .ok()
+                        .filter(|(name, _)| {
+                            matches!(name.as_str(), "SYMBOL-VALUE" | "SYMBOL-FUNCTION")
+                        })
+                        .map(|(operator, _)| (operator, &items[1]))
+                }
+                _ => None,
+            };
+            if let Some((operator, target)) = symbol_cell_place {
+                self.compile_expression(function, target)?;
+                self.compile_expression(function, value_form)?;
+                self.emit(
+                    function,
+                    Instruction::SetfSymbolCellDynamic { operator },
+                    place.span,
+                )?;
+                if index + 1 < pair_count {
+                    self.emit(function, Instruction::Pop, value_form.span)?;
+                }
+                continue;
+            }
             let get_place = match &place.kind {
                 FormKind::List(items) if items.len() == 3 => {
                     Self::symbol_name_info(&items[0], "setf place operator")

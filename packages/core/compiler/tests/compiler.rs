@@ -959,6 +959,11 @@ fn emits_eval_and_mapcar_instructions() {
                 )
             })
     );
+
+    let symbol_value = compile("(setf (symbol-value symbol) 1)");
+    assert!(symbol_value.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SetfSymbolCellDynamic { operator } if operator == "SYMBOL-VALUE")
+    }));
 }
 
 #[test]

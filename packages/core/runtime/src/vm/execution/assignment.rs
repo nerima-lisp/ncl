@@ -10,6 +10,46 @@ pub(super) fn execute_set_instruction(
     span: Span,
 ) -> Result<bool, RuntimeError> {
     match instruction {
+        Instruction::SetfSymbolCellDynamic { operator } => {
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("setf symbol cell has no value on the stack", span))?
+                .primary_value();
+            let symbol = stack
+                .pop()
+                .ok_or_else(|| invalid("setf symbol cell has no target on the stack", span))?
+                .primary_value();
+            let (name, exact) = symbol
+                .symbol_reference()
+                .ok_or_else(|| invalid("setf symbol cell target must be a symbol", span))?;
+            match operator.as_str() {
+                "SYMBOL-VALUE" => {
+                    if exact {
+                        runtime.set_symbol_value_exact(name, value.clone());
+                    } else {
+                        runtime.set_symbol_value(name, value.clone());
+                    }
+                }
+                "SYMBOL-FUNCTION" => {
+                    if !matches!(&value, Value::Function(_)) {
+                        return Err(RuntimeError::Type {
+                            expected: "FUNCTION".to_string(),
+                            actual: value.type_name().to_string(),
+                            span: Some(span),
+                        });
+                    }
+                    if exact {
+                        runtime.set_symbol_function(name, true, value.clone());
+                    } else {
+                        runtime.set_symbol_function(name, false, value.clone());
+                    }
+                }
+                _ => unreachable!("unsupported symbol cell operator"),
+            }
+            stack.push(value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::Set(name) | Instruction::SetExact(name) => {
             let value = stack
                 .last()

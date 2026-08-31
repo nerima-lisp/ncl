@@ -201,6 +201,24 @@ fn compiled_evaluates_symbol_setf_places_without_place_fallback() {
         evaluate("(let ((|Mixed| 1)) (setf |Mixed| 2) |Mixed|)").to_string(),
         "2"
     );
+    assert_eq!(
+        evaluate(
+            "(let ((symbol 'compiled-setf-symbol-value-dynamic))
+               (setf (symbol-value symbol) 9)
+               (symbol-value symbol))",
+        )
+        .to_string(),
+        "9"
+    );
+    assert_eq!(
+        evaluate(
+            "(progn
+               (setf (symbol-function 'compiled-setf-function-dynamic) #'1+)
+               (compiled-setf-function-dynamic 4))",
+        )
+        .to_string(),
+        "5"
+    );
 }
 
 #[test]

@@ -3,6 +3,19 @@ use super::*;
 use crate::environment::intern_name;
 
 impl Runtime {
+    pub(crate) fn set_symbol_function(&self, name: &str, exact: bool, value: Value) {
+        if exact {
+            self.global.define_function_exact(name, value);
+        } else {
+            let function_name = self
+                .dynamic_candidates(name)
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| intern_name(name));
+            self.global.define_function(function_name, value);
+        }
+    }
+
     pub(crate) fn set_or_define_in(
         &self,
         name: &str,

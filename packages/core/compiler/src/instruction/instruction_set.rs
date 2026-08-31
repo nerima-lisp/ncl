@@ -99,6 +99,10 @@ pub enum Instruction {
     },
     #[doc = "Update a symbol property through GET."] SetfGetDynamic,
     #[doc = "Update a hash-table-valued place through GETHASH."] SetfGethashDynamic,
+    #[doc = "Update a dynamically selected symbol value or function cell."] SetfSymbolCellDynamic {
+        /// The symbol-cell accessor name.
+        operator: String,
+    },
     #[doc = "Push a value onto a list-valued symbol."] PushList {
         /// The symbol holding the list.
         name: String,

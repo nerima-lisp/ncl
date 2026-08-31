@@ -939,15 +939,19 @@ fn emits_eval_and_mapcar_instructions() {
         ]
     ));
 
-    let mapcar = compile("(mapcar + '(1 2) '(10 20))");
-    assert!(
-        mapcar.functions[0]
-            .instructions
-            .iter()
-            .any(|instruction| {
-                matches!(instruction, Instruction::ListMapping { operation, sequence_count: 2 } if operation == "MAPCAR")
-            })
-    );
+    for operation in ["MAPCAR", "MAPC", "MAPL", "MAPLIST", "MAPCAN", "MAPCON"] {
+        let source = format!("({operation} + '(1 2) '(10 20))");
+        let program = compile(&source);
+        assert!(
+            program.functions[0]
+                .instructions
+                .iter()
+                .any(|instruction| {
+                    matches!(instruction, Instruction::ListMapping { operation: emitted, sequence_count: 2 } if emitted == operation)
+                }),
+            "missing native instruction for {operation}"
+        );
+    }
 
     let map_into = compile("(map-into result #'1+ '(1 2))");
     assert!(

@@ -164,6 +164,24 @@ fn evaluates_error_through_condition_handlers(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_most_recent_matching_handler_first(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((seen nil))
+               (handler-bind ((simple-error (lambda (condition) (setq seen :outer)))
+                              (simple-error (lambda (condition) (setq seen :inner))))
+                 (signal (make-condition 'simple-error :format-control \"boom\")))
+               seen)",
+        )
+        .to_string(),
+        ":INNER"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_extended_character_operations(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

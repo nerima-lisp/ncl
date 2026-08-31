@@ -113,6 +113,7 @@ pub(super) fn execute_handler_bind_instruction(
         Err(error) => {
             let Some(handler) = handlers
                 .iter()
+                .rev()
                 .find(|handler| error.matches_condition(&handler.condition))
             else {
                 return Err(error);

@@ -56,6 +56,40 @@ impl CompileState {
         Ok(())
     }
 
+    pub(super) fn compile_defgeneric(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 3 {
+            return Err(Self::arity_error(items, "DEFGENERIC", "at least two", span));
+        }
+        self.emit(
+            function,
+            Instruction::Defgeneric(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
+    pub(super) fn compile_defmethod(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 3 {
+            return Err(Self::arity_error(items, "DEFMETHOD", "at least two", span));
+        }
+        self.emit(
+            function,
+            Instruction::Defmethod(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(super) fn compile_runtime_definition(
         &mut self,
         function: FunctionId,

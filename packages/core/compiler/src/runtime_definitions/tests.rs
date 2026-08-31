@@ -55,6 +55,38 @@ fn compile_defclass_uses_native_instruction() {
 }
 
 #[test]
+fn compile_defgeneric_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(defgeneric point-total (object))");
+
+    state
+        .compile_defgeneric(function, Span::new(0, 1), &items)
+        .expect("DEFGENERIC should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.as_slice(),
+        [Instruction::Defgeneric(_)]
+    ));
+}
+
+#[test]
+fn compile_defmethod_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(defmethod point-total ((object t)) object)");
+
+    state
+        .compile_defmethod(function, Span::new(0, 1), &items)
+        .expect("DEFMETHOD should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.as_slice(),
+        [Instruction::Defmethod(_)]
+    ));
+}
+
+#[test]
 fn compile_runtime_definition_reports_an_internal_error_for_an_invalid_function_id() {
     let mut state = CompileState::default();
     let span = Span::new(0, 1);

@@ -306,6 +306,8 @@ pub enum Instruction {
     },
     #[doc = "Define a structure through the runtime structure registry."] Defstruct(Form),
     #[doc = "Define a class through the runtime class registry."] Defclass(Form),
+    #[doc = "Define a generic function through the runtime method registry."] Defgeneric(Form),
+    #[doc = "Define a method through the runtime method registry."] Defmethod(Form),
     #[doc = "Evaluate a compiled source span."] Eval(Span),
     #[doc = "Call a function with positional arguments."] Call(usize),
     #[doc = "Apply a final list of arguments."] Apply(usize),

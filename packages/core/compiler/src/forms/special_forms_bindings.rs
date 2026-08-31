@@ -31,6 +31,8 @@ impl CompileState {
             "DEFCONSTANT" => self.compile_runtime_definition(function, span, items),
             "DEFSTRUCT" => self.compile_defstruct(function, span, items),
             "DEFCLASS" => self.compile_defclass(function, span, items),
+            "DEFGENERIC" => self.compile_defgeneric(function, span, items),
+            "DEFMETHOD" => self.compile_defmethod(function, span, items),
             "EVAL" => self.compile_eval(function, span, items),
             "FUNCALL" => self.compile_funcall(function, span, items),
             "APPLY" => self.compile_apply(function, span, items),

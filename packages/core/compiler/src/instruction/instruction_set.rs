@@ -127,6 +127,8 @@ pub enum Instruction {
         test_not: bool,
         /// Whether a key function value is present on the stack.
         has_key: bool,
+        /// Whether the source form evaluates :KEY before the test designator.
+        key_before_test: bool,
     },
     #[doc = "Pop the first value from a list-valued symbol."] PopList {
         /// The symbol holding the list.

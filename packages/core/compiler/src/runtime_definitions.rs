@@ -150,6 +150,7 @@ impl CompileState {
             let mut test_not = false;
             let mut has_test = false;
             let mut has_key = false;
+            let mut key_before_test = false;
             for pair in items[3..].chunks_exact(2) {
                 let FormKind::Atom(keyword) = &pair[0].kind else {
                     return Ok(None);
@@ -166,13 +167,12 @@ impl CompileState {
                         test_not = true;
                     }
                     ":KEY" if !has_key => {
+                        key_before_test = !has_test && !test_not;
                         has_key = true;
                     }
                     _ => return Ok(None),
                 }
-                if keyword != ":KEY" {
-                    self.compile_expression(function, &pair[1])?;
-                }
+                self.compile_expression(function, &pair[1])?;
             }
             if !has_test && !test_not {
                 self.emit(
@@ -180,14 +180,6 @@ impl CompileState {
                     Instruction::Quote(Form::atom("EQL", items[0].span)),
                     items[0].span,
                 )?;
-            }
-            if has_key {
-                let Some(key_form) = items[3..].chunks_exact(2).find(|pair| {
-                    matches!(&pair[0].kind, FormKind::Atom(keyword) if keyword.eq_ignore_ascii_case(":KEY"))
-                }) else {
-                    return Ok(None);
-                };
-                self.compile_expression(function, &key_form[1])?;
             }
             self.compile_expression(function, &items[1])?;
             self.compile_expression(function, &items[2])?;
@@ -198,6 +190,7 @@ impl CompileState {
                     escaped,
                     test_not,
                     has_key,
+                    key_before_test,
                 },
                 items[0].span,
             )?;
@@ -393,6 +386,36 @@ mod tests {
                             escaped: false,
                             test_not: true,
                             has_key: true,
+                            key_before_test: false,
+                        } if name == "XS"
+                    )
+                })
+        );
+    }
+
+    #[test]
+    fn compile_runtime_definition_preserves_pushnew_key_before_test_order() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let items = parse_items("(pushnew 1 xs :key #'identity :test #'equal)");
+
+        state
+            .compile_runtime_definition(function, Span::new(0, 1), &items)
+            .expect("PUSHNEW options should compile");
+
+        assert!(
+            state.functions[function]
+                .instructions
+                .iter()
+                .any(|instruction| {
+                    matches!(
+                        instruction,
+                        Instruction::PushNewListOptions {
+                            name,
+                            escaped: false,
+                            test_not: false,
+                            has_key: true,
+                            key_before_test: true,
                         } if name == "XS"
                     )
                 })

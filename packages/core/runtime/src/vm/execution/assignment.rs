@@ -743,6 +743,7 @@ pub(super) fn execute_set_instruction(
             escaped,
             test_not,
             has_key,
+            key_before_test,
         } => {
             let current = stack
                 .pop()
@@ -752,20 +753,33 @@ pub(super) fn execute_set_instruction(
                 .pop()
                 .ok_or_else(|| invalid("pushnew has no value on the stack", span))?
                 .primary_value();
-            let key = if *has_key {
-                Some(
-                    stack
-                        .pop()
-                        .ok_or_else(|| invalid("pushnew has no key on the stack", span))?
-                        .primary_value(),
-                )
+            let (test, key) = if *key_before_test {
+                let test = stack
+                    .pop()
+                    .ok_or_else(|| invalid("pushnew has no test on the stack", span))?
+                    .primary_value();
+                let key = stack
+                    .pop()
+                    .ok_or_else(|| invalid("pushnew has no key on the stack", span))?
+                    .primary_value();
+                (test, Some(key))
             } else {
-                None
+                let key = if *has_key {
+                    Some(
+                        stack
+                            .pop()
+                            .ok_or_else(|| invalid("pushnew has no key on the stack", span))?
+                            .primary_value(),
+                    )
+                } else {
+                    None
+                };
+                let test = stack
+                    .pop()
+                    .ok_or_else(|| invalid("pushnew has no test on the stack", span))?
+                    .primary_value();
+                (test, key)
             };
-            let test = stack
-                .pop()
-                .ok_or_else(|| invalid("pushnew has no test on the stack", span))?
-                .primary_value();
             let test =
                 Value::Function(runtime.resolve_function_designator(&test, span, environment)?);
             let key = key

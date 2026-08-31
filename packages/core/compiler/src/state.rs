@@ -8,9 +8,13 @@ pub(super) struct CompileState {
     pub(super) local_function_scopes: Vec<HashSet<String>>,
     pub(super) used_names: HashSet<String>,
     pub(super) temporary_counter: usize,
+    pub(super) special_names: HashSet<(String, bool)>,
 }
 
 impl CompileState {
+    pub(super) fn register_special(&mut self, name: String, escaped: bool) {
+        self.special_names.insert((name, escaped));
+    }
     pub(super) fn reserve_function(
         &mut self,
         name: Option<String>,

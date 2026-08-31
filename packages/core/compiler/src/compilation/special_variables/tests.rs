@@ -37,6 +37,25 @@ fn compile_defvar_defparameter_uses_define_special_exact_for_an_escaped_name() {
 }
 
 #[test]
+fn compile_defvar_registers_the_name_for_later_let_bindings() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let span = Span::new(0, 1);
+
+    state
+        .compile_defvar(function, span, &parse_items("(defvar *x* 1)"), false)
+        .unwrap_or_else(|error| panic!("defvar should compile: {error}"));
+
+    state
+        .compile_let(function, span, &parse_items("(let ((*x* 2)) *x*)"), false)
+        .unwrap_or_else(|error| panic!("later let should compile: {error}"));
+
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::DefineDynamicSpecial("*X*".to_string())));
+}
+
+#[test]
 fn compile_defvar_defparameter_propagates_a_malformed_initializer_error() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

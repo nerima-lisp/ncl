@@ -104,6 +104,28 @@ fn compile_let_uses_special_binding_for_a_leading_special_declaration() {
 }
 
 #[test]
+fn compile_let_keeps_star_named_variables_lexical_without_a_special_declaration() {
+    let span = Span::new(0, 1);
+    let items = vec![
+        Form::atom("LET", span),
+        Form::list(vec![binding("*X*", Some(Form::atom("1", span)), span)], span),
+        Form::atom("*X*", span),
+    ];
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+
+    state
+        .compile_let(function, span, &items, false)
+        .unwrap_or_else(|error| panic!("a star-named lexical binding should compile: {error}"));
+
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::Define("*X*".to_string()))
+    );
+}
+
+#[test]
 fn compile_let_star_propagates_malformed_binding_value() {
     let span = Span::new(0, 1);
     let items = vec![

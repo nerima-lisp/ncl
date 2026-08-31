@@ -24,6 +24,7 @@ impl CompileState {
                 "defvar name"
             },
         )?;
+        self.register_special(name.clone(), escaped);
         if force {
             if let Some(initializer) = items.get(2) {
                 self.compile_expression(function, initializer)?;

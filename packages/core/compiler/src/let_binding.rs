@@ -104,9 +104,11 @@ impl CompileState {
             parsed.push((name, escaped, binding_items.get(1)));
         }
 
+        let registered_special_names = self.special_names.clone();
         let is_special = |name: &str, escaped: bool| {
             special_names.contains(&(name.to_string(), escaped))
-                || (!escaped && name.starts_with('*') && name.ends_with('*'))
+                || registered_special_names.contains(&(name.to_string(), escaped))
+                || (!escaped && name.eq_ignore_ascii_case("*RANDOM-STATE*"))
         };
 
         let binding_instruction = |name: &String, escaped: bool| {

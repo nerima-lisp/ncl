@@ -8,11 +8,22 @@ pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let base = number_argument("expt", &arguments[0])?;
     let exponent = number_argument("expt", &arguments[1])?;
 
-    if !base.is_float()
-        && let Some((exponent_numerator, exponent_denominator)) = exponent.exact_parts()
-        && exponent_denominator == 1
-    {
-        return number_to_value(exact_power(base, exponent_numerator)?);
+    if !base.is_float() {
+        if let Some((exponent_numerator, exponent_denominator)) = exponent.exact_parts()
+            && exponent_denominator == 1
+        {
+            return number_to_value(exact_power(base, exponent_numerator)?);
+        }
+        if let Number::Big(ref exponent) = exponent
+            && *exponent >= ibig::IBig::from(0)
+            && let Ok(exponent) = u64::try_from(exponent)
+        {
+            if let Number::Integer(base) = base {
+                return number_to_value(
+                    ibig_power(ibig::IBig::from(base), exponent).map(number_from_big)?,
+                );
+            }
+        }
     }
 
     Ok(Value::Float(base.as_float().powf(exponent.as_float())))

@@ -2,6 +2,7 @@
 use super::*;
 
 mod modify;
+mod setf_helpers;
 
 impl CompileState {
     pub(crate) fn compile_setf(
@@ -70,9 +71,13 @@ impl CompileState {
                         place.span,
                     )?;
                 }
-                if index + 1 < pair_count {
-                    self.emit(function, Instruction::Pop, value_form.span)?;
-                }
+                setf_helpers::emit_pop_if_needed(
+                    self,
+                    function,
+                    index,
+                    pair_count,
+                    value_form.span,
+                )?;
                 continue;
             }
             let aref_place = match &place.kind {
@@ -116,9 +121,13 @@ impl CompileState {
                     },
                     place.span,
                 )?;
-                if index + 1 < pair_count {
-                    self.emit(function, Instruction::Pop, value_form.span)?;
-                }
+                setf_helpers::emit_pop_if_needed(
+                    self,
+                    function,
+                    index,
+                    pair_count,
+                    value_form.span,
+                )?;
                 continue;
             }
             let bit_place = match &place.kind {
@@ -151,9 +160,13 @@ impl CompileState {
                     },
                     place.span,
                 )?;
-                if index + 1 < pair_count {
-                    self.emit(function, Instruction::Pop, value_form.span)?;
-                }
+                setf_helpers::emit_pop_if_needed(
+                    self,
+                    function,
+                    index,
+                    pair_count,
+                    value_form.span,
+                )?;
                 continue;
             }
             let element_place = match &place.kind {
@@ -184,9 +197,13 @@ impl CompileState {
                     },
                     place.span,
                 )?;
-                if index + 1 < pair_count {
-                    self.emit(function, Instruction::Pop, value_form.span)?;
-                }
+                setf_helpers::emit_pop_if_needed(
+                    self,
+                    function,
+                    index,
+                    pair_count,
+                    value_form.span,
+                )?;
                 continue;
             }
             let subseq_place = match &place.kind {
@@ -219,9 +236,13 @@ impl CompileState {
                     },
                     place.span,
                 )?;
-                if index + 1 < pair_count {
-                    self.emit(function, Instruction::Pop, value_form.span)?;
-                }
+                setf_helpers::emit_pop_if_needed(
+                    self,
+                    function,
+                    index,
+                    pair_count,
+                    value_form.span,
+                )?;
                 continue;
             }
             let getf_place = match &place.kind {
@@ -246,9 +267,13 @@ impl CompileState {
                     Instruction::SetfGetfDynamic { name, escaped },
                     place.span,
                 )?;
-                if index + 1 < pair_count {
-                    self.emit(function, Instruction::Pop, value_form.span)?;
-                }
+                setf_helpers::emit_pop_if_needed(
+                    self,
+                    function,
+                    index,
+                    pair_count,
+                    value_form.span,
+                )?;
                 continue;
             }
             let symbol_cell_place = match &place.kind {
@@ -270,9 +295,13 @@ impl CompileState {
                     Instruction::SetfSymbolCellDynamic { operator },
                     place.span,
                 )?;
-                if index + 1 < pair_count {
-                    self.emit(function, Instruction::Pop, value_form.span)?;
-                }
+                setf_helpers::emit_pop_if_needed(
+                    self,
+                    function,
+                    index,
+                    pair_count,
+                    value_form.span,
+                )?;
                 continue;
             }
             let get_place = match &place.kind {
@@ -289,9 +318,13 @@ impl CompileState {
                 self.compile_expression(function, indicator)?;
                 self.compile_expression(function, value_form)?;
                 self.emit(function, Instruction::SetfGetDynamic, place.span)?;
-                if index + 1 < pair_count {
-                    self.emit(function, Instruction::Pop, value_form.span)?;
-                }
+                setf_helpers::emit_pop_if_needed(
+                    self,
+                    function,
+                    index,
+                    pair_count,
+                    value_form.span,
+                )?;
                 continue;
             }
             let gethash_place = match &place.kind {
@@ -308,9 +341,13 @@ impl CompileState {
                 self.compile_expression(function, table)?;
                 self.compile_expression(function, value_form)?;
                 self.emit(function, Instruction::SetfGethashDynamic, place.span)?;
-                if index + 1 < pair_count {
-                    self.emit(function, Instruction::Pop, value_form.span)?;
-                }
+                setf_helpers::emit_pop_if_needed(
+                    self,
+                    function,
+                    index,
+                    pair_count,
+                    value_form.span,
+                )?;
                 continue;
             }
             let list_place = match &place.kind {

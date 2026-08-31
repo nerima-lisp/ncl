@@ -87,6 +87,10 @@ fn evaluates_pushnew(#[case] eval_fn: EvalFn) {
         .to_string(),
         "(((1 :A)) ((1 :C) (1 :A)))"
     );
+    assert_eq!(
+        evaluate("(let ((xs (list 1))) (pushnew 1 xs :key nil) xs)").to_string(),
+        "(1)"
+    );
 }
 
 #[rstest]

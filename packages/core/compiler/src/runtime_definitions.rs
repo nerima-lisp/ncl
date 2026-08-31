@@ -141,7 +141,67 @@ impl CompileState {
         }
         let expected = if operator == "POP" { 2 } else { 3 };
         if operator == "PUSHNEW" && items.len() > expected {
-            return Ok(None);
+            let Some((name, escaped)) = Self::symbol_name_info(&items[2], "list place").ok() else {
+                return Ok(None);
+            };
+            if !(items.len() - 3).is_multiple_of(2) {
+                return Ok(None);
+            }
+            let mut test_not = false;
+            let mut has_test = false;
+            let mut has_key = false;
+            for pair in items[3..].chunks_exact(2) {
+                let FormKind::Atom(keyword) = &pair[0].kind else {
+                    return Ok(None);
+                };
+                let keyword = keyword.to_ascii_uppercase();
+                if !keyword.starts_with(':') {
+                    return Ok(None);
+                }
+                match keyword.as_str() {
+                    ":TEST" if !has_test && !test_not => {
+                        has_test = true;
+                    }
+                    ":TEST-NOT" if !has_test && !test_not => {
+                        test_not = true;
+                    }
+                    ":KEY" if !has_key => {
+                        has_key = true;
+                    }
+                    _ => return Ok(None),
+                }
+                if keyword != ":KEY" {
+                    self.compile_expression(function, &pair[1])?;
+                }
+            }
+            if !has_test && !test_not {
+                self.emit(
+                    function,
+                    Instruction::Quote(Form::atom("EQL", items[0].span)),
+                    items[0].span,
+                )?;
+            }
+            if has_key {
+                let Some(key_form) = items[3..].chunks_exact(2).find(|pair| {
+                    matches!(&pair[0].kind, FormKind::Atom(keyword) if keyword.eq_ignore_ascii_case(":KEY"))
+                }) else {
+                    return Ok(None);
+                };
+                self.compile_expression(function, &key_form[1])?;
+            }
+            self.compile_expression(function, &items[1])?;
+            self.compile_expression(function, &items[2])?;
+            self.emit(
+                function,
+                Instruction::PushNewListOptions {
+                    name,
+                    escaped,
+                    test_not,
+                    has_key,
+                },
+                items[0].span,
+            )?;
+            return Ok(Some(()));
         }
         if items.len() != expected {
             return Err(Self::arity_error(
@@ -308,6 +368,34 @@ mod tests {
                 .instructions
                 .iter()
                 .any(|instruction| matches!(instruction, Instruction::Eval(_)))
+        );
+    }
+
+    #[test]
+    fn compile_runtime_definition_uses_native_pushnew_options_for_symbol_places() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let items = parse_items("(pushnew 1 xs :test-not #'equal :key #'identity)");
+
+        state
+            .compile_runtime_definition(function, Span::new(0, 1), &items)
+            .expect("PUSHNEW options should compile");
+
+        assert!(
+            state.functions[function]
+                .instructions
+                .iter()
+                .any(|instruction| {
+                    matches!(
+                        instruction,
+                        Instruction::PushNewListOptions {
+                            name,
+                            escaped: false,
+                            test_not: true,
+                            has_key: true,
+                        } if name == "XS"
+                    )
+                })
         );
     }
 }

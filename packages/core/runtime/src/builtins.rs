@@ -49,7 +49,8 @@ use builtin_stream_predicates::{close_stream, input_stream_p, output_stream_p, s
 mod builtin_random;
 pub(crate) use builtin_random::{
     bind_dynamic_random_state, default_random_state_value, dynamic_random_state_depth,
-    make_random_state, random, random_state_p, truncate_dynamic_random_states,
+    make_random_state, random, random_state_p, set_dynamic_random_state,
+    truncate_dynamic_random_states,
 };
 
 mod builtin_format_data;

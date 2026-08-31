@@ -13,7 +13,7 @@ use sampling::{random_limit, state_reference};
 thread_local! {
     static DEFAULT_RANDOM_STATE: Rc<RefCell<RandomState>> =
         Rc::new(RefCell::new(RandomState::seeded()));
-    static DYNAMIC_RANDOM_STATES: RefCell<Vec<Rc<RefCell<RandomState>>>> = RefCell::new(Vec::new());
+    static DYNAMIC_RANDOM_STATES: RefCell<Vec<Value>> = RefCell::new(Vec::new());
 }
 
 pub fn default_random_state_value() -> Value {
@@ -25,9 +25,18 @@ pub(crate) fn dynamic_random_state_depth() -> usize {
 }
 
 pub(crate) fn bind_dynamic_random_state(value: &Value) {
-    if let Value::RandomState(state) = value {
-        DYNAMIC_RANDOM_STATES.with(|states| states.borrow_mut().push(Rc::clone(state)));
-    }
+    DYNAMIC_RANDOM_STATES.with(|states| states.borrow_mut().push(value.clone()));
+}
+
+pub(crate) fn set_dynamic_random_state(value: &Value) -> bool {
+    DYNAMIC_RANDOM_STATES.with(|states| {
+        let mut states = states.borrow_mut();
+        let Some(current) = states.last_mut() else {
+            return false;
+        };
+        *current = value.clone();
+        true
+    })
 }
 
 pub(crate) fn truncate_dynamic_random_states(depth: usize) {
@@ -36,8 +45,9 @@ pub(crate) fn truncate_dynamic_random_states(depth: usize) {
 
 pub fn random(arguments: &[Value]) -> Result<Value, RuntimeError> {
     DYNAMIC_RANDOM_STATES.with(|states| {
-        if let Some(state) = states.borrow().last() {
-            random_with_state(arguments, state)
+        if let Some(value) = states.borrow().last() {
+            let state = state_reference("random", value)?;
+            random_with_state(arguments, &state)
         } else {
             DEFAULT_RANDOM_STATE.with(|state| random_with_state(arguments, state))
         }
@@ -60,8 +70,9 @@ pub fn random_with_state(
 
 pub fn make_random_state(arguments: &[Value]) -> Result<Value, RuntimeError> {
     DYNAMIC_RANDOM_STATES.with(|states| {
-        if let Some(state) = states.borrow().last() {
-            make_random_state_with_state(arguments, state)
+        if let Some(value) = states.borrow().last() {
+            let state = state_reference("make-random-state", value)?;
+            make_random_state_with_state(arguments, &state)
         } else {
             DEFAULT_RANDOM_STATE.with(|state| make_random_state_with_state(arguments, state))
         }

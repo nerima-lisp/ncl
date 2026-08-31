@@ -59,6 +59,12 @@ impl Runtime {
                 .any(|candidate| candidate.as_ref() == binding.as_ref())
         }) {
             *current = value.clone();
+            if candidates
+                .iter()
+                .any(|candidate| candidate.as_ref().eq_ignore_ascii_case("*RANDOM-STATE*"))
+            {
+                crate::builtins::set_dynamic_random_state(&value);
+            }
             return value;
         }
         let global_name = candidates

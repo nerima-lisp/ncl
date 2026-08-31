@@ -2,25 +2,6 @@
 use super::super::*;
 
 impl CompileState {
-    fn generalized_list_place(form: &Form) -> Option<(Vec<String>, String, bool)> {
-        let FormKind::List(items) = &form.kind else {
-            return None;
-        };
-        if items.len() != 2 {
-            return None;
-        }
-        let (accessor, _) = Self::symbol_name_info(&items[0], "modify accessor").ok()?;
-        if !matches!(accessor.as_str(), "CAR" | "FIRST" | "CDR" | "REST") {
-            return None;
-        }
-        if let Some((mut accessors, name, escaped)) = Self::generalized_list_place(&items[1]) {
-            accessors.insert(0, accessor);
-            return Some((accessors, name, escaped));
-        }
-        let (name, escaped) = Self::symbol_name_info(&items[1], "modify place target").ok()?;
-        Some((vec![accessor], name, escaped))
-    }
-
     pub(crate) fn compile_modify(
         &mut self,
         function: FunctionId,
@@ -32,7 +13,7 @@ impl CompileState {
         let place = items
             .get(1)
             .ok_or_else(|| Self::internal_error(span, "missing modifying place"))?;
-        if let Some((accessors, name, escaped)) = Self::generalized_list_place(place) {
+        if let Some((accessors, name, escaped)) = generalized_list_place(place) {
             if !(items.len() == 2 || items.len() == 3) {
                 return Err(Self::arity_error(items, operator, "one or two", span));
             }

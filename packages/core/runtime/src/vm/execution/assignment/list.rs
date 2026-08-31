@@ -51,6 +51,82 @@ pub(super) fn execute(
     Ok(true)
 }
 
+pub(super) fn execute_place_mutation(
+    runtime: &Runtime,
+    operator: &str,
+    accessor: &str,
+    name: &str,
+    escaped: bool,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let target = stack
+        .pop()
+        .ok_or_else(|| invalid("list place has no target", span))?
+        .primary_value();
+    let mut outer = target.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".to_string(),
+        actual: target.type_name().to_string(),
+        span: Some(span),
+    })?;
+    if outer.is_empty() {
+        return Err(invalid("cannot mutate a list place of NIL", span));
+    }
+    let current = match accessor {
+        "CAR" | "FIRST" => outer[0].clone(),
+        "CDR" | "REST" => Value::list(outer[1..].to_vec()),
+        _ => return Err(invalid("unsupported native list accessor", span)),
+    };
+    let (result, updated_place) = match operator {
+        "PUSH" => {
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("push has no value", span))?
+                .primary_value();
+            let mut items = current.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: current.type_name().to_string(),
+                span: Some(span),
+            })?;
+            items.insert(0, value);
+            let updated = Value::list(items);
+            (updated.clone(), updated)
+        }
+        "POP" => {
+            let mut items = current.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: current.type_name().to_string(),
+                span: Some(span),
+            })?;
+            let value = items.first().cloned().unwrap_or(Value::Nil);
+            if !items.is_empty() {
+                items.remove(0);
+            }
+            (value, Value::list(items))
+        }
+        _ => return Err(invalid("unsupported native list place mutation", span)),
+    };
+    match accessor {
+        "CAR" | "FIRST" => outer[0] = updated_place,
+        "CDR" | "REST" => {
+            outer = vec![outer[0].clone()];
+            outer.extend(updated_place.list_items().unwrap_or_default());
+        }
+        _ => unreachable!(),
+    }
+    let updated = Value::list(outer);
+    if escaped {
+        runtime.set_or_define_exact_in(name, updated, environment, span)?;
+    } else {
+        runtime.set_or_define_in(name, updated, environment, span)?;
+    }
+    stack.push(result);
+    *program_counter += 1;
+    Ok(true)
+}
+
 pub(super) fn execute_pushnew(
     runtime: &Runtime,
     name: &str,

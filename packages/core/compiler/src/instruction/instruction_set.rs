@@ -138,6 +138,16 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Push onto or pop from a CAR/CDR list place held by a symbol."] ListPlaceMutation {
+        /// The mutation operator.
+        operator: String,
+        /// The list accessor name.
+        accessor: String,
+        /// The symbol holding the outer list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Rotate values among symbol places."] RotatefSymbols(Vec<(String, bool)>),
     #[doc = "Shift values through symbol places and return the first old value."] ShiftfSymbols(Vec<(String, bool)>),
     #[doc = "Update a symbol with the result of `MAP-INTO`."] MapIntoSetfSymbol {

@@ -83,6 +83,22 @@ pub(super) fn execute_set_instruction(
             program_counter,
             span,
         ),
+        Instruction::ListPlaceMutation {
+            operator,
+            accessor,
+            name,
+            escaped,
+        } => list::execute_place_mutation(
+            runtime,
+            operator,
+            accessor,
+            name,
+            *escaped,
+            stack,
+            environment,
+            program_counter,
+            span,
+        ),
         Instruction::SetfElementDynamic {
             operator,
             name,

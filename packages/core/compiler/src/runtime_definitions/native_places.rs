@@ -79,20 +79,56 @@ impl CompileState {
                 span,
             ));
         }
-        let Some((name, escaped)) = Self::symbol_name_info(&items[expected - 1], "list place").ok()
-        else {
-            return Ok(None);
+        let place = &items[expected - 1];
+        let generalized = match &place.kind {
+            FormKind::List(place_items) if place_items.len() == 2 => {
+                let accessor = Self::symbol_name_info(&place_items[0], "list accessor")
+                    .ok()
+                    .map(|(name, _)| name);
+                accessor.and_then(|accessor| {
+                    if !matches!(accessor.as_str(), "CAR" | "FIRST" | "CDR" | "REST") {
+                        return None;
+                    }
+                    Self::symbol_name_info(&place_items[1], "list place target")
+                        .ok()
+                        .map(|(name, escaped)| (accessor, name, escaped))
+                })
+            }
+            _ => None,
         };
+        if generalized.is_some() && operator == "PUSHNEW" {
+            return Ok(None);
+        }
+        let symbol_place = Self::symbol_name_info(place, "list place").ok();
+        if generalized.is_none() && symbol_place.is_none() {
+            return Ok(None);
+        }
         if matches!(operator.as_str(), "PUSH" | "PUSHNEW") {
             self.compile_expression(function, &items[1])?;
         }
-        self.compile_expression(function, &items[expected - 1])?;
+        if generalized.is_some() {
+            if let FormKind::List(place_items) = &place.kind {
+                self.compile_expression(function, &place_items[1])?;
+            }
+        } else {
+            self.compile_expression(function, place)?;
+        }
         self.emit(
             function,
-            match operator.as_str() {
-                "PUSH" => Instruction::PushList { name, escaped },
-                "PUSHNEW" => Instruction::PushNewList { name, escaped },
-                _ => Instruction::PopList { name, escaped },
+            if let Some((accessor, name, escaped)) = generalized {
+                Instruction::ListPlaceMutation {
+                    operator,
+                    accessor,
+                    name,
+                    escaped,
+                }
+            } else {
+                let (name, escaped) = symbol_place.expect("checked above");
+                match operator.as_str() {
+                    "PUSH" => Instruction::PushList { name, escaped },
+                    "PUSHNEW" => Instruction::PushNewList { name, escaped },
+                    _ => Instruction::PopList { name, escaped },
+                }
             },
             items[0].span,
         )?;

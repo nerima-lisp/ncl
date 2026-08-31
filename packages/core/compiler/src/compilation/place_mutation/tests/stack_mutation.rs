@@ -57,26 +57,30 @@ fn compile_pushnew_uses_native_instruction_without_options() {
 }
 
 #[test]
-fn compile_push_with_a_generalized_place_uses_evaluator_fallback() {
+fn compile_push_and_pop_with_car_places_use_native_instructions() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());
     let push = parse_items("(push 1 (car xs))");
+    let pop = parse_items("(pop (cdr xs))");
 
     state
         .compile_runtime_definition(function, Span::new(0, 1), &push)
-        .expect("generalized PUSH should use evaluator fallback");
+        .expect("generalized PUSH should use a native list-place instruction");
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pop)
+        .expect("generalized POP should use a native list-place instruction");
 
     let instructions = &state.functions[function].instructions;
-    assert!(
-        instructions
-            .iter()
-            .any(|instruction| matches!(instruction, Instruction::Eval(_)))
-    );
-    assert!(
-        !instructions
-            .iter()
-            .any(|instruction| matches!(instruction, Instruction::PushList { .. }))
-    );
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::ListPlaceMutation { operator, accessor, name, .. }
+            if operator == "PUSH" && accessor == "CAR" && name == "XS"
+    )));
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::ListPlaceMutation { operator, accessor, name, .. }
+            if operator == "POP" && accessor == "CDR" && name == "XS"
+    )));
 }
 
 #[test]

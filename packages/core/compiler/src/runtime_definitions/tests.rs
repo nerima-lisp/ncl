@@ -23,6 +23,22 @@ fn compile_defstruct_reports_an_internal_error_for_an_invalid_function_id() {
 }
 
 #[test]
+fn compile_defstruct_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(defstruct point x)");
+
+    state
+        .compile_defstruct(function, Span::new(0, 1), &items)
+        .expect("DEFSTRUCT should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.as_slice(),
+        [Instruction::Defstruct(_)]
+    ));
+}
+
+#[test]
 fn compile_runtime_definition_reports_an_internal_error_for_an_invalid_function_id() {
     let mut state = CompileState::default();
     let span = Span::new(0, 1);
@@ -65,28 +81,24 @@ fn compile_runtime_definition_uses_native_rotate_and_shift_for_symbol_places() {
     state
         .compile_runtime_definition(function, Span::new(0, 1), &rotatef)
         .expect("ROTATEF symbol places should compile");
-    assert!(
-        state.functions[function]
-            .instructions
-            .contains(&Instruction::RotatefSymbols(vec![
-                ("A".to_string(), false),
-                ("B".to_string(), true),
-                ("C".to_string(), false),
-            ]))
-    );
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::RotatefSymbols(vec![
+            ("A".to_string(), false),
+            ("B".to_string(), true),
+            ("C".to_string(), false),
+        ])));
 
     let shiftf = parse_items("(shiftf a b 9)");
     state
         .compile_runtime_definition(function, Span::new(0, 1), &shiftf)
         .expect("SHIFTF symbol places should compile");
-    assert!(
-        state.functions[function]
-            .instructions
-            .contains(&Instruction::ShiftfSymbols(vec![
-                ("A".to_string(), false),
-                ("B".to_string(), false),
-            ]))
-    );
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::ShiftfSymbols(vec![
+            ("A".to_string(), false),
+            ("B".to_string(), false),
+        ])));
 }
 
 #[test]
@@ -98,23 +110,19 @@ fn compile_runtime_definition_falls_back_for_generalized_rotate_and_shift_places
         state
             .compile_runtime_definition(function, Span::new(0, 1), &items)
             .expect("generalized places should use evaluator fallback");
-        assert!(
-            state.functions[function]
-                .instructions
-                .iter()
-                .any(|instruction| matches!(instruction, Instruction::Eval(_)))
-        );
-        assert!(
-            !state.functions[function]
-                .instructions
-                .iter()
-                .any(|instruction| {
-                    matches!(
-                        instruction,
-                        Instruction::RotatefSymbols(_) | Instruction::ShiftfSymbols(_)
-                    )
-                })
-        );
+        assert!(state.functions[function]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Eval(_))));
+        assert!(!state.functions[function]
+            .instructions
+            .iter()
+            .any(|instruction| {
+                matches!(
+                    instruction,
+                    Instruction::RotatefSymbols(_) | Instruction::ShiftfSymbols(_)
+                )
+            }));
     }
 }
 
@@ -162,23 +170,21 @@ fn compile_runtime_definition_uses_native_pushnew_options_for_symbol_places() {
         .compile_runtime_definition(function, Span::new(0, 1), &items)
         .expect("PUSHNEW options should compile");
 
-    assert!(
-        state.functions[function]
-            .instructions
-            .iter()
-            .any(|instruction| {
-                matches!(
-                    instruction,
-                    Instruction::PushNewListOptions {
-                        name,
-                        escaped: false,
-                        test_not: true,
-                        has_key: true,
-                        key_before_test: false,
-                    } if name == "XS"
-                )
-            })
-    );
+    assert!(state.functions[function]
+        .instructions
+        .iter()
+        .any(|instruction| {
+            matches!(
+                instruction,
+                Instruction::PushNewListOptions {
+                    name,
+                    escaped: false,
+                    test_not: true,
+                    has_key: true,
+                    key_before_test: false,
+                } if name == "XS"
+            )
+        }));
 }
 
 #[test]
@@ -191,21 +197,19 @@ fn compile_runtime_definition_preserves_pushnew_key_before_test_order() {
         .compile_runtime_definition(function, Span::new(0, 1), &items)
         .expect("PUSHNEW options should compile");
 
-    assert!(
-        state.functions[function]
-            .instructions
-            .iter()
-            .any(|instruction| {
-                matches!(
-                    instruction,
-                    Instruction::PushNewListOptions {
-                        name,
-                        escaped: false,
-                        test_not: false,
-                        has_key: true,
-                        key_before_test: true,
-                    } if name == "XS"
-                )
-            })
-    );
+    assert!(state.functions[function]
+        .instructions
+        .iter()
+        .any(|instruction| {
+            matches!(
+                instruction,
+                Instruction::PushNewListOptions {
+                    name,
+                    escaped: false,
+                    test_not: false,
+                    has_key: true,
+                    key_before_test: true,
+                } if name == "XS"
+            )
+        }));
 }

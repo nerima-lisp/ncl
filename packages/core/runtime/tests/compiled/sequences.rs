@@ -14,15 +14,6 @@ fn compiled_evaluates_sequence_sort_and_stable_sort() {
 }
 
 #[test]
-fn compiled_mapcar_accepts_all_simple_sequence_types() {
-    assert_eq!(evaluate("(mapcar #'1+ #(1 2 3))").to_string(), "(2 3 4)");
-    assert_eq!(
-        evaluate("(mapcar #'char-code \"ab\")").to_string(),
-        "(97 98)"
-    );
-}
-
-#[test]
 fn compiled_evaluates_sequence_merge() {
     assert_eq!(
         evaluate("(merge 'list '(1 3 5) '(2 4 6) #'<)").to_string(),

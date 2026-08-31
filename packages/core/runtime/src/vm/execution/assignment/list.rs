@@ -85,7 +85,32 @@ pub(super) fn execute_nested(
     Ok(true)
 }
 
-fn update_nested(
+pub(super) fn read_nested(
+    elements: Vec<Value>,
+    accessors: &[String],
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    if elements.is_empty() {
+        return Err(invalid("cannot read CAR/CDR of NIL", span));
+    }
+    match (accessors.first().map(String::as_str), accessors.len()) {
+        (Some("CAR" | "FIRST"), 1) => Ok(elements[0].clone()),
+        (Some("CDR" | "REST"), 1) => Ok(Value::list(elements[1..].to_vec())),
+        (Some("CAR" | "FIRST"), _) => read_nested(
+            elements[0].list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: elements[0].type_name().to_string(),
+                span: Some(span),
+            })?,
+            &accessors[1..],
+            span,
+        ),
+        (Some("CDR" | "REST"), _) => read_nested(elements[1..].to_vec(), &accessors[1..], span),
+        _ => Err(invalid("unsupported native nested list accessor", span)),
+    }
+}
+
+pub(super) fn update_nested(
     mut elements: Vec<Value>,
     accessors: &[String],
     value: &Value,

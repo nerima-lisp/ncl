@@ -137,6 +137,22 @@ pub(super) fn execute(
         Instruction::ShiftfSymbols(places) => {
             rotate_shift::execute_shiftf(runtime, places, stack, environment, program_counter, span)
         }
+        Instruction::RotatefNestedList(places) => rotate_shift::execute_rotatef_nested(
+            places,
+            stack,
+            environment,
+            runtime,
+            program_counter,
+            span,
+        ),
+        Instruction::ShiftfNestedList(places) => rotate_shift::execute_shiftf_nested(
+            places,
+            stack,
+            environment,
+            runtime,
+            program_counter,
+            span,
+        ),
         _ => Ok(false),
     }
 }

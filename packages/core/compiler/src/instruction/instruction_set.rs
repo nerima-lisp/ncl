@@ -196,6 +196,8 @@ pub enum Instruction {
     },
     #[doc = "Rotate values among symbol places."] RotatefSymbols(Vec<(String, bool)>),
     #[doc = "Shift values through symbol places and return the first old value."] ShiftfSymbols(Vec<(String, bool)>),
+    #[doc = "Rotate values among nested CAR/CDR list places."] RotatefNestedList(Vec<(Vec<String>, String, bool)>),
+    #[doc = "Shift values through nested CAR/CDR list places."] ShiftfNestedList(Vec<(Vec<String>, String, bool)>),
     #[doc = "Update a symbol with the result of `MAP-INTO`."] MapIntoSetfSymbol {
         /// The symbol receiving the mapped sequence.
         name: String,

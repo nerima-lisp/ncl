@@ -119,6 +119,23 @@ fn compile_runtime_definition_falls_back_for_generalized_rotate_and_shift_places
 }
 
 #[test]
+fn compile_runtime_definition_uses_native_nested_rotate_and_shift_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let rotatef = parse_items("(rotatef (car xs) (cdr ys))");
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &rotatef)
+        .expect("nested ROTATEF should compile");
+    assert!(state.functions[function].instructions.iter().any(|instruction| matches!(instruction, Instruction::RotatefNestedList(places) if places.len() == 2)));
+
+    let shiftf = parse_items("(shiftf (car (car xs)) (cdr ys) 9)");
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &shiftf)
+        .expect("nested SHIFTF should compile");
+    assert!(state.functions[function].instructions.iter().any(|instruction| matches!(instruction, Instruction::ShiftfNestedList(places) if places.len() == 2)));
+}
+
+#[test]
 fn compile_runtime_definition_uses_native_single_place_rotatef() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

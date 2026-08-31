@@ -174,6 +174,21 @@ fn compiled_evaluates_native_single_place_rotatef() {
 }
 
 #[test]
+fn compiled_evaluates_native_nested_rotatef_and_shiftf() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 1 2)) (ys (list 3 4))) (rotatef (car xs) (car ys)) (list xs ys))"
+        )
+        .to_string(),
+        "((3 2) (1 4))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 1 2)))) (list (shiftf (car (car xs)) 9) xs))").to_string(),
+        "(1 ((9 2)))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_aref_setf_for_vector_and_array() {
     assert_eq!(
         evaluate("(let ((xs #(1 2 3)) (index 1)) (setf (aref xs index) 9) xs)").to_string(),

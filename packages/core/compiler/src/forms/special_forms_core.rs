@@ -14,8 +14,8 @@ impl CompileState {
             "DECLARE" | "DECLAIM" | "PROCLAIM" => self.compile_declare(function, span),
             "LOCALLY" | "PROGN" => self.compile_progn(function, items),
             "EVAL-WHEN" => self.compile_eval_when(function, span, items),
-            "LOAD-TIME-VALUE"
-            | "NTH-VALUE"
+            "LOAD-TIME-VALUE" => self.compile_load_time_value(function, span, items),
+            "NTH-VALUE"
             | "DEFINE-SYMBOL-MACRO"
             | "PSETF"
             | "PUSH"

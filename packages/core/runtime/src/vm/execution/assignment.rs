@@ -6,6 +6,7 @@ mod element;
 mod list;
 mod property;
 mod pushnew;
+mod pushnew_nested;
 mod rotate_shift;
 mod sequence;
 mod subseq;
@@ -157,7 +158,7 @@ pub(super) fn execute_set_instruction(
             test_not,
             has_key,
             key_before_test,
-        } => pushnew::execute_nested_place_pushnew_options(
+        } => pushnew_nested::execute_nested_place_pushnew_options(
             runtime,
             accessors,
             name,

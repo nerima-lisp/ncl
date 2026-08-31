@@ -305,6 +305,7 @@ pub enum Instruction {
         tag: String,
     },
     #[doc = "Define a structure through the runtime structure registry."] Defstruct(Form),
+    #[doc = "Define a class through the runtime class registry."] Defclass(Form),
     #[doc = "Evaluate a compiled source span."] Eval(Span),
     #[doc = "Call a function with positional arguments."] Call(usize),
     #[doc = "Apply a final list of arguments."] Apply(usize),

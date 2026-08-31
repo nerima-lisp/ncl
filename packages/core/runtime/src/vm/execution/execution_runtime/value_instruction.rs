@@ -26,6 +26,15 @@ pub(super) fn execute_value_instruction(
             };
             stack.push(runtime.special_defstruct(items, environment)?);
         }
+        Instruction::Defclass(form) => {
+            let FormKind::List(items) = &form.kind else {
+                return Err(RuntimeError::InvalidForm {
+                    message: "DEFCLASS instruction requires a list".to_string(),
+                    span: Some(form.span),
+                });
+            };
+            stack.push(Runtime::special_defclass(items, environment)?);
+        }
         Instruction::Eval(form_span) => {
             let value = pop_value(stack, span, "eval")?.primary_value();
             let form = Runtime::form_from_value(&value, *form_span)?;

@@ -23,7 +23,6 @@ impl CompileState {
             | "PUSHNEW"
             | "ROTATEF"
             | "SHIFTF"
-            | "DEFCLASS"
             | "DEFGENERIC"
             | "DEFMETHOD"
             | "DEFSETF"

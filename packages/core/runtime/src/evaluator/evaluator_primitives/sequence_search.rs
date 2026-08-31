@@ -60,6 +60,9 @@ impl Runtime {
                 span,
             ),
             "COPY-TREE" if arguments.len() == 1 => Ok(self.copy_tree(&arguments[0])),
+            "REVERSE" | "NREVERSE" if arguments.len() == 1 => {
+                self.apply_sequence_reverse(&arguments[0], span)
+            }
             "SEARCH" | "MISMATCH" if arguments.len() >= 2 => self.apply_sequence_pair_search(
                 name,
                 &arguments[0],
@@ -95,6 +98,11 @@ impl Runtime {
             )),
             "TREE-EQUAL" => Err(Self::arity("tree-equal", "at least two", arguments.len())),
             "COPY-TREE" => Err(Self::arity("copy-tree", "exactly one", arguments.len())),
+            "REVERSE" | "NREVERSE" => Err(Self::arity(
+                &name.to_ascii_lowercase(),
+                "exactly one",
+                arguments.len(),
+            )),
             _ => return None,
         })
     }

@@ -3,6 +3,31 @@
 use super::*;
 
 impl Runtime {
+    pub(crate) fn apply_sequence_reverse(
+        &self,
+        sequence: &Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let (kind, mut items) = match sequence {
+            Value::Nil => (SequenceKind::List, Vec::new()),
+            Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
+            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
+            Value::String(value) => (
+                SequenceKind::String,
+                value.chars().map(Value::Character).collect(),
+            ),
+            value => {
+                return Err(RuntimeError::Type {
+                    expected: "SEQUENCE".to_string(),
+                    actual: value.type_name().to_string(),
+                    span: Some(span),
+                });
+            }
+        };
+        items.reverse();
+        sequence_sort_result(kind, items, span)
+    }
+
     pub(crate) fn apply_sequence_sort(
         &self,
         operation: &str,

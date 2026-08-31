@@ -30,6 +30,20 @@ fn compiled_evaluates_setf_places() {
         "9"
     );
     assert_eq!(
+        evaluate("(let ((values #(1 2 3)) (index 1)) (setf (svref values index) 8) values)")
+            .to_string(),
+        "#(1 8 3)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array '(2 2) :initial-element 0)) (index 2))
+               (setf (row-major-aref array index) 9)
+               (row-major-aref array 2))",
+        )
+        .to_string(),
+        "9"
+    );
+    assert_eq!(
         evaluate(
             "(let ((array (make-array '(2 3) :initial-element 0)))
                (setf (aref array 1 0) 9)

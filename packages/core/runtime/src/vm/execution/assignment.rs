@@ -163,6 +163,7 @@ pub(super) fn execute_set_instruction(
         }
         Instruction::SetfArefDynamic {
             rank,
+            operator,
             name,
             escaped,
         } => {
@@ -180,7 +181,7 @@ pub(super) fn execute_set_instruction(
                 .primary_value();
             let indices = indices
                 .iter()
-                .map(|index| crate::builtins::index_argument("setf aref", index))
+                .map(|index| crate::builtins::index_argument("setf array accessor", index))
                 .collect::<Result<Vec<_>, _>>()?;
             let updated = match current {
                 Value::Vector(_) => {
@@ -200,37 +201,65 @@ pub(super) fn execute_set_instruction(
                     Value::vector(elements)
                 }
                 Value::Array { ref dimensions, .. } => {
-                    if dimensions.len() != *rank {
-                        return Err(invalid("setf aref has the wrong number of indices", span));
+                    if operator == "SVREF" {
+                        return Err(RuntimeError::Type {
+                            expected: "SIMPLE-VECTOR".to_string(),
+                            actual: "ARRAY".to_string(),
+                            span: Some(span),
+                        });
                     }
-                    let mut offset = 0_usize;
-                    for (axis, (&dimension, &index)) in dimensions.iter().zip(&indices).enumerate()
-                    {
-                        if index >= dimension {
-                            return Err(invalid("SETF index is out of bounds", span));
+                    if operator == "ROW-MAJOR-AREF" {
+                        if *rank != 1 {
+                            return Err(invalid("setf row-major-aref requires one index", span));
                         }
-                        let stride = dimensions[axis + 1..]
-                            .iter()
-                            .try_fold(1_usize, |stride, dimension| stride.checked_mul(*dimension))
-                            .ok_or_else(|| invalid("SETF index is too large", span))?;
-                        offset = offset
-                            .checked_add(
-                                index
-                                    .checked_mul(stride)
-                                    .ok_or_else(|| invalid("SETF index is too large", span))?,
-                            )
-                            .ok_or_else(|| invalid("SETF index is too large", span))?;
+                        let mut elements =
+                            current.array_items().ok_or_else(|| RuntimeError::Type {
+                                expected: "ARRAY".to_string(),
+                                actual: current.type_name().to_string(),
+                                span: Some(span),
+                            })?;
+                        let slot = elements
+                            .get_mut(indices[0])
+                            .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
+                        *slot = value.clone();
+                        Value::array(dimensions.as_ref().clone(), elements)
+                    } else {
+                        if dimensions.len() != *rank {
+                            return Err(invalid("setf aref has the wrong number of indices", span));
+                        }
+                        let mut offset = 0_usize;
+                        for (axis, (&dimension, &index)) in
+                            dimensions.iter().zip(&indices).enumerate()
+                        {
+                            if index >= dimension {
+                                return Err(invalid("SETF index is out of bounds", span));
+                            }
+                            let stride = dimensions[axis + 1..]
+                                .iter()
+                                .try_fold(1_usize, |stride, dimension| {
+                                    stride.checked_mul(*dimension)
+                                })
+                                .ok_or_else(|| invalid("SETF index is too large", span))?;
+                            offset = offset
+                                .checked_add(
+                                    index
+                                        .checked_mul(stride)
+                                        .ok_or_else(|| invalid("SETF index is too large", span))?,
+                                )
+                                .ok_or_else(|| invalid("SETF index is too large", span))?;
+                        }
+                        let mut elements =
+                            current.array_items().ok_or_else(|| RuntimeError::Type {
+                                expected: "ARRAY".to_string(),
+                                actual: current.type_name().to_string(),
+                                span: Some(span),
+                            })?;
+                        let slot = elements
+                            .get_mut(offset)
+                            .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
+                        *slot = value.clone();
+                        Value::array(dimensions.as_ref().clone(), elements)
                     }
-                    let mut elements = current.array_items().ok_or_else(|| RuntimeError::Type {
-                        expected: "ARRAY".to_string(),
-                        actual: current.type_name().to_string(),
-                        span: Some(span),
-                    })?;
-                    let slot = elements
-                        .get_mut(offset)
-                        .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
-                    *slot = value.clone();
-                    Value::array(dimensions.as_ref().clone(), elements)
                 }
                 other => {
                     return Err(RuntimeError::Type {

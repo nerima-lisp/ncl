@@ -101,10 +101,34 @@ fn compile_setf_uses_native_aref_for_a_symbol_place() {
             .instructions
             .contains(&Instruction::SetfArefDynamic {
                 rank: 1,
+                operator: "AREF".to_string(),
                 name: "XS".to_string(),
                 escaped: false,
             })
     );
+}
+
+#[test]
+fn compile_setf_uses_native_array_accessors_for_symbol_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (svref xs index) 9 (row-major-aref ys index) 8)");
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap();
+    let instructions = &state.functions[function].instructions;
+    assert!(instructions.contains(&Instruction::SetfArefDynamic {
+        rank: 1,
+        operator: "SVREF".to_string(),
+        name: "XS".to_string(),
+        escaped: false,
+    }));
+    assert!(instructions.contains(&Instruction::SetfArefDynamic {
+        rank: 1,
+        operator: "ROW-MAJOR-AREF".to_string(),
+        name: "YS".to_string(),
+        escaped: false,
+    }));
 }
 
 #[test]

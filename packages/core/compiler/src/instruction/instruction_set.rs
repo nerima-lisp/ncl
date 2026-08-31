@@ -60,9 +60,11 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
-    #[doc = "Update a dynamically indexed vector or array-valued symbol through AREF."] SetfArefDynamic {
+    #[doc = "Update a dynamically indexed vector or array-valued symbol through an array accessor."] SetfArefDynamic {
         /// The number of subscripts.
         rank: usize,
+        /// The accessor name.
+        operator: String,
         /// The symbol holding the array.
         name: String,
         /// Whether the symbol name is escaped.

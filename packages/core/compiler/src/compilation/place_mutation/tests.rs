@@ -172,6 +172,28 @@ fn compile_setf_uses_native_element_accessors_for_symbol_places() {
 }
 
 #[test]
+fn compile_setf_uses_native_subseq_for_symbol_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items =
+        parse_items("(setf (subseq xs start end) replacement (subseq ys start) replacement)");
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap();
+    let instructions = &state.functions[function].instructions;
+    assert!(instructions.contains(&Instruction::SetfSubseqDynamic {
+        has_end: true,
+        name: "XS".to_string(),
+        escaped: false,
+    }));
+    assert!(instructions.contains(&Instruction::SetfSubseqDynamic {
+        has_end: false,
+        name: "YS".to_string(),
+        escaped: false,
+    }));
+}
+
+#[test]
 fn compile_push_and_pop_use_native_list_instructions_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

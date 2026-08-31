@@ -83,6 +83,14 @@ pub enum Instruction {
         name: String,
         escaped: bool,
     },
+    #[doc = "Update a dynamically bounded subsequence-valued symbol through SUBSEQ."] SetfSubseqDynamic {
+        /// Whether an explicit end bound is present.
+        has_end: bool,
+        /// The symbol holding the sequence.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Push a value onto a list-valued symbol."] PushList {
         /// The symbol holding the list.
         name: String,

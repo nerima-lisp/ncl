@@ -187,6 +187,41 @@ impl CompileState {
                 }
                 continue;
             }
+            let subseq_place = match &place.kind {
+                FormKind::List(items) if (items.len() == 3 || items.len() == 4) => {
+                    Self::symbol_name_info(&items[0], "setf place operator")
+                        .ok()
+                        .filter(|(name, _)| name == "SUBSEQ")
+                        .and_then(|_| {
+                            Self::symbol_name_info(&items[1], "setf subseq target")
+                                .ok()
+                                .map(|(name, escaped)| {
+                                    (items.len() == 4, name, escaped, &items[1], &items[2..])
+                                })
+                        })
+                }
+                _ => None,
+            };
+            if let Some((has_end, name, escaped, target, bounds)) = subseq_place {
+                self.compile_expression(function, target)?;
+                for bound in bounds {
+                    self.compile_expression(function, bound)?;
+                }
+                self.compile_expression(function, value_form)?;
+                self.emit(
+                    function,
+                    Instruction::SetfSubseqDynamic {
+                        has_end,
+                        name,
+                        escaped,
+                    },
+                    place.span,
+                )?;
+                if index + 1 < pair_count {
+                    self.emit(function, Instruction::Pop, value_form.span)?;
+                }
+                continue;
+            }
             let list_place = match &place.kind {
                 FormKind::List(items) if items.len() == 2 => {
                     let operator = Self::symbol_name_info(&items[0], "setf place operator")

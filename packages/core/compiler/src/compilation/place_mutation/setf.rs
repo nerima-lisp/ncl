@@ -260,37 +260,7 @@ impl CompileState {
                 emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
                 continue;
             }
-            let get_place = match &place.kind {
-                FormKind::List(items) if items.len() == 3 => {
-                    Self::symbol_name_info(&items[0], "setf place operator")
-                        .ok()
-                        .filter(|(name, _)| name == "GET")
-                        .map(|_| (&items[1], &items[2]))
-                }
-                _ => None,
-            };
-            if let Some((target, indicator)) = get_place {
-                self.compile_expression(function, target)?;
-                self.compile_expression(function, indicator)?;
-                self.compile_expression(function, value_form)?;
-                self.emit(function, Instruction::SetfGetDynamic, place.span)?;
-                emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
-                continue;
-            }
-            let gethash_place = match &place.kind {
-                FormKind::List(items) if items.len() == 3 => {
-                    Self::symbol_name_info(&items[0], "setf place operator")
-                        .ok()
-                        .filter(|(name, _)| name == "GETHASH")
-                        .map(|_| (&items[1], &items[2]))
-                }
-                _ => None,
-            };
-            if let Some((key, table)) = gethash_place {
-                self.compile_expression(function, key)?;
-                self.compile_expression(function, table)?;
-                self.compile_expression(function, value_form)?;
-                self.emit(function, Instruction::SetfGethashDynamic, place.span)?;
+            if self.compile_setf_property_place(function, place, value_form)? {
                 emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
                 continue;
             }

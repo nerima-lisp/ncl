@@ -39,10 +39,46 @@ pub fn literal_constant(atom: &str) -> Option<Constant> {
                     })
                 };
             }
+            if let Some((numerator, denominator)) = big_rational_literal_parts(&token.name) {
+                return Some(Constant::BigRational {
+                    numerator,
+                    denominator,
+                });
+            }
             parse_float_literal(&token.name).map(Constant::Float)
         }
         _ => None,
     }
+}
+
+fn big_rational_literal_parts(name: &str) -> Option<(String, String)> {
+    let (numerator, denominator) = name.split_once('/')?;
+    if !decimal_integer(numerator) || !decimal_integer(denominator) || is_zero(denominator) {
+        return None;
+    }
+    denominator.strip_prefix('-').map_or_else(
+        || Some((numerator.to_owned(), denominator.to_owned())),
+        |denominator| Some((flip_sign(numerator), denominator.to_owned())),
+    )
+}
+
+fn decimal_integer(value: &str) -> bool {
+    let digits = value.strip_prefix(['+', '-']).unwrap_or(value);
+    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn is_zero(value: &str) -> bool {
+    value
+        .strip_prefix(['+', '-'])
+        .unwrap_or(value)
+        .bytes()
+        .all(|byte| byte == b'0')
+}
+
+fn flip_sign(value: &str) -> String {
+    value
+        .strip_prefix('-')
+        .map_or_else(|| format!("-{value}"), str::to_owned)
 }
 
 /// Recognizes a decimal integer literal that overflowed `i64` (already

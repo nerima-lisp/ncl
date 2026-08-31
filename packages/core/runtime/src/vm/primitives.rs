@@ -26,6 +26,23 @@ pub(super) fn constant_value(constant: &Constant, span: Span) -> Result<Value, R
                 span: Some(span),
             }
         }),
+        Constant::BigRational {
+            numerator,
+            denominator,
+        } => {
+            let numerator = numerator.parse().map_err(|_| RuntimeError::InvalidForm {
+                message: "compiled rational numerator is invalid".to_owned(),
+                span: Some(span),
+            })?;
+            let denominator = denominator.parse().map_err(|_| RuntimeError::InvalidForm {
+                message: "compiled rational denominator is invalid".to_owned(),
+                span: Some(span),
+            })?;
+            Value::rational_big(numerator, denominator).map_err(|_| RuntimeError::InvalidForm {
+                message: "compiled rational constant is invalid".to_owned(),
+                span: Some(span),
+            })
+        }
         Constant::Float(value) => Ok(Value::Float(*value)),
         Constant::String(value) => Ok(Value::string(value.clone())),
         Constant::Character(value) => Ok(Value::Character(*value)),

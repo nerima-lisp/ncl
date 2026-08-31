@@ -14,6 +14,13 @@ fn literal_constants_are_parsed_from_a_table() {
                 denominator: 2,
             },
         ),
+        (
+            "170141183460469231731687303715884105728/3",
+            Constant::BigRational {
+                numerator: "170141183460469231731687303715884105728".to_string(),
+                denominator: "3".to_string(),
+            },
+        ),
         ("-6/3", Constant::Integer(-2)),
         ("#xFF", Constant::Integer(255)),
         ("#b1010", Constant::Integer(10)),

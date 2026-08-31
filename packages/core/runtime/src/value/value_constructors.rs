@@ -39,6 +39,18 @@ impl Value {
         }
     }
 
+    pub(crate) fn rational_big(
+        numerator: ibig::IBig,
+        denominator: ibig::IBig,
+    ) -> Result<Self, RuntimeError> {
+        let rational = Rational::new_big(numerator, denominator)?;
+        if rational.denominator() == &ibig::IBig::from(1) {
+            Ok(Self::big_integer(rational.numerator().clone()))
+        } else {
+            Ok(Self::Rational(rational))
+        }
+    }
+
     /// Creates a package designator with the supplied name.
     pub fn package(value: impl AsRef<str>) -> Self {
         Self::Package(Rc::from(value.as_ref()))

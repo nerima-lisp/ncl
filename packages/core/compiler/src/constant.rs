@@ -21,6 +21,14 @@ pub enum Constant {
         /// Positive denominator.
         denominator: i64,
     },
+    /// A rational literal whose components do not fit in `i64`, stored as
+    /// validated decimal digits and parsed by the runtime.
+    BigRational {
+        /// Decimal numerator.
+        numerator: String,
+        /// Decimal positive denominator.
+        denominator: String,
+    },
     /// A floating-point literal.
     Float(f64),
     /// A string literal.

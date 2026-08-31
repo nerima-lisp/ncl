@@ -2,6 +2,7 @@
 use super::*;
 
 mod native_places;
+mod rotate_shift;
 
 impl CompileState {
     pub(super) fn compile_load_time_value(

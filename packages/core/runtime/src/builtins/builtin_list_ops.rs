@@ -12,11 +12,21 @@ pub fn nreverse(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 fn reverse_list(function: &str, value: &Value) -> Result<Value, RuntimeError> {
-    let Some(mut items) = value.list_items() else {
-        return Err(type_error(function, "list", value));
-    };
-    items.reverse();
-    Ok(Value::list(items))
+    match value {
+        Value::Nil => Ok(Value::Nil),
+        Value::List(items) => {
+            let mut items = items.as_ref().clone();
+            items.reverse();
+            Ok(Value::list(items))
+        }
+        Value::Vector(items) => {
+            let mut items = items.as_ref().clone();
+            items.reverse();
+            Ok(Value::vector(items))
+        }
+        Value::String(value) => Ok(Value::string(value.chars().rev().collect::<String>())),
+        _ => Err(type_error(function, "sequence", value)),
+    }
 }
 
 pub fn last(arguments: &[Value]) -> Result<Value, RuntimeError> {

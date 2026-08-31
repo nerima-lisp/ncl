@@ -289,6 +289,7 @@ fn evaluates_copy_tree(#[case] eval_fn: EvalFn) {
 fn evaluates_reverse(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(evaluate("(reverse '(1 2 3))").to_string(), "(3 2 1)");
+    assert_eq!(evaluate("(reverse #(1 2 3))").to_string(), "#(3 2 1)");
     assert_eq!(evaluate("(nreverse #(1 2 3))").to_string(), "#(3 2 1)");
     assert_eq!(evaluate("(reverse \"abc\")").to_string(), "\"cba\"");
 }

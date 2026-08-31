@@ -1,4 +1,7 @@
-use super::{RuntimeError, Value, exact, integer_argument, type_error};
+use super::{
+    RuntimeError, Value, exact, integer_argument, number_from_big, number_to_value, type_error,
+};
+use crate::builtins::numbers::big_integer_argument;
 
 pub fn greatest_common_divisor(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut result = 0i128;
@@ -60,20 +63,11 @@ pub fn denominator(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn arithmetic_shift(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "ash", 2)?;
-    let value = integer_argument("ash", &arguments[0])?;
+    let value = big_integer_argument("ash", &arguments[0])?;
     let count = integer_argument("ash", &arguments[1])?;
     if count >= 0 {
-        if count >= 64 {
-            return if value == 0 {
-                Ok(Value::Integer(0))
-            } else {
-                Err(RuntimeError::NumericOverflow)
-            };
-        }
-        return value
-            .checked_shl(u32::try_from(count).map_err(|_| RuntimeError::NumericOverflow)?)
-            .map(Value::Integer)
-            .ok_or(RuntimeError::NumericOverflow);
+        let shift = usize::try_from(count).map_err(|_| RuntimeError::NumericOverflow)?;
+        return number_to_value(number_from_big(value << shift));
     }
 
     let shift = if count == i64::MIN {
@@ -81,9 +75,13 @@ pub fn arithmetic_shift(arguments: &[Value]) -> Result<Value, RuntimeError> {
     } else {
         count.unsigned_abs()
     };
-    Ok(Value::Integer(if shift >= 64 {
-        if value < 0 { -1 } else { 0 }
+    number_to_value(number_from_big(if shift >= 64 {
+        if value < ibig::IBig::from(0) {
+            ibig::IBig::from(-1)
+        } else {
+            ibig::IBig::from(0)
+        }
     } else {
-        value >> u32::try_from(shift).map_err(|_| RuntimeError::NumericOverflow)?
+        value >> usize::try_from(shift).map_err(|_| RuntimeError::NumericOverflow)?
     }))
 }

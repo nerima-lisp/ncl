@@ -120,6 +120,22 @@ fn evaluates_common_lisp_integer_arithmetic_and_bit_operations(#[case] eval_fn: 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_integer_bit_operations_on_bignums(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((big (expt 2 70)))
+                (list (logand big 3) (logior big 3) (logxor big 3)
+                      (lognot big) (logtest big 1)))",
+        )
+        .to_string(),
+        "(0 1180591620717411303427 1180591620717411303427 -1180591620717411303425 NIL)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_common_lisp_quotients_gcd_and_rational_parts(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

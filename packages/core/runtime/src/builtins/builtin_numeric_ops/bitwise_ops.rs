@@ -1,40 +1,51 @@
-use super::{RuntimeError, Value, exact, integer_argument};
+use super::{RuntimeError, Value, exact, integer_argument, number_from_big, number_to_value};
+use crate::builtins::numbers::big_integer_argument;
 
 pub fn logand(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    bitwise(arguments, "logand", -1, |left, right| left & right)
+    big_bitwise(arguments, "logand", ibig::IBig::from(-1), |left, right| {
+        left & right
+    })
 }
 
 pub fn logior(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    bitwise(arguments, "logior", 0, |left, right| left | right)
+    big_bitwise(arguments, "logior", ibig::IBig::from(0), |left, right| {
+        left | right
+    })
 }
 
 pub fn logxor(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    bitwise(arguments, "logxor", 0, |left, right| left ^ right)
+    big_bitwise(arguments, "logxor", ibig::IBig::from(0), |left, right| {
+        left ^ right
+    })
 }
 
-pub fn bitwise(
+fn big_bitwise(
     arguments: &[Value],
     function: &str,
-    identity: i64,
-    operation: fn(i64, i64) -> i64,
+    identity: ibig::IBig,
+    operation: fn(ibig::IBig, ibig::IBig) -> ibig::IBig,
 ) -> Result<Value, RuntimeError> {
-    let mut result = identity;
-    for argument in arguments {
-        result = operation(result, integer_argument(function, argument)?);
-    }
-    Ok(Value::Integer(result))
+    arguments
+        .iter()
+        .try_fold(identity, |result, argument| {
+            big_integer_argument(function, argument).map(|value| operation(result, value))
+        })
+        .and_then(|value| number_to_value(number_from_big(value)))
 }
 
 pub fn lognot(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "lognot", 1)?;
-    Ok(Value::Integer(!integer_argument("lognot", &arguments[0])?))
+    number_to_value(number_from_big(!big_integer_argument(
+        "lognot",
+        &arguments[0],
+    )?))
 }
 
 pub fn logtest(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "logtest", 2)?;
-    let left = integer_argument("logtest", &arguments[0])?;
-    let right = integer_argument("logtest", &arguments[1])?;
-    Ok(Value::boolean((left & right) != 0))
+    let left = big_integer_argument("logtest", &arguments[0])?;
+    let right = big_integer_argument("logtest", &arguments[1])?;
+    Ok(Value::boolean((left & right) != ibig::IBig::from(0)))
 }
 
 pub fn logcount(arguments: &[Value]) -> Result<Value, RuntimeError> {

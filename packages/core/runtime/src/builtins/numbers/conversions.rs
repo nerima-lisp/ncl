@@ -132,3 +132,14 @@ pub(in crate::builtins) fn integer_argument(
     }
     Err(type_error(function, "integer", value))
 }
+
+pub(in crate::builtins) fn big_integer_argument(
+    function: &str,
+    value: &Value,
+) -> Result<ibig::IBig, RuntimeError> {
+    match value {
+        Value::Integer(value) => Ok(ibig::IBig::from(*value)),
+        Value::BigInteger(value) => Ok(value.as_ref().clone()),
+        value => Err(type_error(function, "integer", value)),
+    }
+}

@@ -235,6 +235,14 @@ fn compiled_evaluates_push_and_pop_on_car_and_cdr_places() {
 }
 
 #[test]
+fn compiled_evaluates_nested_push_and_pop_places() {
+    assert_eq!(
+        evaluate("(let ((xs (list (list (list 2 3))))) (list (push 1 (car (car xs))) (pop (car (car xs))) xs))").to_string(),
+        "((1 2 3) 1 (((2 3))))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_pushnew_on_a_generalized_place() {
     assert_eq!(
         evaluate(

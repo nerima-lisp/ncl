@@ -156,6 +156,16 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Push onto or pop from a nested CAR/CDR list place rooted at a symbol."] NestedListPlaceMutation {
+        /// Accessors from the symbol outward to the mutated list.
+        accessors: Vec<String>,
+        /// The mutation operator.
+        operator: String,
+        /// The symbol holding the outer list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Pushnew onto a CAR/CDR list place with comparison options."] ListPlacePushNewOptions {
         /// The list accessor name.
         accessor: String,

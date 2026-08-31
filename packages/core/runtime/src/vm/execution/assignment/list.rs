@@ -122,7 +122,7 @@ fn update_nested(
             return Err(invalid(
                 "unsupported native nested list SETF operator",
                 span,
-            ))
+            ));
         }
     }
     Ok(elements)
@@ -223,4 +223,107 @@ pub(super) fn execute_place_mutation(
     stack.push(result);
     *program_counter += 1;
     Ok(true)
+}
+
+pub(super) fn execute_nested_place_mutation(
+    runtime: &Runtime,
+    accessors: &[String],
+    operator: &str,
+    name: &str,
+    escaped: bool,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let target = stack
+        .pop()
+        .ok_or_else(|| invalid("list place has no target", span))?
+        .primary_value();
+    let value = if operator == "PUSH" {
+        Some(
+            stack
+                .pop()
+                .ok_or_else(|| invalid("push has no value", span))?
+                .primary_value(),
+        )
+    } else {
+        None
+    };
+    let elements = target.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".into(),
+        actual: target.type_name().into(),
+        span: Some(span),
+    })?;
+    let (updated, result) = mutate_nested(elements, accessors, operator, value, span)?;
+    let updated = Value::list(updated);
+    if escaped {
+        runtime.set_or_define_exact_in(name, updated, environment, span)?;
+    } else {
+        runtime.set_or_define_in(name, updated, environment, span)?;
+    }
+    stack.push(result);
+    *program_counter += 1;
+    Ok(true)
+}
+
+fn mutate_nested(
+    mut elements: Vec<Value>,
+    accessors: &[String],
+    operator: &str,
+    value: Option<Value>,
+    span: Span,
+) -> Result<(Vec<Value>, Value), RuntimeError> {
+    if elements.is_empty() {
+        return Err(invalid("cannot mutate a list place of NIL", span));
+    }
+    if accessors.len() > 1 {
+        let child = match accessors[0].as_str() {
+            "CAR" | "FIRST" => elements[0].list_items(),
+            "CDR" | "REST" => Some(elements[1..].to_vec()),
+            _ => None,
+        }
+        .ok_or_else(|| invalid("unsupported native nested list accessor", span))?;
+        let (child, result) = mutate_nested(child, &accessors[1..], operator, value, span)?;
+        match accessors[0].as_str() {
+            "CAR" | "FIRST" => elements[0] = Value::list(child),
+            "CDR" | "REST" => {
+                elements.truncate(1);
+                elements.extend(child);
+            }
+            _ => unreachable!(),
+        }
+        return Ok((elements, result));
+    }
+    let current = match accessors[0].as_str() {
+        "CAR" | "FIRST" => elements[0].clone(),
+        "CDR" | "REST" => Value::list(elements[1..].to_vec()),
+        _ => return Err(invalid("unsupported native nested list accessor", span)),
+    };
+    let mut items = current.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".into(),
+        actual: current.type_name().into(),
+        span: Some(span),
+    })?;
+    let result = if operator == "PUSH" {
+        let value = value.expect("PUSH value");
+        items.insert(0, value);
+        Value::list(items.clone())
+    } else {
+        let value = items.first().cloned().unwrap_or(Value::Nil);
+        if !items.is_empty() {
+            items.remove(0);
+        }
+        value
+    };
+    let updated = Value::list(items);
+    match accessors[0].as_str() {
+        "CAR" | "FIRST" => elements[0] = updated,
+        "CDR" | "REST" => {
+            elements.truncate(1);
+            elements.extend(updated.list_items().unwrap_or_default());
+        }
+        _ => unreachable!(),
+    }
+    Ok((elements, result))
 }

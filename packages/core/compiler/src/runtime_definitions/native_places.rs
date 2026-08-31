@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::super::*;
 
-fn generalized_list_place(form: &Form) -> Option<(String, String, bool)> {
+fn generalized_list_place(form: &Form) -> Option<(Vec<String>, String, bool)> {
     let FormKind::List(items) = &form.kind else {
         return None;
     };
@@ -12,8 +12,12 @@ fn generalized_list_place(form: &Form) -> Option<(String, String, bool)> {
     if !matches!(accessor.as_str(), "CAR" | "FIRST" | "CDR" | "REST") {
         return None;
     }
+    if let Some((mut accessors, name, escaped)) = generalized_list_place(&items[1]) {
+        accessors.insert(0, accessor);
+        return Some((accessors, name, escaped));
+    }
     let (name, escaped) = CompileState::symbol_name_info(&items[1], "list place target").ok()?;
-    Some((accessor, name, escaped))
+    Some((vec![accessor], name, escaped))
 }
 
 impl CompileState {
@@ -78,15 +82,19 @@ impl CompileState {
                 let FormKind::List(place_items) = &items[2].kind else {
                     unreachable!()
                 };
-                self.compile_expression(function, &place_items[1])?;
+                let base = generalized.as_ref().expect("checked above").1.clone();
+                self.emit(function, Instruction::Load(base), place_items[1].span)?;
             } else {
                 self.compile_expression(function, &items[2])?;
             }
             self.emit(
                 function,
-                if let Some((accessor, name, escaped)) = generalized {
+                if let Some((accessors, name, escaped)) = generalized {
+                    if accessors.len() > 1 {
+                        return Ok(None);
+                    }
                     Instruction::ListPlacePushNewOptions {
-                        accessor,
+                        accessor: accessors[0].clone(),
                         name,
                         escaped,
                         test_not,
@@ -124,21 +132,28 @@ impl CompileState {
         if matches!(operator.as_str(), "PUSH" | "PUSHNEW") {
             self.compile_expression(function, &items[1])?;
         }
-        if generalized.is_some() {
-            if let FormKind::List(place_items) = &place.kind {
-                self.compile_expression(function, &place_items[1])?;
-            }
+        if let Some((_, name, _)) = &generalized {
+            self.emit(function, Instruction::Load(name.clone()), place.span)?;
         } else {
             self.compile_expression(function, place)?;
         }
         self.emit(
             function,
-            if let Some((accessor, name, escaped)) = generalized {
-                Instruction::ListPlaceMutation {
-                    operator,
-                    accessor,
-                    name,
-                    escaped,
+            if let Some((accessors, name, escaped)) = generalized {
+                if accessors.len() > 1 {
+                    Instruction::NestedListPlaceMutation {
+                        accessors,
+                        operator,
+                        name,
+                        escaped,
+                    }
+                } else {
+                    Instruction::ListPlaceMutation {
+                        operator,
+                        accessor: accessors[0].clone(),
+                        name,
+                        escaped,
+                    }
                 }
             } else {
                 let (name, escaped) = symbol_place.expect("checked above");

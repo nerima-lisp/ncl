@@ -1,8 +1,9 @@
+use ibig::ops::Abs;
 use std::cmp::Ordering;
 
 use super::{
     Number, RuntimeError, Value, arity, compare_number_values, exact, number_argument,
-    number_to_value, rational_number,
+    number_to_value, rational_number_big,
 };
 
 pub fn numeric_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -89,9 +90,9 @@ pub fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {
             Value::Integer,
         )),
         Number::Big(value) => Ok(Value::big_integer(ibig::ops::Abs::abs(value))),
-        Number::Rational(value) => number_to_value(rational_number(
-            i128::from(value.numerator()).abs(),
-            i128::from(value.denominator()),
+        Number::Rational(value) => number_to_value(rational_number_big(
+            value.numerator().clone().abs(),
+            value.denominator().clone(),
         )?),
         Number::Float(value) => Ok(Value::Float(value.abs())),
     }

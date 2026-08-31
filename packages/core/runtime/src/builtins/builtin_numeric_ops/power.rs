@@ -25,7 +25,7 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 Ok(Value::Float((value as f64).sqrt()))
             }
         }
-        Number::Rational(value) if value.numerator() >= 0 => {
+        Number::Rational(value) if value.numerator() >= &ibig::IBig::from(0) => {
             let numerator =
                 u128::try_from(value.numerator()).map_err(|_| RuntimeError::NumericOverflow)?;
             let denominator =
@@ -42,7 +42,7 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 .and_then(number_to_value)
             } else {
                 Ok(Value::Float(
-                    (value.numerator() as f64 / value.denominator() as f64).sqrt(),
+                    (value.numerator().to_f64() / value.denominator().to_f64()).sqrt(),
                 ))
             }
         }

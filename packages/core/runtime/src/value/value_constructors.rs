@@ -32,8 +32,8 @@ impl Value {
 
     pub(crate) fn rational(numerator: i128, denominator: i128) -> Result<Self, RuntimeError> {
         let rational = Rational::new(numerator, denominator)?;
-        if rational.denominator() == 1 {
-            Ok(Self::Integer(rational.numerator()))
+        if rational.denominator() == &ibig::IBig::from(1) {
+            Ok(Self::big_integer(rational.numerator().clone()))
         } else {
             Ok(Self::Rational(rational))
         }

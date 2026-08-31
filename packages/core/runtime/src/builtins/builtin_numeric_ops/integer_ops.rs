@@ -31,7 +31,7 @@ pub fn numerator(arguments: &[Value]) -> Result<Value, RuntimeError> {
     match &arguments[0] {
         Value::Integer(value) => Ok(Value::Integer(*value)),
         Value::BigInteger(value) => Ok(Value::BigInteger(value.clone())),
-        Value::Rational(value) => Ok(Value::Integer(value.numerator())),
+        Value::Rational(value) => Ok(Value::big_integer(value.numerator().clone())),
         value => Err(type_error("numerator", "rational", value)),
     }
 }
@@ -40,7 +40,7 @@ pub fn denominator(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "denominator", 1)?;
     match &arguments[0] {
         Value::Integer(_) | Value::BigInteger(_) => Ok(Value::Integer(1)),
-        Value::Rational(value) => Ok(Value::Integer(value.denominator())),
+        Value::Rational(value) => Ok(Value::big_integer(value.denominator().clone())),
         value => Err(type_error("denominator", "rational", value)),
     }
 }

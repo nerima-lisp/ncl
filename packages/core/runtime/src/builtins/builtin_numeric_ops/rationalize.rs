@@ -8,8 +8,8 @@ pub fn rationalize(arguments: &[Value]) -> Result<Value, RuntimeError> {
         Number::Integer(value) => Ok(Value::Integer(value)),
         Number::Big(value) => Ok(Value::big_integer(value)),
         Number::Rational(value) => Value::rational(
-            i128::from(value.numerator()),
-            i128::from(value.denominator()),
+            i128::try_from(value.numerator()).map_err(|_| RuntimeError::NumericOverflow)?,
+            i128::try_from(value.denominator()).map_err(|_| RuntimeError::NumericOverflow)?,
         ),
         Number::Float(value) => rationalize_float(value),
     }

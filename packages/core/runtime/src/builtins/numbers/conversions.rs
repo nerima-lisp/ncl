@@ -7,7 +7,7 @@ pub(in crate::builtins) fn number(value: &Value) -> Result<Number, RuntimeError>
     match value {
         Value::Integer(value) => Ok(Number::Integer(*value)),
         Value::BigInteger(value) => Ok(Number::Big(value.as_ref().clone())),
-        Value::Rational(value) => Ok(Number::Rational(*value)),
+        Value::Rational(value) => Ok(Number::Rational(value.clone())),
         Value::Float(value) => Ok(Number::Float(*value)),
         value => Err(number_error("numeric operation", value)),
     }
@@ -20,20 +20,21 @@ pub(in crate::builtins) fn number_argument(
     match value {
         Value::Integer(value) => Ok(Number::Integer(*value)),
         Value::BigInteger(value) => Ok(Number::Big(value.as_ref().clone())),
-        Value::Rational(value) => Ok(Number::Rational(*value)),
+        Value::Rational(value) => Ok(Number::Rational(value.clone())),
         Value::Float(value) => Ok(Number::Float(*value)),
         value => Err(number_error(function, value)),
     }
 }
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "keeps numeric conversion call sites uniform"
+)]
 pub(in crate::builtins) fn number_to_value(number: Number) -> Result<Value, RuntimeError> {
     match number {
         Number::Integer(value) => Ok(Value::Integer(value)),
         Number::Big(value) => Ok(Value::big_integer(value)),
-        Number::Rational(value) => Value::rational(
-            i128::from(value.numerator()),
-            i128::from(value.denominator()),
-        ),
+        Number::Rational(value) => Ok(Value::Rational(value)),
         Number::Float(value) => Ok(Value::Float(value)),
     }
 }
@@ -107,12 +108,26 @@ pub(in crate::builtins) fn rational_number(
     denominator: i128,
 ) -> Result<Number, RuntimeError> {
     match Rational::new(numerator, denominator) {
-        Ok(value) if value.denominator() == 1 => Ok(Number::Integer(value.numerator())),
+        Ok(value) if value.denominator() == &ibig::IBig::from(1) => {
+            Ok(number_from_big(value.numerator().clone()))
+        }
         Ok(value) => Ok(Number::Rational(value)),
         Err(RuntimeError::NumericOverflow) if denominator == 1 => {
             Ok(Number::Big(ibig::IBig::from(numerator)))
         }
         Err(error) => Err(error),
+    }
+}
+
+pub(in crate::builtins) fn rational_number_big(
+    numerator: ibig::IBig,
+    denominator: ibig::IBig,
+) -> Result<Number, RuntimeError> {
+    let value = Rational::new_big(numerator, denominator)?;
+    if value.denominator() == &ibig::IBig::from(1) {
+        Ok(number_from_big(value.numerator().clone()))
+    } else {
+        Ok(Number::Rational(value))
     }
 }
 

@@ -12,10 +12,7 @@ fn as_big_ratio(value: &Number) -> Option<(IBig, IBig)> {
     match value {
         Number::Integer(value) => Some((IBig::from(*value), IBig::from(1))),
         Number::Big(value) => Some((value.clone(), IBig::from(1))),
-        Number::Rational(value) => Some((
-            IBig::from(value.numerator()),
-            IBig::from(value.denominator()),
-        )),
+        Number::Rational(value) => Some((value.numerator().clone(), value.denominator().clone())),
         Number::Float(_) => None,
     }
 }

@@ -1,10 +1,11 @@
 use crate::error::RuntimeError;
+use ibig::IBig;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 /// An exact, normalized rational number.
 pub struct Rational {
-    numerator: i64,
-    denominator: i64,
+    numerator: IBig,
+    denominator: IBig,
 }
 
 impl Rational {
@@ -40,23 +41,42 @@ impl Rational {
             u128::try_from(denominator).map_err(|_| RuntimeError::NumericOverflow)?;
         let divisor = gcd(numerator_abs, denominator_abs);
         let divisor = i128::try_from(divisor).map_err(|_| RuntimeError::NumericOverflow)?;
-        let numerator =
-            i64::try_from(numerator / divisor).map_err(|_| RuntimeError::NumericOverflow)?;
-        let denominator =
-            i64::try_from(denominator / divisor).map_err(|_| RuntimeError::NumericOverflow)?;
-
         Ok(Self {
-            numerator,
-            denominator,
+            numerator: IBig::from(numerator / divisor),
+            denominator: IBig::from(denominator / divisor),
         })
     }
 
-    pub(crate) const fn numerator(self) -> i64 {
-        self.numerator
+    pub(crate) fn new_big(numerator: IBig, denominator: IBig) -> Result<Self, RuntimeError> {
+        if denominator == IBig::from(0) {
+            return Err(RuntimeError::DivisionByZero);
+        }
+        let (numerator, denominator) = if denominator < IBig::from(0) {
+            (-numerator, -denominator)
+        } else {
+            (numerator, denominator)
+        };
+        let divisor = numerator.gcd(&denominator);
+        Ok(Self {
+            numerator: numerator / &divisor,
+            denominator: denominator / divisor,
+        })
     }
 
-    pub(crate) const fn denominator(self) -> i64 {
-        self.denominator
+    pub(crate) const fn numerator(&self) -> &IBig {
+        &self.numerator
+    }
+
+    pub(crate) const fn denominator(&self) -> &IBig {
+        &self.denominator
+    }
+
+    pub(crate) fn numerator_i64(&self) -> Result<i64, RuntimeError> {
+        i64::try_from(&self.numerator).map_err(|_| RuntimeError::NumericOverflow)
+    }
+
+    pub(crate) fn denominator_i64(&self) -> Result<i64, RuntimeError> {
+        i64::try_from(&self.denominator).map_err(|_| RuntimeError::NumericOverflow)
     }
 }
 
@@ -71,6 +91,8 @@ const fn gcd(mut left: u128, mut right: u128) -> u128 {
 
 #[cfg(test)]
 mod tests {
+    use ibig::IBig;
+
     use super::Rational;
     use crate::error::RuntimeError;
 
@@ -103,8 +125,8 @@ mod tests {
             Ok(value) => value,
             Err(error) => panic!("unexpected normalization error: {error:?}"),
         };
-        assert_eq!(value.numerator(), 0);
-        assert_eq!(value.denominator(), 1);
+        assert_eq!(value.numerator(), &IBig::from(0));
+        assert_eq!(value.denominator(), &IBig::from(1));
     }
 
     #[test]
@@ -121,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unrepresentable_numerators_and_denominators_after_sign_normalization() {
+    fn rejects_unrepresentable_i128_inputs_and_preserves_large_denominators() {
         // A negative denominator negates the numerator first; i128::MIN has no
         // positive counterpart, so that negation must fail before normalization
         // proceeds any further.
@@ -129,11 +151,12 @@ mod tests {
             Rational::new(i128::MIN, -1),
             Err(RuntimeError::NumericOverflow)
         );
-        // The reduced denominator can still overflow i64 even when the
-        // reduced numerator fits, since gcd-reduction is independent per side.
-        assert_eq!(
-            Rational::new(1, i128::from(i64::MAX) + 1),
-            Err(RuntimeError::NumericOverflow)
-        );
+        let value = match Rational::new(1, i128::from(i64::MAX) + 1) {
+            Ok(value) => value,
+            Err(error) => panic!("unexpected rational construction error: {error:?}"),
+        };
+        assert_eq!(value.numerator(), &IBig::from(1));
+        let expected_denominator = IBig::from(i64::MAX) + 1;
+        assert_eq!(value.denominator(), &expected_denominator);
     }
 }

@@ -6,7 +6,7 @@ mod conversions;
 mod conversions_tests;
 pub(super) use conversions::{
     big_integer_argument, exceeds_exact_bignum_digit_cap, integer_argument, number,
-    number_argument, number_from_big, number_to_value, rational_number,
+    number_argument, number_from_big, number_to_value, rational_number, rational_number_big,
 };
 
 mod arithmetic;
@@ -38,7 +38,7 @@ impl Number {
         match self {
             Self::Integer(value) => *value as f64,
             Self::Big(value) => value.to_string().parse().unwrap_or(f64::INFINITY),
-            Self::Rational(value) => value.numerator() as f64 / value.denominator() as f64,
+            Self::Rational(value) => value.numerator().to_f64() / value.denominator().to_f64(),
             Self::Float(value) => *value,
         }
     }
@@ -47,10 +47,12 @@ impl Number {
         matches!(self, Self::Float(_))
     }
 
-    pub(super) const fn exact_parts(&self) -> Option<(i64, i64)> {
+    pub(super) fn exact_parts(&self) -> Option<(i64, i64)> {
         match self {
             Self::Integer(value) => Some((*value, 1)),
-            Self::Rational(value) => Some((value.numerator(), value.denominator())),
+            Self::Rational(value) => {
+                Some((value.numerator_i64().ok()?, value.denominator_i64().ok()?))
+            }
             Self::Big(_) | Self::Float(_) => None,
         }
     }

@@ -3,7 +3,9 @@ use ibig::IBig;
 use crate::RuntimeError;
 
 use super::Number;
-use super::conversions::{exceeds_exact_bignum_digit_cap, number_from_big, rational_number};
+use super::conversions::{
+    exceeds_exact_bignum_digit_cap, number_from_big, rational_number, rational_number_big,
+};
 
 /// Common Lisp's exact division of two arbitrary-precision integers is only
 /// representable here when it comes out even: a bignum numerator/denominator
@@ -126,10 +128,9 @@ pub(in crate::builtins) fn negate_number(value: Number) -> Result<Number, Runtim
         // which fits back in i64 and must demote -- every other
         // bignum-producing path in this file already normalizes this way.
         Number::Big(value) => Ok(number_from_big(-value)),
-        Number::Rational(value) => rational_number(
-            -i128::from(value.numerator()),
-            i128::from(value.denominator()),
-        ),
+        Number::Rational(value) => {
+            rational_number_big(-value.numerator().clone(), value.denominator().clone())
+        }
         Number::Float(value) => Ok(Number::Float(-value)),
     }
 }

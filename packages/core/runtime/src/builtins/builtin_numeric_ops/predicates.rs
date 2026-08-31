@@ -44,7 +44,9 @@ pub fn signum(arguments: &[Value]) -> Result<Value, RuntimeError> {
         } else {
             1
         })),
-        Number::Rational(value) => Ok(Value::Integer(value.numerator().signum())),
+        Number::Rational(value) => Ok(Value::Integer(
+            i64::try_from(value.numerator().signum()).unwrap_or(0),
+        )),
         Number::Float(value) if value.is_nan() => Err(RuntimeError::InvalidForm {
             message: "signum of NaN is undefined".to_owned(),
             span: None,

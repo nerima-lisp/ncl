@@ -291,6 +291,20 @@ fn compiled_evaluates_pushnew_on_a_generalized_place() {
 }
 
 #[test]
+fn compiled_evaluates_nested_pushnew_options() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list (list (list (list 1 :a))))))
+               (list (pushnew (list 2 :b) (car (car xs)) :key #'car :test #'eql)
+                     (pushnew (list 2 :c) (car (car xs)) :key #'car :test #'eql)
+                     xs))",
+        )
+        .to_string(),
+        "(((2 :B) (1 :A)) ((2 :B) (1 :A)) ((((2 :B) (1 :A)))))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_pushnew_options_in_source_order() {
     assert_eq!(
         evaluate(

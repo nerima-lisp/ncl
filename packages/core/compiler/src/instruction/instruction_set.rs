@@ -180,6 +180,20 @@ pub enum Instruction {
         /// Whether the source form evaluates :KEY before the test designator.
         key_before_test: bool,
     },
+    #[doc = "Pushnew onto a nested CAR/CDR list place with comparison options."] NestedListPlacePushNewOptions {
+        /// Accessors from the symbol outward to the mutated list.
+        accessors: Vec<String>,
+        /// The symbol holding the outer list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+        /// Whether the comparison function came from :TEST-NOT.
+        test_not: bool,
+        /// Whether a key function value is present on the stack.
+        has_key: bool,
+        /// Whether the source form evaluates :KEY before the test designator.
+        key_before_test: bool,
+    },
     #[doc = "Rotate values among symbol places."] RotatefSymbols(Vec<(String, bool)>),
     #[doc = "Shift values through symbol places and return the first old value."] ShiftfSymbols(Vec<(String, bool)>),
     #[doc = "Update a symbol with the result of `MAP-INTO`."] MapIntoSetfSymbol {

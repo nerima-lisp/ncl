@@ -91,15 +91,23 @@ impl CompileState {
                 function,
                 if let Some((accessors, name, escaped)) = generalized {
                     if accessors.len() > 1 {
-                        return Ok(None);
-                    }
-                    Instruction::ListPlacePushNewOptions {
-                        accessor: accessors[0].clone(),
-                        name,
-                        escaped,
-                        test_not,
-                        has_key,
-                        key_before_test,
+                        Instruction::NestedListPlacePushNewOptions {
+                            accessors,
+                            name,
+                            escaped,
+                            test_not,
+                            has_key,
+                            key_before_test,
+                        }
+                    } else {
+                        Instruction::ListPlacePushNewOptions {
+                            accessor: accessors[0].clone(),
+                            name,
+                            escaped,
+                            test_not,
+                            has_key,
+                            key_before_test,
+                        }
                     }
                 } else {
                     let (name, escaped) = symbol_place.expect("checked above");

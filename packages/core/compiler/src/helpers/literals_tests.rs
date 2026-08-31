@@ -26,6 +26,10 @@ fn literal_constants_are_parsed_from_a_table() {
         ("#b1010", Constant::Integer(10)),
         ("#o777", Constant::Integer(511)),
         ("#3r120", Constant::Integer(15)),
+        (
+            "#x10000000000000000",
+            Constant::BigInteger("18446744073709551616".to_string()),
+        ),
         ("1.25s0", Constant::Float(1.25)),
     ];
     for (source, expected) in cases {

@@ -1,6 +1,6 @@
 use crate::{
     Constant, SymbolTokenKind, normalize_name, parse_float_literal, parse_radix_integer_literal,
-    parse_symbol_token,
+    parse_radix_integer_literal_text, parse_symbol_token,
 };
 
 pub fn literal_constant(atom: &str) -> Option<Constant> {
@@ -22,6 +22,9 @@ pub fn literal_constant(atom: &str) -> Option<Constant> {
             }
             if let Some(value) = parse_radix_integer_literal(&token.name) {
                 return Some(Constant::Integer(value));
+            }
+            if let Some(value) = parse_radix_integer_literal_text(&token.name) {
+                return Some(Constant::BigInteger(value));
             }
             if let Ok(value) = token.name.parse::<i64>() {
                 return Some(Constant::Integer(value));

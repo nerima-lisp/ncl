@@ -1,5 +1,6 @@
 use ncl_syntax::{
-    SymbolTokenKind, parse_float_literal, parse_radix_integer_literal, parse_symbol_token,
+    SymbolTokenKind, parse_float_literal, parse_radix_integer_literal,
+    parse_radix_integer_literal_text, parse_symbol_token,
 };
 
 use crate::Value;
@@ -20,6 +21,9 @@ pub fn literal_atom(atom: &str) -> Option<Value> {
             }
             if let Some(value) = parse_radix_integer_literal(&token.name) {
                 return Some(Value::Integer(value));
+            }
+            if let Some(value) = parse_radix_integer_literal_text(&token.name) {
+                return value.parse().ok().map(Value::big_integer);
             }
             if let Ok(value) = token.name.parse::<i64>() {
                 return Some(Value::Integer(value));
@@ -74,6 +78,7 @@ mod tests {
             ("#b1010", "10"),
             ("#o777", "511"),
             ("#3r120", "15"),
+            ("#x10000000000000000", "18446744073709551616"),
             ("1.25s0", "1.25"),
             ("1.25d0", "1.25"),
         ];

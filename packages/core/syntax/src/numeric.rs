@@ -5,6 +5,15 @@ pub fn parse_radix_integer_literal(name: &str) -> Option<i64> {
     parse_signed_digits(&name[digits_start..], base)
 }
 
+/// Parse a valid Common Lisp radix integer and return its normalized decimal text.
+/// The caller can parse the returned text with an arbitrary-precision integer type.
+#[must_use]
+pub fn parse_radix_integer_literal_text(name: &str) -> Option<String> {
+    let (base, digits_start) = radix_integer_parts(name)?;
+    let digits = &name[digits_start..];
+    valid_signed_digits(digits, base).then(|| radix_digits_to_decimal(digits, base))
+}
+
 /// Parse a Common Lisp floating-point literal using any standard exponent marker.
 #[must_use]
 pub fn parse_float_literal(name: &str) -> Option<f64> {
@@ -88,9 +97,47 @@ fn valid_signed_digits(digits: &str, base: u32) -> bool {
         && digits.bytes().all(|digit| char::from(digit).is_digit(base))
 }
 
+fn radix_digits_to_decimal(digits: &str, base: u32) -> String {
+    let (negative, digits) = match digits.as_bytes().first() {
+        Some(b'-') => (true, &digits[1..]),
+        Some(b'+') => (false, &digits[1..]),
+        _ => (false, digits),
+    };
+    let mut decimal = String::from("0");
+    for digit in digits.bytes() {
+        let value = char::from(digit)
+            .to_digit(base)
+            .unwrap_or_else(|| unreachable!());
+        decimal = decimal_mul_add(&decimal, base, value);
+    }
+    if negative && decimal != "0" {
+        format!("-{decimal}")
+    } else {
+        decimal
+    }
+}
+
+fn decimal_mul_add(decimal: &str, multiplier: u32, addend: u32) -> String {
+    let mut carry = addend;
+    let mut result = Vec::with_capacity(decimal.len() + 2);
+    for digit in decimal.bytes().rev() {
+        let value = u32::from(digit - b'0') * multiplier + carry;
+        result.push(b'0' + (value % 10) as u8);
+        carry = value / 10;
+    }
+    while carry > 0 {
+        result.push(b'0' + (carry % 10) as u8);
+        carry /= 10;
+    }
+    result.reverse();
+    String::from_utf8(result).unwrap_or_else(|_| unreachable!())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_float_literal, parse_radix_integer_literal};
+    use super::{
+        parse_float_literal, parse_radix_integer_literal, parse_radix_integer_literal_text,
+    };
 
     #[test]
     fn parses_common_lisp_float_exponent_markers() {
@@ -149,5 +196,21 @@ mod tests {
         ] {
             assert_eq!(parse_radix_integer_literal(literal), None, "{literal}");
         }
+    }
+
+    #[test]
+    fn preserves_large_radix_integer_values_as_decimal_text() {
+        assert_eq!(
+            parse_radix_integer_literal_text("#x10000000000000000"),
+            Some("18446744073709551616".to_owned())
+        );
+        assert_eq!(
+            parse_radix_integer_literal_text("#16r-8000000000000000"),
+            Some("-9223372036854775808".to_owned())
+        );
+        assert_eq!(
+            parse_radix_integer_literal_text("#b-0"),
+            Some("0".to_owned())
+        );
     }
 }

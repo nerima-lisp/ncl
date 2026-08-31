@@ -20,6 +20,48 @@ impl CompileState {
         let (pairs, _) = operands.as_chunks::<2>();
         let pair_count = operands.len() / 2;
         for (index, [place, value_form]) in pairs.iter().enumerate() {
+            let nth_place = match &place.kind {
+                FormKind::List(items) if items.len() == 3 => {
+                    let operator = Self::symbol_name_info(&items[0], "setf place operator")
+                        .ok()
+                        .map(|(name, _)| name);
+                    operator.and_then(|operator| {
+                        if operator != "NTH" {
+                            return None;
+                        }
+                        let index = match &items[1].kind {
+                            FormKind::Atom(atom) => match crate::helpers::literal_constant(atom) {
+                                Some(Constant::Integer(value)) if value >= 0 => {
+                                    Some(value as usize)
+                                }
+                                _ => None,
+                            },
+                            _ => None,
+                        }?;
+                        Self::symbol_name_info(&items[2], "setf nth target")
+                            .ok()
+                            .map(|(name, escaped)| (index, name, escaped, &items[2]))
+                    })
+                }
+                _ => None,
+            };
+            if let Some((nth_index, name, escaped, target)) = nth_place {
+                self.compile_expression(function, target)?;
+                self.compile_expression(function, value_form)?;
+                self.emit(
+                    function,
+                    Instruction::SetfNth {
+                        index: nth_index,
+                        name,
+                        escaped,
+                    },
+                    place.span,
+                )?;
+                if index + 1 < pair_count {
+                    self.emit(function, Instruction::Pop, value_form.span)?;
+                }
+                continue;
+            }
             let list_place = match &place.kind {
                 FormKind::List(items) if items.len() == 2 => {
                     let operator = Self::symbol_name_info(&items[0], "setf place operator")

@@ -46,6 +46,14 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update an indexed element of a list-valued symbol through NTH."] SetfNth {
+        /// Zero-based list index.
+        index: usize,
+        /// The symbol holding the list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Push a value onto a list-valued symbol."] PushList {
         /// The symbol holding the list.
         name: String,

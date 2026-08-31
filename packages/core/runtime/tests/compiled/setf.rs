@@ -245,6 +245,19 @@ fn compiled_evaluates_pushnew_on_a_generalized_place() {
             .to_string(),
         "((2 1) ((2 1)))"
     );
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list (list (list 1 :a)))))
+               (list (pushnew (list 2 :b) (car xs) :key #'car :test #'eql) xs))",
+        )
+        .to_string(),
+        "(((2 :B) (1 :A)) (((2 :B) (1 :A))))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2))) (list (pushnew 3 (cdr xs) :test-not #'eql) xs))")
+            .to_string(),
+        "((2) (1 2))"
+    );
 }
 
 #[test]

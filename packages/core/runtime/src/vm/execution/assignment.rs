@@ -589,6 +589,45 @@ pub(super) fn execute_set_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::SetfGetDynamic => {
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("setf get has no value on the stack", span))?
+                .primary_value();
+            let indicator = stack
+                .pop()
+                .ok_or_else(|| invalid("setf get has no indicator on the stack", span))?
+                .primary_value();
+            let symbol = stack
+                .pop()
+                .ok_or_else(|| invalid("setf get has no target on the stack", span))?
+                .primary_value();
+            if symbol.symbol_reference().is_none() {
+                return Err(invalid("setf get target must be a symbol", span));
+            }
+            let plist = environment.symbol_plist(&symbol).unwrap_or(Value::Nil);
+            let mut properties = plist.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: plist.type_name().to_string(),
+                span: Some(span),
+            })?;
+            if !properties.len().is_multiple_of(2) {
+                return Err(invalid("SETF GET needs an even property list", span));
+            }
+            if let Some(index) = (0..properties.len())
+                .step_by(2)
+                .find(|&index| properties[index].eq_value(&indicator))
+                .map(|index| index + 1)
+            {
+                properties[index] = value.clone();
+            } else {
+                properties.extend([indicator, value.clone()]);
+            }
+            environment.set_symbol_plist(&symbol, Value::list(properties));
+            stack.push(value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::SetfGethashDynamic => {
             let value = stack
                 .pop()

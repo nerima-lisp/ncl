@@ -249,6 +249,25 @@ impl CompileState {
                 }
                 continue;
             }
+            let get_place = match &place.kind {
+                FormKind::List(items) if items.len() == 3 => {
+                    Self::symbol_name_info(&items[0], "setf place operator")
+                        .ok()
+                        .filter(|(name, _)| name == "GET")
+                        .map(|_| (&items[1], &items[2]))
+                }
+                _ => None,
+            };
+            if let Some((target, indicator)) = get_place {
+                self.compile_expression(function, target)?;
+                self.compile_expression(function, indicator)?;
+                self.compile_expression(function, value_form)?;
+                self.emit(function, Instruction::SetfGetDynamic, place.span)?;
+                if index + 1 < pair_count {
+                    self.emit(function, Instruction::Pop, value_form.span)?;
+                }
+                continue;
+            }
             let gethash_place = match &place.kind {
                 FormKind::List(items) if items.len() == 3 => {
                     Self::symbol_name_info(&items[0], "setf place operator")

@@ -129,6 +129,10 @@ fn compiled_evaluates_setf_places() {
         "(9 1)"
     );
     assert_eq!(
+        evaluate("(let ((symbol 'compiled-get-target)) (setf (get symbol :key) 7) (list (get symbol :key) (symbol-plist symbol)))").to_string(),
+        "(7 (:KEY 7))"
+    );
+    assert_eq!(
         evaluate(
             "(progn
                (defparameter *compiled-setf-symbol-value-target* 1)

@@ -97,6 +97,7 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update a symbol property through GET."] SetfGetDynamic,
     #[doc = "Update a hash-table-valued place through GETHASH."] SetfGethashDynamic,
     #[doc = "Push a value onto a list-valued symbol."] PushList {
         /// The symbol holding the list.

@@ -212,6 +212,19 @@ fn compile_setf_uses_native_getf_for_symbol_places() {
 }
 
 #[test]
+fn compile_setf_uses_native_get_for_general_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (get target :key) 42)");
+    state.compile_setf(function, items[0].span, &items).unwrap();
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::SetfGetDynamic)
+    );
+}
+
+#[test]
 fn compile_setf_uses_native_gethash_for_general_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

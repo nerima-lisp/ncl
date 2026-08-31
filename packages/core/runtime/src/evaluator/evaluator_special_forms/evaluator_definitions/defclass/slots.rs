@@ -52,8 +52,16 @@ impl Runtime {
                 "ALLOCATION" => {
                     let allocation =
                         Self::definition_name_from_form(&option[1], "defclass allocation")?;
-                    class_value =
-                        (allocation == "CLASS").then(|| Rc::new(RefCell::new(Value::Unbound)));
+                    match allocation.as_str() {
+                        "INSTANCE" => class_value = None,
+                        "CLASS" => class_value = Some(Rc::new(RefCell::new(Value::Unbound))),
+                        _ => {
+                            return Err(Self::invalid(
+                                "defclass allocation must be :instance or :class",
+                                option[1].span,
+                            ));
+                        }
+                    }
                 }
                 "ACCESSOR" | "READER" => {
                     let accessor_name =

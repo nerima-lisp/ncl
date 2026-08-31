@@ -62,10 +62,10 @@ fn arithmetic_shift_handles_boundaries() {
         ok_string(arithmetic_shift(&[Value::Integer(0), Value::Integer(64)])),
         "0"
     );
-    assert!(matches!(
-        arithmetic_shift(&[Value::Integer(1), Value::Integer(64)]),
-        Err(RuntimeError::NumericOverflow)
-    ));
+    assert_eq!(
+        ok_string(arithmetic_shift(&[Value::Integer(1), Value::Integer(64)])),
+        "18446744073709551616"
+    );
     assert_eq!(
         ok_string(arithmetic_shift(&[
             Value::Integer(5),

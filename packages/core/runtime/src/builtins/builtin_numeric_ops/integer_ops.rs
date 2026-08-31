@@ -26,17 +26,6 @@ pub fn least_common_multiple(arguments: &[Value]) -> Result<Value, RuntimeError>
     number_to_value(number_from_big(result))
 }
 
-pub const fn integer_gcd(mut left: i128, mut right: i128) -> i128 {
-    left = left.abs();
-    right = right.abs();
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-    left
-}
-
 pub fn numerator(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "numerator", 1)?;
     match &arguments[0] {

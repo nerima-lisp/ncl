@@ -79,7 +79,8 @@ pub fn remainder(arguments: &[Value]) -> Result<Value, RuntimeError> {
     number_to_value(number_from_big(left % right))
 }
 
-pub fn integer_remainder(left: i64, right: i64) -> Result<i64, RuntimeError> {
+#[cfg(test)]
+fn integer_remainder(left: i64, right: i64) -> Result<i64, RuntimeError> {
     if right == 0 {
         return Err(RuntimeError::DivisionByZero);
     }

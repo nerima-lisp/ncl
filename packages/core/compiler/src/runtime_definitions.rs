@@ -54,6 +54,9 @@ impl CompileState {
         if let Some(result) = self.compile_native_push_pop(function, span, items)? {
             return Ok(result);
         }
+        if let Some(result) = self.compile_native_rotate_shift(function, span, items)? {
+            return Ok(result);
+        }
         self.emit(
             function,
             Instruction::Quote(Form::list(items.to_vec(), span)),
@@ -61,6 +64,63 @@ impl CompileState {
         )?;
         self.emit(function, Instruction::Eval(span), span)?;
         Ok(())
+    }
+
+    fn compile_native_rotate_shift(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<Option<()>, CompileError> {
+        let Some((operator, _)) = items
+            .first()
+            .and_then(|form| Self::symbol_name_info(form, "runtime operator").ok())
+        else {
+            return Ok(None);
+        };
+        if operator != "ROTATEF" && operator != "SHIFTF" {
+            return Ok(None);
+        }
+        let place_count = if operator == "ROTATEF" {
+            items.len().saturating_sub(1)
+        } else {
+            items.len().saturating_sub(2)
+        };
+        if operator == "ROTATEF" && place_count < 2 {
+            return Ok(None);
+        }
+        if operator == "SHIFTF" && place_count < 1 {
+            return Err(Self::arity_error(items, &operator, "at least one", span));
+        }
+        let place_forms = if operator == "ROTATEF" {
+            &items[1..]
+        } else {
+            &items[1..items.len() - 1]
+        };
+        let places = place_forms
+            .iter()
+            .map(|place| Self::symbol_name_info(place, "symbol place"))
+            .collect::<Result<Vec<_>, _>>()
+            .ok();
+        let Some(places) = places else {
+            return Ok(None);
+        };
+        for place in place_forms {
+            self.compile_expression(function, place)?;
+        }
+        if operator == "SHIFTF" {
+            self.compile_expression(function, &items[items.len() - 1])?;
+        }
+        self.emit(
+            function,
+            if operator == "ROTATEF" {
+                Instruction::RotatefSymbols(places)
+            } else {
+                Instruction::ShiftfSymbols(places)
+            },
+            items[0].span,
+        )?;
+        Ok(Some(()))
     }
 
     fn compile_native_push_pop(
@@ -116,6 +176,14 @@ impl CompileState {
 mod tests {
     use super::*;
 
+    fn parse_items(source: &str) -> Vec<Form> {
+        let mut forms = ncl_syntax::read(source).expect("test source should parse");
+        match forms.remove(0).kind {
+            ncl_syntax::FormKind::List(items) => items,
+            form => panic!("expected list form, got {form:?}"),
+        }
+    }
+
     #[test]
     fn compile_defstruct_reports_an_internal_error_for_an_invalid_function_id() {
         let mut state = CompileState::default();
@@ -163,5 +231,83 @@ mod tests {
         };
 
         assert!(matches!(error.kind, CompileErrorKind::Arity { .. }));
+    }
+
+    #[test]
+    fn compile_runtime_definition_uses_native_rotate_and_shift_for_symbol_places() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let rotatef = parse_items("(rotatef a |B| c)");
+        state
+            .compile_runtime_definition(function, Span::new(0, 1), &rotatef)
+            .expect("ROTATEF symbol places should compile");
+        assert!(
+            state.functions[function]
+                .instructions
+                .contains(&Instruction::RotatefSymbols(vec![
+                    ("A".to_string(), false),
+                    ("B".to_string(), true),
+                    ("C".to_string(), false),
+                ]))
+        );
+
+        let shiftf = parse_items("(shiftf a b 9)");
+        state
+            .compile_runtime_definition(function, Span::new(0, 1), &shiftf)
+            .expect("SHIFTF symbol places should compile");
+        assert!(
+            state.functions[function]
+                .instructions
+                .contains(&Instruction::ShiftfSymbols(vec![
+                    ("A".to_string(), false),
+                    ("B".to_string(), false),
+                ]))
+        );
+    }
+
+    #[test]
+    fn compile_runtime_definition_falls_back_for_generalized_rotate_and_shift_places() {
+        let mut state = CompileState::default();
+        for source in ["(rotatef (car xs) y)", "(shiftf (car xs) y 9)"] {
+            let function = state.reserve_function(None, Vec::new());
+            let items = parse_items(source);
+            state
+                .compile_runtime_definition(function, Span::new(0, 1), &items)
+                .expect("generalized places should use evaluator fallback");
+            assert!(
+                state.functions[function]
+                    .instructions
+                    .iter()
+                    .any(|instruction| matches!(instruction, Instruction::Eval(_)))
+            );
+            assert!(
+                !state.functions[function]
+                    .instructions
+                    .iter()
+                    .any(|instruction| {
+                        matches!(
+                            instruction,
+                            Instruction::RotatefSymbols(_) | Instruction::ShiftfSymbols(_)
+                        )
+                    })
+            );
+        }
+    }
+
+    #[test]
+    fn compile_runtime_definition_falls_back_for_single_place_rotatef() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let items = parse_items("(rotatef a)");
+
+        state
+            .compile_runtime_definition(function, Span::new(0, 1), &items)
+            .expect("single-place ROTATEF should use evaluator fallback");
+        assert!(
+            state.functions[function]
+                .instructions
+                .iter()
+                .any(|instruction| matches!(instruction, Instruction::Eval(_)))
+        );
     }
 }

@@ -124,6 +124,8 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Rotate values among symbol places."] RotatefSymbols(Vec<(String, bool)>),
+    #[doc = "Shift values through symbol places and return the first old value."] ShiftfSymbols(Vec<(String, bool)>),
     #[doc = "Update a symbol with the result of `MAP-INTO`."] MapIntoSetfSymbol {
         /// The symbol receiving the mapped sequence.
         name: String,

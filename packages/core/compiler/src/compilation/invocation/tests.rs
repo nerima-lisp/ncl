@@ -78,10 +78,12 @@ fn compile_mapcar_propagates_an_argument_error() {
         Form::atom("F", span),
         dotted(span),
     ];
-    let error = state.compile_mapcar(function, span, &items).map_or_else(
-        |error| error,
-        |value| panic!("a malformed argument should fail to compile, got {value:?}"),
-    );
+    let error = state
+        .compile_list_mapping(function, span, &items, "MAPCAR")
+        .map_or_else(
+            |error| error,
+            |value| panic!("a malformed argument should fail to compile, got {value:?}"),
+        );
     assert!(matches!(
         error.kind,
         CompileErrorKind::UnsupportedForm { .. }

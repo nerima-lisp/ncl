@@ -2,7 +2,7 @@ use ncl_compiler::Instruction;
 use ncl_syntax::Span;
 
 use crate::vm::execution::application::{
-    execute_apply_instruction, execute_call_instruction, execute_mapcar_instruction,
+    execute_apply_instruction, execute_call_instruction, execute_list_mapping_instruction,
     execute_multiple_value_call_instruction,
 };
 use crate::vm::primitives::pop_value;
@@ -28,8 +28,18 @@ pub(super) fn execute_value_instruction(
         Instruction::Apply(argument_count) => {
             execute_apply_instruction(runtime, *argument_count, stack, environment, span)?;
         }
-        Instruction::MapCar(sequence_count) => {
-            execute_mapcar_instruction(runtime, *sequence_count, stack, environment, span)?;
+        Instruction::ListMapping {
+            operation,
+            sequence_count,
+        } => {
+            execute_list_mapping_instruction(
+                runtime,
+                operation,
+                *sequence_count,
+                stack,
+                environment,
+                span,
+            )?;
         }
         Instruction::MultipleValueCall(value_form_count) => {
             execute_multiple_value_call_instruction(

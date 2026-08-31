@@ -3,7 +3,7 @@ use ncl_syntax::Span;
 use crate::{Environment, Runtime, RuntimeError, Value};
 
 use super::execution::{
-    execute_apply_instruction, execute_call_instruction, execute_mapcar_instruction,
+    execute_apply_instruction, execute_call_instruction, execute_list_mapping_instruction,
     execute_multiple_value_call_instruction,
 };
 
@@ -57,8 +57,9 @@ fn rejects_apply_without_enough_stack_values_or_a_final_list() {
 
 #[test]
 fn rejects_mapcar_without_enough_stack_values_or_proper_lists() {
-    let result = execute_mapcar_instruction(
+    let result = execute_list_mapping_instruction(
         &Runtime::new(),
+        "MAPCAR",
         0,
         &mut Vec::new(),
         &Environment::new(),
@@ -71,8 +72,9 @@ fn rejects_mapcar_without_enough_stack_values_or_proper_lists() {
     ));
 
     let mut stack = vec![Value::Integer(1), Value::Integer(2)];
-    let result = execute_mapcar_instruction(
+    let result = execute_list_mapping_instruction(
         &Runtime::new(),
+        "MAPCAR",
         1,
         &mut stack,
         &Environment::new(),

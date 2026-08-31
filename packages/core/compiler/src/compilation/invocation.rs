@@ -60,21 +60,25 @@ impl CompileState {
         Ok(())
     }
 
-    pub(crate) fn compile_mapcar(
+    pub(crate) fn compile_list_mapping(
         &mut self,
         function: FunctionId,
         span: Span,
         items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         if items.len() < 3 {
-            return Err(Self::arity_error(items, "MAPCAR", "at least two", span));
+            return Err(Self::arity_error(items, operation, "at least two", span));
         }
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
         self.emit(
             function,
-            Instruction::MapCar(items.len().saturating_sub(2)),
+            Instruction::ListMapping {
+                operation: operation.to_string(),
+                sequence_count: items.len().saturating_sub(2),
+            },
             span,
         )?;
         Ok(())

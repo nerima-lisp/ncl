@@ -944,7 +944,9 @@ fn emits_eval_and_mapcar_instructions() {
         mapcar.functions[0]
             .instructions
             .iter()
-            .any(|instruction| { matches!(instruction, Instruction::MapCar(2)) })
+            .any(|instruction| {
+                matches!(instruction, Instruction::ListMapping { operation, sequence_count: 2 } if operation == "MAPCAR")
+            })
     );
 
     let map_into = compile("(map-into result #'1+ '(1 2))");

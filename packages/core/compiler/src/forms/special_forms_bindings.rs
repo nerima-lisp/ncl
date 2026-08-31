@@ -52,7 +52,9 @@ impl CompileState {
             "FUNCALL" => self.compile_funcall(function, span, items),
             "APPLY" => self.compile_apply(function, span, items),
             "MAP-INTO" => self.compile_map_into(function, span, items),
-            "MAPCAR" => self.compile_mapcar(function, span, items),
+            "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
+                self.compile_list_mapping(function, span, items, name)
+            }
             "DESTRUCTURING-BIND" => self.compile_destructuring_bind(function, span, items),
             "LET" => self.compile_let(function, span, items, false),
             "LET*" => self.compile_let(function, span, items, true),

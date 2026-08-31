@@ -65,49 +65,30 @@ pub fn execute_apply_instruction(
     Ok(())
 }
 
-pub fn execute_mapcar_instruction(
+pub fn execute_list_mapping_instruction(
     runtime: &Runtime,
+    operation: &str,
     sequence_count: usize,
     stack: &mut Vec<Value>,
     environment: &Environment,
     span: Span,
 ) -> Result<(), RuntimeError> {
     if sequence_count == 0 || stack.len() < sequence_count.saturating_add(1) {
-        return Err(invalid("mapcar has too few stack values", span));
+        return Err(invalid("list mapping has too few stack values", span));
     }
     let sequences_start = stack.len() - sequence_count;
     let sequences = stack.split_off(sequences_start);
     let function_value = stack
         .pop()
-        .ok_or_else(|| invalid("mapcar has no function value", span))?;
-    let lists = sequences
-        .iter()
-        .map(|value| {
-            value
-                .primary_value()
-                .list_items()
-                .ok_or_else(|| invalid("mapcar arguments must be proper lists", span))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let length = lists.iter().map(Vec::len).min().unwrap_or(0);
-    let mut results = Vec::with_capacity(length);
-    for index in 0..length {
-        let arguments = lists
-            .iter()
-            .map(|items| items[index].clone())
-            .collect::<Vec<_>>();
-        results.push(
-            runtime
-                .apply_in(
-                    &function_value.primary_value(),
-                    &arguments,
-                    span,
-                    environment,
-                )?
-                .primary_value(),
-        );
-    }
-    stack.push(Value::list(results));
+        .ok_or_else(|| invalid("list mapping has no function value", span))?;
+    let result = runtime.apply_list_mapping(
+        operation,
+        &function_value.primary_value(),
+        &sequences,
+        environment,
+        span,
+    )?;
+    stack.push(result);
     Ok(())
 }
 

@@ -247,7 +247,7 @@ pub enum Instruction {
     #[doc = "Evaluate a compiled source span."] Eval(Span),
     #[doc = "Call a function with positional arguments."] Call(usize),
     #[doc = "Apply a final list of arguments."] Apply(usize),
-    #[doc = "Map a function over one or more sequences."] MapCar(usize),
+    #[doc = "Map a function over one or more lists."] ListMapping { operation: String, sequence_count: usize },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

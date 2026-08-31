@@ -1,5 +1,6 @@
-use super::{RuntimeError, Value, exact, integer_argument, number_from_big, number_to_value};
+use super::{RuntimeError, Value, exact, number_from_big, number_to_value};
 use crate::builtins::numbers::big_integer_argument;
+use ibig::ops::UnsignedAbs;
 
 pub fn logand(arguments: &[Value]) -> Result<Value, RuntimeError> {
     big_bitwise(arguments, "logand", ibig::IBig::from(-1), |left, right| {
@@ -50,20 +51,33 @@ pub fn logtest(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn logcount(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "logcount", 1)?;
-    let value = integer_argument("logcount", &arguments[0])?;
-    let count = if value < 0 {
-        (!value).count_ones()
+    let value = big_integer_argument("logcount", &arguments[0])?;
+    let magnitude = if value < ibig::IBig::from(0) {
+        let adjusted: ibig::IBig = -value - 1;
+        adjusted.unsigned_abs()
     } else {
-        value.count_ones()
+        value.unsigned_abs()
     };
-    Ok(Value::Integer(i64::from(count)))
+    let count = (0..magnitude.bit_len())
+        .filter(|&bit| magnitude.bit(bit))
+        .count();
+    Ok(Value::Integer(
+        i64::try_from(count).map_err(|_| RuntimeError::NumericOverflow)?,
+    ))
 }
 
 pub fn integer_length(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "integer-length", 1)?;
-    let value = integer_argument("integer-length", &arguments[0])?;
-    let magnitude = (if value < 0 { !value } else { value }).cast_unsigned();
-    Ok(Value::Integer(i64::from(64 - magnitude.leading_zeros())))
+    let value = big_integer_argument("integer-length", &arguments[0])?;
+    let magnitude = if value < ibig::IBig::from(0) {
+        let adjusted: ibig::IBig = -value - 1;
+        adjusted.unsigned_abs()
+    } else {
+        value.unsigned_abs()
+    };
+    Ok(Value::Integer(
+        i64::try_from(magnitude.bit_len()).map_err(|_| RuntimeError::NumericOverflow)?,
+    ))
 }
 
 #[cfg(test)]

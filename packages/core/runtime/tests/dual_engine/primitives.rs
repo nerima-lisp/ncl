@@ -127,10 +127,12 @@ fn evaluates_integer_bit_operations_on_bignums(#[case] eval_fn: EvalFn) {
             "(let ((big (expt 2 70)))
                 (list (logand big 3) (logior big 3) (logxor big 3)
                       (lognot big) (logtest big 1)
-                      (ash big 2) (ash big -70)))",
+                      (ash big 2) (ash big -70)
+                      (logcount big) (logcount (- big))
+                      (integer-length big) (integer-length (- big))))",
         )
         .to_string(),
-        "(0 1180591620717411303427 1180591620717411303427 -1180591620717411303425 NIL 4722366482869645213696 1)"
+        "(0 1180591620717411303427 1180591620717411303427 -1180591620717411303425 NIL 4722366482869645213696 1 1 70 71 70)"
     );
 }
 

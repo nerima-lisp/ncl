@@ -2,6 +2,21 @@
 use crate::*;
 
 impl CompileState {
+    pub(crate) fn compile_nth_value(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() != 3 {
+            return Err(Self::arity_error(items, "NTH-VALUE", "two", span));
+        }
+        self.compile_expression(function, &items[1])?;
+        self.compile_expression(function, &items[2])?;
+        self.emit(function, Instruction::NthValue, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_multiple_value_bind(
         &mut self,
         function: FunctionId,

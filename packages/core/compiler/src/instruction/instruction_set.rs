@@ -156,6 +156,7 @@ pub enum Instruction {
     #[doc = "Discard the top stack value."] Pop,
     #[doc = "Duplicate the top stack value."] Dup,
     #[doc = "Replace the stack with the primary value."] Primary,
+    #[doc = "Select one value from a multiple-value carrier."] NthValue,
     #[doc = "Construct a multiple-value carrier."] Values(usize),
     #[doc = "Convert a multiple-value carrier to a list."] MultipleValueList,
     #[doc = "Bind multiple values to names."] BindValues(Vec<String>),

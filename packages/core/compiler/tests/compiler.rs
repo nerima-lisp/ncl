@@ -887,6 +887,25 @@ fn lowers_multiple_value_list_to_a_value_carrier_conversion() {
 }
 
 #[test]
+fn lowers_nth_value_to_a_native_value_selection() {
+    let program = compile("(nth-value 1 (values 10 20))");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::Constant(Constant::Integer(10)),
+            Instruction::Primary,
+            Instruction::Constant(Constant::Integer(20)),
+            Instruction::Primary,
+            Instruction::Values(2),
+            Instruction::NthValue,
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
 fn compiles_control_form_matrix() {
     let cases = [
         "(catch 'tag (throw 'tag 1))",

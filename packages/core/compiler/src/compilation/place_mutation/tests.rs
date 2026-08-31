@@ -194,6 +194,24 @@ fn compile_setf_uses_native_subseq_for_symbol_places() {
 }
 
 #[test]
+fn compile_setf_uses_native_getf_for_symbol_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (getf plist :key) value)");
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap();
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::SetfGetfDynamic {
+                name: "PLIST".to_string(),
+                escaped: false,
+            })
+    );
+}
+
+#[test]
 fn compile_push_and_pop_use_native_list_instructions_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

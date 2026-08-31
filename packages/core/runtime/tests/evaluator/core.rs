@@ -832,14 +832,10 @@ fn arithmetic_promotes_overflow_to_a_bignum_and_comparisons_require_an_argument(
         "340282366920938463463374607431768211456"
     );
 
-    // A bignum-denominator ratio is still out of scope: this codebase's
-    // Rational only stores i64 numerator/denominator, so an uneven bignum
-    // division still reports NumericOverflow rather than a wrong answer.
-    let uneven_bignum_ratio = Runtime::new().eval_source("(/ (expt 2 100) 3)").must_fail();
-    assert!(matches!(
-        uneven_bignum_ratio,
-        ncl_runtime::RuntimeError::NumericOverflow
-    ));
+    assert_eq!(
+        evaluate("(/ (expt 2 100) 3)").to_string(),
+        "1267650600228229401496703205376/3"
+    );
 
     let comparison_error = Runtime::new().eval_source("(=)").must_fail();
     assert!(matches!(

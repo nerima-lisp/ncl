@@ -198,6 +198,9 @@ impl CompileState {
             "=" | "<" | ">" | "<=" | ">=" => {
                 self.compile_numeric_comparison(function, span, items, name)
             }
+            "MIN" | "MAX" | "GCD" | "LCM" => {
+                self.compile_numeric_fold(function, span, items, name)
+            }
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

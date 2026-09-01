@@ -1141,6 +1141,12 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::NumericComparison { operation: emitted, argument_count: 2 } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for operation in ["MIN", "MAX", "GCD", "LCM"] {
+        let program = compile(&format!("({operation} 12 8 4)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericFold { operation: emitted, argument_count: 3 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
         let program = compile(&format!("({operation} '(1 2 3) 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

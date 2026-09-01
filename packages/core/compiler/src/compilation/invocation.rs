@@ -494,6 +494,23 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_numeric_fold(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(function, Instruction::NumericFold {
+            operation: operation.to_string(),
+            argument_count: items.len() - 1,
+        }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_digit_predicate(
         &mut self,
         function: FunctionId,

@@ -541,6 +541,28 @@ pub fn execute_numeric_comparison_instruction(
     Ok(())
 }
 
+pub fn execute_numeric_fold_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("numeric fold has too few stack values", span));
+    }
+    let start = stack.len() - argument_count;
+    let arguments = stack.drain(start..).collect::<Vec<_>>();
+    let result = match operation {
+        "MIN" => crate::builtins::minimum(&arguments),
+        "MAX" => crate::builtins::maximum(&arguments),
+        "GCD" => crate::builtins::greatest_common_divisor(&arguments),
+        "LCM" => crate::builtins::least_common_multiple(&arguments),
+        _ => Err(invalid("unknown numeric fold operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_character_comparison_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

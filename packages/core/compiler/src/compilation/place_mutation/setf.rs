@@ -23,6 +23,9 @@ impl CompileState {
             if self.compile_setf_bit_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
+            if self.compile_setf_bitfield_place(function, place, value_form, index, pair_count)? {
+                continue;
+            }
             if self.compile_setf_element_place(function, place, value_form, index, pair_count)? {
                 continue;
             }

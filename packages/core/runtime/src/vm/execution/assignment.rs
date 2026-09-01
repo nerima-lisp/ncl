@@ -2,6 +2,7 @@
 use super::*;
 
 mod array;
+mod bitfield;
 mod element;
 mod list;
 mod property;
@@ -41,6 +42,16 @@ pub(super) fn execute_set_instruction(
         return Ok(true);
     }
     if array::execute(
+        runtime,
+        instruction,
+        stack,
+        environment,
+        program_counter,
+        span,
+    )? {
+        return Ok(true);
+    }
+    if bitfield::execute(
         runtime,
         instruction,
         stack,

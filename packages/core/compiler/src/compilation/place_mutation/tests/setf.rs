@@ -151,6 +151,29 @@ fn compile_setf_uses_native_bit_for_a_symbol_place() {
 }
 
 #[test]
+fn compile_setf_uses_native_bitfield_accessors_for_symbol_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items(
+        "(setf (ldb (byte 4 4) xs) 9 (mask-field (byte 3 1) ys) 7)",
+    );
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap();
+    let instructions = &state.functions[function].instructions;
+    assert!(instructions.contains(&Instruction::SetfBitfieldDynamic {
+        operator: "LDB".to_string(),
+        name: "XS".to_string(),
+        escaped: false,
+    }));
+    assert!(instructions.contains(&Instruction::SetfBitfieldDynamic {
+        operator: "MASK-FIELD".to_string(),
+        name: "YS".to_string(),
+        escaped: false,
+    }));
+}
+
+#[test]
 fn compile_setf_uses_native_element_accessors_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

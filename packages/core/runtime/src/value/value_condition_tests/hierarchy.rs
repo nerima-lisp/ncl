@@ -19,6 +19,10 @@ fn condition_query_methods_cover_hierarchy_and_non_condition_targets() {
         ("ARITHMETIC-ERROR", "SERIOUS-CONDITION", true),
         ("TYPE-ERROR", "ERROR", true),
         ("UNBOUND-VARIABLE", "SERIOUS-CONDITION", true),
+        ("UNDEFINED-FUNCTION", "CELL-ERROR", true),
+        ("UNBOUND-SLOT", "CELL-ERROR", true),
+        ("END-OF-FILE", "STREAM-ERROR", true),
+        ("STORAGE-CONDITION", "SERIOUS-CONDITION", true),
         ("CONTROL-ERROR", "ERROR", false),
         ("UNKNOWN-TYPE", "ERROR", false),
     ] {

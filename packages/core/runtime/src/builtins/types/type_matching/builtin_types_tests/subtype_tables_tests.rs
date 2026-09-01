@@ -51,6 +51,9 @@ fn named_subtype_relation_covers_builtin_atomic_hierarchy() {
         ("BIT-VECTOR", "SEQUENCE"),
         ("ARRAY", "SIMPLE-ARRAY"),
         ("COMPILED-FUNCTION", "FUNCTION"),
+        ("UNDEFINED-FUNCTION", "CELL-ERROR"),
+        ("UNBOUND-SLOT", "CELL-ERROR"),
+        ("END-OF-FILE", "STREAM-ERROR"),
         ("STREAM", "ATOM"),
         ("RESTART", "ATOM"),
     ];

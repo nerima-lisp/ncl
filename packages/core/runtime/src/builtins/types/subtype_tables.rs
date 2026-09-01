@@ -125,6 +125,12 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
             matches!(supertype_name, "ARRAY" | "SIMPLE-ARRAY" | "ATOM")
         }
         "COMPILED-FUNCTION" => matches!(supertype_name, "FUNCTION" | "ATOM"),
+        "DIVISION-BY-ZERO" => matches!(supertype_name, "ARITHMETIC-ERROR" | "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
+        "END-OF-FILE" => matches!(supertype_name, "STREAM-ERROR" | "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
+        "UNDEFINED-FUNCTION" | "UNBOUND-SLOT" => matches!(supertype_name, "CELL-ERROR" | "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
+        "CELL-ERROR" => matches!(supertype_name, "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
+        "STREAM-ERROR" => matches!(supertype_name, "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
+        "STORAGE-CONDITION" | "PARSE-ERROR" => matches!(supertype_name, "SERIOUS-CONDITION" | "CONDITION"),
         "FUNCTION" | "STREAM" | "PACKAGE" | "ENVIRONMENT" | "HASH-TABLE" | "CONDITION"
         | "RESTART" | "STRUCTURE" | "UNBOUND" | "VALUES" | "CLASS" | "STANDARD-OBJECT" => {
             supertype_name == "ATOM"

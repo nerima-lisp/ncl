@@ -40,12 +40,25 @@ impl Value {
                 )
             }
             "TYPE-ERROR" | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR"
-            | "COMPILER-ERROR" | "FILE-ERROR" | "UNBOUND-VARIABLE" | "STREAM-ERROR" => {
+            | "COMPILER-ERROR" | "FILE-ERROR" | "UNBOUND-VARIABLE" | "STREAM-ERROR"
+            | "STORAGE-CONDITION" | "PARSE-ERROR" => {
                 matches!(
                     expected.as_str(),
                     "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
                 )
             }
+            "UNDEFINED-FUNCTION" | "UNBOUND-SLOT" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "CELL-ERROR"
+            ),
+            "END-OF-FILE" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "STREAM-ERROR"
+            ),
+            "CELL-ERROR" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+            ),
             "CONTROL-ERROR" => matches!(expected.as_str(), "CONDITION"),
             _ => false,
         }

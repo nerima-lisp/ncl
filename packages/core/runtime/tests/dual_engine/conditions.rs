@@ -246,6 +246,23 @@ fn recognizes_stream_error_condition_type(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn recognizes_standard_condition_hierarchy(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (typep (make-condition 'undefined-function) 'cell-error)
+                   (typep (make-condition 'end-of-file) 'stream-error)
+                   (typep (make-condition 'storage-condition) 'serious-condition)
+                   (subtypep 'undefined-function 'cell-error))",
+        )
+        .to_string(),
+        "(T T T T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_error_through_condition_handlers(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

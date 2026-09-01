@@ -1034,6 +1034,24 @@ fn evaluates_print_variants_to_string_stream(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_string_stream_constructors(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((input (make-string-input-stream "abc"))
+                       (output (make-string-output-stream)))
+                   (list (read-char input)
+                         (write-string "xy" output)
+                         (get-output-stream-string output)))"#,
+        )
+        .to_string(),
+        "(#\\a \"xy\" \"xy\")",
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_read_from_string(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

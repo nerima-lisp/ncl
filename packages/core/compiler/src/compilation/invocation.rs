@@ -650,6 +650,8 @@ impl CompileState {
             "PEEK-CHAR" => items.len() <= 6,
             "UNREAD-CHAR" => (2..=3).contains(&items.len()),
             "CLOSE" => items.len() == 2 || items.len() == 4,
+            "MAKE-STRING-INPUT-STREAM" => (2..=4).contains(&items.len()),
+            "MAKE-STRING-OUTPUT-STREAM" => items.len() == 1,
             _ => false,
         };
         if !valid { return Err(Self::arity_error(items, operation, "the supported argument count", span)); }

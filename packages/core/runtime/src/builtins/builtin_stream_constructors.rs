@@ -1,7 +1,7 @@
 use super::{arity, exact, integer_argument, type_error};
 use crate::{RuntimeError, Value};
 
-pub(super) fn make_string_input_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn make_string_input_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=3).contains(&arguments.len()) {
         return Err(arity("make-string-input-stream", "1 to 3", arguments.len()));
     }
@@ -46,7 +46,7 @@ pub(super) fn stream_bound(
     Ok(bound)
 }
 
-pub(super) fn make_string_output_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn make_string_output_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "make-string-output-stream", 0)?;
     Ok(Value::string_output_stream())
 }

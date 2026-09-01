@@ -90,9 +90,8 @@ use builtin_printer::{
 pub(crate) use builtin_printer::{identity, type_of};
 
 mod builtin_stream_constructors;
-use builtin_stream_constructors::{
-    make_string_input_stream, make_string_output_stream, stream_bound,
-};
+pub(crate) use builtin_stream_constructors::{make_string_input_stream, make_string_output_stream};
+use builtin_stream_constructors::stream_bound;
 
 mod builtin_file_helpers;
 use builtin_file_helpers::{pathname_argument, stream_keyword_name};

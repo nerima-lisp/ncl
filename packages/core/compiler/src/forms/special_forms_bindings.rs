@@ -194,14 +194,18 @@ impl CompileState {
                 self.compile_character_unary(function, span, items, name)
             }
             "1+" | "1-" | "ABS" | "SIGNUM" | "ZEROP" | "PLUSP" | "MINUSP" | "EVENP"
-            | "ODDP" | "LOGNOT" => self.compile_numeric_unary(function, span, items, name),
+            | "ODDP" | "LOGNOT" | "LOGCOUNT" | "INTEGER-LENGTH" => {
+                self.compile_numeric_unary(function, span, items, name)
+            }
             "=" | "<" | ">" | "<=" | ">=" => {
                 self.compile_numeric_comparison(function, span, items, name)
             }
             "MIN" | "MAX" | "GCD" | "LCM" | "LOGAND" | "LOGIOR" | "LOGXOR" => {
                 self.compile_numeric_fold(function, span, items, name)
             }
-            "MOD" | "REM" => self.compile_numeric_binary(function, span, items, name),
+            "MOD" | "REM" | "ASH" | "LOGTEST" => {
+                self.compile_numeric_binary(function, span, items, name)
+            }
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

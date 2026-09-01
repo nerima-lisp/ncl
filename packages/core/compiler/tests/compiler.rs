@@ -1157,7 +1157,13 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(program.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::NumericUnary { operation: emitted } if emitted == "LOGNOT")
     }));
-    for operation in ["MOD", "REM"] {
+    for operation in ["LOGCOUNT", "INTEGER-LENGTH"] {
+        let program = compile(&format!("({operation} 12)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericUnary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in ["MOD", "REM", "ASH", "LOGTEST"] {
         let program = compile(&format!("({operation} 12 5)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {
             matches!(instruction, Instruction::NumericBinary { operation: emitted } if emitted == operation)

@@ -513,6 +513,8 @@ pub fn execute_numeric_unary_instruction(
         "EVENP" => crate::builtins::evenp(&[value]),
         "ODDP" => crate::builtins::oddp(&[value]),
         "LOGNOT" => crate::builtins::lognot(&[value]),
+        "LOGCOUNT" => crate::builtins::logcount(&[value]),
+        "INTEGER-LENGTH" => crate::builtins::integer_length(&[value]),
         _ => Err(invalid("unknown unary numeric operation", span)),
     }?;
     stack.push(result);
@@ -577,6 +579,8 @@ pub fn execute_numeric_binary_instruction(
     let result = match operation {
         "MOD" => crate::builtins::modulo(&[left, right]),
         "REM" => crate::builtins::remainder(&[left, right]),
+        "ASH" => crate::builtins::arithmetic_shift(&[left, right]),
+        "LOGTEST" => crate::builtins::logtest(&[left, right]),
         _ => Err(invalid("unknown numeric binary operation", span)),
     }?;
     stack.push(result);

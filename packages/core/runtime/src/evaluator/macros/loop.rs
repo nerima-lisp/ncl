@@ -3,9 +3,10 @@ use ncl_syntax::{Form, FormKind};
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
 use super::loop_aggregate::{append_step, count_step, sum_step};
-use super::loop_condition::expand_loop_condition;
 use super::loop_collect::expand_loop_collect;
-use super::loop_control::{clause_offset, named_loop_body_start};
+use super::loop_condition::expand_loop_condition;
+use super::loop_control::named_loop_body_start;
+use super::loop_entry::expand_loop_entry_clause;
 use super::loop_finalize::finalize;
 use super::loop_hash::{bind_hash_value_and_key, expand_loop_hash_being};
 use super::loop_on::expand_loop_for_on;
@@ -17,14 +18,8 @@ impl Runtime {
         let FormKind::List(items) = &form.kind else {
             return Ok(form.clone());
         };
-        if let Some(return_offset) = clause_offset(items, "RETURN") {
-            return Self::expand_loop_return_clause(form, items, return_offset);
-        }
-        if let Some(initially_offset) = clause_offset(items, "INITIALLY") {
-            return Self::expand_loop_initially_clause(form, items, initially_offset);
-        }
-        if let Some(finally_offset) = clause_offset(items, "FINALLY") {
-            return Self::expand_loop_finally_clause(form, items, finally_offset);
+        if let Some(expanded) = expand_loop_entry_clause(form, items)? {
+            return Ok(expanded);
         }
         let (named_block, body_start) = named_loop_body_start(form, items)?;
         let mut body = items[body_start..].to_vec();

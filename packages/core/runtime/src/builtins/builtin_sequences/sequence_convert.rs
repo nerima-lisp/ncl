@@ -87,7 +87,7 @@ pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "coerce", 2)?;
-    let result_type = type_designator_name("coerce", &arguments[1])?;
+    let result_type = coerce_result_type(&arguments[1])?;
     match result_type.as_str() {
         "LIST" => Ok(Value::list(sequence_elements("coerce", &arguments[0])?)),
         "VECTOR" | "SIMPLE-VECTOR" => {
@@ -125,6 +125,16 @@ pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
             message: format!("coerce does not support result type {result_type}"),
             span: None,
         }),
+    }
+}
+
+fn coerce_result_type(value: &Value) -> Result<String, RuntimeError> {
+    match value {
+        Value::List(items) => items
+            .first()
+            .map(|operator| type_designator_name("coerce", operator))
+            .unwrap_or_else(|| type_designator_name("coerce", value)),
+        _ => type_designator_name("coerce", value),
     }
 }
 

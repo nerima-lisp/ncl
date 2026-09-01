@@ -71,3 +71,17 @@ fn coerce_converts_sequences_to_sequence_types() {
         "\"ABC\""
     );
 }
+
+#[test]
+fn coerce_accepts_compound_sequence_type_designators() {
+    let vector_type = Value::list(vec![Value::keyword("vector"), Value::symbol("integer")]);
+    assert_eq!(
+        coerce(&[
+            Value::list(vec![Value::Integer(1), Value::Integer(2)]),
+            vector_type,
+        ])
+        .unwrap()
+        .to_string(),
+        "#(1 2)"
+    );
+}

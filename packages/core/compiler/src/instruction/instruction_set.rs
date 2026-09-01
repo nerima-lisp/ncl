@@ -526,6 +526,14 @@ pub enum Instruction {
     #[doc = "Apply a symbol value operation."] SymbolValue {
         /// Name of the symbol value operation to invoke.
         operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
+    #[doc = "Apply a symbol binding operation."] SymbolBinding {
+        /// Name of the symbol binding operation to invoke.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
     },
     #[doc = "Apply a hash-table operation."] HashTable {
         /// Name of the hash-table operation to invoke.

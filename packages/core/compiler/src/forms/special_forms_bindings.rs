@@ -130,6 +130,9 @@ impl CompileState {
                 | "BOUNDP"
                 | "CONSTANTP"
                 | "SYMBOL-VALUE"
+                | "SET"
+                | "MAKUNBOUND"
+                | "FMAKUNBOUND"
                 | "GETHASH"
                 | "REMHASH"
                 | "MAKE-HASH-TABLE"
@@ -295,6 +298,9 @@ impl CompileState {
             }
             "BOUNDP" | "CONSTANTP" | "SYMBOL-VALUE" => {
                 self.compile_symbol_value(function, span, items, name)
+            }
+            "SET" | "MAKUNBOUND" | "FMAKUNBOUND" => {
+                self.compile_symbol_binding(function, span, items, name)
             }
             "GETHASH" | "REMHASH" | "MAKE-HASH-TABLE" | "CLRHASH" | "HASH-TABLE-COUNT"
             | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS" | "NCL-HASH-TABLE-VALUES" => {

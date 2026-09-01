@@ -1048,7 +1048,21 @@ impl CompileState {
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
-        self.emit(function, Instruction::SymbolValue { operation: operation.to_string() }, span)?;
+        self.emit(function, Instruction::SymbolValue { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        Ok(())
+    }
+
+    pub(crate) fn compile_symbol_binding(
+        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    ) -> Result<(), CompileError> {
+        let (valid_arity, expected) = match operation {
+            "SET" => (items.len() == 3, "two"),
+            "MAKUNBOUND" | "FMAKUNBOUND" => (items.len() == 2, "one"),
+            _ => (false, "valid arguments"),
+        };
+        if !valid_arity { return Err(Self::arity_error(items, operation, expected, span)); }
+        for item in &items[1..] { self.compile_expression(function, item)?; }
+        self.emit(function, Instruction::SymbolBinding { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
         Ok(())
     }
 

@@ -102,16 +102,29 @@ pub fn execute_symbol_value_instruction(
     runtime: &Runtime,
     stack: &mut Vec<Value>,
     environment: &Environment,
-    operation: &str,
+    operation: &str, argument_count: usize,
     span: Span,
 ) -> Result<(), RuntimeError> {
-    if stack.is_empty() {
+    if stack.len() < argument_count {
         return Err(invalid("symbol value operation has too few stack values", span));
     }
-    let arguments = stack.split_off(stack.len() - 1)
+    let arguments = stack.split_off(stack.len() - argument_count)
         .into_iter().map(|value| value.primary_value()).collect::<Vec<_>>();
     let value = runtime.apply_symbol_value_primitive(operation, &arguments, environment, span)
         .unwrap_or_else(|| Err(invalid("unknown symbol value operation", span)))?;
+    stack.push(value);
+    Ok(())
+}
+
+pub fn execute_symbol_binding_instruction(
+    runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
+    operation: &str, argument_count: usize, span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count { return Err(invalid("symbol binding operation has too few stack values", span)); }
+    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
+        .map(|value| value.primary_value()).collect::<Vec<_>>();
+    let value = runtime.apply_symbol_property_primitive(operation, &arguments, environment, span)
+        .unwrap_or_else(|| Err(invalid("unknown symbol binding operation", span)))?;
     stack.push(value);
     Ok(())
 }

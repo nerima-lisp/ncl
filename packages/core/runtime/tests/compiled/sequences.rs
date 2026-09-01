@@ -493,7 +493,13 @@ fn compiled_evaluates_symbol_property_access() {
 #[test]
 fn compiled_evaluates_symbol_value_operations() {
     assert_eq!(
-        evaluate("(let ((value 7)) (list (boundp 'value) (symbol-value 'value) (constantp t) (constantp 'value)))").to_string(),
-        "(T 7 T NIL)"
+        evaluate("(let ((value 7)) (list (boundp 'value) (symbol-value 'value) (constantp t) (constantp 'value) (constantp 'value nil)))").to_string(),
+        "(T 7 T NIL NIL)"
     );
+}
+
+#[test]
+fn compiled_evaluates_symbol_binding_operations() {
+    assert_eq!(evaluate("(let ((symbol 'item)) (set symbol 9) (list (symbol-value symbol) (makunbound symbol) (boundp symbol)))").to_string(), "(9 ITEM NIL)");
+    assert_eq!(evaluate("(let ((symbol (gensym))) (fmakunbound symbol) (fboundp symbol))").to_string(), "NIL");
 }

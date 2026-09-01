@@ -713,6 +713,7 @@ pub fn execute_numeric_unary_instruction(
         "LOGNOT" => crate::builtins::lognot(&[value]),
         "LOGCOUNT" => crate::builtins::logcount(&[value]),
         "INTEGER-LENGTH" => crate::builtins::integer_length(&[value]),
+        "ISQRT" => crate::builtins::integer_square_root_builtin(&[value]),
         "SQRT" => crate::builtins::square_root(&[value]),
         "SIN" => crate::builtins::sine(&[value]),
         "COS" => crate::builtins::cosine(&[value]),

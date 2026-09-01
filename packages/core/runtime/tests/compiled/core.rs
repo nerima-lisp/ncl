@@ -74,6 +74,11 @@ fn compiled_evaluates_rationalize_conversion() {
 }
 
 #[test]
+fn compiled_evaluates_integer_square_root() {
+    assert_eq!(evaluate("(isqrt 10)").to_string(), "3");
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

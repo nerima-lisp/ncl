@@ -2,6 +2,8 @@ use ncl_syntax::{Form, FormKind};
 
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
+use super::loop_aggregate::count_step;
+
 impl Runtime {
     pub(super) fn expand_builtin_loop(form: &Form) -> Result<Form, RuntimeError> {
         let FormKind::List(items) = &form.kind else {
@@ -260,14 +262,7 @@ impl Runtime {
                         ));
                     }
                     if let (Some(value), Some(name)) = (count_form, count_result_name.clone()) {
-                        dolist_items.push(Form::list(
-                            vec![
-                                Form::atom("WHEN", form.span),
-                                value,
-                                Form::list(vec![Form::atom("INCF", form.span), name], form.span),
-                            ],
-                            form.span,
-                        ));
+                        dolist_items.push(count_step(form, value, name));
                     }
                     if let (Some(value), Some(name)) = (extremum_form, extremum_name.clone()) {
                         let comparison = if maximize { ">" } else { "<" };
@@ -533,17 +528,7 @@ impl Runtime {
                         ));
                     }
                     if let (Some(value), Some(name)) = (count_form.clone(), count_name.clone()) {
-                        loop_body.push(Form::list(
-                            vec![
-                                Form::atom("WHEN", form.span),
-                                value,
-                                Form::list(
-                                    vec![Form::atom("INCF", form.span), name],
-                                    form.span,
-                                ),
-                            ],
-                            form.span,
-                        ));
+                        loop_body.push(count_step(form, value, name));
                     }
                     if let (Some(value), Some(name)) =
                         (extremum_form.clone(), extremum_name.clone())
@@ -1044,14 +1029,7 @@ impl Runtime {
                     ));
                 }
                 if let (Some(value), Some(name)) = (count_form, count_name.clone()) {
-                    do_items.push(Form::list(
-                        vec![
-                            Form::atom("WHEN", form.span),
-                            value,
-                            Form::list(vec![Form::atom("INCF", form.span), name], form.span),
-                        ],
-                        form.span,
-                    ));
+                    do_items.push(count_step(form, value, name));
                 }
                 if let (Some(value), Some(name)) = (extremum_form, extremum_name.clone()) {
                     let comparison = if maximize { ">" } else { "<" };

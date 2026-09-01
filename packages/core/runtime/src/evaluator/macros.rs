@@ -2,6 +2,7 @@ mod binding;
 mod destructuring;
 mod dispatch;
 mod keywords;
+mod loop_aggregate;
 mod r#loop;
 mod modify_macro;
 mod modify_macro_tests;

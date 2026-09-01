@@ -166,6 +166,8 @@ impl Runtime {
                     let mut body_start = 5;
                     let mut sum_form = None;
                     let mut sum_name = None;
+                    let mut count_form = None;
+                    let mut count_result_name = None;
                     let mut extremum_form = None;
                     let mut extremum_name = None;
                     let mut maximize = false;
@@ -195,6 +197,7 @@ impl Runtime {
                         .and_then(atom_name)
                         .is_some_and(|name| {
                             names_equal(name, "SUM")
+                                || names_equal(name, "COUNT")
                                 || names_equal(name, "MAXIMIZE")
                                 || names_equal(name, "MINIMIZE")
                         })
@@ -209,6 +212,8 @@ impl Runtime {
                         let is_sum = names_equal(aggregate_clause, "SUM");
                         if is_sum {
                             sum_form = Some(items[body_start + 1].clone());
+                        } else if names_equal(aggregate_clause, "COUNT") {
+                            count_form = Some(items[body_start + 1].clone());
                         } else {
                             maximize = names_equal(aggregate_clause, "MAXIMIZE");
                             extremum_form = Some(items[body_start + 1].clone());
@@ -232,6 +237,8 @@ impl Runtime {
                         };
                         if is_sum {
                             sum_name = Some(aggregate_name);
+                        } else if count_form.is_some() {
+                            count_result_name = Some(aggregate_name);
                         } else {
                             extremum_name = Some(aggregate_name);
                         }
@@ -249,6 +256,16 @@ impl Runtime {
                     if let (Some(value), Some(name)) = (sum_form, sum_name.clone()) {
                         dolist_items.push(Form::list(
                             vec![Form::atom("INCF", form.span), name, value],
+                            form.span,
+                        ));
+                    }
+                    if let (Some(value), Some(name)) = (count_form, count_result_name.clone()) {
+                        dolist_items.push(Form::list(
+                            vec![
+                                Form::atom("WHEN", form.span),
+                                value,
+                                Form::list(vec![Form::atom("INCF", form.span), name], form.span),
+                            ],
                             form.span,
                         ));
                     }
@@ -300,7 +317,11 @@ impl Runtime {
                     }
                     dolist_items.extend(items[body_start..].iter().cloned());
                     let dolist = Form::list(dolist_items, form.span);
-                    if collect_form.is_some() || sum_name.is_some() || extremum_name.is_some() {
+                    if collect_form.is_some()
+                        || sum_name.is_some()
+                        || count_result_name.is_some()
+                        || extremum_name.is_some()
+                    {
                         let mut bindings = vec![];
                         if collect_form.is_some() {
                             bindings.push(Form::list(
@@ -309,6 +330,12 @@ impl Runtime {
                             ));
                         }
                         if let Some(name) = sum_name.clone() {
+                            bindings.push(Form::list(
+                                vec![name, Form::atom("0", form.span)],
+                                form.span,
+                            ));
+                        }
+                        if let Some(name) = count_result_name.clone() {
                             bindings.push(Form::list(
                                 vec![name, Form::atom("0", form.span)],
                                 form.span,
@@ -326,6 +353,8 @@ impl Runtime {
                                 form.span,
                             )
                         } else if let Some(name) = sum_name {
+                            name
+                        } else if let Some(name) = count_result_name {
                             name
                         } else {
                             extremum_name.expect("aggregate name is present")
@@ -414,6 +443,8 @@ impl Runtime {
                     let mut body_start = 5;
                     let mut sum_form = None;
                     let mut sum_name = None;
+                    let mut count_form = None;
+                    let mut count_name = None;
                     let mut extremum_form = None;
                     let mut extremum_name = None;
                     let mut maximize = false;
@@ -452,6 +483,7 @@ impl Runtime {
                         .and_then(atom_name)
                         .is_some_and(|name| {
                             names_equal(name, "SUM")
+                                || names_equal(name, "COUNT")
                                 || names_equal(name, "MAXIMIZE")
                                 || names_equal(name, "MINIMIZE")
                         })
@@ -485,6 +517,9 @@ impl Runtime {
                         if is_sum {
                             sum_form = Some(aggregate_form);
                             sum_name = Some(aggregate_name);
+                        } else if names_equal(aggregate_clause, "COUNT") {
+                            count_form = Some(aggregate_form);
+                            count_name = Some(aggregate_name);
                         } else {
                             maximize = names_equal(aggregate_clause, "MAXIMIZE");
                             extremum_form = Some(aggregate_form);
@@ -494,6 +529,19 @@ impl Runtime {
                     if let (Some(value), Some(name)) = (sum_form.clone(), sum_name.clone()) {
                         loop_body.push(Form::list(
                             vec![Form::atom("INCF", form.span), name, value],
+                            form.span,
+                        ));
+                    }
+                    if let (Some(value), Some(name)) = (count_form.clone(), count_name.clone()) {
+                        loop_body.push(Form::list(
+                            vec![
+                                Form::atom("WHEN", form.span),
+                                value,
+                                Form::list(
+                                    vec![Form::atom("INCF", form.span), name],
+                                    form.span,
+                                ),
+                            ],
                             form.span,
                         ));
                     }
@@ -600,7 +648,11 @@ impl Runtime {
                         ],
                         form.span,
                     );
-                    if collect_form.is_some() || sum_name.is_some() || extremum_name.is_some() {
+                    if collect_form.is_some()
+                        || sum_name.is_some()
+                        || count_name.is_some()
+                        || extremum_name.is_some()
+                    {
                         let mut bindings = Vec::new();
                         if collect_form.is_some() {
                             bindings.push(Form::list(
@@ -609,6 +661,12 @@ impl Runtime {
                             ));
                         }
                         if let Some(name) = sum_name.clone() {
+                            bindings.push(Form::list(
+                                vec![name, Form::atom("0", form.span)],
+                                form.span,
+                            ));
+                        }
+                        if let Some(name) = count_name.clone() {
                             bindings.push(Form::list(
                                 vec![name, Form::atom("0", form.span)],
                                 form.span,
@@ -626,6 +684,8 @@ impl Runtime {
                                 form.span,
                             )
                         } else if let Some(name) = sum_name {
+                            name
+                        } else if let Some(name) = count_name {
                             name
                         } else {
                             extremum_name.expect("aggregate name is present")

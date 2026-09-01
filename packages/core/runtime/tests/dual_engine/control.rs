@@ -118,6 +118,14 @@ fn expands_loop_for_clause(#[case] eval_fn: EvalFn) {
         evaluate(r"(loop for value in (list 3 1 2) minimize value)").to_string(),
         "1"
     );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2 3) count (evenp value))").to_string(),
+        "1"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2 3) count (evenp value) into total)").to_string(),
+        "1"
+    );
 }
 
 #[rstest]
@@ -161,6 +169,10 @@ fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
     assert_eq!(
         evaluate(r"(loop for value across #(1 3 2) maximize value into result)").to_string(),
         "3"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value across #(1 2 3) count (evenp value))").to_string(),
+        "1"
     );
 }
 

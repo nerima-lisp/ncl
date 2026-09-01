@@ -212,6 +212,28 @@ impl CompileState {
         Ok(())
     }
 
+    pub(super) fn compile_psetf(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 3 || items.len().is_multiple_of(2) {
+            return Err(Self::arity_error(
+                items,
+                "PSETF",
+                "one or more place/value pairs",
+                span,
+            ));
+        }
+        self.emit(
+            function,
+            Instruction::Psetf(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(super) fn compile_runtime_definition(
         &mut self,
         function: FunctionId,

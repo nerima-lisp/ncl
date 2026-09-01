@@ -49,3 +49,12 @@ pub fn output_stream_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     };
     Ok(Value::boolean(result))
 }
+
+pub fn open_stream_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "open-stream-p", 1)?;
+    let result = match &arguments[0] {
+        Value::Stream(stream) => stream.borrow().is_open(),
+        _ => false,
+    };
+    Ok(Value::boolean(result))
+}

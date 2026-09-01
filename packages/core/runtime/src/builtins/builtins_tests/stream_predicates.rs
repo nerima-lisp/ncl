@@ -19,6 +19,8 @@ fn stream_predicates_reject_bad_arity() {
     assert!(input_stream_p(&[Value::Nil, Value::Nil]).is_err());
     assert!(output_stream_p(&[]).is_err());
     assert!(output_stream_p(&[Value::Nil, Value::Nil]).is_err());
+    assert!(open_stream_p(&[]).is_err());
+    assert!(open_stream_p(&[Value::Nil, Value::Nil]).is_err());
 }
 
 #[test]
@@ -26,6 +28,16 @@ fn stream_predicates_report_non_stream_values_as_false() -> Result<(), RuntimeEr
     assert!(matches!(streamp(&[Value::Nil])?, Value::Nil));
     assert!(matches!(input_stream_p(&[Value::Integer(1)])?, Value::Nil));
     assert!(matches!(output_stream_p(&[Value::Integer(1)])?, Value::Nil));
+    assert!(matches!(open_stream_p(&[Value::Integer(1)])?, Value::Nil));
+    Ok(())
+}
+
+#[test]
+fn open_stream_p_tracks_close_state() -> Result<(), RuntimeError> {
+    let stream = make_string_output_stream(&[])?;
+    assert!(open_stream_p(std::slice::from_ref(&stream))?.is_truthy());
+    close_stream(std::slice::from_ref(&stream))?;
+    assert!(!open_stream_p(&[stream])?.is_truthy());
     Ok(())
 }
 

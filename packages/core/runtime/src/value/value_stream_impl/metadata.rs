@@ -32,4 +32,8 @@ impl Stream {
             StreamKind::Output { .. } | StreamKind::Io { .. }
         )
     }
+
+    pub(crate) const fn is_open(&self) -> bool {
+        !self.closed
+    }
 }

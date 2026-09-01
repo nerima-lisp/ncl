@@ -68,6 +68,41 @@ impl PackageState {
             .unwrap_or_default()
     }
 
+    pub(crate) fn package_nicknames(&self, name: &str) -> Vec<String> {
+        let name = self.canonical_package_name(name);
+        let mut nicknames = self
+            .nicknames
+            .iter()
+            .filter(|(_, package)| *package == &name)
+            .map(|(nickname, _)| nickname.clone())
+            .collect::<Vec<_>>();
+        nicknames.sort();
+        nicknames
+    }
+
+    pub(crate) fn shadowing_symbols_for(&self, name: &str) -> Vec<String> {
+        let name = self.canonical_package_name(name);
+        let mut symbols: Vec<String> = self
+            .packages
+            .get(&name)
+            .map(|package| package.shadows.iter().cloned().collect())
+            .unwrap_or_default();
+        symbols.sort();
+        symbols
+    }
+
+    pub(crate) fn packages_using(&self, name: &str) -> Vec<String> {
+        let name = self.canonical_package_name(name);
+        let mut packages = self
+            .packages
+            .iter()
+            .filter(|(_, package)| package.use_packages.iter().any(|used| used == &name))
+            .map(|(package, _)| package.clone())
+            .collect::<Vec<_>>();
+        packages.sort();
+        packages
+    }
+
     pub(crate) fn imported_symbol_for(&self, package: &str, name: &str) -> Option<String> {
         let package = self.canonical_package_name(package);
         let name = normalize_symbol_name(name);

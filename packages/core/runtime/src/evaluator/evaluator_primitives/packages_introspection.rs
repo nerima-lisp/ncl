@@ -8,7 +8,15 @@ impl Runtime {
         arguments: &[Value],
         span: Span,
     ) -> Option<Result<Value, RuntimeError>> {
-        if !matches!(name, "FIND-PACKAGE" | "PACKAGE-NAME" | "PACKAGE-USE-LIST") {
+        if !matches!(
+            name,
+            "FIND-PACKAGE"
+                | "PACKAGE-NAME"
+                | "PACKAGE-USE-LIST"
+                | "PACKAGE-NICKNAMES"
+                | "PACKAGE-SHADOWING-SYMBOLS"
+                | "PACKAGE-USED-BY-LIST"
+        ) {
             return None;
         }
         Some((|| -> Result<Value, RuntimeError> {
@@ -57,6 +65,43 @@ impl Runtime {
                             span: Some(span),
                         }),
                     }
+                }
+                "PACKAGE-NICKNAMES" | "PACKAGE-SHADOWING-SYMBOLS" | "PACKAGE-USED-BY-LIST" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity(&name.to_lowercase(), "one", arguments.len()));
+                    }
+                    let package = match &arguments[0] {
+                        Value::Package(package) => package,
+                        other => {
+                            return Err(RuntimeError::Type {
+                                expected: "PACKAGE".into(),
+                                actual: other.type_name().into(),
+                                span: Some(span),
+                            });
+                        }
+                    };
+                    let values = {
+                        let packages = self.packages.borrow();
+                        match name {
+                            "PACKAGE-NICKNAMES" => packages
+                                .package_nicknames(package)
+                                .into_iter()
+                                .map(Value::string)
+                                .collect(),
+                            "PACKAGE-SHADOWING-SYMBOLS" => packages
+                                .shadowing_symbols_for(package)
+                                .into_iter()
+                                .map(Value::symbol)
+                                .collect(),
+                            "PACKAGE-USED-BY-LIST" => packages
+                                .packages_using(package)
+                                .into_iter()
+                                .map(Value::package)
+                                .collect(),
+                            _ => unreachable!("package introspection primitive was prevalidated"),
+                        }
+                    };
+                    Ok(Value::list(values))
                 }
                 _ => unreachable!("package introspection primitive name was prevalidated"),
             }

@@ -29,4 +29,31 @@ mod tests {
                 if expected == "PACKAGE" && actual == "INTEGER"
         ));
     }
+
+    #[test]
+    fn package_introspection_returns_nicknames_shadowing_symbols_and_users() {
+        let runtime = Runtime::new();
+        let package = Value::package("NCL-USER");
+        let result = runtime
+            .apply_package_introspection_primitive("PACKAGE-NICKNAMES", &[package.clone()], SPAN)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.to_string(), "NIL");
+
+        let result = runtime
+            .apply_package_introspection_primitive(
+                "PACKAGE-SHADOWING-SYMBOLS",
+                &[package.clone()],
+                SPAN,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.to_string(), "NIL");
+
+        let result = runtime
+            .apply_package_introspection_primitive("PACKAGE-USED-BY-LIST", &[package], SPAN)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.to_string(), "NIL");
+    }
 }

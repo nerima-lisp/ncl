@@ -392,7 +392,9 @@ impl Runtime {
                 }
                 if let (Some(value), Some(name)) = (extremum_form, extremum_name.clone()) {
                     let comparison = if maximize { ">" } else { "<" };
-                    do_items.push(Form::list(
+                    let candidate =
+                        Form::atom(format!("NCL-LOOP-CANDIDATE-{}", form.span.start), form.span);
+                    let body = Form::list(
                         vec![
                             Form::atom("WHEN", form.span),
                             Form::list(
@@ -405,7 +407,7 @@ impl Runtime {
                                     Form::list(
                                         vec![
                                             Form::atom(comparison, form.span),
-                                            value.clone(),
+                                            candidate.clone(),
                                             name.clone(),
                                         ],
                                         form.span,
@@ -413,7 +415,21 @@ impl Runtime {
                                 ],
                                 form.span,
                             ),
-                            Form::list(vec![Form::atom("SETQ", form.span), name, value], form.span),
+                            Form::list(
+                                vec![Form::atom("SETQ", form.span), name, candidate.clone()],
+                                form.span,
+                            ),
+                        ],
+                        form.span,
+                    );
+                    do_items.push(Form::list(
+                        vec![
+                            Form::atom("LET", form.span),
+                            Form::list(
+                                vec![Form::list(vec![candidate, value], form.span)],
+                                form.span,
+                            ),
+                            body,
                         ],
                         form.span,
                     ));

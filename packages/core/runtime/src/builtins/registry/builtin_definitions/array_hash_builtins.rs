@@ -1,12 +1,13 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
-use crate::builtins::{fill_pointer, vector_push, vector_push_extend};
+use crate::builtins::{fill_pointer, vector_pop, vector_push, vector_push_extend};
 
 pub(super) const ARRAY_HASH_BUILTINS: &[BuiltinDefinition] = &[
     ("vector", vector as _),
     ("fill-pointer", fill_pointer as _),
     ("vector-push", vector_push as _),
     ("vector-push-extend", vector_push_extend as _),
+    ("vector-pop", vector_pop as _),
     ("make-array", make_array as _),
     ("adjust-array", adjust_array as _),
     ("make-sequence", make_sequence as _),

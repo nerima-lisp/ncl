@@ -36,6 +36,27 @@ pub fn vector_push(arguments: &[Value]) -> Result<Value, RuntimeError> {
     crate::builtins::integer_from_usize("vector-push", pointer)
 }
 
+pub fn vector_pop(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() != 1 {
+        return Err(arity("vector-pop", "one", arguments.len()));
+    }
+    let vector = &arguments[0];
+    let pointer = vector_fill_pointer_for("vector-pop", vector)?;
+    if pointer == 0 {
+        return Err(RuntimeError::InvalidForm {
+            message: "vector-pop called on an empty vector".to_string(),
+            span: None,
+        });
+    }
+    let index = pointer - 1;
+    let value = match vector {
+        Value::Vector(items) => items.borrow()[index].clone(),
+        _ => unreachable!("vector_fill_pointer_for validated vector"),
+    };
+    vector.set_vector_fill_pointer(Some(index));
+    Ok(value)
+}
+
 pub fn vector_push_extend(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(2..=3).contains(&arguments.len()) {
         return Err(arity("vector-push-extend", "two or three", arguments.len()));

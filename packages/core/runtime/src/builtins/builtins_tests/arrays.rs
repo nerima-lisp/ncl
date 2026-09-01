@@ -138,6 +138,20 @@ fn vector_push_uses_and_extends_fill_pointer() {
 }
 
 #[test]
+fn vector_pop_decrements_fill_pointer() {
+    let vector = make_array(&[
+        Value::Integer(2),
+        Value::keyword("initial-contents"),
+        Value::list(vec![Value::Integer(3), Value::Integer(4)]),
+        Value::keyword("fill-pointer"),
+        Value::Integer(2),
+    ])
+    .unwrap();
+    assert!(vector_pop(&[vector.clone()]).unwrap().equal_value(&Value::Integer(4)));
+    assert!(fill_pointer(&[vector]).unwrap().equal_value(&Value::Integer(1)));
+}
+
+#[test]
 fn array_coordinate_index_reports_overflow_in_stride_and_contribution() {
     let stride_overflow = array_coordinate_index(
         "test",

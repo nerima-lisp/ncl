@@ -570,3 +570,16 @@ fn compiled_evaluates_vector_push_operations() {
         "(0 1 1 2 8)"
     );
 }
+
+#[test]
+fn compiled_evaluates_vector_pop() {
+    assert_eq!(
+        evaluate(
+            "(let ((vector (make-array 2 :initial-contents '(3 4) :fill-pointer 2)))\
+               (list (vector-pop vector) (fill-pointer vector) (vector-pop vector)\
+                     (fill-pointer vector)))",
+        )
+        .to_string(),
+        "(4 1 3 0)"
+    );
+}

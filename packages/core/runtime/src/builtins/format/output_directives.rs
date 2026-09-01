@@ -10,9 +10,9 @@ pub(super) fn format_radix_output(
     at_sign_modifier: bool,
 ) -> Result<(), RuntimeError> {
     let argument = format_argument("~R", arguments, argument_index)?;
-    let integer = integer_argument("format", argument)?;
-    output.push_str(&format_radix_directive(
-        integer,
+    let integer = big_integer_argument("format", argument)?;
+    output.push_str(&format_big_radix_directive(
+        &integer,
         parameters,
         colon_modifier,
         at_sign_modifier,

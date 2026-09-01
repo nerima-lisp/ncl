@@ -11,7 +11,7 @@ pub(super) fn format_numeric_directive(
 ) -> Result<String, RuntimeError> {
     if matches!(directive, 'D' | 'B' | 'O' | 'X') {
         let argument = format_argument("format integer directive", arguments, argument_index)?;
-        let integer = integer_argument("format", argument)?;
+        let integer = big_integer_argument("format", argument)?;
         let radix = match directive {
             'D' => 10,
             'B' => 2,
@@ -19,8 +19,8 @@ pub(super) fn format_numeric_directive(
             'X' => 16,
             _ => unreachable!("directive was matched against D|B|O|X above"),
         };
-        return format_integer_directive(
-            integer,
+        return format_big_integer_directive(
+            &integer,
             radix,
             parameters,
             colon_modifier,
@@ -48,6 +48,16 @@ pub(super) fn format_integer_directive(
     colon_modifier: bool,
     at_sign_modifier: bool,
 ) -> Result<String, RuntimeError> {
+    format_big_integer_directive(&ibig::IBig::from(value), radix, parameters, colon_modifier, at_sign_modifier)
+}
+
+pub(super) fn format_big_integer_directive(
+    value: &ibig::IBig,
+    radix: u32,
+    parameters: &[FormatParameter],
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> Result<String, RuntimeError> {
     let minimum_column = format_parameter_count(parameters, 0, 0)?;
     let padding_character = format_parameter_character(parameters, 1, ' ')?;
     let comma_character = format_parameter_character(parameters, 2, ',')?;
@@ -59,12 +69,18 @@ pub(super) fn format_integer_directive(
         });
     }
 
-    let mut digits = format_unsigned_integer(value.unsigned_abs(), radix);
+    let formatted_value = format_big_integer_radix(value, radix);
+    let negative = formatted_value.starts_with('-');
+    let mut digits = if negative {
+        formatted_value[1..].to_string()
+    } else {
+        formatted_value
+    };
     if colon_modifier {
         digits = format_grouped_digits(&digits, comma_character, comma_interval);
     }
     let mut formatted = String::new();
-    if value < 0 {
+    if negative {
         formatted.push('-');
     } else if at_sign_modifier {
         formatted.push('+');

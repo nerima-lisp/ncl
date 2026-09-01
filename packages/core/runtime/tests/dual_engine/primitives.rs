@@ -165,6 +165,18 @@ fn evaluates_basic_format_directives(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_format_directives_for_arbitrary_precision_integers(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r#"(format nil "~D/~X/~16R" (expt 2 70) (expt 2 70) (expt 2 70))"#)
+            .to_string(),
+        r#""1180591620717411303424/400000000000000000/400000000000000000""#,
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_character_stream_options_and_eof(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

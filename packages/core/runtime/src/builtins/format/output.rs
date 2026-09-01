@@ -53,6 +53,15 @@ pub(super) fn format_radix_directive(
     colon_modifier: bool,
     at_sign_modifier: bool,
 ) -> Result<String, RuntimeError> {
+    format_big_radix_directive(&ibig::IBig::from(value), parameters, colon_modifier, at_sign_modifier)
+}
+
+pub(super) fn format_big_radix_directive(
+    value: &ibig::IBig,
+    parameters: &[FormatParameter],
+    colon_modifier: bool,
+    at_sign_modifier: bool,
+) -> Result<String, RuntimeError> {
     if let Some(parameter) = parameters.first().copied()
         && !matches!(parameter, FormatParameter::Missing)
     {
@@ -79,12 +88,18 @@ pub(super) fn format_radix_directive(
                 span: None,
             });
         }
-        return format_integer_directive(value, radix, &parameters[1..], false, at_sign_modifier);
+        return format_big_integer_directive(value, radix, &parameters[1..], false, at_sign_modifier);
     }
     if at_sign_modifier {
-        Ok(format_roman_number(value, colon_modifier))
+        i64::try_from(value).map_or_else(
+            |_| Ok(format_big_integer_radix(value, 10)),
+            |value| Ok(format_roman_number(value, colon_modifier)),
+        )
     } else {
-        Ok(format_english_number(value, colon_modifier))
+        i64::try_from(value).map_or_else(
+            |_| Ok(format_big_integer_radix(value, 10)),
+            |value| Ok(format_english_number(value, colon_modifier)),
+        )
     }
 }
 

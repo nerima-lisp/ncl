@@ -52,6 +52,10 @@ pub(super) fn format_integer_radix(value: i64, radix: u32) -> String {
     result
 }
 
+pub(super) fn format_big_integer_radix(value: &ibig::IBig, radix: u32) -> String {
+    value.in_radix(radix).to_string().to_ascii_uppercase()
+}
+
 pub(super) fn format_unsigned_integer(mut magnitude: u64, radix: u32) -> String {
     if magnitude == 0 {
         return "0".to_string();

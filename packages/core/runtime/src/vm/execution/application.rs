@@ -425,6 +425,26 @@ pub fn execute_sequence_substitution_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_unary_instruction(
+    runtime: &Runtime,
+    operation: &str,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("unary sequence operation has too few stack values", span))?;
+    let result = match operation {
+        "COPY-TREE" => Ok(runtime.copy_tree(&value)),
+        "REVERSE" | "NREVERSE" => runtime.apply_sequence_reverse(&value, span),
+        _ => Err(invalid("unknown unary sequence operation", span)),
+    }?;
+    let _ = environment;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

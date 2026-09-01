@@ -416,6 +416,10 @@ pub enum Instruction {
         /// Number of option values following the sequence.
         option_count: usize,
     },
+    #[doc = "Apply a unary tree or sequence operation."] SequenceUnary {
+        /// Unary operation name.
+        operation: String,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

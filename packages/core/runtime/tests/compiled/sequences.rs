@@ -198,6 +198,13 @@ fn compiled_evaluates_sequence_substitutions() {
 }
 
 #[test]
+fn compiled_evaluates_tree_and_sequence_unary_operations() {
+    assert_eq!(evaluate("(copy-tree '(1 (2 3)))").to_string(), "(1 (2 3))");
+    assert_eq!(evaluate("(reverse '(1 2 3))").to_string(), "(3 2 1)");
+    assert_eq!(evaluate("(nreverse #(1 2 3))").to_string(), "#(3 2 1)");
+}
+
+#[test]
 fn compiled_evaluates_list_set_operations() {
     assert_eq!(evaluate("(union '(1 2 2) '(2 3 3))").to_string(), "(1 2 3)");
     assert_eq!(

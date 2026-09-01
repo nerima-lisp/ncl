@@ -139,6 +139,12 @@ impl CompileState {
                 | "COMPILED-FUNCTION-P"
                 | "FDEFINITION"
                 | "SYMBOL-FUNCTION"
+                | "FIND-PACKAGE"
+                | "PACKAGE-NAME"
+                | "PACKAGE-USE-LIST"
+                | "PACKAGE-NICKNAMES"
+                | "PACKAGE-SHADOWING-SYMBOLS"
+                | "PACKAGE-USED-BY-LIST"
                 | "GETHASH"
                 | "REMHASH"
                 | "MAKE-HASH-TABLE"
@@ -311,6 +317,10 @@ impl CompileState {
             "FBOUNDP" | "MACRO-FUNCTION" | "SPECIAL-OPERATOR-P" | "COMPILED-FUNCTION-P"
             | "FDEFINITION" | "SYMBOL-FUNCTION" => {
                 self.compile_symbol_function(function, span, items, name)
+            }
+            "FIND-PACKAGE" | "PACKAGE-NAME" | "PACKAGE-USE-LIST" | "PACKAGE-NICKNAMES"
+            | "PACKAGE-SHADOWING-SYMBOLS" | "PACKAGE-USED-BY-LIST" => {
+                self.compile_package_introspection(function, span, items, name)
             }
             "GETHASH" | "REMHASH" | "MAKE-HASH-TABLE" | "CLRHASH" | "HASH-TABLE-COUNT"
             | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS" | "NCL-HASH-TABLE-VALUES" => {

@@ -509,3 +509,8 @@ fn compiled_evaluates_symbol_function_operations() {
     assert_eq!(evaluate("(list (fboundp 'list) (special-operator-p 'if) (compiled-function-p #'list))").to_string(), "(T T NIL)");
     assert_eq!(evaluate("(let ((symbol 'list)) (functionp (symbol-function symbol)))").to_string(), "T");
 }
+
+#[test]
+fn compiled_evaluates_package_introspection_operations() {
+    assert_eq!(evaluate("(let ((package (find-package :ncl-user))) (list (package-name package) (package-use-list package) (package-nicknames package)))").to_string(), "(\"NCL-USER\" (#<PACKAGE \"COMMON-LISP\">) NIL)");
+}

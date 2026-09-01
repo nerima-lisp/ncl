@@ -1082,6 +1082,15 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_package_introspection(
+        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    ) -> Result<(), CompileError> {
+        Self::require_arity(items, operation, "one", 1, span)?;
+        self.compile_expression(function, &items[1])?;
+        self.emit(function, Instruction::PackageIntrospection { operation: operation.to_string(), argument_count: 1 }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_hash_table(
         &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
     ) -> Result<(), CompileError> {

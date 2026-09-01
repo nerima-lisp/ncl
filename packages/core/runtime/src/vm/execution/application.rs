@@ -499,6 +499,13 @@ pub fn execute_type_predicate_instruction(
         "SIMPLE-ARRAY-P" => crate::builtins::simple_array_p(&[value]),
         "HASH-TABLE-P" => crate::builtins::hash_table_p(&[value]),
         "RANDOM-STATE-P" => crate::builtins::random_state_p(&[value]),
+        "ALPHA-CHAR-P" => crate::builtins::alpha_character_p(&[value]),
+        "ALPHANUMERICP" => crate::builtins::alphanumeric_p(&[value]),
+        "GRAPHIC-CHAR-P" => crate::builtins::graphic_character_p(&[value]),
+        "STANDARD-CHAR-P" => crate::builtins::standard_character_p(&[value]),
+        "UPPER-CASE-P" => crate::builtins::upper_case_p(&[value]),
+        "LOWER-CASE-P" => crate::builtins::lower_case_p(&[value]),
+        "BOTH-CASE-P" => crate::builtins::both_case_p(&[value]),
         _ => Err(invalid("unknown type predicate operation", span)),
     }?;
     stack.push(result);

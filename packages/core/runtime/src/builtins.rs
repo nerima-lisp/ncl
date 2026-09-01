@@ -10,7 +10,7 @@ mod builtin_integer;
 use builtin_integer::parse_integer;
 
 mod builtin_characters;
-use builtin_characters::{
+pub use builtin_characters::{
     alpha_character_p, alphanumeric_p, both_case_p, char_code, char_int, character,
     character_case_equal, character_case_greater_equal, character_case_greater_than,
     character_case_less_equal, character_case_less_than, character_case_not_equal,

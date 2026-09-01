@@ -50,6 +50,13 @@ fn compiled_evaluates_type_predicates() {
     assert_eq!(evaluate("(arrayp #(1 2))").to_string(), "T");
     assert_eq!(evaluate("(simple-array-p #(1 2))").to_string(), "T");
     assert_eq!(evaluate("(hash-table-p (make-hash-table))").to_string(), "T");
+    assert_eq!(evaluate("(alpha-char-p #\\A)").to_string(), "T");
+    assert_eq!(evaluate("(alphanumericp #\\7)").to_string(), "T");
+    assert_eq!(evaluate("(graphic-char-p #\\A)").to_string(), "T");
+    assert_eq!(evaluate("(standard-char-p #\\A)").to_string(), "T");
+    assert_eq!(evaluate("(upper-case-p #\\A)").to_string(), "T");
+    assert_eq!(evaluate("(lower-case-p #\\a)").to_string(), "T");
+    assert_eq!(evaluate("(both-case-p #\\A)").to_string(), "T");
 }
 
 #[test]

@@ -80,6 +80,13 @@ impl CompileState {
                 | "SIMPLE-ARRAY-P"
                 | "HASH-TABLE-P"
                 | "RANDOM-STATE-P"
+                | "ALPHA-CHAR-P"
+                | "ALPHANUMERICP"
+                | "GRAPHIC-CHAR-P"
+                | "STANDARD-CHAR-P"
+                | "UPPER-CASE-P"
+                | "LOWER-CASE-P"
+                | "BOTH-CASE-P"
         ) && self.has_local_function(name)
         {
             return None;
@@ -154,7 +161,9 @@ impl CompileState {
             | "FLOATP" | "RATIONALP" | "STRINGP" | "SIMPLE-STRING-P" | "CHARACTERP"
             | "SYMBOLP" | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP"
             | "SIMPLE-VECTOR-P" | "BIT-VECTOR-P" | "SIMPLE-BIT-VECTOR-P" | "ARRAYP"
-            | "SIMPLE-ARRAY-P" | "HASH-TABLE-P" | "RANDOM-STATE-P" => {
+            | "SIMPLE-ARRAY-P" | "HASH-TABLE-P" | "RANDOM-STATE-P" | "ALPHA-CHAR-P"
+            | "ALPHANUMERICP" | "GRAPHIC-CHAR-P" | "STANDARD-CHAR-P" | "UPPER-CASE-P"
+            | "LOWER-CASE-P" | "BOTH-CASE-P" => {
                 self.compile_type_predicate(function, span, items, name)
             }
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),

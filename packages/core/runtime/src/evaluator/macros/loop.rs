@@ -164,6 +164,11 @@ impl Runtime {
                     }
                     let variable = items[2].clone();
                     let mut body_start = 5;
+                    let mut sum_form = None;
+                    let mut sum_name = None;
+                    let mut extremum_form = None;
+                    let mut extremum_name = None;
+                    let mut maximize = false;
                     if items
                         .get(body_start)
                         .and_then(atom_name)
@@ -185,6 +190,52 @@ impl Runtime {
                         collect_form = Some(items[body_start + 1].clone());
                         body_start += 2;
                     }
+                    if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| {
+                            names_equal(name, "SUM")
+                                || names_equal(name, "MAXIMIZE")
+                                || names_equal(name, "MINIMIZE")
+                        })
+                    {
+                        if items.len() <= body_start + 1 {
+                            return Err(Self::invalid(
+                                "LOOP aggregate clause requires a form",
+                                form.span,
+                            ));
+                        }
+                        let aggregate_clause = atom_name(&items[body_start]).unwrap();
+                        let is_sum = names_equal(aggregate_clause, "SUM");
+                        if is_sum {
+                            sum_form = Some(items[body_start + 1].clone());
+                        } else {
+                            maximize = names_equal(aggregate_clause, "MAXIMIZE");
+                            extremum_form = Some(items[body_start + 1].clone());
+                        }
+                        let aggregate_name = if items
+                            .get(body_start + 2)
+                            .and_then(atom_name)
+                            .is_some_and(|name| names_equal(name, "INTO"))
+                        {
+                            if items.len() <= body_start + 3 {
+                                return Err(Self::invalid(
+                                    "LOOP aggregate INTO requires a variable",
+                                    form.span,
+                                ));
+                            }
+                            body_start += 4;
+                            items[body_start - 1].clone()
+                        } else {
+                            body_start += 2;
+                            Form::atom(format!("NCL-LOOP-AGG-{}", form.span.start), form.span)
+                        };
+                        if is_sum {
+                            sum_name = Some(aggregate_name);
+                        } else {
+                            extremum_name = Some(aggregate_name);
+                        }
+                    }
                     let mut dolist_items = vec![
                         Form::atom("DOLIST", form.span),
                         Form::list(vec![variable, items[4].clone()], form.span),
@@ -195,30 +246,99 @@ impl Runtime {
                             form.span,
                         ));
                     }
-                    dolist_items.extend(items[body_start..].iter().cloned());
-                    let dolist = Form::list(dolist_items, form.span);
-                    if collect_form.is_some() {
-                        return Ok(Form::list(
+                    if let (Some(value), Some(name)) = (sum_form, sum_name.clone()) {
+                        dolist_items.push(Form::list(
+                            vec![Form::atom("INCF", form.span), name, value],
+                            form.span,
+                        ));
+                    }
+                    if let (Some(value), Some(name)) = (extremum_form, extremum_name.clone()) {
+                        let comparison = if maximize { ">" } else { "<" };
+                        let candidate = Form::atom(
+                            format!("NCL-LOOP-CANDIDATE-{}", form.span.start),
+                            form.span,
+                        );
+                        let update = Form::list(
                             vec![
-                                Form::atom("LET", form.span),
-                                Form::list(
-                                    vec![Form::list(
-                                        vec![collect_name.clone(), Form::atom("NIL", form.span)],
-                                        form.span,
-                                    )],
-                                    form.span,
-                                ),
+                                Form::atom("WHEN", form.span),
                                 Form::list(
                                     vec![
-                                        Form::atom("PROGN", form.span),
-                                        dolist,
+                                        Form::atom("OR", form.span),
                                         Form::list(
-                                            vec![Form::atom("NREVERSE", form.span), collect_name],
+                                            vec![Form::atom("NULL", form.span), name.clone()],
+                                            form.span,
+                                        ),
+                                        Form::list(
+                                            vec![
+                                                Form::atom(comparison, form.span),
+                                                candidate.clone(),
+                                                name.clone(),
+                                            ],
                                             form.span,
                                         ),
                                     ],
                                     form.span,
                                 ),
+                                Form::list(
+                                    vec![Form::atom("SETQ", form.span), name, candidate.clone()],
+                                    form.span,
+                                ),
+                            ],
+                            form.span,
+                        );
+                        dolist_items.push(Form::list(
+                            vec![
+                                Form::atom("LET", form.span),
+                                Form::list(
+                                    vec![Form::list(vec![candidate, value], form.span)],
+                                    form.span,
+                                ),
+                                update,
+                            ],
+                            form.span,
+                        ));
+                    }
+                    dolist_items.extend(items[body_start..].iter().cloned());
+                    let dolist = Form::list(dolist_items, form.span);
+                    if collect_form.is_some() || sum_name.is_some() || extremum_name.is_some() {
+                        let mut bindings = vec![];
+                        if collect_form.is_some() {
+                            bindings.push(Form::list(
+                                vec![collect_name.clone(), Form::atom("NIL", form.span)],
+                                form.span,
+                            ));
+                        }
+                        if let Some(name) = sum_name.clone() {
+                            bindings.push(Form::list(
+                                vec![name, Form::atom("0", form.span)],
+                                form.span,
+                            ));
+                        }
+                        if let Some(name) = extremum_name.clone() {
+                            bindings.push(Form::list(
+                                vec![name, Form::atom("NIL", form.span)],
+                                form.span,
+                            ));
+                        }
+                        let result = if collect_form.is_some() {
+                            Form::list(
+                                vec![Form::atom("NREVERSE", form.span), collect_name],
+                                form.span,
+                            )
+                        } else if let Some(name) = sum_name {
+                            name
+                        } else {
+                            extremum_name.expect("aggregate name is present")
+                        };
+                        let body_result = Form::list(
+                            vec![Form::atom("PROGN", form.span), dolist, result],
+                            form.span,
+                        );
+                        return Ok(Form::list(
+                            vec![
+                                Form::atom("LET", form.span),
+                                Form::list(bindings, form.span),
+                                body_result,
                             ],
                             form.span,
                         ));

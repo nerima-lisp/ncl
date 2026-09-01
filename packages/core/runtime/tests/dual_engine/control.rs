@@ -106,6 +106,18 @@ fn expands_loop_for_clause(#[case] eval_fn: EvalFn) {
         .to_string(),
         "6"
     );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2 3) sum value)").to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 3 1 2) maximize value into result)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 3 1 2) minimize value)").to_string(),
+        "1"
+    );
 }
 
 #[rstest]

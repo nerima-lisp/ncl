@@ -121,7 +121,7 @@ impl Runtime {
                         span: Some(span),
                     })?;
                 }
-                "DATUM" | "EXPECTED-TYPE" | "NAME" => {
+                "DATUM" | "EXPECTED-TYPE" | "NAME" | "OPERATION" | "OPERANDS" => {
                     slots.push((initarg, pair[1].clone()));
                 }
                 _ => {

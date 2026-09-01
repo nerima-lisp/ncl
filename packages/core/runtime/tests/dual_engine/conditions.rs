@@ -182,6 +182,22 @@ fn evaluates_unbound_variable_name_accessor(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_arithmetic_error_accessors(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((condition (make-condition 'arithmetic-error :operation '+ :operands (list 1 2))))
+               (list (arithmetic-error-operation condition)
+                     (arithmetic-error-operands condition)))",
+        )
+        .to_string(),
+        "(+ (1 2))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_error_through_condition_handlers(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

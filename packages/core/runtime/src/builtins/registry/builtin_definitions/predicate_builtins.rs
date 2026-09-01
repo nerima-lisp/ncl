@@ -41,4 +41,6 @@ pub(super) const PREDICATE_BUILTINS: &[BuiltinDefinition] = &[
     ("type-error-datum", type_error_datum as _),
     ("type-error-expected-type", type_error_expected_type as _),
     ("unbound-variable-name", unbound_variable_name as _),
+    ("arithmetic-error-operation", arithmetic_error_operation as _),
+    ("arithmetic-error-operands", arithmetic_error_operands as _),
 ];

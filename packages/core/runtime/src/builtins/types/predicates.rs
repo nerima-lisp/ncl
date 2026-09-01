@@ -146,3 +146,17 @@ pub fn unbound_variable_name(arguments: &[Value]) -> Result<Value, RuntimeError>
         .condition_slot("UNBOUND-VARIABLE", "NAME")
         .ok_or_else(|| type_error("unbound-variable-name", "UNBOUND-VARIABLE", &arguments[0]))
 }
+
+pub fn arithmetic_error_operation(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "arithmetic-error-operation", 1)?;
+    arguments[0]
+        .condition_slot("ARITHMETIC-ERROR", "OPERATION")
+        .ok_or_else(|| type_error("arithmetic-error-operation", "ARITHMETIC-ERROR", &arguments[0]))
+}
+
+pub fn arithmetic_error_operands(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "arithmetic-error-operands", 1)?;
+    arguments[0]
+        .condition_slot("ARITHMETIC-ERROR", "OPERANDS")
+        .ok_or_else(|| type_error("arithmetic-error-operands", "ARITHMETIC-ERROR", &arguments[0]))
+}

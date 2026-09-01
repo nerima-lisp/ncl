@@ -87,6 +87,18 @@ fn unbound_variable_name_reads_standard_condition_slot() {
 }
 
 #[test]
+fn arithmetic_error_accessors_read_standard_condition_slots() {
+    let result = Runtime::new()
+        .eval_source(
+            "(let ((condition (make-condition 'arithmetic-error :operation '+ :operands (list 1 2))))
+               (list (arithmetic-error-operation condition)
+                     (arithmetic-error-operands condition)))",
+        )
+        .unwrap_or_else(|error| panic!("arithmetic-error accessors failed: {error}"));
+    assert_eq!(result.last().unwrap().to_string(), "(+ (1 2))");
+}
+
+#[test]
 fn rejects_malformed_character_operations_at_their_boundaries() {
     for source in support::MALFORMED_CHARACTER_FORMS {
         Runtime::eval_source(&Runtime::new(), source).must_fail();

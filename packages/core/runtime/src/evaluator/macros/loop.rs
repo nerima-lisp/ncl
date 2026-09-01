@@ -348,6 +348,35 @@ impl Runtime {
                 if items
                     .get(3)
                     .and_then(atom_name)
+                    .is_some_and(|name| names_equal(name, "ON"))
+                {
+                    if items.len() < 5 {
+                        return Err(Self::invalid(
+                            "LOOP FOR ON requires a variable and list form",
+                            form.span,
+                        ));
+                    }
+                    let variable = items[2].clone();
+                    let mut loop_items = vec![
+                        Form::atom("LOOP", form.span),
+                        Form::atom("FOR", form.span),
+                        variable.clone(),
+                        Form::atom("=", form.span),
+                        items[4].clone(),
+                        Form::atom("THEN", form.span),
+                        Form::list(
+                            vec![Form::atom("CDR", form.span), variable.clone()],
+                            form.span,
+                        ),
+                        Form::atom("WHILE", form.span),
+                        variable,
+                    ];
+                    loop_items.extend(items[5..].iter().cloned());
+                    return Ok(Form::list(loop_items, form.span));
+                }
+                if items
+                    .get(3)
+                    .and_then(atom_name)
                     .is_some_and(|name| names_equal(name, "="))
                 {
                     if items.len() < 7

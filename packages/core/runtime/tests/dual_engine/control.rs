@@ -139,6 +139,10 @@ fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
             .to_string(),
         "(1 2 3)"
     );
+    assert_eq!(
+        evaluate(r"(loop for tail on (list 1 2 3) collect (car tail))").to_string(),
+        "(1 2 3)"
+    );
 }
 
 #[rstest]

@@ -196,7 +196,7 @@ impl Runtime {
                             ));
                         }
                         collect_form = Some(items[body_start + 1].clone());
-                        let append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
+                        append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
                         body_start += 2;
                         if items
                             .get(body_start)

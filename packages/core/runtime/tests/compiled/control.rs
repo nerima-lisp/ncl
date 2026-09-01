@@ -525,11 +525,11 @@ fn compiled_file_streams_round_trip_through_with_open_file() {
     let pathname = format!("{:?}", path.to_string_lossy().to_string());
     let source = format!(
         r#"(progn
-               (with-open-file (stream {pathname}
+               (with-open-file ((stream {pathname}
                                 :direction :output
-                                :if-exists :supersede)
+                                :if-exists :supersede))
                  (write-string "hello" stream))
-               (with-open-file (stream {pathname})
+               (with-open-file ((stream {pathname}))
                  (char= (read-char stream) #\h)))"#,
     );
 
@@ -554,13 +554,13 @@ fn compiled_file_stream_options_cover_probe_append_and_abort() {
     let _ = std::fs::remove_file(&missing_path);
     let source = format!(
         r#"(progn
-               (with-open-file (stream {pathname}
+               (with-open-file ((stream {pathname}
                                 :direction :output
-                                :if-exists :supersede)
+                                :if-exists :supersede))
                  (write-string "a" stream))
-               (with-open-file (stream {pathname}
+               (with-open-file ((stream {pathname}
                                 :direction :output
-                                :if-exists :append)
+                                :if-exists :append))
                  (write-string "b" stream))
                (let ((existing (open {pathname} :direction :probe))
                      (missing (open {missing_pathname} :direction :probe)))
@@ -607,7 +607,7 @@ fn compiled_file_io_stream_reads_writes_and_appends() {
                          (write-string "!" append-stream)
                          (close append-stream))
                        t)
-                     (with-open-file (input {pathname})
+                     (with-open-file ((input {pathname}))
                        (string= (read-line input) "aZc!"))))"#,
     );
 

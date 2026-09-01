@@ -15,34 +15,49 @@ impl Runtime {
             ));
         }
         let binding_form = &items[1];
-        let FormKind::List(binding) = &binding_form.kind else {
+        let FormKind::List(bindings) = &binding_form.kind else {
             return Err(Self::invalid(
                 "with-open-file binding must be a list",
                 binding_form.span,
             ));
         };
-        if binding.len() < 2 {
+        if bindings.is_empty() {
             return Err(Self::invalid(
-                "with-open-file binding needs a stream variable and pathname",
+                "with-open-file needs at least one binding",
                 binding_form.span,
             ));
         }
-        Self::variable_name_info(
-            &binding[0],
-            "with-open-file stream variable must be a symbol",
-        )?;
-
-        let mut open_items = Vec::with_capacity(binding.len());
-        open_items.push(Form::atom("OPEN", binding_form.span));
-        open_items.extend(binding[1..].iter().cloned());
-        let open_form = Form::list(open_items, binding_form.span);
-        let generated_binding = Form::list(
-            vec![Form::list(
-                vec![binding[0].clone(), open_form],
+        let mut generated_bindings = Vec::with_capacity(bindings.len());
+        let mut stream_names = Vec::with_capacity(bindings.len());
+        for binding_form in bindings {
+            let FormKind::List(binding) = &binding_form.kind else {
+                return Err(Self::invalid(
+                    "with-open-file binding must be a list",
+                    binding_form.span,
+                ));
+            };
+            if binding.len() < 2 {
+                return Err(Self::invalid(
+                    "with-open-file binding needs a stream variable and pathname",
+                    binding_form.span,
+                ));
+            }
+            Self::variable_name_info(
+                &binding[0],
+                "with-open-file stream variable must be a symbol",
+            )?;
+            let mut open_items = Vec::with_capacity(binding.len());
+            open_items.push(Form::atom("OPEN", binding_form.span));
+            open_items.extend(binding[1..].iter().cloned());
+            generated_bindings.push(Form::list(
+                vec![
+                    binding[0].clone(),
+                    Form::list(open_items, binding_form.span),
+                ],
                 binding_form.span,
-            )],
-            binding_form.span,
-        );
+            ));
+            stream_names.push(binding[0].clone());
+        }
         let body = if items.len() > 2 {
             let mut body_items = Vec::with_capacity(items.len() - 1);
             body_items.push(Form::atom("PROGN", form.span));
@@ -51,18 +66,20 @@ impl Runtime {
         } else {
             Form::atom("NIL", form.span)
         };
-        let close_form = Form::list(
-            vec![Form::atom("CLOSE", form.span), binding[0].clone()],
-            form.span,
-        );
-        let protected_form = Form::list(
-            vec![Form::atom("UNWIND-PROTECT", form.span), body, close_form],
-            form.span,
-        );
+        let protected_form = stream_names.into_iter().rev().fold(body, |body, stream| {
+            let close_form = Form::list(
+                vec![Form::atom("CLOSE", form.span), stream],
+                form.span,
+            );
+            Form::list(
+                vec![Form::atom("UNWIND-PROTECT", form.span), body, close_form],
+                form.span,
+            )
+        });
         Ok(Form::list(
             vec![
                 Form::atom("LET", form.span),
-                generated_binding,
+                Form::list(generated_bindings, binding_form.span),
                 protected_form,
             ],
             form.span,
@@ -131,11 +148,37 @@ mod tests {
         let form = Form::list(
             vec![
                 atom("WITH-OPEN-FILE"),
-                Form::list(vec![atom("S"), atom("FILE")], SPAN),
+                Form::list(
+                    vec![Form::list(vec![atom("S"), atom("FILE")], SPAN)],
+                    SPAN,
+                ),
             ],
             SPAN,
         );
         let expanded = valid(Runtime::expand_with_open_file(&form));
         assert!(expanded.to_string().contains("UNWIND-PROTECT NIL"));
+    }
+
+    #[test]
+    fn accepts_multiple_bindings_and_closes_them_in_reverse_order() {
+        let form = Form::list(
+            vec![
+                atom("WITH-OPEN-FILE"),
+                Form::list(
+                    vec![
+                        Form::list(vec![atom("S"), atom("FIRST")], SPAN),
+                        Form::list(vec![atom("U"), atom("SECOND")], SPAN),
+                    ],
+                    SPAN,
+                ),
+                atom("S"),
+            ],
+            SPAN,
+        );
+        let expanded = valid(Runtime::expand_with_open_file(&form));
+        assert_eq!(
+            expanded.to_string(),
+            "(LET ((S (OPEN FIRST)) (U (OPEN SECOND))) (UNWIND-PROTECT (UNWIND-PROTECT (PROGN S) (CLOSE U)) (CLOSE S)))"
+        );
     }
 }

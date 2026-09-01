@@ -150,6 +150,7 @@ impl CompileState {
                 | "SUBTYPEP" | "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME"
                 | "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND"
                 | "ERROR" | "SIGNAL" | "WARN" | "CERROR" | "MAKE-CONDITION"
+                | "COMPUTE-RESTARTS" | "FIND-RESTART" | "INVOKE-RESTART" | "RESTART-NAME"
                 | "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT"
                 | "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN"
                 | "GETHASH"
@@ -223,6 +224,9 @@ impl CompileState {
             }
             "ERROR" | "SIGNAL" | "WARN" | "CERROR" | "MAKE-CONDITION" => {
                 self.compile_condition_operation(function, span, items, name)
+            }
+            "COMPUTE-RESTARTS" | "FIND-RESTART" | "INVOKE-RESTART" | "RESTART-NAME" => {
+                self.compile_restart_operation(function, span, items, name)
             }
             "REDUCE" => self.compile_sequence_reduce(function, span, items),
             "MERGE" => self.compile_sequence_merge(function, span, items),

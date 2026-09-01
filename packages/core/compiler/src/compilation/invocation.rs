@@ -1135,6 +1135,33 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_restart_operation(
+        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    ) -> Result<(), CompileError> {
+        let valid = match operation {
+            "COMPUTE-RESTARTS" => (1..=2).contains(&items.len()),
+            "RESTART-NAME" => items.len() == 2,
+            "FIND-RESTART" => (2..=3).contains(&items.len()),
+            "INVOKE-RESTART" => items.len() >= 2,
+            _ => false,
+        };
+        if !valid {
+            let expected = match operation {
+                "COMPUTE-RESTARTS" => "zero or one",
+                "RESTART-NAME" => "one",
+                "FIND-RESTART" => "one or two",
+                "INVOKE-RESTART" => "at least one",
+                _ => "valid arguments",
+            };
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] { self.compile_expression(function, item)?; }
+        self.emit(function, Instruction::RestartOperation {
+            operation: operation.to_string(), argument_count: items.len() - 1,
+        }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_package_introspection(
         &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
     ) -> Result<(), CompileError> {

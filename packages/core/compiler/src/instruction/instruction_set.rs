@@ -362,6 +362,12 @@ pub enum Instruction {
         /// Number of option values following the predicate.
         option_count: usize,
     },
+    #[doc = "Sort a sequence with a predicate and keyword options."] SequenceSort {
+        /// Sorting operation name.
+        operation: String,
+        /// Number of option values following the predicate.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

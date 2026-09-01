@@ -1002,6 +1002,10 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(merge.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::SequenceMerge { option_count: 2 })
     }));
+    let sort = compile("(stable-sort '(3 1 2) #'< :key #'identity)");
+    assert!(sort.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceSort { operation, option_count: 2 } if operation == "STABLE-SORT")
+    }));
     assert!(
         map_into.functions[0]
             .instructions

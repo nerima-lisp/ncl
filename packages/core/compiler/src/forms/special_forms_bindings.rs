@@ -43,6 +43,7 @@ impl CompileState {
             "MAP" => self.compile_sequence_mapping(function, span, items),
             "REDUCE" => self.compile_sequence_reduce(function, span, items),
             "MERGE" => self.compile_sequence_merge(function, span, items),
+            "SORT" | "STABLE-SORT" => self.compile_sequence_sort(function, span, items, name),
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)
             }

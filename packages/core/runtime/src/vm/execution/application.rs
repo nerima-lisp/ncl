@@ -237,6 +237,32 @@ pub fn execute_sequence_merge_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_sort_instruction(
+    runtime: &Runtime,
+    operation: &str,
+    option_count: usize,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < option_count.saturating_add(2) {
+        return Err(invalid("sort has too few stack values", span));
+    }
+    let options_start = stack.len() - option_count;
+    let options = stack.split_off(options_start);
+    let predicate = stack.pop().ok_or_else(|| invalid("sort has no predicate value", span))?;
+    let sequence = stack.pop().ok_or_else(|| invalid("sort has no sequence value", span))?;
+    stack.push(runtime.apply_sequence_sort(
+        operation,
+        &sequence.primary_value(),
+        &predicate.primary_value(),
+        &options,
+        environment,
+        span,
+    )?);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

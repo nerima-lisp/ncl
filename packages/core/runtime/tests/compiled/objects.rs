@@ -502,6 +502,11 @@ fn compiled_evaluates_native_subseq() {
 }
 
 #[test]
+fn compiled_evaluates_native_copy_seq() {
+    assert_eq!(evaluate("(copy-seq \"abc\")").to_string(), "\"abc\"");
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

@@ -1218,6 +1218,14 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(!shadowed_subseq.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::SequenceSubseq { .. })
     }));
+    let copy_seq = compile("(copy-seq '(a b))");
+    assert!(copy_seq.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceUnary { operation } if operation == "COPY-SEQ")
+    }));
+    let shadowed_copy_seq = compile("(flet ((copy-seq (sequence) :shadowed)) (copy-seq '(a b)))");
+    assert!(!shadowed_copy_seq.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceUnary { operation } if operation == "COPY-SEQ")
+    }));
     for operation in [
         "UNION", "NUNION", "INTERSECTION", "NINTERSECTION", "SET-DIFFERENCE",
         "NSET-DIFFERENCE", "SET-EXCLUSIVE-OR", "NSET-EXCLUSIVE-OR", "SUBSETP",

@@ -107,6 +107,7 @@ impl CompileState {
                 | "STREAMP"
                 | "INPUT-STREAM-P"
                 | "OUTPUT-STREAM-P"
+                | "COPY-SEQ"
         ) && self.has_local_function(name)
         {
             return None;
@@ -167,7 +168,7 @@ impl CompileState {
             | "NSUBSTITUTE-IF" | "NSUBSTITUTE-IF-NOT" => {
                 self.compile_sequence_substitution(function, span, items, name)
             }
-            "COPY-TREE" | "REVERSE" | "NREVERSE" => {
+            "COPY-TREE" | "COPY-SEQ" | "REVERSE" | "NREVERSE" => {
                 self.compile_sequence_unary(function, span, items, name)
             }
             "CAR" | "CDR" | "FIRST" | "REST" | "COPY-LIST" | "COPY-ALIST" | "ENDP" => {

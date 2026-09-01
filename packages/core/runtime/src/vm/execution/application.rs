@@ -437,6 +437,7 @@ pub fn execute_sequence_unary_instruction(
         .ok_or_else(|| invalid("unary sequence operation has too few stack values", span))?;
     let result = match operation {
         "COPY-TREE" => Ok(runtime.copy_tree(&value)),
+        "COPY-SEQ" => crate::builtins::copy_seq(&[value]),
         "REVERSE" | "NREVERSE" => runtime.apply_sequence_reverse(&value, span),
         _ => Err(invalid("unknown unary sequence operation", span)),
     }?;

@@ -309,15 +309,38 @@ impl Runtime {
                                 form.span,
                             ));
                         };
-                        if (names_equal(kind, "HASH-KEYS")
-                            && !names_equal(binding_kind, "HASH-VALUE"))
-                            || (names_equal(kind, "HASH-VALUES")
-                                && !names_equal(binding_kind, "HASH-KEY"))
+                        if names_equal(kind, "HASH-KEYS")
+                            && !names_equal(binding_kind, "HASH-VALUE")
                         {
                             return Err(Self::invalid(
                                 "LOOP HASH-TABLE USING binding does not match iterator",
                                 form.span,
                             ));
+                        }
+                        if names_equal(kind, "HASH-VALUES") {
+                            let internal_key = Form::atom(
+                                format!("NCL-HASH-KEY-{}", form.span.start),
+                                form.span,
+                            );
+                            let mut rewritten = vec![
+                                items[0].clone(),
+                                Form::atom("FOR", form.span),
+                                internal_key,
+                                Form::atom("IN", form.span),
+                                Form::list(
+                                    vec![
+                                        Form::atom("NCL-HASH-TABLE-KEYS", form.span),
+                                        items[7].clone(),
+                                    ],
+                                    form.span,
+                                ),
+                                Form::atom("NCL-HASH-BIND2", form.span),
+                                items[2].clone(),
+                                using_items[1].clone(),
+                                items[7].clone(),
+                            ];
+                            rewritten.extend(items[10..].iter().cloned());
+                            return Self::expand_builtin_loop(&Form::list(rewritten, form.span));
                         }
                         using_binding = Some(using_items[1].clone());
                     }
@@ -355,6 +378,7 @@ impl Runtime {
                     }
                     let variable = items[2].clone();
                     let mut body_start = 5;
+                    let mut hash_dual_binding = None;
                     let hash_binding = if items
                         .get(body_start)
                         .and_then(atom_name)
@@ -369,6 +393,24 @@ impl Runtime {
                         let binding = (items[body_start + 1].clone(), items[body_start + 2].clone());
                         body_start += 3;
                         Some(binding)
+                    } else if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "NCL-HASH-BIND2"))
+                    {
+                        if items.len() <= body_start + 3 {
+                            return Err(Self::invalid(
+                                "LOOP hash dual binding requires value, key, and table",
+                                form.span,
+                            ));
+                        }
+                        hash_dual_binding = Some((
+                            items[body_start + 1].clone(),
+                            items[body_start + 2].clone(),
+                            items[body_start + 3].clone(),
+                        ));
+                        body_start += 4;
+                        None
                     } else {
                         None
                     };
@@ -559,6 +601,34 @@ impl Runtime {
                                             ],
                                             form.span,
                                         )],
+                                        form.span,
+                                    ),
+                                    item.clone(),
+                                ],
+                                form.span,
+                            );
+                        }
+                    }
+                    if let Some((value_binding, key_binding, table)) = hash_dual_binding {
+                        for item in &mut dolist_items[2..] {
+                            *item = Form::list(
+                                vec![
+                                    Form::atom("LET", form.span),
+                                    Form::list(
+                                        vec![
+                                            Form::list(vec![
+                                                value_binding.clone(),
+                                                Form::list(
+                                                    vec![
+                                                        Form::atom("GETHASH", form.span),
+                                                        variable.clone(),
+                                                        table.clone(),
+                                                    ],
+                                                    form.span,
+                                                ),
+                                            ], form.span),
+                                            Form::list(vec![key_binding.clone(), variable.clone()], form.span),
+                                        ],
                                         form.span,
                                     ),
                                     item.clone(),

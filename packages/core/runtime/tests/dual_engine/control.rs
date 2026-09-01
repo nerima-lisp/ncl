@@ -112,12 +112,12 @@ fn expands_loop_hash_table_iteration(#[case] eval_fn: EvalFn) {
             r#"(let ((table (make-hash-table)))
                  (setf (gethash :first table) 1
                        (gethash :second table) 2)
-                 (loop for key being the hash-keys of table
-                       using (hash-value value)
-                       collect value))"#
+                 (loop for value being the hash-values of table
+                       using (hash-key key)
+                       collect key))"#
         )
         .to_string(),
-        "(1 2)"
+        "(:FIRST :SECOND)"
     );
 }
 

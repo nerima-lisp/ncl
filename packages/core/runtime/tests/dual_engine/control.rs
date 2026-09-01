@@ -1,8 +1,8 @@
 use ncl_runtime::Runtime;
 use rstest::rstest;
 
-use super::EvalFn;
 use super::support::evaluate_with;
+use super::EvalFn;
 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
@@ -59,6 +59,21 @@ fn expands_loop_repeat_clause(#[case] eval_fn: EvalFn) {
         )
         .to_string(),
         "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_collect_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop repeat 3 collect (incf value)))"
+        )
+        .to_string(),
+        "(1 2 3)"
     );
 }
 

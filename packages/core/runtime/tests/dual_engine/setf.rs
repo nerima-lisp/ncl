@@ -75,6 +75,17 @@ fn evaluates_push_pop_and_psetf(#[case] eval_fn: EvalFn) {
         evaluate("(let ((a nil)) (psetf a (values 7 8)))",).to_string(),
         "7"
     );
+    assert_eq!(
+        evaluate(
+            "(let ((table (make-hash-table :test #'equal)))
+                   (list (push 1 (gethash \"key\" table))
+                         (push 2 (gethash \"key\" table))
+                         (pop (gethash \"key\" table))
+                         (gethash \"key\" table)))",
+        )
+        .to_string(),
+        "((1) (2 1) 2 (1))"
+    );
 }
 
 #[rstest]

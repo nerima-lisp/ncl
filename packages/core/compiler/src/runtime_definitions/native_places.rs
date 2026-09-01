@@ -113,6 +113,32 @@ impl CompileState {
             ));
         }
         let place = &items[expected - 1];
+        if let FormKind::List(place_items) = &place.kind {
+            if place_items.len() == 3
+                && Self::symbol_name_info(&place_items[0], "list place operator")
+                    .ok()
+                    .is_some_and(|(name, _)| name == "GETHASH")
+            {
+                if operator == "PUSHNEW" {
+                    return Ok(None);
+                }
+                if operator == "PUSH" {
+                    self.compile_expression(function, &items[1])?;
+                }
+                self.compile_expression(function, &place_items[1])?;
+                self.compile_expression(function, &place_items[2])?;
+                self.emit(
+                    function,
+                    if operator == "PUSH" {
+                        Instruction::PushGethash
+                    } else {
+                        Instruction::PopGethash
+                    },
+                    items[0].span,
+                )?;
+                return Ok(Some(()));
+            }
+        }
         let generalized = generalized_list_place(place);
         let symbol_place = Self::symbol_name_info(place, "list place").ok();
         if generalized.is_none() && symbol_place.is_none() {

@@ -46,14 +46,12 @@ fn compile_pushnew_uses_native_instruction_without_options() {
         .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
         .unwrap();
 
-    assert!(
-        state.functions[function]
-            .instructions
-            .contains(&Instruction::PushNewList {
-                name: "XS".to_string(),
-                escaped: false,
-            })
-    );
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::PushNewList {
+            name: "XS".to_string(),
+            escaped: false,
+        }));
 }
 
 #[test]
@@ -84,6 +82,37 @@ fn compile_push_and_pop_with_car_places_use_native_instructions() {
 }
 
 #[test]
+fn compile_push_and_pop_use_native_gethash_instructions() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let push = parse_items("(push 1 (gethash key table))");
+    let pop = parse_items("(pop (gethash key table))");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &push)
+        .unwrap();
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pop)
+        .unwrap();
+
+    let instructions = &state.functions[function].instructions;
+    assert_eq!(
+        instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::PushGethash))
+            .count(),
+        1
+    );
+    assert_eq!(
+        instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::PopGethash))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn compile_pushnew_with_a_generalized_place_uses_native_instruction_without_options() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());
@@ -93,16 +122,14 @@ fn compile_pushnew_with_a_generalized_place_uses_native_instruction_without_opti
         .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
         .unwrap();
 
-    assert!(
-        state.functions[function]
-            .instructions
-            .iter()
-            .any(|instruction| matches!(
-                instruction,
-                Instruction::ListPlaceMutation { operator, accessor, name, .. }
-                    if operator == "PUSHNEW" && accessor == "CAR" && name == "XS"
-            ))
-    );
+    assert!(state.functions[function]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(
+            instruction,
+            Instruction::ListPlaceMutation { operator, accessor, name, .. }
+                if operator == "PUSHNEW" && accessor == "CAR" && name == "XS"
+        )));
 }
 
 #[test]
@@ -115,16 +142,14 @@ fn compile_pushnew_with_options_and_a_generalized_place_uses_native_instruction(
         .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
         .unwrap();
 
-    assert!(
-        state.functions[function]
-            .instructions
-            .iter()
-            .any(|instruction| matches!(
-                instruction,
-                Instruction::ListPlacePushNewOptions { accessor, name, test_not, has_key, .. }
-                    if accessor == "CAR" && name == "XS" && !test_not && !has_key
-            ))
-    );
+    assert!(state.functions[function]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(
+            instruction,
+            Instruction::ListPlacePushNewOptions { accessor, name, test_not, has_key, .. }
+                if accessor == "CAR" && name == "XS" && !test_not && !has_key
+        )));
 }
 
 #[test]

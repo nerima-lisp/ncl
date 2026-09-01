@@ -126,6 +126,94 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::PushGethash => {
+            let table = stack
+                .pop()
+                .ok_or_else(|| invalid("push gethash has no table", span))?
+                .primary_value();
+            let key = stack
+                .pop()
+                .ok_or_else(|| invalid("push gethash has no key", span))?
+                .primary_value();
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("push gethash has no value", span))?
+                .primary_value();
+            let test = table.hash_table_test().ok_or_else(|| RuntimeError::Type {
+                expected: "HASH-TABLE".to_string(),
+                actual: table.type_name().to_string(),
+                span: Some(span),
+            })?;
+            let entries = table
+                .hash_table_entries()
+                .ok_or_else(|| RuntimeError::Type {
+                    expected: "HASH-TABLE".to_string(),
+                    actual: table.type_name().to_string(),
+                    span: Some(span),
+                })?;
+            let mut entries = entries.borrow_mut();
+            if let Some((_, slot)) = entries.iter_mut().find(|(stored_key, _)| {
+                crate::builtins::hash_table_key_equal(test, stored_key, &key)
+            }) {
+                let mut values = slot.list_items().ok_or_else(|| RuntimeError::Type {
+                    expected: "LIST".to_string(),
+                    actual: slot.type_name().to_string(),
+                    span: Some(span),
+                })?;
+                values.insert(0, value);
+                *slot = Value::list(values.clone());
+                stack.push(Value::list(values));
+            } else {
+                let updated = Value::list(vec![value]);
+                entries.push((key, updated.clone()));
+                stack.push(updated);
+            }
+            *program_counter += 1;
+            Ok(true)
+        }
+        Instruction::PopGethash => {
+            let table = stack
+                .pop()
+                .ok_or_else(|| invalid("pop gethash has no table", span))?
+                .primary_value();
+            let key = stack
+                .pop()
+                .ok_or_else(|| invalid("pop gethash has no key", span))?
+                .primary_value();
+            let test = table.hash_table_test().ok_or_else(|| RuntimeError::Type {
+                expected: "HASH-TABLE".to_string(),
+                actual: table.type_name().to_string(),
+                span: Some(span),
+            })?;
+            let entries = table
+                .hash_table_entries()
+                .ok_or_else(|| RuntimeError::Type {
+                    expected: "HASH-TABLE".to_string(),
+                    actual: table.type_name().to_string(),
+                    span: Some(span),
+                })?;
+            let mut entries = entries.borrow_mut();
+            let popped = if let Some((_, slot)) = entries.iter_mut().find(|(stored_key, _)| {
+                crate::builtins::hash_table_key_equal(test, stored_key, &key)
+            }) {
+                let mut values = slot.list_items().ok_or_else(|| RuntimeError::Type {
+                    expected: "LIST".to_string(),
+                    actual: slot.type_name().to_string(),
+                    span: Some(span),
+                })?;
+                let popped = values.first().cloned().unwrap_or(Value::Nil);
+                if !values.is_empty() {
+                    values.remove(0);
+                }
+                *slot = Value::list(values);
+                popped
+            } else {
+                Value::Nil
+            };
+            stack.push(popped);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::SetfSlotValueDynamic => {
             let value = stack
                 .pop()

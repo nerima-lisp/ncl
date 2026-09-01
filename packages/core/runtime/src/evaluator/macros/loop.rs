@@ -7,7 +7,7 @@ use super::loop_condition::expand_loop_condition;
 use super::loop_collect::expand_loop_collect;
 use super::loop_control::{clause_offset, named_loop_body_start};
 use super::loop_finalize::finalize;
-use super::loop_hash::{bind_hash_value_and_key, hash_iterator_name};
+use super::loop_hash::{bind_hash_value_and_key, expand_loop_hash_being};
 use super::loop_on::expand_loop_for_on;
 use super::loop_repeat::expand_loop_repeat;
 use super::loop_with::expand_loop_with;
@@ -63,117 +63,9 @@ impl Runtime {
                     .and_then(atom_name)
                     .is_some_and(|name| names_equal(name, "BEING"))
                 {
-                    if items.len() < 8
-                        || !items
-                            .get(4)
-                            .and_then(atom_name)
-                            .is_some_and(|name| names_equal(name, "THE"))
-                        || !items
-                            .get(6)
-                            .and_then(atom_name)
-                            .is_some_and(|name| names_equal(name, "OF"))
-                    {
-                        return Err(Self::invalid(
-                            "LOOP FOR BEING requires THE HASH-KEYS/HASH-VALUES OF and a table",
-                            form.span,
-                        ));
-                    }
-                    let Some(kind) = items.get(5).and_then(atom_name) else {
-                        return Err(Self::invalid(
-                            "LOOP FOR BEING requires HASH-KEYS or HASH-VALUES",
-                            form.span,
-                        ));
-                    };
-                    let Some(iterator) = hash_iterator_name(kind) else {
-                        return Err(Self::invalid(
-                            "LOOP FOR BEING requires HASH-KEYS or HASH-VALUES",
-                            form.span,
-                        ));
-                    };
-                    let mut using_binding = None;
-                    if items
-                        .get(8)
-                        .and_then(atom_name)
-                        .is_some_and(|name| names_equal(name, "USING"))
-                    {
-                        let Some(using_form) = items.get(9) else {
-                            return Err(Self::invalid(
-                                "LOOP HASH-TABLE USING requires a binding",
-                                form.span,
-                            ));
-                        };
-                        let FormKind::List(using_items) = &using_form.kind else {
-                            return Err(Self::invalid(
-                                "LOOP HASH-TABLE USING requires (HASH-KEY/HASH-VALUE variable)",
-                                form.span,
-                            ));
-                        };
-                        if using_items.len() != 2 {
-                            return Err(Self::invalid(
-                                "LOOP HASH-TABLE USING requires (HASH-KEY/HASH-VALUE variable)",
-                                form.span,
-                            ));
-                        }
-                        let Some(binding_kind) = atom_name(&using_items[0]) else {
-                            return Err(Self::invalid(
-                                "LOOP HASH-TABLE USING requires HASH-KEY or HASH-VALUE",
-                                form.span,
-                            ));
-                        };
-                        if names_equal(kind, "HASH-KEYS")
-                            && !names_equal(binding_kind, "HASH-VALUE")
-                        {
-                            return Err(Self::invalid(
-                                "LOOP HASH-TABLE USING binding does not match iterator",
-                                form.span,
-                            ));
-                        }
-                        if names_equal(kind, "HASH-VALUES") {
-                            let internal_key =
-                                Form::atom(format!("NCL-HASH-KEY-{}", form.span.start), form.span);
-                            let mut rewritten = vec![
-                                items[0].clone(),
-                                Form::atom("FOR", form.span),
-                                internal_key,
-                                Form::atom("IN", form.span),
-                                Form::list(
-                                    vec![
-                                        Form::atom("NCL-HASH-TABLE-KEYS", form.span),
-                                        items[7].clone(),
-                                    ],
-                                    form.span,
-                                ),
-                                Form::atom("NCL-HASH-BIND2", form.span),
-                                items[2].clone(),
-                                using_items[1].clone(),
-                                items[7].clone(),
-                            ];
-                            rewritten.extend(items[10..].iter().cloned());
-                            return Self::expand_builtin_loop(&Form::list(rewritten, form.span));
-                        }
-                        using_binding = Some(using_items[1].clone());
-                    }
-                    let mut rewritten = vec![
-                        items[0].clone(),
-                        Form::atom("FOR", form.span),
-                        items[2].clone(),
-                        Form::atom("IN", form.span),
-                        Form::list(
-                            vec![Form::atom(iterator, form.span), items[7].clone()],
-                            form.span,
-                        ),
-                    ];
-                    if let Some(binding) = using_binding {
-                        rewritten.extend([
-                            Form::atom("NCL-HASH-BIND", form.span),
-                            binding,
-                            items[7].clone(),
-                        ]);
-                        rewritten.extend(items[10..].iter().cloned());
-                    } else {
-                        rewritten.extend(items[8..].iter().cloned());
-                    }
-                    return Self::expand_builtin_loop(&Form::list(rewritten, form.span));
+                    return expand_loop_hash_being(form, items)?.ok_or_else(|| {
+                        Self::invalid("LOOP hash-table expansion failed", form.span)
+                    });
                 } else if items
                     .get(3)
                     .and_then(atom_name)

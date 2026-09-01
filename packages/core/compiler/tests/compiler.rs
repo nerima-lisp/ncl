@@ -998,6 +998,10 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(reduce.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::SequenceReduce { option_count: 2 })
     }));
+    let merge = compile("(merge 'list '(1 3) '(2 4) #'< :key #'identity)");
+    assert!(merge.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceMerge { option_count: 2 })
+    }));
     assert!(
         map_into.functions[0]
             .instructions

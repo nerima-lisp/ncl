@@ -209,6 +209,34 @@ pub fn execute_sequence_reduce_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_merge_instruction(
+    runtime: &Runtime,
+    option_count: usize,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < option_count.saturating_add(4) {
+        return Err(invalid("merge has too few stack values", span));
+    }
+    let options_start = stack.len() - option_count;
+    let options = stack.split_off(options_start);
+    let predicate = stack.pop().ok_or_else(|| invalid("merge has no predicate value", span))?;
+    let sequence2 = stack.pop().ok_or_else(|| invalid("merge has no second sequence value", span))?;
+    let sequence1 = stack.pop().ok_or_else(|| invalid("merge has no first sequence value", span))?;
+    let result_type = stack.pop().ok_or_else(|| invalid("merge has no result type value", span))?;
+    stack.push(runtime.apply_sequence_merge_values(
+        &result_type.primary_value(),
+        &sequence1.primary_value(),
+        &sequence2.primary_value(),
+        &predicate.primary_value(),
+        &options,
+        environment,
+        span,
+    )?);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

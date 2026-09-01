@@ -182,6 +182,28 @@ impl CompileState {
         )?;
         Ok(())
     }
+
+    pub(crate) fn compile_sequence_merge(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 5 {
+            return Err(Self::arity_error(items, "MERGE", "at least four", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SequenceMerge {
+                option_count: items.len().saturating_sub(5),
+            },
+            span,
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

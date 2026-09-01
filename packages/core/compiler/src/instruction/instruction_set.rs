@@ -358,6 +358,10 @@ pub enum Instruction {
         /// Number of option values following the sequence.
         option_count: usize,
     },
+    #[doc = "Merge two sequences with a predicate and keyword options."] SequenceMerge {
+        /// Number of option values following the predicate.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

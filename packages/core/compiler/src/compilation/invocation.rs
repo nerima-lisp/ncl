@@ -15,6 +15,9 @@ mod invocation_evaluation;
 #[path = "invocation_numeric.rs"]
 mod invocation_numeric;
 
+#[path = "invocation_characters.rs"]
+mod invocation_characters;
+
 impl CompileState {
     pub(crate) fn compile_sequence_quantifier(
         &mut self,
@@ -322,26 +325,9 @@ impl CompileState {
         self.compile_expression(function, &items[1])?;
         self.emit(
             function,
-            Instruction::ListUnary { operation: operation.to_string() },
-            span,
-        )?;
-        Ok(())
-    }
-
-    pub(crate) fn compile_character_unary(
-        &mut self,
-        function: FunctionId,
-        span: Span,
-        items: &[Form],
-        operation: &str,
-    ) -> Result<(), CompileError> {
-        if items.len() != 2 {
-            return Err(Self::arity_error(items, operation, "one", span));
-        }
-        self.compile_expression(function, &items[1])?;
-        self.emit(
-            function,
-            Instruction::CharacterUnary { operation: operation.to_string() },
+            Instruction::ListUnary {
+                operation: operation.to_string(),
+            },
             span,
         )?;
         Ok(())
@@ -358,36 +344,55 @@ impl CompileState {
             return Err(Self::arity_error(items, operation, "one", span));
         }
         self.compile_expression(function, &items[1])?;
-        self.emit(function, Instruction::TypePredicate { operation: operation.to_string() }, span)?;
+        self.emit(
+            function,
+            Instruction::TypePredicate {
+                operation: operation.to_string(),
+            },
+            span,
+        )?;
         Ok(())
     }
 
-    pub(crate) fn compile_character_predicate(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    pub(crate) fn compile_symbol_unary(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         if items.len() != 2 {
             return Err(Self::arity_error(items, operation, "one", span));
         }
         self.compile_expression(function, &items[1])?;
-        self.emit(function, Instruction::CharacterPredicate { operation: operation.to_string() }, span)?;
-        Ok(())
-    }
-
-    pub(crate) fn compile_symbol_unary(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
-    ) -> Result<(), CompileError> {
-        if items.len() != 2 { return Err(Self::arity_error(items, operation, "one", span)); }
-        self.compile_expression(function, &items[1])?;
-        self.emit(function, Instruction::SymbolUnary { operation: operation.to_string() }, span)?;
+        self.emit(
+            function,
+            Instruction::SymbolUnary {
+                operation: operation.to_string(),
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_value_unary(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
-        if items.len() != 2 { return Err(Self::arity_error(items, operation, "one", span)); }
+        if items.len() != 2 {
+            return Err(Self::arity_error(items, operation, "one", span));
+        }
         self.compile_expression(function, &items[1])?;
-        self.emit(function, Instruction::ValueUnary { operation: operation.to_string() }, span)?;
+        self.emit(
+            function,
+            Instruction::ValueUnary {
+                operation: operation.to_string(),
+            },
+            span,
+        )?;
         Ok(())
     }
 
@@ -400,7 +405,10 @@ impl CompileState {
     ) -> Result<(), CompileError> {
         let argument_count = match operation {
             "FLOAT" | "FLOAT-SIGN" => 1..=2,
-            "FLOAT-DIGITS" | "FLOAT-PRECISION" | "FLOAT-RADIX" | "DECODE-FLOAT"
+            "FLOAT-DIGITS"
+            | "FLOAT-PRECISION"
+            | "FLOAT-RADIX"
+            | "DECODE-FLOAT"
             | "INTEGER-DECODE-FLOAT" => 1..=1,
             "LOG" | "ATAN" | "COMPLEX" => 1..=2,
             "SCALE-FLOAT" => 2..=2,
@@ -418,26 +426,14 @@ impl CompileState {
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
-        self.emit(function, Instruction::NumericFloat {
-            operation: operation.to_string(),
-            argument_count: items.len() - 1,
-        }, span)?;
-        Ok(())
-    }
-
-    pub(crate) fn compile_character_digit_predicate(
-        &mut self,
-        function: FunctionId,
-        span: Span,
-        items: &[Form],
-    ) -> Result<(), CompileError> {
-        if !(2..=3).contains(&items.len()) {
-            return Err(Self::arity_error(items, "DIGIT-CHAR-P", "one or two", span));
-        }
-        for item in &items[1..] {
-            self.compile_expression(function, item)?;
-        }
-        self.emit(function, Instruction::CharacterDigitPredicate { argument_count: items.len() - 1 }, span)?;
+        self.emit(
+            function,
+            Instruction::NumericFloat {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
@@ -478,7 +474,13 @@ impl CompileState {
         }
         self.compile_expression(function, &items[1])?;
         self.compile_expression(function, &items[2])?;
-        self.emit(function, Instruction::ListBinary { operation: operation.to_string() }, span)?;
+        self.emit(
+            function,
+            Instruction::ListBinary {
+                operation: operation.to_string(),
+            },
+            span,
+        )?;
         Ok(())
     }
 
@@ -496,21 +498,40 @@ impl CompileState {
             _ => false,
         };
         if !valid {
-            let expected = if operation == "VECTOR-PUSH-EXTEND" { "two or three" } else if operation == "VECTOR-PUSH" { "two" } else { "one" };
+            let expected = if operation == "VECTOR-PUSH-EXTEND" {
+                "two or three"
+            } else if operation == "VECTOR-PUSH" {
+                "two"
+            } else {
+                "one"
+            };
             return Err(Self::arity_error(items, operation, expected, span));
         }
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
-        self.emit(function, Instruction::VectorOperation { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        self.emit(
+            function,
+            Instruction::VectorOperation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_stream_operation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let valid = match operation {
-            "TERPRI" | "FRESH-LINE" | "FORCE-OUTPUT" | "FINISH-OUTPUT" | "CLEAR-OUTPUT" => items.len() <= 2,
+            "TERPRI" | "FRESH-LINE" | "FORCE-OUTPUT" | "FINISH-OUTPUT" | "CLEAR-OUTPUT" => {
+                items.len() <= 2
+            }
             "WRITE-CHAR" => (2..=3).contains(&items.len()),
             "WRITE-STRING" | "WRITE-LINE" | "WRITE-SEQUENCE" => items.len() >= 2,
             "READ-SEQUENCE" => items.len() >= 3,
@@ -525,50 +546,122 @@ impl CompileState {
             "STREAM-ELEMENT-TYPE" | "STREAM-EXTERNAL-FORMAT" => items.len() == 2,
             "FILE-LENGTH" => items.len() == 2,
             "FILE-POSITION" => (2..=3).contains(&items.len()),
-            "MAKE-STRING-INPUT-STREAM" => items.len() >= 2 && (items.len() <= 4 || (items.len() - 2).is_multiple_of(2)),
+            "MAKE-STRING-INPUT-STREAM" => {
+                items.len() >= 2 && (items.len() <= 4 || (items.len() - 2).is_multiple_of(2))
+            }
             "MAKE-STRING-OUTPUT-STREAM" => items.len() == 1,
             "WRITE-TO-STRING" => items.len() >= 2,
             "READ-FROM-STRING" => items.len() >= 2,
             "READ" | "READ-PRESERVING-WHITESPACE" => (1..=5).contains(&items.len()),
             _ => false,
         };
-        if !valid { return Err(Self::arity_error(items, operation, "the supported argument count", span)); }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::StreamOperation { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        if !valid {
+            return Err(Self::arity_error(
+                items,
+                operation,
+                "the supported argument count",
+                span,
+            ));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::StreamOperation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_integer_operation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         if items.len() < 2 || !(items.len() - 2).is_multiple_of(2) {
-            return Err(Self::arity_error(items, operation, "a string and keyword/value pairs", span));
+            return Err(Self::arity_error(
+                items,
+                operation,
+                "a string and keyword/value pairs",
+                span,
+            ));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::IntegerOperation { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::IntegerOperation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_file_operation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         if items.len() < 2 || !(items.len() - 2).is_multiple_of(2) {
-            return Err(Self::arity_error(items, operation, "a pathname and keyword/value pairs", span));
+            return Err(Self::arity_error(
+                items,
+                operation,
+                "a pathname and keyword/value pairs",
+                span,
+            ));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::FileOperation { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::FileOperation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_file_metadata_operation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let expected = if operation == "RENAME-FILE" { 2 } else { 1 };
         if items.len() != expected + 1 {
-            return Err(Self::arity_error(items, operation, &format!("exactly {expected} argument(s)"), span));
+            return Err(Self::arity_error(
+                items,
+                operation,
+                &format!("exactly {expected} argument(s)"),
+                span,
+            ));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::FileMetadataOperation { operation: operation.to_string(), argument_count: expected }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::FileMetadataOperation {
+                operation: operation.to_string(),
+                argument_count: expected,
+            },
+            span,
+        )?;
         Ok(())
     }
 
@@ -631,7 +724,13 @@ impl CompileState {
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
-        self.emit(function, Instruction::SequenceSubseq { argument_count: items.len() - 1 }, span)?;
+        self.emit(
+            function,
+            Instruction::SequenceSubseq {
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
@@ -648,10 +747,14 @@ impl CompileState {
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
-        self.emit(function, Instruction::SequenceMutation {
-            operation: operation.to_string(),
-            argument_count: items.len() - 1,
-        }, span)?;
+        self.emit(
+            function,
+            Instruction::SequenceMutation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
@@ -762,7 +865,9 @@ impl CompileState {
         self.compile_expression(function, &items[2])?;
         self.emit(
             function,
-            Instruction::StringTrim { operation: operation.to_string() },
+            Instruction::StringTrim {
+                operation: operation.to_string(),
+            },
             span,
         )?;
         Ok(())
@@ -776,7 +881,10 @@ impl CompileState {
         operation: &str,
     ) -> Result<(), CompileError> {
         let argument_count = match operation {
-            "STRING" => { Self::require_arity(items, operation, "one", 1, span)?; 1 }
+            "STRING" => {
+                Self::require_arity(items, operation, "one", 1, span)?;
+                1
+            }
             "MAKE-STRING" => {
                 if !(2..=3).contains(&items.len()) {
                     return Err(Self::arity_error(items, operation, "one or two", span));
@@ -790,7 +898,10 @@ impl CompileState {
         }
         self.emit(
             function,
-            Instruction::StringConstruction { operation: operation.to_string(), argument_count },
+            Instruction::StringConstruction {
+                operation: operation.to_string(),
+                argument_count,
+            },
             span,
         )?;
         Ok(())
@@ -810,7 +921,9 @@ impl CompileState {
         }
         self.emit(
             function,
-            Instruction::ListConstructionWithOptions { argument_count: items.len() - 1 },
+            Instruction::ListConstructionWithOptions {
+                argument_count: items.len() - 1,
+            },
             span,
         )?;
         Ok(())
@@ -865,10 +978,14 @@ impl CompileState {
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
-        self.emit(function, Instruction::ListAppend {
-            operation: operation.to_string(),
-            argument_count: items.len() - 1,
-        }, span)?;
+        self.emit(
+            function,
+            Instruction::ListAppend {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
@@ -899,10 +1016,14 @@ impl CompileState {
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
-        self.emit(function, Instruction::PropertyList {
-            operation: operation.to_string(),
-            argument_count: items.len() - 1,
-        }, span)?;
+        self.emit(
+            function,
+            Instruction::PropertyList {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
@@ -918,48 +1039,95 @@ impl CompileState {
             _ => items.len() == 2,
         };
         if !valid_arity {
-            let expected = if operation == "CONSTANTP" { "one or two" } else { "one" };
+            let expected = if operation == "CONSTANTP" {
+                "one or two"
+            } else {
+                "one"
+            };
             return Err(Self::arity_error(items, operation, expected, span));
         }
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
-        self.emit(function, Instruction::SymbolValue { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        self.emit(
+            function,
+            Instruction::SymbolValue {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_symbol_binding(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let (valid_arity, expected) = match operation {
             "SET" => (items.len() == 3, "two"),
             "MAKUNBOUND" | "FMAKUNBOUND" => (items.len() == 2, "one"),
             _ => (false, "valid arguments"),
         };
-        if !valid_arity { return Err(Self::arity_error(items, operation, expected, span)); }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::SymbolBinding { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        if !valid_arity {
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SymbolBinding {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_symbol_function(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let valid_arity = match operation {
             "MACRO-FUNCTION" => (2..=3).contains(&items.len()),
             _ => items.len() == 2,
         };
         if !valid_arity {
-            let expected = if operation == "MACRO-FUNCTION" { "one or two" } else { "one" };
+            let expected = if operation == "MACRO-FUNCTION" {
+                "one or two"
+            } else {
+                "one"
+            };
             return Err(Self::arity_error(items, operation, expected, span));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::SymbolFunction { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SymbolFunction {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_symbol_creation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let (valid_arity, expected) = match operation {
             "MAKE-SYMBOL" => (items.len() == 2, "one"),
@@ -967,52 +1135,106 @@ impl CompileState {
             "INTERN" | "FIND-SYMBOL" => ((2..=3).contains(&items.len()), "one or two"),
             _ => (false, "valid arguments"),
         };
-        if !valid_arity { return Err(Self::arity_error(items, operation, expected, span)); }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::SymbolCreation { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        if !valid_arity {
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SymbolCreation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_class_introspection(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let (valid_arity, expected) = match operation {
             "SUBTYPEP" => (items.len() == 3, "two"),
             "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME" => (items.len() == 2, "one"),
             _ => (false, "valid arguments"),
         };
-        if !valid_arity { return Err(Self::arity_error(items, operation, expected, span)); }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::ClassIntrospection { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        if !valid_arity {
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::ClassIntrospection {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_slot_operation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         if items.len() != 3 {
             return Err(Self::arity_error(items, operation, "two", span));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::SlotOperation { operation: operation.to_string(), argument_count: 2 }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SlotOperation {
+                operation: operation.to_string(),
+                argument_count: 2,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_condition_operation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         if items.len() < 2 {
             return Err(Self::arity_error(items, operation, "at least one", span));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::ConditionOperation {
-            operation: operation.to_string(), argument_count: items.len() - 1,
-        }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::ConditionOperation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_restart_operation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let valid = match operation {
             "COMPUTE-RESTARTS" => (1..=2).contains(&items.len()),
@@ -1031,15 +1253,26 @@ impl CompileState {
             };
             return Err(Self::arity_error(items, operation, expected, span));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::RestartOperation {
-            operation: operation.to_string(), argument_count: items.len() - 1,
-        }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::RestartOperation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_method_operation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let valid = match operation {
             "CALL-NEXT-METHOD" => true,
@@ -1049,63 +1282,125 @@ impl CompileState {
         if !valid {
             return Err(Self::arity_error(items, operation, "zero", span));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::MethodOperation {
-            operation: operation.to_string(), argument_count: items.len() - 1,
-        }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::MethodOperation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_package_introspection(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         Self::require_arity(items, operation, "one", 1, span)?;
         self.compile_expression(function, &items[1])?;
-        self.emit(function, Instruction::PackageIntrospection { operation: operation.to_string(), argument_count: 1 }, span)?;
+        self.emit(
+            function,
+            Instruction::PackageIntrospection {
+                operation: operation.to_string(),
+                argument_count: 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_package_mutation(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         if !(2..=3).contains(&items.len()) {
             return Err(Self::arity_error(items, operation, "one or two", span));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::PackageMutation { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::PackageMutation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_package_listing(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let (valid_arity, expected) = match operation {
             "DOCUMENTATION" => (items.len() == 3, "two"),
             "LIST-ALL-PACKAGES" => (items.len() == 1, "zero"),
             _ => (false, "valid arguments"),
         };
-        if !valid_arity { return Err(Self::arity_error(items, operation, expected, span)); }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::PackageListing { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        if !valid_arity {
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::PackageListing {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
     pub(crate) fn compile_hash_table(
-        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
     ) -> Result<(), CompileError> {
         let (valid_arity, expected) = match operation {
             "GETHASH" => ((3..=4).contains(&items.len()), "two or three"),
             "REMHASH" => (items.len() == 3, "two"),
             "MAKE-HASH-TABLE" => ((items.len() - 1).is_multiple_of(2), "keyword/value pairs"),
-            "CLRHASH" | "HASH-TABLE-COUNT" | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS"
+            "CLRHASH"
+            | "HASH-TABLE-COUNT"
+            | "HASH-TABLE-TEST"
+            | "NCL-HASH-TABLE-KEYS"
             | "NCL-HASH-TABLE-VALUES" => (items.len() == 2, "one"),
             _ => (false, "valid arguments"),
         };
         if !valid_arity {
             return Err(Self::arity_error(items, operation, expected, span));
         }
-        for item in &items[1..] { self.compile_expression(function, item)?; }
-        self.emit(function, Instruction::HashTable { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::HashTable {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
         Ok(())
     }
 
@@ -1188,7 +1483,13 @@ impl CompileState {
         operation: &str,
         argument_count: usize,
     ) -> Result<(), CompileError> {
-        Self::require_arity(items, operation, &argument_count.to_string(), argument_count, span)?;
+        Self::require_arity(
+            items,
+            operation,
+            &argument_count.to_string(),
+            argument_count,
+            span,
+        )?;
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }

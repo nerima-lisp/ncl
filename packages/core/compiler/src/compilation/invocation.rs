@@ -1180,6 +1180,19 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_evaluation_operation(
+        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    ) -> Result<(), CompileError> {
+        if operation != "MAKE-INSTANCE" || items.len() < 2 {
+            return Err(Self::arity_error(items, operation, "at least one", span));
+        }
+        for item in &items[1..] { self.compile_expression(function, item)?; }
+        self.emit(function, Instruction::EvaluationOperation {
+            operation: operation.to_string(), argument_count: items.len() - 1,
+        }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_package_introspection(
         &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
     ) -> Result<(), CompileError> {

@@ -1,4 +1,20 @@
 #[test]
+fn compiled_evaluates_native_make_instance_operation() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r"(progn
+                 (defclass native-make-instance-target ()
+                   ((value :initarg :value)))
+                 (slot-value
+                   (make-instance 'native-make-instance-target :value 42)
+                   'value))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "42");
+}
+
+#[test]
 fn compiled_evaluates_basic_clos_instances_and_accessors() {
     let values = Runtime::new()
         .eval_compiled_source(

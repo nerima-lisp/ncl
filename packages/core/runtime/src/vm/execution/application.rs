@@ -218,6 +218,19 @@ pub fn execute_method_operation_instruction(
     Ok(())
 }
 
+pub fn execute_evaluation_operation_instruction(
+    runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
+    operation: &str, argument_count: usize, span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count { return Err(invalid("evaluation operation has too few stack values", span)); }
+    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
+        .map(|value| value.primary_value()).collect::<Vec<_>>();
+    let value = runtime.apply_evaluation_primitive(operation, &arguments, environment, span)
+        .unwrap_or_else(|| Err(invalid("unknown evaluation operation", span)))?;
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_package_introspection_instruction(
     runtime: &Runtime, stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
 ) -> Result<(), RuntimeError> {

@@ -152,6 +152,7 @@ impl CompileState {
                 | "ERROR" | "SIGNAL" | "WARN" | "CERROR" | "MAKE-CONDITION"
                 | "COMPUTE-RESTARTS" | "FIND-RESTART" | "INVOKE-RESTART" | "RESTART-NAME"
                 | "CALL-NEXT-METHOD" | "NEXT-METHOD-P"
+                | "MAKE-INSTANCE"
                 | "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT"
                 | "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN"
                 | "GETHASH"
@@ -232,6 +233,7 @@ impl CompileState {
             "CALL-NEXT-METHOD" | "NEXT-METHOD-P" => {
                 self.compile_method_operation(function, span, items, name)
             }
+            "MAKE-INSTANCE" => self.compile_evaluation_operation(function, span, items, name),
             "REDUCE" => self.compile_sequence_reduce(function, span, items),
             "MERGE" => self.compile_sequence_merge(function, span, items),
             "SORT" | "STABLE-SORT" => self.compile_sequence_sort(function, span, items, name),

@@ -994,6 +994,10 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(map_into.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::SequenceMapInto { sequence_count: 1 })
     }));
+    let reduce = compile("(reduce #'+ '(1 2 3) :initial-value 10)");
+    assert!(reduce.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceReduce { option_count: 2 })
+    }));
     assert!(
         map_into.functions[0]
             .instructions

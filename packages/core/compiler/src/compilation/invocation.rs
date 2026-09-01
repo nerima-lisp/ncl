@@ -160,6 +160,28 @@ impl CompileState {
         )?;
         Ok(())
     }
+
+    pub(crate) fn compile_sequence_reduce(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 3 {
+            return Err(Self::arity_error(items, "REDUCE", "at least two", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SequenceReduce {
+                option_count: items.len().saturating_sub(3),
+            },
+            span,
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

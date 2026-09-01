@@ -181,6 +181,34 @@ pub fn execute_sequence_map_into_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_reduce_instruction(
+    runtime: &Runtime,
+    option_count: usize,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < option_count.saturating_add(2) {
+        return Err(invalid("reduce has too few stack values", span));
+    }
+    let options_start = stack.len() - option_count;
+    let options = stack.split_off(options_start);
+    let sequence = stack
+        .pop()
+        .ok_or_else(|| invalid("reduce has no sequence value", span))?;
+    let function_value = stack
+        .pop()
+        .ok_or_else(|| invalid("reduce has no function value", span))?;
+    stack.push(runtime.apply_sequence_reduce(
+        &function_value.primary_value(),
+        &sequence.primary_value(),
+        &options,
+        environment,
+        span,
+    )?);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

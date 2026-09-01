@@ -354,6 +354,10 @@ pub enum Instruction {
         /// Number of source sequences consumed after the function and destination.
         sequence_count: usize,
     },
+    #[doc = "Reduce a sequence with a function and keyword options."] SequenceReduce {
+        /// Number of option values following the sequence.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

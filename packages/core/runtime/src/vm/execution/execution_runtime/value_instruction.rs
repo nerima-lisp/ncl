@@ -6,6 +6,7 @@ use crate::vm::execution::application::{
     execute_apply_instruction, execute_call_instruction, execute_list_mapping_instruction,
     execute_multiple_value_call_instruction, execute_sequence_mapping_instruction,
     execute_sequence_map_into_instruction,
+    execute_sequence_reduce_instruction,
     execute_sequence_quantifier_instruction,
 };
 use crate::vm::primitives::pop_value;
@@ -173,6 +174,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::SequenceMapInto { sequence_count } => {
             execute_sequence_map_into_instruction(runtime, *sequence_count, stack, environment, span)?;
+        }
+        Instruction::SequenceReduce { option_count } => {
+            execute_sequence_reduce_instruction(runtime, *option_count, stack, environment, span)?;
         }
         Instruction::MultipleValueCall(value_form_count) => {
             execute_multiple_value_call_instruction(

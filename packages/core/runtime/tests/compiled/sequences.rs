@@ -42,6 +42,23 @@ fn compiled_evaluates_sequence_merge() {
 }
 
 #[test]
+fn compiled_evaluates_sequence_reduce() {
+    assert_eq!(evaluate("(reduce #'+ '(1 2 3))").to_string(), "6");
+    assert_eq!(
+        evaluate("(reduce #'- '(1 2 3) :from-end t)").to_string(),
+        "2"
+    );
+    assert_eq!(
+        evaluate("(reduce #'+ #(1 2 3) :initial-value 10)").to_string(),
+        "16"
+    );
+    assert_eq!(
+        evaluate("(reduce #'+ '(1 2 3) :key #'1+)").to_string(),
+        "9"
+    );
+}
+
+#[test]
 fn compiled_evaluates_sequence_quantifiers() {
     assert_eq!(evaluate("(every #'numberp '(1 2))").to_string(), "T");
     assert_eq!(evaluate("(every #'= '(1 2) #(1 2))").to_string(), "T");

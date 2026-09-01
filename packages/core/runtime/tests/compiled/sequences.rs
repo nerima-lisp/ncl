@@ -46,6 +46,10 @@ fn compiled_evaluates_type_predicates() {
     assert_eq!(evaluate("(characterp #\\x)").to_string(), "T");
     assert_eq!(evaluate("(symbolp 'x)").to_string(), "T");
     assert_eq!(evaluate("(vectorp #(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(simple-vector-p #(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(arrayp #(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(simple-array-p #(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(hash-table-p (make-hash-table))").to_string(), "T");
 }
 
 #[test]

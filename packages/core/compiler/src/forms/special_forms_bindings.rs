@@ -73,6 +73,13 @@ impl CompileState {
                 | "KEYWORDP"
                 | "VECTORP"
                 | "FUNCTIONP"
+                | "SIMPLE-VECTOR-P"
+                | "BIT-VECTOR-P"
+                | "SIMPLE-BIT-VECTOR-P"
+                | "ARRAYP"
+                | "SIMPLE-ARRAY-P"
+                | "HASH-TABLE-P"
+                | "RANDOM-STATE-P"
         ) && self.has_local_function(name)
         {
             return None;
@@ -145,7 +152,9 @@ impl CompileState {
             "NTH" | "NTHCDR" => self.compile_list_binary(function, span, items, name),
             "ATOM" | "CONSP" | "LISTP" | "NUMBERP" | "COMPLEXP" | "INTEGERP"
             | "FLOATP" | "RATIONALP" | "STRINGP" | "SIMPLE-STRING-P" | "CHARACTERP"
-            | "SYMBOLP" | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP" => {
+            | "SYMBOLP" | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP"
+            | "SIMPLE-VECTOR-P" | "BIT-VECTOR-P" | "SIMPLE-BIT-VECTOR-P" | "ARRAYP"
+            | "SIMPLE-ARRAY-P" | "HASH-TABLE-P" | "RANDOM-STATE-P" => {
                 self.compile_type_predicate(function, span, items, name)
             }
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),

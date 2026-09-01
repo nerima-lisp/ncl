@@ -24,9 +24,9 @@ use builtin_characters::{
 mod builtin_arrays;
 use builtin_arrays::{
     aref, array_dimension, array_dimensions, array_element_type, array_in_bounds_p, array_rank,
-    array_row_major_index, array_total_size, arrayp, bit, make_array, row_major_aref,
-    simple_array_p, svref, vector,
+    array_row_major_index, array_total_size, bit, make_array, row_major_aref, svref, vector,
 };
+pub use builtin_arrays::{arrayp, simple_array_p};
 
 mod builtin_helpers;
 use builtin_helpers::{arity, exact, type_error};
@@ -35,7 +35,7 @@ mod builtin_reading;
 use builtin_reading::{read, read_from_string, read_preserving_whitespace};
 
 mod builtin_hash_tables;
-pub use builtin_hash_tables::hash_table_key_equal;
+pub use builtin_hash_tables::{hash_table_key_equal, hash_table_p};
 #[allow(clippy::wildcard_imports)]
 use builtin_hash_tables::*;
 

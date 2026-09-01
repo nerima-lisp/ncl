@@ -492,6 +492,13 @@ pub fn execute_type_predicate_instruction(
         "KEYWORDP" => crate::builtins::keywordp(&[value]),
         "VECTORP" => crate::builtins::vectorp(&[value]),
         "FUNCTIONP" => crate::builtins::functionp(&[value]),
+        "SIMPLE-VECTOR-P" => crate::builtins::simple_vector_p(&[value]),
+        "BIT-VECTOR-P" => crate::builtins::bit_vector_p(&[value]),
+        "SIMPLE-BIT-VECTOR-P" => crate::builtins::simple_bit_vector_p(&[value]),
+        "ARRAYP" => crate::builtins::arrayp(&[value]),
+        "SIMPLE-ARRAY-P" => crate::builtins::simple_array_p(&[value]),
+        "HASH-TABLE-P" => crate::builtins::hash_table_p(&[value]),
+        "RANDOM-STATE-P" => crate::builtins::random_state_p(&[value]),
         _ => Err(invalid("unknown type predicate operation", span)),
     }?;
     stack.push(result);

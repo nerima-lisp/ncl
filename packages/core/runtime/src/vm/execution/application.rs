@@ -456,6 +456,8 @@ pub fn execute_list_unary_instruction(
         .pop()
         .ok_or_else(|| invalid("unary list operation has too few stack values", span))?;
     let result = match operation {
+        "CAR" => crate::builtins::car(&[value]),
+        "CDR" => crate::builtins::cdr(&[value]),
         "FIRST" => crate::builtins::first(&[value]),
         "REST" => crate::builtins::rest(&[value]),
         _ => Err(invalid("unknown unary list operation", span)),

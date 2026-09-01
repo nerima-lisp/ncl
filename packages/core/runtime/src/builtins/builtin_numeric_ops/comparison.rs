@@ -22,6 +22,20 @@ pub fn numeric_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     compare_numbers("=", arguments, |ordering| ordering == Ordering::Equal)
 }
 
+pub fn numeric_not_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.is_empty() {
+        return Err(arity("/=", "at least one", 0));
+    }
+    for (index, left) in arguments.iter().enumerate() {
+        for right in &arguments[index + 1..] {
+            if numeric_equal(&[left.clone(), right.clone()])?.is_truthy() {
+                return Ok(Value::Nil);
+            }
+        }
+    }
+    Ok(Value::boolean(true))
+}
+
 fn complex_numeric_equal(left: Value, right: Value) -> Result<bool, RuntimeError> {
     let (left_real, left_imag) = complex_components(left);
     let (right_real, right_imag) = complex_components(right);

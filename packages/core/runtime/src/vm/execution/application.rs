@@ -732,6 +732,7 @@ pub fn execute_numeric_comparison_instruction(
     let arguments = stack.drain(start..).collect::<Vec<_>>();
     let result = match operation {
         "=" => crate::builtins::numeric_equal(&arguments),
+        "/=" => crate::builtins::numeric_not_equal(&arguments),
         "<" => crate::builtins::less_than(&arguments),
         ">" => crate::builtins::greater_than(&arguments),
         "<=" => crate::builtins::less_equal(&arguments),

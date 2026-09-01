@@ -38,6 +38,7 @@ pub(super) const NUMERIC_BUILTINS: &[BuiltinDefinition] = &[
     ("rational", rational as _),
     ("rationalize", rationalize as _),
     ("=", numeric_equal as _),
+    ("/=", numeric_not_equal as _),
     ("<", less_than as _),
     (">", greater_than as _),
     ("<=", less_equal as _),

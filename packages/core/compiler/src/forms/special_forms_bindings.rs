@@ -278,7 +278,7 @@ impl CompileState {
             | "ODDP" | "LOGNOT" | "LOGCOUNT" | "INTEGER-LENGTH" => {
                 self.compile_numeric_unary(function, span, items, name)
             }
-            "=" | "<" | ">" | "<=" | ">=" => {
+            "=" | "/=" | "<" | ">" | "<=" | ">=" => {
                 self.compile_numeric_comparison(function, span, items, name)
             }
             "MIN" | "MAX" | "GCD" | "LCM" | "LOGAND" | "LOGIOR" | "LOGXOR" => {

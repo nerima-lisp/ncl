@@ -33,6 +33,11 @@ fn compiled_evaluates_equality_predicates() {
 }
 
 #[test]
+fn compiled_evaluates_numeric_inequality() {
+    assert_eq!(evaluate("(list (/= 1 2 3) (/= 1 2 1) (/= 1))").to_string(), "(T NIL T)");
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

@@ -209,7 +209,9 @@ impl Runtime {
                         .get(body_start)
                         .and_then(atom_name)
                         .is_some_and(|name| {
-                            names_equal(name, "COLLECT") || names_equal(name, "APPEND")
+                            names_equal(name, "COLLECT")
+                                || names_equal(name, "APPEND")
+                                || names_equal(name, "NCONC")
                         })
                     {
                         if items.len() <= body_start + 1 {
@@ -219,7 +221,8 @@ impl Runtime {
                             ));
                         }
                         collect_form = Some(items[body_start + 1].clone());
-                        append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
+                        append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND")
+                            || names_equal(atom_name(&items[body_start]).unwrap(), "NCONC");
                         body_start += 2;
                         if items
                             .get(body_start)
@@ -499,7 +502,9 @@ impl Runtime {
                         .get(body_start)
                         .and_then(atom_name)
                         .is_some_and(|name| {
-                            names_equal(name, "COLLECT") || names_equal(name, "APPEND")
+                            names_equal(name, "COLLECT")
+                                || names_equal(name, "APPEND")
+                                || names_equal(name, "NCONC")
                         })
                     {
                         if items.len() <= body_start + 1 {
@@ -509,7 +514,8 @@ impl Runtime {
                             ));
                         }
                         collect_form = Some(items[body_start + 1].clone());
-                        let append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
+                        let append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND")
+                            || names_equal(atom_name(&items[body_start]).unwrap(), "NCONC");
                         if append {
                             append_form = Some(items[body_start + 1].clone());
                         } else {

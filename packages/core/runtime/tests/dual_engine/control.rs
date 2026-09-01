@@ -99,6 +99,23 @@ fn expands_loop_collect_clause(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_nconc_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2 3) nconc (list value (* value 10)))" )
+            .to_string(),
+        "(1 10 2 20 3 30)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2) nconc (list value) into result)")
+        .to_string(),
+        "(1 2)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn expands_loop_for_clause(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

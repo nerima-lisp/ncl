@@ -3,6 +3,28 @@ use super::*;
 use crate::environment::intern_name;
 
 impl Runtime {
+    pub(crate) fn proclaim_special(&self, form: &Form) -> Result<(), RuntimeError> {
+        let FormKind::List(parts) = &form.kind else {
+            return Err(Self::invalid("proclamation must be a list", form.span));
+        };
+        let Some(FormKind::Atom(name)) = parts.first().map(|part| &part.kind) else {
+            return Err(Self::invalid("proclamation must name a declaration", form.span));
+        };
+        if !name.eq_ignore_ascii_case("SPECIAL") {
+            return Ok(());
+        }
+        for part in &parts[1..] {
+            let (name, escaped) = Self::variable_name_info(part, "special declaration name")?;
+            let mut dynamic = self.dynamic.borrow_mut();
+            if escaped {
+                dynamic.exact_special_names.insert(name);
+            } else {
+                dynamic.special_names.insert(intern_name(&name));
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn define_special_value(&self, name: &str, value: Value, force: bool) -> Value {
         let name = intern_name(name);
         let mut dynamic = self.dynamic.borrow_mut();

@@ -67,7 +67,21 @@ impl Runtime {
         let value = match special_form_name(name).unwrap_or(name) {
             "QUOTE" => Some(Self::special_quote(items, form.span)?),
             "QUASIQUOTE" => Some(self.special_quasiquote(items, environment)?),
-            "DECLARE" | "DECLAIM" | "PROCLAIM" => Some(Value::Nil),
+            "DECLARE" => Some(Value::Nil),
+            "DECLAIM" | "PROCLAIM" => {
+                for declaration in &items[1..] {
+                    let declaration = match &declaration.kind {
+                        ncl_syntax::FormKind::List(parts)
+                            if parts.first().is_some_and(|part| {
+                                matches!(&part.kind, ncl_syntax::FormKind::Atom(name) if name.eq_ignore_ascii_case("QUOTE"))
+                            }) && parts.len() == 2 => &parts[1],
+                        ncl_syntax::FormKind::List(_) => declaration,
+                        _ => continue,
+                    };
+                    self.proclaim_special(declaration)?;
+                }
+                Some(Value::Nil)
+            }
             "LOCALLY" => Some(self.special_locally(items, environment)?),
             "EVAL-WHEN" => Some(self.special_eval_when(items, environment)?),
             "WITH-COMPILATION-UNIT" => {

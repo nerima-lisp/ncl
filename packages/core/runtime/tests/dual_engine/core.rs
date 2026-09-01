@@ -44,6 +44,36 @@ fn declare_special_is_honored_in_defun(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn proclaim_special_affects_later_bindings(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(progn
+               (declaim (special proclaimed))
+               (defun proclaimed-reader () proclaimed)
+               (let ((proclaimed 42))
+                 (list proclaimed (proclaimed-reader) (symbol-value 'proclaimed))))",
+        )
+        .to_string(),
+        "(42 42 42)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn proclaim_special_accepts_quoted_proclamation(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(progn (proclaim '(special quoted-proclaimed)) (setq quoted-proclaimed 9) quoted-proclaimed)")
+            .to_string(),
+        "9"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_condition_restart_associations(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

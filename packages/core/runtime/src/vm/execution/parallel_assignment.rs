@@ -62,12 +62,18 @@ pub(super) fn execute_parallel_set_instruction(
             runtime, places, stack, environment, program_counter, span,
         ),
         Instruction::PsetfPlaces(places) => {
-            if stack.len() < places.len() {
+            let dynamic_targets = places
+                .iter()
+                .filter(|place| matches!(place, ncl_compiler::PsetfPlace::SymbolPlist))
+                .count();
+            if stack.len() < places.len() + dynamic_targets {
                 return Err(invalid("psetf has fewer values than targets", span));
             }
-            let values = stack.split_off(stack.len() - places.len());
+            let operands = stack.split_off(stack.len() - places.len() - dynamic_targets);
+            let (values, targets) = operands.split_at(places.len());
+            let mut target_index = 0;
             let mut last = Value::Nil;
-            for (place, value) in places.iter().zip(values) {
+            for (place, value) in places.iter().zip(values.iter()) {
                 last = value.primary_value();
                 match place {
                     ncl_compiler::PsetfPlace::Symbol(name, escaped) => {
@@ -97,6 +103,22 @@ pub(super) fn execute_parallel_set_instruction(
                         } else {
                             runtime.set_or_define_in(name, updated, environment, span)?;
                         }
+                    }
+                    ncl_compiler::PsetfPlace::SymbolPlist => {
+                        let target = targets[target_index].primary_value();
+                        target_index += 1;
+                        if target.symbol_reference().is_none() {
+                            return Err(invalid("psetf symbol-plist target must be a symbol", span));
+                        }
+                        let properties = last.list_items().ok_or_else(|| RuntimeError::Type {
+                            expected: "LIST".to_string(),
+                            actual: last.type_name().to_string(),
+                            span: Some(span),
+                        })?;
+                        if !properties.len().is_multiple_of(2) {
+                            return Err(invalid("SYMBOL-PLIST needs an even property list", span));
+                        }
+                        environment.set_symbol_plist(&target, last.clone());
                     }
                 }
             }

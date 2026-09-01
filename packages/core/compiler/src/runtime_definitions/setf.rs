@@ -130,6 +130,14 @@ impl CompileState {
                 }
                 let mut accessors = Vec::new();
                 let mut target = &pair[0];
+                if let FormKind::List(place_items) = &pair[0].kind {
+                    if place_items.len() == 2
+                        && Self::symbol_name_info(&place_items[0], "PSETF place")
+                            .is_ok_and(|(name, _)| name == "SYMBOL-PLIST")
+                    {
+                        return Some(crate::PsetfPlace::SymbolPlist);
+                    }
+                }
                 while let Some((accessor, next_target)) = crate::helpers::list_accessor_target(target) {
                     accessors.push(accessor);
                     target = next_target;
@@ -146,12 +154,20 @@ impl CompileState {
             for pair in items[1..].chunks_exact(2) {
                 self.compile_expression(function, &pair[1])?;
             }
+            for (pair, place) in items[1..].chunks_exact(2).zip(&places) {
+                if matches!(place, crate::PsetfPlace::SymbolPlist) {
+                    let FormKind::List(place_items) = &pair[0].kind else {
+                        unreachable!("validated SYMBOL-PLIST place");
+                    };
+                    self.compile_expression(function, &place_items[1])?;
+                }
+            }
             if places.iter().all(|place| matches!(place, crate::PsetfPlace::Symbol(_, _))) {
                 let names = places
                     .into_iter()
                     .map(|place| match place {
                         crate::PsetfPlace::Symbol(name, escaped) => (name, escaped),
-                        crate::PsetfPlace::List(..) => unreachable!(),
+                        crate::PsetfPlace::List(..) | crate::PsetfPlace::SymbolPlist => unreachable!(),
                     })
                     .collect();
                 self.emit(function, Instruction::PsetfSymbols(names), span)?;
@@ -160,7 +176,7 @@ impl CompileState {
                     .into_iter()
                     .map(|place| match place {
                         crate::PsetfPlace::List(accessors, name, escaped) => (accessors, name, escaped),
-                        crate::PsetfPlace::Symbol(..) => unreachable!(),
+                        crate::PsetfPlace::Symbol(..) | crate::PsetfPlace::SymbolPlist => unreachable!(),
                     })
                     .collect();
                 self.emit(function, Instruction::PsetfList(list_places), span)?;

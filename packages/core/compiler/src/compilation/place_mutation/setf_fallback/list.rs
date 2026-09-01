@@ -13,7 +13,11 @@ pub(super) fn compile_list_setf(
         accessors.push(accessor);
         target = next_target;
     }
-    if accessors.len() >= 2 {
+    if accessors.len() >= 2
+        || accessors
+            .first()
+            .is_some_and(|accessor| crate::helpers::is_composite_list_accessor(accessor))
+    {
         if let Ok((name, escaped)) = CompileState::symbol_name_info(target, "setf list target") {
             accessors.reverse();
             state.compile_expression(function, target)?;

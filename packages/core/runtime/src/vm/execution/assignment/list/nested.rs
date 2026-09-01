@@ -6,6 +6,8 @@ pub(crate) fn read(
     accessors: &[String],
     span: Span,
 ) -> Result<Value, RuntimeError> {
+    let expanded = expand_accessors(accessors);
+    let accessors = expanded.as_slice();
     if elements.is_empty() {
         return Err(invalid("cannot read CAR/CDR of NIL", span));
     }
@@ -47,6 +49,8 @@ pub(crate) fn update(
     value: &Value,
     span: Span,
 ) -> Result<Vec<Value>, RuntimeError> {
+    let expanded = expand_accessors(accessors);
+    let accessors = expanded.as_slice();
     if elements.is_empty() {
         return Err(invalid("cannot SETF CAR/CDR of NIL", span));
     }
@@ -98,4 +102,28 @@ pub(crate) fn update(
         }
     }
     Ok(elements)
+}
+
+fn expand_accessors(accessors: &[String]) -> Vec<String> {
+    accessors
+        .iter()
+        .flat_map(|accessor| {
+            if accessor.len() >= 4
+                && accessor.starts_with('C')
+                && accessor.ends_with('R')
+                && accessor[1..accessor.len() - 1]
+                    .chars()
+                    .all(|part| matches!(part, 'A' | 'D'))
+            {
+                accessor[1..accessor.len() - 1]
+                    .chars()
+                    .rev()
+                    .map(|part| if part == 'A' { "CAR" } else { "CDR" })
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            } else {
+                vec![accessor.clone()]
+            }
+        })
+        .collect()
 }

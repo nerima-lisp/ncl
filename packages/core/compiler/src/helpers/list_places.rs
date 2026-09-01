@@ -9,7 +9,7 @@ pub(crate) fn list_accessor_target(form: &Form) -> Option<(String, &Form)> {
     }
     let (operator, _) = CompileState::symbol_name_info(&items[0], "list accessor").ok()?;
     if items.len() == 2
-        && matches!(
+        && (matches!(
             operator.as_str(),
             "CAR"
                 | "FIRST"
@@ -24,7 +24,7 @@ pub(crate) fn list_accessor_target(form: &Form) -> Option<(String, &Form)> {
                 | "EIGHTH"
                 | "NINTH"
                 | "TENTH"
-        )
+        ) || is_composite_list_accessor(&operator))
     {
         return Some((operator, &items[1]));
     }
@@ -54,6 +54,16 @@ pub(crate) fn list_accessor_target(form: &Form) -> Option<(String, &Form)> {
         return Some((accessor.to_owned(), &items[2]));
     }
     None
+}
+
+pub(crate) fn is_composite_list_accessor(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    bytes.len() >= 4
+        && bytes[0] == b'C'
+        && bytes[bytes.len() - 1] == b'R'
+        && bytes[1..bytes.len() - 1]
+            .iter()
+            .all(|byte| *byte == b'A' || *byte == b'D')
 }
 
 pub(crate) fn generalized_list_place(form: &Form) -> Option<(Vec<String>, String, bool)> {

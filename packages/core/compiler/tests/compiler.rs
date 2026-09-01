@@ -1147,6 +1147,16 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::NumericFold { operation: emitted, argument_count: 3 } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for operation in ["LOGAND", "LOGIOR", "LOGXOR"] {
+        let program = compile(&format!("({operation} 12 10 3)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericFold { operation: emitted, argument_count: 3 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    let program = compile("(lognot 12)");
+    assert!(program.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::NumericUnary { operation: emitted } if emitted == "LOGNOT")
+    }));
     for operation in ["MOD", "REM"] {
         let program = compile(&format!("({operation} 12 5)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

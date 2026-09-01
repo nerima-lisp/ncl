@@ -34,6 +34,16 @@ fn evaluates_numeric_folds(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_basic_bitwise_operations(#[case] eval_fn: EvalFn) {
+    assert_eq!(
+        evaluate_with(eval_fn, "(list (logand 12 10 3) (logior 12 10 3) (logxor 12 10 3) (lognot 12))").to_string(),
+        "(0 15 5 -13)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_numeric_remainders(#[case] eval_fn: EvalFn) {
     assert_eq!(
         evaluate_with(eval_fn, "(list (mod -7 3) (rem -7 3))").to_string(),

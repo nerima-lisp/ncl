@@ -512,6 +512,7 @@ pub fn execute_numeric_unary_instruction(
         "MINUSP" => crate::builtins::minusp(&[value]),
         "EVENP" => crate::builtins::evenp(&[value]),
         "ODDP" => crate::builtins::oddp(&[value]),
+        "LOGNOT" => crate::builtins::lognot(&[value]),
         _ => Err(invalid("unknown unary numeric operation", span)),
     }?;
     stack.push(result);
@@ -557,6 +558,9 @@ pub fn execute_numeric_fold_instruction(
         "MAX" => crate::builtins::maximum(&arguments),
         "GCD" => crate::builtins::greatest_common_divisor(&arguments),
         "LCM" => crate::builtins::least_common_multiple(&arguments),
+        "LOGAND" => crate::builtins::logand(&arguments),
+        "LOGIOR" => crate::builtins::logior(&arguments),
+        "LOGXOR" => crate::builtins::logxor(&arguments),
         _ => Err(invalid("unknown numeric fold operation", span)),
     }?;
     stack.push(result);

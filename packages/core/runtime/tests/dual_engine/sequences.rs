@@ -70,6 +70,19 @@ fn evaluates_forms_and_maps_functions_over_lists(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_sequence_quantifiers_consistently(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(evaluate("(every (lambda (x y) (and (numberp x) (numberp y))) '(1 2) #(3 4 5))").to_string(), "T");
+    assert_eq!(evaluate("(some #'identity '(nil 2 3))").to_string(), "2");
+    assert_eq!(evaluate("(notany #'evenp '(1 3 5))").to_string(), "T");
+    assert_eq!(evaluate("(notevery #'evenp '(2 4 5))").to_string(), "T");
+    assert_eq!(evaluate("(every 'numberp '(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(some (lambda (x y) (and x y)) '(1 2) '(nil))").to_string(), "NIL");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_map_over_sequence_types(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

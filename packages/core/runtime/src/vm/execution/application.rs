@@ -891,6 +891,7 @@ pub fn execute_numeric_float_instruction(
         "INTEGER-DECODE-FLOAT" => crate::builtins::integer_decode_float(&arguments),
         "LOG" => crate::builtins::logarithm(&arguments),
         "ATAN" => crate::builtins::arc_tangent(&arguments),
+        "COMPLEX" => crate::builtins::complex(&arguments),
         _ => Err(invalid("unknown numeric float operation", span)),
     }?;
     stack.push(result);

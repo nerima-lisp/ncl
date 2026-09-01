@@ -557,14 +557,14 @@ impl CompileState {
             "FLOAT" | "FLOAT-SIGN" => 1..=2,
             "FLOAT-DIGITS" | "FLOAT-PRECISION" | "FLOAT-RADIX" | "DECODE-FLOAT"
             | "INTEGER-DECODE-FLOAT" => 1..=1,
-            "LOG" | "ATAN" => 1..=2,
+            "LOG" | "ATAN" | "COMPLEX" => 1..=2,
             "SCALE-FLOAT" => 2..=2,
             _ => unreachable!("numeric float operation was not dispatched"),
         };
         if !argument_count.contains(&(items.len() - 1)) {
             let expected = match operation {
                 "FLOAT" | "FLOAT-SIGN" => "one or two",
-                "LOG" | "ATAN" => "one or two",
+                "LOG" | "ATAN" | "COMPLEX" => "one or two",
                 "SCALE-FLOAT" => "two",
                 _ => "one",
             };

@@ -84,6 +84,11 @@ fn compiled_evaluates_logarithm() {
 }
 
 #[test]
+fn compiled_evaluates_complex_constructor() {
+    assert_eq!(evaluate("(complex 1 2)").to_string(), "#C(1 2)");
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

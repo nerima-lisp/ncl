@@ -14,7 +14,7 @@ impl Runtime {
         let (result_kind, mut result) = match destination {
             Value::Nil => ("NIL", Vec::new()),
             Value::List(items) => ("LIST", items.as_ref().clone()),
-            Value::Vector(items) => ("VECTOR", items.as_ref().clone()),
+            Value::Vector(items) => ("VECTOR", items.borrow().clone()),
             Value::String(value) => (
                 "STRING",
                 value.chars().map(Value::Character).collect::<Vec<_>>(),
@@ -33,7 +33,8 @@ impl Runtime {
             .iter()
             .map(|value| match value {
                 Value::Nil => Ok(Vec::new()),
-                Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
+                Value::List(items) => Ok(items.as_ref().clone()),
+                Value::Vector(items) => Ok(items.borrow().clone()),
                 Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
                 value => Err(RuntimeError::Type {
                     expected: "SEQUENCE".to_string(),

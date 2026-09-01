@@ -25,9 +25,8 @@ impl Value {
             (Self::UninternedSymbol(left), Self::UninternedSymbol(right)) => {
                 Rc::ptr_eq(left, right)
             }
-            (Self::List(left), Self::List(right)) | (Self::Vector(left), Self::Vector(right)) => {
-                Rc::ptr_eq(left, right)
-            }
+            (Self::List(left), Self::List(right)) => Rc::ptr_eq(left, right),
+            (Self::Vector(left), Self::Vector(right)) => Rc::ptr_eq(left, right),
             (
                 Self::Array {
                     dimensions: left_dimensions,

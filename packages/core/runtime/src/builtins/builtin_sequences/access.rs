@@ -5,7 +5,8 @@ pub fn length(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "length", 1)?;
     let length = match &arguments[0] {
         Value::Nil => 0,
-        Value::List(items) | Value::Vector(items) => items.len(),
+        Value::List(items) => items.len(),
+        Value::Vector(items) => items.borrow().len(),
         Value::String(value) => value.chars().count(),
         _ => {
             return Err(type_error("length", "sequence", &arguments[0]));
@@ -73,7 +74,12 @@ pub fn elt(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let index = index_argument("elt", &arguments[1])?;
     match &arguments[0] {
         Value::Nil => Err(out_of_bounds("elt", index)),
-        Value::List(items) | Value::Vector(items) => items
+        Value::List(items) => items
+            .get(index)
+            .cloned()
+            .ok_or_else(|| out_of_bounds("elt", index)),
+        Value::Vector(items) => items
+            .borrow()
             .get(index)
             .cloned()
             .ok_or_else(|| out_of_bounds("elt", index)),

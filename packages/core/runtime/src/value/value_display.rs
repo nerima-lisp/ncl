@@ -56,7 +56,7 @@ impl fmt::Display for Value {
             }
             Self::Vector(values) => {
                 formatter.write_str("#(")?;
-                write_sequence(formatter, values)?;
+                write_sequence(formatter, &values.borrow())?;
                 formatter.write_str(")")
             }
             Self::Array { dimensions, .. } => write!(formatter, "#<ARRAY {dimensions:?}>"),

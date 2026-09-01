@@ -104,13 +104,13 @@ pub enum Value {
         tail: Rc<Self>,
     },
     /// A one-dimensional vector.
-    Vector(Rc<Vec<Self>>),
+    Vector(Rc<RefCell<Vec<Self>>>),
     /// A multidimensional array.
     Array {
         /// Dimensions in row-major order.
         dimensions: Rc<Vec<usize>>,
         /// Elements stored in row-major order.
-        elements: Rc<Vec<Self>>,
+        elements: Rc<RefCell<Vec<Self>>>,
     },
     /// A mutable association table.
     HashTable {

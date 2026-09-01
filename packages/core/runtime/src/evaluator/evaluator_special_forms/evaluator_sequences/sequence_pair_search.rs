@@ -22,7 +22,8 @@ impl Runtime {
 
         let items1 = match sequence1 {
             Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+            Value::List(items) => items.as_ref().clone(),
+                Value::Vector(items) => items.borrow().clone(),
             Value::String(value) => value.chars().map(Value::Character).collect(),
             value => {
                 return Err(RuntimeError::Type {
@@ -34,7 +35,8 @@ impl Runtime {
         };
         let items2 = match sequence2 {
             Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+            Value::List(items) => items.as_ref().clone(),
+                Value::Vector(items) => items.borrow().clone(),
             Value::String(value) => value.chars().map(Value::Character).collect(),
             value => {
                 return Err(RuntimeError::Type {

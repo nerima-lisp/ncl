@@ -17,7 +17,8 @@ impl Runtime {
             Value::Function(self.resolve_function_designator(predicate, span, environment)?);
         let items = match sequence {
             Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+            Value::List(items) => items.as_ref().clone(),
+                Value::Vector(items) => items.borrow().clone(),
             Value::String(value) => value.chars().map(Value::Character).collect(),
             value => {
                 return Err(RuntimeError::Type {
@@ -102,7 +103,8 @@ impl Runtime {
 
         let items = match sequence {
             Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+            Value::List(items) => items.as_ref().clone(),
+                Value::Vector(items) => items.borrow().clone(),
             Value::String(value) => value.chars().map(Value::Character).collect(),
             value => {
                 return Err(RuntimeError::Type {

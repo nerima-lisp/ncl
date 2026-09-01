@@ -13,7 +13,7 @@ impl Runtime {
         }
         let current = self.eval_in(&args[0], environment)?;
         let dimensions = match &current {
-            Value::Vector(items) => vec![items.len()],
+            Value::Vector(items) => vec![items.borrow().len()],
             Value::Array { dimensions, .. } => dimensions.as_ref().clone(),
             other => {
                 return Err(RuntimeError::Type {

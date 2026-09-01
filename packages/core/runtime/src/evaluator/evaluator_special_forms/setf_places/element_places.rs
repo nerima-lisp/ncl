@@ -16,7 +16,7 @@ impl Runtime {
                 }
                 let current = self.eval_in(&args[0], environment)?;
                 let index = Self::setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
-                match current {
+                match &current {
                     Value::Nil | Value::List(_) => {
                         let mut elements = current.list_items().unwrap_or_default();
                         let Some(slot) = elements.get_mut(index) else {
@@ -26,12 +26,10 @@ impl Runtime {
                         self.set_place(&args[0], Value::list(elements), environment)
                     }
                     Value::Vector(_) => {
-                        let mut elements = current.vector_items().unwrap_or_default();
-                        let Some(slot) = elements.get_mut(index) else {
+                        let Some(()) = current.set_vector_item(index, value) else {
                             return Err(Self::invalid("SETF index is out of bounds", args[1].span));
                         };
-                        *slot = value;
-                        self.set_place(&args[0], Value::vector(elements), environment)
+                        self.set_place(&args[0], current, environment)
                     }
                     Value::String(text) => {
                         let Value::Character(character) = value else {

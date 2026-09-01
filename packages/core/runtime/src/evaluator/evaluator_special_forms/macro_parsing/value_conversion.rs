@@ -77,6 +77,7 @@ impl Runtime {
             Value::Vector(values) => Ok(Form::new(
                 FormKind::Vector(
                     values
+                        .borrow()
                         .iter()
                         .map(|value| Self::form_from_value(value, span))
                         .collect::<Result<Vec<_>, _>>()?,

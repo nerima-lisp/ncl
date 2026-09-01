@@ -11,7 +11,7 @@ impl Runtime {
         let (kind, mut items) = match sequence {
             Value::Nil => (SequenceKind::List, Vec::new()),
             Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
+            Value::Vector(items) => (SequenceKind::Vector, items.borrow().clone()),
             Value::String(value) => (
                 SequenceKind::String,
                 value.chars().map(Value::Character).collect(),
@@ -44,7 +44,7 @@ impl Runtime {
         let (kind, items) = match sequence {
             Value::Nil => (SequenceKind::List, Vec::new()),
             Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
+            Value::Vector(items) => (SequenceKind::Vector, items.borrow().clone()),
             Value::String(value) => (
                 SequenceKind::String,
                 value.chars().map(Value::Character).collect(),

@@ -22,14 +22,10 @@ impl Runtime {
                     return Err(Self::arity("setf aref", "two", args.len()));
                 }
                 let index = Self::setf_index(indices[0].clone(), args[1].span)?;
-                let mut elements = current
-                    .vector_items()
-                    .ok_or_else(|| Self::invalid("SETF target is not a vector", place_span))?;
-                let Some(slot) = elements.get_mut(index) else {
+                let Some(()) = current.set_vector_item(index, value.clone()) else {
                     return Err(Self::invalid("SETF index is out of bounds", args[1].span));
                 };
-                *slot = value;
-                self.set_place(&args[0], Value::vector(elements), environment)
+                self.set_place(&args[0], current, environment)
             }
             Value::Array { dimensions, .. } => {
                 if args.len() != dimensions.len() + 1 {
@@ -60,16 +56,12 @@ impl Runtime {
                         .checked_add(contribution)
                         .ok_or_else(|| Self::invalid("SETF index is too large", place_span))?;
                 }
-                let mut elements = current
-                    .array_items()
-                    .ok_or_else(|| Self::invalid("SETF target is not an array", place_span))?;
-                let Some(slot) = elements.get_mut(offset) else {
+                let Some(()) = current.set_array_item(offset, value) else {
                     return Err(Self::invalid("SETF index is out of bounds", place_span));
                 };
-                *slot = value;
                 self.set_place(
                     &args[0],
-                    Value::array(dimensions.as_ref().clone(), elements),
+                    current,
                     environment,
                 )
             }

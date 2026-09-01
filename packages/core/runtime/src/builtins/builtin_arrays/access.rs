@@ -30,6 +30,7 @@ pub fn svref(arguments: &[Value]) -> Result<Value, RuntimeError> {
         return Err(type_error("svref", "simple-vector", &arguments[0]));
     };
     items
+        .borrow()
         .get(index)
         .cloned()
         .ok_or_else(|| out_of_bounds("svref", index))

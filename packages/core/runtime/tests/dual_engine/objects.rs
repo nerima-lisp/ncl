@@ -35,6 +35,15 @@ fn evaluates_arrays_and_multidimensional_setf(#[case] eval_fn: EvalFn) {
     );
     assert_eq!(
         evaluate(
+            "(let* ((array (make-array 2 :initial-element 0)) (alias array))
+               (setf (aref array 0) 7)
+               (aref alias 0))",
+        )
+        .to_string(),
+        "7"
+    );
+    assert_eq!(
+        evaluate(
             "(let ((array (make-array '(2 3)
                                           :initial-contents '((0 1 2) (3 4 5)))))
                    (list (array-row-major-index array 1 2)

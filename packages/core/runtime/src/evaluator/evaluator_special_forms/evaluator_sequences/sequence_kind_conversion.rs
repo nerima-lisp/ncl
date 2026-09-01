@@ -9,7 +9,7 @@ pub(super) fn sequence_substitute_input(
     match sequence {
         Value::Nil => Ok((SequenceKind::List, Vec::new())),
         Value::List(items) => Ok((SequenceKind::List, items.as_ref().clone())),
-        Value::Vector(items) => Ok((SequenceKind::Vector, items.as_ref().clone())),
+        Value::Vector(items) => Ok((SequenceKind::Vector, items.borrow().clone())),
         Value::String(value) => Ok((
             SequenceKind::String,
             value.chars().map(Value::Character).collect(),

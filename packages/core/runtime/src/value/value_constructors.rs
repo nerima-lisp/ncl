@@ -108,7 +108,7 @@ impl Value {
     /// Creates a vector value.
     #[must_use]
     pub fn vector(values: Vec<Self>) -> Self {
-        Self::Vector(Rc::new(values))
+        Self::Vector(Rc::new(RefCell::new(values)))
     }
 
     /// Creates an array value with explicit dimensions and row-major elements.
@@ -116,7 +116,7 @@ impl Value {
     pub fn array(dimensions: Vec<usize>, elements: Vec<Self>) -> Self {
         Self::Array {
             dimensions: Rc::new(dimensions),
-            elements: Rc::new(elements),
+            elements: Rc::new(RefCell::new(elements)),
         }
     }
 

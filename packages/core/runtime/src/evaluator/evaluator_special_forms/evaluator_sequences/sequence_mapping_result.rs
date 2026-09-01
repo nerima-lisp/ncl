@@ -28,7 +28,8 @@ impl Runtime {
             .iter()
             .map(|value| match value {
                 Value::Nil => Ok(Vec::new()),
-                Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
+                Value::List(items) => Ok(items.as_ref().clone()),
+                Value::Vector(items) => Ok(items.borrow().clone()),
                 Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
                 value => Err(RuntimeError::Type {
                     expected: "SEQUENCE".to_string(),

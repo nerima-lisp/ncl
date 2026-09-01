@@ -71,23 +71,19 @@ fn execute_aref(
         .iter()
         .map(|index| crate::builtins::index_argument("setf array accessor", index))
         .collect::<Result<Vec<_>, _>>()?;
-    let updated = match current {
-        Value::Vector(_) => {
+    let updated = match &current {
+        Value::Vector(items) => {
             if rank != 1 {
                 return Err(invalid("setf aref requires one vector index", span));
             }
-            let mut elements = current.vector_items().ok_or_else(|| RuntimeError::Type {
-                expected: "VECTOR".to_string(),
-                actual: current.type_name().to_string(),
-                span: Some(span),
-            })?;
+            let mut elements = items.borrow_mut();
             let slot = elements
                 .get_mut(indices[0])
                 .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
             *slot = value.clone();
-            Value::vector(elements)
+            current.clone()
         }
-        Value::Array { ref dimensions, .. } => {
+        Value::Array { dimensions, elements } => {
             if operator == "SVREF" {
                 return Err(RuntimeError::Type {
                     expected: "SIMPLE-VECTOR".to_string(),
@@ -95,11 +91,6 @@ fn execute_aref(
                     span: Some(span),
                 });
             }
-            let mut elements = current.array_items().ok_or_else(|| RuntimeError::Type {
-                expected: "ARRAY".to_string(),
-                actual: current.type_name().to_string(),
-                span: Some(span),
-            })?;
             let offset = if operator == "ROW-MAJOR-AREF" {
                 if rank != 1 {
                     return Err(invalid("setf row-major-aref requires one index", span));
@@ -115,9 +106,10 @@ fn execute_aref(
                 )?
             };
             *elements
+                .borrow_mut()
                 .get_mut(offset)
                 .ok_or_else(|| invalid("SETF index is out of bounds", span))? = value.clone();
-            Value::array(dimensions.as_ref().clone(), elements)
+            current.clone()
         }
         other => {
             return Err(RuntimeError::Type {
@@ -163,7 +155,7 @@ fn execute_bit(
         .ok_or_else(|| invalid("setf bit has no target on the stack", span))?
         .primary_value();
     let dimensions = match &current {
-        Value::Vector(items) => vec![items.len()],
+        Value::Vector(items) => vec![items.borrow().len()],
         Value::Array { dimensions, .. } => dimensions.as_ref().clone(),
         other => {
             return Err(RuntimeError::Type {
@@ -191,20 +183,20 @@ fn execute_bit(
             span: Some(span),
         });
     }
-    let updated = match current {
-        Value::Vector(_) => {
-            let mut elements = current.vector_items().unwrap();
+    let updated = match &current {
+        Value::Vector(items) => {
+            let mut elements = items.borrow_mut();
             *elements
                 .get_mut(offset)
                 .ok_or_else(|| invalid("SETF index is out of bounds", span))? = value.clone();
-            Value::vector(elements)
+            current.clone()
         }
-        Value::Array { ref dimensions, .. } => {
-            let mut elements = current.array_items().unwrap();
+        Value::Array { elements, .. } => {
             *elements
+                .borrow_mut()
                 .get_mut(offset)
                 .ok_or_else(|| invalid("SETF index is out of bounds", span))? = value.clone();
-            Value::array(dimensions.as_ref().clone(), elements)
+            current.clone()
         }
         _ => unreachable!(),
     };

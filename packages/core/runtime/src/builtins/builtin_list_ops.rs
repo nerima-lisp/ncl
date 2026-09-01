@@ -20,7 +20,7 @@ fn reverse_list(function: &str, value: &Value) -> Result<Value, RuntimeError> {
             Ok(Value::list(items))
         }
         Value::Vector(items) => {
-            let mut items = items.as_ref().clone();
+            let mut items = items.borrow().clone();
             items.reverse();
             Ok(Value::vector(items))
         }

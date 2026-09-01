@@ -65,7 +65,8 @@ pub fn replace_bounds(
 pub fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Value>, RuntimeError> {
     match value {
         Value::Nil => Ok(Vec::new()),
-        Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
+        Value::List(items) => Ok(items.as_ref().clone()),
+        Value::Vector(items) => Ok(items.borrow().clone()),
         Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
         _ => Err(type_error(function, "sequence", value)),
     }
@@ -100,7 +101,8 @@ pub fn rebuild_sequence(
 pub fn sequence_length(value: &Value) -> Option<usize> {
     match value {
         Value::Nil => Some(0),
-        Value::List(items) | Value::Vector(items) => Some(items.len()),
+        Value::List(items) => Some(items.len()),
+        Value::Vector(items) => Some(items.borrow().len()),
         Value::String(value) => Some(value.chars().count()),
         _ => None,
     }

@@ -14,7 +14,8 @@ impl Runtime {
         let current = self.eval_in(&args[0], environment)?;
         let mut destination = match &current {
             Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+            Value::List(items) => items.as_ref().clone(),
+                Value::Vector(items) => items.borrow().clone(),
             Value::String(text) => text.chars().map(Value::Character).collect(),
             other => {
                 return Err(RuntimeError::Type {
@@ -39,7 +40,8 @@ impl Runtime {
 
         let replacement = match value {
             Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+            Value::List(items) => items.as_ref().clone(),
+                Value::Vector(items) => items.borrow().clone(),
             Value::String(text) => text.chars().map(Value::Character).collect(),
             other => {
                 return Err(RuntimeError::Type {

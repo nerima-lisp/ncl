@@ -140,7 +140,7 @@ pub(super) fn printed_value(value: &Value, escape: bool) -> String {
             text.push(')');
             text
         }
-        Value::Vector(values) => delimited_values(values, "#(", ")", escape),
+        Value::Vector(values) => delimited_values(&values.borrow(), "#(", ")", escape),
         _ => value.to_string(),
     }
 }

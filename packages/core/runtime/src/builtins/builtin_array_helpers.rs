@@ -129,7 +129,7 @@ pub(super) fn array_total_size_for(
 
 pub(super) fn dimensions_for_array(value: &Value) -> Option<Vec<usize>> {
     match value {
-        Value::Vector(items) => Some(vec![items.len()]),
+        Value::Vector(items) => Some(vec![items.borrow().len()]),
         Value::Array { dimensions, .. } => Some(dimensions.as_ref().clone()),
         _ => None,
     }

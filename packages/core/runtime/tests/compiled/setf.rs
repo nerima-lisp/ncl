@@ -13,6 +13,10 @@ fn compiled_evaluates_setf_places() {
         "#(1 8)"
     );
     assert_eq!(
+        evaluate("(let* ((array (make-array 2 :initial-element 0)) (alias array)) (setf (aref array 0) 7) (aref alias 0))").to_string(),
+        "7"
+    );
+    assert_eq!(
         evaluate("(let ((text \"abc\")) (setf (char text 1) #\\X) text)").to_string(),
         "\"aXc\""
     );

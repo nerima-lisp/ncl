@@ -32,7 +32,7 @@ pub(super) fn append_aesthetic(output: &mut String, value: &Value) {
         }
         Value::Vector(values) => {
             output.push_str("#(");
-            for (index, value) in values.iter().enumerate() {
+            for (index, value) in values.borrow().iter().enumerate() {
                 if index != 0 {
                     output.push(' ');
                 }

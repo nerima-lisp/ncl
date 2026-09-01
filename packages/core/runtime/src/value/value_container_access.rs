@@ -17,7 +17,7 @@ impl Value {
     #[must_use]
     pub fn vector_items(&self) -> Option<Vec<Self>> {
         match self {
-            Self::Vector(items) => Some(items.as_ref().clone()),
+            Self::Vector(items) => Some(items.borrow().clone()),
             _ => None,
         }
     }
@@ -35,9 +35,31 @@ impl Value {
     #[must_use]
     pub fn array_items(&self) -> Option<Vec<Self>> {
         match self {
-            Self::Array { elements, .. } => Some(elements.as_ref().clone()),
+            Self::Array { elements, .. } => Some(elements.borrow().clone()),
             _ => None,
         }
+    }
+
+    pub(crate) fn set_vector_item(&self, index: usize, value: Self) -> Option<()> {
+        match self {
+            Self::Vector(items) => items.borrow_mut().get_mut(index).map(|slot| *slot = value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn set_array_item(&self, index: usize, value: Self) -> Option<()> {
+        match self {
+            Self::Array { elements, .. } => {
+                elements.borrow_mut().get_mut(index).map(|slot| *slot = value)
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns copied list or vector elements when this value is a sequence.
+    #[must_use]
+    pub fn sequence_items(&self) -> Option<Vec<Self>> {
+        self.list_items().or_else(|| self.vector_items())
     }
 
     pub(crate) fn hash_table_test(&self) -> Option<&str> {

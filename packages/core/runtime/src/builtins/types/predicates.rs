@@ -79,7 +79,7 @@ pub fn simple_bit_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 fn is_bit_vector(value: &Value) -> bool {
-    matches!(value, Value::Vector(items) if items.iter().all(|item| matches!(item, Value::Integer(bit) if *bit == 0 || *bit == 1)))
+    matches!(value, Value::Vector(items) if items.borrow().iter().all(|item| matches!(item, Value::Integer(bit) if *bit == 0 || *bit == 1)))
 }
 
 pub fn typep(arguments: &[Value]) -> Result<Value, RuntimeError> {

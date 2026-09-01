@@ -29,12 +29,12 @@ pub fn equalp_value(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::String(left), Value::String(right)) => left.eq_ignore_ascii_case(right),
         (Value::Character(left), Value::Character(right)) => left.eq_ignore_ascii_case(right),
-        (Value::List(left), Value::List(right)) | (Value::Vector(left), Value::Vector(right)) => {
-            left.len() == right.len()
-                && left
-                    .iter()
-                    .zip(right.iter())
-                    .all(|(l, r)| equalp_value(l, r))
+        (Value::List(left), Value::List(right)) => left.len() == right.len()
+            && left.iter().zip(right.iter()).all(|(l, r)| equalp_value(l, r)),
+        (Value::Vector(left), Value::Vector(right)) => {
+            let left = left.borrow();
+            let right = right.borrow();
+            left.len() == right.len() && left.iter().zip(right.iter()).all(|(l, r)| equalp_value(l, r))
         }
         (
             Value::Array {
@@ -47,8 +47,8 @@ pub fn equalp_value(left: &Value, right: &Value) -> bool {
             },
         ) => {
             ld == rd
-                && le.len() == re.len()
-                && le.iter().zip(re.iter()).all(|(l, r)| equalp_value(l, r))
+                && le.borrow().len() == re.borrow().len()
+                && le.borrow().iter().zip(re.borrow().iter()).all(|(l, r)| equalp_value(l, r))
         }
         (
             Value::DottedList {

@@ -7,7 +7,7 @@ impl Runtime {
         args: &[Form],
         value: Value,
         environment: &Environment,
-        place_span: Span,
+        _place_span: Span,
     ) -> Result<(), RuntimeError> {
         match operator {
             "SVREF" => {
@@ -23,14 +23,10 @@ impl Runtime {
                         span: Some(args[0].span),
                     });
                 };
-                let mut elements = current
-                    .vector_items()
-                    .ok_or_else(|| Self::invalid("SETF target is not a vector", place_span))?;
-                let Some(slot) = elements.get_mut(index) else {
+                let Some(()) = current.set_vector_item(index, value.clone()) else {
                     return Err(Self::invalid("SETF index is out of bounds", args[1].span));
                 };
-                *slot = value;
-                self.set_place(&args[0], Value::vector(elements), environment)
+                self.set_place(&args[0], current, environment)
             }
             "ROW-MAJOR-AREF" => {
                 if args.len() != 2 {
@@ -40,27 +36,16 @@ impl Runtime {
                 let index = Self::setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
                 match &current {
                     Value::Vector(_) => {
-                        let mut elements = current.vector_items().ok_or_else(|| {
-                            Self::invalid("SETF target is not a vector", args[0].span)
-                        })?;
-                        let Some(slot) = elements.get_mut(index) else {
+                        let Some(()) = current.set_vector_item(index, value.clone()) else {
                             return Err(Self::invalid("SETF index is out of bounds", args[1].span));
                         };
-                        *slot = value;
-                        self.set_place(&args[0], Value::vector(elements), environment)
+                        self.set_place(&args[0], current, environment)
                     }
                     Value::Array { .. } => {
-                        let mut elements = current.array_items().ok_or_else(|| {
-                            Self::invalid("SETF target is not an array", args[0].span)
-                        })?;
-                        let Some(slot) = elements.get_mut(index) else {
+                        let Some(()) = current.set_array_item(index, value.clone()) else {
                             return Err(Self::invalid("SETF index is out of bounds", args[1].span));
                         };
-                        *slot = value;
-                        let dimensions = current.array_dimensions().ok_or_else(|| {
-                            Self::invalid("SETF target is not an array", args[0].span)
-                        })?;
-                        self.set_place(&args[0], Value::array(dimensions, elements), environment)
+                        self.set_place(&args[0], current, environment)
                     }
                     other => Err(RuntimeError::Type {
                         expected: "ARRAY or VECTOR".to_string(),

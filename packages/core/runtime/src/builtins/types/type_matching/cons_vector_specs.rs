@@ -109,7 +109,7 @@ pub(in crate::builtins::types::type_matching) fn bit_vector_type_matches(
 }
 
 pub(in crate::builtins::types::type_matching) fn is_bit_vector_value(value: &Value) -> bool {
-    matches!(value, Value::Vector(items) if items.iter().all(is_bit_value))
+    matches!(value, Value::Vector(items) if items.borrow().iter().all(is_bit_value))
 }
 
 pub(in crate::builtins::types::type_matching) const fn is_bit_value(value: &Value) -> bool {

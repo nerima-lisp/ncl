@@ -201,6 +201,7 @@ impl CompileState {
             "MIN" | "MAX" | "GCD" | "LCM" => {
                 self.compile_numeric_fold(function, span, items, name)
             }
+            "MOD" | "REM" => self.compile_numeric_binary(function, span, items, name),
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

@@ -448,6 +448,10 @@ pub enum Instruction {
         /// Number of arguments supplied to the operation.
         argument_count: usize,
     },
+    #[doc = "Apply a binary numeric operation."] NumericBinary {
+        /// Numeric operation name.
+        operation: String,
+    },
     #[doc = "Apply a list tail operation with an optional count."] ListTail {
         /// List operation name.
         operation: String,

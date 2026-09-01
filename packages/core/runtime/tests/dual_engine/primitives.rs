@@ -34,6 +34,16 @@ fn evaluates_numeric_folds(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_numeric_remainders(#[case] eval_fn: EvalFn) {
+    assert_eq!(
+        evaluate_with(eval_fn, "(list (mod -7 3) (rem -7 3))").to_string(),
+        "(2 -1)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_common_lisp_complement(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

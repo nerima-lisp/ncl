@@ -563,6 +563,22 @@ pub fn execute_numeric_fold_instruction(
     Ok(())
 }
 
+pub fn execute_numeric_binary_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let right = stack.pop().ok_or_else(|| invalid("numeric binary operation has too few stack values", span))?;
+    let left = stack.pop().ok_or_else(|| invalid("numeric binary operation has too few stack values", span))?;
+    let result = match operation {
+        "MOD" => crate::builtins::modulo(&[left, right]),
+        "REM" => crate::builtins::remainder(&[left, right]),
+        _ => Err(invalid("unknown numeric binary operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_character_comparison_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

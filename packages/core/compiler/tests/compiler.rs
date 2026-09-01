@@ -1183,6 +1183,8 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::TypePredicate { operation: emitted } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    let typep = compile("(typep 1 'integer)");
+    assert!(typep.functions[0].instructions.iter().any(|instruction| matches!(instruction, Instruction::Typep)));
     for operation in ["ALPHA-CHAR-P", "ALPHANUMERICP", "GRAPHIC-CHAR-P", "STANDARD-CHAR-P", "UPPER-CASE-P", "LOWER-CASE-P", "BOTH-CASE-P"] {
         let program = compile(&format!("({operation} nil)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

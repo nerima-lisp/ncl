@@ -455,6 +455,7 @@ pub enum Instruction {
         /// Type predicate name.
         operation: String,
     },
+    #[doc = "Apply the dynamic TYPEP predicate."] Typep,
     #[doc = "Apply a unary character predicate operation."] CharacterPredicate {
         /// Character predicate name.
         operation: String,

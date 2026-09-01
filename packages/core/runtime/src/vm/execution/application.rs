@@ -98,7 +98,7 @@ mod application_atoms;
 pub use application_atoms::{
     execute_character_comparison_instruction, execute_character_predicate_instruction,
     execute_character_unary_instruction, execute_equality_instruction,
-    execute_symbol_unary_instruction, execute_type_predicate_instruction,
+    execute_symbol_unary_instruction, execute_type_predicate_instruction, execute_typep_instruction,
     execute_value_unary_instruction,
 };
 

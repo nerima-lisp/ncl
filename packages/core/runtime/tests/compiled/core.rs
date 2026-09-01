@@ -835,6 +835,14 @@ fn compiled_evaluates_value_unary_operations() {
 }
 
 #[test]
+fn compiled_evaluates_dynamic_typep() {
+    let values = Runtime::new()
+        .eval_compiled_source("(list (typep 1 'integer) (typep 1 'string) (typep '(1 2) 'list))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(T NIL T)");
+}
+
+#[test]
 fn compiled_evaluates_cons_with_list_and_dotted_tail() {
     let values = Runtime::new()
         .eval_compiled_source("(list (cons 1 '(2 3)) (cons 1 2))")

@@ -146,6 +146,19 @@ pub fn execute_type_predicate_instruction(
     Ok(())
 }
 
+pub fn execute_typep_instruction(
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < 2 {
+        return Err(invalid("typep has too few stack values", span));
+    }
+    let type_designator = stack.pop().expect("checked stack length");
+    let value = stack.pop().expect("checked stack length");
+    stack.push(crate::builtins::typep(&[value, type_designator])?);
+    Ok(())
+}
+
 pub fn execute_character_predicate_instruction(
     operation: &str,
     stack: &mut Vec<Value>,
@@ -189,4 +202,3 @@ pub fn execute_equality_instruction(
     stack.push(Value::boolean(result));
     Ok(())
 }
-

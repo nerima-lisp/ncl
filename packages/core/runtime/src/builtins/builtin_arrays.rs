@@ -6,4 +6,4 @@ mod metadata;
 pub use metadata::*;
 
 pub use access::{aref, array_in_bounds_p, array_row_major_index, bit, row_major_aref, svref};
-pub use construction::{make_array, vector};
+pub use construction::{adjust_array, make_array, vector};

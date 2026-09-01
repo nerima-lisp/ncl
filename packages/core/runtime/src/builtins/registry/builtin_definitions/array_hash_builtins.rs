@@ -4,6 +4,7 @@ use super::*;
 pub(super) const ARRAY_HASH_BUILTINS: &[BuiltinDefinition] = &[
     ("vector", vector as _),
     ("make-array", make_array as _),
+    ("adjust-array", adjust_array as _),
     ("make-sequence", make_sequence as _),
     ("aref", aref as _),
     ("svref", svref as _),

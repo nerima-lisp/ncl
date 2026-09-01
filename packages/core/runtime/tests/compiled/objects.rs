@@ -495,6 +495,21 @@ fn compiled_evaluates_native_array_accessors() {
 }
 
 #[test]
+fn compiled_evaluates_adjust_array() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r"(let* ((array (make-array 2 :initial-contents '(4 5)))
+                      (adjusted (adjust-array array 4)))
+                 (list (array-dimensions adjusted)
+                       (aref adjusted 0) (aref adjusted 1)
+                       (aref adjusted 2) (aref adjusted 3)))",
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "((4) 4 5 NIL NIL)");
+}
+
+#[test]
 fn compiled_evaluates_native_array_metadata() {
     assert_eq!(
         evaluate(

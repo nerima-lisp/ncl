@@ -43,6 +43,13 @@ pub use application_object::{
     execute_symbol_value_instruction,
 };
 
+#[path = "application_strings.rs"]
+mod application_strings;
+pub use application_strings::{
+    execute_string_case_instruction, execute_string_comparison_instruction,
+    execute_string_construction_instruction, execute_string_trim_instruction,
+};
+
 #[path = "application_object_system.rs"]
 mod application_object_system;
 pub use application_object_system::{
@@ -95,8 +102,8 @@ pub use application_numeric::{
     execute_numeric_binary_instruction, execute_numeric_bitfield_instruction,
     execute_numeric_boole_instruction, execute_numeric_comparison_instruction,
     execute_numeric_float_instruction, execute_numeric_fold_instruction,
-    execute_numeric_random_instruction,
-    execute_numeric_rounding_instruction, execute_numeric_unary_instruction,
+    execute_numeric_random_instruction, execute_numeric_rounding_instruction,
+    execute_numeric_unary_instruction,
 };
 
 #[path = "application_atoms.rs"]
@@ -104,8 +111,8 @@ mod application_atoms;
 pub use application_atoms::{
     execute_character_comparison_instruction, execute_character_predicate_instruction,
     execute_character_unary_instruction, execute_equality_instruction,
-    execute_symbol_unary_instruction, execute_type_predicate_instruction, execute_typep_instruction,
-    execute_value_unary_instruction,
+    execute_symbol_unary_instruction, execute_type_predicate_instruction,
+    execute_typep_instruction, execute_value_unary_instruction,
 };
 
 pub fn execute_apply_instruction(
@@ -263,100 +270,6 @@ pub fn execute_list_set_instruction(
         environment,
         span,
     )?);
-    Ok(())
-}
-
-pub fn execute_string_case_instruction(
-    stack: &mut Vec<Value>,
-    operation: &str,
-    argument_count: usize,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count {
-        return Err(invalid("string case has too few stack values", span));
-    }
-    let arguments = stack.split_off(stack.len() - argument_count);
-    let value = match operation {
-        "STRING-UPCASE" => crate::builtins::string_upcase(&arguments)?,
-        "STRING-DOWNCASE" => crate::builtins::string_downcase(&arguments)?,
-        "STRING-CAPITALIZE" => crate::builtins::string_capitalize(&arguments)?,
-        "NSTRING-UPCASE" => crate::builtins::nstring_upcase(&arguments)?,
-        "NSTRING-DOWNCASE" => crate::builtins::nstring_downcase(&arguments)?,
-        "NSTRING-CAPITALIZE" => crate::builtins::nstring_capitalize(&arguments)?,
-        _ => return Err(invalid("unknown string case operation", span)),
-    };
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_string_comparison_instruction(
-    stack: &mut Vec<Value>,
-    operation: &str,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < 2 {
-        return Err(invalid("string comparison has too few stack values", span));
-    }
-    let arguments = stack
-        .split_off(stack.len() - 2)
-        .into_iter()
-        .map(|value| value.primary_value())
-        .collect::<Vec<_>>();
-    let value = match operation {
-        "STRING=" => crate::builtins::string_equal(&arguments)?,
-        "STRING-EQUAL" => crate::builtins::string_case_equal(&arguments)?,
-        "STRING<" => crate::builtins::string_less_than(&arguments)?,
-        "STRING>" => crate::builtins::string_greater_than(&arguments)?,
-        "STRING<=" => crate::builtins::string_less_equal(&arguments)?,
-        "STRING>=" => crate::builtins::string_greater_equal(&arguments)?,
-        _ => return Err(invalid("unknown string comparison operation", span)),
-    };
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_string_trim_instruction(
-    stack: &mut Vec<Value>,
-    operation: &str,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < 2 {
-        return Err(invalid("string trim has too few stack values", span));
-    }
-    let arguments = stack
-        .split_off(stack.len() - 2)
-        .into_iter()
-        .map(|value| value.primary_value())
-        .collect::<Vec<_>>();
-    let value = match operation {
-        "STRING-TRIM" => crate::builtins::string_trim(&arguments)?,
-        "STRING-LEFT-TRIM" => crate::builtins::string_left_trim(&arguments)?,
-        "STRING-RIGHT-TRIM" => crate::builtins::string_right_trim(&arguments)?,
-        _ => return Err(invalid("unknown string trim operation", span)),
-    };
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_string_construction_instruction(
-    stack: &mut Vec<Value>,
-    operation: &str,
-    argument_count: usize,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count {
-        return Err(invalid(
-            "string construction has too few stack values",
-            span,
-        ));
-    }
-    let arguments = stack.split_off(stack.len() - argument_count);
-    let value = match operation {
-        "STRING" => crate::builtins::string_value(&arguments),
-        "MAKE-STRING" => crate::builtins::make_string(&arguments),
-        _ => return Err(invalid("unknown string construction operation", span)),
-    }?;
-    stack.push(value);
     Ok(())
 }
 

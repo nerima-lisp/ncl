@@ -4,21 +4,8 @@ use super::super::*;
 #[path = "list_mutation.rs"]
 pub(super) mod mutation;
 pub(super) mod nested;
-
-pub(super) fn fixed_accessor_index(accessor: &str) -> Option<usize> {
-    match accessor {
-        "SECOND" => Some(1),
-        "THIRD" => Some(2),
-        "FOURTH" => Some(3),
-        "FIFTH" => Some(4),
-        "SIXTH" => Some(5),
-        "SEVENTH" => Some(6),
-        "EIGHTH" => Some(7),
-        "NINTH" => Some(8),
-        "TENTH" => Some(9),
-        _ => None,
-    }
-}
+mod accessor;
+pub(super) use accessor::fixed_index as fixed_accessor_index;
 
 pub(super) fn execute(
     runtime: &Runtime,

@@ -42,6 +42,18 @@ fn compiled_propagates_unmatched_control_transfers_from_scopes() {
 }
 
 #[test]
+fn compiled_inspects_established_restarts() {
+    let result = Runtime::new()
+        .eval_compiled_source(
+            "(with-simple-restart (abort \"abort\")
+               (list (not (null (compute-restarts)))
+                     (restart-name (find-restart 'abort))))",
+        )
+        .expect("restart inspection failed");
+    assert_eq!(result.last().expect("no result").to_string(), "(T ABORT)");
+}
+
+#[test]
 fn compiled_rejects_malformed_condition_primitives_from_table_cases() {
     for source in [
         "(error)",

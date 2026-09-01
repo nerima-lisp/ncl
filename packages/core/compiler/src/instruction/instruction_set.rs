@@ -86,6 +86,12 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Push a value onto a dynamically indexed list element through NTH when absent by EQL."] ListMutationNthPushNew {
+        /// The symbol holding the outer list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Update a dynamically indexed vector or array-valued symbol through an array accessor."] SetfArefDynamic {
         /// The number of subscripts.
         rank: usize,

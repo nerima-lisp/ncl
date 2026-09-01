@@ -147,6 +147,28 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::ListMutationNthPushNew { name, escaped } => {
+            let current = stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no target", span))?.primary_value();
+            let index = stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no index", span))?.primary_value();
+            let value = stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no value", span))?.primary_value();
+            let index = crate::builtins::index_argument("nth PUSHNEW", &index)?;
+            let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: current.type_name().to_string(), span: Some(span) })?;
+            let slot = elements.get(index).ok_or_else(|| crate::builtins::out_of_bounds("nth PUSHNEW", index))?.clone();
+            let mut slot = slot.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: slot.type_name().to_string(), span: Some(span) })?;
+            let changed = !slot.iter().any(|candidate| crate::builtins::type_predicates::eql_value(&value, candidate));
+            if changed {
+                slot.insert(0, value);
+            }
+            let result = Value::list(slot);
+            if changed {
+                elements[index] = result.clone();
+                let updated = Value::list(elements);
+                if *escaped { runtime.set_or_define_exact_in(name, updated, environment, span)?; } else { runtime.set_or_define_in(name, updated, environment, span)?; }
+            }
+            stack.push(result);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PopList { name, escaped } => {
             let current = stack
                 .pop()

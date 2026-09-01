@@ -89,6 +89,7 @@ fn compile_push_and_pop_with_dynamic_nth_places_use_native_instructions() {
     let function = state.reserve_function(None, Vec::new());
     let push = parse_items("(push 1 (nth index xs))");
     let pop = parse_items("(pop (nth 0 |Mixed|))");
+    let pushnew = parse_items("(pushnew 1 (nth index xs))");
 
     state
         .compile_runtime_definition(function, Span::new(0, 1), &push)
@@ -96,6 +97,9 @@ fn compile_push_and_pop_with_dynamic_nth_places_use_native_instructions() {
     state
         .compile_runtime_definition(function, Span::new(0, 1), &pop)
         .expect("dynamic NTH POP should use a native mutation instruction");
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
+        .expect("dynamic NTH PUSHNEW should use a native mutation instruction");
 
     let instructions = &state.functions[function].instructions;
     assert!(instructions.iter().any(|instruction| matches!(
@@ -107,6 +111,11 @@ fn compile_push_and_pop_with_dynamic_nth_places_use_native_instructions() {
         instruction,
         Instruction::ListMutationNthDynamic { operator, name, escaped }
             if operator == "POP" && name == "Mixed" && *escaped
+    )));
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::ListMutationNthPushNew { name, escaped }
+            if name == "XS" && !escaped
     )));
 }
 

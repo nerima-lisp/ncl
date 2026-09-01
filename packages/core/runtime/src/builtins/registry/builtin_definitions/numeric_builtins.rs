@@ -43,6 +43,7 @@ pub(super) const NUMERIC_BUILTINS: &[BuiltinDefinition] = &[
     ("rem", remainder as _),
     ("ash", arithmetic_shift as _),
     ("logand", logand as _),
+    ("boole", boole as _),
     ("logior", logior as _),
     ("logxor", logxor as _),
     ("lognot", lognot as _),

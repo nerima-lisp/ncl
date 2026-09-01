@@ -1,4 +1,4 @@
-use super::{RuntimeError, Value, exact, number_from_big, number_to_value};
+use super::{exact, number_from_big, number_to_value, RuntimeError, Value};
 use crate::builtins::numbers::big_integer_argument;
 use ibig::ops::UnsignedAbs;
 
@@ -18,6 +18,39 @@ pub fn logxor(arguments: &[Value]) -> Result<Value, RuntimeError> {
     big_bitwise(arguments, "logxor", ibig::IBig::from(0), |left, right| {
         left ^ right
     })
+}
+
+pub fn boole(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "boole", 3)?;
+    let operation = super::integer_argument("boole", &arguments[0])?;
+    let left = big_integer_argument("boole", &arguments[1])?;
+    let right = big_integer_argument("boole", &arguments[2])?;
+    let result = match operation {
+        0 => ibig::IBig::from(0),
+        1 => ibig::IBig::from(-1),
+        2 => left,
+        3 => right,
+        4 => !left,
+        5 => !right,
+        6 => left & right,
+        7 => left | right,
+        8 => left ^ right,
+        9 => !(left ^ right),
+        10 => !(left & right),
+        11 => !(left | right),
+        12 => !left & right,
+        13 => left & !right,
+        14 => !left | right,
+        15 => left | !right,
+        _ => {
+            return Err(super::type_error(
+                "boole",
+                "an operation between 0 and 15",
+                &arguments[0],
+            ))
+        }
+    };
+    number_to_value(number_from_big(result))
 }
 
 fn big_bitwise(
@@ -115,5 +148,28 @@ mod tests {
         assert!(lognot(&[]).is_err());
         assert!(logtest(&[Value::Integer(1)]).is_err());
         assert!(logand(&[Value::Nil]).is_err());
+    }
+
+    #[test]
+    fn boole_supports_all_operation_codes() {
+        let left = Value::Integer(0b1010);
+        let right = Value::Integer(0b0110);
+        let expected = [0, -1, 10, 6, -11, -7, 2, 14, 12, -13, -3, -15, 4, 8, -9, -5];
+        for (operation, expected) in expected.into_iter().enumerate() {
+            let actual = boole(&[
+                Value::Integer(operation as i64),
+                left.clone(),
+                right.clone(),
+            ])
+            .unwrap_or_else(|error| panic!("BOOLE {operation} failed: {error}"));
+            assert_eq!(actual.as_integer(), Some(expected), "BOOLE {operation}");
+        }
+    }
+
+    #[test]
+    fn boole_rejects_invalid_operation_and_arguments() {
+        assert!(boole(&[Value::Integer(16), Value::Integer(1), Value::Integer(1)]).is_err());
+        assert!(boole(&[Value::Integer(1), Value::Nil, Value::Integer(1)]).is_err());
+        assert!(boole(&[Value::Integer(1), Value::Integer(1)]).is_err());
     }
 }

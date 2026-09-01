@@ -160,3 +160,10 @@ pub fn arithmetic_error_operands(arguments: &[Value]) -> Result<Value, RuntimeEr
         .condition_slot("ARITHMETIC-ERROR", "OPERANDS")
         .ok_or_else(|| type_error("arithmetic-error-operands", "ARITHMETIC-ERROR", &arguments[0]))
 }
+
+pub fn file_error_pathname(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "file-error-pathname", 1)?;
+    arguments[0]
+        .condition_slot("FILE-ERROR", "PATHNAME")
+        .ok_or_else(|| type_error("file-error-pathname", "FILE-ERROR", &arguments[0]))
+}

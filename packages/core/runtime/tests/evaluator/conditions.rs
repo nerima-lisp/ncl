@@ -99,6 +99,14 @@ fn arithmetic_error_accessors_read_standard_condition_slots() {
 }
 
 #[test]
+fn file_error_pathname_reads_standard_condition_slot() {
+    let result = Runtime::new()
+        .eval_source("(file-error-pathname (make-condition 'file-error :pathname \"missing.lisp\"))")
+        .unwrap_or_else(|error| panic!("file-error-pathname failed: {error}"));
+    assert_eq!(result.last().unwrap().to_string(), "\"missing.lisp\"");
+}
+
+#[test]
 fn rejects_malformed_character_operations_at_their_boundaries() {
     for source in support::MALFORMED_CHARACTER_FORMS {
         Runtime::eval_source(&Runtime::new(), source).must_fail();

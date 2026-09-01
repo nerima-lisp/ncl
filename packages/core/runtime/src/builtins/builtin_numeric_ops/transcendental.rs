@@ -21,6 +21,34 @@ pub fn exponential(arguments: &[Value]) -> Result<Value, RuntimeError> {
     unary_real("exp", arguments, f64::exp)
 }
 
+pub fn logarithm(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    unary_real("log", arguments, f64::ln)
+}
+
+pub fn arc_sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    unary_real("asin", arguments, f64::asin)
+}
+
+pub fn arc_cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    unary_real("acos", arguments, f64::acos)
+}
+
+pub fn arc_tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    unary_real("atan", arguments, f64::atan)
+}
+
+pub fn hyperbolic_sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    unary_real("sinh", arguments, f64::sinh)
+}
+
+pub fn hyperbolic_cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    unary_real("cosh", arguments, f64::cosh)
+}
+
+pub fn hyperbolic_tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    unary_real("tanh", arguments, f64::tanh)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -32,5 +60,6 @@ mod tests {
             exponential(&[Value::Integer(1)]).unwrap().to_string(),
             std::f64::consts::E.to_string()
         );
+        assert_eq!(logarithm(&[Value::Integer(1)]).unwrap().to_string(), "0.0");
     }
 }

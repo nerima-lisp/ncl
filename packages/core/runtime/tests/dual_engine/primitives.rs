@@ -167,8 +167,8 @@ fn evaluates_common_lisp_phase(#[case] eval_fn: EvalFn) {
 fn evaluates_common_lisp_real_transcendental_functions(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
-        evaluate("(list (sin 0) (cos 0) (tan 0) (exp 1))").to_string(),
-        "(0.0 1.0 0.0 2.718281828459045)",
+        evaluate("(list (sin 0) (cos 0) (tan 0) (exp 1) (log 1) (sqrt 4) (asin 0) (acos 0) (atan 0) (sinh 0) (cosh 0) (tanh 0))").to_string(),
+        "(0.0 1.0 0.0 2.718281828459045 0.0 2 0.0 1.5707963267948966 0.0 0.0 1.0 0.0)",
     );
 }
 

@@ -45,6 +45,13 @@ impl CompileState {
                 | "NSUBSTITUTE"
                 | "NSUBSTITUTE-IF"
                 | "NSUBSTITUTE-IF-NOT"
+                | "CAR"
+                | "CDR"
+                | "FIRST"
+                | "REST"
+                | "COPY-LIST"
+                | "COPY-ALIST"
+                | "ENDP"
         ) && self.has_local_function(name)
         {
             return None;
@@ -108,7 +115,7 @@ impl CompileState {
             "COPY-TREE" | "REVERSE" | "NREVERSE" => {
                 self.compile_sequence_unary(function, span, items, name)
             }
-            "CAR" | "CDR" | "FIRST" | "REST" | "COPY-LIST" | "COPY-ALIST" => {
+            "CAR" | "CDR" | "FIRST" | "REST" | "COPY-LIST" | "COPY-ALIST" | "ENDP" => {
                 self.compile_list_unary(function, span, items, name)
             }
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),

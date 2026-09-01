@@ -462,6 +462,7 @@ pub fn execute_list_unary_instruction(
         "REST" => crate::builtins::rest(&[value]),
         "COPY-LIST" => crate::builtins::copy_list(&[value]),
         "COPY-ALIST" => crate::builtins::copy_alist(&[value]),
+        "ENDP" => crate::builtins::endp(&[value]),
         _ => Err(invalid("unknown unary list operation", span)),
     }?;
     stack.push(result);

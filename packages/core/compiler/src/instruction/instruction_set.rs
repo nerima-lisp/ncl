@@ -498,6 +498,10 @@ pub enum Instruction {
         /// Character access operation name.
         operation: String,
     },
+    #[doc = "Test whether a character is a digit in an optional radix."] CharacterDigitPredicate {
+        /// Number of values consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Return an element from an array or vector."] ArrayElement {
         /// Array access operation name.
         operation: String,

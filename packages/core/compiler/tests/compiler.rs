@@ -2052,3 +2052,12 @@ fn lowers_native_character_name_operations() {
         2
     );
 }
+
+#[test]
+fn lowers_native_digit_character_predicate() {
+    let program = compile("(digit-char-p #\\5)");
+    assert!(program.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::CharacterDigitPredicate { argument_count } if *argument_count == 1)));
+}

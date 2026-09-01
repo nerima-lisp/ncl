@@ -122,6 +122,7 @@ impl CompileState {
                 | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
                 | "CHAR-NOT-GREATERP"
                 | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR"
+                | "DIGIT-CHAR-P"
         ) && self.has_local_function(name)
         {
             return None;
@@ -202,9 +203,13 @@ impl CompileState {
             | "SIMPLE-VECTOR-P" | "BIT-VECTOR-P" | "SIMPLE-BIT-VECTOR-P" | "ARRAYP"
             | "SIMPLE-ARRAY-P" | "HASH-TABLE-P" | "RANDOM-STATE-P" | "ALPHA-CHAR-P"
             | "ALPHANUMERICP" | "GRAPHIC-CHAR-P" | "STANDARD-CHAR-P" | "UPPER-CASE-P"
-            | "LOWER-CASE-P" | "BOTH-CASE-P" | "STREAMP" | "INPUT-STREAM-P"
+            | "LOWER-CASE-P" | "BOTH-CASE-P" | "DIGIT-CHAR-P" | "STREAMP" | "INPUT-STREAM-P"
             | "OUTPUT-STREAM-P" => {
-                self.compile_type_predicate(function, span, items, name)
+                if name == "DIGIT-CHAR-P" {
+                    self.compile_character_digit_predicate(function, span, items)
+                } else {
+                    self.compile_type_predicate(function, span, items, name)
+                }
             }
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),
             "LENGTH" => self.compile_sequence_length(function, span, items),

@@ -613,6 +613,11 @@ fn compiled_evaluates_native_character_name_operations() {
 }
 
 #[test]
+fn compiled_evaluates_native_digit_character_predicate() {
+    assert_eq!(evaluate("(list (digit-char-p #\\5) (digit-char-p #\\G))").to_string(), "(5 NIL)");
+}
+
+#[test]
 fn compiled_rejects_invalid_defstruct_invocations() {
     let cases = [
         (

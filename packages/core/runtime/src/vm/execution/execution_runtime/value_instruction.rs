@@ -7,6 +7,7 @@ use crate::vm::execution::application::{
     execute_list_membership_instruction,
     execute_list_binary_instruction, execute_list_tail_instruction, execute_list_unary_instruction,
     execute_character_unary_instruction, execute_type_predicate_instruction,
+    execute_character_digit_predicate_instruction,
     execute_list_mapping_instruction,
     execute_list_set_instruction,
     execute_multiple_value_call_instruction, execute_sequence_mapping_instruction,
@@ -289,6 +290,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::CharacterElement { operation } => {
             execute_character_element_instruction(stack, operation, span)?;
+        }
+        Instruction::CharacterDigitPredicate { argument_count } => {
+            execute_character_digit_predicate_instruction(stack, *argument_count, span)?;
         }
         Instruction::ArrayElement {
             operation,

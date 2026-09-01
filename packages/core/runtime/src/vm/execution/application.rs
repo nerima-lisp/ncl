@@ -561,6 +561,7 @@ pub fn execute_type_predicate_instruction(
         "UPPER-CASE-P" => crate::builtins::upper_case_p(&[value]),
         "LOWER-CASE-P" => crate::builtins::lower_case_p(&[value]),
         "BOTH-CASE-P" => crate::builtins::both_case_p(&[value]),
+        "DIGIT-CHAR-P" => crate::builtins::digit_character_p(&[value]),
         "STREAMP" => crate::builtins::streamp(&[value]),
         "INPUT-STREAM-P" => crate::builtins::input_stream_p(&[value]),
         "OUTPUT-STREAM-P" => crate::builtins::output_stream_p(&[value]),
@@ -856,6 +857,19 @@ pub fn execute_character_element_instruction(
         _ => return Err(invalid("unknown character-element operation", span)),
     };
     stack.push(value);
+    Ok(())
+}
+
+pub fn execute_character_digit_predicate_instruction(
+    stack: &mut Vec<Value>,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("character digit predicate has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    stack.push(crate::builtins::digit_character_p(&arguments)?);
     Ok(())
 }
 

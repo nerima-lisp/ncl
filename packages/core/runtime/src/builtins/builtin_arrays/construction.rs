@@ -65,6 +65,12 @@ pub fn vector_push_extend(arguments: &[Value]) -> Result<Value, RuntimeError> {
         if vector.vector_adjustable() != Some(true) {
             return Err(crate::builtins::type_error("vector-push-extend", "adjustable vector", vector));
         }
+        if vector.is_displaced() {
+            return Err(RuntimeError::InvalidForm {
+                message: "vector-push-extend cannot extend a displaced vector".to_string(),
+                span: None,
+            });
+        }
         let extension = arguments.get(2).map(|value| index_argument("vector-push-extend", value)).transpose()?.unwrap_or(1).max(1);
         if let Value::Vector(items) = vector {
             length = length.checked_add(extension).ok_or_else(|| crate::RuntimeError::InvalidForm { message: "vector-push-extend length overflow".to_string(), span: None })?;
@@ -154,9 +160,9 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if displaced_to.is_some() && displaced_storage.is_none() {
         return Err(crate::builtins::type_error("make-array", "array or vector", displaced_to.as_ref().unwrap()));
     }
-    if let Some((_, _, target_len)) = displaced_storage.as_ref() {
-        let end = displaced_index_offset.checked_add(total_size).ok_or_else(|| crate::RuntimeError::InvalidForm { message: "make-array displacement overflow".to_string(), span: None })?;
-        if *target_len < end { return Err(crate::RuntimeError::InvalidForm { message: "make-array displacement exceeds target".to_string(), span: None }); }
+    if let Some((storage, target_offset, _)) = displaced_storage.as_ref() {
+        let end = target_offset.checked_add(displaced_index_offset).and_then(|offset| offset.checked_add(total_size)).ok_or_else(|| crate::RuntimeError::InvalidForm { message: "make-array displacement overflow".to_string(), span: None })?;
+        if storage.borrow().len() < end { return Err(crate::RuntimeError::InvalidForm { message: "make-array displacement exceeds target".to_string(), span: None }); }
     }
     let elements = if let Some(contents) = initial_contents {
         let mut elements = Vec::with_capacity(total_size);
@@ -238,7 +244,7 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 });
             }
         }
-        if arguments[0].vector_adjustable() == Some(true) {
+        if arguments[0].vector_adjustable() == Some(true) && !arguments[0].is_displaced() {
             let fill_pointer = fill_pointer.or_else(|| arguments[0].vector_fill_pointer().flatten());
             if let Value::Vector(items) = &arguments[0] {
                 *items.borrow_mut() = elements;

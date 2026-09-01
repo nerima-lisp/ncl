@@ -47,7 +47,15 @@ impl Value {
     pub(crate) fn vector_sequence_items(&self) -> Option<Vec<Self>> {
         let Self::Vector(items) = self else { return None };
         let end = self.vector_length().unwrap_or_else(|| items.borrow().len());
-        Some(items.borrow()[..end].to_vec())
+        self.vector_items().map(|values| values[..end].to_vec())
+    }
+
+    pub(crate) fn is_displaced(&self) -> bool {
+        match self {
+            Self::Vector(items) => items.metadata.borrow().displaced_to.is_some(),
+            Self::Array { metadata, .. } => metadata.borrow().displaced_to.is_some(),
+            _ => false,
+        }
     }
 
     pub(crate) fn vector_fill_pointer(&self) -> Option<Option<usize>> {

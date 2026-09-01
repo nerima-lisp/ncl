@@ -179,18 +179,12 @@ fn execute_bit(
         });
     }
     let updated = match &current {
-        Value::Vector(items) => {
-            let mut elements = items.borrow_mut();
-            *elements
-                .get_mut(offset)
-                .ok_or_else(|| invalid("SETF index is out of bounds", span))? = value.clone();
+        Value::Vector(_) => {
+            current.set_vector_item(offset, value.clone()).ok_or_else(|| invalid("SETF index is out of bounds", span))?;
             current.clone()
         }
-        Value::Array { elements, .. } => {
-            *elements
-                .borrow_mut()
-                .get_mut(offset)
-                .ok_or_else(|| invalid("SETF index is out of bounds", span))? = value.clone();
+        Value::Array { .. } => {
+            current.set_array_item(offset, value.clone()).ok_or_else(|| invalid("SETF index is out of bounds", span))?;
             current.clone()
         }
         _ => unreachable!(),

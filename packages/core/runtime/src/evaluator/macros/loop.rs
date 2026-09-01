@@ -9,6 +9,28 @@ impl Runtime {
         let FormKind::List(items) = &form.kind else {
             return Ok(form.clone());
         };
+        if let Some(initially_offset) = items.iter().position(|item| {
+            atom_name(item).is_some_and(|name| names_equal(name, "INITIALLY"))
+        }) {
+            let Some(initially_form) = items.get(initially_offset + 1) else {
+                return Err(Self::invalid(
+                    "LOOP INITIALLY clause requires a form",
+                    form.span,
+                ));
+            };
+            let mut core_items = items[..initially_offset].to_vec();
+            core_items.extend(items[initially_offset + 2..].iter().cloned());
+            let core_form = Form::list(core_items, form.span);
+            let expanded = Self::expand_builtin_loop(&core_form)?;
+            return Ok(Form::list(
+                vec![
+                    Form::atom("PROGN", form.span),
+                    initially_form.clone(),
+                    expanded,
+                ],
+                form.span,
+            ));
+        }
         if let Some(finally_offset) = items.iter().position(|item| {
             atom_name(item).is_some_and(|name| names_equal(name, "FINALLY"))
         }) {

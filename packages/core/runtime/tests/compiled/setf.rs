@@ -291,6 +291,14 @@ fn compiled_evaluates_pushnew_with_options_on_dynamic_nth_places() {
 }
 
 #[test]
+fn compiled_evaluates_dynamic_nth_pushnew_key_and_test_not() {
+    assert_eq!(
+        evaluate("(let ((xs (list (list (list 2 :a) (list 3 :b)))) (index 0)) (list (pushnew (list 2 :c) (nth index xs) :key #'car :test #'eql) (pushnew 4 (nth index xs) :test-not #'eql) xs))").to_string(),
+        "(((2 :A) (3 :B)) ((2 :A) (3 :B)) (((2 :A) (3 :B))))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_single_place_rotatef() {
     assert_eq!(
         evaluate("(let ((x 7)) (list (rotatef x) x))").to_string(),

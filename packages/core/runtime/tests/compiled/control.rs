@@ -806,4 +806,16 @@ fn compiled_evaluates_character_conversions() {
     assert_eq!(values.last().must_exist().to_string(), "(#\\A 65 65 #\\A #\\B)");
 }
 
+#[test]
+fn compiled_reads_characters_into_a_vector_sequence() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(let ((result (vector #\_ #\_ #\_)))
+                 (list (read-sequence result (make-string-input-stream "abc") :start 1)
+                       result))"#,
+        )
+        .must_exist();
+    assert_eq!(values.last().must_exist().to_string(), "(3 #(#\\_ #\\a #\\b))");
+}
+
 use super::*;

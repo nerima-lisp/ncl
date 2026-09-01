@@ -1129,6 +1129,7 @@ pub fn execute_stream_operation_instruction(
         "READ-CHAR-NO-HANG" => crate::builtins::read_char_no_hang(&arguments),
         "LISTEN" => crate::builtins::listen(&arguments),
         "CLEAR-INPUT" => crate::builtins::clear_input(&arguments),
+        "READ-SEQUENCE" => crate::builtins::read_sequence(&arguments),
         "READ-LINE" => crate::builtins::read_line(&arguments),
         "PEEK-CHAR" => crate::builtins::peek_char(&arguments),
         "UNREAD-CHAR" => crate::builtins::unread_char(&arguments),

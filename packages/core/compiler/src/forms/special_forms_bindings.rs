@@ -325,7 +325,7 @@ impl CompileState {
             "FILL-POINTER" | "VECTOR-PUSH" | "VECTOR-PUSH-EXTEND" | "VECTOR-POP" => {
                 self.compile_vector_operation(function, span, items, name)
             }
-            "TERPRI" | "FRESH-LINE" | "WRITE-CHAR" | "WRITE-STRING" | "WRITE-LINE" | "WRITE-SEQUENCE" | "LISTEN" | "READ-CHAR-NO-HANG" | "CLEAR-INPUT"
+            "TERPRI" | "FRESH-LINE" | "WRITE-CHAR" | "WRITE-STRING" | "WRITE-LINE" | "WRITE-SEQUENCE" | "READ-SEQUENCE" | "LISTEN" | "READ-CHAR-NO-HANG" | "CLEAR-INPUT"
             | "PRINC" | "PRIN1" | "PRINT" | "WRITE"
             | "GET-OUTPUT-STREAM-STRING" | "READ-CHAR" | "READ-LINE" | "PEEK-CHAR"
             | "UNREAD-CHAR" | "CLOSE" | "MAKE-STRING-INPUT-STREAM"

@@ -1,6 +1,6 @@
 use super::{
-    arity, end_of_file_error, exact, input_stream_reference, peek_character, stream_reference,
-    stream_state_error, type_error,
+    arity, end_of_file_error, exact, input_stream_reference, peek_character,
+    sequence_bounds, stream_reference, stream_state_error, type_error,
 };
 use crate::{RuntimeError, Value};
 
@@ -116,6 +116,35 @@ pub(crate) fn clear_input(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
     while stream.read_char().is_some() {}
     Ok(Value::Nil)
+}
+
+pub(crate) fn read_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() < 2 {
+        return Err(arity("read-sequence", "at least 2", arguments.len()));
+    }
+    let destination = &arguments[0];
+    let length = destination
+        .sequence_items()
+        .map(|items| items.len())
+        .ok_or_else(|| type_error("read-sequence", "a vector sequence", destination))?;
+    if !matches!(destination, Value::Vector(_)) {
+        return Err(type_error("read-sequence", "a vector sequence", destination));
+    }
+    let stream = input_stream_reference("read-sequence", arguments.get(1))?;
+    let (start, end) = sequence_bounds("read-sequence", length, &arguments[2..])?;
+    let mut stream = stream.borrow_mut();
+    if !stream.is_input() {
+        return Err(stream_state_error("read-sequence", "an input stream"));
+    }
+    let mut index = start;
+    while index < end {
+        let Some(character) = stream.read_char() else { break };
+        destination
+            .set_vector_item(index, Value::Character(character))
+            .ok_or_else(|| type_error("read-sequence", "a vector sequence", destination))?;
+        index += 1;
+    }
+    Ok(Value::Integer(index as i64))
 }
 
 pub(crate) fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {

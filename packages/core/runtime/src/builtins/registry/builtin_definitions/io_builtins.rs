@@ -27,6 +27,7 @@ pub(super) const IO_BUILTINS: &[BuiltinDefinition] = &[
     ("read-char-no-hang", read_char_no_hang as _),
     ("listen", listen as _),
     ("clear-input", clear_input as _),
+    ("read-sequence", read_sequence as _),
     ("peek-char", peek_char as _),
     ("unread-char", unread_char as _),
     ("read-line", read_line as _),

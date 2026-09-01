@@ -636,6 +636,30 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_string_case(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if !(2..=6).contains(&items.len()) || !(items.len() - 2).is_multiple_of(2) {
+            return Err(Self::arity_error(items, operation, "1, 3, or 5", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::StringCase {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_element(
         &mut self,
         function: FunctionId,

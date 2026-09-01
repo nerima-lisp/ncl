@@ -714,6 +714,29 @@ pub fn execute_sequence_conversion_instruction(
     Ok(())
 }
 
+pub fn execute_string_case_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("string case has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    let value = match operation {
+        "STRING-UPCASE" => crate::builtins::string_upcase(&arguments)?,
+        "STRING-DOWNCASE" => crate::builtins::string_downcase(&arguments)?,
+        "STRING-CAPITALIZE" => crate::builtins::string_capitalize(&arguments)?,
+        "NSTRING-UPCASE" => crate::builtins::nstring_upcase(&arguments)?,
+        "NSTRING-DOWNCASE" => crate::builtins::nstring_downcase(&arguments)?,
+        "NSTRING-CAPITALIZE" => crate::builtins::nstring_capitalize(&arguments)?,
+        _ => return Err(invalid("unknown string case operation", span)),
+    };
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_character_element_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

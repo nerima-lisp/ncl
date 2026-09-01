@@ -468,6 +468,12 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Apply a string case transformation with optional bounds."] StringCase {
+        /// String case operation name.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Return a character from a string."] CharacterElement {
         /// Character access operation name.
         operation: String,

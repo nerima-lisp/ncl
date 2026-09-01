@@ -21,6 +21,7 @@ use crate::vm::execution::application::{
     execute_sequence_mutation_instruction,
     execute_sequence_concatenate_instruction,
     execute_sequence_conversion_instruction,
+    execute_string_case_instruction,
     execute_character_element_instruction,
     execute_array_element_instruction,
     execute_array_metadata_instruction,
@@ -266,6 +267,9 @@ pub(super) fn execute_value_instruction(
             argument_count,
         } => {
             execute_sequence_conversion_instruction(stack, operation, *argument_count, span)?;
+        }
+        Instruction::StringCase { operation, argument_count } => {
+            execute_string_case_instruction(stack, operation, *argument_count, span)?;
         }
         Instruction::CharacterElement { operation } => {
             execute_character_element_instruction(stack, operation, span)?;

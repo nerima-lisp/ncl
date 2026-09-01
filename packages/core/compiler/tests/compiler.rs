@@ -1249,6 +1249,15 @@ fn emits_eval_and_mapcar_instructions() {
             .count(),
         2,
     );
+    let string_cases = compile("(list (string-upcase \"ab c\") (nstring-downcase \"AB C\" :start 1))");
+    assert_eq!(
+        string_cases.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::StringCase { .. }))
+            .count(),
+        2,
+    );
     for operation in [
         "UNION", "NUNION", "INTERSECTION", "NINTERSECTION", "SET-DIFFERENCE",
         "NSET-DIFFERENCE", "SET-EXCLUSIVE-OR", "NSET-EXCLUSIVE-OR", "SUBSETP",

@@ -113,6 +113,8 @@ impl CompileState {
                 | "INPUT-STREAM-P"
                 | "OUTPUT-STREAM-P"
                 | "COPY-SEQ"
+                | "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
+                | "NSTRING-UPCASE" | "NSTRING-DOWNCASE" | "NSTRING-CAPITALIZE"
         ) && self.has_local_function(name)
         {
             return None;
@@ -204,6 +206,10 @@ impl CompileState {
             "CONCATENATE" => self.compile_sequence_concatenate(function, span, items),
             "MAKE-SEQUENCE" | "COERCE" => {
                 self.compile_sequence_conversion(function, span, items, name)
+            }
+            "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
+            | "NSTRING-UPCASE" | "NSTRING-DOWNCASE" | "NSTRING-CAPITALIZE" => {
+                self.compile_string_case(function, span, items, name)
             }
             "CHAR" | "SCHAR" => self.compile_character_element(function, span, items, name),
             "AREF" | "BIT" => self.compile_array_element(function, span, items, name, false),

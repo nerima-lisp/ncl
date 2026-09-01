@@ -538,6 +538,14 @@ fn compiled_evaluates_native_sequence_conversions() {
 }
 
 #[test]
+fn compiled_evaluates_native_string_case() {
+    assert_eq!(
+        evaluate("(list (string-upcase \"ab c\") (nstring-downcase \"AB C\" :start 1))").to_string(),
+        "(\"AB C\" \"Ab c\")",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

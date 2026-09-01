@@ -46,6 +46,14 @@ fn compiled_evaluates_numeric_rounding() {
 }
 
 #[test]
+fn compiled_evaluates_transcendental_and_complex_numeric_operations() {
+    assert_eq!(
+        evaluate("(list (sqrt 9) (sin 0) (cos 0) (exp 0) (realpart #C(2 3)) (imagpart #C(2 3)) (conjugate #C(2 3)))").to_string(),
+        "(3 0.0 1.0 1.0 2 3 #C(2 -3))",
+    );
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

@@ -275,7 +275,9 @@ impl CompileState {
                 self.compile_character_unary(function, span, items, name)
             }
             "1+" | "1-" | "ABS" | "SIGNUM" | "ZEROP" | "PLUSP" | "MINUSP" | "EVENP"
-            | "ODDP" | "LOGNOT" | "LOGCOUNT" | "INTEGER-LENGTH" => {
+            | "ODDP" | "LOGNOT" | "LOGCOUNT" | "INTEGER-LENGTH" | "SQRT" | "SIN" | "COS"
+            | "CIS" | "TAN" | "EXP" | "ASIN" | "ACOS" | "SINH" | "COSH" | "TANH"
+            | "REALPART" | "IMAGPART" | "CONJUGATE" | "PHASE" => {
                 self.compile_numeric_unary(function, span, items, name)
             }
             "FLOOR" | "CEILING" | "TRUNCATE" | "ROUND" => {

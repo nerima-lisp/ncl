@@ -816,6 +816,25 @@ pub fn execute_string_trim_instruction(
     Ok(())
 }
 
+pub fn execute_string_construction_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("string construction has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    let value = match operation {
+        "STRING" => crate::builtins::string_value(&arguments),
+        "MAKE-STRING" => crate::builtins::make_string(&arguments),
+        _ => return Err(invalid("unknown string construction operation", span)),
+    }?;
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_character_element_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

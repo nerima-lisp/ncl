@@ -24,6 +24,7 @@ use crate::vm::execution::application::{
     execute_string_case_instruction,
     execute_string_comparison_instruction,
     execute_string_trim_instruction,
+    execute_string_construction_instruction,
     execute_character_comparison_instruction,
     execute_character_element_instruction,
     execute_array_element_instruction,
@@ -279,6 +280,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::StringTrim { operation } => {
             execute_string_trim_instruction(stack, operation, span)?;
+        }
+        Instruction::StringConstruction { operation, argument_count } => {
+            execute_string_construction_instruction(stack, operation, *argument_count, span)?;
         }
         Instruction::CharacterComparison { operation, argument_count } => {
             execute_character_comparison_instruction(stack, operation, *argument_count, span)?;

@@ -117,6 +117,7 @@ impl CompileState {
                 | "NSTRING-UPCASE" | "NSTRING-DOWNCASE" | "NSTRING-CAPITALIZE"
                 | "STRING=" | "STRING-EQUAL" | "STRING<" | "STRING>" | "STRING<=" | "STRING>="
                 | "STRING-TRIM" | "STRING-LEFT-TRIM" | "STRING-RIGHT-TRIM"
+                | "STRING" | "MAKE-STRING"
                 | "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
                 | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
                 | "CHAR-NOT-GREATERP"
@@ -221,6 +222,9 @@ impl CompileState {
             }
             "STRING-TRIM" | "STRING-LEFT-TRIM" | "STRING-RIGHT-TRIM" => {
                 self.compile_string_trim(function, span, items, name)
+            }
+            "STRING" | "MAKE-STRING" => {
+                self.compile_string_construction(function, span, items, name)
             }
             "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
             | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"

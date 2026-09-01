@@ -482,6 +482,12 @@ pub enum Instruction {
         /// String trimming operation name.
         operation: String,
     },
+    #[doc = "Construct or designate a string."] StringConstruction {
+        /// String construction operation name.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Compare two or more characters."] CharacterComparison {
         /// Character comparison operation name.
         operation: String,

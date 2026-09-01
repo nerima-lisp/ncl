@@ -2013,3 +2013,16 @@ fn lowers_native_string_trimming() {
         3
     );
 }
+
+#[test]
+fn lowers_native_string_construction() {
+    let program = compile("(list (string 'foo) (make-string 2) (make-string 3 #\\x))");
+    assert_eq!(
+        program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::StringConstruction { .. }))
+            .count(),
+        3
+    );
+}

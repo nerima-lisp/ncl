@@ -589,6 +589,14 @@ fn compiled_evaluates_native_string_trimming() {
 }
 
 #[test]
+fn compiled_evaluates_native_string_construction() {
+    assert_eq!(
+        evaluate("(list (string 'foo) (make-string 2) (make-string 3 #\\x))").to_string(),
+        "(\"FOO\" \"  \" \"xxx\")",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_defstruct_invocations() {
     let cases = [
         (

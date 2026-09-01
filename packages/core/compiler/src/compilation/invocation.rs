@@ -698,6 +698,34 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_string_construction(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        let argument_count = match operation {
+            "STRING" => { Self::require_arity(items, operation, "one", 1, span)?; 1 }
+            "MAKE-STRING" => {
+                if !(2..=3).contains(&items.len()) {
+                    return Err(Self::arity_error(items, operation, "one or two", span));
+                }
+                items.len() - 1
+            }
+            _ => return Err(Self::arity_error(items, operation, "valid", span)),
+        };
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::StringConstruction { operation: operation.to_string(), argument_count },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_element(
         &mut self,
         function: FunctionId,

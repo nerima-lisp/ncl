@@ -3,7 +3,7 @@ use ncl_syntax::{Form, FormKind};
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
 use super::loop_aggregate::{append_step, count_step, sum_step};
-use super::loop_hash::bind_hash_value_and_key;
+use super::loop_hash::{bind_hash_value_and_key, hash_iterator_name};
 use super::loop_on::expand_loop_for_on;
 use super::loop_with::expand_loop_with;
 use super::loop_control::{clause_offset, named_loop_body_start};
@@ -182,11 +182,7 @@ impl Runtime {
                             form.span,
                         ));
                     };
-                    let iterator = if names_equal(kind, "HASH-KEYS") {
-                        "NCL-HASH-TABLE-KEYS"
-                    } else if names_equal(kind, "HASH-VALUES") {
-                        "NCL-HASH-TABLE-VALUES"
-                    } else {
+                    let Some(iterator) = hash_iterator_name(kind) else {
                         return Err(Self::invalid(
                             "LOOP FOR BEING requires HASH-KEYS or HASH-VALUES",
                             form.span,

@@ -1,5 +1,15 @@
 use ncl_syntax::Form;
 
+pub(super) fn hash_iterator_name(kind: &str) -> Option<&'static str> {
+    if kind.eq_ignore_ascii_case("HASH-KEYS") {
+        Some("NCL-HASH-TABLE-KEYS")
+    } else if kind.eq_ignore_ascii_case("HASH-VALUES") {
+        Some("NCL-HASH-TABLE-VALUES")
+    } else {
+        None
+    }
+}
+
 pub(super) fn bind_hash_value_and_key(
     form: &Form,
     value_binding: &Form,

@@ -47,6 +47,8 @@ pub(super) const IO_BUILTINS: &[BuiltinDefinition] = &[
     ("open-stream-p", open_stream_p as _),
     ("stream-element-type", stream_element_type as _),
     ("stream-external-format", stream_external_format as _),
+    ("file-position", file_position as _),
+    ("file-length", file_length as _),
     ("random", random as _),
     ("make-random-state", make_random_state as _),
     ("random-state-p", random_state_p as _),

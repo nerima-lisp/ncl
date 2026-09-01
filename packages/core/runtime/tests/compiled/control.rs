@@ -478,6 +478,24 @@ fn compiled_string_streams_support_nonblocking_input_operations() {
 }
 
 #[test]
+fn compiled_string_streams_support_file_position_and_length() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_compiled_source(
+            r#"(let ((stream (make-string-input-stream "abc")))
+               (list (file-length stream)
+                     (file-position stream)
+                     (read-char stream)
+                     (file-position stream)
+                     (file-position stream 0)
+                     (read-char stream)))"#,
+        )
+        .must_exist();
+
+    assert_eq!(values.last().must_exist().to_string(), "(3 0 #\\a 1 0 #\\a)");
+}
+
+#[test]
 fn compiled_string_streams_line_output_operations() {
     let runtime = Runtime::new();
     let values = runtime

@@ -1145,6 +1145,8 @@ pub fn execute_stream_operation_instruction(
         "READ-PRESERVING-WHITESPACE" => crate::builtins::read_preserving_whitespace(&arguments),
         "STREAM-ELEMENT-TYPE" => crate::builtins::stream_element_type(&arguments),
         "STREAM-EXTERNAL-FORMAT" => crate::builtins::stream_external_format(&arguments),
+        "FILE-POSITION" => crate::builtins::file_position(&arguments),
+        "FILE-LENGTH" => crate::builtins::file_length(&arguments),
         _ => Err(invalid("unknown stream operation", span)),
     }?;
     stack.push(result);

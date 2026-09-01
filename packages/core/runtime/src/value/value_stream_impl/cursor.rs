@@ -2,6 +2,40 @@ use crate::Stream;
 use crate::value::value_stream::StreamKind;
 
 impl Stream {
+    pub(crate) fn position(&self) -> Option<usize> {
+        if self.closed { return None; }
+        match &self.kind {
+            StreamKind::Input { position, pushback, .. } | StreamKind::Io { position, pushback, .. } => {
+                Some(position.saturating_sub(usize::from(pushback.is_some())))
+            }
+            StreamKind::Output { buffer, .. } => Some(buffer.chars().count()),
+        }
+    }
+
+    pub(crate) fn length(&self) -> Option<usize> {
+        if self.closed { return None; }
+        match &self.kind {
+            StreamKind::Input { characters, .. } => Some(characters.len()),
+            StreamKind::Io { characters, .. } => Some(characters.len()),
+            StreamKind::Output { buffer, .. } => Some(buffer.chars().count()),
+        }
+    }
+
+    pub(crate) fn set_position(&mut self, position: usize) -> bool {
+        if self.closed { return false; }
+        match &mut self.kind {
+            StreamKind::Input { characters, position: cursor, pushback, .. } => {
+                if position > characters.len() { return false; }
+                *cursor = position; pushback.take(); true
+            }
+            StreamKind::Io { characters, position: cursor, pushback, .. } => {
+                if position > characters.len() { return false; }
+                *cursor = position; pushback.take(); true
+            }
+            StreamKind::Output { .. } => false,
+        }
+    }
+
     pub(crate) fn read_char(&mut self) -> Option<char> {
         if self.closed {
             return None;

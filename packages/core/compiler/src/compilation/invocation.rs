@@ -655,6 +655,8 @@ impl CompileState {
             "UNREAD-CHAR" => (2..=3).contains(&items.len()),
             "CLOSE" => items.len() == 2 || items.len() == 4,
             "STREAM-ELEMENT-TYPE" | "STREAM-EXTERNAL-FORMAT" => items.len() == 2,
+            "FILE-LENGTH" => items.len() == 2,
+            "FILE-POSITION" => (2..=3).contains(&items.len()),
             "MAKE-STRING-INPUT-STREAM" => (2..=4).contains(&items.len()),
             "MAKE-STRING-OUTPUT-STREAM" => items.len() == 1,
             "WRITE-TO-STRING" => items.len() >= 2,

@@ -1,8 +1,8 @@
 use ncl_runtime::Runtime;
 use rstest::rstest;
 
-use super::EvalFn;
 use super::support::evaluate_with;
+use super::EvalFn;
 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
@@ -211,8 +211,7 @@ fn evaluates_common_lisp_complex_logarithm(#[case] eval_fn: EvalFn) {
 fn evaluates_common_lisp_complex_trigonometry(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
-        evaluate("(list (sin (complex 0 1)) (cos (complex 0 1)) (tan (complex 0 1)))")
-            .to_string(),
+        evaluate("(list (sin (complex 0 1)) (cos (complex 0 1)) (tan (complex 0 1)))").to_string(),
         "(#C(0.0 1.1752011936438014) #C(1.5430806348152437 -0.0) #C(0.0 0.7615941559557649))"
     );
 }
@@ -1046,8 +1045,8 @@ fn evaluates_sequence_operations_and_type_predicates(#[case] eval_fn: EvalFn) {
             "(A (B C) B #\\b (B C) \"bc\" (B C) (B 2) 2 3)"
         );
     assert_eq!(
-            evaluate("(list (typep 1 'integer) (typep \"abc\" 'sequence) (characterp #\\a) (keywordp :x) (vectorp #(1 2)) (endp nil) (endp '(1)))").to_string(),
-            "(T T T T T T NIL)"
+            evaluate("(list (typep 1 'integer) (typep \"abc\" 'sequence) (characterp #\\a) (keywordp :x) (vectorp #(1 2)) (bit-vector-p #(0 1 1)) (simple-bit-vector-p #(0 1 1)) (bit-vector-p #(0 2)) (endp nil) (endp '(1)))").to_string(),
+            "(T T T T T T T NIL T NIL)"
         );
 }
 

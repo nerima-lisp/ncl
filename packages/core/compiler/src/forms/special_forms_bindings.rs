@@ -14,7 +14,7 @@ impl CompileState {
             return None;
         }
         Some(match name {
-            "EQL" | "EQUAL" | "EQUALP" => {
+            "EQ" | "EQL" | "EQUAL" | "EQUALP" => {
                 self.compile_equality(function, span, items, name)
             }
             "AND" => self.compile_and(function, span, items),

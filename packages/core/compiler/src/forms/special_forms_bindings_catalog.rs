@@ -23,7 +23,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
             | "GRAPHIC-CHAR-P" | "STANDARD-CHAR-P" | "UPPER-CASE-P" | "LOWER-CASE-P"
             | "BOTH-CASE-P" | "STREAMP" | "INPUT-STREAM-P" | "OUTPUT-STREAM-P" | "OPEN-STREAM-P"
             | "NOT"
-            | "NULL" | "VECTOR" | "LIST" | "LIST*" | "APPEND" | "NCONC" | "REVAPPEND"
+            | "NULL" | "EQ" | "EQL" | "EQUAL" | "EQUALP" | "VECTOR" | "LIST" | "LIST*" | "APPEND" | "NCONC" | "REVAPPEND"
             | "NRECONC" | "GETF" | "GET-PROPERTIES" | "GET" | "PUTPROP" | "REMPROP"
             | "SYMBOL-PLIST" | "BOUNDP" | "CONSTANTP" | "SYMBOL-VALUE" | "SET" | "MAKUNBOUND"
             | "FMAKUNBOUND" | "FBOUNDP" | "MACRO-FUNCTION" | "SPECIAL-OPERATOR-P"

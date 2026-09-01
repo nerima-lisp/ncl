@@ -75,6 +75,25 @@ fn compiles_arithmetic_shaped_calls_and_normalizes_names() {
 }
 
 #[test]
+fn lowers_equality_predicates_to_native_instructions() {
+    for operation in ["EQ", "EQL", "EQUAL", "EQUALP"] {
+        let program = compile(&format!("({operation} 1 1)"));
+        assert_eq!(
+            program.functions[0].instructions,
+            vec![
+                Instruction::Constant(Constant::Integer(1)),
+                Instruction::Constant(Constant::Integer(1)),
+                Instruction::Equality {
+                    operation: operation.to_string(),
+                },
+                Instruction::Return,
+            ],
+            "{operation}"
+        );
+    }
+}
+
+#[test]
 fn compiles_lexical_bindings_and_local_functions_from_table_cases() {
     let cases = [
         ("parallel let", "(let ((x 1) (y 2)) (+ x y))", false),

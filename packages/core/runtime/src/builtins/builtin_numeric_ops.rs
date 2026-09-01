@@ -5,6 +5,10 @@ mod bitwise_ops;
 #[allow(clippy::wildcard_imports)]
 pub use bitwise_ops::*;
 
+mod bitfield;
+#[allow(clippy::wildcard_imports)]
+pub use bitfield::*;
+
 mod arithmetic;
 #[allow(clippy::wildcard_imports)]
 pub use arithmetic::*;

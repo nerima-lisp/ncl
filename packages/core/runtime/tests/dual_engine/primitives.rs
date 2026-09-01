@@ -7,6 +7,22 @@ use super::support::evaluate_with;
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_bitfield_operations(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((b (byte 4 4)))
+                 (list b (ldb b #xabc) (mask-field b #xabc)
+                       (dpb 2 b #xabc) (deposit-field #x050 b #xabc)))"#,
+        )
+        .to_string(),
+        "((4 4) 11 176 2604 2652)",
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_basic_format_directives(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

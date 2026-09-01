@@ -91,7 +91,11 @@ impl Runtime {
                             "PACKAGE-SHADOWING-SYMBOLS" => packages
                                 .shadowing_symbols_for(package)
                                 .into_iter()
-                                .map(Value::symbol)
+                                .map(|symbol| {
+                                    Value::symbol(package::canonical_symbol_name(
+                                        package, &symbol,
+                                    ))
+                                })
                                 .collect(),
                             "PACKAGE-USED-BY-LIST" => packages
                                 .packages_using(package)

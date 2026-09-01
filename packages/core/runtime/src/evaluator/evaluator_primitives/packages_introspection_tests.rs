@@ -67,4 +67,18 @@ mod tests {
             .unwrap_or_else(|error| panic!("package introspection evaluates: {error}"));
         assert_eq!(result.last().unwrap().to_string(), "(NIL NIL NIL)");
     }
+
+    #[test]
+    fn package_shadowing_symbols_keep_their_package_identity() {
+        let runtime = Runtime::new();
+        let result = runtime
+            .eval_source(
+                "(progn (defpackage :shadowing-symbols-package (:shadow :name))
+                        (symbol-package
+                         (car (package-shadowing-symbols
+                               (find-package :shadowing-symbols-package)))))",
+            )
+            .unwrap_or_else(|error| panic!("package shadowing symbol identity evaluates: {error}"));
+        assert_eq!(result.last().unwrap().to_string(), "SHADOWING-SYMBOLS-PACKAGE");
+    }
 }

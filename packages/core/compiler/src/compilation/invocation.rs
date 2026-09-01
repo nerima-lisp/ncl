@@ -1183,8 +1183,20 @@ impl CompileState {
     pub(crate) fn compile_evaluation_operation(
         &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
     ) -> Result<(), CompileError> {
-        if operation != "MAKE-INSTANCE" || items.len() < 2 {
-            return Err(Self::arity_error(items, operation, "at least one", span));
+        let valid = match operation {
+            "MAKE-INSTANCE" => items.len() >= 2,
+            "COMPILE" => (2..=3).contains(&items.len()),
+            "LOAD" => items.len() == 2,
+            _ => false,
+        };
+        if !valid {
+            let expected = match operation {
+                "MAKE-INSTANCE" => "at least one",
+                "COMPILE" => "one or two",
+                "LOAD" => "one",
+                _ => "valid arguments",
+            };
+            return Err(Self::arity_error(items, operation, expected, span));
         }
         for item in &items[1..] { self.compile_expression(function, item)?; }
         self.emit(function, Instruction::EvaluationOperation {

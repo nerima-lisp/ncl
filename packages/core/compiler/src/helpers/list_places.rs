@@ -4,6 +4,9 @@ pub(crate) fn list_accessor_target(form: &Form) -> Option<(String, &Form)> {
     let FormKind::List(items) = &form.kind else {
         return None;
     };
+    if items.is_empty() {
+        return None;
+    }
     let (operator, _) = CompileState::symbol_name_info(&items[0], "list accessor").ok()?;
     if items.len() == 2
         && matches!(

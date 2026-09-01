@@ -87,6 +87,28 @@ fn coerce_accepts_compound_sequence_type_designators() {
 }
 
 #[test]
+fn coerce_converts_numeric_values_to_numeric_types() {
+    assert_eq!(
+        coerce(&[Value::Integer(4), Value::keyword("float")])
+            .unwrap()
+            .to_string(),
+        "4.0"
+    );
+    assert_eq!(
+        coerce(&[Value::Float(0.5), Value::keyword("rational")])
+            .unwrap()
+            .to_string(),
+        "1/2"
+    );
+    assert_eq!(
+        coerce(&[Value::Integer(2), Value::keyword("complex")])
+            .unwrap()
+            .to_string(),
+        "#C(2 0)"
+    );
+}
+
+#[test]
 fn sequence_constructors_accept_compound_vector_type_designators() {
     let vector_type = Value::list(vec![Value::keyword("vector"), Value::symbol("integer")]);
     assert_eq!(

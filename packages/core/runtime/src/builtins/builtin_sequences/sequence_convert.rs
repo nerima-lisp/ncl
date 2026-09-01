@@ -92,6 +92,11 @@ pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "coerce", 2)?;
     let result_type = sequence_result_type("coerce", &arguments[1])?;
     let result = match result_type.as_str() {
+        "FLOAT" | "SHORT-FLOAT" | "SINGLE-FLOAT" | "DOUBLE-FLOAT" | "LONG-FLOAT" => {
+            crate::builtins::float_value(&[arguments[0].clone()])
+        }
+        "RATIONAL" | "RATIO" => crate::builtins::rational(&[arguments[0].clone()]),
+        "COMPLEX" => crate::builtins::complex(&[arguments[0].clone()]),
         "LIST" => Ok(Value::list(sequence_elements("coerce", &arguments[0])?)),
         "VECTOR" | "SIMPLE-VECTOR" => {
             Ok(Value::vector(sequence_elements("coerce", &arguments[0])?))

@@ -407,6 +407,9 @@ fn compiled_evaluates_sequence_construction_and_conversion_table() {
         ("(coerce \"ab\" 'vector)", "#(#\\a #\\b)"),
         ("(coerce #(1 2) 'sequence)", "#(1 2)"),
         ("(coerce #\\a 'character)", "#\\a"),
+        ("(coerce 4 'float)", "4.0"),
+        ("(coerce 0.5 'rational)", "1/2"),
+        ("(coerce 2 'complex)", "#C(2 0)"),
     ];
     for (source, expected) in cases {
         assert_eq!(evaluate(source).to_string(), expected, "{source}");

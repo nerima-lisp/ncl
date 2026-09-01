@@ -119,6 +119,15 @@ fn compiled_evaluates_setf_places() {
     );
     assert_eq!(
         evaluate(
+            "(let ((cells (list (list :old 1))))
+               (setf (getf (car cells) :new) 2)
+               cells)",
+        )
+        .to_string(),
+        "((:OLD 1 :NEW 2))"
+    );
+    assert_eq!(
+        evaluate(
             "(let ((table (make-hash-table :test #'equal)))
                (setf (gethash \"key\" table) 7)
                (list (gethash \"key\" table) (hash-table-count table)))",

@@ -222,7 +222,11 @@ impl CompileState {
             function,
             Instruction::SequenceSort {
                 operation: operation.to_string(),
-                option_count: items.len().saturating_sub(3),
+                option_count: if operation.ends_with("DUPLICATES") {
+                    items.len().saturating_sub(2)
+                } else {
+                    items.len().saturating_sub(3)
+                },
             },
             span,
         )?;
@@ -322,6 +326,36 @@ impl CompileState {
                 operation: operation.to_string(),
                 predicate: operation.ends_with("-IF") || operation.ends_with("-IF-NOT"),
                 option_count: items.len().saturating_sub(3),
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn compile_sequence_removal(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() < 3 {
+            return Err(Self::arity_error(items, operation, "at least two", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SequenceRemoval {
+                operation: operation.to_string(),
+                predicate: operation.ends_with("-IF") || operation.ends_with("-IF-NOT"),
+                duplicates: operation.ends_with("DUPLICATES"),
+                option_count: if operation.ends_with("DUPLICATES") {
+                    items.len().saturating_sub(2)
+                } else {
+                    items.len().saturating_sub(3)
+                },
             },
             span,
         )?;

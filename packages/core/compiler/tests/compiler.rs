@@ -1044,6 +1044,23 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::AssociationSearch { operation: emitted, option_count: 2, .. } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for operation in [
+        "REMOVE", "REMOVE-IF", "REMOVE-IF-NOT", "DELETE", "DELETE-IF", "DELETE-IF-NOT",
+        "REMOVE-DUPLICATES", "DELETE-DUPLICATES",
+    ] {
+        let source = if operation.ends_with("DUPLICATES") {
+            format!("({operation} '(1 1 2) :test #'eql)")
+        } else if operation.ends_with("-IF") || operation.ends_with("-IF-NOT") {
+            format!("({operation} #'numberp '(1 2) :key #'identity)")
+        } else {
+            format!("({operation} 2 '(1 2) :test #'eql)")
+        };
+        let expected_option_count = 2;
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequenceRemoval { operation: emitted, option_count, .. } if emitted == operation && *option_count == expected_option_count)
+        }), "missing native instruction for {operation}");
+    }
     assert!(
         map_into.functions[0]
             .instructions

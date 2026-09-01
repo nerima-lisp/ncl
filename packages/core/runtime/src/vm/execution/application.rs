@@ -365,6 +365,38 @@ pub fn execute_association_search_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_removal_instruction(
+    runtime: &Runtime,
+    operation: &str,
+    _predicate: bool,
+    _duplicates: bool,
+    option_count: usize,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let required_values = if _duplicates { 1 } else { 2 };
+    if stack.len() < option_count.saturating_add(required_values) {
+        return Err(invalid("sequence removal has too few stack values", span));
+    }
+    let options = stack.split_off(stack.len() - option_count);
+    let sequence = stack.pop().ok_or_else(|| invalid("sequence removal has no sequence", span))?;
+    let item_or_predicate = if _duplicates {
+        Value::Nil
+    } else {
+        stack.pop().ok_or_else(|| invalid("sequence removal has no item or predicate", span))?
+    };
+    stack.push(runtime.apply_sequence_remove(
+        operation,
+        &item_or_predicate.primary_value(),
+        &sequence.primary_value(),
+        &options,
+        environment,
+        span,
+    )?);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

@@ -31,6 +31,14 @@ impl CompileState {
                 | "RASSOC"
                 | "RASSOC-IF"
                 | "RASSOC-IF-NOT"
+                | "REMOVE"
+                | "REMOVE-IF"
+                | "REMOVE-IF-NOT"
+                | "DELETE"
+                | "DELETE-IF"
+                | "DELETE-IF-NOT"
+                | "REMOVE-DUPLICATES"
+                | "DELETE-DUPLICATES"
         ) && self.has_local_function(name)
         {
             return None;
@@ -83,6 +91,10 @@ impl CompileState {
             }
             "ASSOC" | "ASSOC-IF" | "ASSOC-IF-NOT" | "RASSOC" | "RASSOC-IF"
             | "RASSOC-IF-NOT" => self.compile_association_search(function, span, items, name),
+            "REMOVE" | "REMOVE-IF" | "REMOVE-IF-NOT" | "DELETE" | "DELETE-IF"
+            | "DELETE-IF-NOT" | "REMOVE-DUPLICATES" | "DELETE-DUPLICATES" => {
+                self.compile_sequence_removal(function, span, items, name)
+            }
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)
             }

@@ -398,6 +398,16 @@ pub enum Instruction {
         /// Number of option values following the alist.
         option_count: usize,
     },
+    #[doc = "Remove matching elements from a sequence with keyword options."] SequenceRemoval {
+        /// Sequence removal operation name.
+        operation: String,
+        /// Whether the first argument is a predicate.
+        predicate: bool,
+        /// Whether matching duplicate elements are removed.
+        duplicates: bool,
+        /// Number of option values following the sequence.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

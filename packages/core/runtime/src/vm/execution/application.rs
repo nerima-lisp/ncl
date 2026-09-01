@@ -339,6 +339,32 @@ pub fn execute_list_membership_instruction(
     Ok(())
 }
 
+pub fn execute_association_search_instruction(
+    runtime: &Runtime,
+    operation: &str,
+    _predicate: bool,
+    option_count: usize,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < option_count.saturating_add(2) {
+        return Err(invalid("association search has too few stack values", span));
+    }
+    let options = stack.split_off(stack.len() - option_count);
+    let alist = stack.pop().ok_or_else(|| invalid("association search has no alist", span))?;
+    let item_or_predicate = stack.pop().ok_or_else(|| invalid("association search has no item or predicate", span))?;
+    stack.push(runtime.apply_association_search(
+        operation,
+        &item_or_predicate.primary_value(),
+        &alist.primary_value(),
+        &options,
+        environment,
+        span,
+    )?);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

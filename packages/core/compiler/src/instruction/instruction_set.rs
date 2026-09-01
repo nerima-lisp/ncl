@@ -390,6 +390,14 @@ pub enum Instruction {
         /// Number of option values following the list.
         option_count: usize,
     },
+    #[doc = "Search an association list with keyword options."] AssociationSearch {
+        /// Association search operation name.
+        operation: String,
+        /// Whether the first argument is a predicate.
+        predicate: bool,
+        /// Number of option values following the alist.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

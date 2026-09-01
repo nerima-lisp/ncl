@@ -1033,6 +1033,17 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::ListMembership { operation: emitted, option_count: 2, .. } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for operation in ["ASSOC", "ASSOC-IF", "ASSOC-IF-NOT", "RASSOC", "RASSOC-IF", "RASSOC-IF-NOT"] {
+        let source = if operation.ends_with("-IF") || operation.ends_with("-IF-NOT") {
+            format!("({operation} #'identity '((a . 1)) :key #'identity)")
+        } else {
+            format!("({operation} 'a '((a . 1)) :test #'eq)")
+        };
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::AssociationSearch { operation: emitted, option_count: 2, .. } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     assert!(
         map_into.functions[0]
             .instructions

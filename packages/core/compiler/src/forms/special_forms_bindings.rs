@@ -25,6 +25,12 @@ impl CompileState {
                 | "MEMBER-IF"
                 | "MEMBER-IF-NOT"
                 | "ADJOIN"
+                | "ASSOC"
+                | "ASSOC-IF"
+                | "ASSOC-IF-NOT"
+                | "RASSOC"
+                | "RASSOC-IF"
+                | "RASSOC-IF-NOT"
         ) && self.has_local_function(name)
         {
             return None;
@@ -75,6 +81,8 @@ impl CompileState {
             "MEMBER" | "MEMBER-IF" | "MEMBER-IF-NOT" | "ADJOIN" => {
                 self.compile_list_membership(function, span, items, name)
             }
+            "ASSOC" | "ASSOC-IF" | "ASSOC-IF-NOT" | "RASSOC" | "RASSOC-IF"
+            | "RASSOC-IF-NOT" => self.compile_association_search(function, span, items, name),
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)
             }

@@ -119,6 +119,8 @@ fn compiled_evaluates_list_membership_and_association_searches() {
         evaluate("(assoc-if (lambda (key) (eq key 'b)) '((a . 1) (b . 2)))").to_string(),
         "(B . 2)"
     );
+    assert_eq!(evaluate("(assoc 'b '((a . 1) (b . 2)) :test #'eq)").to_string(), "(B . 2)");
+    assert_eq!(evaluate("(rassoc 2 '((a . 1) (b . 2)) :test #'eql)").to_string(), "(B . 2)");
     assert_eq!(
         evaluate("(rassoc-if #'evenp '((a . 1) (b . 2)))").to_string(),
         "(B . 2)"

@@ -334,6 +334,14 @@ fn evaluates_format_indentation_directive() {
 }
 
 #[test]
+fn evaluates_standard_list_position_accessors() {
+    assert_eq!(
+        evaluate("(list (second '(a b c)) (third '(a b c)) (second '(a)) (third nil))").to_string(),
+        "(B C NIL NIL)"
+    );
+}
+
+#[test]
 fn evaluates_type_designator_boundaries_and_failures() {
     assert_eq!(
         evaluate(

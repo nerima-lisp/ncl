@@ -201,6 +201,14 @@ fn compiled_evaluates_format_indentation_directive() {
 }
 
 #[test]
+fn compiled_evaluates_standard_list_position_accessors() {
+    assert_eq!(
+        evaluate("(list (second '(a b c)) (third '(a b c)) (second '(a)) (third nil))").to_string(),
+        "(B C NIL NIL)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_atomic_type_and_equality_predicates() {
     assert_eq!(
         evaluate(

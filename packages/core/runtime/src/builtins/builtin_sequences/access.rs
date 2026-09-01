@@ -23,6 +23,16 @@ pub fn nth(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(items.get(index).cloned().unwrap_or(Value::Nil))
 }
 
+pub fn second(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "second", 1)?;
+    nth(&[Value::Integer(1), arguments[0].clone()])
+}
+
+pub fn third(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "third", 1)?;
+    nth(&[Value::Integer(2), arguments[0].clone()])
+}
+
 pub fn elt(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "elt", 2)?;
     let index = index_argument("elt", &arguments[1])?;

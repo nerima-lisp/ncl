@@ -8,6 +8,8 @@ pub(super) const LIST_BUILTINS: &[BuiltinDefinition] = &[
     ("values-list", values_list as _),
     ("list-length", list_length as _),
     ("nthcdr", nthcdr as _),
+    ("second", second as _),
+    ("third", third as _),
     ("acons", acons as _),
     ("pairlis", pairlis as _),
     ("cons", cons as _),

@@ -14,6 +14,14 @@ fn compiled_evaluates_sequence_sort_and_stable_sort() {
 }
 
 #[test]
+fn compiled_evaluates_list_access_operations() {
+    assert_eq!(evaluate("(first '(a b))").to_string(), "A");
+    assert_eq!(evaluate("(rest '(a b))").to_string(), "(B)");
+    assert_eq!(evaluate("(first nil)").to_string(), "NIL");
+    assert_eq!(evaluate("(rest nil)").to_string(), "NIL");
+}
+
+#[test]
 fn compiled_evaluates_sequence_search_operations() {
     assert_eq!(evaluate("(find 2 '(1 2 3))").to_string(), "2");
     assert_eq!(evaluate("(position 2 '(1 2 3))").to_string(), "1");

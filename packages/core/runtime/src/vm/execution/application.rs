@@ -445,6 +445,25 @@ pub fn execute_sequence_unary_instruction(
     Ok(())
 }
 
+pub fn execute_list_unary_instruction(
+    _runtime: &Runtime,
+    operation: &str,
+    stack: &mut Vec<Value>,
+    _environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("unary list operation has too few stack values", span))?;
+    let result = match operation {
+        "FIRST" => crate::builtins::first(&[value]),
+        "REST" => crate::builtins::rest(&[value]),
+        _ => Err(invalid("unknown unary list operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_tree_equal_instruction(
     runtime: &Runtime,
     option_count: usize,

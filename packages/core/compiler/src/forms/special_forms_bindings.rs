@@ -108,6 +108,7 @@ impl CompileState {
             "COPY-TREE" | "REVERSE" | "NREVERSE" => {
                 self.compile_sequence_unary(function, span, items, name)
             }
+            "FIRST" | "REST" => self.compile_list_unary(function, span, items, name),
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),
             "LENGTH" => self.compile_sequence_length(function, span, items),
             "ELT" => self.compile_sequence_element(function, span, items),

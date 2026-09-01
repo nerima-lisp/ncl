@@ -321,6 +321,23 @@ fn compile_psetf_uses_native_instruction_for_symbol_plist_places() {
 }
 
 #[test]
+fn compile_psetf_uses_native_instruction_for_get_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(psetf (get symbol :plist) 1 other 2)");
+
+    state
+        .compile_psetf(function, Span::new(0, 1), &items)
+        .expect("PSETF GET places should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.last(),
+        Some(Instruction::PsetfPlaces(places))
+            if matches!(places.as_slice(), [crate::PsetfPlace::Get, crate::PsetfPlace::Symbol(name, false)] if name == "OTHER")
+    ));
+}
+
+#[test]
 fn compile_runtime_definition_reports_an_internal_error_for_an_invalid_function_id() {
     let mut state = CompileState::default();
     let span = Span::new(0, 1);

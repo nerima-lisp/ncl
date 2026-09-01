@@ -150,6 +150,12 @@ impl CompileState {
                     {
                         return Some(crate::PsetfPlace::SymbolPlist);
                     }
+                    if place_items.len() == 3
+                        && Self::symbol_name_info(&place_items[0], "PSETF place")
+                            .is_ok_and(|(name, _)| name == "GET")
+                    {
+                        return Some(crate::PsetfPlace::Get);
+                    }
                 }
                 while let Some((accessor, next_target)) =
                     crate::helpers::list_accessor_target(target)
@@ -175,6 +181,12 @@ impl CompileState {
                         unreachable!("validated SYMBOL-PLIST place");
                     };
                     self.compile_expression(function, &place_items[1])?;
+                } else if matches!(place, crate::PsetfPlace::Get) {
+                    let FormKind::List(place_items) = &pair[0].kind else {
+                        unreachable!("validated GET place");
+                    };
+                    self.compile_expression(function, &place_items[1])?;
+                    self.compile_expression(function, &place_items[2])?;
                 }
             }
             if places
@@ -185,7 +197,9 @@ impl CompileState {
                     .into_iter()
                     .map(|place| match place {
                         crate::PsetfPlace::Symbol(name, escaped) => (name, escaped),
-                        crate::PsetfPlace::List(..) | crate::PsetfPlace::SymbolPlist => {
+                        crate::PsetfPlace::List(..)
+                        | crate::PsetfPlace::SymbolPlist
+                        | crate::PsetfPlace::Get => {
                             unreachable!()
                         }
                     })
@@ -201,7 +215,9 @@ impl CompileState {
                         crate::PsetfPlace::List(accessors, name, escaped) => {
                             (accessors, name, escaped)
                         }
-                        crate::PsetfPlace::Symbol(..) | crate::PsetfPlace::SymbolPlist => {
+                        crate::PsetfPlace::Symbol(..)
+                        | crate::PsetfPlace::SymbolPlist
+                        | crate::PsetfPlace::Get => {
                             unreachable!()
                         }
                     })

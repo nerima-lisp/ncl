@@ -7,4 +7,6 @@ pub enum PsetfPlace {
     List(Vec<String>, String, bool),
     /// A dynamic symbol whose complete property list is replaced.
     SymbolPlist,
+    /// A dynamically selected symbol property.
+    Get,
 }

@@ -197,6 +197,22 @@ fn compiled_evaluates_remf_on_get_places() {
 }
 
 #[test]
+fn compiled_evaluates_psetf_on_get_places_in_parallel() {
+    assert_eq!(
+        evaluate(
+            "(let ((symbol 'compiled-psetf-get-target)
+                   (other 1))
+               (setf (get symbol :plist) (list :a 1))
+               (psetf (get symbol :plist) (list :a 2 :b 3)
+                      other (get symbol :plist))
+               (list (get symbol :plist) other))",
+        )
+        .to_string(),
+        "((:A 2 :B 3) (:A 1))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_modify_on_nested_list_places() {
     assert_eq!(
         evaluate("(let ((xs (list (list 4)))) (list (incf (car (car xs))) xs))").to_string(),

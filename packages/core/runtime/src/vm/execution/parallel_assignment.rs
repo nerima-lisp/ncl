@@ -59,13 +59,22 @@ pub(super) fn execute_parallel_set_instruction(
             Ok(true)
         }
         Instruction::PsetfList(places) => super::assignment::list::execute_parallel(
-            runtime, places, stack, environment, program_counter, span,
+            runtime,
+            places,
+            stack,
+            environment,
+            program_counter,
+            span,
         ),
         Instruction::PsetfPlaces(places) => {
             let dynamic_targets = places
                 .iter()
-                .filter(|place| matches!(place, ncl_compiler::PsetfPlace::SymbolPlist))
-                .count();
+                .map(|place| match place {
+                    ncl_compiler::PsetfPlace::SymbolPlist => 1,
+                    ncl_compiler::PsetfPlace::Get => 2,
+                    _ => 0,
+                })
+                .sum::<usize>();
             if stack.len() < places.len() + dynamic_targets {
                 return Err(invalid("psetf has fewer values than targets", span));
             }
@@ -78,7 +87,12 @@ pub(super) fn execute_parallel_set_instruction(
                 match place {
                     ncl_compiler::PsetfPlace::Symbol(name, escaped) => {
                         if *escaped {
-                            runtime.set_or_define_exact_in(name, last.clone(), environment, span)?;
+                            runtime.set_or_define_exact_in(
+                                name,
+                                last.clone(),
+                                environment,
+                                span,
+                            )?;
                         } else {
                             runtime.set_or_define_in(name, last.clone(), environment, span)?;
                         }
@@ -108,7 +122,10 @@ pub(super) fn execute_parallel_set_instruction(
                         let target = targets[target_index].primary_value();
                         target_index += 1;
                         if target.symbol_reference().is_none() {
-                            return Err(invalid("psetf symbol-plist target must be a symbol", span));
+                            return Err(invalid(
+                                "psetf symbol-plist target must be a symbol",
+                                span,
+                            ));
                         }
                         let properties = last.list_items().ok_or_else(|| RuntimeError::Type {
                             expected: "LIST".to_string(),
@@ -119,6 +136,34 @@ pub(super) fn execute_parallel_set_instruction(
                             return Err(invalid("SYMBOL-PLIST needs an even property list", span));
                         }
                         environment.set_symbol_plist(&target, last.clone());
+                    }
+                    ncl_compiler::PsetfPlace::Get => {
+                        let target = targets[target_index].primary_value();
+                        let indicator = targets[target_index + 1].primary_value();
+                        target_index += 2;
+                        if target.symbol_reference().is_none() {
+                            return Err(invalid("psetf GET target must be a symbol", span));
+                        }
+                        let plist = environment.symbol_plist(&target).unwrap_or(Value::Nil);
+                        let mut properties =
+                            plist.list_items().ok_or_else(|| RuntimeError::Type {
+                                expected: "LIST".to_string(),
+                                actual: plist.type_name().to_string(),
+                                span: Some(span),
+                            })?;
+                        if !properties.len().is_multiple_of(2) {
+                            return Err(invalid("PSETF GET needs an even property list", span));
+                        }
+                        if let Some(index) = (0..properties.len())
+                            .step_by(2)
+                            .find(|&index| properties[index].eq_value(&indicator))
+                            .map(|index| index + 1)
+                        {
+                            properties[index] = last.clone();
+                        } else {
+                            properties.extend([indicator, last.clone()]);
+                        }
+                        environment.set_symbol_plist(&target, Value::list(properties));
                     }
                 }
             }

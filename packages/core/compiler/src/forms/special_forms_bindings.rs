@@ -196,7 +196,8 @@ impl CompileState {
             "COPY-TREE" | "COPY-SEQ" | "REVERSE" | "NREVERSE" => {
                 self.compile_sequence_unary(function, span, items, name)
             }
-            "CAR" | "CDR" | "FIRST" | "REST" | "COPY-LIST" | "COPY-ALIST" | "ENDP" => {
+            "CAR" | "CDR" | "FIRST" | "REST" | "COPY-LIST" | "COPY-ALIST" | "ENDP"
+            | "LIST-LENGTH" => {
                 self.compile_list_unary(function, span, items, name)
             }
             "CHARACTER" | "CHAR-CODE" | "CHAR-INT" | "CODE-CHAR" | "INT-CHAR"

@@ -25,6 +25,8 @@ fn compiled_evaluates_list_access_operations() {
     assert_eq!(evaluate("(rest nil)").to_string(), "NIL");
     assert_eq!(evaluate("(endp nil)").to_string(), "T");
     assert_eq!(evaluate("(endp '(a b))").to_string(), "NIL");
+    assert_eq!(evaluate("(list-length nil)").to_string(), "0");
+    assert_eq!(evaluate("(list-length '(a b c))").to_string(), "3");
     assert_eq!(evaluate("(last '(a b c))").to_string(), "(C)");
     assert_eq!(evaluate("(last '(a b c) 2)").to_string(), "(B C)");
     assert_eq!(evaluate("(butlast '(a b c))").to_string(), "(A B)");

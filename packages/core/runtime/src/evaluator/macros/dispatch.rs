@@ -63,6 +63,9 @@ impl Runtime {
                 if names_equal(&resolved_name, "WITH-ACCESSORS") {
                     return Self::expand_builtin_with_slots(form, true).map(Some);
                 }
+                if names_equal(&resolved_name, "LOOP") {
+                    return Self::expand_builtin_loop(form).map(Some);
+                }
             }
             return Ok(None);
         };

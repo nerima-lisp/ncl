@@ -99,6 +99,9 @@ impl CompileState {
                 span,
             ));
         }
+        if items.len() == 3 {
+            return self.compile_setf(function, span, items);
+        }
         if let Some(names) = items[1..]
             .chunks_exact(2)
             .map(|pair| {

@@ -21,6 +21,14 @@ impl CompileState {
                 span,
             ));
         }
+        if !matches!(items[1].kind, FormKind::List(_)) {
+            return Err(CompileError::new(
+                crate::CompileErrorKind::ExpectedList {
+                    context: "WITH-COMPILATION-UNIT options".into(),
+                },
+                items[1].span,
+            ));
+        }
         self.compile_sequence(function, items.get(2..).unwrap_or(&[]))
     }
 
@@ -114,6 +122,23 @@ mod tests {
             |error| error,
             |value| panic!("a non-list situations form should fail to compile, got {value:?}"),
         );
+
+        assert!(matches!(error.kind, CompileErrorKind::ExpectedList { .. }));
+    }
+
+    #[test]
+    fn compile_with_compilation_unit_rejects_non_list_options() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let items = vec![
+            Form::atom("WITH-COMPILATION-UNIT", span),
+            Form::atom("BAD-OPTIONS", span),
+        ];
+
+        let error = state
+            .compile_with_compilation_unit(function, span, &items)
+            .map_or_else(|error| error, |_| panic!("non-list options should fail"));
 
         assert!(matches!(error.kind, CompileErrorKind::ExpectedList { .. }));
     }

@@ -46,7 +46,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
             | "STRING-LEFT-TRIM" | "STRING-RIGHT-TRIM" | "STRING" | "MAKE-STRING" | "CHAR="
             | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>" | "CHAR<="
             | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP" | "CHAR-NOT-GREATERP"
-            | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR" | "DIGIT-CHAR-P"
+            | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR" | "DIGIT-CHAR-P" | "DIGIT-CHAR"
             | "SYMBOL-NAME" | "SYMBOL-PACKAGE" | "IDENTITY" | "TYPE-OF"
     )
 }

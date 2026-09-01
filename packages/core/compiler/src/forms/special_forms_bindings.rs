@@ -177,6 +177,7 @@ impl CompileState {
                     self.compile_type_predicate(function, span, items, name)
                 }
             }
+            "DIGIT-CHAR" => self.compile_character_digit(function, span, items),
             "ALPHA-CHAR-P" | "ALPHANUMERICP" | "GRAPHIC-CHAR-P" | "STANDARD-CHAR-P"
             | "UPPER-CASE-P" | "LOWER-CASE-P" | "BOTH-CASE-P" => {
                 self.compile_character_predicate(function, span, items, name)

@@ -65,4 +65,26 @@ impl CompileState {
         )?;
         Ok(())
     }
+
+    pub(crate) fn compile_character_digit(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if !(2..=3).contains(&items.len()) {
+            return Err(Self::arity_error(items, "DIGIT-CHAR", "one or two", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::CharacterDigit {
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
+        Ok(())
+    }
 }

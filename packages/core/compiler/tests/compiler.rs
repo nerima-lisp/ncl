@@ -94,6 +94,28 @@ fn lowers_equality_predicates_to_native_instructions() {
 }
 
 #[test]
+fn lowers_digit_char_to_a_native_instruction() {
+    for source in ["(digit-char 10)", "(digit-char 10 16)"] {
+        let program = compile(source);
+        assert!(
+            program.functions[0]
+                .instructions
+                .iter()
+                .any(|instruction| matches!(
+                    instruction,
+                    Instruction::CharacterDigit { argument_count: 1 }
+                        if source == "(digit-char 10)"
+                ) || matches!(
+                    instruction,
+                    Instruction::CharacterDigit { argument_count: 2 }
+                        if source == "(digit-char 10 16)"
+                )),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn compiles_lexical_bindings_and_local_functions_from_table_cases() {
     let cases = [
         ("parallel let", "(let ((x 1) (y 2)) (+ x y))", false),

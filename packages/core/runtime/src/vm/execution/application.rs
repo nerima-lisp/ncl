@@ -389,3 +389,16 @@ pub fn execute_character_digit_predicate_instruction(
     stack.push(crate::builtins::digit_character_p(&arguments)?);
     Ok(())
 }
+
+pub fn execute_character_digit_instruction(
+    stack: &mut Vec<Value>,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("character digit has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    stack.push(crate::builtins::digit_character(&arguments)?);
+    Ok(())
+}

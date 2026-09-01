@@ -724,6 +724,10 @@ pub enum Instruction {
         /// Number of values consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Return a character for a digit in an optional radix."] CharacterDigit {
+        /// Number of values consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Return an element from an array or vector."] ArrayElement {
         /// Array access operation name.
         operation: String,

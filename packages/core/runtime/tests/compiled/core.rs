@@ -33,6 +33,14 @@ fn compiled_evaluates_equality_predicates() {
 }
 
 #[test]
+fn compiled_evaluates_digit_char() {
+    assert_eq!(
+        evaluate("(list (digit-char 10) (digit-char 10 16) (digit-char 15 16))").to_string(),
+        "(NIL #\\A #\\F)",
+    );
+}
+
+#[test]
 fn compiled_evaluates_numeric_inequality() {
     assert_eq!(evaluate("(list (/= 1 2 3) (/= 1 2 1) (/= 1))").to_string(), "(T NIL T)");
 }

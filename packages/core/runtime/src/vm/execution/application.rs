@@ -154,6 +154,21 @@ pub fn execute_package_introspection_instruction(
     Ok(())
 }
 
+pub fn execute_package_mutation_instruction(
+    runtime: &Runtime, stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count { return Err(invalid("package mutation operation has too few stack values", span)); }
+    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
+        .map(|value| value.primary_value()).collect::<Vec<_>>();
+    let value = match operation {
+        "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT" => runtime.apply_package_use_primitive(operation, &arguments, span),
+        "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN" => runtime.apply_package_symbol_primitive(operation, &arguments, span),
+        _ => None,
+    }.unwrap_or_else(|| Err(invalid("unknown package mutation operation", span)))?;
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_hash_table_instruction(
     stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
 ) -> Result<(), RuntimeError> {

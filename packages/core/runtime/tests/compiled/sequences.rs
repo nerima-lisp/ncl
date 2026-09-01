@@ -514,3 +514,19 @@ fn compiled_evaluates_symbol_function_operations() {
 fn compiled_evaluates_package_introspection_operations() {
     assert_eq!(evaluate("(let ((package (find-package :ncl-user))) (list (package-name package) (package-use-list package) (package-nicknames package)))").to_string(), "(\"NCL-USER\" (#<PACKAGE \"COMMON-LISP\">) NIL)");
 }
+
+#[test]
+fn compiled_evaluates_package_mutation_operations() {
+    assert_eq!(
+        evaluate(
+            r#"(progn
+                 (defpackage :package-mutation-provider (:use :common-lisp))
+                 (defpackage :package-mutation-consumer (:use :common-lisp))
+                 (in-package :package-mutation-consumer)
+                 (list (use-package '(:keyword))
+                       (unuse-package '(:keyword))))"#,
+        )
+        .to_string(),
+        "(T T)"
+    );
+}

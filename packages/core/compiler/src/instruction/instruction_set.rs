@@ -547,6 +547,12 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Apply a package mutation operation."] PackageMutation {
+        /// Name of the package mutation operation to invoke.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Apply a hash-table operation."] HashTable {
         /// Name of the hash-table operation to invoke.
         operation: String,

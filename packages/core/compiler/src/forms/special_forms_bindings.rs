@@ -145,6 +145,8 @@ impl CompileState {
                 | "PACKAGE-NICKNAMES"
                 | "PACKAGE-SHADOWING-SYMBOLS"
                 | "PACKAGE-USED-BY-LIST"
+                | "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT"
+                | "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN"
                 | "GETHASH"
                 | "REMHASH"
                 | "MAKE-HASH-TABLE"
@@ -321,6 +323,10 @@ impl CompileState {
             "FIND-PACKAGE" | "PACKAGE-NAME" | "PACKAGE-USE-LIST" | "PACKAGE-NICKNAMES"
             | "PACKAGE-SHADOWING-SYMBOLS" | "PACKAGE-USED-BY-LIST" => {
                 self.compile_package_introspection(function, span, items, name)
+            }
+            "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT"
+            | "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN" => {
+                self.compile_package_mutation(function, span, items, name)
             }
             "GETHASH" | "REMHASH" | "MAKE-HASH-TABLE" | "CLRHASH" | "HASH-TABLE-COUNT"
             | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS" | "NCL-HASH-TABLE-VALUES" => {

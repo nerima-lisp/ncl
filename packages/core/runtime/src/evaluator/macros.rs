@@ -10,6 +10,7 @@ mod loop_control;
 mod loop_entry;
 mod loop_finalize;
 mod for_in;
+mod loop_for;
 mod loop_hash;
 mod loop_on;
 mod loop_repeat;

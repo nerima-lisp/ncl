@@ -8,9 +8,7 @@ use super::loop_condition::expand_loop_condition;
 use super::loop_control::named_loop_body_start;
 use super::loop_entry::expand_loop_entry_clause;
 use super::loop_finalize::finalize;
-use super::for_in::expand_loop_for_in;
-use super::loop_hash::expand_loop_hash_being;
-use super::loop_on::expand_loop_for_on;
+use super::loop_for::expand_loop_for_prefix;
 use super::loop_repeat::expand_loop_repeat;
 use super::loop_with::expand_loop_with;
 
@@ -54,18 +52,7 @@ impl Runtime {
                 body = expanded_body;
                 collect_form = Some(collected_form);
             } else if names_equal(clause, "FOR") {
-                if items
-                    .get(3)
-                    .and_then(atom_name)
-                    .is_some_and(|name| names_equal(name, "BEING"))
-                {
-                    return expand_loop_hash_being(form, items)?.ok_or_else(|| {
-                        Self::invalid("LOOP hash-table expansion failed", form.span)
-                    });
-                } else if let Some(expanded) = expand_loop_for_in(form, items)? {
-                    return Ok(expanded);
-                }
-                if let Some(expanded) = expand_loop_for_on(form, items)? {
+                if let Some(expanded) = expand_loop_for_prefix(form, items)? {
                     return Ok(expanded);
                 }
                 if items

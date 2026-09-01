@@ -201,6 +201,19 @@ fn compiled_evaluates_format_indentation_directive() {
 }
 
 #[test]
+fn compiled_evaluates_format_radix_tab_and_write_directives() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~R/~:R/~16R" 42 42 255)
+                       (format nil "abc~5,2:T")
+                       (format nil "~W" '(a b)))"#,
+        )
+        .to_string(),
+        r#"("forty-two/forty-second/FF" "abc" "(A B)")"#,
+    );
+}
+
+#[test]
 fn compiled_evaluates_format_absolute_argument_pointer_directive() {
     assert_eq!(
         evaluate(r#"(list (format nil "~2@*~A" 'zero 'one 'two)

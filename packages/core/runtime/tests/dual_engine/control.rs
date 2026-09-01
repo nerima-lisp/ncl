@@ -150,6 +150,10 @@ fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
         .to_string(),
         "(1 3)"
     );
+    assert_eq!(
+        evaluate(r"(loop for value across #(1 2 3) collect value)").to_string(),
+        "(1 2 3)"
+    );
 }
 
 #[rstest]

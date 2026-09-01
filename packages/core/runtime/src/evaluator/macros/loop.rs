@@ -398,6 +398,134 @@ impl Runtime {
                 if items
                     .get(3)
                     .and_then(atom_name)
+                    .is_some_and(|name| names_equal(name, "ACROSS"))
+                {
+                    if items.len() < 5 {
+                        return Err(Self::invalid(
+                            "LOOP FOR ACROSS requires a variable and vector form",
+                            form.span,
+                        ));
+                    }
+                    let variable = items[2].clone();
+                    let index =
+                        Form::atom(format!("NCL-LOOP-INDEX-{}", form.span.start), form.span);
+                    let vector =
+                        Form::atom(format!("NCL-LOOP-VECTOR-{}", form.span.start), form.span);
+                    let mut body_start = 5;
+                    if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "DO"))
+                    {
+                        body_start += 1;
+                    }
+                    let mut loop_body = Vec::new();
+                    if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "COLLECT"))
+                    {
+                        if items.len() <= body_start + 1 {
+                            return Err(Self::invalid(
+                                "LOOP COLLECT clause requires a form",
+                                form.span,
+                            ));
+                        }
+                        collect_form = Some(items[body_start + 1].clone());
+                        loop_body.push(Form::list(
+                            vec![
+                                Form::atom("PUSH", form.span),
+                                items[body_start + 1].clone(),
+                                collect_name.clone(),
+                            ],
+                            form.span,
+                        ));
+                        body_start += 2;
+                    }
+                    loop_body.extend(items[body_start..].iter().cloned());
+                    let mut let_items = vec![
+                        Form::atom("LET", form.span),
+                        Form::list(
+                            vec![Form::list(
+                                vec![
+                                    variable,
+                                    Form::list(
+                                        vec![
+                                            Form::atom("AREF", form.span),
+                                            vector.clone(),
+                                            index.clone(),
+                                        ],
+                                        form.span,
+                                    ),
+                                ],
+                                form.span,
+                            )],
+                            form.span,
+                        ),
+                    ];
+                    let_items.extend(loop_body);
+                    let dotimes = Form::list(
+                        vec![
+                            Form::atom("DOTIMES", form.span),
+                            Form::list(
+                                vec![
+                                    index,
+                                    Form::list(
+                                        vec![Form::atom("LENGTH", form.span), vector.clone()],
+                                        form.span,
+                                    ),
+                                ],
+                                form.span,
+                            ),
+                            Form::list(let_items, form.span),
+                        ],
+                        form.span,
+                    );
+                    let vector_loop = Form::list(
+                        vec![
+                            Form::atom("LET", form.span),
+                            Form::list(
+                                vec![Form::list(
+                                    vec![vector.clone(), items[4].clone()],
+                                    form.span,
+                                )],
+                                form.span,
+                            ),
+                            dotimes,
+                        ],
+                        form.span,
+                    );
+                    if collect_form.is_some() {
+                        return Ok(Form::list(
+                            vec![
+                                Form::atom("LET", form.span),
+                                Form::list(
+                                    vec![Form::list(
+                                        vec![collect_name.clone(), Form::atom("NIL", form.span)],
+                                        form.span,
+                                    )],
+                                    form.span,
+                                ),
+                                Form::list(
+                                    vec![
+                                        Form::atom("PROGN", form.span),
+                                        vector_loop,
+                                        Form::list(
+                                            vec![Form::atom("NREVERSE", form.span), collect_name],
+                                            form.span,
+                                        ),
+                                    ],
+                                    form.span,
+                                ),
+                            ],
+                            form.span,
+                        ));
+                    }
+                    return Ok(vector_loop);
+                }
+                if items
+                    .get(3)
+                    .and_then(atom_name)
                     .is_some_and(|name| names_equal(name, "="))
                 {
                     if items.len() < 7

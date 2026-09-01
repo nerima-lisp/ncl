@@ -197,7 +197,7 @@ impl CompileState {
                 self.compile_sequence_unary(function, span, items, name)
             }
             "CAR" | "CDR" | "FIRST" | "REST" | "COPY-LIST" | "COPY-ALIST" | "ENDP"
-            | "LIST-LENGTH" | "SECOND" | "THIRD" | "FOURTH" | "FIFTH" | "SIXTH"
+            | "LIST-LENGTH" | "VALUES-LIST" | "SECOND" | "THIRD" | "FOURTH" | "FIFTH" | "SIXTH"
             | "SEVENTH" | "EIGHTH" | "NINTH" | "TENTH" => {
                 self.compile_list_unary(function, span, items, name)
             }

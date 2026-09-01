@@ -1086,7 +1086,7 @@ fn emits_eval_and_mapcar_instructions() {
         }), "missing native instruction for {operation}");
     }
     for operation in [
-        "CAR", "CDR", "FIRST", "REST", "COPY-LIST", "COPY-ALIST", "ENDP", "LIST-LENGTH",
+        "CAR", "CDR", "FIRST", "REST", "COPY-LIST", "COPY-ALIST", "ENDP", "LIST-LENGTH", "VALUES-LIST",
         "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH", "SEVENTH", "EIGHTH", "NINTH", "TENTH",
     ] {
         let program = compile(&format!("({operation} '(1 2))"));

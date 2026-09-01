@@ -515,6 +515,7 @@ pub fn execute_list_unary_instruction(
         "COPY-ALIST" => crate::builtins::copy_alist(&[value]),
         "ENDP" => crate::builtins::endp(&[value]),
         "LIST-LENGTH" => crate::builtins::list_length(&[value]),
+        "VALUES-LIST" => crate::builtins::values_list(&[value]),
         "SECOND" => crate::builtins::nth(&[Value::Integer(1), value]),
         "THIRD" => crate::builtins::nth(&[Value::Integer(2), value]),
         "FOURTH" => crate::builtins::nth(&[Value::Integer(3), value]),

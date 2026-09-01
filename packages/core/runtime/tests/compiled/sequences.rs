@@ -30,6 +30,10 @@ fn compiled_evaluates_list_access_operations() {
     assert_eq!(evaluate("(second '(a b c))").to_string(), "B");
     assert_eq!(evaluate("(tenth '(1 2 3 4 5 6 7 8 9 10))").to_string(), "10");
     assert_eq!(evaluate("(make-list 3 :initial-element 7)").to_string(), "(7 7 7)");
+    assert_eq!(
+        evaluate("(multiple-value-call #'list (values-list '(1 2 3)))").to_string(),
+        "(1 2 3)"
+    );
     assert_eq!(evaluate("(last '(a b c))").to_string(), "(C)");
     assert_eq!(evaluate("(last '(a b c) 2)").to_string(), "(B C)");
     assert_eq!(evaluate("(butlast '(a b c))").to_string(), "(A B)");

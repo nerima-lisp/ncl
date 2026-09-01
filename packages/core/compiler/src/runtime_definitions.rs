@@ -112,6 +112,23 @@ impl CompileState {
         Ok(())
     }
 
+    pub(super) fn compile_define_symbol_macro(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() != 3 {
+            return Err(Self::arity_error(items, "DEFINE-SYMBOL-MACRO", "two", span));
+        }
+        self.emit(
+            function,
+            Instruction::DefineSymbolMacro(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(super) fn compile_runtime_definition(
         &mut self,
         function: FunctionId,

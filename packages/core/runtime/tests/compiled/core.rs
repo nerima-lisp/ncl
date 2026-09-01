@@ -24,6 +24,14 @@ fn compiled_evaluates_arithmetic() {
 }
 
 #[test]
+fn compiled_defines_and_expands_symbol_macros() {
+    assert_eq!(
+        evaluate("(define-symbol-macro answer 42) answer").to_string(),
+        "42"
+    );
+}
+
+#[test]
 fn compiled_promotes_overflowing_arithmetic_and_large_literals_to_bignums() {
     // FR-017: the VM has its own literal-parsing path (constant_value's
     // Constant::BigInteger arm) and its own arithmetic path, independent of

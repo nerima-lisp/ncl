@@ -12,6 +12,7 @@ impl Runtime {
         let mut body = items[1..].to_vec();
         let mut repeat_count = None;
         let mut collect_form = None;
+        let mut finally_form = None;
         let count_name = Form::atom(format!("NCL-LOOP-COUNT-{}", form.span.start), form.span);
         let mut collect_name =
             Form::atom(format!("NCL-LOOP-COLLECT-{}", form.span.start), form.span);
@@ -91,6 +92,28 @@ impl Runtime {
                     ));
                 }
                 body.extend(items[body_start..].iter().cloned());
+                if let Some(finally_offset) = body.iter().position(|item| {
+                    atom_name(item).is_some_and(|name| names_equal(name, "FINALLY"))
+                }) {
+                    let finally_items = body.split_off(finally_offset + 1);
+                    body.pop();
+                    if finally_items.is_empty() {
+                        return Err(Self::invalid(
+                            "LOOP FINALLY clause requires a form",
+                            form.span,
+                        ));
+                    }
+                    finally_form = Some(if finally_items.len() == 1 {
+                        finally_items[0].clone()
+                    } else {
+                        Form::list(
+                            std::iter::once(Form::atom("PROGN", form.span))
+                                .chain(finally_items)
+                                .collect(),
+                            form.span,
+                        )
+                    });
+                }
                 body.push(Form::list(
                     vec![Form::atom("DECF", form.span), count_name.clone()],
                     form.span,
@@ -1217,6 +1240,14 @@ impl Runtime {
                 )
             } else {
                 result
+            };
+            let block_result = if let Some(finally) = finally_form {
+                Form::list(
+                    vec![Form::atom("PROGN", form.span), block_result, finally],
+                    form.span,
+                )
+            } else {
+                block_result
             };
             Ok(Form::list(
                 vec![

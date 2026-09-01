@@ -60,6 +60,14 @@ fn expands_loop_repeat_clause(#[case] eval_fn: EvalFn) {
         .to_string(),
         "3"
     );
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop repeat 3 do (incf value) finally (+ value 10)))"
+        )
+        .to_string(),
+        "13"
+    );
 }
 
 #[rstest]

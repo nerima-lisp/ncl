@@ -34,7 +34,14 @@ pub(super) fn execute(
     )? {
         return Ok(true);
     }
-    if remf::execute(runtime, instruction, stack, environment, program_counter, span)? {
+    if remf::execute(
+        runtime,
+        instruction,
+        stack,
+        environment,
+        program_counter,
+        span,
+    )? {
         return Ok(true);
     }
     if slot_value::execute(
@@ -87,6 +94,64 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::ModifyGetDynamic { arithmetic } => {
+            let delta = stack
+                .pop()
+                .ok_or_else(|| invalid("modify get has no delta", span))?
+                .primary_value();
+            let indicator = stack
+                .pop()
+                .ok_or_else(|| invalid("modify get has no indicator", span))?
+                .primary_value();
+            let symbol = stack
+                .pop()
+                .ok_or_else(|| invalid("modify get has no target", span))?
+                .primary_value();
+            if symbol.symbol_reference().is_none() {
+                return Err(invalid("modify get target must be a symbol", span));
+            }
+            let plist = environment.symbol_plist(&symbol).unwrap_or(Value::Nil);
+            let plist_items = plist.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: plist.type_name().to_string(),
+                span: Some(span),
+            })?;
+            if !plist_items.len().is_multiple_of(2) {
+                return Err(invalid("MODIFY GET needs an even property list", span));
+            }
+            let current = (0..plist_items.len())
+                .step_by(2)
+                .find(|&index| plist_items[index].eq_value(&indicator))
+                .map(|index| plist_items[index + 1].clone())
+                .unwrap_or(Value::Nil);
+            let arithmetic_value = runtime.apply_in(
+                &Value::symbol(arithmetic.clone()),
+                &[current, delta],
+                span,
+                environment,
+            )?;
+            let mut properties = plist.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: plist.type_name().to_string(),
+                span: Some(span),
+            })?;
+            if !properties.len().is_multiple_of(2) {
+                return Err(invalid("MODIFY GET needs an even property list", span));
+            }
+            if let Some(index) = (0..properties.len())
+                .step_by(2)
+                .find(|&index| properties[index].eq_value(&indicator))
+                .map(|index| index + 1)
+            {
+                properties[index] = arithmetic_value.clone();
+            } else {
+                properties.extend([indicator, arithmetic_value.clone()]);
+            }
+            environment.set_symbol_plist(&symbol, Value::list(properties));
+            stack.push(arithmetic_value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::SetfSymbolPlistDynamic => {
             let value = stack
                 .pop()
@@ -99,7 +164,10 @@ pub(super) fn execute(
             if symbol.symbol_reference().is_none() {
                 return Err(invalid("setf symbol-plist target must be a symbol", span));
             }
-            if !value.list_items().is_some_and(|items| items.len().is_multiple_of(2)) {
+            if !value
+                .list_items()
+                .is_some_and(|items| items.len().is_multiple_of(2))
+            {
                 return Err(invalid("SYMBOL-PLIST needs an even property list", span));
             }
             environment.set_symbol_plist(&symbol, value.clone());

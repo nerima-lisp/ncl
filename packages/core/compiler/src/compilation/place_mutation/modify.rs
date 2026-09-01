@@ -13,6 +13,9 @@ impl CompileState {
         let place = items
             .get(1)
             .ok_or_else(|| Self::internal_error(span, "missing modifying place"))?;
+        if self.compile_modify_get_place(function, span, items, operator, arithmetic)? {
+            return Ok(());
+        }
         if let Some((accessors, name, escaped)) = generalized_list_place(place) {
             if !(items.len() == 2 || items.len() == 3) {
                 return Err(Self::arity_error(items, operator, "one or two", span));
@@ -42,6 +45,44 @@ impl CompileState {
             return Ok(());
         }
         self.compile_modify_symbol(function, span, items, operator, arithmetic)
+    }
+
+    fn compile_modify_get_place(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operator: &str,
+        arithmetic: &str,
+    ) -> Result<bool, CompileError> {
+        if !(items.len() == 2 || items.len() == 3) {
+            return Err(Self::arity_error(items, operator, "one or two", span));
+        }
+        let Some(FormKind::List(place_items)) = items.get(1).map(|form| &form.kind) else {
+            return Ok(false);
+        };
+        if place_items.len() != 3
+            || Self::symbol_name_info(&place_items[0], "modify place operator")
+                .ok()
+                .is_none_or(|(name, _)| name != "GET")
+        {
+            return Ok(false);
+        }
+        self.compile_expression(function, &place_items[1])?;
+        self.compile_expression(function, &place_items[2])?;
+        if let Some(delta) = items.get(2) {
+            self.compile_expression(function, delta)?;
+        } else {
+            self.emit(function, Instruction::Constant(Constant::Integer(1)), span)?;
+        }
+        self.emit(
+            function,
+            Instruction::ModifyGetDynamic {
+                arithmetic: arithmetic.to_string(),
+            },
+            items[1].span,
+        )?;
+        Ok(true)
     }
 
     pub(crate) fn compile_modify_symbol(

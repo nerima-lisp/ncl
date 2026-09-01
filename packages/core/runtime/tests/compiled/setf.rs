@@ -195,6 +195,21 @@ fn compiled_evaluates_modify_on_nested_list_places() {
 }
 
 #[test]
+fn compiled_evaluates_modify_on_get_places() {
+    assert_eq!(
+        evaluate(
+            "(let ((symbol 'compiled-modify-get-target))
+               (setf (get symbol :count) 4)
+               (list (incf (get symbol :count) 3)
+                     (decf (get symbol :count))
+                     (get symbol :count)))",
+        )
+        .to_string(),
+        "(7 6 6)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_single_place_rotatef() {
     assert_eq!(
         evaluate("(let ((x 7)) (list (rotatef x) x))").to_string(),

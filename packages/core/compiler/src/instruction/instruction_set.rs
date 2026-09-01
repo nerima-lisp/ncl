@@ -120,6 +120,10 @@ pub enum Instruction {
     },
     #[doc = "Replace a symbol's entire property list through SYMBOL-PLIST."] SetfSymbolPlistDynamic,
     #[doc = "Update a symbol property through GET."] SetfGetDynamic,
+    #[doc = "Modify a symbol property through GET."] ModifyGetDynamic {
+        #[doc = "Arithmetic function name."]
+        arithmetic: String,
+    },
     #[doc = "Remove a property from a symbol's property list by EQL."] Remf {
         /// The symbol holding the property list.
         name: String,

@@ -1230,6 +1230,15 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(open.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::FileOperation { operation, argument_count: 3 } if operation == "OPEN")
     }));
+    for (operation, source, argument_count) in [
+        ("PROBE-FILE", "(probe-file \"sample.txt\")", 1),
+        ("RENAME-FILE", "(rename-file \"a\" \"b\")", 2),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::FileMetadataOperation { operation: emitted, argument_count: count } if emitted == operation && *count == argument_count)
+        }));
+    }
     for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
         let program = compile(&format!("({operation} '(1 2 3) 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

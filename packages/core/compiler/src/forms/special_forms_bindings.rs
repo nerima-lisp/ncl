@@ -313,6 +313,9 @@ impl CompileState {
             }
             "PARSE-INTEGER" => self.compile_integer_operation(function, span, items, name),
             "OPEN" => self.compile_file_operation(function, span, items, name),
+            "PROBE-FILE" | "DELETE-FILE" | "RENAME-FILE" | "FILE-WRITE-DATE" | "TRUENAME" => {
+                self.compile_file_metadata_operation(function, span, items, name)
+            }
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

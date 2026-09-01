@@ -687,6 +687,18 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_file_metadata_operation(
+        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    ) -> Result<(), CompileError> {
+        let expected = if operation == "RENAME-FILE" { 2 } else { 1 };
+        if items.len() != expected + 1 {
+            return Err(Self::arity_error(items, operation, &format!("exactly {expected} argument(s)"), span));
+        }
+        for item in &items[1..] { self.compile_expression(function, item)?; }
+        self.emit(function, Instruction::FileMetadataOperation { operation: operation.to_string(), argument_count: expected }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_tree_equal(
         &mut self,
         function: FunctionId,

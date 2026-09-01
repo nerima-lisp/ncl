@@ -1,7 +1,7 @@
 use super::{exact, pathname_argument};
 use crate::{RuntimeError, Value};
 
-pub(super) fn probe_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn probe_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "probe-file", 1)?;
     let path = pathname_argument("probe-file", &arguments[0])?;
     match std::fs::metadata(&path) {
@@ -14,7 +14,7 @@ pub(super) fn probe_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn delete_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn delete_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "delete-file", 1)?;
     let path = pathname_argument("delete-file", &arguments[0])?;
     std::fs::remove_file(&path).map_err(|error| RuntimeError::Io {
@@ -24,7 +24,7 @@ pub(super) fn delete_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::boolean(true))
 }
 
-pub(super) fn rename_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn rename_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "rename-file", 2)?;
     let old_path = pathname_argument("rename-file", &arguments[0])?;
     let new_path = pathname_argument("rename-file", &arguments[1])?;
@@ -51,7 +51,7 @@ pub(super) fn rename_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     ]))
 }
 
-pub(super) fn file_write_date(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn file_write_date(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "file-write-date", 1)?;
     let path = pathname_argument("file-write-date", &arguments[0])?;
     let modified = std::fs::metadata(&path)
@@ -86,7 +86,7 @@ pub(super) fn file_write_date(arguments: &[Value]) -> Result<Value, RuntimeError
     Ok(Value::Integer(universal_time))
 }
 
-pub(super) fn truename(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn truename(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "truename", 1)?;
     let path = pathname_argument("truename", &arguments[0])?;
     let canonical = std::fs::canonicalize(&path).map_err(|error| RuntimeError::Io {

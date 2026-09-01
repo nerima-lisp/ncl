@@ -12,7 +12,7 @@ use crate::vm::execution::application::{
     execute_list_binary_instruction, execute_list_tail_instruction, execute_list_unary_instruction,
     execute_vector_operation_instruction, execute_stream_operation_instruction,
     execute_integer_operation_instruction,
-    execute_file_operation_instruction,
+    execute_file_operation_instruction, execute_file_metadata_operation_instruction,
     execute_character_unary_instruction, execute_symbol_unary_instruction, execute_value_unary_instruction, execute_equality_instruction,
     execute_type_predicate_instruction, execute_character_predicate_instruction,
     execute_numeric_unary_instruction,
@@ -299,6 +299,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::FileOperation { operation, argument_count } => {
             execute_file_operation_instruction(operation, *argument_count, stack, span)?;
+        }
+        Instruction::FileMetadataOperation { operation, argument_count } => {
+            execute_file_metadata_operation_instruction(operation, *argument_count, stack, span)?;
         }
         Instruction::ListTail { operation, option_count } => {
             execute_list_tail_instruction(operation, *option_count, stack, span)?;

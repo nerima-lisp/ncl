@@ -97,7 +97,7 @@ mod builtin_file_helpers;
 use builtin_file_helpers::{pathname_argument, stream_keyword_name};
 
 mod builtin_file_metadata;
-use builtin_file_metadata::{delete_file, file_write_date, probe_file, rename_file, truename};
+pub(crate) use builtin_file_metadata::{delete_file, file_write_date, probe_file, rename_file, truename};
 
 mod builtin_file_open_modes;
 use builtin_file_open_modes::{open_input_file, open_io_file, open_output_file};

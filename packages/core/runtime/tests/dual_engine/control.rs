@@ -341,6 +341,14 @@ fn expands_loop_for_clause(#[case] eval_fn: EvalFn) {
         "(1 2 3)"
     );
     assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 when (evenp value) collect value)").to_string(),
+        "(2)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 unless (evenp value) collect value)").to_string(),
+        "(1 3)"
+    );
+    assert_eq!(
         evaluate(
             r"(let ((total 0))
                  (loop for value from 1 to 3 do (incf total value))
@@ -379,6 +387,13 @@ fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
     assert_eq!(
         evaluate(r"(loop for value = 1 then (+ value 1) repeat 3 collect value)").to_string(),
         "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(
+            r"(loop for value = 1 then (+ value 1) repeat 3 when (evenp value) collect value)"
+        )
+        .to_string(),
+        "(2)",
     );
     assert_eq!(
         evaluate(r"(loop for value = 1 then (+ value 1) while (< value 4) collect value)")

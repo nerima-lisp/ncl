@@ -133,14 +133,32 @@ impl Runtime {
         let binding = match &items[1].kind { ncl_syntax::FormKind::List(parts) if parts.len() >= 2 => parts, _ => return Err(Self::invalid("with-input-from-string binding must contain a variable and string form", items[1].span)) };
         let name = match &binding[0].kind { ncl_syntax::FormKind::Atom(name) => name, _ => return Err(Self::invalid("with-input-from-string variable must be a symbol", binding[0].span)) };
         let mut arguments = Vec::with_capacity(binding.len() - 1);
-        for form in &binding[1..] {
-            arguments.push(self.eval_values_in(form, environment)?.primary_value());
+        let mut index_name = None;
+        let mut options = binding[1..].iter();
+        while let Some(form) = options.next() {
+            if matches!(&form.kind, ncl_syntax::FormKind::Atom(name) if name.eq_ignore_ascii_case(":INDEX")) {
+                let target = options.next().ok_or_else(|| Self::invalid("with-input-from-string :INDEX needs a variable", form.span))?;
+                index_name = match &target.kind {
+                    ncl_syntax::FormKind::Atom(name) => Some(name.clone()),
+                    _ => return Err(Self::invalid("with-input-from-string index must be a symbol", target.span)),
+                };
+            } else {
+                arguments.push(self.eval_values_in(form, environment)?.primary_value());
+            }
         }
         let stream = crate::builtins::make_string_input_stream(&arguments)?;
         let local = environment.child();
         local.define(name, stream.clone());
-        let _guard = crate::builtins::standard_streams::bind(stream, Value::Nil);
-        self.special_progn(&items[2..], &local)
+        let _guard = crate::builtins::standard_streams::bind(stream.clone(), Value::Nil);
+        let result = self.special_progn(&items[2..], &local)?;
+        if let Some(index_name) = index_name {
+            let position = match &stream {
+                Value::Stream(stream) => stream.borrow().position().map(|value| Value::Integer(value as i64)),
+                _ => None,
+            }.unwrap_or(Value::Nil);
+            if !local.set(&index_name, position.clone()) { local.define(index_name, position); }
+        }
+        Ok(result)
     }
 
     fn special_with_output_to_string(

@@ -299,6 +299,8 @@ pub enum Instruction {
         stream: FunctionId,
         /// Lexical variable name visible to the body.
         variable: String,
+        /// Optional variable receiving the final input position.
+        index: Option<String>,
         /// Body function.
         body: FunctionId,
     },

@@ -17,13 +17,24 @@ impl CompileState {
         let variable = Self::symbol_name(&binding[0], &format!("{operator} variable"))?;
         let stream = self.reserve_function(None, Vec::new());
         let mut stream_form = vec![Form::atom(if input { "MAKE-STRING-INPUT-STREAM" } else { "MAKE-STRING-OUTPUT-STREAM" }, span)];
-        if input { stream_form.extend(binding[1..].iter().cloned()); }
+        let mut index = None;
+        if input {
+            let mut options = binding[1..].iter();
+            while let Some(option) = options.next() {
+                if matches!(&option.kind, FormKind::Atom(name) if name.eq_ignore_ascii_case(":INDEX")) {
+                    let target = options.next().ok_or_else(|| CompileError::new(CompileErrorKind::InvalidForm { message: format!("{operator} :INDEX needs a variable") }, option.span))?;
+                    index = Some(Self::symbol_name(target, &format!("{operator} index variable"))?);
+                } else {
+                    stream_form.push(option.clone());
+                }
+            }
+        }
         self.compile_expression(stream, &Form::list(stream_form, span))?;
         self.emit(stream, Instruction::Return, span)?;
         let body = self.reserve_function(None, Vec::new());
         self.compile_sequence(body, &items[2..])?;
         self.emit(body, Instruction::Return, span)?;
-        self.emit(function, Instruction::StandardStreamBind { input, stream, variable, body }, span)?;
+        self.emit(function, Instruction::StandardStreamBind { input, stream, variable, index, body }, span)?;
         Ok(())
     }
 }

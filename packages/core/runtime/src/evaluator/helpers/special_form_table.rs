@@ -30,6 +30,7 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "THROW",
     "WITH-SIMPLE-RESTART",
     "WITH-OPEN-FILE",
+    "WITH-OPEN-STREAM",
     "RESTART-CASE",
     "UNWIND-PROTECT",
     "BLOCK",

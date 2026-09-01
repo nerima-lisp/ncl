@@ -8,21 +8,36 @@ impl CompileState {
         span: Span,
         items: &[Form],
     ) -> Result<(), CompileError> {
+        self.compile_with_open(function, span, items, true, "WITH-OPEN-FILE")
+    }
+
+    pub(crate) fn compile_with_open_stream(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        self.compile_with_open(function, span, items, false, "WITH-OPEN-STREAM")
+    }
+
+    fn compile_with_open(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        open_pathnames: bool,
+        operator: &str,
+    ) -> Result<(), CompileError> {
         if items.len() < 2 {
-            return Err(Self::arity_error(
-                items,
-                "WITH-OPEN-FILE",
-                "at least one",
-                span,
-            ));
+            return Err(Self::arity_error(items, operator, "at least one", span));
         }
         let binding_form = items.get(1).ok_or_else(|| {
-            Self::internal_error(span, "missing WITH-OPEN-FILE binding after arity check")
+            Self::internal_error(span, &format!("missing {operator} binding after arity check"))
         })?;
         let FormKind::List(binding) = &binding_form.kind else {
             return Err(CompileError::new(
                 CompileErrorKind::ExpectedList {
-                    context: "WITH-OPEN-FILE binding".to_string(),
+                    context: format!("{operator} binding"),
                 },
                 binding_form.span,
             ));
@@ -30,8 +45,7 @@ impl CompileState {
         if binding.is_empty() {
             return Err(CompileError::new(
                 CompileErrorKind::InvalidForm {
-                    message: "WITH-OPEN-FILE needs at least one binding"
-                        .to_string(),
+                    message: format!("{operator} needs at least one binding"),
                 },
                 binding_form.span,
             ));
@@ -42,7 +56,7 @@ impl CompileState {
             let FormKind::List(binding) = &binding.kind else {
                 return Err(CompileError::new(
                     CompileErrorKind::ExpectedList {
-                        context: "WITH-OPEN-FILE binding".to_string(),
+                        context: format!("{operator} binding"),
                     },
                     binding.span,
                 ));
@@ -50,18 +64,22 @@ impl CompileState {
             if binding.len() < 2 {
                 return Err(CompileError::new(
                     CompileErrorKind::InvalidForm {
-                        message: "WITH-OPEN-FILE binding needs a stream variable and pathname"
-                            .to_string(),
+                        message: format!("{operator} binding needs a stream variable and stream form"),
                     },
                     binding_form.span,
                 ));
             }
-            Self::symbol_name(&binding[0], "WITH-OPEN-FILE stream variable")?;
-            let mut open_items = Vec::with_capacity(binding.len());
-            open_items.push(Form::atom("OPEN", binding_form.span));
-            open_items.extend(binding[1..].iter().cloned());
+            Self::symbol_name(&binding[0], &format!("{operator} stream variable"))?;
+            let value = if open_pathnames {
+                let mut open_items = Vec::with_capacity(binding.len());
+                open_items.push(Form::atom("OPEN", binding_form.span));
+                open_items.extend(binding[1..].iter().cloned());
+                Form::list(open_items, binding_form.span)
+            } else {
+                binding[1].clone()
+            };
             generated_bindings.push(Form::list(
-                vec![binding[0].clone(), Form::list(open_items, binding_form.span)],
+                vec![binding[0].clone(), value],
                 binding_form.span,
             ));
             stream_names.push(binding[0].clone());

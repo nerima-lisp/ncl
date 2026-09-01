@@ -98,6 +98,10 @@ impl Runtime {
                 let expanded = Self::expand_with_open_file(form)?;
                 Some(self.eval_expanded_values(&expanded, environment)?)
             }
+            "WITH-OPEN-STREAM" => {
+                let expanded = Self::expand_with_open_stream(form)?;
+                Some(self.eval_expanded_values(&expanded, environment)?)
+            }
             "RESTART-CASE" => Some(self.special_restart_case(items, environment)?),
             "UNWIND-PROTECT" => Some(self.special_unwind_protect(items, environment)?),
             "BLOCK" => Some(self.special_block(items, environment)?),

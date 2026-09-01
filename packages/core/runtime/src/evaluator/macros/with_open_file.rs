@@ -4,12 +4,24 @@ use crate::{Runtime, RuntimeError};
 
 impl Runtime {
     pub(in crate::evaluator) fn expand_with_open_file(form: &Form) -> Result<Form, RuntimeError> {
+        Self::expand_with_open(form, true, "with-open-file")
+    }
+
+    pub(in crate::evaluator) fn expand_with_open_stream(form: &Form) -> Result<Form, RuntimeError> {
+        Self::expand_with_open(form, false, "with-open-stream")
+    }
+
+    fn expand_with_open(
+        form: &Form,
+        open_pathnames: bool,
+        operator: &str,
+    ) -> Result<Form, RuntimeError> {
         let FormKind::List(items) = &form.kind else {
             return Ok(form.clone());
         };
         if items.len() < 2 {
             return Err(Self::arity(
-                "with-open-file",
+                operator,
                 "at least one",
                 items.len().saturating_sub(1),
             ));
@@ -17,13 +29,13 @@ impl Runtime {
         let binding_form = &items[1];
         let FormKind::List(bindings) = &binding_form.kind else {
             return Err(Self::invalid(
-                "with-open-file binding must be a list",
+                "with-open binding must be a list",
                 binding_form.span,
             ));
         };
         if bindings.is_empty() {
             return Err(Self::invalid(
-                "with-open-file needs at least one binding",
+                "with-open needs at least one binding",
                 binding_form.span,
             ));
         }
@@ -32,27 +44,32 @@ impl Runtime {
         for binding_form in bindings {
             let FormKind::List(binding) = &binding_form.kind else {
                 return Err(Self::invalid(
-                    "with-open-file binding must be a list",
+                    "with-open binding must be a list",
                     binding_form.span,
                 ));
             };
             if binding.len() < 2 {
                 return Err(Self::invalid(
-                    "with-open-file binding needs a stream variable and pathname",
+                    "with-open binding needs a stream variable and stream form",
                     binding_form.span,
                 ));
             }
             Self::variable_name_info(
                 &binding[0],
-                "with-open-file stream variable must be a symbol",
+                "with-open stream variable must be a symbol",
             )?;
-            let mut open_items = Vec::with_capacity(binding.len());
-            open_items.push(Form::atom("OPEN", binding_form.span));
-            open_items.extend(binding[1..].iter().cloned());
+            let open_items = if open_pathnames {
+                let mut items = Vec::with_capacity(binding.len());
+                items.push(Form::atom("OPEN", binding_form.span));
+                items.extend(binding[1..].iter().cloned());
+                Form::list(items, binding_form.span)
+            } else {
+                binding[1].clone()
+            };
             generated_bindings.push(Form::list(
                 vec![
                     binding[0].clone(),
-                    Form::list(open_items, binding_form.span),
+                    open_items,
                 ],
                 binding_form.span,
             ));
@@ -179,6 +196,23 @@ mod tests {
         assert_eq!(
             expanded.to_string(),
             "(LET ((S (OPEN FIRST)) (U (OPEN SECOND))) (UNWIND-PROTECT (UNWIND-PROTECT (PROGN S) (CLOSE U)) (CLOSE S)))"
+        );
+    }
+
+    #[test]
+    fn with_open_stream_uses_the_supplied_stream_form() {
+        let form = Form::list(
+            vec![
+                atom("WITH-OPEN-STREAM"),
+                Form::list(vec![Form::list(vec![atom("S"), atom("SOURCE")], SPAN)], SPAN),
+                atom("S"),
+            ],
+            SPAN,
+        );
+        let expanded = valid(Runtime::expand_with_open_stream(&form));
+        assert_eq!(
+            expanded.to_string(),
+            "(LET ((S SOURCE)) (UNWIND-PROTECT (PROGN S) (CLOSE S)))"
         );
     }
 }

@@ -43,6 +43,7 @@ impl CompileState {
                 self.compile_with_condition_restarts(function, span, items)
             }
             "WITH-OPEN-FILE" => self.compile_with_open_file(function, span, items),
+            "WITH-OPEN-STREAM" => self.compile_with_open_stream(function, span, items),
             "RESTART-CASE" => self.compile_restart_case(function, span, items),
             "PROGV" => self.compile_progv(function, span, items),
             "THROW" => self.compile_throw(function, span, items),

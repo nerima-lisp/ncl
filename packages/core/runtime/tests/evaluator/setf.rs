@@ -763,6 +763,16 @@ fn file_streams_round_trip_through_with_open_file() {
 }
 
 #[test]
+fn string_streams_are_closed_through_with_open_stream() {
+    let source = r#"(let ((stream (make-string-output-stream)))
+                       (with-open-stream ((owned stream))
+                         (write-string "hello" owned))
+                       (get-output-stream-string stream))"#;
+
+    assert_eq!(evaluate(source).to_string(), r#""hello""#);
+}
+
+#[test]
 fn file_stream_options_cover_probe_append_and_abort() {
     let path = std::env::temp_dir().join(format!(
         "ncl-file-stream-options-evaluator-{}",

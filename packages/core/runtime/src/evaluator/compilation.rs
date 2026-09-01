@@ -38,6 +38,10 @@ impl Runtime {
             let expanded = Self::expand_with_open_file(form)?;
             return self.prepare_compiled_form(&expanded, environment);
         }
+        if is_operator_form(form, "WITH-OPEN-STREAM") {
+            let expanded = Self::expand_with_open_stream(form)?;
+            return self.prepare_compiled_form(&expanded, environment);
+        }
 
         if is_operator_form(form, "DEFMACRO")
             || is_operator_form(form, "DEFINE-MODIFY-MACRO")

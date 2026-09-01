@@ -505,6 +505,10 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Construct an array from evaluated arguments."] ArrayConstruction {
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Apply a string case transformation with optional bounds."] StringCase {
         /// String case operation name.
         operation: String,

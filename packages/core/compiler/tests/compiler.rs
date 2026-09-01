@@ -1302,6 +1302,14 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(!shadowed_vector.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::VectorConstruction { .. })
     }));
+    let make_array = compile("(make-array 2 :initial-element 7)");
+    assert!(make_array.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::ArrayConstruction { argument_count: 3 })
+    }));
+    let shadowed_make_array = compile("(flet ((make-array (dimensions &rest options) :shadowed)) (make-array 2))");
+    assert!(!shadowed_make_array.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::ArrayConstruction { .. })
+    }));
     let copy_seq = compile("(copy-seq '(a b))");
     assert!(copy_seq.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::SequenceUnary { operation } if operation == "COPY-SEQ")

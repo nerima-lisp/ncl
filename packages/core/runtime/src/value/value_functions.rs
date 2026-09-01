@@ -22,6 +22,11 @@ pub enum Function {
         /// The Rust function implementing the primitive.
         function: Builtin,
     },
+    /// A function that negates the truth value returned by another function.
+    Complement {
+        /// The function whose result is negated.
+        function: Value,
+    },
     /// A named primitive resolved by the evaluator.
     Primitive {
         /// The primitive's canonical name.

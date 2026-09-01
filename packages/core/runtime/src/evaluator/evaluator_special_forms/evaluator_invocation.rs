@@ -53,6 +53,11 @@ impl Runtime {
         let function = self.resolve_function_designator(function, span, environment)?;
         match function.as_ref() {
             crate::Function::Builtin { function, .. } => function(arguments),
+            crate::Function::Complement { function } => Ok(Value::boolean(
+                !self
+                    .apply_in(function, arguments, span, environment)?
+                    .is_truthy(),
+            )),
             crate::Function::Primitive { name } => {
                 self.apply_primitive(name, arguments, environment, span)
             }

@@ -88,6 +88,7 @@ impl fmt::Display for Value {
 fn fmt_function(formatter: &mut fmt::Formatter<'_>, function: &Function) -> fmt::Result {
     match function {
         Function::Builtin { name, .. } => write!(formatter, "#<BUILTIN {name}>"),
+        Function::Complement { .. } => formatter.write_str("#<FUNCTION COMPLEMENT>"),
         Function::Primitive { name } => write!(formatter, "#<PRIMITIVE {name}>"),
         Function::StructureConstructor { name, .. } => {
             write!(formatter, "#<STRUCTURE-CONSTRUCTOR {name}>")

@@ -33,6 +33,7 @@ pub(super) const PREDICATE_BUILTINS: &[BuiltinDefinition] = &[
     ("equal", equal as _),
     ("equalp", equalp as _),
     ("identity", identity as _),
+    ("complement", complement as _),
     ("type-of", type_of as _),
     ("typep", typep as _),
     ("condition-message", condition_message as _),

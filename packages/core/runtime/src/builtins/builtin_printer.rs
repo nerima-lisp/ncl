@@ -1,9 +1,17 @@
-use super::{arity, array_option_name, exact, write_destination};
+use super::{arity, array_option_name, exact, type_error, write_destination};
 use crate::{RuntimeError, Value};
 
 pub(super) fn identity(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "identity", 1)?;
     Ok(arguments[0].clone())
+}
+
+pub(super) fn complement(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "complement", 1)?;
+    if !matches!(arguments[0], Value::Function(_)) {
+        return Err(type_error("complement", "function", &arguments[0]));
+    }
+    Ok(Value::complement(arguments[0].clone()))
 }
 
 pub(super) fn type_of(arguments: &[Value]) -> Result<Value, RuntimeError> {

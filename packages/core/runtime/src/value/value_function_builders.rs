@@ -7,6 +7,10 @@ use ncl_syntax::{Form, LambdaListAuxiliaryParameter, LambdaListOptionalParameter
 use super::{Builtin, ClosureOptions, Environment, Function, MacroLambdaList, Value};
 
 impl Value {
+    pub(crate) fn complement(function: Self) -> Self {
+        Self::Function(Rc::new(Function::Complement { function }))
+    }
+
     /// Creates a callable value backed by a runtime builtin.
     pub fn builtin(name: &'static str, function: Builtin) -> Self {
         Self::Function(Rc::new(Function::Builtin { name, function }))

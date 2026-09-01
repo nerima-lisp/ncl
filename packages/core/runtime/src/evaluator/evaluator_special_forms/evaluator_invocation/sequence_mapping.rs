@@ -52,23 +52,7 @@ impl Runtime {
             return Ok(result);
         }
 
-        let supports_setf_place = match &destination_form.kind {
-            super::FormKind::List(items) => items
-                .first()
-                .and_then(atom_name)
-                .is_some_and(|name| {
-                    matches!(
-                        name,
-                        "LDB" | "MASK-FIELD" | "SLOT-VALUE" | "CAR" | "FIRST" | "CDR"
-                            | "REST" | "NTH" | "SECOND" | "THIRD" | "FOURTH" | "FIFTH"
-                            | "SIXTH" | "SEVENTH" | "EIGHTH" | "NINTH" | "TENTH" | "ELT"
-                            | "CHAR" | "SCHAR" | "SUBSEQ" | "SVREF" | "ROW-MAJOR-AREF"
-                            | "AREF" | "BIT" | "SYMBOL-VALUE" | "SYMBOL-FUNCTION"
-                            | "SYMBOL-PLIST" | "GET" | "GETHASH" | "GETF"
-                    )
-                }),
-            _ => false,
-        };
+        let supports_setf_place = self.supports_setf_place(destination_form, environment);
         let expansion = match supports_setf_place.then(|| self.get_setf_expansion(destination_form, environment)) {
             Some(Ok(expansion)) => expansion,
             Some(Err(error)) => return Err(error),

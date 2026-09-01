@@ -4,6 +4,30 @@ use super::{
 };
 
 impl Runtime {
+    pub(in crate::evaluator::evaluator_special_forms) fn supports_setf_place(
+        &self,
+        place: &Form,
+        environment: &Environment,
+    ) -> bool {
+        let FormKind::List(items) = &place.kind else {
+            return atom_name(place).is_some();
+        };
+        let Some(operator) = items.first().and_then(atom_name) else {
+            return false;
+        };
+        let lookup_name = unqualified_name(operator);
+        environment.lookup_setf_expander(&lookup_name).is_some()
+            || matches!(
+                lookup_name.as_str(),
+                "LDB" | "MASK-FIELD" | "SLOT-VALUE" | "CAR" | "FIRST" | "CDR" | "REST"
+                    | "NTH" | "SECOND" | "THIRD" | "FOURTH" | "FIFTH" | "SIXTH"
+                    | "SEVENTH" | "EIGHTH" | "NINTH" | "TENTH" | "ELT" | "CHAR" | "SCHAR"
+                    | "SUBSEQ" | "SVREF" | "ROW-MAJOR-AREF" | "AREF" | "BIT"
+                    | "SYMBOL-VALUE" | "SYMBOL-FUNCTION" | "SYMBOL-PLIST" | "GET"
+                    | "GETHASH" | "GETF"
+            )
+    }
+
     pub(super) fn custom_setf_expansion(
         &self,
         place: &Form,

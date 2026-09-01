@@ -600,6 +600,24 @@ fn compiled_evaluates_define_setf_expander_and_get_setf_expansion() {
 }
 
 #[test]
+fn compiled_map_into_uses_a_custom_setf_expander_destination() {
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defparameter *compiled-map-into-place* #(0 0))
+               (define-setf-expander compiled-map-into-place ()
+                 (values nil nil '(new-value)
+                         '(setq *compiled-map-into-place* new-value)
+                         '*compiled-map-into-place*))
+               (map-into (compiled-map-into-place) #'1+ '(1 2))
+               *compiled-map-into-place*)",
+        )
+        .to_string(),
+        "#(2 3)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_define_modify_macro_on_generalized_place() {
     assert_eq!(
         evaluate(

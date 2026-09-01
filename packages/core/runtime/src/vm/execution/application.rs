@@ -793,6 +793,29 @@ pub fn execute_string_comparison_instruction(
     Ok(())
 }
 
+pub fn execute_string_trim_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < 2 {
+        return Err(invalid("string trim has too few stack values", span));
+    }
+    let arguments = stack
+        .split_off(stack.len() - 2)
+        .into_iter()
+        .map(|value| value.primary_value())
+        .collect::<Vec<_>>();
+    let value = match operation {
+        "STRING-TRIM" => crate::builtins::string_trim(&arguments)?,
+        "STRING-LEFT-TRIM" => crate::builtins::string_left_trim(&arguments)?,
+        "STRING-RIGHT-TRIM" => crate::builtins::string_right_trim(&arguments)?,
+        _ => return Err(invalid("unknown string trim operation", span)),
+    };
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_character_element_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

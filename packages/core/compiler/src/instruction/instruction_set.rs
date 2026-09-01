@@ -478,6 +478,10 @@ pub enum Instruction {
         /// String comparison operation name.
         operation: String,
     },
+    #[doc = "Trim characters from a string."] StringTrim {
+        /// String trimming operation name.
+        operation: String,
+    },
     #[doc = "Compare two or more characters."] CharacterComparison {
         /// Character comparison operation name.
         operation: String,

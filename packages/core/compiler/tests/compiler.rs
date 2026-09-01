@@ -1998,3 +1998,18 @@ fn lowers_return_from_without_a_value_to_nil() {
         ]
     );
 }
+
+#[test]
+fn lowers_native_string_trimming() {
+    let program = compile(
+        "(list (string-trim \" \" \" hi \") (string-left-trim \" \" \" hi \") (string-right-trim \" \" \" hi \"))",
+    );
+    assert_eq!(
+        program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::StringTrim { .. }))
+            .count(),
+        3
+    );
+}

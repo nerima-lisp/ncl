@@ -578,6 +578,17 @@ fn compiled_rejects_invalid_hash_table_options() {
 }
 
 #[test]
+fn compiled_evaluates_native_string_trimming() {
+    assert_eq!(
+        evaluate(
+            "(list (string-trim \" \" \" hi \") (string-left-trim \" \" \" hi \") (string-right-trim \" \" \" hi \"))"
+        )
+        .to_string(),
+        "(\"hi\" \"hi \" \" hi\")",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_defstruct_invocations() {
     let cases = [
         (

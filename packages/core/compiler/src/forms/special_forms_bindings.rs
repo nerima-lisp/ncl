@@ -116,6 +116,7 @@ impl CompileState {
                 | "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
                 | "NSTRING-UPCASE" | "NSTRING-DOWNCASE" | "NSTRING-CAPITALIZE"
                 | "STRING=" | "STRING-EQUAL" | "STRING<" | "STRING>" | "STRING<=" | "STRING>="
+                | "STRING-TRIM" | "STRING-LEFT-TRIM" | "STRING-RIGHT-TRIM"
                 | "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
                 | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
                 | "CHAR-NOT-GREATERP"
@@ -217,6 +218,9 @@ impl CompileState {
             }
             "STRING=" | "STRING-EQUAL" | "STRING<" | "STRING>" | "STRING<=" | "STRING>=" => {
                 self.compile_string_comparison(function, span, items, name)
+            }
+            "STRING-TRIM" | "STRING-LEFT-TRIM" | "STRING-RIGHT-TRIM" => {
+                self.compile_string_trim(function, span, items, name)
             }
             "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
             | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"

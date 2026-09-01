@@ -479,6 +479,25 @@ impl Runtime {
                             extremum_name = Some(aggregate_name);
                         }
                     }
+                    let mut loop_condition = None;
+                    if let Some(condition_name) = items.get(body_start).and_then(atom_name) {
+                        if names_equal(condition_name, "THEREIS")
+                            || names_equal(condition_name, "ALWAYS")
+                            || names_equal(condition_name, "NEVER")
+                        {
+                            if items.len() <= body_start + 1 {
+                                return Err(Self::invalid(
+                                    "LOOP condition clause requires a form",
+                                    form.span,
+                                ));
+                            }
+                            loop_condition = Some((
+                                condition_name.to_owned(),
+                                items[body_start + 1].clone(),
+                            ));
+                            body_start += 2;
+                        }
+                    }
                     let mut dolist_items = vec![
                         Form::atom("DOLIST", form.span),
                         Form::list(vec![variable.clone(), items[4].clone()], form.span),
@@ -545,6 +564,32 @@ impl Runtime {
                             form.span,
                         ));
                     }
+                    if let Some((condition_name, condition)) = loop_condition.clone() {
+                        let success = names_equal(&condition_name, "THEREIS");
+                        let predicate = if names_equal(&condition_name, "THEREIS") {
+                            condition.clone()
+                        } else if names_equal(&condition_name, "ALWAYS") {
+                            Form::list(vec![Form::atom("NOT", form.span), condition.clone()], form.span)
+                        } else {
+                            condition.clone()
+                        };
+                        let value = if success {
+                            condition
+                        } else {
+                            Form::atom("NIL", form.span)
+                        };
+                        dolist_items.push(Form::list(
+                            vec![
+                                Form::atom("WHEN", form.span),
+                                predicate,
+                                Form::list(
+                                    vec![Form::atom("RETURN-FROM", form.span), Form::atom("NIL", form.span), value],
+                                    form.span,
+                                ),
+                            ],
+                            form.span,
+                        ));
+                    }
                     dolist_items.extend(items[body_start..].iter().cloned());
                     if let Some((binding, table)) = hash_binding {
                         for item in &mut dolist_items[2..] {
@@ -587,6 +632,26 @@ impl Runtime {
                         }
                     }
                     let dolist = Form::list(dolist_items, form.span);
+                    let dolist = if let Some((condition_name, _)) = &loop_condition {
+                        let normal_result = if names_equal(condition_name, "THEREIS") {
+                            Form::atom("NIL", form.span)
+                        } else {
+                            Form::atom("T", form.span)
+                        };
+                        Form::list(
+                            vec![
+                                Form::atom("BLOCK", form.span),
+                                Form::atom("NIL", form.span),
+                                Form::list(
+                                    vec![Form::atom("PROGN", form.span), dolist, normal_result],
+                                    form.span,
+                                ),
+                            ],
+                            form.span,
+                        )
+                    } else {
+                        dolist
+                    };
                     if collect_form.is_some()
                         || sum_name.is_some()
                         || count_result_name.is_some()
@@ -641,6 +706,10 @@ impl Runtime {
                             ],
                             form.span,
                         ));
+                    }
+                    if let Some((condition_name, _)) = loop_condition {
+                        let _ = condition_name;
+                        return Ok(dolist);
                     }
                     return Ok(dolist);
                 }

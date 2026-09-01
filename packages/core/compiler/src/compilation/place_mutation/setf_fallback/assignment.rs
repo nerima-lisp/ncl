@@ -7,6 +7,5 @@ pub(super) fn compile_value_for_setf(
     value_form: &Form,
 ) -> Result<(), CompileError> {
     state.compile_expression(function, value_form)?;
-    state.compile_expression(function, value_form)?;
     Ok(())
 }

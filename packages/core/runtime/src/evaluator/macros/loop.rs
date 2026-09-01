@@ -980,7 +980,7 @@ impl Runtime {
                 {
                     body_start += 1;
                 }
-                let clause_condition = if items
+                let mut clause_condition = if items
                     .get(body_start)
                     .and_then(atom_name)
                     .is_some_and(|name| names_equal(name, "WHEN") || names_equal(name, "UNLESS"))
@@ -1015,6 +1015,29 @@ impl Runtime {
                     }
                     collect_form = Some(items[body_start + 1].clone());
                     body_start += 2;
+                }
+                if clause_condition.is_none()
+                    && items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| {
+                            names_equal(name, "WHEN") || names_equal(name, "UNLESS")
+                        })
+                {
+                    if items.len() <= body_start + 1 {
+                        return Err(Self::invalid(
+                            "LOOP WHEN/UNLESS clause requires a test",
+                            form.span,
+                        ));
+                    }
+                    let clause_name = atom_name(&items[body_start]).unwrap();
+                    let test = items[body_start + 1].clone();
+                    body_start += 2;
+                    clause_condition = Some(if names_equal(clause_name, "WHEN") {
+                        test
+                    } else {
+                        Form::list(vec![Form::atom("NOT", form.span), test], form.span)
+                    });
                 }
                 if items
                     .get(body_start)

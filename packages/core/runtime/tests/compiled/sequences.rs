@@ -19,6 +19,8 @@ fn compiled_evaluates_list_access_operations() {
     assert_eq!(evaluate("(cdr '(a b))").to_string(), "(B)");
     assert_eq!(evaluate("(first '(a b))").to_string(), "A");
     assert_eq!(evaluate("(rest '(a b))").to_string(), "(B)");
+    assert_eq!(evaluate("(copy-list '(a b))").to_string(), "(A B)");
+    assert_eq!(evaluate("(copy-alist '((a . 1)))").to_string(), "((A . 1))");
     assert_eq!(evaluate("(first nil)").to_string(), "NIL");
     assert_eq!(evaluate("(rest nil)").to_string(), "NIL");
 }

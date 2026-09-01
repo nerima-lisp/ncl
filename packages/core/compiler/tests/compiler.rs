@@ -1081,7 +1081,7 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::SequenceUnary { operation: emitted } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
-    for operation in ["CAR", "CDR", "FIRST", "REST"] {
+    for operation in ["CAR", "CDR", "FIRST", "REST", "COPY-LIST", "COPY-ALIST"] {
         let program = compile(&format!("({operation} '(1 2))"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {
             matches!(instruction, Instruction::ListUnary { operation: emitted } if emitted == operation)

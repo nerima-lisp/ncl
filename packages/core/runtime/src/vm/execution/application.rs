@@ -460,6 +460,8 @@ pub fn execute_list_unary_instruction(
         "CDR" => crate::builtins::cdr(&[value]),
         "FIRST" => crate::builtins::first(&[value]),
         "REST" => crate::builtins::rest(&[value]),
+        "COPY-LIST" => crate::builtins::copy_list(&[value]),
+        "COPY-ALIST" => crate::builtins::copy_alist(&[value]),
         _ => Err(invalid("unknown unary list operation", span)),
     }?;
     stack.push(result);

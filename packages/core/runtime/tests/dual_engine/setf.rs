@@ -185,3 +185,23 @@ fn evaluates_symbol_properties_and_setf_get(#[case] eval_fn: EvalFn) {
         "(NIL :DEFAULT 10 10 11 11 (:ANSWER 11) NIL T :DEFAULT NIL NIL)",
     );
 }
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_setf_gethash_with_an_evaluated_table(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((table (make-hash-table :test #'equal))
+                        (key (concatenate 'string "k" "ey")))
+                    (list
+                      (setf (gethash key table) 7)
+                      (setf (gethash key table) 9)
+                      (gethash key table)
+                      (hash-table-count table)))"#,
+        )
+        .to_string(),
+        "(7 9 9 1)",
+    );
+}

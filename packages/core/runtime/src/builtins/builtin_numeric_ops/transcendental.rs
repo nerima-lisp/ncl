@@ -22,7 +22,13 @@ pub fn exponential(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 pub fn logarithm(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("log", arguments, f64::ln)
+    if arguments.len() == 1 {
+        return unary_real("log", arguments, f64::ln);
+    }
+    exact(arguments, "log", 2)?;
+    let value = number_argument("log", &arguments[0])?.as_float();
+    let base = number_argument("log", &arguments[1])?.as_float();
+    Ok(Value::Float(value.ln() / base.ln()))
 }
 
 pub fn arc_sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -61,5 +67,11 @@ mod tests {
             std::f64::consts::E.to_string()
         );
         assert_eq!(logarithm(&[Value::Integer(1)]).unwrap().to_string(), "0.0");
+        assert_eq!(
+            logarithm(&[Value::Integer(8), Value::Integer(2)])
+                .unwrap()
+                .to_string(),
+            "3.0"
+        );
     }
 }

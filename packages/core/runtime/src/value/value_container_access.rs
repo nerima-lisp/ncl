@@ -22,6 +22,47 @@ impl Value {
         }
     }
 
+    pub(crate) fn vector_fill_pointer(&self) -> Option<Option<usize>> {
+        match self {
+            Self::Vector(items) => Some(items.metadata.borrow().fill_pointer),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn vector_length(&self) -> Option<usize> {
+        match self {
+            Self::Vector(items) => Some(self.vector_fill_pointer().flatten().unwrap_or_else(|| items.borrow().len())),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn set_vector_fill_pointer(&self, fill_pointer: Option<usize>) -> Option<()> {
+        match self {
+            Self::Vector(items) => {
+                items.metadata.borrow_mut().fill_pointer = fill_pointer;
+                Some(())
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn vector_adjustable(&self) -> Option<bool> {
+        match self {
+            Self::Vector(items) => Some(items.metadata.borrow().adjustable),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn set_vector_adjustable(&self, adjustable: bool) -> Option<()> {
+        match self {
+            Self::Vector(items) => {
+                items.metadata.borrow_mut().adjustable = adjustable;
+                Some(())
+            }
+            _ => None,
+        }
+    }
+
     /// Returns copied array dimensions when this value is an array.
     #[must_use]
     pub fn array_dimensions(&self) -> Option<Vec<usize>> {

@@ -45,6 +45,30 @@ fn make_array_rejects_invalid_keyword_pairs() {
 }
 
 #[test]
+fn make_array_tracks_vector_fill_pointer_and_adjustability() {
+    let vector = make_array(&[
+        Value::Integer(4),
+        Value::keyword("fill-pointer"),
+        Value::Integer(2),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])
+    .expect("make-array should construct a vector");
+
+    assert_eq!(vector.vector_length(), Some(2));
+    assert_eq!(vector.vector_adjustable(), Some(true));
+    assert!(matches!(
+        make_array(&[
+            Value::list(vec![Value::Integer(2), Value::Integer(2)]),
+            Value::keyword("fill-pointer"),
+            Value::Integer(1),
+        ]),
+        Err(RuntimeError::InvalidForm { message, .. })
+            if message.contains("fill pointer requires a vector")
+    ));
+}
+
+#[test]
 fn array_coordinate_index_reports_overflow_in_stride_and_contribution() {
     let stride_overflow = array_coordinate_index(
         "test",

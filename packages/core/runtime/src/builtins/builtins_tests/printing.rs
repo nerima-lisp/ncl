@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::RuntimeError;
 use crate::builtins::builtin_printer::parse_print_options;
 use crate::builtins::*;
@@ -87,7 +85,7 @@ fn print_helpers_cover_table_driven_values_and_options() -> Result<(), RuntimeEr
             "(. 2)",
         ),
         (
-            Value::Vector(Rc::new(vec![Value::string("text"), Value::Integer(2)])),
+            Value::vector(vec![Value::string("text"), Value::Integer(2)]),
             "#(\"text\" 2)",
             "#(text 2)",
         ),

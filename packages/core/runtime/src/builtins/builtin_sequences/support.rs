@@ -102,7 +102,7 @@ pub fn sequence_length(value: &Value) -> Option<usize> {
     match value {
         Value::Nil => Some(0),
         Value::List(items) => Some(items.len()),
-        Value::Vector(items) => Some(items.borrow().len()),
+        Value::Vector(items) => value.vector_length().or_else(|| Some(items.borrow().len())),
         Value::String(value) => Some(value.chars().count()),
         _ => None,
     }

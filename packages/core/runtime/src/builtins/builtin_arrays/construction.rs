@@ -2,6 +2,7 @@ use crate::builtins::{
     arity, array_elements, array_option_name, array_total_size_for, dimensions_for_array,
     flatten_array_contents, parse_array_dimensions,
 };
+use crate::builtins::index_argument;
 use crate::{RuntimeError, Value};
 
 #[expect(clippy::unnecessary_wraps)]
@@ -17,6 +18,7 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut initial_element = None;
     let mut initial_contents = None;
     let mut adjustable = false;
+    let mut fill_pointer = None;
     if !(arguments.len() - 1).is_multiple_of(2) {
         return Err(arity(
             "make-array",
@@ -48,6 +50,7 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 initial_contents = Some(pair[1].clone());
             }
             "ADJUSTABLE" => adjustable = pair[1].is_truthy(),
+            "FILL-POINTER" => fill_pointer = Some(index_argument("make-array", &pair[1])?),
             _ => {
                 return Err(RuntimeError::InvalidForm {
                     message: format!("make-array does not support keyword :{name}"),
@@ -57,6 +60,12 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
         }
     }
     let total_size = array_total_size_for("make-array", &dimensions)?;
+    if fill_pointer.is_some() && dimensions.len() != 1 {
+        return Err(crate::RuntimeError::InvalidForm {
+            message: "make-array fill pointer requires a vector".to_string(),
+            span: None,
+        });
+    }
     let elements = if let Some(contents) = initial_contents {
         let mut elements = Vec::with_capacity(total_size);
         flatten_array_contents("make-array", &contents, &dimensions, &mut elements)?;
@@ -65,7 +74,18 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
         vec![initial_element.unwrap_or(Value::Nil); total_size]
     };
     if dimensions.len() == 1 {
-        Ok(Value::vector(elements))
+        let vector = Value::vector(elements);
+        vector.set_vector_adjustable(adjustable);
+        if let Some(fill_pointer) = fill_pointer {
+            if fill_pointer > total_size {
+                return Err(crate::RuntimeError::InvalidForm {
+                    message: "make-array fill pointer exceeds vector length".to_string(),
+                    span: None,
+                });
+            }
+            vector.set_vector_fill_pointer(Some(fill_pointer));
+        }
+        Ok(vector)
     } else {
         let array = Value::array(dimensions, elements);
         array.set_array_adjustable(adjustable);

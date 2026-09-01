@@ -58,6 +58,21 @@ pub struct ArrayMetadata {
     pub fill_pointer: Option<usize>,
 }
 
+pub struct VectorData {
+    pub elements: RefCell<Vec<Value>>,
+    pub metadata: RefCell<ArrayMetadata>,
+}
+
+impl VectorData {
+    pub fn borrow(&self) -> std::cell::Ref<'_, Vec<Value>> {
+        self.elements.borrow()
+    }
+
+    pub fn borrow_mut(&self) -> std::cell::RefMut<'_, Vec<Value>> {
+        self.elements.borrow_mut()
+    }
+}
+
 #[derive(Clone)]
 /// A dynamically typed NCL value.
 pub enum Value {
@@ -110,7 +125,7 @@ pub enum Value {
         tail: Rc<Self>,
     },
     /// A one-dimensional vector.
-    Vector(Rc<RefCell<Vec<Self>>>),
+    Vector(Rc<VectorData>),
     /// A multidimensional array.
     Array {
         /// Dimensions in row-major order.

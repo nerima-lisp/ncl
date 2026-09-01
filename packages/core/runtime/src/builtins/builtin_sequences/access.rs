@@ -6,7 +6,7 @@ pub fn length(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let length = match &arguments[0] {
         Value::Nil => 0,
         Value::List(items) => items.len(),
-        Value::Vector(items) => items.borrow().len(),
+        Value::Vector(items) => arguments[0].vector_length().unwrap_or_else(|| items.borrow().len()),
         Value::String(value) => value.chars().count(),
         _ => {
             return Err(type_error("length", "sequence", &arguments[0]));

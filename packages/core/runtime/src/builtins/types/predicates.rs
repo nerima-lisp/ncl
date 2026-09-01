@@ -65,7 +65,10 @@ pub fn vectorp(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-vector-p", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::Vector(_))))
+    Ok(Value::boolean(
+        matches!(&arguments[0], Value::Vector(_))
+            && arguments[0].vector_adjustable() != Some(true),
+    ))
 }
 
 pub fn bit_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {

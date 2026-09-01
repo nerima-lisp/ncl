@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use crate::RuntimeError;
 use crate::builtins::*;
@@ -49,13 +49,17 @@ fn data_helpers_cover_successful_table_cases() -> Result<(), RuntimeError> {
     assert_eq!(copy_tree(&[tree])?.to_string(), "((1 2) . 3)");
     let cases = [
         (
-            Value::Vector(Rc::new(vec![Value::Integer(1), Value::Integer(2)])),
+            Value::vector(vec![Value::Integer(1), Value::Integer(2)]),
             vec![2],
         ),
         (
             Value::Array {
                 dimensions: Rc::new(vec![1, 2]),
-                elements: Rc::new(vec![Value::Integer(1), Value::Integer(2)]),
+                elements: Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)])),
+                metadata: Rc::new(RefCell::new(crate::value::ArrayMetadata {
+                    adjustable: false,
+                    fill_pointer: None,
+                })),
             },
             vec![1, 2],
         ),

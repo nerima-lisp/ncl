@@ -108,7 +108,13 @@ impl Value {
     /// Creates a vector value.
     #[must_use]
     pub fn vector(values: Vec<Self>) -> Self {
-        Self::Vector(Rc::new(RefCell::new(values)))
+        Self::Vector(Rc::new(super::VectorData {
+            elements: RefCell::new(values),
+            metadata: RefCell::new(super::ArrayMetadata {
+                adjustable: false,
+                fill_pointer: None,
+            }),
+        }))
     }
 
     /// Creates an array value with explicit dimensions and row-major elements.

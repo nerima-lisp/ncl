@@ -1101,6 +1101,10 @@ impl Runtime {
                     }
                     let variable = items[2].clone();
                     let mut body_start = 7;
+                    let mut sum_form = None;
+                    let mut sum_name = None;
+                    let mut count_form = None;
+                    let mut count_result_name = None;
                     let mut loop_condition = None;
                     let condition_block = Form::atom(
                         format!("NCL-LOOP-BLOCK-{}", form.span.start),
@@ -1202,6 +1206,47 @@ impl Runtime {
                     if items
                         .get(body_start)
                         .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "SUM") || names_equal(name, "COUNT"))
+                    {
+                        if items.len() <= body_start + 1 {
+                            return Err(Self::invalid(
+                                "LOOP aggregate clause requires a form",
+                                form.span,
+                            ));
+                        }
+                        let aggregate = atom_name(&items[body_start]).unwrap();
+                        let value = items[body_start + 1].clone();
+                        let name = if items
+                            .get(body_start + 2)
+                            .and_then(atom_name)
+                            .is_some_and(|name| names_equal(name, "INTO"))
+                        {
+                            if items.len() <= body_start + 3 {
+                                return Err(Self::invalid(
+                                    "LOOP aggregate INTO requires a variable",
+                                    form.span,
+                                ));
+                            }
+                            body_start += 4;
+                            items[body_start - 1].clone()
+                        } else {
+                            body_start += 2;
+                            Form::atom(
+                                format!("NCL-LOOP-{}-{}", aggregate, form.span.start),
+                                form.span,
+                            )
+                        };
+                        if names_equal(aggregate, "SUM") {
+                            sum_form = Some(value);
+                            sum_name = Some(name);
+                        } else {
+                            count_form = Some(value);
+                            count_result_name = Some(name);
+                        }
+                    }
+                    if items
+                        .get(body_start)
+                        .and_then(atom_name)
                         .is_some_and(|name| {
                             names_equal(name, "THEREIS")
                                 || names_equal(name, "ALWAYS")
@@ -1237,6 +1282,12 @@ impl Runtime {
                             vec![Form::atom("PUSH", form.span), value, collect_name.clone()],
                             form.span,
                         ));
+                    }
+                    if let (Some(value), Some(name)) = (sum_form, sum_name.clone()) {
+                        do_items.push(sum_step(form, value, name));
+                    }
+                    if let (Some(value), Some(name)) = (count_form, count_result_name.clone()) {
+                        do_items.push(count_step(form, value, name));
                     }
                     if let Some((condition_name, condition)) = loop_condition.clone() {
                         let (predicate, value) = if names_equal(&condition_name, "THEREIS") {
@@ -1286,6 +1337,18 @@ impl Runtime {
                             form.span,
                         ));
                     }
+                    if let Some(name) = sum_name.clone() {
+                        bindings.push(Form::list(
+                            vec![name, Form::atom("0", form.span)],
+                            form.span,
+                        ));
+                    }
+                    if let Some(name) = count_result_name.clone() {
+                        bindings.push(Form::list(
+                            vec![name, Form::atom("0", form.span)],
+                            form.span,
+                        ));
+                    }
                     let result = if let Some((condition_name, _)) = &loop_condition {
                         if names_equal(condition_name, "THEREIS") {
                             Form::atom("NIL", form.span)
@@ -1297,6 +1360,10 @@ impl Runtime {
                             vec![Form::atom("NREVERSE", form.span), collect_name],
                             form.span,
                         )
+                    } else if let Some(name) = sum_name {
+                        name
+                    } else if let Some(name) = count_result_name {
+                        name
                     } else {
                         Form::atom("NIL", form.span)
                     };

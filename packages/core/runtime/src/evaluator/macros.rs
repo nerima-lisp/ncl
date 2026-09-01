@@ -4,6 +4,7 @@ mod dispatch;
 mod keywords;
 mod loop_aggregate;
 mod loop_hash;
+mod loop_control;
 mod loop_on;
 mod loop_with;
 mod r#loop;

@@ -6,74 +6,21 @@ use super::loop_aggregate::{append_step, count_step, sum_step};
 use super::loop_hash::bind_hash_value_and_key;
 use super::loop_on::expand_loop_for_on;
 use super::loop_with::expand_loop_with;
+use super::loop_control::clause_offset;
 
 impl Runtime {
     pub(super) fn expand_builtin_loop(form: &Form) -> Result<Form, RuntimeError> {
         let FormKind::List(items) = &form.kind else {
             return Ok(form.clone());
         };
-        if let Some(return_offset) = items.iter().position(|item| {
-            atom_name(item).is_some_and(|name| names_equal(name, "RETURN"))
-        }) {
-            let Some(return_value) = items.get(return_offset + 1) else {
-                return Err(Self::invalid("LOOP RETURN clause requires a form", form.span));
-            };
-            let mut core_items = items[..return_offset].to_vec();
-            core_items.push(Form::list(
-                vec![Form::atom("RETURN", form.span), return_value.clone()],
-                form.span,
-            ));
-            core_items.extend(items[return_offset + 2..].iter().cloned());
-            return Self::expand_builtin_loop(&Form::list(core_items, form.span));
+        if let Some(return_offset) = clause_offset(items, "RETURN") {
+            return Self::expand_loop_return_clause(form, items, return_offset);
         }
-        if let Some(initially_offset) = items.iter().position(|item| {
-            atom_name(item).is_some_and(|name| names_equal(name, "INITIALLY"))
-        }) {
-            let Some(initially_form) = items.get(initially_offset + 1) else {
-                return Err(Self::invalid(
-                    "LOOP INITIALLY clause requires a form",
-                    form.span,
-                ));
-            };
-            let mut core_items = items[..initially_offset].to_vec();
-            core_items.extend(items[initially_offset + 2..].iter().cloned());
-            let core_form = Form::list(core_items, form.span);
-            let expanded = Self::expand_builtin_loop(&core_form)?;
-            return Ok(Form::list(
-                vec![
-                    Form::atom("PROGN", form.span),
-                    initially_form.clone(),
-                    expanded,
-                ],
-                form.span,
-            ));
+        if let Some(initially_offset) = clause_offset(items, "INITIALLY") {
+            return Self::expand_loop_initially_clause(form, items, initially_offset);
         }
-        if let Some(finally_offset) = items.iter().position(|item| {
-            atom_name(item).is_some_and(|name| names_equal(name, "FINALLY"))
-        }) {
-            let finally_items = &items[finally_offset + 1..];
-            if finally_items.is_empty() {
-                return Err(Self::invalid(
-                    "LOOP FINALLY clause requires a form",
-                    form.span,
-                ));
-            }
-            let core_form = Form::list(items[..finally_offset].to_vec(), form.span);
-            let expanded = Self::expand_builtin_loop(&core_form)?;
-            let finally_form = if finally_items.len() == 1 {
-                finally_items[0].clone()
-            } else {
-                Form::list(
-                    std::iter::once(Form::atom("PROGN", form.span))
-                        .chain(finally_items.iter().cloned())
-                        .collect(),
-                    form.span,
-                )
-            };
-            return Ok(Form::list(
-                vec![Form::atom("PROGN", form.span), expanded, finally_form],
-                form.span,
-            ));
+        if let Some(finally_offset) = clause_offset(items, "FINALLY") {
+            return Self::expand_loop_finally_clause(form, items, finally_offset);
         }
         let mut body = items[1..].to_vec();
         if body.first().and_then(atom_name).is_some_and(|name| names_equal(name, "DO")) {

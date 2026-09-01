@@ -63,12 +63,16 @@ pub use application_sequence_ops::{
 #[path = "application_sequences.rs"]
 mod application_sequences;
 pub use application_sequences::{
+    execute_list_unary_instruction, execute_sequence_merge_instruction,
+    execute_sequence_removal_instruction, execute_sequence_sort_instruction,
+    execute_sequence_substitution_instruction, execute_sequence_unary_instruction,
+};
+
+#[path = "application_sequence_search.rs"]
+mod application_sequence_search;
+pub use application_sequence_search::{
     execute_association_search_instruction, execute_list_membership_instruction,
-    execute_list_unary_instruction,
-    execute_sequence_merge_instruction, execute_sequence_pair_search_instruction,
-    execute_sequence_removal_instruction, execute_sequence_search_instruction,
-    execute_sequence_sort_instruction, execute_sequence_substitution_instruction,
-    execute_sequence_unary_instruction,
+    execute_sequence_pair_search_instruction, execute_sequence_search_instruction,
 };
 
 #[path = "application_sequence_mapping.rs"]

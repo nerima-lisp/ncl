@@ -301,11 +301,11 @@ fn compile_runtime_definition_falls_back_for_generalized_rotate_and_shift_places
         let items = parse_items(source);
         state
             .compile_runtime_definition(function, Span::new(0, 1), &items)
-            .expect("generalized places should use evaluator fallback");
+            .expect("generalized places should use the runtime mutation instruction");
         assert!(state.functions[function]
             .instructions
             .iter()
-            .any(|instruction| matches!(instruction, Instruction::Eval(_))));
+            .any(|instruction| matches!(instruction, Instruction::RuntimeMutation(_))));
         assert!(!state.functions[function]
             .instructions
             .iter()

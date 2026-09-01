@@ -118,6 +118,7 @@ impl CompileState {
             | "NUMERATOR" | "DENOMINATOR" => {
                 self.compile_numeric_unary(function, span, items, name)
             }
+            "RANDOM" => self.compile_numeric_random(function, span, items),
             "FLOOR" | "CEILING" | "TRUNCATE" | "ROUND" => {
                 self.compile_numeric_rounding(function, span, items, name)
             }

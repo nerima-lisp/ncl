@@ -1154,6 +1154,12 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::NumericUnary { operation: emitted } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for (source, argument_count) in [("(random 10)", 1), ("(random 10 *random-state*)", 2)] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericRandom { argument_count: emitted } if *emitted == argument_count)
+        }), "missing native instruction for {source}");
+    }
     for operation in ["=", "/=", "<", ">", "<=", ">="] {
         let program = compile(&format!("({operation} 1 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

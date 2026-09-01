@@ -489,6 +489,10 @@ pub enum Instruction {
         /// Numeric operation name.
         operation: String,
     },
+    #[doc = "Generate a random number with an optional random state."] NumericRandom {
+        /// Number of arguments supplied to RANDOM.
+        argument_count: usize,
+    },
     #[doc = "Apply the three-argument BOOLE operation."] NumericBoole,
     #[doc = "Apply a bitfield operation."] NumericBitfield {
         /// Bitfield operation name.

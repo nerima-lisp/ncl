@@ -89,6 +89,7 @@ pub use application_numeric::{
     execute_numeric_binary_instruction, execute_numeric_bitfield_instruction,
     execute_numeric_boole_instruction, execute_numeric_comparison_instruction,
     execute_numeric_float_instruction, execute_numeric_fold_instruction,
+    execute_numeric_random_instruction,
     execute_numeric_rounding_instruction, execute_numeric_unary_instruction,
 };
 

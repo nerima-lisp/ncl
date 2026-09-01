@@ -150,6 +150,19 @@ pub fn execute_numeric_binary_instruction(
     Ok(())
 }
 
+pub fn execute_numeric_random_instruction(
+    stack: &mut Vec<Value>,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("random has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    stack.push(crate::builtins::random(&arguments)?);
+    Ok(())
+}
+
 pub fn execute_numeric_boole_instruction(
     stack: &mut Vec<Value>,
     span: Span,
@@ -224,4 +237,3 @@ pub fn execute_numeric_float_instruction(
     stack.push(result);
     Ok(())
 }
-

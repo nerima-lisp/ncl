@@ -20,6 +20,7 @@ use crate::vm::execution::application::{
     execute_numeric_comparison_instruction,
     execute_numeric_fold_instruction,
     execute_numeric_binary_instruction,
+    execute_numeric_random_instruction,
     execute_numeric_boole_instruction,
     execute_numeric_bitfield_instruction,
     execute_numeric_float_instruction,
@@ -284,6 +285,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::NumericBinary { operation } => {
             execute_numeric_binary_instruction(stack, operation, span)?;
+        }
+        Instruction::NumericRandom { argument_count } => {
+            execute_numeric_random_instruction(stack, *argument_count, span)?;
         }
         Instruction::NumericBoole => {
             execute_numeric_boole_instruction(stack, span)?;

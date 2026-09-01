@@ -19,7 +19,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
             | "FLOATP" | "RATIONALP" | "STRINGP" | "SIMPLE-STRING-P" | "CHARACTERP" | "SYMBOLP"
             | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP" | "SIMPLE-VECTOR-P"
             | "BIT-VECTOR-P" | "SIMPLE-BIT-VECTOR-P" | "ARRAYP" | "SIMPLE-ARRAY-P"
-            | "HASH-TABLE-P" | "RANDOM-STATE-P" | "ALPHA-CHAR-P" | "ALPHANUMERICP"
+            | "HASH-TABLE-P" | "RANDOM-STATE-P" | "RANDOM" | "ALPHA-CHAR-P" | "ALPHANUMERICP"
             | "GRAPHIC-CHAR-P" | "STANDARD-CHAR-P" | "UPPER-CASE-P" | "LOWER-CASE-P"
             | "BOTH-CASE-P" | "STREAMP" | "INPUT-STREAM-P" | "OUTPUT-STREAM-P" | "OPEN-STREAM-P"
             | "NOT"

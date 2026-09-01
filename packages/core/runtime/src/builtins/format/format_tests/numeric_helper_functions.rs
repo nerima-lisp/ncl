@@ -3,7 +3,7 @@ use crate::builtins::format::english::format_english_number;
 use crate::builtins::format::integer_helpers::{format_integer_radix, format_unsigned_integer};
 use crate::builtins::format::model::FormatParameter;
 use crate::builtins::format::output::{
-    format_argument, format_character_directive, format_grouped_digits, format_radix_directive,
+    format_argument, format_big_radix_directive, format_character_directive, format_grouped_digits,
     format_roman_number,
 };
 
@@ -63,17 +63,17 @@ fn formats_character_and_radix_helper_variants() {
     assert_eq!(format_grouped_digits("", ',', 3), "");
     assert_eq!(format_grouped_digits("1234", ',', 3), "1,234");
     assert_eq!(
-        format_radix_directive(42, &[FormatParameter::Number(16)], false, false,)
+        format_big_radix_directive(&ibig::IBig::from(42), &[FormatParameter::Number(16)], false, false,)
             .unwrap_or_else(|error| panic!("hexadecimal radix should format: {error}")),
         "2A"
     );
     assert_eq!(
-        format_radix_directive(4, &[], true, true)
+        format_big_radix_directive(&ibig::IBig::from(4), &[], true, true)
             .unwrap_or_else(|error| panic!("roman number should format: {error}")),
         "IV"
     );
     assert_eq!(
-        format_radix_directive(42, &[], false, false)
+        format_big_radix_directive(&ibig::IBig::from(42), &[], false, false)
             .unwrap_or_else(|error| panic!("english number should format: {error}")),
         "forty-two"
     );
@@ -87,7 +87,7 @@ fn rejects_invalid_radix_parameters_and_missing_format_arguments() {
         FormatParameter::Number(37),
         FormatParameter::Character('x'),
     ] {
-        assert!(format_radix_directive(1, &[parameter], false, false).is_err());
+        assert!(format_big_radix_directive(&ibig::IBig::from(1), &[parameter], false, false).is_err());
     }
 
     let mut argument_index = 0;

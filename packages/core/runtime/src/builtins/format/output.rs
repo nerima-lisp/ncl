@@ -47,15 +47,6 @@ pub(super) fn format_character_directive(
     }
 }
 
-pub(super) fn format_radix_directive(
-    value: i64,
-    parameters: &[FormatParameter],
-    colon_modifier: bool,
-    at_sign_modifier: bool,
-) -> Result<String, RuntimeError> {
-    format_big_radix_directive(&ibig::IBig::from(value), parameters, colon_modifier, at_sign_modifier)
-}
-
 pub(super) fn format_big_radix_directive(
     value: &ibig::IBig,
     parameters: &[FormatParameter],

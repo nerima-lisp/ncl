@@ -41,16 +41,6 @@ pub(super) fn format_numeric_directive(
     }
 }
 
-pub(super) fn format_integer_directive(
-    value: i64,
-    radix: u32,
-    parameters: &[FormatParameter],
-    colon_modifier: bool,
-    at_sign_modifier: bool,
-) -> Result<String, RuntimeError> {
-    format_big_integer_directive(&ibig::IBig::from(value), radix, parameters, colon_modifier, at_sign_modifier)
-}
-
 pub(super) fn format_big_integer_directive(
     value: &ibig::IBig,
     radix: u32,

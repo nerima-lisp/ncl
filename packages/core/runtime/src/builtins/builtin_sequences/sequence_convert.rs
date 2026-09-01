@@ -2,6 +2,7 @@ use super::{
     arity, array_option_name, character_argument, exact, index_argument, rebuild_sequence,
     sequence_elements, string_designator, type_designator_name, type_error,
 };
+use crate::builtins::typep_value;
 use crate::{RuntimeError, Value};
 
 pub fn copy_seq(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -19,7 +20,7 @@ pub fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     for sequence in &arguments[1..] {
         items.extend(sequence_elements("concatenate", sequence)?);
     }
-    match result_type.as_str() {
+    let result = match result_type.as_str() {
         "LIST" => Ok(Value::list(items)),
         "VECTOR" => Ok(Value::vector(items)),
         "STRING" | "SIMPLE-STRING" => {
@@ -42,7 +43,8 @@ pub fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
             ),
             span: None,
         }),
-    }
+    }?;
+    validate_compound_result("concatenate", result, &arguments[0])
 }
 
 pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -67,7 +69,7 @@ pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
         }
     }
-    match result_type.as_str() {
+    let result = match result_type.as_str() {
         "LIST" => Ok(Value::list(vec![initial_element; size])),
         "VECTOR" | "SIMPLE-VECTOR" => Ok(Value::vector(vec![initial_element; size])),
         "STRING" | "SIMPLE-STRING" => {
@@ -82,13 +84,14 @@ pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
             ),
             span: None,
         }),
-    }
+    }?;
+    validate_compound_result("make-sequence", result, &arguments[0])
 }
 
 pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "coerce", 2)?;
     let result_type = sequence_result_type("coerce", &arguments[1])?;
-    match result_type.as_str() {
+    let result = match result_type.as_str() {
         "LIST" => Ok(Value::list(sequence_elements("coerce", &arguments[0])?)),
         "VECTOR" | "SIMPLE-VECTOR" => {
             Ok(Value::vector(sequence_elements("coerce", &arguments[0])?))
@@ -125,7 +128,21 @@ pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
             message: format!("coerce does not support result type {result_type}"),
             span: None,
         }),
+    }?;
+    validate_compound_result("coerce", result, &arguments[1])
+}
+
+fn validate_compound_result(
+    function: &str,
+    result: Value,
+    type_designator: &Value,
+) -> Result<Value, RuntimeError> {
+    if matches!(type_designator, Value::List(_))
+        && !typep_value(&result, type_designator)?
+    {
+        return Err(type_error(function, "a value matching the result type", &result));
     }
+    Ok(result)
 }
 
 fn sequence_result_type(function: &str, value: &Value) -> Result<String, RuntimeError> {

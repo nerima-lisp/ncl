@@ -98,10 +98,19 @@ fn sequence_constructors_accept_compound_vector_type_designators() {
         .to_string(),
         "#(1 2)"
     );
+    assert!(matches!(
+        make_sequence(&[vector_type.clone(), Value::Integer(2)]),
+        Err(RuntimeError::Type { .. })
+    ));
     assert_eq!(
-        make_sequence(&[vector_type, Value::Integer(2)])
-            .unwrap()
-            .to_string(),
-        "#(NIL NIL)"
+        make_sequence(&[
+            vector_type,
+            Value::Integer(2),
+            Value::keyword("initial-element"),
+            Value::Integer(0),
+        ])
+        .unwrap()
+        .to_string(),
+        "#(0 0)"
     );
 }

@@ -86,7 +86,9 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
         "INTEGER" => matches!(supertype_name, "RATIONAL" | "NUMBER" | "REAL" | "ATOM"),
         "RATIO" => matches!(supertype_name, "RATIONAL" | "NUMBER" | "REAL" | "ATOM"),
         "RATIONAL" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
-        "FLOAT" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
+        "SHORT-FLOAT" | "SINGLE-FLOAT" | "DOUBLE-FLOAT" | "LONG-FLOAT" | "FLOAT" => {
+            matches!(supertype_name, "FLOAT" | "NUMBER" | "REAL" | "ATOM")
+        }
         "BASE-CHAR" => matches!(supertype_name, "CHARACTER" | "ATOM"),
         "STANDARD-CHAR" => matches!(supertype_name, "BASE-CHAR" | "CHARACTER" | "ATOM"),
         "EXTENDED-CHAR" => matches!(supertype_name, "CHARACTER" | "ATOM"),

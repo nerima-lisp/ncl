@@ -20,7 +20,18 @@ fn type_table_exercises_primitive_designators_and_fallbacks() {
         ),
         (big, vec!["NUMBER", "RATIONAL", "INTEGER", "BIGNUM"]),
         (rational, vec!["NUMBER", "REAL", "RATIONAL", "RATIO"]),
-        (Value::Float(1.0), vec!["NUMBER", "REAL", "FLOAT"]),
+        (
+            Value::Float(1.0),
+            vec![
+                "NUMBER",
+                "REAL",
+                "SHORT-FLOAT",
+                "SINGLE-FLOAT",
+                "DOUBLE-FLOAT",
+                "LONG-FLOAT",
+                "FLOAT",
+            ],
+        ),
         (
             Value::Character('x'),
             vec!["CHARACTER", "BASE-CHAR", "STANDARD-CHAR", "EXTENDED-CHAR"],

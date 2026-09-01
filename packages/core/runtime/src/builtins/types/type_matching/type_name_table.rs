@@ -24,7 +24,9 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
         "FIXNUM" => matches!(value, Value::Integer(_)),
         "BIGNUM" => matches!(value, Value::BigInteger(_)),
         "BIT" => is_bit_value(value),
-        "FLOAT" => matches!(value, Value::Float(_)),
+        "SHORT-FLOAT" | "SINGLE-FLOAT" | "DOUBLE-FLOAT" | "LONG-FLOAT" | "FLOAT" => {
+            matches!(value, Value::Float(_))
+        }
         "CHARACTER" | "BASE-CHAR" | "STANDARD-CHAR" | "EXTENDED-CHAR" => {
             matches!(value, Value::Character(_))
         }

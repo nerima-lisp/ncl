@@ -499,6 +499,22 @@ fn evaluates_common_lisp_abs_across_numeric_types(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn recognizes_standard_float_type_names(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (typep 2.5 'short-float) (typep 2.5 'single-float)
+                    (typep 2.5 'double-float) (typep 2.5 'long-float)
+                    (subtypep 'double-float 'float))",
+        )
+        .to_string(),
+        "(T T T T T)",
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_compound_type_designators(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

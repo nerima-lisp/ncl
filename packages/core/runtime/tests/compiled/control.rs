@@ -461,6 +461,23 @@ rest"))
 }
 
 #[test]
+fn compiled_string_streams_support_nonblocking_input_operations() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_compiled_source(
+            r#"(let ((input (make-string-input-stream "ab")))
+               (list (listen input)
+                     (read-char-no-hang input)
+                     (clear-input input)
+                     (listen input)
+                     (read-char-no-hang input)))"#,
+        )
+        .must_exist();
+
+    assert_eq!(values.last().must_exist().to_string(), "(T #\\a NIL NIL NIL)");
+}
+
+#[test]
 fn compiled_string_streams_line_output_operations() {
     let runtime = Runtime::new();
     let values = runtime

@@ -59,6 +59,11 @@ fn compiled_evaluates_expt() {
 }
 
 #[test]
+fn compiled_evaluates_rational_conversion() {
+    assert_eq!(evaluate("(rational 1.5)").to_string(), "3/2");
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

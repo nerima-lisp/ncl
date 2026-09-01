@@ -553,6 +553,12 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Apply a CLOS slot operation."] SlotOperation {
+        /// Name of the slot operation to invoke.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Apply a package introspection operation."] PackageIntrospection {
         /// Name of the package introspection operation to invoke.
         operation: String,

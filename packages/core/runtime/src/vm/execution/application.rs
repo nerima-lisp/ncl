@@ -167,6 +167,18 @@ pub fn execute_class_introspection_instruction(
     Ok(())
 }
 
+pub fn execute_slot_operation_instruction(
+    _runtime: &Runtime, stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count { return Err(invalid("slot operation has too few stack values", span)); }
+    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
+        .map(|value| value.primary_value()).collect::<Vec<_>>();
+    let value = Runtime::apply_slot_primitive(operation, &arguments, span)
+        .unwrap_or_else(|| Err(invalid("unknown slot operation", span)))?;
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_package_introspection_instruction(
     runtime: &Runtime, stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
 ) -> Result<(), RuntimeError> {

@@ -1111,6 +1111,17 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_slot_operation(
+        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() != 3 {
+            return Err(Self::arity_error(items, operation, "two", span));
+        }
+        for item in &items[1..] { self.compile_expression(function, item)?; }
+        self.emit(function, Instruction::SlotOperation { operation: operation.to_string(), argument_count: 2 }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_package_introspection(
         &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
     ) -> Result<(), CompileError> {

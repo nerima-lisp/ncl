@@ -10,9 +10,12 @@ use super::EvalFn;
 fn evaluates_common_lisp_complement(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
-        evaluate("(list (funcall (complement #'null) nil) (funcall (complement #'null) 1))")
+        evaluate(
+            "(list (funcall (complement #'null) nil) (funcall (complement #'null) 1) \
+                   (funcall (complement 'null) nil) (funcall (complement 'null) 1))",
+        )
             .to_string(),
-        "(NIL T)",
+        "(NIL T NIL T)",
     );
 }
 

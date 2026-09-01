@@ -8,7 +8,15 @@ pub(super) fn identity(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub(super) fn complement(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "complement", 1)?;
-    if !matches!(arguments[0], Value::Function(_)) {
+    if !matches!(
+        arguments[0],
+        Value::Function(_)
+            | Value::Symbol(_)
+            | Value::SymbolExact(_)
+            | Value::UninternedSymbol(_)
+            | Value::Keyword(_)
+            | Value::KeywordExact(_)
+    ) {
         return Err(type_error("complement", "function", &arguments[0]));
     }
     Ok(Value::complement(arguments[0].clone()))

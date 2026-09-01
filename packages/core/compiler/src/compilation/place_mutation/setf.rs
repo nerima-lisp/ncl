@@ -20,37 +20,7 @@ impl CompileState {
             if self.compile_setf_aref_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
-            let bit_place = match &place.kind {
-                FormKind::List(items) if items.len() >= 3 => {
-                    Self::symbol_name_info(&items[0], "setf place operator")
-                        .ok()
-                        .filter(|(name, _)| name == "BIT")
-                        .and_then(|_| {
-                            Self::symbol_name_info(&items[1], "setf bit target")
-                                .ok()
-                                .map(|(name, escaped)| {
-                                    (items.len() - 2, name, escaped, &items[1], &items[2..])
-                                })
-                        })
-                }
-                _ => None,
-            };
-            if let Some((rank, name, escaped, target, indices)) = bit_place {
-                self.compile_expression(function, target)?;
-                for index_form in indices {
-                    self.compile_expression(function, index_form)?;
-                }
-                self.compile_expression(function, value_form)?;
-                self.emit(
-                    function,
-                    Instruction::SetfBitDynamic {
-                        rank,
-                        name,
-                        escaped,
-                    },
-                    place.span,
-                )?;
-                emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
+            if self.compile_setf_bit_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
             let element_place = match &place.kind {

@@ -178,6 +178,21 @@ fn evaluates_load_file() {
 }
 
 #[test]
+fn evaluates_provide_and_require_features() {
+    assert_eq!(
+        evaluate(
+            "(progn (provide :evaluator-feature) (list (require :evaluator-feature)
+                                                   (member :evaluator-feature *features*)))"
+        )
+        .to_string(),
+        "(T (:EVALUATOR-FEATURE))"
+    );
+    assert!(Runtime::new()
+        .eval_source("(require :missing-evaluator-feature)")
+        .is_err());
+}
+
+#[test]
 fn evaluates_symbol_function_and_setf() {
     assert_eq!(
         evaluate(

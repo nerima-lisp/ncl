@@ -1195,6 +1195,8 @@ impl CompileState {
             "MAKE-INSTANCE" => items.len() >= 2,
             "COMPILE" => (2..=3).contains(&items.len()),
             "LOAD" => items.len() == 2,
+            "PROVIDE" => items.len() == 2,
+            "REQUIRE" => (2..=3).contains(&items.len()),
             _ => false,
         };
         if !valid {
@@ -1202,6 +1204,8 @@ impl CompileState {
                 "MAKE-INSTANCE" => "at least one",
                 "COMPILE" => "one or two",
                 "LOAD" => "one",
+                "PROVIDE" => "one",
+                "REQUIRE" => "one or two",
                 _ => "valid arguments",
             };
             return Err(Self::arity_error(items, operation, expected, span));

@@ -91,6 +91,7 @@ impl Runtime {
             builtins::default_random_state_value(),
             false,
         );
+        runtime.define_special_value("*FEATURES*", Value::list(Vec::new()), false);
         runtime
     }
 

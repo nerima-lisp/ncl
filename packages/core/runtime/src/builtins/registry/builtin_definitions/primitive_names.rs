@@ -7,6 +7,8 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "MAKE-CONDITION",
     "COMPILE",
     "LOAD",
+    "PROVIDE",
+    "REQUIRE",
     "MAP",
     "REDUCE",
     "MAP-INTO",

@@ -413,3 +413,18 @@ fn evaluates_rename_package_and_updates_nickname() {
         "(T \"COMPILED-RENAME-TARGET\" \"COMPILED-RENAME-TARGET\")"
     );
 }
+
+#[test]
+fn evaluates_provide_and_require_features() {
+    assert_eq!(
+        evaluate(
+            "(progn (provide :compiled-feature) (list (require :compiled-feature)
+                                                   (member :compiled-feature *features*)))"
+        )
+        .to_string(),
+        "(T (:COMPILED-FEATURE))"
+    );
+    assert!(Runtime::new()
+        .eval_source("(require :missing-compiled-feature)")
+        .is_err());
+}

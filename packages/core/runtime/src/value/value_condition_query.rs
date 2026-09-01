@@ -40,7 +40,7 @@ impl Value {
                 )
             }
             "TYPE-ERROR" | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR"
-            | "COMPILER-ERROR" | "FILE-ERROR" | "UNBOUND-VARIABLE" => {
+            | "COMPILER-ERROR" | "FILE-ERROR" | "UNBOUND-VARIABLE" | "STREAM-ERROR" => {
                 matches!(
                     expected.as_str(),
                     "CONDITION" | "ERROR" | "SERIOUS-CONDITION"

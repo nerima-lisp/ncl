@@ -174,3 +174,10 @@ pub fn package_error_package(arguments: &[Value]) -> Result<Value, RuntimeError>
         .condition_slot("PACKAGE-ERROR", "PACKAGE")
         .ok_or_else(|| type_error("package-error-package", "PACKAGE-ERROR", &arguments[0]))
 }
+
+pub fn stream_error_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "stream-error-stream", 1)?;
+    arguments[0]
+        .condition_slot("STREAM-ERROR", "STREAM")
+        .ok_or_else(|| type_error("stream-error-stream", "STREAM-ERROR", &arguments[0]))
+}

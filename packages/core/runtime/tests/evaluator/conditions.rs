@@ -115,6 +115,14 @@ fn package_error_package_reads_standard_condition_slot() {
 }
 
 #[test]
+fn stream_error_stream_reads_standard_condition_slot() {
+    let result = Runtime::new()
+        .eval_source("(stream-error-stream (make-condition 'stream-error :stream (make-string-input-stream \"data\")))")
+        .unwrap_or_else(|error| panic!("stream-error-stream failed: {error}"));
+    assert_eq!(result.last().unwrap().type_name(), "STREAM");
+}
+
+#[test]
 fn rejects_malformed_character_operations_at_their_boundaries() {
     for source in support::MALFORMED_CHARACTER_FORMS {
         Runtime::eval_source(&Runtime::new(), source).must_fail();

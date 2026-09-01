@@ -174,6 +174,10 @@ fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
         evaluate(r"(loop for value across #(1 2 3) count (evenp value))").to_string(),
         "1"
     );
+    assert_eq!(
+        evaluate(r"(loop for value in (list (list 1 2) (list 3)) append value)").to_string(),
+        "(1 2 3)"
+    );
 }
 
 #[rstest]

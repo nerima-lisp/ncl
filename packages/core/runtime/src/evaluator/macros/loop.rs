@@ -2,7 +2,7 @@ use ncl_syntax::{Form, FormKind};
 
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
-use super::loop_aggregate::{count_step, sum_step};
+use super::loop_aggregate::{append_step, count_step, sum_step};
 
 impl Runtime {
     pub(super) fn expand_builtin_loop(form: &Form) -> Result<Form, RuntimeError> {
@@ -173,6 +173,7 @@ impl Runtime {
                     let mut extremum_form = None;
                     let mut extremum_name = None;
                     let mut maximize = false;
+                    let mut append = false;
                     if items
                         .get(body_start)
                         .and_then(atom_name)
@@ -183,7 +184,9 @@ impl Runtime {
                     if items
                         .get(body_start)
                         .and_then(atom_name)
-                        .is_some_and(|name| names_equal(name, "COLLECT"))
+                        .is_some_and(|name| {
+                            names_equal(name, "COLLECT") || names_equal(name, "APPEND")
+                        })
                     {
                         if items.len() <= body_start + 1 {
                             return Err(Self::invalid(
@@ -192,6 +195,7 @@ impl Runtime {
                             ));
                         }
                         collect_form = Some(items[body_start + 1].clone());
+                        append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
                         body_start += 2;
                     }
                     if items
@@ -250,10 +254,14 @@ impl Runtime {
                         Form::list(vec![variable, items[4].clone()], form.span),
                     ];
                     if let Some(value) = collect_form.clone() {
-                        dolist_items.push(Form::list(
-                            vec![Form::atom("PUSH", form.span), value, collect_name.clone()],
-                            form.span,
-                        ));
+                        if append {
+                            dolist_items.push(append_step(form, value, collect_name.clone()));
+                        } else {
+                            dolist_items.push(Form::list(
+                                vec![Form::atom("PUSH", form.span), value, collect_name.clone()],
+                                form.span,
+                            ));
+                        }
                     }
                     if let (Some(value), Some(name)) = (sum_form, sum_name.clone()) {
                         dolist_items.push(sum_step(form, value, name));

@@ -46,3 +46,7 @@ pub use integer_ops::*;
 mod complex;
 #[allow(clippy::wildcard_imports)]
 pub use complex::*;
+
+mod float_ops;
+#[allow(clippy::wildcard_imports)]
+pub use float_ops::*;

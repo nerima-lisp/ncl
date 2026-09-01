@@ -123,6 +123,20 @@ fn evaluates_common_lisp_integer_arithmetic_and_bit_operations(#[case] eval_fn: 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_float_operations(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (float-sign -2.5) (float-sign -2.5 -1) (float-digits 1.0) (float-precision 0.0) (float-radix 1.0) (scale-float 1.5 2))"
+        )
+        .to_string(),
+        "(-2.5 -2.5 53 0 2 6.0)",
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_integer_bit_operations_on_bignums(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

@@ -27,12 +27,12 @@ pub(super) fn close_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::boolean(true))
 }
 
-pub(super) fn streamp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn streamp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "streamp", 1)?;
     Ok(Value::boolean(matches!(&arguments[0], Value::Stream(_))))
 }
 
-pub(super) fn input_stream_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn input_stream_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "input-stream-p", 1)?;
     let result = match &arguments[0] {
         Value::Stream(stream) => stream.borrow().is_input(),
@@ -41,7 +41,7 @@ pub(super) fn input_stream_p(arguments: &[Value]) -> Result<Value, RuntimeError>
     Ok(Value::boolean(result))
 }
 
-pub(super) fn output_stream_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn output_stream_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "output-stream-p", 1)?;
     let result = match &arguments[0] {
         Value::Stream(stream) => stream.borrow().is_output(),

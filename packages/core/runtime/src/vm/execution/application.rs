@@ -506,6 +506,9 @@ pub fn execute_type_predicate_instruction(
         "UPPER-CASE-P" => crate::builtins::upper_case_p(&[value]),
         "LOWER-CASE-P" => crate::builtins::lower_case_p(&[value]),
         "BOTH-CASE-P" => crate::builtins::both_case_p(&[value]),
+        "STREAMP" => crate::builtins::streamp(&[value]),
+        "INPUT-STREAM-P" => crate::builtins::input_stream_p(&[value]),
+        "OUTPUT-STREAM-P" => crate::builtins::output_stream_p(&[value]),
         _ => Err(invalid("unknown type predicate operation", span)),
     }?;
     stack.push(result);

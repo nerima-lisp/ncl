@@ -68,6 +68,20 @@ pub fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::boolean(matches!(&arguments[0], Value::Vector(_))))
 }
 
+pub fn bit_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "bit-vector-p", 1)?;
+    Ok(Value::boolean(is_bit_vector(&arguments[0])))
+}
+
+pub fn simple_bit_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "simple-bit-vector-p", 1)?;
+    Ok(Value::boolean(is_bit_vector(&arguments[0])))
+}
+
+fn is_bit_vector(value: &Value) -> bool {
+    matches!(value, Value::Vector(items) if items.iter().all(|item| matches!(item, Value::Integer(bit) if *bit == 0 || *bit == 1)))
+}
+
 pub fn typep(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "typep", 2)?;
     Ok(Value::boolean(typep_value(&arguments[0], &arguments[1])?))

@@ -24,6 +24,8 @@ pub(super) const PREDICATE_BUILTINS: &[BuiltinDefinition] = &[
     ("symbol-name", symbol_name_value as _),
     ("symbol-package", symbol_package_value as _),
     ("vectorp", vectorp as _),
+    ("bit-vector-p", bit_vector_p as _),
+    ("simple-bit-vector-p", simple_bit_vector_p as _),
     ("simple-vector-p", simple_vector_p as _),
     ("functionp", functionp as _),
     ("eq", eq as _),

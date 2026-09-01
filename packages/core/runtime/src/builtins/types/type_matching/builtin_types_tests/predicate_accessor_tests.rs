@@ -1,6 +1,7 @@
 use crate::builtins::type_predicates::equalp_value;
 use crate::builtins::types::predicates::{
-    characterp, endp, keywordp, simple_vector_p, symbol_name_value, symbol_package_value, vectorp,
+    bit_vector_p, characterp, endp, keywordp, simple_bit_vector_p, simple_vector_p,
+    symbol_name_value, symbol_package_value, vectorp,
 };
 use crate::builtins::types::special_form_support::the_check;
 use crate::builtins::types::type_designator::type_designator_name;
@@ -28,6 +29,16 @@ fn predicates_and_symbol_accessors_cover_value_categories() {
         (keywordp, vec![Value::symbol("answer")], false),
         (vectorp, vec![Value::vector(vec![Value::Nil])], true),
         (simple_vector_p, vec![Value::vector(Vec::new())], true),
+        (
+            bit_vector_p,
+            vec![Value::vector(vec![Value::Integer(0), Value::Integer(1)])],
+            true,
+        ),
+        (
+            simple_bit_vector_p,
+            vec![Value::vector(vec![Value::Integer(2)])],
+            false,
+        ),
     ];
     for (predicate, arguments, expected) in predicate_cases {
         let actual = valid_value(predicate(arguments));

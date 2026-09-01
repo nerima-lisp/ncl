@@ -1,6 +1,75 @@
 use super::*;
 
 impl CompileState {
+    pub(crate) fn compile_numeric_float(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        let argument_count = match operation {
+            "FLOAT" | "FLOAT-SIGN" => 1..=2,
+            "FLOAT-DIGITS"
+            | "FLOAT-PRECISION"
+            | "FLOAT-RADIX"
+            | "DECODE-FLOAT"
+            | "INTEGER-DECODE-FLOAT" => 1..=1,
+            "LOG" | "ATAN" | "COMPLEX" => 1..=2,
+            "SCALE-FLOAT" => 2..=2,
+            _ => unreachable!("numeric float operation was not dispatched"),
+        };
+        if !argument_count.contains(&(items.len() - 1)) {
+            let expected = match operation {
+                "FLOAT" | "FLOAT-SIGN" | "LOG" | "ATAN" | "COMPLEX" => "one or two",
+                "SCALE-FLOAT" => "two",
+                _ => "one",
+            };
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::NumericFloat {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn compile_integer_operation(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() < 2 || !(items.len() - 2).is_multiple_of(2) {
+            return Err(Self::arity_error(
+                items,
+                operation,
+                "a string and keyword/value pairs",
+                span,
+            ));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::IntegerOperation {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_equality(
         &mut self,
         function: FunctionId,
@@ -53,7 +122,11 @@ impl CompileState {
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
-        self.emit(function, Instruction::NumericRandom { argument_count }, span)?;
+        self.emit(
+            function,
+            Instruction::NumericRandom { argument_count },
+            span,
+        )?;
         Ok(())
     }
 

@@ -133,6 +133,12 @@ impl CompileState {
                 | "SET"
                 | "MAKUNBOUND"
                 | "FMAKUNBOUND"
+                | "FBOUNDP"
+                | "MACRO-FUNCTION"
+                | "SPECIAL-OPERATOR-P"
+                | "COMPILED-FUNCTION-P"
+                | "FDEFINITION"
+                | "SYMBOL-FUNCTION"
                 | "GETHASH"
                 | "REMHASH"
                 | "MAKE-HASH-TABLE"
@@ -301,6 +307,10 @@ impl CompileState {
             }
             "SET" | "MAKUNBOUND" | "FMAKUNBOUND" => {
                 self.compile_symbol_binding(function, span, items, name)
+            }
+            "FBOUNDP" | "MACRO-FUNCTION" | "SPECIAL-OPERATOR-P" | "COMPILED-FUNCTION-P"
+            | "FDEFINITION" | "SYMBOL-FUNCTION" => {
+                self.compile_symbol_function(function, span, items, name)
             }
             "GETHASH" | "REMHASH" | "MAKE-HASH-TABLE" | "CLRHASH" | "HASH-TABLE-COUNT"
             | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS" | "NCL-HASH-TABLE-VALUES" => {

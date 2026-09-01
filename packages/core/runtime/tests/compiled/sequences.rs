@@ -503,3 +503,9 @@ fn compiled_evaluates_symbol_binding_operations() {
     assert_eq!(evaluate("(let ((symbol 'item)) (set symbol 9) (list (symbol-value symbol) (makunbound symbol) (boundp symbol)))").to_string(), "(9 ITEM NIL)");
     assert_eq!(evaluate("(let ((symbol (gensym))) (fmakunbound symbol) (fboundp symbol))").to_string(), "NIL");
 }
+
+#[test]
+fn compiled_evaluates_symbol_function_operations() {
+    assert_eq!(evaluate("(list (fboundp 'list) (special-operator-p 'if) (compiled-function-p #'list))").to_string(), "(T T NIL)");
+    assert_eq!(evaluate("(let ((symbol 'list)) (functionp (symbol-function symbol)))").to_string(), "T");
+}

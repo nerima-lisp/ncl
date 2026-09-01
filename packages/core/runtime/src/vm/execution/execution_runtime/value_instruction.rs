@@ -7,7 +7,7 @@ use crate::vm::execution::application::{
     execute_list_membership_instruction,
     execute_list_construction_instruction, execute_list_construction_with_options_instruction,
     execute_list_append_instruction,
-    execute_property_list_instruction, execute_symbol_binding_instruction, execute_symbol_value_instruction,
+    execute_property_list_instruction, execute_symbol_binding_instruction, execute_symbol_function_instruction, execute_symbol_value_instruction,
     execute_hash_table_instruction,
     execute_list_binary_instruction, execute_list_tail_instruction, execute_list_unary_instruction,
     execute_character_unary_instruction, execute_type_predicate_instruction,
@@ -324,6 +324,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::SymbolBinding { operation, argument_count } => {
             execute_symbol_binding_instruction(runtime, stack, environment, operation, *argument_count, span)?;
+        }
+        Instruction::SymbolFunction { operation, argument_count } => {
+            execute_symbol_function_instruction(runtime, stack, environment, operation, *argument_count, span)?;
         }
         Instruction::HashTable { operation, argument_count } => {
             execute_hash_table_instruction(stack, operation, *argument_count, span)?;

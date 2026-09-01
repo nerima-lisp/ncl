@@ -109,12 +109,14 @@ fn evaluates_common_lisp_integer_arithmetic_and_bit_operations(#[case] eval_fn: 
                         (logand 7 3) (logior 4 1) (logxor 7 3) (lognot 0)
                         (logtest 6 2) (logtest 4 2)
                         (logbitp 0 0) (logbitp 2 4) (logbitp 100 -1)
+                        (logandc1 10 6) (logandc2 10 6) (logeqv 10 6)
+                        (lognand 10 6) (lognor 10 6) (logorc1 10 6) (logorc2 10 6)
                         (logcount 13) (logcount -8)
                         (integer-length 8) (integer-length -8)
                         (logand) (logior) (logxor))",
         )
         .to_string(),
-        "(2 -2 -1 1 12 -2 3 5 4 -1 T NIL NIL T T 3 3 4 3 -1 0 0)"
+        "(2 -2 -1 1 12 -2 3 5 4 -1 T NIL NIL T T 4 8 -13 -3 -15 -9 -5 3 3 4 3 -1 0 0)"
     );
 }
 

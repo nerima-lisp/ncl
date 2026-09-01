@@ -20,6 +20,34 @@ pub fn logxor(arguments: &[Value]) -> Result<Value, RuntimeError> {
     })
 }
 
+pub fn logandc1(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    binary_bitwise(arguments, "logandc1", |left, right| !left & right)
+}
+
+pub fn logandc2(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    binary_bitwise(arguments, "logandc2", |left, right| left & !right)
+}
+
+pub fn logeqv(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    binary_bitwise(arguments, "logeqv", |left, right| !(left ^ right))
+}
+
+pub fn lognand(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    binary_bitwise(arguments, "lognand", |left, right| !(left & right))
+}
+
+pub fn lognor(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    binary_bitwise(arguments, "lognor", |left, right| !(left | right))
+}
+
+pub fn logorc1(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    binary_bitwise(arguments, "logorc1", |left, right| !left | right)
+}
+
+pub fn logorc2(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    binary_bitwise(arguments, "logorc2", |left, right| left | !right)
+}
+
 pub fn boole(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "boole", 3)?;
     let operation = super::integer_argument("boole", &arguments[0])?;
@@ -65,6 +93,17 @@ fn big_bitwise(
             big_integer_argument(function, argument).map(|value| operation(result, value))
         })
         .and_then(|value| number_to_value(number_from_big(value)))
+}
+
+fn binary_bitwise(
+    arguments: &[Value],
+    function: &str,
+    operation: fn(ibig::IBig, ibig::IBig) -> ibig::IBig,
+) -> Result<Value, RuntimeError> {
+    exact(arguments, function, 2)?;
+    let left = big_integer_argument(function, &arguments[0])?;
+    let right = big_integer_argument(function, &arguments[1])?;
+    number_to_value(number_from_big(operation(left, right)))
 }
 
 pub fn lognot(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -177,6 +216,24 @@ mod tests {
             let actual = logbitp(&[Value::Integer(bit), Value::Integer(integer)])
                 .unwrap_or_else(|error| panic!("logbitp failed: {error}"));
             assert_eq!(actual.to_string(), Value::boolean(expected).to_string());
+        }
+    }
+
+    #[test]
+    fn complementary_bitwise_operations_match_common_lisp_definitions() {
+        let left = Value::Integer(0b1010);
+        let right = Value::Integer(0b0110);
+        let cases = [
+            (logandc1(&[left.clone(), right.clone()]), 4),
+            (logandc2(&[left.clone(), right.clone()]), 8),
+            (logeqv(&[left.clone(), right.clone()]), -13),
+            (lognand(&[left.clone(), right.clone()]), -3),
+            (lognor(&[left.clone(), right.clone()]), -15),
+            (logorc1(&[left.clone(), right.clone()]), -9),
+            (logorc2(&[left, right]), -5),
+        ];
+        for (result, expected) in cases {
+            assert_eq!(result.unwrap().as_integer(), Some(expected));
         }
     }
 

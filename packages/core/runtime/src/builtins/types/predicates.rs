@@ -139,3 +139,10 @@ pub fn type_error_expected_type(arguments: &[Value]) -> Result<Value, RuntimeErr
         .condition_slot("TYPE-ERROR", "EXPECTED-TYPE")
         .ok_or_else(|| type_error("type-error-expected-type", "TYPE-ERROR", &arguments[0]))
 }
+
+pub fn unbound_variable_name(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "unbound-variable-name", 1)?;
+    arguments[0]
+        .condition_slot("UNBOUND-VARIABLE", "NAME")
+        .ok_or_else(|| type_error("unbound-variable-name", "UNBOUND-VARIABLE", &arguments[0]))
+}

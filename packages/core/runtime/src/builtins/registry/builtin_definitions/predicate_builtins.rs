@@ -40,4 +40,5 @@ pub(super) const PREDICATE_BUILTINS: &[BuiltinDefinition] = &[
     ("condition-message", condition_message as _),
     ("type-error-datum", type_error_datum as _),
     ("type-error-expected-type", type_error_expected_type as _),
+    ("unbound-variable-name", unbound_variable_name as _),
 ];

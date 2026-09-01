@@ -79,6 +79,14 @@ fn type_error_accessors_read_standard_condition_slots() {
 }
 
 #[test]
+fn unbound_variable_name_reads_standard_condition_slot() {
+    let result = Runtime::new()
+        .eval_source("(unbound-variable-name (make-condition 'unbound-variable :name 'missing))")
+        .unwrap_or_else(|error| panic!("unbound-variable-name failed: {error}"));
+    assert_eq!(result.last().unwrap().to_string(), "MISSING");
+}
+
+#[test]
 fn rejects_malformed_character_operations_at_their_boundaries() {
     for source in support::MALFORMED_CHARACTER_FORMS {
         Runtime::eval_source(&Runtime::new(), source).must_fail();

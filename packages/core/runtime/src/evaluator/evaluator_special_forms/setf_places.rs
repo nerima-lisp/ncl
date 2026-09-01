@@ -85,6 +85,18 @@ impl Runtime {
                 )?;
                 self.set_place(&args[1], updated, environment)
             }
+            "MASK-FIELD" => {
+                if args.len() != 2 {
+                    return Err(Self::invalid(
+                        "MASK-FIELD SETF place needs a byte specifier and place",
+                        place.span,
+                    ));
+                }
+                let byte_spec = self.eval_in(&args[0], environment)?;
+                let old_value = self.eval_in(&args[1], environment)?;
+                let updated = crate::builtins::deposit_field(&[value, byte_spec, old_value])?;
+                self.set_place(&args[1], updated, environment)
+            }
             "SLOT-VALUE" => self.set_slot_value_place(args, value, environment, place.span),
             "CAR" | "FIRST" | "CDR" | "REST" | "NTH" | "SECOND" | "THIRD" | "FOURTH"
             | "FIFTH" | "SIXTH" | "SEVENTH" | "EIGHTH" | "NINTH" | "TENTH" => self

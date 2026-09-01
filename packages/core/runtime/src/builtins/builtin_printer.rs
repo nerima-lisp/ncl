@@ -75,7 +75,7 @@ pub(super) fn write_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(arguments[0].clone())
 }
 
-pub(super) fn write_to_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn write_to_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("write-to-string", "at least 1", arguments.len()));
     }

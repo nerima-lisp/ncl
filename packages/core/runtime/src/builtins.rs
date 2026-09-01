@@ -84,9 +84,9 @@ pub use type_predicates::*;
 
 mod builtin_printer;
 use builtin_printer::{
-    complement, constantly, prin1, princ, print_value, printed_value, write_to_string,
-    write_value,
+    complement, constantly, prin1, princ, print_value, printed_value, write_value,
 };
+pub(crate) use builtin_printer::write_to_string;
 pub(crate) use builtin_printer::{identity, type_of};
 
 mod builtin_stream_constructors;

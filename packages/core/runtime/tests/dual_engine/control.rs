@@ -73,6 +73,33 @@ fn expands_loop_return_clause(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_hash_table_iteration(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((table (make-hash-table)))
+                 (setf (gethash :first table) 1
+                       (gethash :second table) 2)
+                 (loop for key being the hash-keys of table collect key))"#
+        )
+        .to_string(),
+        "(:FIRST :SECOND)"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(let ((table (make-hash-table)))
+                 (setf (gethash :first table) 1
+                       (gethash :second table) 2)
+                 (loop for value being the hash-values of table sum value))"#
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn expands_loop_condition_clauses(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

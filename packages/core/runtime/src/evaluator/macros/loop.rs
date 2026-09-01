@@ -246,6 +246,64 @@ impl Runtime {
                 if items
                     .get(3)
                     .and_then(atom_name)
+                    .is_some_and(|name| names_equal(name, "BEING"))
+                {
+                    if items.len() < 8
+                        || !items
+                            .get(4)
+                            .and_then(atom_name)
+                            .is_some_and(|name| names_equal(name, "THE"))
+                        || !items
+                            .get(6)
+                            .and_then(atom_name)
+                            .is_some_and(|name| names_equal(name, "OF"))
+                    {
+                        return Err(Self::invalid(
+                            "LOOP FOR BEING requires THE HASH-KEYS/HASH-VALUES OF and a table",
+                            form.span,
+                        ));
+                    }
+                    let Some(kind) = items.get(5).and_then(atom_name) else {
+                        return Err(Self::invalid(
+                            "LOOP FOR BEING requires HASH-KEYS or HASH-VALUES",
+                            form.span,
+                        ));
+                    };
+                    let iterator = if names_equal(kind, "HASH-KEYS") {
+                        "NCL-HASH-TABLE-KEYS"
+                    } else if names_equal(kind, "HASH-VALUES") {
+                        "NCL-HASH-TABLE-VALUES"
+                    } else {
+                        return Err(Self::invalid(
+                            "LOOP FOR BEING requires HASH-KEYS or HASH-VALUES",
+                            form.span,
+                        ));
+                    };
+                    if items
+                        .get(8)
+                        .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "USING"))
+                    {
+                        return Err(Self::invalid(
+                            "LOOP HASH-TABLE USING bindings are not supported yet",
+                            form.span,
+                        ));
+                    }
+                    let mut rewritten = vec![
+                        items[0].clone(),
+                        Form::atom("FOR", form.span),
+                        items[2].clone(),
+                        Form::atom("IN", form.span),
+                        Form::list(
+                            vec![Form::atom(iterator, form.span), items[7].clone()],
+                            form.span,
+                        ),
+                    ];
+                    rewritten.extend(items[8..].iter().cloned());
+                    return Self::expand_builtin_loop(&Form::list(rewritten, form.span));
+                } else if items
+                    .get(3)
+                    .and_then(atom_name)
                     .is_some_and(|name| names_equal(name, "IN"))
                 {
                     if items.len() < 5 {

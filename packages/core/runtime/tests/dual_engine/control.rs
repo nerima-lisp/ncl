@@ -129,6 +129,16 @@ fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
         evaluate(r"(loop for value = 1 then (+ value 1) repeat 3 collect value)").to_string(),
         "(1 2 3)"
     );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) while (< value 4) collect value)")
+            .to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) until (> value 3) collect value)")
+            .to_string(),
+        "(1 2 3)"
+    );
 }
 
 #[rstest]

@@ -380,12 +380,61 @@ impl Runtime {
                     } else {
                         None
                     };
-                    if count.is_none() {
+                    let termination = if count.is_some() {
+                        Form::list(
+                            vec![Form::list(
+                                vec![
+                                    Form::atom("WHEN", form.span),
+                                    Form::list(
+                                        vec![
+                                            Form::atom("<=", form.span),
+                                            count_name.clone(),
+                                            Form::atom("0", form.span),
+                                        ],
+                                        form.span,
+                                    ),
+                                    Form::list(vec![Form::atom("RETURN", form.span)], form.span),
+                                ],
+                                form.span,
+                            )],
+                            form.span,
+                        )
+                    } else if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| {
+                            names_equal(name, "WHILE") || names_equal(name, "UNTIL")
+                        })
+                    {
+                        if items.len() <= body_start + 1 {
+                            return Err(Self::invalid(
+                                "LOOP condition clause requires a test",
+                                form.span,
+                            ));
+                        }
+                        let stop_on_true = items
+                            .get(body_start)
+                            .and_then(atom_name)
+                            .is_some_and(|name| names_equal(name, "UNTIL"));
+                        let guard_operator = if stop_on_true { "WHEN" } else { "UNLESS" };
+                        body_start += 2;
+                        Form::list(
+                            vec![Form::list(
+                                vec![
+                                    Form::atom(guard_operator, form.span),
+                                    items[body_start - 1].clone(),
+                                    Form::list(vec![Form::atom("RETURN", form.span)], form.span),
+                                ],
+                                form.span,
+                            )],
+                            form.span,
+                        )
+                    } else {
                         return Err(Self::invalid(
-                            "LOOP FOR = requires REPEAT to establish termination",
+                            "LOOP FOR = requires REPEAT, WHILE, or UNTIL",
                             form.span,
                         ));
-                    }
+                    };
                     if items
                         .get(body_start)
                         .and_then(atom_name)
@@ -417,24 +466,7 @@ impl Runtime {
                             )],
                             form.span,
                         ),
-                        Form::list(
-                            vec![Form::list(
-                                vec![
-                                    Form::atom("WHEN", form.span),
-                                    Form::list(
-                                        vec![
-                                            Form::atom("<=", form.span),
-                                            count_name.clone(),
-                                            Form::atom("0", form.span),
-                                        ],
-                                        form.span,
-                                    ),
-                                    Form::list(vec![Form::atom("RETURN", form.span)], form.span),
-                                ],
-                                form.span,
-                            )],
-                            form.span,
-                        ),
+                        termination,
                     ];
                     if let Some(value) = collect_form.clone() {
                         do_items.push(Form::list(
@@ -443,15 +475,17 @@ impl Runtime {
                         ));
                     }
                     do_items.extend(items[body_start..].iter().cloned());
-                    do_items.push(Form::list(
-                        vec![Form::atom("DECF", form.span), count_name.clone()],
-                        form.span,
-                    ));
+                    if count.is_some() {
+                        do_items.push(Form::list(
+                            vec![Form::atom("DECF", form.span), count_name.clone()],
+                            form.span,
+                        ));
+                    }
                     let do_form = Form::list(do_items, form.span);
-                    let mut bindings = vec![Form::list(
-                        vec![count_name, count.expect("count is present")],
-                        form.span,
-                    )];
+                    let mut bindings = vec![];
+                    if let Some(count) = count {
+                        bindings.push(Form::list(vec![count_name, count], form.span));
+                    }
                     if collect_form.is_some() {
                         bindings.push(Form::list(
                             vec![collect_name.clone(), Form::atom("NIL", form.span)],

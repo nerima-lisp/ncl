@@ -161,6 +161,14 @@ fn expands_loop_for_numeric_limit_clauses(#[case] eval_fn: EvalFn) {
         evaluate(r"(loop for value from 1 to 3 sum (* value 2) into total)").to_string(),
         "12"
     );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 maximize value)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 minimize value into total)").to_string(),
+        "1"
+    );
 }
 
 #[rstest]

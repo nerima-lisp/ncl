@@ -50,6 +50,13 @@ impl CompileState {
     ) -> Result<(), CompileError> {
         if operator == "DECLAIM" {
             for declaration in items.iter().skip(1) {
+                let declaration = match &declaration.kind {
+                    FormKind::List(items) if items.len() == 2 => match &items[0].kind {
+                        FormKind::Atom(name) if name.eq_ignore_ascii_case("QUOTE") => &items[1],
+                        _ => declaration,
+                    },
+                    _ => declaration,
+                };
                 let FormKind::List(declaration_items) = &declaration.kind else {
                     continue;
                 };

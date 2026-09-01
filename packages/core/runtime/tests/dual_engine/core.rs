@@ -65,9 +65,14 @@ fn proclaim_special_affects_later_bindings(#[case] eval_fn: EvalFn) {
 fn proclaim_special_accepts_quoted_proclamation(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
-        evaluate("(progn (proclaim '(special quoted-proclaimed)) (setq quoted-proclaimed 9) quoted-proclaimed)")
+        evaluate(
+            "(progn
+               (declaim '(special quoted-proclaimed))
+               (let ((quoted-proclaimed 9))
+                 (list quoted-proclaimed (symbol-value 'quoted-proclaimed))))",
+        )
             .to_string(),
-        "9"
+        "(9 9)"
     );
 }
 

@@ -18,7 +18,7 @@ pub fn make_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .map(|value| character_argument("make-string", value))
         .transpose()?
         .unwrap_or(' ');
-    Ok(Value::string(
+    Ok(Value::mutable_string(
         std::iter::repeat_n(initial, length).collect::<String>(),
     ))
 }
@@ -26,7 +26,7 @@ pub fn make_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
 pub fn character(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "char", 2)?;
     let index = index_argument("char", &arguments[1])?;
-    let Value::String(value) = &arguments[0] else {
+    let Some(value) = arguments[0].string_contents() else {
         return Err(type_error("char", "string", &arguments[0]));
     };
     value
@@ -39,7 +39,7 @@ pub fn character(arguments: &[Value]) -> Result<Value, RuntimeError> {
 pub fn simple_character(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "schar", 2)?;
     let index = index_argument("schar", &arguments[1])?;
-    let Value::String(value) = &arguments[0] else {
+    let Some(value) = arguments[0].string_contents() else {
         return Err(type_error("schar", "simple-string", &arguments[0]));
     };
     value

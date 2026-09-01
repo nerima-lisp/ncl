@@ -6,6 +6,10 @@ use super::{Environment, Rational, RuntimeError, Value};
 mod stream_constructors;
 
 impl Value {
+    pub(crate) fn mutable_string(value: String) -> Self {
+        Self::MutableString(Rc::new(RefCell::new(value)))
+    }
+
     /// Converts a Rust boolean to the Lisp truth value representation.
     ///
     /// `false` is represented by `NIL`; `true` is represented by `T`.

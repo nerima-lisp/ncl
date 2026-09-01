@@ -73,12 +73,12 @@ pub fn rationalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn stringp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "stringp", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::String(_))))
+    Ok(Value::boolean(matches!(&arguments[0], Value::String(_) | Value::MutableString(_))))
 }
 
 pub fn simple_string_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-string-p", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::String(_))))
+    Ok(Value::boolean(matches!(&arguments[0], Value::String(_) | Value::MutableString(_))))
 }
 
 pub fn symbolp(arguments: &[Value]) -> Result<Value, RuntimeError> {

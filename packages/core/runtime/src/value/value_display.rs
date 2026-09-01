@@ -22,6 +22,7 @@ impl fmt::Display for Value {
             }
             Self::Complex(value) => write!(formatter, "#C({} {})", value.real, value.imag),
             Self::String(value) => write!(formatter, "{value:?}"),
+            Self::MutableString(value) => write!(formatter, "{:?}", value.borrow()),
             Self::Character(value) => match value {
                 ' ' => formatter.write_str("#\\SPACE"),
                 '\n' => formatter.write_str("#\\NEWLINE"),

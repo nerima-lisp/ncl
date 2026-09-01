@@ -12,6 +12,7 @@ pub fn length(arguments: &[Value]) -> Result<Value, RuntimeError> {
         },
         Value::Vector(items) => arguments[0].vector_length().unwrap_or_else(|| items.borrow().len()),
         Value::String(value) => value.chars().count(),
+        Value::MutableString(value) => value.borrow().chars().count(),
         _ => {
             return Err(type_error("length", "sequence", &arguments[0]));
         }
@@ -87,6 +88,12 @@ pub fn elt(arguments: &[Value]) -> Result<Value, RuntimeError> {
             .and_then(|items| items.get(index).cloned())
             .ok_or_else(|| out_of_bounds("elt", index)),
         Value::String(value) => value
+            .chars()
+            .nth(index)
+            .map(Value::Character)
+            .ok_or_else(|| out_of_bounds("elt", index)),
+        Value::MutableString(value) => value
+            .borrow()
             .chars()
             .nth(index)
             .map(Value::Character)

@@ -48,6 +48,7 @@ impl Value {
             Self::Float(_) => "FLOAT",
             Self::Complex(_) => "COMPLEX",
             Self::String(_) => "STRING",
+            Self::MutableString(_) => "STRING",
             Self::Character(_) => "CHARACTER",
             Self::Stream(_) => "STREAM",
             Self::RandomState(_) => "RANDOM-STATE",

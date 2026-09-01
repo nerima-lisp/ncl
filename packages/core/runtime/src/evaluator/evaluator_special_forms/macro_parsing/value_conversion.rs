@@ -44,6 +44,9 @@ impl Runtime {
                 span: Some(span),
             }),
             Value::String(value) => Ok(Form::new(FormKind::String(value.to_string()), span)),
+            Value::MutableString(value) => {
+                Ok(Form::new(FormKind::String(value.borrow().clone()), span))
+            }
             Value::Character(value) => Ok(Form::new(FormKind::Character(*value), span)),
             Value::Package(name) => Ok(Form::list(
                 vec![

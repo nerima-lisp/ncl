@@ -46,11 +46,10 @@ pub(crate) fn write_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("write-string", "at least 1", arguments.len()));
     }
-    let string = match &arguments[0] {
-        Value::String(value) => value,
-        value => return Err(type_error("write-string", "a string", value)),
-    };
-    let (destination, start, end) = write_options("write-string", string, &arguments[1..])?;
+    let string = arguments[0]
+        .string_contents()
+        .ok_or_else(|| type_error("write-string", "a string", &arguments[0]))?;
+    let (destination, start, end) = write_options("write-string", &string, &arguments[1..])?;
     let selected: String = string.chars().skip(start).take(end - start).collect();
     write_destination("write-string", destination.as_ref(), &selected)?;
     Ok(arguments[0].clone())
@@ -133,11 +132,10 @@ pub(crate) fn write_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("write-line", "at least 1", arguments.len()));
     }
-    let string = match &arguments[0] {
-        Value::String(value) => value,
-        value => return Err(type_error("write-line", "a string", value)),
-    };
-    let (destination, start, end) = write_options("write-line", string, &arguments[1..])?;
+    let string = arguments[0]
+        .string_contents()
+        .ok_or_else(|| type_error("write-line", "a string", &arguments[0]))?;
+    let (destination, start, end) = write_options("write-line", &string, &arguments[1..])?;
     let selected: String = string.chars().skip(start).take(end - start).collect();
     let mut line = String::with_capacity(selected.len() + 1);
     line.push_str(&selected);

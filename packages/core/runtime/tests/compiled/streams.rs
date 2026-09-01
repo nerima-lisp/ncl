@@ -83,7 +83,7 @@ fn compiled_with_output_to_string_binds_standard_output_and_returns_text() {
 fn compiled_with_output_to_string_updates_destination_variable() {
     let values = Runtime::new()
         .eval_compiled_source(
-            r#"(let ((destination ""))
+            r#"(let ((destination (make-string 0)))
                  (with-output-to-string (stream destination)
                    (write-string "alpha" stream))
                  destination)"#,
@@ -97,7 +97,7 @@ fn compiled_with_output_to_string_updates_destination_variable() {
 fn evaluator_with_output_to_string_updates_destination_variable() {
     let values = Runtime::new()
         .eval_source(
-            r#"(let ((destination ""))
+            r#"(let ((destination (make-string 0)))
                  (with-output-to-string (stream destination)
                    (write-string "alpha" stream))
                  destination)"#,
@@ -105,4 +105,34 @@ fn evaluator_with_output_to_string_updates_destination_variable() {
         .must_exist();
 
     assert_eq!(values[0].to_string(), r#""alpha""#);
+}
+
+#[test]
+fn compiled_with_output_to_string_preserves_mutable_destination_identity() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(let ((destination (make-string 0)))
+                 (with-output-to-string (stream destination)
+                   (write-string "alpha" stream))
+                 (setf (char destination 0) #\A)
+                 destination)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), r#""Alpha""#);
+}
+
+#[test]
+fn evaluator_with_output_to_string_preserves_mutable_destination_identity() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(let ((destination (make-string 0)))
+                 (with-output-to-string (stream destination)
+                   (write-string "alpha" stream))
+                 (setf (char destination 0) #\A)
+                 destination)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), r#""Alpha""#);
 }

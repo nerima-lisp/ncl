@@ -71,6 +71,7 @@ pub fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Value>, Ru
             .ok_or_else(|| type_error(function, "sequence", value)),
         Value::Vector(items) => Ok(items.borrow().clone()),
         Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
+        Value::MutableString(value) => Ok(value.borrow().chars().map(Value::Character).collect()),
         _ => Err(type_error(function, "sequence", value)),
     }
 }
@@ -97,6 +98,16 @@ pub fn rebuild_sequence(
             }
             Ok(Value::string(result))
         }
+        Value::MutableString(_) => {
+            let mut result = String::new();
+            for item in items {
+                let Value::Character(character) = item else {
+                    return Err(type_error(function, "characters for a string sequence", &item));
+                };
+                result.push(character);
+            }
+            Ok(Value::mutable_string(result))
+        }
         value => Err(type_error(function, "sequence", value)),
     }
 }
@@ -108,6 +119,7 @@ pub fn sequence_length(value: &Value) -> Option<usize> {
         Value::MutableCons(_) => value.list_items().map(|items| items.len()),
         Value::Vector(items) => value.vector_length().or_else(|| Some(items.borrow().len())),
         Value::String(value) => Some(value.chars().count()),
+        Value::MutableString(value) => Some(value.borrow().chars().count()),
         _ => None,
     }
 }

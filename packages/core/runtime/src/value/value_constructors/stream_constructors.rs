@@ -14,6 +14,17 @@ impl Value {
         Self::Stream(Rc::new(RefCell::new(Stream::output())))
     }
 
+    pub(crate) fn string_output_stream_to(&self) -> Option<Self> {
+        let Self::MutableString(destination) = self else { return None };
+        Some(Self::Stream(Rc::new(RefCell::new(Stream::output_to(Rc::clone(destination))))))
+    }
+
+    pub(crate) fn attach_string_output_destination(&self, destination: &Self) -> bool {
+        let (Self::Stream(stream), Self::MutableString(destination)) = (self, destination) else { return false };
+        stream.borrow_mut().attach_destination(Rc::clone(destination));
+        true
+    }
+
     pub(crate) fn file_input_stream(source: &str) -> Self {
         Self::Stream(Rc::new(RefCell::new(Stream::file_input(source))))
     }

@@ -5,6 +5,12 @@ use crate::Stream;
 use crate::value::value_stream::StreamKind;
 
 impl Stream {
+    pub(in crate::value) fn attach_destination(&mut self, destination: Rc<std::cell::RefCell<String>>) {
+        if let StreamKind::Output { destination: slot, .. } = &mut self.kind {
+            *slot = Some(destination);
+        }
+    }
+
     pub(in crate::value) fn input(source: &str, start: usize, end: usize) -> Self {
         Self {
             kind: StreamKind::Input {
@@ -49,10 +55,11 @@ impl Stream {
         }
     }
 
-    pub(in crate::value) const fn output() -> Self {
+    pub(in crate::value) fn output() -> Self {
         Self {
             kind: StreamKind::Output {
                 buffer: String::new(),
+                destination: None,
                 at_line_start: true,
                 file_path: None,
             },
@@ -65,8 +72,22 @@ impl Stream {
         Self {
             kind: StreamKind::Output {
                 buffer: initial,
+                destination: None,
                 at_line_start,
                 file_path: Some(Rc::new(path)),
+            },
+            closed: false,
+        }
+    }
+
+    pub(in crate::value) fn output_to(destination: Rc<std::cell::RefCell<String>>) -> Self {
+        let at_line_start = destination.borrow().ends_with('\n');
+        Self {
+            kind: StreamKind::Output {
+                buffer: String::new(),
+                destination: Some(destination),
+                at_line_start,
+                file_path: None,
             },
             closed: false,
         }

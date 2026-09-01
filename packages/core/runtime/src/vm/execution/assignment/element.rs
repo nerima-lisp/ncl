@@ -40,6 +40,12 @@ pub(super) fn execute(
                     .ok_or_else(|| invalid("SETF index is out of bounds", span))? = value.clone();
                 Value::vector(elements)
             }
+            other @ Value::MutableString(_) => {
+                other
+                    .set_vector_item(index, value.clone())
+                    .map(|_| other)
+                    .ok_or_else(|| invalid("SETF index is out of bounds", span))?
+            }
             Value::String(text) => {
                 let Value::Character(character) = value.clone() else {
                     return Err(RuntimeError::Type {
@@ -63,12 +69,34 @@ pub(super) fn execute(
             }
         },
         "CHAR" | "SCHAR" => {
-            let Value::String(text) = current else {
-                return Err(RuntimeError::Type {
-                    expected: "STRING".to_string(),
-                    actual: current.type_name().to_string(),
-                    span: Some(span),
-                });
+            let Value::MutableString(_) = &current else {
+                let Value::String(text) = current else {
+                    return Err(RuntimeError::Type {
+                        expected: "STRING".to_string(),
+                        actual: current.type_name().to_string(),
+                        span: Some(span),
+                    });
+                };
+                let Value::Character(character) = value.clone() else {
+                    return Err(RuntimeError::Type {
+                        expected: "CHARACTER".to_string(),
+                        actual: value.type_name().to_string(),
+                        span: Some(span),
+                    });
+                };
+                let mut chars = text.chars().collect::<Vec<_>>();
+                *chars
+                    .get_mut(index)
+                    .ok_or_else(|| invalid("SETF index is out of bounds", span))? = character;
+                let updated = Value::string(chars.into_iter().collect::<String>());
+                if escaped {
+                    runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?;
+                } else {
+                    runtime.set_or_define_in(name, updated.clone(), environment, span)?;
+                }
+                stack.push(value);
+                *program_counter += 1;
+                return Ok(true);
             };
             let Value::Character(character) = value.clone() else {
                 return Err(RuntimeError::Type {
@@ -77,11 +105,10 @@ pub(super) fn execute(
                     span: Some(span),
                 });
             };
-            let mut chars = text.chars().collect::<Vec<_>>();
-            *chars
-                .get_mut(index)
-                .ok_or_else(|| invalid("SETF index is out of bounds", span))? = character;
-            Value::string(chars.into_iter().collect::<String>())
+            current
+                .set_vector_item(index, Value::Character(character))
+                .map(|_| current)
+                .ok_or_else(|| invalid("SETF index is out of bounds", span))?
         }
         _ => unreachable!(),
     };

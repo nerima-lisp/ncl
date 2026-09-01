@@ -61,6 +61,14 @@ impl Value {
         }
     }
 
+    pub(crate) fn string_contents(&self) -> Option<String> {
+        match self {
+            Self::String(value) => Some(value.to_string()),
+            Self::MutableString(value) => Some(value.borrow().clone()),
+            _ => None,
+        }
+    }
+
     pub(crate) fn vector_sequence_items(&self) -> Option<Vec<Self>> {
         let Self::Vector(items) = self else { return None };
         let end = self.vector_length().unwrap_or_else(|| items.borrow().len());
@@ -164,6 +172,15 @@ impl Value {
                 let storage = metadata.displaced_to.as_ref().unwrap_or(&items.elements);
                 storage.borrow_mut().get_mut(metadata.displaced_index_offset + index).map(|slot| *slot = value)
             }
+            Self::MutableString(items) => {
+                let Self::Character(character) = value else { return None };
+                let mut text = items.borrow_mut();
+                let mut characters: Vec<char> = text.chars().collect();
+                let slot = characters.get_mut(index)?;
+                *slot = character;
+                *text = characters.into_iter().collect();
+                Some(())
+            }
             _ => None,
         }
     }
@@ -182,7 +199,9 @@ impl Value {
     /// Returns copied list or vector elements when this value is a sequence.
     #[must_use]
     pub fn sequence_items(&self) -> Option<Vec<Self>> {
-        self.list_items().or_else(|| self.vector_sequence_items())
+        self.list_items()
+            .or_else(|| self.vector_sequence_items())
+            .or_else(|| self.string_contents().map(|text| text.chars().map(Self::Character).collect()))
     }
 
     pub(crate) fn hash_table_test(&self) -> Option<&str> {

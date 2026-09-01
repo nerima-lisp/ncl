@@ -9,10 +9,14 @@ impl Stream {
         match &mut self.kind {
             StreamKind::Output {
                 buffer,
+                destination,
                 at_line_start,
                 ..
             } => {
                 buffer.push_str(text);
+                if let Some(destination) = destination {
+                    destination.borrow_mut().push_str(text);
+                }
                 if let Some(character) = text.chars().last() {
                     *at_line_start = character == '\n';
                 }
@@ -64,7 +68,12 @@ impl Stream {
             return false;
         }
         match &mut self.kind {
-            StreamKind::Output { buffer, .. } => buffer.clear(),
+            StreamKind::Output { buffer, destination, .. } => {
+                buffer.clear();
+                if let Some(destination) = destination {
+                    destination.borrow_mut().clear();
+                }
+            }
             StreamKind::Io { .. } => {}
             StreamKind::Input { .. } => return false,
         }

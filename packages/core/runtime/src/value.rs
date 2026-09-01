@@ -97,6 +97,8 @@ pub enum Value {
     Complex(Rc<Complex>),
     /// A string value.
     String(Rc<str>),
+    /// A mutable string storage object.
+    MutableString(Rc<RefCell<String>>),
     /// A character value.
     Character(char),
     /// A stream backed by runtime state.

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 /// A character stream used by the standard I/O primitives.
 #[derive(Debug)]
@@ -25,6 +26,7 @@ pub(super) enum StreamKind {
     },
     Output {
         buffer: String,
+        destination: Option<Rc<RefCell<String>>>,
         at_line_start: bool,
         file_path: Option<Rc<PathBuf>>,
     },

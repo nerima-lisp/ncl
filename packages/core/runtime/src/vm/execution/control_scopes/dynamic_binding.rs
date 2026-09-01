@@ -76,6 +76,10 @@ pub(in crate::vm::execution) fn execute_standard_stream_bind_instruction(
 ) -> Result<(), RuntimeError> {
     let stream_function = program.functions.get(stream).ok_or_else(|| invalid("compiled standard stream function id is out of range", span))?;
     let stream_value = run_code(runtime, program, stream_function, environment.clone(), span)?.primary_value();
+    let destination_value = destination.and_then(|name| environment.lookup(name));
+    if let Some(value @ Value::MutableString(_)) = destination_value.as_ref() {
+        stream_value.attach_string_output_destination(value);
+    }
     let body_function = program.functions.get(body).ok_or_else(|| invalid("compiled standard stream body function id is out of range", span))?;
     let body_environment = environment.child();
     body_environment.define(variable, stream_value.clone());
@@ -98,7 +102,7 @@ pub(in crate::vm::execution) fn execute_standard_stream_bind_instruction(
     } else {
         crate::builtins::get_output_stream_string(&[stream_value])?
     };
-    if let Some(destination) = destination {
+    if let Some(destination) = destination.filter(|_| matches!(destination_value, Some(Value::String(_)))) {
         if !environment.set(destination, output.clone()) {
             environment.define(destination, output.clone());
         }

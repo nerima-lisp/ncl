@@ -31,6 +31,12 @@ impl Runtime {
                         };
                         self.set_place(&args[0], current, environment)
                     }
+                    Value::MutableString(_) => {
+                        let Some(()) = current.set_vector_item(index, value) else {
+                            return Err(Self::invalid("SETF index is out of bounds", args[1].span));
+                        };
+                        self.set_place(&args[0], current, environment)
+                    }
                     Value::String(text) => {
                         let Value::Character(character) = value else {
                             return Err(RuntimeError::Type {
@@ -63,6 +69,12 @@ impl Runtime {
                 }
                 let current = self.eval_in(&args[0], environment)?;
                 let index = Self::setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
+                if matches!(current, Value::MutableString(_)) {
+                    let Some(()) = current.set_vector_item(index, value) else {
+                        return Err(Self::invalid("SETF index is out of bounds", args[1].span));
+                    };
+                    return self.set_place(&args[0], current, environment);
+                }
                 let Value::String(text) = current else {
                     return Err(RuntimeError::Type {
                         expected: "STRING".to_string(),

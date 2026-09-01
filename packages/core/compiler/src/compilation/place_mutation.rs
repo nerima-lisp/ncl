@@ -6,6 +6,7 @@ mod modify;
 mod setf;
 mod setf_emit;
 mod setf_fallback;
+mod setf_indexed;
 mod setf_nth;
 mod setf_property;
 mod setf_symbol;

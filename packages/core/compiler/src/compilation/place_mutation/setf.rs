@@ -17,48 +17,7 @@ impl CompileState {
             if self.compile_setf_nth_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
-            let aref_place = match &place.kind {
-                FormKind::List(items) if items.len() >= 3 => {
-                    let operator = Self::symbol_name_info(&items[0], "setf place operator")
-                        .ok()
-                        .map(|(name, _)| name);
-                    operator.and_then(|operator| {
-                        if !matches!(operator.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF") {
-                            return None;
-                        }
-                        Self::symbol_name_info(&items[1], "setf aref target")
-                            .ok()
-                            .map(|(name, escaped)| {
-                                (
-                                    operator,
-                                    items.len() - 2,
-                                    name,
-                                    escaped,
-                                    &items[1],
-                                    &items[2..],
-                                )
-                            })
-                    })
-                }
-                _ => None,
-            };
-            if let Some((operator, rank, name, escaped, target, indices)) = aref_place {
-                self.compile_expression(function, target)?;
-                for index_form in indices {
-                    self.compile_expression(function, index_form)?;
-                }
-                self.compile_expression(function, value_form)?;
-                self.emit(
-                    function,
-                    Instruction::SetfArefDynamic {
-                        rank,
-                        operator,
-                        name,
-                        escaped,
-                    },
-                    place.span,
-                )?;
-                emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
+            if self.compile_setf_aref_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
             let bit_place = match &place.kind {

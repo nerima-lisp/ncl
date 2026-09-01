@@ -154,6 +154,14 @@ fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
         evaluate(r"(loop for value across #(1 2 3) collect value)").to_string(),
         "(1 2 3)"
     );
+    assert_eq!(
+        evaluate(r"(loop for value across #(1 3 2) sum value)").to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value across #(1 3 2) maximize value into result)").to_string(),
+        "3"
+    );
 }
 
 #[rstest]

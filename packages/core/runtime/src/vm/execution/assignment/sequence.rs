@@ -169,6 +169,35 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::ListMutationNthPushNewOptions { name, escaped, test_not, has_key, key_before_test } => {
+            let current = stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no target", span))?.primary_value();
+            let index = stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no index", span))?.primary_value();
+            let value = stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no value", span))?.primary_value();
+            let (test, key) = if *key_before_test {
+                let test = stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no test", span))?.primary_value();
+                let key = stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no key", span))?.primary_value();
+                (test, Some(key))
+            } else {
+                let key = if *has_key { Some(stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no key", span))?.primary_value()) } else { None };
+                let test = stack.pop().ok_or_else(|| invalid("nth PUSHNEW has no test", span))?.primary_value();
+                (test, key)
+            };
+            let test = Value::Function(runtime.resolve_function_designator(&test, span, environment)?);
+            let key = key.filter(|key| key.is_truthy()).map(|key| runtime.resolve_function_designator(&key, span, environment).map(Value::Function)).transpose()?;
+            let index = crate::builtins::index_argument("nth PUSHNEW", &index)?;
+            let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: current.type_name().to_string(), span: Some(span) })?;
+            let slot = elements.get(index).ok_or_else(|| crate::builtins::out_of_bounds("nth PUSHNEW", index))?.clone();
+            let mut slot = slot.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: slot.type_name().to_string(), span: Some(span) })?;
+            let item_key = if let Some(key) = &key { runtime.apply_in(key, std::slice::from_ref(&value), span, environment)?.primary_value() } else { value.clone() };
+            let found = slot.iter().map(|candidate| {
+                let candidate_key = if let Some(key) = &key { runtime.apply_in(key, std::slice::from_ref(candidate), span, environment)?.primary_value() } else { candidate.clone() };
+                runtime.apply_in(&test, &[item_key.clone(), candidate_key], span, environment).map(|result| result.primary_value().is_truthy())
+            }).collect::<Result<Vec<_>, _>>()?.into_iter().any(|equal| if *test_not { !equal } else { equal });
+            let result = if found { Value::list(slot) } else { slot.insert(0, value); let result = Value::list(slot); elements[index] = result.clone(); let updated = Value::list(elements); if *escaped { runtime.set_or_define_exact_in(name, updated, environment, span)?; } else { runtime.set_or_define_in(name, updated, environment, span)?; } result };
+            stack.push(result);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PopList { name, escaped } => {
             let current = stack
                 .pop()

@@ -120,6 +120,28 @@ fn compile_push_and_pop_with_dynamic_nth_places_use_native_instructions() {
 }
 
 #[test]
+fn compile_pushnew_with_options_and_dynamic_nth_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let pushnew = parse_items("(pushnew 1 (nth index xs) :test-not #'equal :key #'identity)");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
+        .expect("dynamic NTH PUSHNEW with options should use a native mutation instruction");
+
+    assert!(state.functions[function].instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::ListMutationNthPushNewOptions {
+            name,
+            escaped,
+            test_not,
+            has_key,
+            key_before_test,
+        } if name == "XS" && !escaped && *test_not && *has_key && !*key_before_test
+    )));
+}
+
+#[test]
 fn compile_push_and_pop_use_native_gethash_instructions() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

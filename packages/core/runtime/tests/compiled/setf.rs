@@ -283,6 +283,14 @@ fn compiled_evaluates_pushnew_on_dynamic_nth_places() {
 }
 
 #[test]
+fn compiled_evaluates_pushnew_with_options_on_dynamic_nth_places() {
+    assert_eq!(
+        evaluate("(let ((xs (list (list 2) (list 4))) (index 1)) (list (pushnew 4 (nth index xs) :test #'equal) (pushnew 3 (nth index xs) :test #'equal) xs))").to_string(),
+        "((4) (3 4) ((2) (3 4)))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_single_place_rotatef() {
     assert_eq!(
         evaluate("(let ((x 7)) (list (rotatef x) x))").to_string(),

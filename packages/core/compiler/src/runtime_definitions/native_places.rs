@@ -21,6 +21,42 @@ impl CompileState {
         let expected = if operator == "POP" { 2 } else { 3 };
         if operator == "PUSHNEW"
             && items.len() > expected
+            && nth_list_place(&items[2]).is_some()
+        {
+            if !(items.len() - 3).is_multiple_of(2) {
+                return Ok(None);
+            }
+            let mut test_not = false;
+            let mut has_test = false;
+            let mut has_key = false;
+            let mut key_before_test = false;
+            for pair in items[3..].chunks_exact(2) {
+                let FormKind::Atom(keyword) = &pair[0].kind else {
+                    return Ok(None);
+                };
+                match keyword.to_ascii_uppercase().as_str() {
+                    ":TEST" if !has_test && !test_not => has_test = true,
+                    ":TEST-NOT" if !has_test && !test_not => test_not = true,
+                    ":KEY" if !has_key => {
+                        key_before_test = !has_test && !test_not;
+                        has_key = true;
+                    }
+                    _ => return Ok(None),
+                }
+                self.compile_expression(function, &pair[1])?;
+            }
+            if !has_test && !test_not {
+                self.emit(function, Instruction::Quote(Form::atom("EQL", items[0].span)), items[0].span)?;
+            }
+            let (index_form, target, name, escaped) = nth_list_place(&items[2]).expect("checked above");
+            self.compile_expression(function, &items[1])?;
+            self.compile_expression(function, index_form)?;
+            self.compile_expression(function, target)?;
+            self.emit(function, Instruction::ListMutationNthPushNewOptions { name, escaped, test_not, has_key, key_before_test }, items[0].span)?;
+            return Ok(Some(()));
+        }
+        if operator == "PUSHNEW"
+            && items.len() > expected
             && (generalized_list_place(&items[2]).is_some()
                 || Self::symbol_name_info(&items[2], "list place").is_ok())
         {

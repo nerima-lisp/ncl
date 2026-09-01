@@ -329,6 +329,7 @@ impl CompileState {
             | "PRINC" | "PRIN1" | "PRINT" | "WRITE"
             | "GET-OUTPUT-STREAM-STRING" | "READ-CHAR" | "READ-LINE" | "PEEK-CHAR"
             | "UNREAD-CHAR" | "CLOSE" | "MAKE-STRING-INPUT-STREAM"
+            | "STREAM-ELEMENT-TYPE" | "STREAM-EXTERNAL-FORMAT"
             | "MAKE-STRING-OUTPUT-STREAM" | "WRITE-TO-STRING" | "READ-FROM-STRING"
             | "READ" | "READ-PRESERVING-WHITESPACE" => {
                 self.compile_stream_operation(function, span, items, name)

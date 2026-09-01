@@ -441,6 +441,8 @@ rest"))
                      (output-stream-p output)
                      (open-stream-p output)
                      (typep output 'stream)
+                     (stream-element-type output)
+                     (stream-external-format output)
                      (peek-char input)
                      (read-char input)
                      (read-char input)
@@ -454,7 +456,7 @@ rest"))
 
     assert_eq!(
         values.last().must_exist().to_string(),
-        r#"(T T T T T #\a #\a #\b NIL #\b "c" NIL "ok!")"#
+        r#"(T T T T T CHARACTER :DEFAULT #\a #\a #\b NIL #\b "c" NIL "ok!")"#
     );
 }
 

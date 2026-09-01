@@ -21,6 +21,8 @@ fn stream_predicates_reject_bad_arity() {
     assert!(output_stream_p(&[Value::Nil, Value::Nil]).is_err());
     assert!(open_stream_p(&[]).is_err());
     assert!(open_stream_p(&[Value::Nil, Value::Nil]).is_err());
+    assert!(stream_element_type(&[]).is_err());
+    assert!(stream_external_format(&[Value::Nil, Value::Nil]).is_err());
 }
 
 #[test]
@@ -38,6 +40,17 @@ fn open_stream_p_tracks_close_state() -> Result<(), RuntimeError> {
     assert!(open_stream_p(std::slice::from_ref(&stream))?.is_truthy());
     close_stream(std::slice::from_ref(&stream))?;
     assert!(!open_stream_p(&[stream])?.is_truthy());
+    Ok(())
+}
+
+#[test]
+fn stream_metadata_reports_character_default_and_rejects_closed_streams() -> Result<(), RuntimeError> {
+    let stream = make_string_output_stream(&[])?;
+    assert_eq!(stream_element_type(std::slice::from_ref(&stream))?.to_string(), "CHARACTER");
+    assert_eq!(stream_external_format(std::slice::from_ref(&stream))?.to_string(), ":DEFAULT");
+    close_stream(std::slice::from_ref(&stream))?;
+    assert!(stream_element_type(std::slice::from_ref(&stream)).is_err());
+    assert!(stream_external_format(&[stream]).is_err());
     Ok(())
 }
 

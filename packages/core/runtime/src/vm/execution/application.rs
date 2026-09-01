@@ -1136,6 +1136,8 @@ pub fn execute_stream_operation_instruction(
         "READ-FROM-STRING" => crate::builtins::read_from_string(&arguments),
         "READ" => crate::builtins::read(&arguments),
         "READ-PRESERVING-WHITESPACE" => crate::builtins::read_preserving_whitespace(&arguments),
+        "STREAM-ELEMENT-TYPE" => crate::builtins::stream_element_type(&arguments),
+        "STREAM-EXTERNAL-FORMAT" => crate::builtins::stream_external_format(&arguments),
         _ => Err(invalid("unknown stream operation", span)),
     }?;
     stack.push(result);

@@ -1,4 +1,4 @@
-use super::{arity, exact, stream_keyword_name, stream_reference};
+use super::{arity, exact, stream_keyword_name, stream_reference, stream_state_error};
 use crate::{RuntimeError, Value};
 
 pub(crate) fn close_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -57,4 +57,22 @@ pub fn open_stream_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
         _ => false,
     };
     Ok(Value::boolean(result))
+}
+
+pub fn stream_element_type(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "stream-element-type", 1)?;
+    let stream = stream_reference("stream-element-type", &arguments[0])?;
+    if !stream.borrow().is_open() {
+        return Err(stream_state_error("stream-element-type", "an open stream"));
+    }
+    Ok(Value::symbol("CHARACTER"))
+}
+
+pub fn stream_external_format(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "stream-external-format", 1)?;
+    let stream = stream_reference("stream-external-format", &arguments[0])?;
+    if !stream.borrow().is_open() {
+        return Err(stream_state_error("stream-external-format", "an open stream"));
+    }
+    Ok(Value::keyword("DEFAULT"))
 }

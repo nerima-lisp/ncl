@@ -34,7 +34,7 @@ pub(super) fn format_tab_output(
         .unwrap_or_default()
         .chars()
         .count();
-    if colon_modifier && current_column >= column {
+    if colon_modifier {
         return Ok(());
     }
     let spaces = if at_sign_modifier {

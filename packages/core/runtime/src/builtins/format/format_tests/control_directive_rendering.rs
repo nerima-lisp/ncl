@@ -56,7 +56,7 @@ fn formats_tab_directive_from_table_cases() {
         ("~5,4T", "abcdefgh", "abcdefgh "),
         ("~0,0T", "abcdefgh", "abcdefgh"),
         ("~:T", "abc", "abc"),
-        ("~5:T", "abc", "abc  "),
+        ("~5:T", "abc", "abc"),
         ("~5:T", "abcde", "abcde"),
         ("~5,4T", "ab\ncd", "ab\ncd   "),
     ];

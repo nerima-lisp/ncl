@@ -366,7 +366,7 @@ fn evaluates_format_indentation_directive() {
 fn evaluates_format_conditional_tab_directive() {
     assert_eq!(
         evaluate(r#"(list (format nil "abc~5:T") (format nil "abcde~5:T"))"#).to_string(),
-        r#"("abc  " "abcde")"#,
+        r#"("abc" "abcde")"#,
     );
 }
 

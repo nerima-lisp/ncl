@@ -71,6 +71,15 @@ pub(super) fn execute_value_instruction(
             };
             stack.push(Runtime::special_define_symbol_macro(items, environment)?);
         }
+        Instruction::DefineSetfExpander(form) => {
+            let FormKind::List(items) = &form.kind else {
+                return Err(RuntimeError::InvalidForm {
+                    message: "DEFINE-SETF-EXPANDER instruction requires a list".to_string(),
+                    span: Some(form.span),
+                });
+            };
+            stack.push(Runtime::special_define_setf_expander(items, environment)?);
+        }
         Instruction::Eval(form_span) => {
             let value = pop_value(stack, span, "eval")?.primary_value();
             let form = Runtime::form_from_value(&value, *form_span)?;

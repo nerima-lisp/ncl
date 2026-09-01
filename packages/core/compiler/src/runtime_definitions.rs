@@ -129,6 +129,28 @@ impl CompileState {
         Ok(())
     }
 
+    pub(super) fn compile_define_setf_expander(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 4 {
+            return Err(Self::arity_error(
+                items,
+                "DEFINE-SETF-EXPANDER",
+                "at least three",
+                span,
+            ));
+        }
+        self.emit(
+            function,
+            Instruction::DefineSetfExpander(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(super) fn compile_runtime_definition(
         &mut self,
         function: FunctionId,

@@ -37,6 +37,9 @@ impl Runtime {
             ));
         }
         let mut body = items[1..].to_vec();
+        if body.first().and_then(atom_name).is_some_and(|name| names_equal(name, "DO")) {
+            body.remove(0);
+        }
         let mut repeat_count = None;
         let mut collect_form = None;
         let mut finally_form = None;

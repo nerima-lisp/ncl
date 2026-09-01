@@ -301,6 +301,19 @@ fn compiled_evaluates_list_set_operations() {
         "((1 A) (2 B) (3 D))"
     );
     assert_eq!(evaluate("(nunion '(1 2) '(2 3))").to_string(), "(1 2 3)");
+    assert_eq!(
+        evaluate("(nintersection '(1 2 2 3) '(2 3 4))").to_string(),
+        "(2 3)"
+    );
+    assert_eq!(
+        evaluate("(nset-difference '(1 2 2 3) '(2))").to_string(),
+        "(1 3)"
+    );
+    assert_eq!(
+        evaluate("(nset-exclusive-or '(1 2 2 3) '(2 4))").to_string(),
+        "(1 3 4)"
+    );
+    assert_eq!(evaluate("(subsetp '(1 2) '(1 3))").to_string(), "NIL");
     assert_eq!(evaluate("(funcall #'union '(1) '(2))").to_string(), "(1 2)");
 }
 

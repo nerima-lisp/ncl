@@ -185,15 +185,22 @@ impl Runtime {
                     }
                     return Ok(dolist);
                 }
+                let limit_clause = items.get(5).and_then(atom_name);
+                let descending = limit_clause
+                    .is_some_and(|name| names_equal(name, "DOWNTO") || names_equal(name, "ABOVE"));
+                let inclusive = limit_clause
+                    .is_some_and(|name| names_equal(name, "TO") || names_equal(name, "DOWNTO"));
                 if items.len() < 7
                     || !items
                         .get(3)
                         .and_then(atom_name)
                         .is_some_and(|name| names_equal(name, "FROM"))
-                    || !items
-                        .get(5)
-                        .and_then(atom_name)
-                        .is_some_and(|name| names_equal(name, "TO"))
+                    || !limit_clause.is_some_and(|name| {
+                        names_equal(name, "TO")
+                            || names_equal(name, "BELOW")
+                            || names_equal(name, "ABOVE")
+                            || names_equal(name, "DOWNTO")
+                    })
                 {
                     return Err(Self::invalid(
                         "LOOP FOR requires a variable, FROM form, and TO form",
@@ -201,8 +208,9 @@ impl Runtime {
                     ));
                 }
                 let variable = items[2].clone();
+                let step_operator = if descending { "1-" } else { "1+" };
                 let step = Form::list(
-                    vec![Form::atom("1+", form.span), variable.clone()],
+                    vec![Form::atom(step_operator, form.span), variable.clone()],
                     form.span,
                 );
                 let binding = Form::list(vec![variable.clone(), items[4].clone(), step], form.span);
@@ -228,8 +236,18 @@ impl Runtime {
                     collect_form = Some(items[body_start + 1].clone());
                     body_start += 2;
                 }
+                let termination_operator = match (descending, inclusive) {
+                    (false, true) => ">",
+                    (false, false) => ">=",
+                    (true, true) => "<",
+                    (true, false) => "<=",
+                };
                 let termination = vec![Form::list(
-                    vec![Form::atom(">", form.span), variable, items[6].clone()],
+                    vec![
+                        Form::atom(termination_operator, form.span),
+                        variable,
+                        items[6].clone(),
+                    ],
                     form.span,
                 )];
                 let mut do_items = vec![

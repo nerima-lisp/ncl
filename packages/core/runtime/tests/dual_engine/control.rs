@@ -120,6 +120,25 @@ fn expands_loop_for_in_clause(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_for_numeric_limit_clauses(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r"(loop for value from 1 below 4 collect value)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 3 downto 1 collect value)").to_string(),
+        "(3 2 1)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 3 above 1 collect value)").to_string(),
+        "(3 2)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn captures_an_active_tagbody_target_in_a_closure(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     let source = r"

@@ -27,6 +27,11 @@ pub enum Function {
         /// The function whose result is negated.
         function: Value,
     },
+    /// A function that always returns the same value.
+    Constantly {
+        /// The value returned for every invocation.
+        value: Value,
+    },
     /// A named primitive resolved by the evaluator.
     Primitive {
         /// The primitive's canonical name.

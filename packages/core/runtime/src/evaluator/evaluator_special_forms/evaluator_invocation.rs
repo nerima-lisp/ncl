@@ -58,6 +58,7 @@ impl Runtime {
                     .apply_in(function, arguments, span, environment)?
                     .is_truthy(),
             )),
+            crate::Function::Constantly { value } => Ok(value.clone()),
             crate::Function::Primitive { name } => {
                 self.apply_primitive(name, arguments, environment, span)
             }

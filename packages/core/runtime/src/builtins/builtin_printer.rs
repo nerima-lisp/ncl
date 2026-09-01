@@ -14,6 +14,11 @@ pub(super) fn complement(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::complement(arguments[0].clone()))
 }
 
+pub(super) fn constantly(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "constantly", 1)?;
+    Ok(Value::constantly(arguments[0].clone()))
+}
+
 pub(super) fn type_of(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "type-of", 1)?;
     Ok(Value::symbol(

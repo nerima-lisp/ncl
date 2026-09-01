@@ -81,8 +81,8 @@ use type_predicates::*;
 
 mod builtin_printer;
 use builtin_printer::{
-    complement, identity, prin1, princ, print_value, printed_value, type_of, write_to_string,
-    write_value,
+    complement, constantly, identity, prin1, princ, print_value, printed_value, type_of,
+    write_to_string, write_value,
 };
 
 mod builtin_stream_constructors;

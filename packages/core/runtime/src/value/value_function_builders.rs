@@ -11,6 +11,10 @@ impl Value {
         Self::Function(Rc::new(Function::Complement { function }))
     }
 
+    pub(crate) fn constantly(value: Self) -> Self {
+        Self::Function(Rc::new(Function::Constantly { value }))
+    }
+
     /// Creates a callable value backed by a runtime builtin.
     pub fn builtin(name: &'static str, function: Builtin) -> Self {
         Self::Function(Rc::new(Function::Builtin { name, function }))

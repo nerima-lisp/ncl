@@ -58,7 +58,9 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
         "ERROR" | "SERIOUS-CONDITION" | "WARNING" | "SIMPLE-CONDITION" | "SIMPLE-ERROR"
         | "SIMPLE-WARNING" | "ARITHMETIC-ERROR" | "DIVISION-BY-ZERO" | "TYPE-ERROR"
         | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR" | "COMPILER-ERROR" | "FILE-ERROR"
-        | "UNBOUND-VARIABLE" | "CONTROL-ERROR" => value.condition_is_type(type_name),
+        | "UNBOUND-VARIABLE" | "STREAM-ERROR" | "CONTROL-ERROR" => {
+            value.condition_is_type(type_name)
+        }
         "STRUCTURE" => value.structure_name().is_some(),
         "SEQUENCE" => matches!(value, Value::Boolean(false)) || sequence_length(value).is_some(),
         "FUNCTION" | "COMPILED-FUNCTION" => matches!(value, Value::Function(_)),

@@ -2,7 +2,9 @@
 use super::super::*;
 
 mod assignment;
+mod evaluator;
 mod list;
+mod symbol;
 
 impl CompileState {
     pub(super) fn compile_setf_fallback(
@@ -14,6 +16,9 @@ impl CompileState {
         if list::compile_list_setf(self, function, place, value_form)? {
             return Ok(());
         }
-        assignment::compile_assignment_setf(self, function, place, value_form)
+        if symbol::compile_symbol_setf(self, function, place, value_form)? {
+            return Ok(());
+        }
+        evaluator::compile_evaluator_setf(self, function, place, value_form)
     }
 }

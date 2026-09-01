@@ -2,6 +2,20 @@
 use super::*;
 
 impl Runtime {
+    pub(crate) fn special_with_compilation_unit(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 2 {
+            return Err(Self::arity(
+                "with-compilation-unit",
+                "an options form",
+                items.len().saturating_sub(1),
+            ));
+        }
+        self.eval_sequence_values(&items[2..], environment)
+    }
     pub(crate) fn special_quote(items: &[Form], span: Span) -> Result<Value, RuntimeError> {
         if items.len() != 2 {
             return Err(Self::arity("quote", "one", items.len().saturating_sub(1)));

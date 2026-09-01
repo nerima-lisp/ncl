@@ -7,6 +7,17 @@ use super::EvalFn;
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_with_compilation_unit_body(#[case] eval_fn: EvalFn) {
+    let result = evaluate_with(
+        eval_fn,
+        "(with-compilation-unit () (list :done (+ 1 2)))",
+    );
+    assert_eq!(result.to_string(), "(:DONE 3)");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn expands_basic_loop_iteration(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

@@ -70,6 +70,9 @@ impl Runtime {
             "DECLARE" | "DECLAIM" | "PROCLAIM" => Some(Value::Nil),
             "LOCALLY" => Some(self.special_locally(items, environment)?),
             "EVAL-WHEN" => Some(self.special_eval_when(items, environment)?),
+            "WITH-COMPILATION-UNIT" => {
+                Some(self.special_with_compilation_unit(items, environment)?)
+            }
             "THE" => Some(self.special_the(items, environment)?),
             "LOAD-TIME-VALUE" => Some(self.special_load_time_value(items, environment)?),
             "NTH-VALUE" => Some(self.special_nth_value(items, environment)?),

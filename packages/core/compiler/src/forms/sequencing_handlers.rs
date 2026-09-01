@@ -7,6 +7,23 @@ use crate::{
 use ncl_syntax::FormKind;
 
 impl CompileState {
+    pub(super) fn compile_with_compilation_unit(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 2 {
+            return Err(CompileError::new(
+                crate::CompileErrorKind::InvalidForm {
+                    message: "WITH-COMPILATION-UNIT requires an options form".into(),
+                },
+                span,
+            ));
+        }
+        self.compile_sequence(function, items.get(2..).unwrap_or(&[]))
+    }
+
     pub(super) fn compile_progn(
         &mut self,
         function: FunctionId,

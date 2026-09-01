@@ -14,6 +14,7 @@ impl CompileState {
             "DECLARE" | "DECLAIM" | "PROCLAIM" => self.compile_declare(function, span, name, items),
             "LOCALLY" | "PROGN" => self.compile_progn(function, items),
             "EVAL-WHEN" => self.compile_eval_when(function, span, items),
+            "WITH-COMPILATION-UNIT" => self.compile_with_compilation_unit(function, span, items),
             "LOAD-TIME-VALUE" => self.compile_load_time_value(function, span, items),
             "NTH-VALUE" => self.compile_nth_value(function, span, items),
             "PUSH" | "POP" | "PUSHNEW" | "ROTATEF" | "SHIFTF" | "REMF" => {

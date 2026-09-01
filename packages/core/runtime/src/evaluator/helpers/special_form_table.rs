@@ -7,6 +7,7 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "DECLARE",
     "LOCALLY",
     "EVAL-WHEN",
+    "WITH-COMPILATION-UNIT",
     "LOAD-TIME-VALUE",
     "NTH-VALUE",
     "DECLAIM",

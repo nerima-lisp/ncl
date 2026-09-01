@@ -879,6 +879,25 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_vector(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::VectorConstruction {
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_element(
         &mut self,
         function: FunctionId,

@@ -909,6 +909,19 @@ pub fn execute_sequence_conversion_instruction(
     Ok(())
 }
 
+pub fn execute_vector_construction_instruction(
+    stack: &mut Vec<Value>,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("vector construction has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    stack.push(crate::builtins::vector(&arguments)?);
+    Ok(())
+}
+
 pub fn execute_string_case_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

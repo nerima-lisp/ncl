@@ -1029,6 +1029,8 @@ impl CompileState {
             "GETHASH" => ((3..=4).contains(&items.len()), "two or three"),
             "REMHASH" => (items.len() == 3, "two"),
             "MAKE-HASH-TABLE" => ((items.len() - 1).is_multiple_of(2), "keyword/value pairs"),
+            "CLRHASH" | "HASH-TABLE-COUNT" | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS"
+            | "NCL-HASH-TABLE-VALUES" => (items.len() == 2, "one"),
             _ => (false, "valid arguments"),
         };
         if !valid_arity {

@@ -35,9 +35,10 @@ mod builtin_reading;
 use builtin_reading::{read, read_from_string, read_preserving_whitespace};
 
 mod builtin_hash_tables;
-pub use builtin_hash_tables::{gethash, hash_table_key_equal, hash_table_p, make_hash_table, remhash};
-#[allow(clippy::wildcard_imports)]
-use builtin_hash_tables::*;
+pub use builtin_hash_tables::{
+    clrhash, gethash, hash_table_count, hash_table_key_equal, hash_table_keys, hash_table_p,
+    hash_table_test_value, hash_table_values, make_hash_table, remhash,
+};
 
 mod builtin_array_helpers;
 #[allow(clippy::wildcard_imports)]

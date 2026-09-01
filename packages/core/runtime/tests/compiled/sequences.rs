@@ -478,4 +478,6 @@ fn compiled_evaluates_hash_table_access() {
     assert_eq!(evaluate("(multiple-value-call #'list (gethash :missing (make-hash-table) 42))").to_string(), "(42 NIL)");
     assert_eq!(evaluate("(multiple-value-call #'list (let ((table (make-hash-table))) (setf (gethash :a table) 7) (gethash :a table)))").to_string(), "(7 T)");
     assert_eq!(evaluate("(let ((table (make-hash-table))) (setf (gethash :a table) 7) (list (remhash :a table) (multiple-value-call #'list (gethash :a table 42))))").to_string(), "(T (42 NIL))");
+    assert_eq!(evaluate("(let ((table (make-hash-table :test #'equal))) (setf (gethash \"a\" table) 7) (list (hash-table-count table) (hash-table-test table) (ncl-hash-table-keys table) (ncl-hash-table-values table)))").to_string(), "(1 EQUAL (\"a\") (7))");
+    assert_eq!(evaluate("(let ((table (make-hash-table))) (setf (gethash :a table) 7) (clrhash table) (hash-table-count table))").to_string(), "0");
 }

@@ -14,7 +14,7 @@ pub fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("concatenate", "at least one", 0));
     }
-    let result_type = type_designator_name("concatenate", &arguments[0])?;
+    let result_type = sequence_result_type("concatenate", &arguments[0])?;
     let mut items = Vec::new();
     for sequence in &arguments[1..] {
         items.extend(sequence_elements("concatenate", sequence)?);
@@ -53,7 +53,7 @@ pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
             arguments.len(),
         ));
     }
-    let result_type = type_designator_name("make-sequence", &arguments[0])?;
+    let result_type = sequence_result_type("make-sequence", &arguments[0])?;
     let size = index_argument("make-sequence", &arguments[1])?;
     let mut initial_element = Value::Nil;
     for pair in arguments[2..].as_chunks::<2>().0 {
@@ -87,7 +87,7 @@ pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "coerce", 2)?;
-    let result_type = coerce_result_type(&arguments[1])?;
+    let result_type = sequence_result_type("coerce", &arguments[1])?;
     match result_type.as_str() {
         "LIST" => Ok(Value::list(sequence_elements("coerce", &arguments[0])?)),
         "VECTOR" | "SIMPLE-VECTOR" => {
@@ -128,13 +128,13 @@ pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-fn coerce_result_type(value: &Value) -> Result<String, RuntimeError> {
+fn sequence_result_type(function: &str, value: &Value) -> Result<String, RuntimeError> {
     match value {
         Value::List(items) => items
             .first()
-            .map(|operator| type_designator_name("coerce", operator))
-            .unwrap_or_else(|| type_designator_name("coerce", value)),
-        _ => type_designator_name("coerce", value),
+            .map(|operator| type_designator_name(function, operator))
+            .unwrap_or_else(|| type_designator_name(function, value)),
+        _ => type_designator_name(function, value),
     }
 }
 

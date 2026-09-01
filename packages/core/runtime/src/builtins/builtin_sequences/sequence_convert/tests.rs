@@ -85,3 +85,23 @@ fn coerce_accepts_compound_sequence_type_designators() {
         "#(1 2)"
     );
 }
+
+#[test]
+fn sequence_constructors_accept_compound_vector_type_designators() {
+    let vector_type = Value::list(vec![Value::keyword("vector"), Value::symbol("integer")]);
+    assert_eq!(
+        concatenate(&[
+            vector_type.clone(),
+            Value::list(vec![Value::Integer(1), Value::Integer(2)]),
+        ])
+        .unwrap()
+        .to_string(),
+        "#(1 2)"
+    );
+    assert_eq!(
+        make_sequence(&[vector_type, Value::Integer(2)])
+            .unwrap()
+            .to_string(),
+        "#(NIL NIL)"
+    );
+}

@@ -29,6 +29,8 @@ fn compiled_evaluates_list_access_operations() {
     assert_eq!(evaluate("(last '(a b c) 2)").to_string(), "(B C)");
     assert_eq!(evaluate("(butlast '(a b c))").to_string(), "(A B)");
     assert_eq!(evaluate("(nbutlast '(a b c) 2)").to_string(), "(A)");
+    assert_eq!(evaluate("(nthcdr 2 '(a b c))").to_string(), "(C)");
+    assert_eq!(evaluate("(nthcdr 3 '(a b c))").to_string(), "NIL");
 }
 
 #[test]

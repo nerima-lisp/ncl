@@ -492,6 +492,21 @@ pub fn execute_list_tail_instruction(
     Ok(())
 }
 
+pub fn execute_list_binary_instruction(
+    operation: &str,
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let list = stack.pop().ok_or_else(|| invalid("binary list operation has too few stack values", span))?;
+    let index = stack.pop().ok_or_else(|| invalid("binary list operation has too few stack values", span))?;
+    let result = match operation {
+        "NTHCDR" => crate::builtins::nthcdr(&[index, list]),
+        _ => Err(invalid("unknown binary list operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_tree_equal_instruction(
     runtime: &Runtime,
     option_count: usize,

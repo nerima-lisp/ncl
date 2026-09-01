@@ -452,6 +452,22 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_list_binary(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() != 3 {
+            return Err(Self::arity_error(items, operation, "two", span));
+        }
+        self.compile_expression(function, &items[1])?;
+        self.compile_expression(function, &items[2])?;
+        self.emit(function, Instruction::ListBinary { operation: operation.to_string() }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_tree_equal(
         &mut self,
         function: FunctionId,

@@ -1093,12 +1093,22 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::ListTail { operation: emitted, option_count: 1 } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    let nthcdr = compile("(nthcdr 2 '(1 2 3))");
+    assert!(nthcdr.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTHCDR")));
     for operation in ["CAR", "CDR", "FIRST", "REST", "COPY-LIST", "COPY-ALIST", "ENDP"] {
         let program = compile(&format!("(flet (({operation} (value) :shadowed)) ({operation} nil))"));
         assert!(!program.functions[0].instructions.iter().any(|instruction| {
             matches!(instruction, Instruction::ListUnary { operation: emitted } if emitted == operation)
         }), "native instruction incorrectly bypasses local function {operation}");
     }
+    let shadowed_nthcdr = compile("(flet ((nthcdr (index list) :shadowed)) (nthcdr 1 nil))");
+    assert!(!shadowed_nthcdr.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTHCDR")));
     let tree_equal = compile("(tree-equal '(1 (2)) '(1 (2)) :test #'equal)");
     assert!(tree_equal.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::TreeEqual { option_count: 2 })

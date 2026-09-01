@@ -55,6 +55,7 @@ impl CompileState {
                 | "LAST"
                 | "BUTLAST"
                 | "NBUTLAST"
+                | "NTHCDR"
         ) && self.has_local_function(name)
         {
             return None;
@@ -124,6 +125,7 @@ impl CompileState {
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }
+            "NTHCDR" => self.compile_list_binary(function, span, items, name),
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),
             "LENGTH" => self.compile_sequence_length(function, span, items),
             "ELT" => self.compile_sequence_element(function, span, items),

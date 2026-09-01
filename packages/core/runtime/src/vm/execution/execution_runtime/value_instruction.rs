@@ -5,7 +5,7 @@ use super::mutation_instruction;
 use crate::vm::execution::application::{
     execute_apply_instruction, execute_association_search_instruction, execute_call_instruction,
     execute_list_membership_instruction,
-    execute_list_tail_instruction, execute_list_unary_instruction,
+    execute_list_binary_instruction, execute_list_tail_instruction, execute_list_unary_instruction,
     execute_list_mapping_instruction,
     execute_list_set_instruction,
     execute_multiple_value_call_instruction, execute_sequence_mapping_instruction,
@@ -222,6 +222,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::ListTail { operation, option_count } => {
             execute_list_tail_instruction(operation, *option_count, stack, span)?;
+        }
+        Instruction::ListBinary { operation } => {
+            execute_list_binary_instruction(operation, stack, span)?;
         }
         Instruction::TreeEqual { option_count } => {
             execute_tree_equal_instruction(runtime, *option_count, stack, environment, span)?;

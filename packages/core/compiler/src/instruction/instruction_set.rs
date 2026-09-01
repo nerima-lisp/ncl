@@ -430,6 +430,10 @@ pub enum Instruction {
         /// Number of optional values following the list.
         option_count: usize,
     },
+    #[doc = "Apply a binary list operation."] ListBinary {
+        /// List operation name.
+        operation: String,
+    },
     #[doc = "Compare trees with keyword options."] TreeEqual {
         /// Number of option values following the two trees.
         option_count: usize,

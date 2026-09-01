@@ -79,6 +79,30 @@ impl Runtime {
                     {
                         body_start += 1;
                     }
+                    let clause_condition = if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| {
+                            names_equal(name, "WHEN") || names_equal(name, "UNLESS")
+                        })
+                    {
+                        if items.len() <= body_start + 1 {
+                            return Err(Self::invalid(
+                                "LOOP WHEN/UNLESS clause requires a test",
+                                form.span,
+                            ));
+                        }
+                        let clause_name = atom_name(&items[body_start]).unwrap();
+                        let test = items[body_start + 1].clone();
+                        body_start += 2;
+                        Some(if names_equal(clause_name, "WHEN") {
+                            test
+                        } else {
+                            Form::list(vec![Form::atom("NOT", form.span), test], form.span)
+                        })
+                    } else {
+                        None
+                    };
                     let mut loop_body = Vec::new();
                     if items
                         .get(body_start)
@@ -284,7 +308,23 @@ impl Runtime {
                             form.span,
                         ));
                     }
-                    loop_body.extend(items[body_start..].iter().cloned());
+                    let body_items = items[body_start..].iter().cloned();
+                    if let Some(test) = clause_condition {
+                        for item in &mut loop_body {
+                            *item = Form::list(
+                                vec![Form::atom("WHEN", form.span), test.clone(), item.clone()],
+                                form.span,
+                            );
+                        }
+                        loop_body.extend(body_items.map(|item| {
+                            Form::list(
+                                vec![Form::atom("WHEN", form.span), test.clone(), item],
+                                form.span,
+                            )
+                        }));
+                    } else {
+                        loop_body.extend(body_items);
+                    }
                     let mut let_items = vec![
                         Form::atom("LET", form.span),
                         Form::list(

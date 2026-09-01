@@ -216,6 +216,16 @@ fn expands_loop_condition_clauses(#[case] eval_fn: EvalFn) {
         evaluate("(loop for value across #(1 2 3) never (= value 4))").to_string(),
         "T"
     );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) when (evenp value) collect value)")
+            .to_string(),
+        "(2)"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) unless (evenp value) collect value)")
+            .to_string(),
+        "(1 3)"
+    );
 }
 
 #[rstest]

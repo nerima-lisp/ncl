@@ -270,7 +270,7 @@ impl CompileState {
             }
             "VECTOR" => self.compile_vector(function, span, items),
             "LIST" | "LIST*" => self.compile_list_construction(function, span, items, name),
-            "APPEND" | "NCONC" | "REVAPPEND" | "NRECONC" => {
+            "APPEND" | "NCONC" | "REVAPPEND" | "NRECONC" | "ACONS" | "PAIRLIS" => {
                 self.compile_list_append(function, span, items, name)
             }
             "MAKE-ARRAY" => self.compile_array_construction(function, span, items),

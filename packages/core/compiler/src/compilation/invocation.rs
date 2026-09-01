@@ -971,8 +971,20 @@ impl CompileState {
         items: &[Form],
         operation: &str,
     ) -> Result<(), CompileError> {
-        if items.len() < 2 {
-            return Err(Self::arity_error(items, operation, "at least one", span));
+        let valid_arity = match operation {
+            "ACONS" => items.len() == 4,
+            "PAIRLIS" => (3..=4).contains(&items.len()),
+            "REVAPPEND" | "NRECONC" => items.len() == 3,
+            _ => items.len() >= 2,
+        };
+        if !valid_arity {
+            let expected = match operation {
+                "ACONS" => "three",
+                "PAIRLIS" => "two or three",
+                "REVAPPEND" | "NRECONC" => "two",
+                _ => "at least one",
+            };
+            return Err(Self::arity_error(items, operation, expected, span));
         }
         for item in &items[1..] {
             self.compile_expression(function, item)?;

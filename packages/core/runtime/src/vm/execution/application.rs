@@ -74,6 +74,7 @@ pub fn execute_list_append_instruction(
     let value = match operation {
         "APPEND" => crate::builtins::append(&arguments), "NCONC" => crate::builtins::nconc(&arguments),
         "REVAPPEND" => crate::builtins::revappend(&arguments), "NRECONC" => crate::builtins::nreconc(&arguments),
+        "ACONS" => crate::builtins::acons(&arguments), "PAIRLIS" => crate::builtins::pairlis(&arguments),
         _ => Err(invalid("unknown list append operation", span)),
     }?;
     stack.push(value); Ok(())

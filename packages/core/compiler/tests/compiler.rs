@@ -1228,6 +1228,15 @@ fn emits_eval_and_mapcar_instructions() {
         .instructions
         .iter()
         .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTH")));
+    for (operation, source, argument_count) in [
+        ("ACONS", "(acons 'a 1 '((b . 2)))", 3),
+        ("PAIRLIS", "(pairlis '(a) '(1) '((b . 2)))", 3),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListAppend { operation: emitted, argument_count: emitted_count } if emitted == operation && *emitted_count == argument_count)
+        }), "missing native instruction for {operation}");
+    }
     for operation in ["CAR", "CDR", "FIRST", "REST", "COPY-LIST", "COPY-ALIST", "ENDP"] {
         let program = compile(&format!("(flet (({operation} (value) :shadowed)) ({operation} nil))"));
         assert!(!program.functions[0].instructions.iter().any(|instruction| {

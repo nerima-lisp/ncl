@@ -69,6 +69,28 @@ fn parallel_set_instructions_reject_fewer_values_than_targets() {
 }
 
 #[test]
+fn psetf_symbols_rejects_fewer_values_than_targets() {
+    let runtime = Runtime::new();
+    let environment = Environment::new();
+    let span = Span::new(0, 1);
+    let mut program_counter = 0;
+    let mut stack = vec![Value::Integer(1)];
+
+    assert_invalid(
+        execute_parallel_set_instruction(
+            &runtime,
+            &Instruction::PsetfSymbols(vec![("a".to_string(), false), ("b".to_string(), false)]),
+            &mut stack,
+            &environment,
+            &mut program_counter,
+            span,
+        ),
+        "psetf has fewer values than targets",
+    );
+    assert_eq!(program_counter, 0);
+}
+
+#[test]
 fn psetq_stores_primary_values_and_pushes_nil() {
     let runtime = Runtime::new();
     let environment = Environment::new();

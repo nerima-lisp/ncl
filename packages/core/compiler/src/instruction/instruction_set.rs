@@ -547,6 +547,12 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Apply a CLOS class introspection operation."] ClassIntrospection {
+        /// Name of the class introspection operation to invoke.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Apply a package introspection operation."] PackageIntrospection {
         /// Name of the package introspection operation to invoke.
         operation: String,

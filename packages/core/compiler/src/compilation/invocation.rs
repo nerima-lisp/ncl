@@ -1097,6 +1097,20 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_class_introspection(
+        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    ) -> Result<(), CompileError> {
+        let (valid_arity, expected) = match operation {
+            "SUBTYPEP" => (items.len() == 3, "two"),
+            "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME" => (items.len() == 2, "one"),
+            _ => (false, "valid arguments"),
+        };
+        if !valid_arity { return Err(Self::arity_error(items, operation, expected, span)); }
+        for item in &items[1..] { self.compile_expression(function, item)?; }
+        self.emit(function, Instruction::ClassIntrospection { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_package_introspection(
         &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
     ) -> Result<(), CompileError> {

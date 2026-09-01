@@ -261,10 +261,9 @@ impl CompileState {
         }
         self.emit(
             function,
-            Instruction::Quote(Form::list(items.to_vec(), span)),
+            Instruction::RuntimeMutation(Form::list(items.to_vec(), span)),
             span,
         )?;
-        self.emit(function, Instruction::Eval(span), span)?;
         Ok(())
     }
 }

@@ -125,6 +125,37 @@ pub(super) fn execute_value_instruction(
             };
             stack.push(runtime.special_load_time_value(items, environment)?);
         }
+        Instruction::RuntimeMutation(form) => {
+            let FormKind::List(items) = &form.kind else {
+                return Err(RuntimeError::InvalidForm {
+                    message: "runtime mutation instruction requires a list".to_string(),
+                    span: Some(form.span),
+                });
+            };
+            let Some(FormKind::Atom(operator)) = items.first().map(|item| &item.kind) else {
+                return Err(RuntimeError::InvalidForm {
+                    message: "runtime mutation instruction requires an operator".to_string(),
+                    span: Some(form.span),
+                });
+            };
+            let value = if operator.eq_ignore_ascii_case("PUSH") {
+                runtime.special_push(items, environment)?
+            } else if operator.eq_ignore_ascii_case("POP") {
+                runtime.special_pop(items, environment)?
+            } else if operator.eq_ignore_ascii_case("PUSHNEW") {
+                runtime.special_pushnew(items, environment)?
+            } else if operator.eq_ignore_ascii_case("ROTATEF") {
+                runtime.special_rotatef(items, environment)?
+            } else if operator.eq_ignore_ascii_case("SHIFTF") {
+                runtime.special_shiftf(items, environment)?
+            } else {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!("unsupported runtime mutation operator: {operator}"),
+                    span: Some(form.span),
+                });
+            };
+            stack.push(value);
+        }
         Instruction::Eval(form_span) => {
             let value = pop_value(stack, span, "eval")?.primary_value();
             let form = Runtime::form_from_value(&value, *form_span)?;

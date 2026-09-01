@@ -9,6 +9,22 @@ fn parse_items(source: &str) -> Vec<Form> {
 }
 
 #[test]
+fn compile_runtime_mutation_fallback_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(push 1 (unknown-place))");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &items)
+        .expect("runtime mutation should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.as_slice(),
+        [Instruction::RuntimeMutation(_)]
+    ));
+}
+
+#[test]
 fn compile_defstruct_reports_an_internal_error_for_an_invalid_function_id() {
     let mut state = CompileState::default();
     let span = Span::new(0, 1);

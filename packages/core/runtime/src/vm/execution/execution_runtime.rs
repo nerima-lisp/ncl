@@ -1,3 +1,4 @@
+mod mutation_instruction;
 mod return_instruction;
 mod run_loop;
 mod value_instruction;

@@ -1,17 +1,8 @@
 use crate::{
     Constant, DestructureSpec, FunctionId, HandlerBindClause, HandlerCaseClause, RestartBindClause,
-    RestartCaseClause,
+    RestartCaseClause, RotateShiftPlace,
 };
 use ncl_syntax::{Form, Span};
-
-/// A symbol or nested list place used by mixed ROTATEF/SHIFTF instructions.
-#[derive(Clone, Debug, PartialEq)]
-pub enum RotateShiftPlace {
-    /// A variable name and its escaping mode.
-    Symbol(String, bool),
-    /// List accessors, root variable name, and its escaping mode.
-    NestedList(Vec<String>, String, bool),
-}
 
 #[derive(Clone, Debug, PartialEq)]
 /// A stack-bytecode instruction emitted by the compiler.

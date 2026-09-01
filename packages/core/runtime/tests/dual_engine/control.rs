@@ -811,3 +811,28 @@ fn tagbody_returns_nil_and_does_not_evaluate_labels(#[case] eval_fn: EvalFn) {
         "(NIL 42)"
     );
 }
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn multiple_value_binding_and_prog1_preserve_all_values(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(multiple-value-bind (first second)
+                 (values 20 22)
+               (list first second))",
+        )
+        .to_string(),
+        "(20 22)"
+    );
+    assert_eq!(
+        evaluate(
+            "(nth-value 1 (multiple-value-prog1
+                 (values 1 2)
+               (values 3 4)))",
+        )
+        .to_string(),
+        "2"
+    );
+}

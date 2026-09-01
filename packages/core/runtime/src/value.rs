@@ -52,6 +52,12 @@ mod value_display_tests;
 mod value_function_display_tests;
 mod value_stream_smoke_test;
 
+#[derive(Clone, Debug)]
+pub struct ArrayMetadata {
+    pub adjustable: bool,
+    pub fill_pointer: Option<usize>,
+}
+
 #[derive(Clone)]
 /// A dynamically typed NCL value.
 pub enum Value {
@@ -111,6 +117,8 @@ pub enum Value {
         dimensions: Rc<Vec<usize>>,
         /// Elements stored in row-major order.
         elements: Rc<RefCell<Vec<Self>>>,
+        /// Mutability and vector metadata.
+        metadata: Rc<RefCell<ArrayMetadata>>,
     },
     /// A mutable association table.
     HashTable {

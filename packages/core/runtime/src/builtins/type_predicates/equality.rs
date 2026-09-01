@@ -40,10 +40,12 @@ pub fn equalp_value(left: &Value, right: &Value) -> bool {
             Value::Array {
                 dimensions: ld,
                 elements: le,
+                ..
             },
             Value::Array {
                 dimensions: rd,
                 elements: re,
+                ..
             },
         ) => {
             ld == rd

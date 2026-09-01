@@ -16,6 +16,7 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let dimensions = parse_array_dimensions("make-array", &arguments[0])?;
     let mut initial_element = None;
     let mut initial_contents = None;
+    let mut adjustable = false;
     if !(arguments.len() - 1).is_multiple_of(2) {
         return Err(arity(
             "make-array",
@@ -46,6 +47,7 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 }
                 initial_contents = Some(pair[1].clone());
             }
+            "ADJUSTABLE" => adjustable = pair[1].is_truthy(),
             _ => {
                 return Err(RuntimeError::InvalidForm {
                     message: format!("make-array does not support keyword :{name}"),
@@ -65,7 +67,9 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if dimensions.len() == 1 {
         Ok(Value::vector(elements))
     } else {
-        Ok(Value::array(dimensions, elements))
+        let array = Value::array(dimensions, elements);
+        array.set_array_adjustable(adjustable);
+        Ok(array)
     }
 }
 

@@ -31,10 +31,12 @@ impl Value {
                 Self::Array {
                     dimensions: left_dimensions,
                     elements: left_elements,
+                    ..
                 },
                 Self::Array {
                     dimensions: right_dimensions,
                     elements: right_elements,
+                    ..
                 },
             ) => {
                 Rc::ptr_eq(left_dimensions, right_dimensions)

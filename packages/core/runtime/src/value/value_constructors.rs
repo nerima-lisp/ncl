@@ -117,6 +117,10 @@ impl Value {
         Self::Array {
             dimensions: Rc::new(dimensions),
             elements: Rc::new(RefCell::new(elements)),
+            metadata: Rc::new(RefCell::new(super::ArrayMetadata {
+                adjustable: false,
+                fill_pointer: None,
+            })),
         }
     }
 

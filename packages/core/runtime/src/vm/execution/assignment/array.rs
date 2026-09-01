@@ -83,7 +83,7 @@ fn execute_aref(
             *slot = value.clone();
             current.clone()
         }
-        Value::Array { dimensions, elements } => {
+        Value::Array { dimensions, elements, .. } => {
             if operator == "SVREF" {
                 return Err(RuntimeError::Type {
                     expected: "SIMPLE-VECTOR".to_string(),

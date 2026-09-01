@@ -40,6 +40,23 @@ impl Value {
         }
     }
 
+    pub(crate) fn array_adjustable(&self) -> Option<bool> {
+        match self {
+            Self::Array { metadata, .. } => Some(metadata.borrow().adjustable),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn set_array_adjustable(&self, adjustable: bool) -> Option<()> {
+        match self {
+            Self::Array { metadata, .. } => {
+                metadata.borrow_mut().adjustable = adjustable;
+                Some(())
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn set_vector_item(&self, index: usize, value: Self) -> Option<()> {
         match self {
             Self::Vector(items) => items.borrow_mut().get_mut(index).map(|slot| *slot = value),

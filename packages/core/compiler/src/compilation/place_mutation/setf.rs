@@ -1,6 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::super::*;
 use super::setf_emit::emit_pop_if_needed;
+use super::setf_validation::validate_setf_items;
 
 impl CompileState {
     pub(crate) fn compile_setf(
@@ -9,15 +10,7 @@ impl CompileState {
         span: Span,
         items: &[Form],
     ) -> Result<(), CompileError> {
-        if items.len() < 3 || items.len().is_multiple_of(2) {
-            return Err(CompileError::new(
-                CompileErrorKind::InvalidForm {
-                    message: "setf needs place/value pairs".to_string(),
-                },
-                operator_span(items, span),
-            ));
-        }
-        let operands = items.get(1..).unwrap_or(&[]);
+        let operands = validate_setf_items(items, span)?;
         let (pairs, _) = operands.as_chunks::<2>();
         let pair_count = operands.len() / 2;
         for (index, [place, value_form]) in pairs.iter().enumerate() {

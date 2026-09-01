@@ -205,3 +205,20 @@ fn evaluates_setf_gethash_with_an_evaluated_table(#[case] eval_fn: EvalFn) {
         "(7 9 9 1)",
     );
 }
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_setf_symbol_cells_with_expression_values(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((name (make-symbol \"cell\")))
+                   (setf (symbol-value name) (+ 1 2)
+                         (symbol-function name) (lambda (x) (+ x 4)))
+                   (list (symbol-value name) (funcall (symbol-function name) 3)))",
+        )
+        .to_string(),
+        "(3 7)",
+    );
+}

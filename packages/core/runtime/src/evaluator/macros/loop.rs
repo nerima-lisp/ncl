@@ -3,7 +3,7 @@ use ncl_syntax::{Form, FormKind};
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
 use super::loop_aggregate::{append_step, count_step, sum_step};
-use super::loop_clause::across_clause;
+use super::loop_clause::parse_across_clause;
 use super::loop_collect::expand_loop_collect;
 use super::loop_condition::expand_loop_condition;
 use super::loop_control::named_loop_body_start;
@@ -56,19 +56,13 @@ impl Runtime {
                 if let Some(expanded) = expand_loop_for_prefix(form, items)? {
                     return Ok(expanded);
                 }
-                if across_clause(items) {
-                    if items.len() < 5 {
-                        return Err(Self::invalid(
-                            "LOOP FOR ACROSS requires a variable and vector form",
-                            form.span,
-                        ));
-                    }
-                    let variable = items[2].clone();
+                if let Some(across) = parse_across_clause(form, items)? {
+                    let variable = across.variable;
                     let index =
                         Form::atom(format!("NCL-LOOP-INDEX-{}", form.span.start), form.span);
                     let vector =
                         Form::atom(format!("NCL-LOOP-VECTOR-{}", form.span.start), form.span);
-                    let mut body_start = 5;
+                    let mut body_start = across.body_start;
                     let mut sum_form = None;
                     let mut sum_name = None;
                     let mut count_form = None;
@@ -334,7 +328,7 @@ impl Runtime {
                             Form::atom("LET", form.span),
                             Form::list(
                                 vec![Form::list(
-                                    vec![vector.clone(), items[4].clone()],
+                                    vec![vector.clone(), across.vector],
                                     form.span,
                                 )],
                                 form.span,

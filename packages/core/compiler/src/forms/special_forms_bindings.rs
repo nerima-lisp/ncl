@@ -21,6 +21,10 @@ impl CompileState {
                 | "COUNT-IF-NOT"
                 | "SEARCH"
                 | "MISMATCH"
+                | "MEMBER"
+                | "MEMBER-IF"
+                | "MEMBER-IF-NOT"
+                | "ADJOIN"
         ) && self.has_local_function(name)
         {
             return None;
@@ -67,6 +71,9 @@ impl CompileState {
             }
             "SEARCH" | "MISMATCH" => {
                 self.compile_sequence_pair_search(function, span, items, name)
+            }
+            "MEMBER" | "MEMBER-IF" | "MEMBER-IF-NOT" | "ADJOIN" => {
+                self.compile_list_membership(function, span, items, name)
             }
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)

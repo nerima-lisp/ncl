@@ -3,7 +3,8 @@ use ncl_syntax::{FormKind, Span};
 
 use super::mutation_instruction;
 use crate::vm::execution::application::{
-    execute_apply_instruction, execute_call_instruction, execute_list_mapping_instruction,
+    execute_apply_instruction, execute_call_instruction, execute_list_membership_instruction,
+    execute_list_mapping_instruction,
     execute_multiple_value_call_instruction, execute_sequence_mapping_instruction,
     execute_sequence_map_into_instruction,
     execute_sequence_merge_instruction, execute_sequence_reduce_instruction,
@@ -187,10 +188,13 @@ pub(super) fn execute_value_instruction(
             execute_sequence_sort_instruction(runtime, operation, *option_count, stack, environment, span)?;
         }
         Instruction::SequenceSearch { operation, predicate, option_count } => {
-            execute_sequence_search_instruction(runtime, operation, *predicate, *option_count, stack, environment, span)?;
+            execute_sequence_search_instruction(runtime, *predicate, operation, *option_count, stack, environment, span)?;
         }
         Instruction::SequencePairSearch { operation, option_count } => {
             execute_sequence_pair_search_instruction(runtime, operation, *option_count, stack, environment, span)?;
+        }
+        Instruction::ListMembership { operation, predicate, option_count } => {
+            execute_list_membership_instruction(runtime, operation, *predicate, *option_count, stack, environment, span)?;
         }
         Instruction::MultipleValueCall(value_form_count) => {
             execute_multiple_value_call_instruction(

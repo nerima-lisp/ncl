@@ -382,6 +382,14 @@ pub enum Instruction {
         /// Number of option values following the sequences.
         option_count: usize,
     },
+    #[doc = "Search or update a list with membership options."] ListMembership {
+        /// Membership operation name.
+        operation: String,
+        /// Whether the first argument is a predicate.
+        predicate: bool,
+        /// Number of option values following the list.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

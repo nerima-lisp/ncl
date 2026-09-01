@@ -1023,6 +1023,16 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::SequencePairSearch { operation: emitted, option_count: 2 } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for operation in ["MEMBER", "MEMBER-IF", "MEMBER-IF-NOT", "ADJOIN"] {
+        let source = match operation {
+            "MEMBER" | "ADJOIN" => format!("({operation} 2 '(1 2) :test #'eql)"),
+            _ => format!("({operation} #'numberp '(1 2) :key #'identity)"),
+        };
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListMembership { operation: emitted, option_count: 2, .. } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     assert!(
         map_into.functions[0]
             .instructions

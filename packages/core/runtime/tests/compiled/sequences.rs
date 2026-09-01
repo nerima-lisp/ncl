@@ -109,6 +109,8 @@ fn compiled_evaluates_list_membership_and_association_searches() {
         "(5 6)"
     );
     assert_eq!(evaluate("(adjoin 4 '(1 2 3))").to_string(), "(4 1 2 3)");
+    assert_eq!(evaluate("(member 2 '(1 2 3) :test #'eql)").to_string(), "(2 3)");
+    assert_eq!(evaluate("(adjoin 4 '(1 2 3) :test #'eql)").to_string(), "(4 1 2 3)");
     assert_eq!(
         evaluate("(assoc 'b '((a . 1) (b . 2)))").to_string(),
         "(B . 2)"

@@ -56,4 +56,15 @@ mod tests {
             .unwrap();
         assert_eq!(result.to_string(), "NIL");
     }
+
+    #[test]
+    fn package_introspection_primitives_are_available_through_evaluation() {
+        let runtime = Runtime::new();
+        let result = runtime
+            .eval_source(
+                "(list (package-nicknames (find-package \"NCL-USER\"))\n                      (package-shadowing-symbols (find-package \"NCL-USER\"))\n                      (package-used-by-list (find-package \"NCL-USER\")))",
+            )
+            .unwrap_or_else(|error| panic!("package introspection evaluates: {error}"));
+        assert_eq!(result.last().unwrap().to_string(), "(NIL NIL NIL)");
+    }
 }

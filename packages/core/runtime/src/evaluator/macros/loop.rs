@@ -9,6 +9,33 @@ impl Runtime {
         let FormKind::List(items) = &form.kind else {
             return Ok(form.clone());
         };
+        if let Some(finally_offset) = items.iter().position(|item| {
+            atom_name(item).is_some_and(|name| names_equal(name, "FINALLY"))
+        }) {
+            let finally_items = &items[finally_offset + 1..];
+            if finally_items.is_empty() {
+                return Err(Self::invalid(
+                    "LOOP FINALLY clause requires a form",
+                    form.span,
+                ));
+            }
+            let core_form = Form::list(items[..finally_offset].to_vec(), form.span);
+            let expanded = Self::expand_builtin_loop(&core_form)?;
+            let finally_form = if finally_items.len() == 1 {
+                finally_items[0].clone()
+            } else {
+                Form::list(
+                    std::iter::once(Form::atom("PROGN", form.span))
+                        .chain(finally_items.iter().cloned())
+                        .collect(),
+                    form.span,
+                )
+            };
+            return Ok(Form::list(
+                vec![Form::atom("PROGN", form.span), expanded, finally_form],
+                form.span,
+            ));
+        }
         let mut body = items[1..].to_vec();
         let mut repeat_count = None;
         let mut collect_form = None;

@@ -605,6 +605,14 @@ fn compiled_evaluates_native_character_case_operations() {
 }
 
 #[test]
+fn compiled_evaluates_native_character_name_operations() {
+    assert_eq!(
+        evaluate("(list (char-name #\\Newline) (name-char \"space\"))").to_string(),
+        "(\"Newline\" #\\SPACE)",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_defstruct_invocations() {
     let cases = [
         (

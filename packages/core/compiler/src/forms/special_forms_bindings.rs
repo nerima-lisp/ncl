@@ -121,7 +121,7 @@ impl CompileState {
                 | "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
                 | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
                 | "CHAR-NOT-GREATERP"
-                | "CHAR-UPCASE" | "CHAR-DOWNCASE"
+                | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR"
         ) && self.has_local_function(name)
         {
             return None;
@@ -189,7 +189,7 @@ impl CompileState {
                 self.compile_list_unary(function, span, items, name)
             }
             "CHARACTER" | "CHAR-CODE" | "CHAR-INT" | "CODE-CHAR" | "INT-CHAR"
-            | "CHAR-UPCASE" | "CHAR-DOWNCASE" => {
+            | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR" => {
                 self.compile_character_unary(function, span, items, name)
             }
             "LAST" | "BUTLAST" | "NBUTLAST" => {

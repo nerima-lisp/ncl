@@ -2039,3 +2039,16 @@ fn lowers_native_character_case_operations() {
         2
     );
 }
+
+#[test]
+fn lowers_native_character_name_operations() {
+    let program = compile("(list (char-name #\\Newline) (name-char \"space\"))");
+    assert_eq!(
+        program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::CharacterUnary { .. }))
+            .count(),
+        2
+    );
+}

@@ -486,6 +486,8 @@ pub fn execute_character_unary_instruction(
         "INT-CHAR" => crate::builtins::int_char(&[value]),
         "CHAR-UPCASE" => crate::builtins::character_upcase(&[value]),
         "CHAR-DOWNCASE" => crate::builtins::character_downcase(&[value]),
+        "CHAR-NAME" => crate::builtins::character_name(&[value]),
+        "NAME-CHAR" => crate::builtins::name_character(&[value]),
         _ => Err(invalid("unknown unary character operation", span)),
     }?;
     stack.push(result);

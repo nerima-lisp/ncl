@@ -55,7 +55,10 @@ fn unary_complex(
 }
 
 pub fn exponential(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("exp", arguments, f64::exp)
+    unary_complex("exp", arguments, |real, imag| {
+        let magnitude = real.exp();
+        (magnitude * imag.cos(), magnitude * imag.sin())
+    })
 }
 
 pub fn logarithm(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -92,15 +95,35 @@ pub fn arc_tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 pub fn hyperbolic_sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("sinh", arguments, f64::sinh)
+    unary_complex("sinh", arguments, |real, imag| {
+        (real.sinh() * imag.cos(), real.cosh() * imag.sin())
+    })
 }
 
 pub fn hyperbolic_cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("cosh", arguments, f64::cosh)
+    unary_complex("cosh", arguments, |real, imag| {
+        (real.cosh() * imag.cos(), real.sinh() * imag.sin())
+    })
 }
 
 pub fn hyperbolic_tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("tanh", arguments, f64::tanh)
+    exact(arguments, "tanh", 1)?;
+    let (real, imag, complex) = match &arguments[0] {
+        Value::Complex(value) => (
+            number_argument("tanh", &value.real)?.as_float(),
+            number_argument("tanh", &value.imag)?.as_float(),
+            true,
+        ),
+        value => (number_argument("tanh", value)?.as_float(), 0.0, false),
+    };
+    let denominator = (2.0 * real).cosh() + (2.0 * imag).cos();
+    let real = (2.0 * real).sinh() / denominator;
+    let imag = (2.0 * imag).sin() / denominator;
+    Ok(if complex {
+        Value::complex(Value::Float(real), Value::Float(imag))
+    } else {
+        Value::Float(real)
+    })
 }
 
 #[cfg(test)]
@@ -145,6 +168,31 @@ mod tests {
         assert_eq!(
             tangent(&[value]).unwrap().to_string(),
             "#C(0.0 0.7615941559557649)"
+        );
+    }
+
+    #[test]
+    fn exponential_and_hyperbolic_functions_return_complex_values() {
+        let value = Value::complex(Value::Integer(0), Value::Integer(1));
+        assert_eq!(
+            exponential(std::slice::from_ref(&value)).unwrap().to_string(),
+            "#C(0.5403023058681398 0.8414709848078965)"
+        );
+        assert_eq!(
+            hyperbolic_sine(std::slice::from_ref(&value))
+                .unwrap()
+                .to_string(),
+            "#C(0.0 0.8414709848078965)"
+        );
+        assert_eq!(
+            hyperbolic_cosine(std::slice::from_ref(&value))
+                .unwrap()
+                .to_string(),
+            "#C(0.5403023058681398 0.0)"
+        );
+        assert_eq!(
+            hyperbolic_tangent(&[value]).unwrap().to_string(),
+            "#C(0.0 1.557407724654902)"
         );
     }
 }

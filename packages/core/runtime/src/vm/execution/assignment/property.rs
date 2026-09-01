@@ -3,6 +3,7 @@ use super::super::*;
 
 mod getf;
 mod gethash;
+mod slot_value;
 
 pub(super) fn execute(
     runtime: &Runtime,
@@ -23,6 +24,16 @@ pub(super) fn execute(
         return Ok(true);
     }
     if gethash::execute(
+        runtime,
+        instruction,
+        stack,
+        environment,
+        program_counter,
+        span,
+    )? {
+        return Ok(true);
+    }
+    if slot_value::execute(
         runtime,
         instruction,
         stack,
@@ -327,34 +338,6 @@ pub(super) fn execute(
                 Value::Nil
             };
             stack.push(popped);
-            *program_counter += 1;
-            Ok(true)
-        }
-        Instruction::SetfSlotValueDynamic => {
-            let value = stack
-                .pop()
-                .ok_or_else(|| invalid("setf slot-value has no value on the stack", span))?
-                .primary_value();
-            let slot = stack
-                .pop()
-                .ok_or_else(|| invalid("setf slot-value has no slot on the stack", span))?
-                .primary_value();
-            let instance = stack
-                .pop()
-                .ok_or_else(|| invalid("setf slot-value has no instance on the stack", span))?
-                .primary_value();
-            let slot_name = Runtime::slot_name_from_value(&slot, span)?;
-            let Some(class) = instance.instance_class_definition() else {
-                return Err(RuntimeError::Type {
-                    expected: "STANDARD-OBJECT".to_string(),
-                    actual: instance.type_name().to_string(),
-                    span: Some(span),
-                });
-            };
-            if !instance.set_instance_slot(&class.name, &slot_name, value.clone()) {
-                return Err(invalid("slot is not defined for this class", span));
-            }
-            stack.push(value);
             *program_counter += 1;
             Ok(true)
         }

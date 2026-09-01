@@ -113,6 +113,22 @@ fn compile_push_and_pop_use_native_gethash_instructions() {
 }
 
 #[test]
+fn compile_pushnew_uses_native_gethash_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(pushnew 1 (gethash key table))");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &items)
+        .unwrap();
+
+    assert!(state.functions[function]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::PushNewGethash)));
+}
+
+#[test]
 fn compile_pushnew_with_a_generalized_place_uses_native_instruction_without_options() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

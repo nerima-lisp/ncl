@@ -171,6 +171,56 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::PushNewGethash => {
+            let table = stack
+                .pop()
+                .ok_or_else(|| invalid("pushnew gethash has no table", span))?
+                .primary_value();
+            let key = stack
+                .pop()
+                .ok_or_else(|| invalid("pushnew gethash has no key", span))?
+                .primary_value();
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("pushnew gethash has no value", span))?
+                .primary_value();
+            let test = table.hash_table_test().ok_or_else(|| RuntimeError::Type {
+                expected: "HASH-TABLE".to_string(),
+                actual: table.type_name().to_string(),
+                span: Some(span),
+            })?;
+            let entries = table
+                .hash_table_entries()
+                .ok_or_else(|| RuntimeError::Type {
+                    expected: "HASH-TABLE".to_string(),
+                    actual: table.type_name().to_string(),
+                    span: Some(span),
+                })?;
+            let mut entries = entries.borrow_mut();
+            if let Some((_, slot)) = entries.iter_mut().find(|(stored_key, _)| {
+                crate::builtins::hash_table_key_equal(test, stored_key, &key)
+            }) {
+                let mut values = slot.list_items().ok_or_else(|| RuntimeError::Type {
+                    expected: "LIST".to_string(),
+                    actual: slot.type_name().to_string(),
+                    span: Some(span),
+                })?;
+                if !values
+                    .iter()
+                    .any(|candidate| crate::builtins::type_predicates::eql_value(&value, candidate))
+                {
+                    values.insert(0, value);
+                    *slot = Value::list(values);
+                }
+                stack.push(slot.clone());
+            } else {
+                let updated = Value::list(vec![value]);
+                entries.push((key, updated.clone()));
+                stack.push(updated);
+            }
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PopGethash => {
             let table = stack
                 .pop()

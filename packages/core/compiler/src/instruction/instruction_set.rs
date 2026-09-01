@@ -148,6 +148,7 @@ pub enum Instruction {
         escaped: bool,
     },
     #[doc = "Push a value onto a list-valued GETHASH place."] PushGethash,
+    #[doc = "Push a value onto a list-valued GETHASH place when absent by EQL."] PushNewGethash,
     #[doc = "Pop the first value from a list-valued GETHASH place."] PopGethash,
     #[doc = "Push onto or pop from a CAR/CDR list place held by a symbol."] ListPlaceMutation {
         /// The mutation operator.

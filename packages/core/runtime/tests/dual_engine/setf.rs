@@ -80,11 +80,13 @@ fn evaluates_push_pop_and_psetf(#[case] eval_fn: EvalFn) {
             "(let ((table (make-hash-table :test #'equal)))
                    (list (push 1 (gethash \"key\" table))
                          (push 2 (gethash \"key\" table))
+                         (pushnew 2 (gethash \"key\" table))
+                         (pushnew 3 (gethash \"key\" table))
                          (pop (gethash \"key\" table))
                          (gethash \"key\" table)))",
         )
         .to_string(),
-        "((1) (2 1) 2 (1))"
+        "((1) (2 1) (2 1) (3 2 1) 3 (2 1))"
     );
 }
 

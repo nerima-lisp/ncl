@@ -119,20 +119,17 @@ impl CompileState {
                     .ok()
                     .is_some_and(|(name, _)| name == "GETHASH")
             {
-                if operator == "PUSHNEW" {
-                    return Ok(None);
-                }
-                if operator == "PUSH" {
+                if operator == "PUSH" || operator == "PUSHNEW" {
                     self.compile_expression(function, &items[1])?;
                 }
                 self.compile_expression(function, &place_items[1])?;
                 self.compile_expression(function, &place_items[2])?;
                 self.emit(
                     function,
-                    if operator == "PUSH" {
-                        Instruction::PushGethash
-                    } else {
-                        Instruction::PopGethash
+                    match operator.as_str() {
+                        "PUSH" => Instruction::PushGethash,
+                        "PUSHNEW" => Instruction::PushNewGethash,
+                        _ => Instruction::PopGethash,
                     },
                     items[0].span,
                 )?;

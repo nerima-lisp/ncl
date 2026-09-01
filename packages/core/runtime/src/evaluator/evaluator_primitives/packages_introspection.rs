@@ -16,11 +16,28 @@ impl Runtime {
                 | "PACKAGE-NICKNAMES"
                 | "PACKAGE-SHADOWING-SYMBOLS"
                 | "PACKAGE-USED-BY-LIST"
+                | "FIND-ALL-SYMBOLS"
         ) {
             return None;
         }
         Some((|| -> Result<Value, RuntimeError> {
             match name {
+                "FIND-ALL-SYMBOLS" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity("find-all-symbols", "one", arguments.len()));
+                    }
+                    let (Value::Symbol(symbol) | Value::SymbolExact(symbol)) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "SYMBOL".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let symbols = self.packages.borrow().symbols_named(symbol);
+                    Ok(Value::list(symbols.into_iter().map(|(package, _)| {
+                        Value::symbol(package::canonical_symbol_name(&package, symbol))
+                    }).collect()))
+                }
                 "FIND-PACKAGE" => {
                     if arguments.len() != 1 {
                         return Err(Self::arity("find-package", "one", arguments.len()));

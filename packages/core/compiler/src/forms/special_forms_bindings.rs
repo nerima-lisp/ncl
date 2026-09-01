@@ -352,7 +352,7 @@ impl CompileState {
             | "FDEFINITION" | "SYMBOL-FUNCTION" => {
                 self.compile_symbol_function(function, span, items, name)
             }
-            "FIND-PACKAGE" | "PACKAGE-NAME" | "PACKAGE-USE-LIST" | "PACKAGE-NICKNAMES"
+            "FIND-ALL-SYMBOLS" | "FIND-PACKAGE" | "PACKAGE-NAME" | "PACKAGE-USE-LIST" | "PACKAGE-NICKNAMES"
             | "PACKAGE-SHADOWING-SYMBOLS" | "PACKAGE-USED-BY-LIST" => {
                 self.compile_package_introspection(function, span, items, name)
             }

@@ -31,6 +31,18 @@ mod tests {
     }
 
     #[test]
+    fn find_all_symbols_returns_matching_interned_symbols() {
+        let runtime = Runtime::new();
+        let result = runtime
+            .eval_source(
+                "(progn (intern \"FIND-ALL-SYMBOLS-MARK\" \"NCL-USER\")
+                        (symbol-package (car (find-all-symbols 'find-all-symbols-mark))))",
+            )
+            .unwrap_or_else(|error| panic!("find-all-symbols evaluates: {error}"));
+        assert_eq!(result.last().unwrap().to_string(), "NCL-USER");
+    }
+
+    #[test]
     fn package_introspection_returns_nicknames_shadowing_symbols_and_users() {
         let runtime = Runtime::new();
         let package = Value::package("NCL-USER");

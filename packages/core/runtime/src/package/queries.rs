@@ -136,4 +136,25 @@ impl PackageState {
         names.sort();
         names
     }
+
+    pub(crate) fn symbols_named(&self, name: &str) -> Vec<(String, SymbolStatus)> {
+        let name = normalize_symbol_name(name);
+        let mut symbols = self
+            .packages
+            .iter()
+            .filter_map(|(package, entry)| {
+                if !entry.symbols.contains(&name) {
+                    return None;
+                }
+                let status = if package == KEYWORD_PACKAGE || entry.exports.contains(&name) {
+                    SymbolStatus::External
+                } else {
+                    SymbolStatus::Internal
+                };
+                Some((package.clone(), status))
+            })
+            .collect::<Vec<_>>();
+        symbols.sort_by(|left, right| left.0.cmp(&right.0));
+        symbols
+    }
 }

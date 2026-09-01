@@ -132,9 +132,11 @@ impl Runtime {
         }
         let binding = match &items[1].kind { ncl_syntax::FormKind::List(parts) if parts.len() >= 2 => parts, _ => return Err(Self::invalid("with-input-from-string binding must contain a variable and string form", items[1].span)) };
         let name = match &binding[0].kind { ncl_syntax::FormKind::Atom(name) => name, _ => return Err(Self::invalid("with-input-from-string variable must be a symbol", binding[0].span)) };
-        let source = self.eval_values_in(&binding[1], environment)?.primary_value();
-        let Value::String(source) = source else { return Err(Self::invalid("with-input-from-string string form must evaluate to a string", binding[1].span)); };
-        let stream = Value::string_input_stream(&source, 0, source.chars().count());
+        let mut arguments = Vec::with_capacity(binding.len() - 1);
+        for form in &binding[1..] {
+            arguments.push(self.eval_values_in(form, environment)?.primary_value());
+        }
+        let stream = crate::builtins::make_string_input_stream(&arguments)?;
         let local = environment.child();
         local.define(name, stream.clone());
         let _guard = crate::builtins::standard_streams::bind(stream, Value::Nil);

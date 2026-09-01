@@ -657,7 +657,7 @@ impl CompileState {
             "STREAM-ELEMENT-TYPE" | "STREAM-EXTERNAL-FORMAT" => items.len() == 2,
             "FILE-LENGTH" => items.len() == 2,
             "FILE-POSITION" => (2..=3).contains(&items.len()),
-            "MAKE-STRING-INPUT-STREAM" => (2..=4).contains(&items.len()),
+            "MAKE-STRING-INPUT-STREAM" => items.len() >= 2 && (items.len() <= 4 || (items.len() - 2).is_multiple_of(2)),
             "MAKE-STRING-OUTPUT-STREAM" => items.len() == 1,
             "WRITE-TO-STRING" => items.len() >= 2,
             "READ-FROM-STRING" => items.len() >= 2,

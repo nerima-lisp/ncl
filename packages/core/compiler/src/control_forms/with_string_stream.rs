@@ -17,7 +17,7 @@ impl CompileState {
         let variable = Self::symbol_name(&binding[0], &format!("{operator} variable"))?;
         let stream = self.reserve_function(None, Vec::new());
         let mut stream_form = vec![Form::atom(if input { "MAKE-STRING-INPUT-STREAM" } else { "MAKE-STRING-OUTPUT-STREAM" }, span)];
-        if input { stream_form.push(binding[1].clone()); }
+        if input { stream_form.extend(binding[1..].iter().cloned()); }
         self.compile_expression(stream, &Form::list(stream_form, span))?;
         self.emit(stream, Instruction::Return, span)?;
         let body = self.reserve_function(None, Vec::new());

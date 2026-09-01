@@ -12,6 +12,7 @@ pub fn character_designator(function: &str, value: &Value) -> Result<char, Runti
     match value {
         Value::Character(value) => Ok(*value),
         Value::String(_)
+        | Value::MutableString(_)
         | Value::Symbol(_)
         | Value::UninternedSymbol(_)
         | Value::Keyword(_)
@@ -32,8 +33,9 @@ pub fn string_designator(function: &str, value: &Value) -> Result<String, Runtim
     match value {
         Value::Nil | Value::Boolean(false) => Ok("NIL".to_string()),
         Value::Boolean(true) => Ok("T".to_string()),
-        Value::String(value)
-        | Value::Symbol(value)
+        Value::String(value) => Ok(value.to_string()),
+        Value::MutableString(value) => Ok(value.borrow().clone()),
+        Value::Symbol(value)
         | Value::UninternedSymbol(value)
         | Value::Keyword(value)
         | Value::SymbolExact(value)
@@ -60,6 +62,13 @@ mod tests {
             character_designator("test", &Value::string("ab")),
             Err(RuntimeError::Type { .. })
         ));
+    }
+
+    #[test]
+    fn mutable_strings_are_string_and_character_designators() {
+        let value = Value::mutable_string("x".to_string());
+        assert_eq!(ok_string(string_designator("test", &value)), "x");
+        assert_eq!(character_designator("test", &value), Ok('x'));
     }
 
     #[test]

@@ -50,6 +50,15 @@ fn evaluates_character_and_string_operations(#[case] eval_fn: EvalFn) {
         .to_string(),
         "(\"Hello\" \"Hello x\" \"xx Hello\" \"Hello, World-42 Foo_Bar\" \"aBCDef\" \"AbcdEF\" \"Hello World\")"
     );
+    assert_eq!(
+        evaluate(
+            "(let ((text (make-string 5 #\\Space)))
+               (setf (char text 0) #\\x)
+               (string-trim \" \" text))"
+        )
+        .to_string(),
+        "\"x\""
+    );
 }
 
 #[rstest]

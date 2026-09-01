@@ -112,12 +112,12 @@ use builtin_stream_helpers::{
 };
 
 mod builtin_stream_reading;
-use builtin_stream_reading::{
-    get_output_stream_string, peek_char, read_char, read_line, unread_char,
-};
+use builtin_stream_reading::{peek_char, read_char, read_line, unread_char};
+pub(crate) use builtin_stream_reading::get_output_stream_string;
 
 mod builtin_stream_writing;
-use builtin_stream_writing::{write_destination, write_line, write_string};
+use builtin_stream_writing::write_destination;
+pub(crate) use builtin_stream_writing::{write_line, write_string};
 pub(crate) use builtin_stream_writing::{fresh_line, terpri, write_char};
 
 mod format;

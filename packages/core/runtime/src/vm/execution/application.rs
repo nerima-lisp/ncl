@@ -1096,6 +1096,9 @@ pub fn execute_stream_operation_instruction(
         "TERPRI" => crate::builtins::terpri(&arguments),
         "FRESH-LINE" => crate::builtins::fresh_line(&arguments),
         "WRITE-CHAR" => crate::builtins::write_char(&arguments),
+        "WRITE-STRING" => crate::builtins::write_string(&arguments),
+        "WRITE-LINE" => crate::builtins::write_line(&arguments),
+        "GET-OUTPUT-STREAM-STRING" => crate::builtins::get_output_stream_string(&arguments),
         _ => Err(invalid("unknown stream operation", span)),
     }?;
     stack.push(result);

@@ -685,6 +685,8 @@ impl CompileState {
         let valid = match operation {
             "TERPRI" | "FRESH-LINE" => items.len() <= 2,
             "WRITE-CHAR" => (2..=3).contains(&items.len()),
+            "WRITE-STRING" | "WRITE-LINE" => items.len() >= 2,
+            "GET-OUTPUT-STREAM-STRING" => items.len() == 2,
             _ => false,
         };
         if !valid { return Err(Self::arity_error(items, operation, "the supported argument count", span)); }

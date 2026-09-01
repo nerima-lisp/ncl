@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{RuntimeError, Value};
 
-pub(super) fn get_output_stream_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn get_output_stream_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "get-output-stream-string", 1)?;
     let stream = stream_reference("get-output-stream-string", &arguments[0])?;
     let output = stream

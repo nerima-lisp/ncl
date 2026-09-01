@@ -318,7 +318,8 @@ impl CompileState {
             "FILL-POINTER" | "VECTOR-PUSH" | "VECTOR-PUSH-EXTEND" | "VECTOR-POP" => {
                 self.compile_vector_operation(function, span, items, name)
             }
-            "TERPRI" | "FRESH-LINE" | "WRITE-CHAR" => {
+            "TERPRI" | "FRESH-LINE" | "WRITE-CHAR" | "WRITE-STRING" | "WRITE-LINE"
+            | "GET-OUTPUT-STREAM-STRING" => {
                 self.compile_stream_operation(function, span, items, name)
             }
             "ATOM" | "CONSP" | "LISTP" | "NUMBERP" | "COMPLEXP" | "INTEGERP"

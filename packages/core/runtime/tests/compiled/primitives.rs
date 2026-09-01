@@ -342,4 +342,18 @@ fn compiled_evaluates_character_stream_output_operations() {
     );
 }
 
+#[test]
+fn compiled_evaluates_string_stream_output_operations() {
+    assert_eq!(
+        evaluate(
+            r#"(let ((stream (make-string-output-stream)))
+                 (list (write-string "ab" stream)
+                       (write-line "cd" stream)
+                       (get-output-stream-string stream)))"#,
+        )
+        .to_string(),
+        r#"("ab" "cd" "abcd\n")"#
+    );
+}
+
 use super::*;

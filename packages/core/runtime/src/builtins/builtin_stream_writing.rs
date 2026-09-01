@@ -34,7 +34,7 @@ pub(crate) fn write_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Character(character))
 }
 
-pub(super) fn write_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn write_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("write-string", "at least 1", arguments.len()));
     }
@@ -78,7 +78,7 @@ pub(crate) fn fresh_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn write_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn write_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("write-line", "at least 1", arguments.len()));
     }

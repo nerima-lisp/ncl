@@ -2,6 +2,24 @@
 use super::super::*;
 
 impl CompileState {
+    pub(super) fn compile_native_remf(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<Option<()>, CompileError> {
+        if items.len() != 3 {
+            return Ok(None);
+        }
+        let Some((name, escaped)) = Self::symbol_name_info(&items[1], "REMF place").ok() else {
+            return Ok(None);
+        };
+        self.compile_expression(function, &items[1])?;
+        self.compile_expression(function, &items[2])?;
+        self.emit(function, Instruction::Remf { name, escaped }, span)?;
+        Ok(Some(()))
+    }
+
     pub(crate) fn compile_defsetf(
         &mut self,
         function: FunctionId,

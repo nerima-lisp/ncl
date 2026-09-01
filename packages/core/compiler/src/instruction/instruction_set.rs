@@ -128,6 +128,12 @@ pub enum Instruction {
         escaped: bool,
     },
     #[doc = "Update a symbol property through GET."] SetfGetDynamic,
+    #[doc = "Remove a property from a symbol's property list by EQL."] Remf {
+        /// The symbol holding the property list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Update a hash-table-valued place through GETHASH."] SetfGethashDynamic,
     #[doc = "Update a CLOS instance slot through SLOT-VALUE."] SetfSlotValueDynamic,
     #[doc = "Update a dynamically selected symbol value or function cell."] SetfSymbolCellDynamic {

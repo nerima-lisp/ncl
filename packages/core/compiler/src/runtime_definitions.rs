@@ -27,6 +27,9 @@ impl CompileState {
         if let Some(result) = self.compile_native_rotate_shift(function, span, items)? {
             return Ok(result);
         }
+        if let Some(result) = self.compile_native_remf(function, span, items)? {
+            return Ok(result);
+        }
         self.emit(
             function,
             Instruction::RuntimeMutation(Form::list(items.to_vec(), span)),

@@ -210,6 +210,18 @@ fn evaluates_file_error_pathname_accessor(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_package_error_package_accessor(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(package-name (package-error-package (make-condition 'package-error :package (make-package \"package-error-accessor-compiled\"))))")
+            .to_string(),
+        "\"PACKAGE-ERROR-ACCESSOR-COMPILED\""
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_error_through_condition_handlers(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

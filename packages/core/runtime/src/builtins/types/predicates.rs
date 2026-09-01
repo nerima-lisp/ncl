@@ -167,3 +167,10 @@ pub fn file_error_pathname(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .condition_slot("FILE-ERROR", "PATHNAME")
         .ok_or_else(|| type_error("file-error-pathname", "FILE-ERROR", &arguments[0]))
 }
+
+pub fn package_error_package(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "package-error-package", 1)?;
+    arguments[0]
+        .condition_slot("PACKAGE-ERROR", "PACKAGE")
+        .ok_or_else(|| type_error("package-error-package", "PACKAGE-ERROR", &arguments[0]))
+}

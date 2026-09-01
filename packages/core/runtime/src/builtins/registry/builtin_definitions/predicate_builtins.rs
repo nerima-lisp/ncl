@@ -44,4 +44,5 @@ pub(super) const PREDICATE_BUILTINS: &[BuiltinDefinition] = &[
     ("arithmetic-error-operation", arithmetic_error_operation as _),
     ("arithmetic-error-operands", arithmetic_error_operands as _),
     ("file-error-pathname", file_error_pathname as _),
+    ("package-error-package", package_error_package as _),
 ];

@@ -107,6 +107,14 @@ fn file_error_pathname_reads_standard_condition_slot() {
 }
 
 #[test]
+fn package_error_package_reads_standard_condition_slot() {
+    let result = Runtime::new()
+        .eval_source("(package-name (package-error-package (make-condition 'package-error :package (make-package \"package-error-accessor-eval\"))))")
+        .unwrap_or_else(|error| panic!("package-error-package failed: {error}"));
+    assert_eq!(result.last().unwrap().to_string(), "\"PACKAGE-ERROR-ACCESSOR-EVAL\"");
+}
+
+#[test]
 fn rejects_malformed_character_operations_at_their_boundaries() {
     for source in support::MALFORMED_CHARACTER_FORMS {
         Runtime::eval_source(&Runtime::new(), source).must_fail();

@@ -14,6 +14,18 @@ fn compiled_evaluates_sequence_sort_and_stable_sort() {
 }
 
 #[test]
+fn compiled_evaluates_sequence_search_operations() {
+    assert_eq!(evaluate("(find 2 '(1 2 3))").to_string(), "2");
+    assert_eq!(evaluate("(position 2 '(1 2 3))").to_string(), "1");
+    assert_eq!(evaluate("(count 2 '(1 2 2 3))").to_string(), "2");
+    assert_eq!(evaluate("(find-if #'evenp '(1 3 4))").to_string(), "4");
+    assert_eq!(evaluate("(position-if-not #'evenp '(2 4 5))").to_string(), "2");
+    assert_eq!(evaluate("(count-if #'evenp '(1 2 4 5))").to_string(), "2");
+    assert_eq!(evaluate("(find 2 '(1 2 3) :from-end t :key #'identity)").to_string(), "2");
+    assert_eq!(evaluate("(funcall #'position 2 '(1 2 3))").to_string(), "1");
+}
+
+#[test]
 fn compiled_evaluates_sequence_merge() {
     assert_eq!(
         evaluate("(merge 'list '(1 3 5) '(2 4 6) #'<)").to_string(),

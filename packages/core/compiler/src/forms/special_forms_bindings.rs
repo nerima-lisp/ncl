@@ -8,6 +8,21 @@ impl CompileState {
         span: Span,
         items: &[Form],
     ) -> Option<Result<(), CompileError>> {
+        if matches!(
+            name,
+            "FIND"
+                | "POSITION"
+                | "COUNT"
+                | "FIND-IF"
+                | "POSITION-IF"
+                | "COUNT-IF"
+                | "FIND-IF-NOT"
+                | "POSITION-IF-NOT"
+                | "COUNT-IF-NOT"
+        ) && self.has_local_function(name)
+        {
+            return None;
+        }
         Some(match name {
             "AND" => self.compile_and(function, span, items),
             "OR" => self.compile_or(function, span, items),
@@ -44,6 +59,10 @@ impl CompileState {
             "REDUCE" => self.compile_sequence_reduce(function, span, items),
             "MERGE" => self.compile_sequence_merge(function, span, items),
             "SORT" | "STABLE-SORT" => self.compile_sequence_sort(function, span, items, name),
+            "FIND" | "POSITION" | "COUNT" | "FIND-IF" | "POSITION-IF" | "COUNT-IF"
+            | "FIND-IF-NOT" | "POSITION-IF-NOT" | "COUNT-IF-NOT" => {
+                self.compile_sequence_search(function, span, items, name)
+            }
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)
             }

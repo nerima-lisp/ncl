@@ -57,6 +57,13 @@ impl CompileState {
         }
     }
 
+    pub(super) fn has_local_function(&self, name: &str) -> bool {
+        self.local_function_scopes
+            .iter()
+            .rev()
+            .any(|scope| scope.contains(name))
+    }
+
     pub(super) fn emit(
         &mut self,
         function: FunctionId,

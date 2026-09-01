@@ -1006,6 +1006,17 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(sort.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::SequenceSort { operation, option_count: 2 } if operation == "STABLE-SORT")
     }));
+    for operation in ["FIND", "POSITION", "COUNT", "FIND-IF-NOT"] {
+        let source = if operation.ends_with("-IF-NOT") {
+            format!("({operation} #'null '(1 2) :key #'identity)")
+        } else {
+            format!("({operation} 2 '(1 2) :key #'identity)")
+        };
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequenceSearch { operation: emitted, option_count: 2, .. } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     assert!(
         map_into.functions[0]
             .instructions

@@ -263,6 +263,31 @@ pub fn execute_sequence_sort_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_search_instruction(
+    runtime: &Runtime,
+    operation: &str,
+    predicate: bool,
+    option_count: usize,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < option_count.saturating_add(2) {
+        return Err(invalid("sequence search has too few stack values", span));
+    }
+    let options_start = stack.len() - option_count;
+    let options = stack.split_off(options_start);
+    let sequence = stack.pop().ok_or_else(|| invalid("sequence search has no sequence", span))?;
+    let first = stack.pop().ok_or_else(|| invalid("sequence search has no item or predicate", span))?;
+    let result = if predicate {
+        runtime.apply_sequence_search_if(operation, &first.primary_value(), &sequence.primary_value(), &options, environment, span)?
+    } else {
+        runtime.apply_sequence_search(operation, &first.primary_value(), &sequence.primary_value(), &options, environment, span)?
+    };
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

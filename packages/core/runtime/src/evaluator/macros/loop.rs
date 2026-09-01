@@ -110,6 +110,98 @@ impl Runtime {
                     form.span,
                 )];
                 body.extend(items[3..].iter().cloned());
+            } else if names_equal(clause, "FOR") {
+                if items.len() < 7
+                    || !items
+                        .get(3)
+                        .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "FROM"))
+                    || !items
+                        .get(5)
+                        .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "TO"))
+                {
+                    return Err(Self::invalid(
+                        "LOOP FOR requires a variable, FROM form, and TO form",
+                        form.span,
+                    ));
+                }
+                let variable = items[2].clone();
+                let step = Form::list(
+                    vec![Form::atom("1+", form.span), variable.clone()],
+                    form.span,
+                );
+                let binding = Form::list(vec![variable.clone(), items[4].clone(), step], form.span);
+                let mut body_start = 7;
+                if items
+                    .get(body_start)
+                    .and_then(atom_name)
+                    .is_some_and(|name| names_equal(name, "DO"))
+                {
+                    body_start += 1;
+                }
+                if items
+                    .get(body_start)
+                    .and_then(atom_name)
+                    .is_some_and(|name| names_equal(name, "COLLECT"))
+                {
+                    if items.len() <= body_start + 1 {
+                        return Err(Self::invalid(
+                            "LOOP COLLECT clause requires a form",
+                            form.span,
+                        ));
+                    }
+                    collect_form = Some(items[body_start + 1].clone());
+                    body_start += 2;
+                }
+                let termination = vec![Form::list(
+                    vec![Form::atom(">", form.span), variable, items[6].clone()],
+                    form.span,
+                )];
+                let mut do_items = vec![
+                    Form::atom("DO", form.span),
+                    Form::list(vec![binding], form.span),
+                ];
+                let termination = if collect_form.is_some() {
+                    Form::list(
+                        vec![
+                            termination[0].clone(),
+                            Form::list(
+                                vec![Form::atom("NREVERSE", form.span), collect_name.clone()],
+                                form.span,
+                            ),
+                        ],
+                        form.span,
+                    )
+                } else {
+                    Form::list(termination, form.span)
+                };
+                do_items.push(termination);
+                if let Some(value) = collect_form.clone() {
+                    do_items.push(Form::list(
+                        vec![Form::atom("PUSH", form.span), value, collect_name.clone()],
+                        form.span,
+                    ));
+                }
+                do_items.extend(items[body_start..].iter().cloned());
+                let do_form = Form::list(do_items, form.span);
+                if collect_form.is_some() {
+                    return Ok(Form::list(
+                        vec![
+                            Form::atom("LET", form.span),
+                            Form::list(
+                                vec![Form::list(
+                                    vec![collect_name, Form::atom("NIL", form.span)],
+                                    form.span,
+                                )],
+                                form.span,
+                            ),
+                            do_form,
+                        ],
+                        form.span,
+                    ));
+                }
+                return Ok(do_form);
             }
         }
 

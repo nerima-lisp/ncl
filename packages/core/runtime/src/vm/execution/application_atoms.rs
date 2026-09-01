@@ -182,6 +182,7 @@ pub fn execute_character_predicate_instruction(
 }
 
 pub fn execute_equality_instruction(
+    _runtime: &Runtime,
     operation: &str,
     stack: &mut Vec<Value>,
     span: Span,
@@ -192,6 +193,8 @@ pub fn execute_equality_instruction(
     let left = stack
         .pop()
         .ok_or_else(|| invalid("equality predicate has too few stack values", span))?;
+    let left = left.primary_value();
+    let right = right.primary_value();
     let result = match operation {
         "EQ" => left.eq_value(&right),
         "EQL" => crate::builtins::eql_value(&left, &right),

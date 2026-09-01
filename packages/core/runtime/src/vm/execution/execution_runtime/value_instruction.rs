@@ -272,7 +272,7 @@ pub(super) fn execute_value_instruction(
             execute_character_predicate_instruction(operation, stack, span)?;
         }
         Instruction::Equality { operation } => {
-            execute_equality_instruction(operation, stack, span)?;
+            execute_equality_instruction(runtime, operation, stack, span)?;
         }
         Instruction::NumericUnary { operation } => {
             execute_numeric_unary_instruction(operation, stack, span)?;

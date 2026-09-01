@@ -729,6 +729,7 @@ pub fn execute_numeric_unary_instruction(
         "CONJUGATE" => crate::builtins::conjugate(&[value]),
         "PHASE" => crate::builtins::phase(&[value]),
         "RATIONAL" => crate::builtins::rational(&[value]),
+        "RATIONALIZE" => crate::builtins::rationalize(&[value]),
         _ => Err(invalid("unknown unary numeric operation", span)),
     }?;
     stack.push(result);

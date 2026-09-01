@@ -66,6 +66,15 @@ impl Runtime {
                 if names_equal(&resolved_name, "LOOP") {
                     return Self::expand_builtin_loop(form).map(Some);
                 }
+                if names_equal(&resolved_name, "LOOP-FINISH") {
+                    return Ok(Some(Form::list(
+                        vec![
+                            Form::atom("RETURN-FROM", form.span),
+                            Form::atom("NIL", form.span),
+                        ],
+                        form.span,
+                    )));
+                }
             }
             return Ok(None);
         };

@@ -22,7 +22,23 @@ impl Runtime {
         if let Some(finally_offset) = clause_offset(items, "FINALLY") {
             return Self::expand_loop_finally_clause(form, items, finally_offset);
         }
-        let mut body = items[1..].to_vec();
+        let named_block = if items
+            .get(1)
+            .and_then(atom_name)
+            .is_some_and(|name| names_equal(name, "NAMED"))
+        {
+            let Some(name) = items.get(2).and_then(atom_name) else {
+                return Err(Self::invalid("LOOP NAMED requires a name", form.span));
+            };
+            if items.len() < 3 {
+                return Err(Self::invalid("LOOP NAMED requires a name", form.span));
+            }
+            Some(Form::atom(name, form.span))
+        } else {
+            None
+        };
+        let body_start = if named_block.is_some() { 3 } else { 1 };
+        let mut body = items[body_start..].to_vec();
         if body.first().and_then(atom_name).is_some_and(|name| names_equal(name, "DO")) {
             body.remove(0);
         }
@@ -1794,6 +1810,14 @@ impl Runtime {
             ],
             form.span,
         );
+        let block = if let Some(name) = named_block {
+            Form::list(
+                vec![Form::atom("BLOCK", form.span), name, block],
+                form.span,
+            )
+        } else {
+            block
+        };
         if repeat_count.is_some() || collect_form.is_some() {
             let mut bindings = Vec::new();
             if let Some(count) = repeat_count {

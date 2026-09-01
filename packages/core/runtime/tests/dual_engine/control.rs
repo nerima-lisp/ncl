@@ -477,6 +477,34 @@ fn expands_loop_for_numeric_limit_clauses(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn supports_named_loop_and_loop_finish(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop named done
+                   (incf value)
+                   (when (= value 3) (return-from done value))))"
+        )
+        .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop
+                   (incf value)
+                   (when (= value 3) (loop-finish)))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn captures_an_active_tagbody_target_in_a_closure(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     let source = r"

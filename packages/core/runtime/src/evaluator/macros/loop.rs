@@ -9,6 +9,20 @@ impl Runtime {
         let FormKind::List(items) = &form.kind else {
             return Ok(form.clone());
         };
+        if let Some(return_offset) = items.iter().position(|item| {
+            atom_name(item).is_some_and(|name| names_equal(name, "RETURN"))
+        }) {
+            let Some(return_value) = items.get(return_offset + 1) else {
+                return Err(Self::invalid("LOOP RETURN clause requires a form", form.span));
+            };
+            let mut core_items = items[..return_offset].to_vec();
+            core_items.push(Form::list(
+                vec![Form::atom("RETURN", form.span), return_value.clone()],
+                form.span,
+            ));
+            core_items.extend(items[return_offset + 2..].iter().cloned());
+            return Self::expand_builtin_loop(&Form::list(core_items, form.span));
+        }
         if let Some(initially_offset) = items.iter().position(|item| {
             atom_name(item).is_some_and(|name| names_equal(name, "INITIALLY"))
         }) {

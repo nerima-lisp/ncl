@@ -19,19 +19,8 @@ pub(super) fn execute(
             runtime,
             *rank,
             operator,
-            Some(name),
+            name,
             *escaped,
-            stack,
-            environment,
-            program_counter,
-            span,
-        ),
-        Instruction::SetfArefPlace { rank, operator } => execute_aref(
-            runtime,
-            *rank,
-            operator,
-            None,
-            false,
             stack,
             environment,
             program_counter,
@@ -59,7 +48,7 @@ fn execute_aref(
     runtime: &Runtime,
     rank: usize,
     operator: &str,
-    name: Option<&str>,
+    name: &str,
     escaped: bool,
     stack: &mut Vec<Value>,
     environment: &Environment,
@@ -138,13 +127,17 @@ fn execute_aref(
             });
         }
     };
-    if let Some(name) = name {
-        store_array_value(runtime, name, escaped, updated, value, stack, environment, program_counter, span)
-    } else {
-        stack.push(value);
-        *program_counter += 1;
-        Ok(true)
-    }
+    store_array_value(
+        runtime,
+        name,
+        escaped,
+        updated,
+        value,
+        stack,
+        environment,
+        program_counter,
+        span,
+    )
 }
 
 fn execute_bit(

@@ -89,12 +89,6 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
-    #[doc = "Update a dynamically indexed evaluated vector or array through an array accessor."] SetfArefPlace {
-        /// The number of subscripts.
-        rank: usize,
-        /// The accessor name.
-        operator: String,
-    },
     #[doc = "Update a dynamically indexed bit vector or array-valued symbol through BIT."] SetfBitDynamic {
         /// The number of subscripts.
         rank: usize,

@@ -530,3 +530,11 @@ fn compiled_evaluates_package_mutation_operations() {
         "(T T)"
     );
 }
+
+#[test]
+fn compiled_evaluates_package_listing_operations() {
+    assert_eq!(
+        evaluate("(list (documentation (find-package :ncl-user) t) (listp (list-all-packages)))").to_string(),
+        "(NIL T)"
+    );
+}

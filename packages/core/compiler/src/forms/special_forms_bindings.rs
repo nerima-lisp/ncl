@@ -145,6 +145,7 @@ impl CompileState {
                 | "PACKAGE-NICKNAMES"
                 | "PACKAGE-SHADOWING-SYMBOLS"
                 | "PACKAGE-USED-BY-LIST"
+                | "DOCUMENTATION" | "LIST-ALL-PACKAGES"
                 | "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT"
                 | "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN"
                 | "GETHASH"
@@ -204,6 +205,9 @@ impl CompileState {
                 self.compile_sequence_quantifier(function, span, items, name)
             }
             "MAP" => self.compile_sequence_mapping(function, span, items),
+            "DOCUMENTATION" | "LIST-ALL-PACKAGES" => {
+                self.compile_package_listing(function, span, items, name)
+            }
             "REDUCE" => self.compile_sequence_reduce(function, span, items),
             "MERGE" => self.compile_sequence_merge(function, span, items),
             "SORT" | "STABLE-SORT" => self.compile_sequence_sort(function, span, items, name),

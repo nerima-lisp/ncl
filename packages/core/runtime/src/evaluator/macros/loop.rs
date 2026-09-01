@@ -6,7 +6,7 @@ use super::loop_aggregate::{append_step, count_step, sum_step};
 use super::loop_hash::bind_hash_value_and_key;
 use super::loop_on::expand_loop_for_on;
 use super::loop_with::expand_loop_with;
-use super::loop_control::clause_offset;
+use super::loop_control::{clause_offset, named_loop_body_start};
 
 impl Runtime {
     pub(super) fn expand_builtin_loop(form: &Form) -> Result<Form, RuntimeError> {
@@ -22,22 +22,7 @@ impl Runtime {
         if let Some(finally_offset) = clause_offset(items, "FINALLY") {
             return Self::expand_loop_finally_clause(form, items, finally_offset);
         }
-        let named_block = if items
-            .get(1)
-            .and_then(atom_name)
-            .is_some_and(|name| names_equal(name, "NAMED"))
-        {
-            let Some(name) = items.get(2).and_then(atom_name) else {
-                return Err(Self::invalid("LOOP NAMED requires a name", form.span));
-            };
-            if items.len() < 3 {
-                return Err(Self::invalid("LOOP NAMED requires a name", form.span));
-            }
-            Some(Form::atom(name, form.span))
-        } else {
-            None
-        };
-        let body_start = if named_block.is_some() { 3 } else { 1 };
+        let (named_block, body_start) = named_loop_body_start(form, items)?;
         let mut body = items[body_start..].to_vec();
         if body.first().and_then(atom_name).is_some_and(|name| names_equal(name, "DO")) {
             body.remove(0);

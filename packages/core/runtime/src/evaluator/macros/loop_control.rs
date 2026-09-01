@@ -2,6 +2,26 @@ use ncl_syntax::Form;
 
 use crate::{evaluator::helpers::atom_name, environment::names_equal, Runtime, RuntimeError};
 
+pub(super) fn named_loop_body_start(
+    form: &Form,
+    items: &[Form],
+) -> Result<(Option<Form>, usize), RuntimeError> {
+    let named_block = if items
+        .get(1)
+        .and_then(atom_name)
+        .is_some_and(|name| names_equal(name, "NAMED"))
+    {
+        let Some(name) = items.get(2).and_then(atom_name) else {
+            return Err(Runtime::invalid("LOOP NAMED requires a name", form.span));
+        };
+        Some(Form::atom(name, form.span))
+    } else {
+        None
+    };
+    let body_start = usize::from(named_block.is_some()) * 2 + 1;
+    Ok((named_block, body_start))
+}
+
 impl Runtime {
     pub(super) fn expand_loop_return_clause(
         form: &Form,

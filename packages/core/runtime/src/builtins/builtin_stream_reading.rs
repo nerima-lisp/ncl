@@ -81,6 +81,43 @@ pub(crate) fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Nil)
 }
 
+pub(crate) fn listen(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() > 1 {
+        return Err(arity("listen", "0 to 1", arguments.len()));
+    }
+    let stream = input_stream_reference("listen", arguments.first())?;
+    let stream = stream.borrow();
+    if !stream.is_input() {
+        return Err(stream_state_error("listen", "an input stream"));
+    }
+    Ok(Value::boolean(stream.peek_char().is_some()))
+}
+
+pub(crate) fn read_char_no_hang(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() > 1 {
+        return Err(arity("read-char-no-hang", "0 to 1", arguments.len()));
+    }
+    let stream = input_stream_reference("read-char-no-hang", arguments.first())?;
+    let mut stream = stream.borrow_mut();
+    if !stream.is_input() {
+        return Err(stream_state_error("read-char-no-hang", "an input stream"));
+    }
+    Ok(stream.read_char().map_or(Value::Nil, Value::Character))
+}
+
+pub(crate) fn clear_input(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() > 1 {
+        return Err(arity("clear-input", "0 to 1", arguments.len()));
+    }
+    let stream = input_stream_reference("clear-input", arguments.first())?;
+    let mut stream = stream.borrow_mut();
+    if !stream.is_input() {
+        return Err(stream_state_error("clear-input", "an input stream"));
+    }
+    while stream.read_char().is_some() {}
+    Ok(Value::Nil)
+}
+
 pub(crate) fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 4 {
         return Err(arity("read-line", "0 to 4", arguments.len()));

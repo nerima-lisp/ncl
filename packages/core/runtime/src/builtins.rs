@@ -114,7 +114,7 @@ use builtin_stream_helpers::{
 };
 
 mod builtin_stream_reading;
-pub(crate) use builtin_stream_reading::{peek_char, read_char, read_line, unread_char};
+pub(crate) use builtin_stream_reading::{clear_input, listen, peek_char, read_char, read_char_no_hang, read_line, unread_char};
 pub(crate) use builtin_stream_reading::get_output_stream_string;
 
 mod builtin_stream_writing;

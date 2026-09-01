@@ -146,3 +146,14 @@ fn reading_builtins_reject_bad_arity_and_stream_arguments() -> Result<(), Runtim
     );
     Ok(())
 }
+
+#[test]
+fn nonblocking_input_operations_consume_modeled_character_streams() -> Result<(), RuntimeError> {
+    let stream = make_string_input_stream(&[Value::string("ab")])?;
+    assert!(matches!(listen(std::slice::from_ref(&stream))?, Value::Boolean(true)));
+    assert!(matches!(read_char_no_hang(std::slice::from_ref(&stream))?, Value::Character('a')));
+    assert!(matches!(clear_input(std::slice::from_ref(&stream))?, Value::Nil));
+    assert!(matches!(listen(std::slice::from_ref(&stream))?, Value::Nil));
+    assert!(matches!(read_char_no_hang(&[stream])?, Value::Nil));
+    Ok(())
+}

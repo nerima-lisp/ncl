@@ -629,6 +629,21 @@ fn evaluates_delete_package_and_removes_nicknames_and_uses() {
 }
 
 #[test]
+fn evaluates_rename_package_and_updates_nickname() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"rename-source\" :nicknames (list \"rename-old\"))))
+               (list (rename-package package \"rename-target\" (list \"rename-new\"))
+                     (package-name (find-package :rename-target))
+                     (package-name (find-package :rename-new))
+                     (find-package :rename-old)))"
+        )
+        .to_string(),
+        "(T \"RENAME-TARGET\" \"RENAME-TARGET\" NIL)"
+    );
+}
+
+#[test]
 fn rejects_invalid_package_and_method_primitive_arguments_from_table() {
     let cases = [
         "(documentation 1 2)",

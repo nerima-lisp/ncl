@@ -1,7 +1,71 @@
-use super::names::{canonical_symbol_name, normalize_symbol_name};
+use super::names::{canonical_symbol_name, normalize_package_name, normalize_symbol_name};
 use super::{KEYWORD_PACKAGE, PackageState, SymbolStatus};
 
 impl PackageState {
+    pub(crate) fn rename_package(
+        &mut self,
+        old_name: &str,
+        new_name: &str,
+        nicknames: Vec<String>,
+    ) -> Result<bool, String> {
+        let old_name = self.canonical_package_name(old_name);
+        let new_name = normalize_package_name(new_name);
+        if !self.packages.contains_key(&old_name) {
+            return Ok(false);
+        }
+        if new_name.is_empty() {
+            return Err("package name cannot be empty".to_string());
+        }
+        if self.packages.contains_key(&new_name) || self.nicknames.contains_key(&new_name) {
+            return Err(format!("package name {new_name} conflicts with an existing package"));
+        }
+        let mut normalized_nicknames = Vec::new();
+        for nickname in nicknames {
+            let nickname = normalize_package_name(&nickname);
+            if nickname.is_empty()
+                || nickname == new_name
+                || self.packages.contains_key(&nickname)
+                || self.nicknames.contains_key(&nickname)
+                || normalized_nicknames.contains(&nickname)
+            {
+                return Err(format!("invalid or conflicting package nickname {nickname}"));
+            }
+            normalized_nicknames.push(nickname);
+        }
+        let mut package = self.packages.remove(&old_name).expect("package existence checked");
+        for used in &mut package.use_packages {
+            if used == &old_name {
+                *used = new_name.clone();
+            }
+        }
+        self.nicknames.retain(|_, package| package != &old_name);
+        for entry in self.packages.values_mut() {
+            for used in &mut entry.use_packages {
+                if used == &old_name {
+                    *used = new_name.clone();
+                }
+            }
+            for target in entry.local_nicknames.values_mut() {
+                if target == &old_name {
+                    *target = new_name.clone();
+                }
+            }
+            for symbol in entry.imports.values_mut() {
+                if symbol.starts_with(&format!("{old_name}::")) {
+                    *symbol = symbol.replacen(&format!("{old_name}::"), &format!("{new_name}::"), 1);
+                }
+            }
+        }
+        if self.current == old_name {
+            self.current = new_name.clone();
+        }
+        self.packages.insert(new_name.clone(), package);
+        for nickname in normalized_nicknames {
+            self.nicknames.insert(nickname, new_name.clone());
+        }
+        Ok(true)
+    }
+
     pub(crate) fn delete_package(&mut self, name: &str) -> bool {
         let name = self.canonical_package_name(name);
         if name == super::COMMON_LISP_PACKAGE || name == super::KEYWORD_PACKAGE || name == self.current {

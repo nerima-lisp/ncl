@@ -18,6 +18,33 @@ impl Runtime {
                 Ok(Value::boolean(self.packages.borrow_mut().delete_package(&package_name)))
             })());
         }
+        if name == "RENAME-PACKAGE" {
+            return Some((|| -> Result<Value, RuntimeError> {
+                if arguments.len() != 2 && arguments.len() != 3 {
+                    return Err(Self::arity(name, "two or three", arguments.len()));
+                }
+                let old_name = Self::package_designator_name(&arguments[0], span)?;
+                let new_name = Self::package_designator_name(&arguments[1], span)?;
+                let nicknames = arguments
+                    .get(2)
+                    .map(|value| {
+                        let values = match value {
+                            Value::Nil => Vec::new(),
+                            Value::List(values) => values.as_ref().clone(),
+                            _ => vec![value.clone()],
+                        };
+                        values
+                            .into_iter()
+                            .map(|value| Self::package_designator_name(&value, span))
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .transpose()?
+                    .unwrap_or_default();
+                let renamed = self.packages.borrow_mut().rename_package(&old_name, &new_name, nicknames)
+                    .map_err(|message| Self::package_error(&message, span))?;
+                Ok(Value::boolean(renamed))
+            })());
+        }
         if name != "MAKE-PACKAGE" {
             return None;
         }

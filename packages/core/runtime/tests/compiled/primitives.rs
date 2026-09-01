@@ -399,3 +399,17 @@ fn evaluates_delete_package_and_removes_nicknames_and_uses() {
         "(T NIL NIL)"
     );
 }
+
+#[test]
+fn evaluates_rename_package_and_updates_nickname() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"compiled-rename-source\")))
+               (list (rename-package package \"compiled-rename-target\" (list \"compiled-rename-new\"))
+                     (package-name (find-package :compiled-rename-target))
+                     (package-name (find-package :compiled-rename-new))))"
+        )
+        .to_string(),
+        "(T \"COMPILED-RENAME-TARGET\" \"COMPILED-RENAME-TARGET\")"
+    );
+}

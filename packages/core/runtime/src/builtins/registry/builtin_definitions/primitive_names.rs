@@ -80,6 +80,7 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "FIND-PACKAGE",
     "MAKE-PACKAGE",
     "DELETE-PACKAGE",
+    "RENAME-PACKAGE",
     "PACKAGE-NAME",
     "PACKAGE-USE-LIST",
     "PACKAGE-NICKNAMES",

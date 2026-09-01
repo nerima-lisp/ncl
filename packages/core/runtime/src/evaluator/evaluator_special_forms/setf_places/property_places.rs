@@ -9,6 +9,33 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<(), RuntimeError> {
         match operator {
+            "SYMBOL-PLIST" => {
+                if args.len() != 1 {
+                    return Err(Self::arity("setf symbol-plist", "one", args.len()));
+                }
+                let symbol = self.eval_in(&args[0], environment)?;
+                if symbol.symbol_reference().is_none() {
+                    return Err(Self::invalid(
+                        "setf symbol-plist target must be a symbol",
+                        args[0].span,
+                    ));
+                }
+                let Some(properties) = value.list_items() else {
+                    return Err(RuntimeError::Type {
+                        expected: "LIST".to_string(),
+                        actual: value.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
+                };
+                if !properties.len().is_multiple_of(2) {
+                    return Err(Self::invalid(
+                        "SYMBOL-PLIST needs an even property list",
+                        args[0].span,
+                    ));
+                }
+                environment.set_symbol_plist(&symbol, value);
+                Ok(())
+            }
             "GET" => {
                 if args.len() != 2 {
                     return Err(Self::arity("setf get", "two", args.len()));

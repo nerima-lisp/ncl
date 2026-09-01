@@ -122,7 +122,7 @@ impl Runtime {
                 environment,
                 place.span,
             ),
-            "GET" | "GETHASH" | "GETF" => {
+            "SYMBOL-PLIST" | "GET" | "GETHASH" | "GETF" => {
                 self.set_property_place(lookup_name.as_str(), args, value, environment)
             }
             _ => Err(Self::invalid("unsupported SETF place", place.span)),

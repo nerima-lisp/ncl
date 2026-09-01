@@ -223,6 +223,26 @@ fn evaluates_symbol_properties_and_setf_get(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_psetf_symbol_plists_in_parallel(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((first (make-symbol "first"))
+                        (second (make-symbol "second")))
+                    (list
+                      (psetf (symbol-plist first) '(:one 1)
+                             (symbol-plist second) '(:two 2))
+                      (symbol-plist first)
+                      (symbol-plist second)))"#,
+        )
+        .to_string(),
+        "((:TWO 2) (:ONE 1) (:TWO 2))",
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_setf_gethash_with_an_evaluated_table(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

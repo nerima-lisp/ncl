@@ -59,7 +59,10 @@ impl Value {
                 expected.as_str(),
                 "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
             ),
-            "CONTROL-ERROR" => matches!(expected.as_str(), "CONDITION"),
+            "CONTROL-ERROR" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+            ),
             _ => false,
         }
     }

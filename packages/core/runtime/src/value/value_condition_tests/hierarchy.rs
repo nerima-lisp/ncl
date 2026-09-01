@@ -23,7 +23,7 @@ fn condition_query_methods_cover_hierarchy_and_non_condition_targets() {
         ("UNBOUND-SLOT", "CELL-ERROR", true),
         ("END-OF-FILE", "STREAM-ERROR", true),
         ("STORAGE-CONDITION", "SERIOUS-CONDITION", true),
-        ("CONTROL-ERROR", "ERROR", false),
+        ("CONTROL-ERROR", "ERROR", true),
         ("UNKNOWN-TYPE", "ERROR", false),
     ] {
         assert_eq!(condition(actual_type).condition_is_type(expected), matches);

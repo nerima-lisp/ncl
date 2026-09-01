@@ -131,6 +131,7 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
         "CELL-ERROR" => matches!(supertype_name, "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
         "STREAM-ERROR" => matches!(supertype_name, "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
         "STORAGE-CONDITION" | "PARSE-ERROR" => matches!(supertype_name, "SERIOUS-CONDITION" | "CONDITION"),
+        "CONTROL-ERROR" => matches!(supertype_name, "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
         "FUNCTION" | "STREAM" | "PACKAGE" | "ENVIRONMENT" | "HASH-TABLE" | "CONDITION"
         | "RESTART" | "STRUCTURE" | "UNBOUND" | "VALUES" | "CLASS" | "STANDARD-OBJECT" => {
             supertype_name == "ATOM"

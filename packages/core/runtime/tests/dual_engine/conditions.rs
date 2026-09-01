@@ -253,10 +253,12 @@ fn recognizes_standard_condition_hierarchy(#[case] eval_fn: EvalFn) {
             "(list (typep (make-condition 'undefined-function) 'cell-error)
                    (typep (make-condition 'end-of-file) 'stream-error)
                    (typep (make-condition 'storage-condition) 'serious-condition)
+                   (typep (make-condition 'control-error) 'error)
+                   (subtypep 'control-error 'serious-condition)
                    (subtypep 'undefined-function 'cell-error))",
         )
         .to_string(),
-        "(T T T T)"
+        "(T T T T T T)"
     );
 }
 

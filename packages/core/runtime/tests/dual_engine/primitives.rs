@@ -198,6 +198,18 @@ fn evaluates_common_lisp_complex_trigonometry(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_complex_inverse_trigonometry(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (asin (complex 0 1)) (acos (complex 0 1)) (atan (complex 0 0)))")
+            .to_string(),
+        "(#C(0.0 0.8813735870195428) #C(1.5707963267948966 -0.8813735870195428) #C(0.0 0.0))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_common_lisp_float_decoding(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

@@ -1,10 +1,5 @@
 use super::{RuntimeError, Value, exact, number_argument};
 
-fn unary_real(function: &str, arguments: &[Value], operation: impl FnOnce(f64) -> f64) -> Result<Value, RuntimeError> {
-    exact(arguments, function, 1)?;
-    Ok(Value::Float(operation(number_argument(function, &arguments[0])?.as_float())))
-}
-
 pub fn sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
     unary_complex("sin", arguments, |real, imag| {
         (real.sin() * imag.cosh(), real.cos() * imag.sinh())
@@ -83,15 +78,71 @@ pub fn logarithm(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 pub fn arc_sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("asin", arguments, f64::asin)
+    exact(arguments, "asin", 1)?;
+    match complex_argument("asin", &arguments[0])? {
+        Some((real, imag)) => {
+            let (square_real, square_imag) = complex_multiply(real, imag, real, imag);
+            let (root_real, root_imag) = complex_sqrt(1.0 - square_real, -square_imag);
+            let (log_real, log_imag) = complex_log(root_real - imag, root_imag + real);
+            Ok(Value::complex(Value::Float(log_imag), Value::Float(-log_real)))
+        }
+        None => Ok(Value::Float(number_argument("asin", &arguments[0])?.as_float().asin())),
+    }
 }
 
 pub fn arc_cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("acos", arguments, f64::acos)
+    exact(arguments, "acos", 1)?;
+    match complex_argument("acos", &arguments[0])? {
+        Some((real, imag)) => {
+            let asin = arc_sine(&[Value::complex(Value::Float(real), Value::Float(imag))])?;
+            let Value::Complex(value) = asin else { unreachable!() };
+            Ok(Value::complex(
+                Value::Float(std::f64::consts::FRAC_PI_2 - number_argument("acos", &value.real)?.as_float()),
+                Value::Float(-number_argument("acos", &value.imag)?.as_float()),
+            ))
+        }
+        None => Ok(Value::Float(number_argument("acos", &arguments[0])?.as_float().acos())),
+    }
 }
 
 pub fn arc_tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("atan", arguments, f64::atan)
+    exact(arguments, "atan", 1)?;
+    match complex_argument("atan", &arguments[0])? {
+        Some((real, imag)) => {
+            let (left_real, left_imag) = complex_log(1.0 + imag, -real);
+            let (right_real, right_imag) = complex_log(1.0 - imag, real);
+            Ok(Value::complex(
+                Value::Float((right_imag - left_imag) / 2.0),
+                Value::Float((left_real - right_real) / 2.0),
+            ))
+        }
+        None => Ok(Value::Float(number_argument("atan", &arguments[0])?.as_float().atan())),
+    }
+}
+
+fn complex_argument(function: &str, value: &Value) -> Result<Option<(f64, f64)>, RuntimeError> {
+    match value {
+        Value::Complex(value) => Ok(Some((
+            number_argument(function, &value.real)?.as_float(),
+            number_argument(function, &value.imag)?.as_float(),
+        ))),
+        _ => Ok(None),
+    }
+}
+
+fn complex_multiply(left_real: f64, left_imag: f64, right_real: f64, right_imag: f64) -> (f64, f64) {
+    (left_real * right_real - left_imag * right_imag, left_real * right_imag + left_imag * right_real)
+}
+
+fn complex_sqrt(real: f64, imag: f64) -> (f64, f64) {
+    let magnitude = real.hypot(imag);
+    let root_real = ((magnitude + real) / 2.0).sqrt();
+    let root_imag = imag.signum() * ((magnitude - real) / 2.0).sqrt();
+    (root_real, root_imag)
+}
+
+fn complex_log(real: f64, imag: f64) -> (f64, f64) {
+    (real.hypot(imag).ln(), imag.atan2(real))
 }
 
 pub fn hyperbolic_sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -193,6 +244,25 @@ mod tests {
         assert_eq!(
             hyperbolic_tangent(&[value]).unwrap().to_string(),
             "#C(0.0 1.557407724654902)"
+        );
+    }
+
+    #[test]
+    fn inverse_trigonometric_functions_return_complex_principal_values() {
+        let value = Value::complex(Value::Integer(0), Value::Integer(1));
+        assert_eq!(
+            arc_sine(std::slice::from_ref(&value)).unwrap().to_string(),
+            "#C(0.0 0.8813735870195428)"
+        );
+        assert_eq!(
+            arc_cosine(std::slice::from_ref(&value)).unwrap().to_string(),
+            "#C(1.5707963267948966 -0.8813735870195428)"
+        );
+        assert_eq!(
+            arc_tangent(&[Value::complex(Value::Integer(0), Value::Integer(0))])
+                .unwrap()
+                .to_string(),
+            "#C(0.0 0.0)"
         );
     }
 }

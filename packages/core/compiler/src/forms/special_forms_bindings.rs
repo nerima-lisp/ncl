@@ -290,7 +290,7 @@ impl CompileState {
                 self.compile_numeric_fold(function, span, items, name)
             }
             "MOD" | "REM" | "ASH" | "LOGTEST" | "LOGANDC1" | "LOGANDC2"
-            | "LOGEQV" | "LOGNAND" | "LOGNOR" | "LOGORC1" | "LOGORC2" => {
+            | "LOGEQV" | "LOGNAND" | "LOGNOR" | "LOGORC1" | "LOGORC2" | "EXPT" => {
                 self.compile_numeric_binary(function, span, items, name)
             }
             "LOGBITP" => self.compile_numeric_binary(function, span, items, name),

@@ -54,6 +54,11 @@ fn compiled_evaluates_transcendental_and_complex_numeric_operations() {
 }
 
 #[test]
+fn compiled_evaluates_expt() {
+    assert_eq!(evaluate("(expt 2 10)").to_string(), "1024");
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

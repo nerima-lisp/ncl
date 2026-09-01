@@ -825,6 +825,7 @@ pub fn execute_numeric_binary_instruction(
         "LOGORC1" => crate::builtins::logorc1(&[left, right]),
         "LOGORC2" => crate::builtins::logorc2(&[left, right]),
         "LOGBITP" => crate::builtins::logbitp(&[left, right]),
+        "EXPT" => crate::builtins::exponentiate(&[left, right]),
         _ => Err(invalid("unknown numeric binary operation", span)),
     }?;
     stack.push(result);

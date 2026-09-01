@@ -48,7 +48,7 @@ impl CompileState {
         operator: &str,
         items: &[Form],
     ) -> Result<(), CompileError> {
-        if operator == "DECLAIM" {
+        if matches!(operator, "DECLAIM" | "PROCLAIM") {
             for declaration in items.iter().skip(1) {
                 let declaration = match &declaration.kind {
                     FormKind::List(items) if items.len() == 2 => match &items[0].kind {

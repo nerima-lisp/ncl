@@ -79,6 +79,26 @@ fn proclaim_special_accepts_quoted_proclamation(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn proclaim_special_is_compiled_as_a_declaration(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(progn
+               (proclaim '(special proclaimed-function))
+               (defun proclaimed-function-reader () proclaimed-function)
+               (let ((proclaimed-function 17))
+                 (list proclaimed-function
+                       (proclaimed-function-reader)
+                       (symbol-value 'proclaimed-function))))",
+        )
+        .to_string(),
+        "(17 17 17)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_condition_restart_associations(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

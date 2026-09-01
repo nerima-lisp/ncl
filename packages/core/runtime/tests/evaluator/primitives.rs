@@ -600,6 +600,21 @@ fn evaluates_symbol_package_boundaries() {
 }
 
 #[test]
+fn evaluates_make_package_with_options() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"created-package\"
+                                  :nicknames (list \"created-nickname\")
+                                  :use nil)))
+               (list (package-name package)
+                     (package-name (find-package :created-nickname))))"
+        )
+        .to_string(),
+        "(\"CREATED-PACKAGE\" \"CREATED-PACKAGE\")"
+    );
+}
+
+#[test]
 fn rejects_invalid_package_and_method_primitive_arguments_from_table() {
     let cases = [
         "(documentation 1 2)",

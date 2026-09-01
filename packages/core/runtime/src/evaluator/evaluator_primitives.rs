@@ -12,6 +12,7 @@ mod evaluation_tests;
 mod packages_introspection;
 mod packages_introspection_tests;
 mod packages_mutation;
+mod packages_creation;
 mod packages_mutation_tests;
 mod plist;
 mod plist_tests;

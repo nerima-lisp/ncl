@@ -146,6 +146,7 @@ impl CompileState {
                 | "FDEFINITION"
                 | "SYMBOL-FUNCTION"
                 | "FIND-PACKAGE"
+                | "MAKE-PACKAGE"
                 | "PACKAGE-NAME"
                 | "PACKAGE-USE-LIST"
                 | "PACKAGE-NICKNAMES"

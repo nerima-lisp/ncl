@@ -28,6 +28,9 @@ impl Runtime {
         if let Some(result) = self.apply_package_introspection_primitive(name, arguments, span) {
             return result;
         }
+        if let Some(result) = self.apply_package_creation_primitive(name, arguments, span) {
+            return result;
+        }
         if let Some(result) = self.apply_symbol_value_primitive(name, arguments, environment, span)
         {
             return result;

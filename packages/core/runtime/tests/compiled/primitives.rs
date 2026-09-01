@@ -370,3 +370,18 @@ fn compiled_evaluates_sequence_stream_output_operations() {
 }
 
 use super::*;
+
+#[test]
+fn evaluates_make_package_with_options() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"created-package\"
+                                  :nicknames (list \"created-nickname\")
+                                  :use nil)))
+               (list (package-name package)
+                     (package-name (find-package :created-nickname))))"
+        )
+        .to_string(),
+        "(\"CREATED-PACKAGE\" \"CREATED-PACKAGE\")"
+    );
+}

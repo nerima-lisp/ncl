@@ -203,7 +203,8 @@ impl CompileState {
             "MIN" | "MAX" | "GCD" | "LCM" | "LOGAND" | "LOGIOR" | "LOGXOR" => {
                 self.compile_numeric_fold(function, span, items, name)
             }
-            "MOD" | "REM" | "ASH" | "LOGTEST" => {
+            "MOD" | "REM" | "ASH" | "LOGTEST" | "LOGANDC1" | "LOGANDC2"
+            | "LOGEQV" | "LOGNAND" | "LOGNOR" | "LOGORC1" | "LOGORC2" => {
                 self.compile_numeric_binary(function, span, items, name)
             }
             "LAST" | "BUTLAST" | "NBUTLAST" => {

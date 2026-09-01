@@ -54,6 +54,16 @@ fn evaluates_integer_bitwise_helpers(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_binary_bitwise_operations(#[case] eval_fn: EvalFn) {
+    assert_eq!(
+        evaluate_with(eval_fn, "(list (logandc1 6 3) (logandc2 6 3) (logeqv 6 3) (lognand 6 3) (lognor 6 3) (logorc1 6 3) (logorc2 6 3))").to_string(),
+        "(1 4 -6 -3 -8 -5 -2)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_numeric_remainders(#[case] eval_fn: EvalFn) {
     assert_eq!(
         evaluate_with(eval_fn, "(list (mod -7 3) (rem -7 3))").to_string(),

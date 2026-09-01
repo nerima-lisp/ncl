@@ -1163,7 +1163,10 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::NumericUnary { operation: emitted } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
-    for operation in ["MOD", "REM", "ASH", "LOGTEST"] {
+    for operation in [
+        "MOD", "REM", "ASH", "LOGTEST", "LOGANDC1", "LOGANDC2", "LOGEQV", "LOGNAND",
+        "LOGNOR", "LOGORC1", "LOGORC2",
+    ] {
         let program = compile(&format!("({operation} 12 5)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {
             matches!(instruction, Instruction::NumericBinary { operation: emitted } if emitted == operation)

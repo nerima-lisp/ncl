@@ -581,6 +581,13 @@ pub fn execute_numeric_binary_instruction(
         "REM" => crate::builtins::remainder(&[left, right]),
         "ASH" => crate::builtins::arithmetic_shift(&[left, right]),
         "LOGTEST" => crate::builtins::logtest(&[left, right]),
+        "LOGANDC1" => crate::builtins::logandc1(&[left, right]),
+        "LOGANDC2" => crate::builtins::logandc2(&[left, right]),
+        "LOGEQV" => crate::builtins::logeqv(&[left, right]),
+        "LOGNAND" => crate::builtins::lognand(&[left, right]),
+        "LOGNOR" => crate::builtins::lognor(&[left, right]),
+        "LOGORC1" => crate::builtins::logorc1(&[left, right]),
+        "LOGORC2" => crate::builtins::logorc2(&[left, right]),
         _ => Err(invalid("unknown numeric binary operation", span)),
     }?;
     stack.push(result);

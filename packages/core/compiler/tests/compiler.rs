@@ -972,6 +972,19 @@ fn emits_eval_and_mapcar_instructions() {
         );
     }
 
+    for operation in ["EVERY", "SOME", "NOTANY", "NOTEVERY"] {
+        let source = format!("({operation} #'numberp '(1 2) '(3 4))");
+        let program = compile(&source);
+        assert!(
+            program.functions[0].instructions.iter().any(|instruction| matches!(
+                instruction,
+                Instruction::SequenceQuantifier { operation: emitted, sequence_count: 2 }
+                    if emitted == operation
+            )),
+            "missing native instruction for {operation}"
+        );
+    }
+
     let map_into = compile("(map-into result #'1+ '(1 2))");
     assert!(
         map_into.functions[0]

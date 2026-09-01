@@ -117,6 +117,30 @@ impl CompileState {
         )?;
         Ok(())
     }
+
+    pub(crate) fn compile_sequence_quantifier(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() < 3 {
+            return Err(Self::arity_error(items, operation, "at least two", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SequenceQuantifier {
+                operation: operation.to_string(),
+                sequence_count: items.len().saturating_sub(2),
+            },
+            span,
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

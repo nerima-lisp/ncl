@@ -4,7 +4,7 @@ use ncl_syntax::{FormKind, Span};
 use super::mutation_instruction;
 use crate::vm::execution::application::{
     execute_apply_instruction, execute_call_instruction, execute_list_mapping_instruction,
-    execute_multiple_value_call_instruction,
+    execute_multiple_value_call_instruction, execute_sequence_quantifier_instruction,
 };
 use crate::vm::primitives::pop_value;
 use crate::{Environment, Runtime, RuntimeError, Value};
@@ -145,6 +145,19 @@ pub(super) fn execute_value_instruction(
             sequence_count,
         } => {
             execute_list_mapping_instruction(
+                runtime,
+                operation,
+                *sequence_count,
+                stack,
+                environment,
+                span,
+            )?;
+        }
+        Instruction::SequenceQuantifier {
+            operation,
+            sequence_count,
+        } => {
+            execute_sequence_quantifier_instruction(
                 runtime,
                 operation,
                 *sequence_count,

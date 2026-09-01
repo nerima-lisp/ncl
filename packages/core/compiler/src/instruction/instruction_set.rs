@@ -340,6 +340,12 @@ pub enum Instruction {
         /// Number of list arguments.
         sequence_count: usize,
     },
+    #[doc = "Apply a predicate across one or more sequences."] SequenceQuantifier {
+        /// The quantifier operation.
+        operation: String,
+        /// Number of sequences consumed after the predicate.
+        sequence_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

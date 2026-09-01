@@ -101,6 +101,38 @@ pub fn execute_list_mapping_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_quantifier_instruction(
+    runtime: &Runtime,
+    operation: &str,
+    sequence_count: usize,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if sequence_count == 0 || stack.len() < sequence_count.saturating_add(1) {
+        return Err(invalid(
+            &format!("{} has too few stack values", operation.to_ascii_lowercase()),
+            span,
+        ));
+    }
+    let sequences_start = stack.len() - sequence_count;
+    let sequences = stack.split_off(sequences_start);
+    let predicate = stack.pop().ok_or_else(|| {
+        invalid(
+            &format!("{} has no predicate value", operation.to_ascii_lowercase()),
+            span,
+        )
+    })?;
+    stack.push(runtime.apply_sequence_quantifier(
+        operation,
+        &predicate.primary_value(),
+        &sequences,
+        environment,
+        span,
+    )?);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

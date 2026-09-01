@@ -37,6 +37,9 @@ impl CompileState {
             "FUNCALL" => self.compile_funcall(function, span, items),
             "APPLY" => self.compile_apply(function, span, items),
             "MAP-INTO" => self.compile_map_into(function, span, items),
+            "EVERY" | "SOME" | "NOTANY" | "NOTEVERY" => {
+                self.compile_sequence_quantifier(function, span, items, name)
+            }
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)
             }

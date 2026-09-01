@@ -12,6 +12,7 @@ pub(super) const NUMERIC_BUILTINS: &[BuiltinDefinition] = &[
     ("realpart", real_part as _),
     ("imagpart", imaginary_part as _),
     ("conjugate", conjugate as _),
+    ("phase", phase as _),
     ("signum", signum as _),
     ("float", float_value as _),
     ("float-sign", float_sign as _),

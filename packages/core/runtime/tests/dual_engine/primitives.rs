@@ -137,6 +137,17 @@ fn evaluates_common_lisp_float_operations(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_phase(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (phase -1) (phase (complex -1 1)))").to_string(),
+        "(3.141592653589793 2.356194490192345)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_integer_bit_operations_on_bignums(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

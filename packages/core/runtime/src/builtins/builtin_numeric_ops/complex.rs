@@ -1,4 +1,4 @@
-use super::{RuntimeError, Value, exact};
+use super::{RuntimeError, Value, exact, number_argument};
 
 pub fn complex(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
@@ -7,7 +7,7 @@ pub fn complex(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let (real, _) = components("complex", &arguments[0])?;
     let imag = arguments
         .get(1)
-        .map(|value| components("complex", value).map(|(_, imag)| imag))
+        .map(|value| components("complex", value).map(|(real, _)| real))
         .transpose()?
         .unwrap_or(Value::Integer(0));
     Ok(Value::complex(real, imag))
@@ -161,6 +161,24 @@ pub fn conjugate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
+pub fn phase(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "phase", 1)?;
+    let (real, imag) = match &arguments[0] {
+        Value::Complex(value) => (&value.real, &value.imag),
+        value if value.is_number() => (value, &Value::Integer(0)),
+        value => {
+            return Err(RuntimeError::Type {
+                expected: "NUMBER".to_owned(),
+                actual: value.type_name().to_owned(),
+                span: None,
+            });
+        }
+    };
+    Ok(Value::Float(
+        number_argument("phase", imag)?.as_float().atan2(number_argument("phase", real)?.as_float()),
+    ))
+}
+
 fn negate_real(value: &Value) -> Result<Value, RuntimeError> {
     super::negate_number(super::number_argument("conjugate", value)?)
         .and_then(super::number_to_value)
@@ -192,6 +210,15 @@ mod tests {
         let value = Value::complex(Value::Integer(2), Value::Integer(3));
 
         assert_eq!(conjugate(&[value]).unwrap().to_string(), "#C(2 -3)");
+    }
+
+    #[test]
+    fn phase_uses_the_complex_argument_quadrant() {
+        let result = phase(&[Value::complex(Value::Integer(-1), Value::Integer(1))]).unwrap();
+        let Value::Float(result) = result else {
+            panic!("phase did not return a float");
+        };
+        assert!((result - std::f64::consts::FRAC_PI_2 * 1.5).abs() < 1e-12);
     }
 
     #[test]

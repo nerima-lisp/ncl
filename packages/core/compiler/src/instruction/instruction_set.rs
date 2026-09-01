@@ -517,6 +517,12 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Apply a property-list operation."] PropertyList {
+        /// Name of the property-list operation to invoke.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Construct an array from evaluated arguments."] ArrayConstruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,

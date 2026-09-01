@@ -80,6 +80,20 @@ pub fn execute_list_append_instruction(
     stack.push(value); Ok(())
 }
 
+pub fn execute_property_list_instruction(
+    stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count { return Err(invalid("property-list operation has too few stack values", span)); }
+    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
+        .map(|value| value.primary_value()).collect::<Vec<_>>();
+    let value = match operation {
+        "GETF" => crate::builtins::getf(&arguments),
+        "GET-PROPERTIES" => crate::builtins::get_properties(&arguments),
+        _ => Err(invalid("unknown property-list operation", span)),
+    }?;
+    stack.push(value); Ok(())
+}
+
 pub fn execute_apply_instruction(
     runtime: &Runtime,
     argument_count: usize,

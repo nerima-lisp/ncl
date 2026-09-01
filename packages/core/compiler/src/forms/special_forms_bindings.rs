@@ -121,6 +121,8 @@ impl CompileState {
                 | "NCONC"
                 | "REVAPPEND"
                 | "NRECONC"
+                | "GETF"
+                | "GET-PROPERTIES"
                 | "MAKE-ARRAY"
                 | "COPY-SEQ"
                 | "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
@@ -273,6 +275,7 @@ impl CompileState {
             "APPEND" | "NCONC" | "REVAPPEND" | "NRECONC" | "ACONS" | "PAIRLIS" => {
                 self.compile_list_append(function, span, items, name)
             }
+            "GETF" | "GET-PROPERTIES" => self.compile_property_list(function, span, items, name),
             "MAKE-ARRAY" => self.compile_array_construction(function, span, items),
             "MAKE-LIST" => self.compile_list_construction_with_options(function, span, items),
             "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"

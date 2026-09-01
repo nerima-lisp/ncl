@@ -1336,10 +1336,30 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::ListAppend { operation: emitted, argument_count: count } if emitted == operation && *count == argument_count)
         }));
     }
+    for (operation, source, argument_count) in [
+        ("GETF", "(getf '(:a 1) :a)", 2),
+        ("GET-PROPERTIES", "(get-properties '(:a 1) '(:a))", 2),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::PropertyList { operation: emitted, argument_count: count } if emitted == operation && *count == argument_count)
+        }));
+    }
     let shadowed_append = compile("(flet ((append (first second) :shadowed)) (append '(1) '(2)))");
     assert!(!shadowed_append.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::ListAppend { .. })
     }));
+    for operation in ["GETF", "GET-PROPERTIES"] {
+        let source = if operation == "GETF" {
+            "(flet ((getf (plist indicator) :shadowed)) (getf nil :x))"
+        } else {
+            "(flet ((get-properties (plist indicators) :shadowed)) (get-properties nil nil))"
+        };
+        let program = compile(source);
+        assert!(!program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::PropertyList { .. })
+        }));
+    }
     let make_array = compile("(make-array 2 :initial-element 7)");
     assert!(make_array.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::ArrayConstruction { argument_count: 3 })

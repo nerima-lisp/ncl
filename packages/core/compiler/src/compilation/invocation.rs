@@ -996,6 +996,32 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_property_list(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        let valid_arity = match operation {
+            "GETF" => (3..=4).contains(&items.len()),
+            "GET-PROPERTIES" => items.len() == 3,
+            _ => false,
+        };
+        if !valid_arity {
+            let expected = if operation == "GETF" { "two or three" } else { "two" };
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(function, Instruction::PropertyList {
+            operation: operation.to_string(),
+            argument_count: items.len() - 1,
+        }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_element(
         &mut self,
         function: FunctionId,

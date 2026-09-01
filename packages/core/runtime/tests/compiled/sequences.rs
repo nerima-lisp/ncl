@@ -32,6 +32,12 @@ fn compiled_evaluates_list_access_operations() {
     assert_eq!(evaluate("(make-list 3 :initial-element 7)").to_string(), "(7 7 7)");
     assert_eq!(evaluate("(acons 'a 1 '((b . 2)))").to_string(), "((A . 1) (B . 2))");
     assert_eq!(evaluate("(pairlis '(a) '(1) '((b . 2)))").to_string(), "((A . 1) (B . 2))");
+    assert_eq!(evaluate("(getf '(:a 1) :a)").to_string(), "1");
+    assert_eq!(evaluate("(getf '(:a 1) :b 42)").to_string(), "42");
+    assert_eq!(
+        evaluate("(multiple-value-call #'list (get-properties '(:a 1 :b 2) '(:b)))").to_string(),
+        "(:B 2 (:B 2))"
+    );
     assert_eq!(
         evaluate("(multiple-value-call #'list (values-list '(1 2 3)))").to_string(),
         "(1 2 3)"

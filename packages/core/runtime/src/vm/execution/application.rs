@@ -26,6 +26,13 @@ pub use application_array::{
     execute_array_element_instruction, execute_array_metadata_instruction,
 };
 
+#[path = "application_array_ops.rs"]
+mod application_array_ops;
+pub use application_array_ops::{
+    execute_array_adjustment_instruction, execute_array_construction_instruction,
+    execute_vector_construction_instruction,
+};
+
 #[path = "application_object.rs"]
 mod application_object;
 pub use application_object::{
@@ -239,48 +246,6 @@ pub fn execute_list_set_instruction(
         environment,
         span,
     )?);
-    Ok(())
-}
-
-pub fn execute_vector_construction_instruction(
-    stack: &mut Vec<Value>,
-    argument_count: usize,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count {
-        return Err(invalid(
-            "vector construction has too few stack values",
-            span,
-        ));
-    }
-    let arguments = stack.split_off(stack.len() - argument_count);
-    stack.push(crate::builtins::vector(&arguments)?);
-    Ok(())
-}
-
-pub fn execute_array_construction_instruction(
-    stack: &mut Vec<Value>,
-    argument_count: usize,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count {
-        return Err(invalid("array construction has too few stack values", span));
-    }
-    let arguments = stack.split_off(stack.len() - argument_count);
-    stack.push(crate::builtins::make_array(&arguments)?);
-    Ok(())
-}
-
-pub fn execute_array_adjustment_instruction(
-    stack: &mut Vec<Value>,
-    argument_count: usize,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count {
-        return Err(invalid("array adjustment has too few stack values", span));
-    }
-    let arguments = stack.split_off(stack.len() - argument_count);
-    stack.push(crate::builtins::adjust_array(&arguments)?);
     Ok(())
 }
 

@@ -48,6 +48,7 @@ pub(super) const NUMERIC_BUILTINS: &[BuiltinDefinition] = &[
     ("logxor", logxor as _),
     ("lognot", lognot as _),
     ("logtest", logtest as _),
+    ("logbitp", logbitp as _),
     ("logcount", logcount as _),
     ("integer-length", integer_length as _),
     ("parse-integer", parse_integer as _),

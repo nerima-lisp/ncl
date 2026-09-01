@@ -1,4 +1,4 @@
-use super::{exact, number_from_big, number_to_value, RuntimeError, Value};
+use super::{RuntimeError, Value, exact, number_from_big, number_to_value};
 use crate::builtins::numbers::big_integer_argument;
 use ibig::ops::UnsignedAbs;
 
@@ -47,7 +47,7 @@ pub fn boole(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 "boole",
                 "an operation between 0 and 15",
                 &arguments[0],
-            ))
+            ));
         }
     };
     number_to_value(number_from_big(result))
@@ -80,6 +80,23 @@ pub fn logtest(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let left = big_integer_argument("logtest", &arguments[0])?;
     let right = big_integer_argument("logtest", &arguments[1])?;
     Ok(Value::boolean((left & right) != ibig::IBig::from(0)))
+}
+
+pub fn logbitp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "logbitp", 2)?;
+    let bit = big_integer_argument("logbitp", &arguments[0])?;
+    if bit < ibig::IBig::from(0) {
+        return Err(super::type_error(
+            "logbitp",
+            "a non-negative bit index",
+            &arguments[0],
+        ));
+    }
+    let bit = usize::try_from(bit).map_err(|_| RuntimeError::NumericOverflow)?;
+    let integer = big_integer_argument("logbitp", &arguments[1])?;
+    Ok(Value::boolean(
+        ((integer >> bit) & ibig::IBig::from(1)) != ibig::IBig::from(0),
+    ))
 }
 
 pub fn logcount(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -148,6 +165,19 @@ mod tests {
         assert!(lognot(&[]).is_err());
         assert!(logtest(&[Value::Integer(1)]).is_err());
         assert!(logand(&[Value::Nil]).is_err());
+        assert!(logbitp(&[Value::Integer(-1), Value::Integer(1)]).is_err());
+        assert!(logbitp(&[Value::Integer(0)]).is_err());
+    }
+
+    #[test]
+    fn logbitp_uses_twos_complement_bits_for_negative_integers() {
+        for (bit, integer, expected) in
+            [(0, 0, false), (2, 4, true), (0, -1, true), (100, -1, true)]
+        {
+            let actual = logbitp(&[Value::Integer(bit), Value::Integer(integer)])
+                .unwrap_or_else(|error| panic!("logbitp failed: {error}"));
+            assert_eq!(actual.to_string(), Value::boolean(expected).to_string());
+        }
     }
 
     #[test]

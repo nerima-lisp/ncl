@@ -319,7 +319,8 @@ impl CompileState {
                 self.compile_vector_operation(function, span, items, name)
             }
             "TERPRI" | "FRESH-LINE" | "WRITE-CHAR" | "WRITE-STRING" | "WRITE-LINE"
-            | "GET-OUTPUT-STREAM-STRING" => {
+            | "GET-OUTPUT-STREAM-STRING" | "READ-CHAR" | "READ-LINE" | "PEEK-CHAR"
+            | "UNREAD-CHAR" => {
                 self.compile_stream_operation(function, span, items, name)
             }
             "ATOM" | "CONSP" | "LISTP" | "NUMBERP" | "COMPLEXP" | "INTEGERP"

@@ -14,7 +14,7 @@ pub(crate) fn get_output_stream_string(arguments: &[Value]) -> Result<Value, Run
     Ok(Value::string(output))
 }
 
-pub(super) fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 4 {
         return Err(arity("read-char", "0 to 4", arguments.len()));
     }
@@ -32,7 +32,7 @@ pub(super) fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 5 {
         return Err(arity("peek-char", "0 to 5", arguments.len()));
     }
@@ -59,7 +59,7 @@ pub(super) fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("unread-char", "1 to 2", arguments.len()));
     }
@@ -81,7 +81,7 @@ pub(super) fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Nil)
 }
 
-pub(super) fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 4 {
         return Err(arity("read-line", "0 to 4", arguments.len()));
     }

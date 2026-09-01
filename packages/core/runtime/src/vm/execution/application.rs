@@ -1099,6 +1099,10 @@ pub fn execute_stream_operation_instruction(
         "WRITE-STRING" => crate::builtins::write_string(&arguments),
         "WRITE-LINE" => crate::builtins::write_line(&arguments),
         "GET-OUTPUT-STREAM-STRING" => crate::builtins::get_output_stream_string(&arguments),
+        "READ-CHAR" => crate::builtins::read_char(&arguments),
+        "READ-LINE" => crate::builtins::read_line(&arguments),
+        "PEEK-CHAR" => crate::builtins::peek_char(&arguments),
+        "UNREAD-CHAR" => crate::builtins::unread_char(&arguments),
         _ => Err(invalid("unknown stream operation", span)),
     }?;
     stack.push(result);

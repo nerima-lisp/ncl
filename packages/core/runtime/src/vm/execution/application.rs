@@ -494,6 +494,23 @@ pub fn execute_character_unary_instruction(
     Ok(())
 }
 
+pub fn execute_numeric_unary_instruction(
+    operation: &str,
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("unary numeric operation has too few stack values", span))?;
+    let result = match operation {
+        "1+" => crate::builtins::increment(&[value]),
+        "1-" => crate::builtins::decrement(&[value]),
+        _ => Err(invalid("unknown unary numeric operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_character_comparison_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

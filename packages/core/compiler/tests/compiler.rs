@@ -1129,6 +1129,12 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::TypePredicate { operation: emitted } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for operation in ["1+", "1-"] {
+        let program = compile(&format!("({operation} 2)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericUnary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
         let program = compile(&format!("({operation} '(1 2 3) 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

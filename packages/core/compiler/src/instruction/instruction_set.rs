@@ -432,6 +432,10 @@ pub enum Instruction {
         /// Type predicate name.
         operation: String,
     },
+    #[doc = "Apply a unary numeric operation."] NumericUnary {
+        /// Unary operation name.
+        operation: String,
+    },
     #[doc = "Apply a list tail operation with an optional count."] ListTail {
         /// List operation name.
         operation: String,

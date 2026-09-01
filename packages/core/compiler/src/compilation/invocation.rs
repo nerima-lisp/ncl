@@ -461,6 +461,19 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_numeric_unary(
+        &mut self,
+        function: usize,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        Self::require_arity(items, operation, "one", 1, span)?;
+        self.compile_expression(function, &items[1])?;
+        self.emit(function, Instruction::NumericUnary { operation: operation.to_string() }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_digit_predicate(
         &mut self,
         function: FunctionId,

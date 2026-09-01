@@ -1,10 +1,11 @@
-use crate::Value;
 use crate::builtins::types::predicates::{
-    characterp, endp, keywordp, simple_condition_format_arguments, simple_condition_format_control,
-    simple_vector_p, symbol_name_value, symbol_package_value, vectorp,
+    characterp, condition_message, endp, keywordp, simple_condition_format_arguments,
+    simple_condition_format_control, simple_vector_p, symbol_name_value, symbol_package_value,
+    vectorp,
 };
 use crate::builtins::types::special_form_support::{ecase_error, etypecase_error, the_check};
 use crate::builtins::types::type_designator::type_designator_name;
+use crate::Value;
 
 #[test]
 fn type_builtins_reject_wrong_arity_and_invalid_designators() {
@@ -42,4 +43,11 @@ fn condition_format_accessors_reject_invalid_values_and_arities() {
         assert!(accessor(&[Value::Nil, Value::Nil]).is_err());
         assert!(accessor(&[Value::Integer(1)]).is_err());
     }
+}
+
+#[test]
+fn condition_message_rejects_invalid_values_and_arities() {
+    assert!(condition_message(&[]).is_err());
+    assert!(condition_message(&[Value::Nil, Value::Nil]).is_err());
+    assert!(condition_message(&[Value::Integer(1)]).is_err());
 }

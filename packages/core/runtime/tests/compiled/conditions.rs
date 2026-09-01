@@ -15,6 +15,19 @@ fn compiled_propagates_unhandled_conditions_from_handler_scopes() {
 }
 
 #[test]
+fn compiled_returns_condition_message() {
+    let result = Runtime::new()
+        .eval_compiled_source(
+            "(condition-message (make-condition 'simple-condition :format-control \"value: ~A\" :format-arguments (list 7)))",
+        )
+        .expect("condition-message failed");
+    assert_eq!(
+        result.last().expect("no result").to_string(),
+        "\"value: 7\""
+    );
+}
+
+#[test]
 fn compiled_propagates_unmatched_control_transfers_from_scopes() {
     for source in [
         "(catch 'tag (throw 'other 9))",

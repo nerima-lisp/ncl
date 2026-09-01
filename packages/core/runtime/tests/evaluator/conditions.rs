@@ -54,6 +54,20 @@ fn rejects_malformed_condition_and_restart_forms() {
 }
 
 #[test]
+fn condition_message_returns_the_constructed_message() {
+    let result = Runtime::new()
+        .eval_source("(condition-message (make-condition 'simple-condition :format-control \"value: ~A\" :format-arguments (list 7)))")
+        .unwrap_or_else(|error| panic!("condition-message failed: {error}"));
+    assert_eq!(
+        result
+            .last()
+            .unwrap_or_else(|| panic!("no result"))
+            .to_string(),
+        "\"value: 7\""
+    );
+}
+
+#[test]
 fn rejects_malformed_character_operations_at_their_boundaries() {
     for source in support::MALFORMED_CHARACTER_FORMS {
         Runtime::eval_source(&Runtime::new(), source).must_fail();

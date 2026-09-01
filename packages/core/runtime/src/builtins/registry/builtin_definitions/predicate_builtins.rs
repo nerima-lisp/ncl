@@ -33,4 +33,5 @@ pub(super) const PREDICATE_BUILTINS: &[BuiltinDefinition] = &[
     ("identity", identity as _),
     ("type-of", type_of as _),
     ("typep", typep as _),
+    ("condition-message", condition_message as _),
 ];

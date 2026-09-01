@@ -1,8 +1,8 @@
 use ncl_runtime::Runtime;
 use rstest::rstest;
 
-use super::EvalFn;
 use super::support::evaluate_with;
+use super::EvalFn;
 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
@@ -122,6 +122,23 @@ fn evaluates_condition_format_arguments(#[case] eval_fn: EvalFn) {
         )
         .to_string(),
         "T"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_condition_message(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(condition-message
+                 (make-condition 'simple-condition
+                   :format-control "value: ~A"
+                   :format-arguments (list 7)))"#,
+        )
+        .to_string(),
+        "\"value: 7\""
     );
 }
 

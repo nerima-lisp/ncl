@@ -100,3 +100,11 @@ pub fn simple_condition_format_arguments(arguments: &[Value]) -> Result<Value, R
             )
         })
 }
+
+pub fn condition_message(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "condition-message", 1)?;
+    arguments[0]
+        .condition_message()
+        .map(|message| Value::string(message.to_owned()))
+        .ok_or_else(|| type_error("condition-message", "CONDITION", &arguments[0]))
+}

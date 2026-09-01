@@ -52,6 +52,9 @@ impl CompileState {
                 | "COPY-LIST"
                 | "COPY-ALIST"
                 | "ENDP"
+                | "LAST"
+                | "BUTLAST"
+                | "NBUTLAST"
         ) && self.has_local_function(name)
         {
             return None;

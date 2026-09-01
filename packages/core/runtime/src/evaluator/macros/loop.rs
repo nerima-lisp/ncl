@@ -3,11 +3,12 @@ use ncl_syntax::{Form, FormKind};
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
 use super::loop_aggregate::{append_step, count_step, sum_step};
-use super::loop_control::{clause_offset, named_loop_body_start};
 use super::loop_condition::expand_loop_condition;
+use super::loop_control::{clause_offset, named_loop_body_start};
 use super::loop_finalize::finalize;
 use super::loop_hash::{bind_hash_value_and_key, hash_iterator_name};
 use super::loop_on::expand_loop_for_on;
+use super::loop_repeat::expand_loop_repeat;
 use super::loop_with::expand_loop_with;
 
 impl Runtime {
@@ -43,82 +44,11 @@ impl Runtime {
             body = condition_body;
         } else if let Some(clause) = items.get(1).and_then(atom_name) {
             if names_equal(clause, "REPEAT") {
-                if items.len() < 3 {
-                    return Err(Self::invalid(
-                        "LOOP REPEAT clause requires a count",
-                        form.span,
-                    ));
-                }
-                let mut body_start = usize::from(
-                    items
-                        .get(3)
-                        .and_then(atom_name)
-                        .is_some_and(|name| names_equal(name, "DO")),
-                ) + 3;
-                if items
-                    .get(body_start)
-                    .and_then(atom_name)
-                    .is_some_and(|name| names_equal(name, "COLLECT"))
-                {
-                    if items.len() <= body_start + 1 {
-                        return Err(Self::invalid(
-                            "LOOP COLLECT clause requires a form",
-                            form.span,
-                        ));
-                    }
-                    collect_form = Some(items[body_start + 1].clone());
-                    body_start += 2;
-                }
-                let exhausted = Form::list(
-                    vec![
-                        Form::atom("WHEN", form.span),
-                        Form::list(
-                            vec![
-                                Form::atom("<=", form.span),
-                                count_name.clone(),
-                                Form::atom("0", form.span),
-                            ],
-                            form.span,
-                        ),
-                        Form::list(vec![Form::atom("RETURN", form.span)], form.span),
-                    ],
-                    form.span,
-                );
-                body = vec![exhausted];
-                if let Some(value) = collect_form.clone() {
-                    body.push(Form::list(
-                        vec![Form::atom("PUSH", form.span), value, collect_name.clone()],
-                        form.span,
-                    ));
-                }
-                body.extend(items[body_start..].iter().cloned());
-                if let Some(finally_offset) = body.iter().position(|item| {
-                    atom_name(item).is_some_and(|name| names_equal(name, "FINALLY"))
-                }) {
-                    let finally_items = body.split_off(finally_offset + 1);
-                    body.pop();
-                    if finally_items.is_empty() {
-                        return Err(Self::invalid(
-                            "LOOP FINALLY clause requires a form",
-                            form.span,
-                        ));
-                    }
-                    finally_form = Some(if finally_items.len() == 1 {
-                        finally_items[0].clone()
-                    } else {
-                        Form::list(
-                            std::iter::once(Form::atom("PROGN", form.span))
-                                .chain(finally_items)
-                                .collect(),
-                            form.span,
-                        )
-                    });
-                }
-                body.push(Form::list(
-                    vec![Form::atom("DECF", form.span), count_name.clone()],
-                    form.span,
-                ));
-                repeat_count = Some(items[2].clone());
+                let expansion = expand_loop_repeat(form, items, &count_name, &collect_name)?;
+                body = expansion.body;
+                repeat_count = Some(expansion.repeat_count);
+                collect_form = expansion.collect_form;
+                finally_form = expansion.finally_form;
             } else if names_equal(clause, "WITH") {
                 return expand_loop_with(form, items);
             } else if names_equal(clause, "COLLECT") {

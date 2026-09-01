@@ -207,6 +207,8 @@ impl CompileState {
             | "LOGEQV" | "LOGNAND" | "LOGNOR" | "LOGORC1" | "LOGORC2" => {
                 self.compile_numeric_binary(function, span, items, name)
             }
+            "LOGBITP" => self.compile_numeric_binary(function, span, items, name),
+            "BOOLE" => self.compile_numeric_boole(function, span, items),
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

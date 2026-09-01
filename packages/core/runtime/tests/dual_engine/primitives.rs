@@ -64,6 +64,16 @@ fn evaluates_binary_bitwise_operations(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_boole_and_logbitp(#[case] eval_fn: EvalFn) {
+    assert_eq!(
+        evaluate_with(eval_fn, "(list (boole 6 12 10) (boole 8 12 10) (logbitp 3 12) (logbitp 1 12))").to_string(),
+        "(8 6 T NIL)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_numeric_remainders(#[case] eval_fn: EvalFn) {
     assert_eq!(
         evaluate_with(eval_fn, "(list (mod -7 3) (rem -7 3))").to_string(),

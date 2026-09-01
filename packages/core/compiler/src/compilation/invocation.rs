@@ -525,6 +525,20 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_numeric_boole(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        Self::require_arity(items, "BOOLE", "three", 3, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(function, Instruction::NumericBoole, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_digit_predicate(
         &mut self,
         function: FunctionId,

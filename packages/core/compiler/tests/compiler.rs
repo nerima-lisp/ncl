@@ -1165,13 +1165,18 @@ fn emits_eval_and_mapcar_instructions() {
     }
     for operation in [
         "MOD", "REM", "ASH", "LOGTEST", "LOGANDC1", "LOGANDC2", "LOGEQV", "LOGNAND",
-        "LOGNOR", "LOGORC1", "LOGORC2",
+        "LOGNOR", "LOGORC1", "LOGORC2", "LOGBITP",
     ] {
         let program = compile(&format!("({operation} 12 5)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {
             matches!(instruction, Instruction::NumericBinary { operation: emitted } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    let boole = compile("(boole 6 12 10)");
+    assert!(boole.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::NumericBoole)));
     for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
         let program = compile(&format!("({operation} '(1 2 3) 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

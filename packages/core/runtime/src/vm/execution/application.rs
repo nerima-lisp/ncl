@@ -588,8 +588,21 @@ pub fn execute_numeric_binary_instruction(
         "LOGNOR" => crate::builtins::lognor(&[left, right]),
         "LOGORC1" => crate::builtins::logorc1(&[left, right]),
         "LOGORC2" => crate::builtins::logorc2(&[left, right]),
+        "LOGBITP" => crate::builtins::logbitp(&[left, right]),
         _ => Err(invalid("unknown numeric binary operation", span)),
     }?;
+    stack.push(result);
+    Ok(())
+}
+
+pub fn execute_numeric_boole_instruction(
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let right = stack.pop().ok_or_else(|| invalid("BOOLE has too few stack values", span))?;
+    let left = stack.pop().ok_or_else(|| invalid("BOOLE has too few stack values", span))?;
+    let operation = stack.pop().ok_or_else(|| invalid("BOOLE has too few stack values", span))?;
+    let result = crate::builtins::boole(&[operation, left, right])?;
     stack.push(result);
     Ok(())
 }

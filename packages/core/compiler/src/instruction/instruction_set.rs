@@ -452,6 +452,7 @@ pub enum Instruction {
         /// Numeric operation name.
         operation: String,
     },
+    #[doc = "Apply the three-argument BOOLE operation."] NumericBoole,
     #[doc = "Apply a list tail operation with an optional count."] ListTail {
         /// List operation name.
         operation: String,

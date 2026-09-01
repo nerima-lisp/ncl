@@ -440,6 +440,12 @@ pub enum Instruction {
         /// Unary operation name.
         operation: String,
     },
+    #[doc = "Round a number and return quotient and remainder."] NumericRounding {
+        /// Rounding operation name.
+        operation: String,
+        /// Number of arguments supplied to the operation.
+        argument_count: usize,
+    },
     #[doc = "Compare numeric arguments."] NumericComparison {
         /// Comparison operation name.
         operation: String,

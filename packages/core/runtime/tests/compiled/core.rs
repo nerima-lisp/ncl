@@ -38,6 +38,14 @@ fn compiled_evaluates_numeric_inequality() {
 }
 
 #[test]
+fn compiled_evaluates_numeric_rounding() {
+    assert_eq!(
+        evaluate("(list (multiple-value-list (floor 7 2)) (multiple-value-list (ceiling 7 2)) (multiple-value-list (truncate -7 2)) (multiple-value-list (round 7 2)))").to_string(),
+        "((3 1) (4 -1) (-3 -1) (4 -1))",
+    );
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

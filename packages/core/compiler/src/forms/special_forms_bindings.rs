@@ -278,6 +278,9 @@ impl CompileState {
             | "ODDP" | "LOGNOT" | "LOGCOUNT" | "INTEGER-LENGTH" => {
                 self.compile_numeric_unary(function, span, items, name)
             }
+            "FLOOR" | "CEILING" | "TRUNCATE" | "ROUND" => {
+                self.compile_numeric_rounding(function, span, items, name)
+            }
             "=" | "/=" | "<" | ">" | "<=" | ">=" => {
                 self.compile_numeric_comparison(function, span, items, name)
             }

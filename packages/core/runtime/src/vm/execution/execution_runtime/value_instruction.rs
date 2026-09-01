@@ -13,6 +13,7 @@ use crate::vm::execution::application::{
     execute_character_unary_instruction, execute_equality_instruction,
     execute_type_predicate_instruction,
     execute_numeric_unary_instruction,
+    execute_numeric_rounding_instruction,
     execute_numeric_comparison_instruction,
     execute_numeric_fold_instruction,
     execute_numeric_binary_instruction,
@@ -259,6 +260,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::NumericUnary { operation } => {
             execute_numeric_unary_instruction(operation, stack, span)?;
+        }
+        Instruction::NumericRounding { operation, argument_count } => {
+            execute_numeric_rounding_instruction(stack, operation, *argument_count, span)?;
         }
         Instruction::NumericComparison { operation, argument_count } => {
             execute_numeric_comparison_instruction(stack, operation, *argument_count, span)?;

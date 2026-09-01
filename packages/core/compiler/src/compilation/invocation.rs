@@ -436,6 +436,24 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_numeric_rounding(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        let argument_count = items.len() - 1;
+        if !(1..=2).contains(&argument_count) {
+            return Err(Self::arity_error(items, operation, "one or two", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(function, Instruction::NumericRounding { operation: operation.to_string(), argument_count }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_numeric_comparison(
         &mut self,
         function: FunctionId,

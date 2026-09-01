@@ -719,6 +719,28 @@ pub fn execute_numeric_unary_instruction(
     Ok(())
 }
 
+pub fn execute_numeric_rounding_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("numeric rounding has too few stack values", span));
+    }
+    let start = stack.len() - argument_count;
+    let arguments = stack.drain(start..).collect::<Vec<_>>();
+    let result = match operation {
+        "FLOOR" => crate::builtins::floor(&arguments),
+        "CEILING" => crate::builtins::ceiling(&arguments),
+        "TRUNCATE" => crate::builtins::truncate(&arguments),
+        "ROUND" => crate::builtins::round(&arguments),
+        _ => Err(invalid("unknown numeric rounding operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_numeric_comparison_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

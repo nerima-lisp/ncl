@@ -133,5 +133,17 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
         }
     }
-    if dimensions.len() == 1 { Ok(Value::vector(elements)) } else { Ok(Value::array(dimensions, elements)) }
+    if dimensions.len() == 1 {
+        if arguments[0].vector_adjustable() == Some(true) {
+            let fill_pointer = arguments[0].vector_fill_pointer().flatten();
+            if let Value::Vector(items) = &arguments[0] {
+                *items.borrow_mut() = elements;
+            }
+            arguments[0].set_vector_fill_pointer(fill_pointer.map(|value| value.min(total_size)));
+            return Ok(arguments[0].clone());
+        }
+        Ok(Value::vector(elements))
+    } else {
+        Ok(Value::array(dimensions, elements))
+    }
 }

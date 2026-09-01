@@ -1,8 +1,8 @@
 use ncl_runtime::Runtime;
 use rstest::rstest;
 
-use super::EvalFn;
 use super::support::evaluate_with;
+use super::EvalFn;
 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
@@ -62,6 +62,18 @@ fn evaluates_push_pop_and_psetf(#[case] eval_fn: EvalFn) {
         )
         .to_string(),
         "(2 1 2)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((a 0) (b 0))
+                   (list (psetf a (incf b) b (incf a)) a b))",
+        )
+        .to_string(),
+        "(1 1 1)"
+    );
+    assert_eq!(
+        evaluate("(let ((a nil)) (psetf a (values 7 8)))",).to_string(),
+        "7"
     );
 }
 

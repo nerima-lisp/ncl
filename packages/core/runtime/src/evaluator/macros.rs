@@ -7,6 +7,7 @@ mod loop_aggregate;
 mod loop_clause;
 mod loop_collect;
 mod loop_condition;
+mod loop_clause_condition;
 mod loop_control;
 mod loop_entry;
 mod loop_finalize;

@@ -4,6 +4,7 @@ use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, Ru
 
 use super::loop_aggregate::{append_step, count_step, sum_step};
 use super::loop_clause::parse_across_clause;
+use super::loop_clause_condition::parse_loop_clause_condition;
 use super::loop_collect::expand_loop_collect;
 use super::loop_condition::expand_loop_condition;
 use super::loop_control::named_loop_body_start;
@@ -79,30 +80,8 @@ impl Runtime {
                     {
                         body_start += 1;
                     }
-                    let clause_condition = if items
-                        .get(body_start)
-                        .and_then(atom_name)
-                        .is_some_and(|name| {
-                            names_equal(name, "WHEN") || names_equal(name, "UNLESS")
-                        })
-                    {
-                        if items.len() <= body_start + 1 {
-                            return Err(Self::invalid(
-                                "LOOP WHEN/UNLESS clause requires a test",
-                                form.span,
-                            ));
-                        }
-                        let clause_name = atom_name(&items[body_start]).unwrap();
-                        let test = items[body_start + 1].clone();
-                        body_start += 2;
-                        Some(if names_equal(clause_name, "WHEN") {
-                            test
-                        } else {
-                            Form::list(vec![Form::atom("NOT", form.span), test], form.span)
-                        })
-                    } else {
-                        None
-                    };
+                    let clause_condition =
+                        parse_loop_clause_condition(form, items, &mut body_start)?;
                     let mut loop_body = Vec::new();
                     if items
                         .get(body_start)

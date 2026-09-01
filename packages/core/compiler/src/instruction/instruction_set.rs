@@ -432,6 +432,10 @@ pub enum Instruction {
         /// Type predicate name.
         operation: String,
     },
+    #[doc = "Compare two values with a Common Lisp equality predicate."] Equality {
+        /// Equality predicate name.
+        operation: String,
+    },
     #[doc = "Apply a unary numeric operation."] NumericUnary {
         /// Unary operation name.
         operation: String,

@@ -10,7 +10,8 @@ use crate::vm::execution::application::{
     execute_class_introspection_instruction, execute_slot_operation_instruction, execute_condition_operation_instruction, execute_restart_operation_instruction, execute_method_operation_instruction, execute_evaluation_operation_instruction, execute_package_introspection_instruction, execute_package_listing_instruction, execute_package_mutation_instruction, execute_property_list_instruction, execute_symbol_binding_instruction, execute_symbol_creation_instruction, execute_symbol_function_instruction, execute_symbol_value_instruction,
     execute_hash_table_instruction,
     execute_list_binary_instruction, execute_list_tail_instruction, execute_list_unary_instruction,
-    execute_character_unary_instruction, execute_type_predicate_instruction,
+    execute_character_unary_instruction, execute_equality_instruction,
+    execute_type_predicate_instruction,
     execute_numeric_unary_instruction,
     execute_numeric_comparison_instruction,
     execute_numeric_fold_instruction,
@@ -252,6 +253,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::TypePredicate { operation } => {
             execute_type_predicate_instruction(operation, stack, span)?;
+        }
+        Instruction::Equality { operation } => {
+            execute_equality_instruction(operation, stack, span)?;
         }
         Instruction::NumericUnary { operation } => {
             execute_numeric_unary_instruction(operation, stack, span)?;

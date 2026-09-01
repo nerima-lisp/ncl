@@ -929,6 +929,24 @@ pub fn execute_type_predicate_instruction(
     Ok(())
 }
 
+pub fn execute_equality_instruction(
+    operation: &str,
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let right = stack.pop().ok_or_else(|| invalid("equality predicate has too few stack values", span))?;
+    let left = stack.pop().ok_or_else(|| invalid("equality predicate has too few stack values", span))?;
+    let result = match operation {
+        "EQ" => left.eq_value(&right),
+        "EQL" => crate::builtins::eql_value(&left, &right),
+        "EQUAL" => left.equal_value(&right),
+        "EQUALP" => crate::builtins::equalp_value(&left, &right),
+        _ => return Err(invalid("unknown equality predicate operation", span)),
+    };
+    stack.push(Value::boolean(result));
+    Ok(())
+}
+
 pub fn execute_list_tail_instruction(
     operation: &str,
     option_count: usize,

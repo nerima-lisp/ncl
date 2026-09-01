@@ -19,6 +19,20 @@ fn compiled_supports_uninterned_symbols_and_gensym() {
 }
 
 #[test]
+fn compiled_evaluates_equality_predicates() {
+    assert_eq!(
+        evaluate(
+            r#"(list (eq 1 1)
+                      (eql 1 1)
+                      (equal '(1 (2)) '(1 (2)))
+                      (equalp "Text" "text"))"#,
+        )
+        .to_string(),
+        "(T T T T)",
+    );
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

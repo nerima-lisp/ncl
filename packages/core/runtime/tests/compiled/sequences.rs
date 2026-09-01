@@ -543,3 +543,16 @@ fn compiled_evaluates_package_listing_operations() {
         "(NIL T)"
     );
 }
+
+#[test]
+fn compiled_evaluates_adjust_array() {
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array 2 :initial-contents '(1 2) :adjustable t)))\
+               (adjust-array array 3)\
+               (list (array-total-size array) (aref array 0) (aref array 1) (aref array 2)))",
+        )
+        .to_string(),
+        "(3 1 2 NIL)"
+    );
+}

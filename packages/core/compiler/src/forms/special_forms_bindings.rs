@@ -164,7 +164,7 @@ impl CompileState {
                 | "HASH-TABLE-TEST"
                 | "NCL-HASH-TABLE-KEYS"
                 | "NCL-HASH-TABLE-VALUES"
-                | "MAKE-ARRAY"
+                | "MAKE-ARRAY" | "ADJUST-ARRAY"
                 | "COPY-SEQ"
                 | "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
                 | "NSTRING-UPCASE" | "NSTRING-DOWNCASE" | "NSTRING-CAPITALIZE"
@@ -365,6 +365,7 @@ impl CompileState {
                 self.compile_hash_table(function, span, items, name)
             }
             "MAKE-ARRAY" => self.compile_array_construction(function, span, items),
+            "ADJUST-ARRAY" => self.compile_array_adjustment(function, span, items),
             "MAKE-LIST" => self.compile_list_construction_with_options(function, span, items),
             "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
             | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"

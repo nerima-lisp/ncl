@@ -41,4 +41,26 @@ impl CompileState {
         )?;
         Ok(())
     }
+
+    pub(crate) fn compile_array_adjustment(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 3 {
+            return Err(Self::arity_error(items, "ADJUST-ARRAY", "at least two", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::ArrayAdjustment {
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
+        Ok(())
+    }
 }

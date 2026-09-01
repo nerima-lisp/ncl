@@ -611,6 +611,10 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Adjust an array from evaluated arguments."] ArrayAdjustment {
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Construct a list with MAKE-LIST keyword options."] ListConstructionWithOptions {
         /// Number of arguments consumed from the stack.
         argument_count: usize,

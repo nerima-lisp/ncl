@@ -66,6 +66,12 @@ impl Runtime {
                 if names_equal(&resolved_name, "LOOP") {
                     return Self::expand_builtin_loop(form).map(Some);
                 }
+                if names_equal(&resolved_name, "DO-SYMBOLS") {
+                    return Self::expand_builtin_symbol_iteration(form, false).map(Some);
+                }
+                if names_equal(&resolved_name, "DO-EXTERNAL-SYMBOLS") {
+                    return Self::expand_builtin_symbol_iteration(form, true).map(Some);
+                }
                 if names_equal(&resolved_name, "LOOP-FINISH") {
                     return Ok(Some(Form::list(
                         vec![

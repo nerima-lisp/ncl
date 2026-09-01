@@ -20,6 +20,7 @@ mod loop_with;
 mod modify_macro;
 mod modify_macro_tests;
 mod pattern;
+mod symbol_iteration;
 mod with_open_file;
 mod with_slots;
 mod with_slots_tests;

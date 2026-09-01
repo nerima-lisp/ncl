@@ -79,6 +79,7 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "INTERN",
     "FIND-SYMBOL",
     "FIND-ALL-SYMBOLS",
+    "__NCL-PACKAGE-SYMBOLS",
     "FIND-PACKAGE",
     "MAKE-PACKAGE",
     "DELETE-PACKAGE",

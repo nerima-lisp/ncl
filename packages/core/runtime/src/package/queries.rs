@@ -157,4 +157,21 @@ impl PackageState {
         symbols.sort_by(|left, right| left.0.cmp(&right.0));
         symbols
     }
+
+    pub(crate) fn symbols_for(&self, name: &str, external_only: bool) -> Vec<String> {
+        let package = self.canonical_package_name(name);
+        let Some(entry) = self.packages.get(&package) else {
+            return Vec::new();
+        };
+        let mut symbols = entry
+            .symbols
+            .iter()
+            .filter(|symbol| {
+                !external_only || package == KEYWORD_PACKAGE || entry.exports.contains(*symbol)
+            })
+            .map(|symbol| canonical_symbol_name(&package, symbol))
+            .collect::<Vec<_>>();
+        symbols.sort();
+        symbols
+    }
 }

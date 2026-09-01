@@ -35,6 +35,25 @@ fn expands_basic_loop_iteration(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_package_symbol_iteration(#[case] eval_fn: EvalFn) {
+    let result = evaluate_with(
+        eval_fn,
+        r#"(progn
+             (defpackage :symbol-iteration-test (:use) (:export :EXTERNAL))
+             (intern "INTERNAL" :symbol-iteration-test)
+             (let ((internal nil) (external nil))
+               (do-symbols (symbol :symbol-iteration-test)
+                 (when (string= (symbol-name symbol) "INTERNAL") (setf internal t)))
+               (do-external-symbols (symbol :symbol-iteration-test)
+                 (when (string= (symbol-name symbol) "EXTERNAL") (setf external t)))
+               (list internal external)))"#,
+    );
+    assert_eq!(result.to_string(), "(T T)");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn expands_named_loop_and_loop_finish(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

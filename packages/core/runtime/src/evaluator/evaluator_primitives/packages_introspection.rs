@@ -17,11 +17,26 @@ impl Runtime {
                 | "PACKAGE-SHADOWING-SYMBOLS"
                 | "PACKAGE-USED-BY-LIST"
                 | "FIND-ALL-SYMBOLS"
+                | "__NCL-PACKAGE-SYMBOLS"
         ) {
             return None;
         }
         Some((|| -> Result<Value, RuntimeError> {
             match name {
+                "__NCL-PACKAGE-SYMBOLS" => {
+                    if arguments.len() != 2 {
+                        return Err(Self::arity("__ncl-package-symbols", "two", arguments.len()));
+                    }
+                    let package = Self::package_designator_name(&arguments[0], span)?;
+                    Ok(Value::list(
+                        self.packages
+                            .borrow()
+                            .symbols_for(&package, arguments[1].is_truthy())
+                            .into_iter()
+                            .map(Value::symbol)
+                            .collect(),
+                    ))
+                }
                 "FIND-ALL-SYMBOLS" => {
                     if arguments.len() != 1 {
                         return Err(Self::arity("find-all-symbols", "one", arguments.len()));

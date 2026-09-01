@@ -1299,7 +1299,7 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::ArrayMetadata { operation: emitted, .. } if emitted == operation)
         }), "native instruction incorrectly bypasses local function {operation}");
     }
-    for operation in ["ATOM", "CONSP", "LISTP", "NUMBERP", "STRINGP", "SYMBOLP", "VECTORP", "FUNCTIONP"] {
+    for operation in ["ATOM", "CONSP", "LISTP", "NUMBERP", "STRINGP", "SYMBOLP", "VECTORP", "FUNCTIONP", "OPEN-STREAM-P"] {
         let program = compile(&format!("(flet (({operation} (value) :shadowed)) ({operation} nil))"));
         assert!(!program.functions[0].instructions.iter().any(|instruction| {
             matches!(instruction, Instruction::TypePredicate { operation: emitted } if emitted == operation)

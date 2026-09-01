@@ -40,6 +40,24 @@ pub(super) fn execute_parallel_set_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::PsetfSymbols(names) => {
+            if stack.len() < names.len() {
+                return Err(invalid("psetf has fewer values than targets", span));
+            }
+            let values = stack.split_off(stack.len() - names.len());
+            let mut last = Value::Nil;
+            for ((name, escaped), value) in names.iter().zip(values) {
+                last = value.primary_value();
+                if *escaped {
+                    runtime.set_or_define_exact_in(name, last.clone(), environment, span)?;
+                } else {
+                    runtime.set_or_define_in(name, last.clone(), environment, span)?;
+                }
+            }
+            stack.push(last);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::MultipleValueSetq(names) => {
             let source = pop_value(stack, span, "multiple-value-setq")?;
             let values = source.multiple_values();

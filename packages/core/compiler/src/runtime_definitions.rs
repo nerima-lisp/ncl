@@ -231,6 +231,21 @@ impl CompileState {
                 span,
             ));
         }
+        if let Some(names) = items[1..]
+            .chunks_exact(2)
+            .map(|pair| {
+                matches!(pair[0].kind, FormKind::Atom(_))
+                    .then(|| Self::symbol_name_info(&pair[0], "PSETF place"))
+            })
+            .collect::<Option<Result<Vec<_>, _>>>()
+            .transpose()?
+        {
+            for pair in items[1..].chunks_exact(2) {
+                self.compile_expression(function, &pair[1])?;
+            }
+            self.emit(function, Instruction::PsetfSymbols(names), span)?;
+            return Ok(());
+        }
         self.emit(
             function,
             Instruction::Psetf(Form::list(items.to_vec(), span)),

@@ -43,6 +43,40 @@ fn psetq_exact_binds_escaped_and_normalized_names() {
 }
 
 #[test]
+fn psetf_symbols_assigns_after_values_and_returns_last_value() {
+    let runtime = Runtime::new();
+    let environment = Environment::new();
+    let span = Span::new(0, 1);
+    let mut program_counter = 3;
+    let mut stack = vec![Value::Integer(1), Value::Integer(2)];
+    let instruction = Instruction::PsetfSymbols(vec![
+        ("first".to_string(), false),
+        ("second".to_string(), false),
+    ]);
+
+    let result = execute_parallel_set_instruction(
+        &runtime,
+        &instruction,
+        &mut stack,
+        &environment,
+        &mut program_counter,
+        span,
+    );
+
+    assert!(matches!(result, Ok(true)));
+    assert_eq!(program_counter, 4);
+    assert!(matches!(stack.as_slice(), [Value::Integer(2)]));
+    assert!(matches!(
+        environment.lookup("first"),
+        Some(Value::Integer(1))
+    ));
+    assert!(matches!(
+        environment.lookup("second"),
+        Some(Value::Integer(2))
+    ));
+}
+
+#[test]
 fn multiple_value_setq_exact_binds_escaped_and_normalized_names_and_pushes_the_primary_value() {
     let runtime = Runtime::new();
     let environment = Environment::new();

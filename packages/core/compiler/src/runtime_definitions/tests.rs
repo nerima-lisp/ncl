@@ -210,7 +210,11 @@ fn compile_psetf_uses_native_instruction() {
 
     assert!(matches!(
         state.functions[function].instructions.as_slice(),
-        [Instruction::Psetf(_)]
+        [
+            Instruction::Constant(_),
+            Instruction::Constant(_),
+            Instruction::PsetfSymbols(_)
+        ]
     ));
 }
 

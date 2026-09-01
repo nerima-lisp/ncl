@@ -642,7 +642,7 @@ impl CompileState {
         &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
     ) -> Result<(), CompileError> {
         let valid = match operation {
-            "TERPRI" | "FRESH-LINE" => items.len() <= 2,
+            "TERPRI" | "FRESH-LINE" | "FORCE-OUTPUT" | "FINISH-OUTPUT" | "CLEAR-OUTPUT" => items.len() <= 2,
             "WRITE-CHAR" => (2..=3).contains(&items.len()),
             "WRITE-STRING" | "WRITE-LINE" | "WRITE-SEQUENCE" => items.len() >= 2,
             "READ-SEQUENCE" => items.len() >= 3,

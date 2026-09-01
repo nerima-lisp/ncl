@@ -93,6 +93,34 @@ pub(crate) fn fresh_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
+pub(crate) fn force_output(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() > 1 { return Err(arity("force-output", "0 to 1", arguments.len())); }
+    match arguments.first() {
+        None | Some(Value::Nil | Value::Boolean(true)) => Ok(Value::Nil),
+        Some(Value::Stream(stream)) => {
+            if stream.borrow().is_open() && stream.borrow().is_output() { Ok(Value::Nil) }
+            else { Err(stream_state_error("force-output", "an open output stream")) }
+        }
+        Some(value) => Err(type_error("force-output", "NIL, T, or an output stream", value)),
+    }
+}
+
+pub(crate) fn finish_output(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    force_output(arguments)
+}
+
+pub(crate) fn clear_output(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() > 1 { return Err(arity("clear-output", "0 to 1", arguments.len())); }
+    match arguments.first() {
+        None | Some(Value::Nil | Value::Boolean(true)) => Ok(Value::Nil),
+        Some(Value::Stream(stream)) => {
+            if stream.borrow_mut().clear_output() { Ok(Value::Nil) }
+            else { Err(stream_state_error("clear-output", "an open output stream")) }
+        }
+        Some(value) => Err(type_error("clear-output", "NIL, T, or an output stream", value)),
+    }
+}
+
 pub(crate) fn write_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("write-line", "at least 1", arguments.len()));

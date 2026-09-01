@@ -59,6 +59,18 @@ impl Stream {
         if self.write("\n") { Some(true) } else { None }
     }
 
+    pub(crate) fn clear_output(&mut self) -> bool {
+        if self.closed {
+            return false;
+        }
+        match &mut self.kind {
+            StreamKind::Output { buffer, .. } => buffer.clear(),
+            StreamKind::Io { .. } => {}
+            StreamKind::Input { .. } => return false,
+        }
+        true
+    }
+
     pub(crate) fn take_output(&mut self) -> Option<String> {
         let StreamKind::Output {
             buffer,

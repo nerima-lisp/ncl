@@ -818,4 +818,19 @@ fn compiled_reads_characters_into_a_vector_sequence() {
     assert_eq!(values.last().must_exist().to_string(), "(3 #(#\\_ #\\a #\\b))");
 }
 
+#[test]
+fn compiled_output_control_operations_manage_string_streams() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(let ((stream (make-string-output-stream)))
+                 (write-string "discarded" stream)
+                 (clear-output stream)
+                 (write-string "kept" stream)
+                 (list (force-output stream) (finish-output stream)
+                       (get-output-stream-string stream)))"#,
+        )
+        .must_exist();
+    assert_eq!(values.last().must_exist().to_string(), "(NIL NIL \"kept\")");
+}
+
 use super::*;

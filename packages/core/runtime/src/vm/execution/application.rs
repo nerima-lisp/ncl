@@ -1116,6 +1116,9 @@ pub fn execute_stream_operation_instruction(
     let result = match operation {
         "TERPRI" => crate::builtins::terpri(&arguments),
         "FRESH-LINE" => crate::builtins::fresh_line(&arguments),
+        "FORCE-OUTPUT" => crate::builtins::force_output(&arguments),
+        "FINISH-OUTPUT" => crate::builtins::finish_output(&arguments),
+        "CLEAR-OUTPUT" => crate::builtins::clear_output(&arguments),
         "WRITE-CHAR" => crate::builtins::write_char(&arguments),
         "WRITE-STRING" => crate::builtins::write_string(&arguments),
         "WRITE-LINE" => crate::builtins::write_line(&arguments),

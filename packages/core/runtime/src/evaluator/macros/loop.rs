@@ -3,10 +3,11 @@ use ncl_syntax::{Form, FormKind};
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
 use super::loop_aggregate::{append_step, count_step, sum_step};
+use super::loop_control::{clause_offset, named_loop_body_start};
+use super::loop_finalize::finalize;
 use super::loop_hash::{bind_hash_value_and_key, hash_iterator_name};
 use super::loop_on::expand_loop_for_on;
 use super::loop_with::expand_loop_with;
-use super::loop_control::{clause_offset, named_loop_body_start};
 
 impl Runtime {
     pub(super) fn expand_builtin_loop(form: &Form) -> Result<Form, RuntimeError> {
@@ -24,7 +25,11 @@ impl Runtime {
         }
         let (named_block, body_start) = named_loop_body_start(form, items)?;
         let mut body = items[body_start..].to_vec();
-        if body.first().and_then(atom_name).is_some_and(|name| names_equal(name, "DO")) {
+        if body
+            .first()
+            .and_then(atom_name)
+            .is_some_and(|name| names_equal(name, "DO"))
+        {
             body.remove(0);
         }
         let mut repeat_count = None;
@@ -227,10 +232,8 @@ impl Runtime {
                             ));
                         }
                         if names_equal(kind, "HASH-VALUES") {
-                            let internal_key = Form::atom(
-                                format!("NCL-HASH-KEY-{}", form.span.start),
-                                form.span,
-                            );
+                            let internal_key =
+                                Form::atom(format!("NCL-HASH-KEY-{}", form.span.start), form.span);
                             let mut rewritten = vec![
                                 items[0].clone(),
                                 Form::atom("FOR", form.span),
@@ -299,7 +302,8 @@ impl Runtime {
                                 form.span,
                             ));
                         }
-                        let binding = (items[body_start + 1].clone(), items[body_start + 2].clone());
+                        let binding =
+                            (items[body_start + 1].clone(), items[body_start + 2].clone());
                         body_start += 3;
                         Some(binding)
                     } else if items
@@ -435,10 +439,8 @@ impl Runtime {
                                     form.span,
                                 ));
                             }
-                            loop_condition = Some((
-                                condition_name.to_owned(),
-                                items[body_start + 1].clone(),
-                            ));
+                            loop_condition =
+                                Some((condition_name.to_owned(), items[body_start + 1].clone()));
                             body_start += 2;
                         }
                     }
@@ -513,7 +515,10 @@ impl Runtime {
                         let predicate = if names_equal(&condition_name, "THEREIS") {
                             condition.clone()
                         } else if names_equal(&condition_name, "ALWAYS") {
-                            Form::list(vec![Form::atom("NOT", form.span), condition.clone()], form.span)
+                            Form::list(
+                                vec![Form::atom("NOT", form.span), condition.clone()],
+                                form.span,
+                            )
                         } else {
                             condition.clone()
                         };
@@ -527,7 +532,11 @@ impl Runtime {
                                 Form::atom("WHEN", form.span),
                                 predicate,
                                 Form::list(
-                                    vec![Form::atom("RETURN-FROM", form.span), Form::atom("NIL", form.span), value],
+                                    vec![
+                                        Form::atom("RETURN-FROM", form.span),
+                                        Form::atom("NIL", form.span),
+                                        value,
+                                    ],
                                     form.span,
                                 ),
                             ],
@@ -962,7 +971,11 @@ impl Runtime {
                                 Form::atom("BLOCK", form.span),
                                 Form::atom("NIL", form.span),
                                 Form::list(
-                                    vec![Form::atom("PROGN", form.span), vector_loop, normal_result],
+                                    vec![
+                                        Form::atom("PROGN", form.span),
+                                        vector_loop,
+                                        normal_result,
+                                    ],
                                     form.span,
                                 ),
                             ],
@@ -1054,10 +1067,8 @@ impl Runtime {
                     let mut maximize = false;
                     let mut loop_condition = None;
                     let mut append_form = None;
-                    let condition_block = Form::atom(
-                        format!("NCL-LOOP-BLOCK-{}", form.span.start),
-                        form.span,
-                    );
+                    let condition_block =
+                        Form::atom(format!("NCL-LOOP-BLOCK-{}", form.span.start), form.span);
                     let count = if items
                         .get(body_start)
                         .and_then(atom_name)
@@ -1137,11 +1148,15 @@ impl Runtime {
                     {
                         body_start += 1;
                     }
-                    if items.get(body_start).and_then(atom_name).is_some_and(|name| {
-                        names_equal(name, "COLLECT")
-                            || names_equal(name, "APPEND")
-                            || names_equal(name, "NCONC")
-                    }) {
+                    if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| {
+                            names_equal(name, "COLLECT")
+                                || names_equal(name, "APPEND")
+                                || names_equal(name, "NCONC")
+                        })
+                    {
                         if items.len() <= body_start + 1 {
                             return Err(Self::invalid(
                                 "LOOP COLLECT clause requires a form",
@@ -1288,7 +1303,10 @@ impl Runtime {
                                             vec![
                                                 Form::atom("OR", form.span),
                                                 Form::list(
-                                                    vec![Form::atom("NULL", form.span), name.clone()],
+                                                    vec![
+                                                        Form::atom("NULL", form.span),
+                                                        name.clone(),
+                                                    ],
                                                     form.span,
                                                 ),
                                                 Form::list(
@@ -1451,10 +1469,8 @@ impl Runtime {
                 let mut extremum_name = None;
                 let mut maximize = false;
                 let mut loop_condition = None;
-                let condition_block = Form::atom(
-                    format!("NCL-LOOP-BLOCK-{}", form.span.start),
-                    form.span,
-                );
+                let condition_block =
+                    Form::atom(format!("NCL-LOOP-BLOCK-{}", form.span.start), form.span);
                 let mut body_start = 7;
                 let step_form = if items
                     .get(body_start)
@@ -1667,10 +1683,7 @@ impl Runtime {
                         (condition.clone(), condition)
                     } else if names_equal(&condition_name, "ALWAYS") {
                         (
-                            Form::list(
-                                vec![Form::atom("NOT", form.span), condition],
-                                form.span,
-                            ),
+                            Form::list(vec![Form::atom("NOT", form.span), condition], form.span),
                             Form::atom("NIL", form.span),
                         )
                     } else {
@@ -1775,75 +1788,15 @@ impl Runtime {
             }
         }
 
-        let tag = Form::atom(format!("#:NCL-LOOP-{}", form.span.start), form.span);
-        let mut tagbody = vec![Form::atom("TAGBODY", form.span), tag.clone()];
-        tagbody.extend(body);
-        tagbody.push(Form::list(
-            vec![Form::atom("GO", form.span), tag],
-            form.span,
-        ));
-
-        let block = Form::list(
-            vec![
-                Form::atom("BLOCK", form.span),
-                Form::atom("NIL", form.span),
-                Form::list(tagbody, form.span),
-            ],
-            form.span,
-        );
-        let block = if let Some(name) = named_block {
-            Form::list(
-                vec![Form::atom("BLOCK", form.span), name, block],
-                form.span,
-            )
-        } else {
-            block
-        };
-        if repeat_count.is_some() || collect_form.is_some() {
-            let mut bindings = Vec::new();
-            if let Some(count) = repeat_count {
-                bindings.push(Form::list(vec![count_name, count], form.span));
-            }
-            if collect_form.is_some() {
-                bindings.push(Form::list(
-                    vec![collect_name.clone(), Form::atom("NIL", form.span)],
-                    form.span,
-                ));
-            }
-            let result = if collect_form.is_some() {
-                Form::list(
-                    vec![Form::atom("NREVERSE", form.span), collect_name],
-                    form.span,
-                )
-            } else {
-                block.clone()
-            };
-            let block_result = if collect_form.is_some() {
-                Form::list(
-                    vec![Form::atom("PROGN", form.span), block, result],
-                    form.span,
-                )
-            } else {
-                result
-            };
-            let block_result = if let Some(finally) = finally_form {
-                Form::list(
-                    vec![Form::atom("PROGN", form.span), block_result, finally],
-                    form.span,
-                )
-            } else {
-                block_result
-            };
-            Ok(Form::list(
-                vec![
-                    Form::atom("LET", form.span),
-                    Form::list(bindings, form.span),
-                    block_result,
-                ],
-                form.span,
-            ))
-        } else {
-            Ok(block)
-        }
+        Ok(finalize(
+            form,
+            named_block,
+            body,
+            repeat_count,
+            collect_form,
+            finally_form,
+            count_name,
+            collect_name,
+        ))
     }
 }

@@ -70,6 +70,14 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Modify a dynamically indexed element of a list-valued symbol through NTH."] ModifyNthDynamic {
+        /// The arithmetic function.
+        arithmetic: String,
+        /// The symbol holding the list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Update a dynamically indexed vector or array-valued symbol through an array accessor."] SetfArefDynamic {
         /// The number of subscripts.
         rank: usize,

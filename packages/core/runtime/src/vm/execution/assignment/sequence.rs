@@ -102,6 +102,21 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::ModifyNthDynamic { arithmetic, name, escaped } => {
+            let delta = stack.pop().ok_or_else(|| invalid("modify nth has no delta", span))?.primary_value();
+            let current = stack.pop().ok_or_else(|| invalid("modify nth has no target", span))?.primary_value();
+            let index = stack.pop().ok_or_else(|| invalid("modify nth has no index", span))?.primary_value();
+            let index = crate::builtins::index_argument("modify nth", &index)?;
+            let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: current.type_name().to_string(), span: Some(span) })?;
+            let slot = elements.get(index).ok_or_else(|| crate::builtins::out_of_bounds("modify nth", index))?.clone();
+            let value = runtime.apply_in(&Value::symbol(arithmetic.clone()), &[slot, delta], span, environment)?.primary_value();
+            *elements.get_mut(index).ok_or_else(|| crate::builtins::out_of_bounds("modify nth", index))? = value.clone();
+            let updated = Value::list(elements);
+            if *escaped { runtime.set_or_define_exact_in(name, updated, environment, span)?; } else { runtime.set_or_define_in(name, updated, environment, span)?; }
+            stack.push(value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PopList { name, escaped } => {
             let current = stack
                 .pop()

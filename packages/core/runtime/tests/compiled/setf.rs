@@ -259,6 +259,14 @@ fn compiled_evaluates_modify_on_aref_places() {
 }
 
 #[test]
+fn compiled_evaluates_modify_on_dynamic_nth_places() {
+    assert_eq!(
+        evaluate("(let ((xs (list 4 8)) (index 1)) (list (incf (nth index xs) 3) xs (decf (nth 0 xs)) xs))").to_string(),
+        "(11 (4 11) 3 (3 11))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_single_place_rotatef() {
     assert_eq!(
         evaluate("(let ((x 7)) (list (rotatef x) x))").to_string(),

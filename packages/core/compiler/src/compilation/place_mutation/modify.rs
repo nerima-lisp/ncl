@@ -32,6 +32,20 @@ impl CompileState {
             self.emit(function, Instruction::ModifyArefDynamic { rank: place_items.len() - 2, arithmetic: arithmetic.to_string(), operator: accessor, name, escaped }, place.span)?;
             return Ok(());
         }
+        if let Some((index_form, target, name, escaped)) = modify_nth_place(place) {
+            if !(items.len() == 2 || items.len() == 3) {
+                return Err(Self::arity_error(items, operator, "one or two", span));
+            }
+            self.compile_expression(function, index_form)?;
+            self.compile_expression(function, target)?;
+            if let Some(delta) = items.get(2) {
+                self.compile_expression(function, delta)?;
+            } else {
+                self.emit(function, Instruction::Constant(Constant::Integer(1)), span)?;
+            }
+            self.emit(function, Instruction::ModifyNthDynamic { arithmetic: arithmetic.to_string(), name, escaped }, place.span)?;
+            return Ok(());
+        }
         if let Some((accessors, name, escaped)) = generalized_list_place(place) {
             if !(items.len() == 2 || items.len() == 3) {
                 return Err(Self::arity_error(items, operator, "one or two", span));
@@ -148,4 +162,11 @@ fn modify_aref_place(place: &Form) -> Option<(&[Form], String, String, bool)> {
     if !matches!(operator.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF") { return None; }
     let (name, escaped) = CompileState::symbol_name_info(&items[1], "modify aref target").ok()?;
     Some((items, operator, name, escaped))
+}
+
+fn modify_nth_place(place: &Form) -> Option<(&Form, &Form, String, bool)> {
+    let FormKind::List(items) = &place.kind else { return None };
+    if items.len() != 3 || CompileState::symbol_name_info(&items[0], "modify place operator").ok()?.0 != "NTH" { return None; }
+    let (name, escaped) = CompileState::symbol_name_info(&items[2], "modify nth target").ok()?;
+    Some((&items[1], &items[2], name, escaped))
 }

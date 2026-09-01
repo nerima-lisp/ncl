@@ -35,6 +35,33 @@ fn expands_basic_loop_iteration(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_named_loop_and_loop_finish(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(loop named done
+                 repeat 5
+                 do (when (= 3 3) (return-from done :finished)))"
+        )
+        .to_string(),
+        ":FINISHED"
+    );
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop repeat 5
+                       do (incf value)
+                          (when (= value 3) (loop-finish)))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn expands_loop_do_body(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

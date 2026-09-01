@@ -78,10 +78,9 @@ pub fn elt(arguments: &[Value]) -> Result<Value, RuntimeError> {
             .get(index)
             .cloned()
             .ok_or_else(|| out_of_bounds("elt", index)),
-        Value::Vector(items) => items
-            .borrow()
-            .get(index)
-            .cloned()
+        Value::Vector(_) => arguments[0]
+            .vector_sequence_items()
+            .and_then(|items| items.get(index).cloned())
             .ok_or_else(|| out_of_bounds("elt", index)),
         Value::String(value) => value
             .chars()

@@ -25,7 +25,9 @@ pub fn subseq(arguments: &[Value]) -> Result<Value, RuntimeError> {
     match &arguments[0] {
         Value::Nil => Ok(Value::Nil),
         Value::List(items) => Ok(Value::list(items[start..end].to_vec())),
-        Value::Vector(items) => Ok(Value::vector(items.borrow()[start..end].to_vec())),
+        Value::Vector(_) => Ok(Value::vector(
+            arguments[0].vector_sequence_items().unwrap()[start..end].to_vec(),
+        )),
         Value::String(value) => {
             let result = value
                 .chars()

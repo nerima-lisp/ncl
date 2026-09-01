@@ -22,6 +22,12 @@ impl Value {
         }
     }
 
+    pub(crate) fn vector_sequence_items(&self) -> Option<Vec<Self>> {
+        let Self::Vector(items) = self else { return None };
+        let end = self.vector_length().unwrap_or_else(|| items.borrow().len());
+        Some(items.borrow()[..end].to_vec())
+    }
+
     pub(crate) fn vector_fill_pointer(&self) -> Option<Option<usize>> {
         match self {
             Self::Vector(items) => Some(items.metadata.borrow().fill_pointer),
@@ -117,7 +123,7 @@ impl Value {
     /// Returns copied list or vector elements when this value is a sequence.
     #[must_use]
     pub fn sequence_items(&self) -> Option<Vec<Self>> {
-        self.list_items().or_else(|| self.vector_items())
+        self.list_items().or_else(|| self.vector_sequence_items())
     }
 
     pub(crate) fn hash_table_test(&self) -> Option<&str> {

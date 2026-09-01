@@ -31,6 +31,13 @@ pub fn equalp_value(left: &Value, right: &Value) -> bool {
         (Value::Character(left), Value::Character(right)) => left.eq_ignore_ascii_case(right),
         (Value::List(left), Value::List(right)) => left.len() == right.len()
             && left.iter().zip(right.iter()).all(|(l, r)| equalp_value(l, r)),
+        (Value::MutableCons(_), Value::List(_))
+        | (Value::List(_), Value::MutableCons(_))
+        | (Value::MutableCons(_), Value::MutableCons(_)) => match (left.list_items(), right.list_items()) {
+            (Some(left), Some(right)) => left.len() == right.len()
+                && left.iter().zip(right.iter()).all(|(l, r)| equalp_value(l, r)),
+            _ => false,
+        },
         (Value::Vector(left), Value::Vector(right)) => {
             let left = left.borrow();
             let right = right.borrow();

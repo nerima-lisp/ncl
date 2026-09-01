@@ -10,6 +10,15 @@ impl Value {
             (Self::String(left), Self::String(right)) => left == right,
             (Self::List(left), Self::List(right)) => left.len() == right.len()
                 && left.iter().zip(right.iter()).all(|(left, right)| left.equal_value(right)),
+            (Self::MutableCons(_), Self::List(_))
+            | (Self::List(_), Self::MutableCons(_))
+            | (Self::MutableCons(_), Self::MutableCons(_)) => {
+                match (self.list_items(), other.list_items()) {
+                    (Some(left), Some(right)) => left.len() == right.len()
+                        && left.iter().zip(right.iter()).all(|(left, right)| left.equal_value(right)),
+                    _ => false,
+                }
+            }
             (Self::Vector(left), Self::Vector(right)) => {
                 let left = left.borrow();
                 let right = right.borrow();

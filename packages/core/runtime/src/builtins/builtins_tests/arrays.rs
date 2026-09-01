@@ -152,6 +152,20 @@ fn vector_pop_decrements_fill_pointer() {
 }
 
 #[test]
+fn make_array_displaces_vector_storage() {
+    let target = Value::vector(vec![Value::Integer(1), Value::Integer(2), Value::Integer(3), Value::Integer(4)]);
+    let displaced = make_array(&[
+        Value::Integer(2),
+        Value::keyword("displaced-to"), target.clone(),
+        Value::keyword("displaced-index-offset"), Value::Integer(1),
+    ]).unwrap();
+    let items = displaced.vector_items().unwrap();
+    assert!(items[0].equal_value(&Value::Integer(2)) && items[1].equal_value(&Value::Integer(3)));
+    displaced.set_vector_item(0, Value::Integer(9));
+    assert!(target.vector_items().unwrap()[1].equal_value(&Value::Integer(9)));
+}
+
+#[test]
 fn array_coordinate_index_reports_overflow_in_stride_and_contribution() {
     let stride_overflow = array_coordinate_index(
         "test",

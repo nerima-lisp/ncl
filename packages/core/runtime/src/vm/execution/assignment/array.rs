@@ -72,18 +72,15 @@ fn execute_aref(
         .map(|index| crate::builtins::index_argument("setf array accessor", index))
         .collect::<Result<Vec<_>, _>>()?;
     let updated = match &current {
-        Value::Vector(items) => {
+        Value::Vector(_) => {
             if rank != 1 {
                 return Err(invalid("setf aref requires one vector index", span));
             }
-            let mut elements = items.borrow_mut();
-            let slot = elements
-                .get_mut(indices[0])
+            current.set_vector_item(indices[0], value.clone())
                 .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
-            *slot = value.clone();
             current.clone()
         }
-        Value::Array { dimensions, elements, .. } => {
+        Value::Array { dimensions, .. } => {
             if operator == "SVREF" {
                 return Err(RuntimeError::Type {
                     expected: "SIMPLE-VECTOR".to_string(),
@@ -105,10 +102,8 @@ fn execute_aref(
                     span,
                 )?
             };
-            *elements
-                .borrow_mut()
-                .get_mut(offset)
-                .ok_or_else(|| invalid("SETF index is out of bounds", span))? = value.clone();
+            current.set_array_item(offset, value.clone())
+                .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
             current.clone()
         }
         other => {

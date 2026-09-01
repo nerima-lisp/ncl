@@ -3,6 +3,22 @@ use std::cell::RefCell;
 use super::Value;
 
 impl Value {
+    pub(crate) fn array_storage(&self) -> Option<(std::rc::Rc<std::cell::RefCell<Vec<Self>>>, usize, usize)> {
+        match self {
+            Self::Vector(items) => {
+                let metadata = items.metadata.borrow();
+                let storage = metadata.displaced_to.as_ref().unwrap_or(&items.elements).clone();
+                Some((storage, metadata.displaced_index_offset, items.borrow().len()))
+            }
+            Self::Array { elements, metadata, .. } => {
+                let metadata = metadata.borrow();
+                let storage = metadata.displaced_to.as_ref().unwrap_or(elements).clone();
+                Some((storage, metadata.displaced_index_offset, elements.borrow().len()))
+            }
+            _ => None,
+        }
+    }
+
     /// Returns a copied proper-list payload when this value is a list.
     #[must_use]
     pub fn list_items(&self) -> Option<Vec<Self>> {
@@ -17,7 +33,13 @@ impl Value {
     #[must_use]
     pub fn vector_items(&self) -> Option<Vec<Self>> {
         match self {
-            Self::Vector(items) => Some(items.borrow().clone()),
+            Self::Vector(items) => {
+                let metadata = items.metadata.borrow();
+                let storage = metadata.displaced_to.as_ref().unwrap_or(&items.elements);
+                let start = metadata.displaced_index_offset;
+                let len = items.borrow().len();
+                Some(storage.borrow()[start..start + len].to_vec())
+            }
             _ => None,
         }
     }
@@ -82,7 +104,13 @@ impl Value {
     #[must_use]
     pub fn array_items(&self) -> Option<Vec<Self>> {
         match self {
-            Self::Array { elements, .. } => Some(elements.borrow().clone()),
+            Self::Array { elements, metadata, .. } => {
+                let metadata = metadata.borrow();
+                let storage = metadata.displaced_to.as_ref().unwrap_or(elements);
+                let start = metadata.displaced_index_offset;
+                let len = elements.borrow().len();
+                Some(storage.borrow()[start..start + len].to_vec())
+            }
             _ => None,
         }
     }
@@ -106,15 +134,21 @@ impl Value {
 
     pub(crate) fn set_vector_item(&self, index: usize, value: Self) -> Option<()> {
         match self {
-            Self::Vector(items) => items.borrow_mut().get_mut(index).map(|slot| *slot = value),
+            Self::Vector(items) => {
+                let metadata = items.metadata.borrow();
+                let storage = metadata.displaced_to.as_ref().unwrap_or(&items.elements);
+                storage.borrow_mut().get_mut(metadata.displaced_index_offset + index).map(|slot| *slot = value)
+            }
             _ => None,
         }
     }
 
     pub(crate) fn set_array_item(&self, index: usize, value: Self) -> Option<()> {
         match self {
-            Self::Array { elements, .. } => {
-                elements.borrow_mut().get_mut(index).map(|slot| *slot = value)
+            Self::Array { elements, metadata, .. } => {
+                let metadata = metadata.borrow();
+                let storage = metadata.displaced_to.as_ref().unwrap_or(elements);
+                storage.borrow_mut().get_mut(metadata.displaced_index_offset + index).map(|slot| *slot = value)
             }
             _ => None,
         }

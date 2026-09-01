@@ -26,13 +26,14 @@ pub fn aref(arguments: &[Value]) -> Result<Value, RuntimeError> {
 pub fn svref(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "svref", 2)?;
     let index = index_argument("svref", &arguments[1])?;
-    let Value::Vector(items) = &arguments[0] else {
+    if !matches!(&arguments[0], Value::Vector(_)) {
         return Err(type_error("svref", "simple-vector", &arguments[0]));
-    };
-    items
-        .borrow()
-        .get(index)
-        .cloned()
+    }
+    arguments[0]
+        .vector_items()
+        .unwrap()
+        .into_iter()
+        .nth(index)
         .ok_or_else(|| out_of_bounds("svref", index))
 }
 

@@ -109,10 +109,12 @@ impl Value {
     #[must_use]
     pub fn vector(values: Vec<Self>) -> Self {
         Self::Vector(Rc::new(super::VectorData {
-            elements: RefCell::new(values),
+            elements: Rc::new(RefCell::new(values)),
             metadata: RefCell::new(super::ArrayMetadata {
                 adjustable: false,
                 fill_pointer: None,
+                displaced_to: None,
+                displaced_index_offset: 0,
             }),
         }))
     }
@@ -126,6 +128,8 @@ impl Value {
             metadata: Rc::new(RefCell::new(super::ArrayMetadata {
                 adjustable: false,
                 fill_pointer: None,
+                displaced_to: None,
+                displaced_index_offset: 0,
             })),
         }
     }

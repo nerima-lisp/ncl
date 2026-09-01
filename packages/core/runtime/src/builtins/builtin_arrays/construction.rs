@@ -49,10 +49,7 @@ pub fn vector_pop(arguments: &[Value]) -> Result<Value, RuntimeError> {
         });
     }
     let index = pointer - 1;
-    let value = match vector {
-        Value::Vector(items) => items.borrow()[index].clone(),
-        _ => unreachable!("vector_fill_pointer_for validated vector"),
-    };
+    let value = vector.vector_items().expect("validated vector")[index].clone();
     vector.set_vector_fill_pointer(Some(index));
     Ok(value)
 }
@@ -99,6 +96,8 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut initial_contents = None;
     let mut adjustable = false;
     let mut fill_pointer = None;
+    let mut displaced_to = None;
+    let mut displaced_index_offset = 0;
     if !(arguments.len() - 1).is_multiple_of(2) {
         return Err(arity(
             "make-array",
@@ -131,6 +130,8 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
             "ADJUSTABLE" => adjustable = pair[1].is_truthy(),
             "FILL-POINTER" => fill_pointer = Some(index_argument("make-array", &pair[1])?),
+            "DISPLACED-TO" => displaced_to = Some(pair[1].clone()),
+            "DISPLACED-INDEX-OFFSET" => displaced_index_offset = index_argument("make-array", &pair[1])?,
             _ => {
                 return Err(RuntimeError::InvalidForm {
                     message: format!("make-array does not support keyword :{name}"),
@@ -146,6 +147,17 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             span: None,
         });
     }
+    if displaced_to.is_some() && (initial_element.is_some() || initial_contents.is_some()) {
+        return Err(crate::RuntimeError::InvalidForm { message: "make-array cannot combine displacement with initial contents".to_string(), span: None });
+    }
+    let displaced_storage = displaced_to.as_ref().and_then(Value::array_storage);
+    if displaced_to.is_some() && displaced_storage.is_none() {
+        return Err(crate::builtins::type_error("make-array", "array or vector", displaced_to.as_ref().unwrap()));
+    }
+    if let Some((_, _, target_len)) = displaced_storage.as_ref() {
+        let end = displaced_index_offset.checked_add(total_size).ok_or_else(|| crate::RuntimeError::InvalidForm { message: "make-array displacement overflow".to_string(), span: None })?;
+        if *target_len < end { return Err(crate::RuntimeError::InvalidForm { message: "make-array displacement exceeds target".to_string(), span: None }); }
+    }
     let elements = if let Some(contents) = initial_contents {
         let mut elements = Vec::with_capacity(total_size);
         flatten_array_contents("make-array", &contents, &dimensions, &mut elements)?;
@@ -154,7 +166,9 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
         vec![initial_element.unwrap_or(Value::Nil); total_size]
     };
     if dimensions.len() == 1 {
-        let vector = Value::vector(elements);
+        let vector = if let Some((storage, target_offset, _)) = displaced_storage {
+            Value::Vector(std::rc::Rc::new(crate::value::VectorData { elements: std::rc::Rc::new(std::cell::RefCell::new(elements)), metadata: std::cell::RefCell::new(crate::value::ArrayMetadata { adjustable, fill_pointer: None, displaced_to: Some(storage), displaced_index_offset: target_offset + displaced_index_offset }) }))
+        } else { Value::vector(elements) };
         vector.set_vector_adjustable(adjustable);
         if let Some(fill_pointer) = fill_pointer {
             if fill_pointer > total_size {

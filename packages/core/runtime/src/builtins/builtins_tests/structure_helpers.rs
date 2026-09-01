@@ -58,7 +58,9 @@ fn data_helpers_cover_successful_table_cases() -> Result<(), RuntimeError> {
                 elements: Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)])),
                 metadata: Rc::new(RefCell::new(crate::value::ArrayMetadata {
                     adjustable: false,
-                    fill_pointer: None,
+                fill_pointer: None,
+                displaced_to: None,
+                displaced_index_offset: 0,
                 })),
             },
             vec![1, 2],

@@ -56,10 +56,12 @@ mod value_stream_smoke_test;
 pub struct ArrayMetadata {
     pub adjustable: bool,
     pub fill_pointer: Option<usize>,
+    pub displaced_to: Option<Rc<RefCell<Vec<Value>>>>,
+    pub displaced_index_offset: usize,
 }
 
 pub struct VectorData {
-    pub elements: RefCell<Vec<Value>>,
+    pub elements: Rc<RefCell<Vec<Value>>>,
     pub metadata: RefCell<ArrayMetadata>,
 }
 

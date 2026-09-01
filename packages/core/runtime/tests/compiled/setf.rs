@@ -305,6 +305,14 @@ fn compiled_evaluates_nested_fixed_position_places() {
 }
 
 #[test]
+fn compiled_evaluates_nested_constant_nth_place() {
+    assert_eq!(
+        evaluate("(let ((xs (list (list 2 3)))) (setf (nth 1 (car xs)) 9) xs)").to_string(),
+        "((2 9))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_nested_pushnew_places() {
     assert_eq!(
         evaluate(

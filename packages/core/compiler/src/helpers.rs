@@ -12,4 +12,4 @@ mod eval_when;
 pub use eval_when::compile_eval_when_executes;
 
 mod list_places;
-pub(crate) use list_places::generalized_list_place;
+pub(crate) use list_places::{generalized_list_place, list_accessor_target};

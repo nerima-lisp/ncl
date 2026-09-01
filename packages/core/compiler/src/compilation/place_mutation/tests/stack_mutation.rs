@@ -46,12 +46,14 @@ fn compile_pushnew_uses_native_instruction_without_options() {
         .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
         .unwrap();
 
-    assert!(state.functions[function]
-        .instructions
-        .contains(&Instruction::PushNewList {
-            name: "XS".to_string(),
-            escaped: false,
-        }));
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::PushNewList {
+                name: "XS".to_string(),
+                escaped: false,
+            })
+    );
 }
 
 #[test]
@@ -122,10 +124,12 @@ fn compile_pushnew_uses_native_gethash_instruction() {
         .compile_runtime_definition(function, Span::new(0, 1), &items)
         .unwrap();
 
-    assert!(state.functions[function]
-        .instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::PushNewGethash)));
+    assert!(
+        state.functions[function]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::PushNewGethash))
+    );
 }
 
 #[test]
@@ -138,14 +142,16 @@ fn compile_pushnew_with_a_generalized_place_uses_native_instruction_without_opti
         .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
         .unwrap();
 
-    assert!(state.functions[function]
-        .instructions
-        .iter()
-        .any(|instruction| matches!(
-            instruction,
-            Instruction::ListPlaceMutation { operator, accessor, name, .. }
-                if operator == "PUSHNEW" && accessor == "CAR" && name == "XS"
-        )));
+    assert!(
+        state.functions[function]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(
+                instruction,
+                Instruction::ListPlaceMutation { operator, accessor, name, .. }
+                    if operator == "PUSHNEW" && accessor == "CAR" && name == "XS"
+            ))
+    );
 }
 
 #[test]
@@ -158,14 +164,16 @@ fn compile_pushnew_with_options_and_a_generalized_place_uses_native_instruction(
         .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
         .unwrap();
 
-    assert!(state.functions[function]
-        .instructions
-        .iter()
-        .any(|instruction| matches!(
-            instruction,
-            Instruction::ListPlacePushNewOptions { accessor, name, test_not, has_key, .. }
-                if accessor == "CAR" && name == "XS" && !test_not && !has_key
-        )));
+    assert!(
+        state.functions[function]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(
+                instruction,
+                Instruction::ListPlacePushNewOptions { accessor, name, test_not, has_key, .. }
+                    if accessor == "CAR" && name == "XS" && !test_not && !has_key
+            ))
+    );
 }
 
 #[test]
@@ -178,17 +186,19 @@ fn compile_pushnew_gethash_options_uses_native_instruction() {
         .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
         .unwrap();
 
-    assert!(state.functions[function]
-        .instructions
-        .iter()
-        .any(|instruction| matches!(
-            instruction,
-            Instruction::PushNewGethashOptions {
-                test_not: false,
-                has_key: false,
-                key_before_test: false,
-            }
-        )));
+    assert!(
+        state.functions[function]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(
+                instruction,
+                Instruction::PushNewGethashOptions {
+                    test_not: false,
+                    has_key: false,
+                    key_before_test: false,
+                }
+            ))
+    );
 }
 
 #[test]
@@ -233,6 +243,25 @@ fn compile_modify_uses_native_nested_list_instruction() {
         instruction,
         Instruction::SetfNestedList { accessors, name, escaped }
             if accessors == &["CAR".to_string(), "CAR".to_string()]
+                && name == "XS"
+                && !escaped
+    )));
+}
+
+#[test]
+fn compile_modify_normalizes_constant_nth_in_nested_list_place() {
+    let form = read("(incf (nth 1 (car xs)) 2)")
+        .unwrap_or_else(|error| panic!("test source should parse: {error}"))
+        .remove(0);
+
+    let program = Compiler::compile_form(&form)
+        .unwrap_or_else(|error| panic!("nested NTH should compile: {error}"));
+    let instructions = &program.functions[program.entry].instructions;
+
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::SetfNestedList { accessors, name, escaped }
+            if accessors == &["CAR".to_string(), "SECOND".to_string()]
                 && name == "XS"
                 && !escaped
     )));

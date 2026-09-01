@@ -10,35 +10,9 @@ impl CompileState {
     ) -> Result<(), CompileError> {
         let mut accessors = Vec::new();
         let mut target = place;
-        while let FormKind::List(items) = &target.kind {
-            if items.len() != 2 {
-                break;
-            }
-            let operator = Self::symbol_name_info(&items[0], "setf place operator")
-                .ok()
-                .map(|(name, _)| name);
-            if !matches!(
-                operator.as_deref(),
-                Some(
-                    "CAR"
-                        | "FIRST"
-                        | "CDR"
-                        | "REST"
-                        | "SECOND"
-                        | "THIRD"
-                        | "FOURTH"
-                        | "FIFTH"
-                        | "SIXTH"
-                        | "SEVENTH"
-                        | "EIGHTH"
-                        | "NINTH"
-                        | "TENTH"
-                )
-            ) {
-                break;
-            }
-            accessors.push(operator.expect("matched list accessor"));
-            target = &items[1];
+        while let Some((accessor, next_target)) = crate::helpers::list_accessor_target(target) {
+            accessors.push(accessor);
+            target = next_target;
         }
         if accessors.len() >= 2 {
             if let Ok((name, escaped)) = Self::symbol_name_info(target, "setf list target") {

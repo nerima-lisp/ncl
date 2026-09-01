@@ -481,3 +481,11 @@ fn compiled_evaluates_hash_table_access() {
     assert_eq!(evaluate("(let ((table (make-hash-table :test #'equal))) (setf (gethash \"a\" table) 7) (list (hash-table-count table) (hash-table-test table) (ncl-hash-table-keys table) (ncl-hash-table-values table)))").to_string(), "(1 EQUAL (\"a\") (7))");
     assert_eq!(evaluate("(let ((table (make-hash-table))) (setf (gethash :a table) 7) (clrhash table) (hash-table-count table))").to_string(), "0");
 }
+
+#[test]
+fn compiled_evaluates_symbol_property_access() {
+    assert_eq!(
+        evaluate("(let ((symbol 'item)) (putprop symbol 7 :value) (list (get symbol :value) (symbol-plist symbol) (remprop symbol :value) (get symbol :value 42)))").to_string(),
+        "(7 (:VALUE 7) T 42)"
+    );
+}

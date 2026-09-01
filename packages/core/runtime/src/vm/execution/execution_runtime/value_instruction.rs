@@ -316,7 +316,7 @@ pub(super) fn execute_value_instruction(
             execute_list_append_instruction(stack, operation, *argument_count, span)?;
         }
         Instruction::PropertyList { operation, argument_count } => {
-            execute_property_list_instruction(stack, operation, *argument_count, span)?;
+            execute_property_list_instruction(runtime, stack, environment, operation, *argument_count, span)?;
         }
         Instruction::HashTable { operation, argument_count } => {
             execute_hash_table_instruction(stack, operation, *argument_count, span)?;

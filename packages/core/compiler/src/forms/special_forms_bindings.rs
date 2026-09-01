@@ -123,6 +123,10 @@ impl CompileState {
                 | "NRECONC"
                 | "GETF"
                 | "GET-PROPERTIES"
+                | "GET"
+                | "PUTPROP"
+                | "REMPROP"
+                | "SYMBOL-PLIST"
                 | "GETHASH"
                 | "REMHASH"
                 | "MAKE-HASH-TABLE"
@@ -283,7 +287,9 @@ impl CompileState {
             "APPEND" | "NCONC" | "REVAPPEND" | "NRECONC" | "ACONS" | "PAIRLIS" => {
                 self.compile_list_append(function, span, items, name)
             }
-            "GETF" | "GET-PROPERTIES" => self.compile_property_list(function, span, items, name),
+            "GETF" | "GET-PROPERTIES" | "GET" | "PUTPROP" | "REMPROP" | "SYMBOL-PLIST" => {
+                self.compile_property_list(function, span, items, name)
+            }
             "GETHASH" | "REMHASH" | "MAKE-HASH-TABLE" | "CLRHASH" | "HASH-TABLE-COUNT"
             | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS" | "NCL-HASH-TABLE-VALUES" => {
                 self.compile_hash_table(function, span, items, name)

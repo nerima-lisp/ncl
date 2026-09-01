@@ -1006,10 +1006,18 @@ impl CompileState {
         let valid_arity = match operation {
             "GETF" => (3..=4).contains(&items.len()),
             "GET-PROPERTIES" => items.len() == 3,
+            "GET" => (3..=4).contains(&items.len()),
+            "PUTPROP" => items.len() == 4,
+            "REMPROP" => items.len() == 3,
+            "SYMBOL-PLIST" => items.len() == 2,
             _ => false,
         };
         if !valid_arity {
-            let expected = if operation == "GETF" { "two or three" } else { "two" };
+            let expected = match operation {
+                "GETF" | "GET" => "two or three",
+                "PUTPROP" => "three",
+                _ => "two",
+            };
             return Err(Self::arity_error(items, operation, expected, span));
         }
         for item in &items[1..] {

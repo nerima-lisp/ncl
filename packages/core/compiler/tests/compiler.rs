@@ -1222,6 +1222,10 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::NumericFloat { operation: emitted, argument_count: 2 } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    let parse_integer = compile("(parse-integer \"ff\" :radix 16)");
+    assert!(parse_integer.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::IntegerOperation { operation, argument_count: 3 } if operation == "PARSE-INTEGER")
+    }));
     for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
         let program = compile(&format!("({operation} '(1 2 3) 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

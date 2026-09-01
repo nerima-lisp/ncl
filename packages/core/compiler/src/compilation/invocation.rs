@@ -665,6 +665,17 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_integer_operation(
+        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() < 2 || !(items.len() - 2).is_multiple_of(2) {
+            return Err(Self::arity_error(items, operation, "a string and keyword/value pairs", span));
+        }
+        for item in &items[1..] { self.compile_expression(function, item)?; }
+        self.emit(function, Instruction::IntegerOperation { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_tree_equal(
         &mut self,
         function: FunctionId,

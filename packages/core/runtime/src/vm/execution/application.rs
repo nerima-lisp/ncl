@@ -1140,6 +1140,19 @@ pub fn execute_stream_operation_instruction(
     Ok(())
 }
 
+pub fn execute_integer_operation_instruction(
+    operation: &str, argument_count: usize, stack: &mut Vec<Value>, span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count { return Err(invalid("integer operation has too few stack values", span)); }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    let result = match operation {
+        "PARSE-INTEGER" => crate::builtins::parse_integer(&arguments),
+        _ => Err(invalid("unknown integer operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_tree_equal_instruction(
     runtime: &Runtime,
     option_count: usize,

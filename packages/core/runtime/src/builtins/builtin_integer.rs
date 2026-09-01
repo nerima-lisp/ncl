@@ -7,7 +7,7 @@ mod parser;
 use options::ParseIntegerOptions;
 use parser::parse_integer_value;
 
-pub(super) fn parse_integer(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn parse_integer(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() || !(arguments.len() - 1).is_multiple_of(2) {
         return Err(arity(
             "parse-integer",

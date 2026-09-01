@@ -7,7 +7,7 @@ use crate::{Environment, Rational, RuntimeError, Value};
 mod file_tests;
 
 mod builtin_integer;
-use builtin_integer::parse_integer;
+pub(crate) use builtin_integer::parse_integer;
 
 mod builtin_characters;
 pub use builtin_characters::{

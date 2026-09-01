@@ -487,6 +487,12 @@ pub enum Instruction {
         /// Number of arguments supplied to the operation.
         argument_count: usize,
     },
+    #[doc = "Apply an integer parsing operation."] IntegerOperation {
+        /// Integer operation name.
+        operation: String,
+        /// Number of arguments supplied to the operation.
+        argument_count: usize,
+    },
     #[doc = "Apply a list tail operation with an optional count."] ListTail {
         /// List operation name.
         operation: String,

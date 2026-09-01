@@ -149,6 +149,7 @@ impl CompileState {
                 | "MAKE-SYMBOL" | "GENSYM" | "INTERN" | "FIND-SYMBOL"
                 | "SUBTYPEP" | "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME"
                 | "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND"
+                | "ERROR" | "SIGNAL" | "WARN" | "CERROR" | "MAKE-CONDITION"
                 | "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT"
                 | "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN"
                 | "GETHASH"
@@ -219,6 +220,9 @@ impl CompileState {
             }
             "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND" => {
                 self.compile_slot_operation(function, span, items, name)
+            }
+            "ERROR" | "SIGNAL" | "WARN" | "CERROR" | "MAKE-CONDITION" => {
+                self.compile_condition_operation(function, span, items, name)
             }
             "REDUCE" => self.compile_sequence_reduce(function, span, items),
             "MERGE" => self.compile_sequence_merge(function, span, items),

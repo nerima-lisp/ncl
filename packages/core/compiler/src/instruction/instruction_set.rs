@@ -559,6 +559,12 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Apply a condition-system operation."] ConditionOperation {
+        /// Name of the condition operation to invoke.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Apply a package introspection operation."] PackageIntrospection {
         /// Name of the package introspection operation to invoke.
         operation: String,

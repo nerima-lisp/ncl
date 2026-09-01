@@ -32,7 +32,7 @@ impl Runtime {
         }
         let found_index = (0..properties.len())
             .step_by(2)
-            .find(|&index| properties[index].eq_value(&indicator));
+            .find(|&index| crate::builtins::eql_value(&properties[index], &indicator));
         let found = found_index.is_some();
         if let Some(index) = found_index {
             properties.drain(index..=index + 1);

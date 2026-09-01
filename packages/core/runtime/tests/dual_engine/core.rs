@@ -79,6 +79,21 @@ fn proclaim_special_accepts_quoted_proclamation(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn remf_matches_property_indicators_with_eql(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((plist (list 100000000000000000000 7)))
+               (list (multiple-value-list (remf plist 100000000000000000000)) plist))",
+        )
+        .to_string(),
+        "((NIL T) NIL)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn proclaim_special_is_compiled_as_a_declaration(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

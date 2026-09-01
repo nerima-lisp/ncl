@@ -314,6 +314,21 @@ fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
         "(1 2 3)"
     );
     assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) repeat 3 thereis (= value 2))")
+            .to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) while (< value 4) always (< value 4))")
+            .to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) until (> value 3) never (= value 4))")
+            .to_string(),
+        "T"
+    );
+    assert_eq!(
         evaluate(r"(loop for tail on (list 1 2 3) collect (car tail))").to_string(),
         "(1 2 3)"
     );

@@ -505,6 +505,13 @@ pub fn execute_numeric_unary_instruction(
     let result = match operation {
         "1+" => crate::builtins::increment(&[value]),
         "1-" => crate::builtins::decrement(&[value]),
+        "ABS" => crate::builtins::absolute(&[value]),
+        "SIGNUM" => crate::builtins::signum(&[value]),
+        "ZEROP" => crate::builtins::zerop(&[value]),
+        "PLUSP" => crate::builtins::plusp(&[value]),
+        "MINUSP" => crate::builtins::minusp(&[value]),
+        "EVENP" => crate::builtins::evenp(&[value]),
+        "ODDP" => crate::builtins::oddp(&[value]),
         _ => Err(invalid("unknown unary numeric operation", span)),
     }?;
     stack.push(result);

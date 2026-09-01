@@ -8,7 +8,7 @@ use super::EvalFn;
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_unary_numeric_operations(#[case] eval_fn: EvalFn) {
-    assert_eq!(evaluate_with(eval_fn, "(list (1+ 2) (1- 2) (1+ 2.5) (1- 2.5))").to_string(), "(3 1 3.5 1.5)");
+    assert_eq!(evaluate_with(eval_fn, "(list (1+ 2) (1- 2) (abs -2) (signum -2) (zerop 0) (plusp 2) (minusp -2) (evenp 4) (oddp 3))").to_string(), "(3 1 2 -1 T T T T T)");
 }
 
 #[rstest]

@@ -193,7 +193,8 @@ impl CompileState {
             | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR" => {
                 self.compile_character_unary(function, span, items, name)
             }
-            "1+" | "1-" => self.compile_numeric_unary(function, span, items, name),
+            "1+" | "1-" | "ABS" | "SIGNUM" | "ZEROP" | "PLUSP" | "MINUSP" | "EVENP"
+            | "ODDP" => self.compile_numeric_unary(function, span, items, name),
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

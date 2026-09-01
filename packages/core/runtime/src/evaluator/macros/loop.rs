@@ -248,6 +248,8 @@ impl Runtime {
                     ));
                 }
                 let variable = items[2].clone();
+                let mut sum_form = None;
+                let mut sum_name = None;
                 let mut body_start = 7;
                 let step_form = if items
                     .get(body_start)
@@ -297,6 +299,35 @@ impl Runtime {
                     collect_form = Some(items[body_start + 1].clone());
                     body_start += 2;
                 }
+                if items
+                    .get(body_start)
+                    .and_then(atom_name)
+                    .is_some_and(|name| names_equal(name, "SUM"))
+                {
+                    if items.len() <= body_start + 1 {
+                        return Err(Self::invalid("LOOP SUM clause requires a form", form.span));
+                    }
+                    sum_form = Some(items[body_start + 1].clone());
+                    sum_name = Some(
+                        if items
+                            .get(body_start + 2)
+                            .and_then(atom_name)
+                            .is_some_and(|name| names_equal(name, "INTO"))
+                        {
+                            if items.len() <= body_start + 3 {
+                                return Err(Self::invalid(
+                                    "LOOP SUM INTO requires a variable",
+                                    form.span,
+                                ));
+                            }
+                            body_start += 4;
+                            items[body_start - 1].clone()
+                        } else {
+                            body_start += 2;
+                            Form::atom(format!("NCL-LOOP-SUM-{}", form.span.start), form.span)
+                        },
+                    );
+                }
                 let termination_operator = match (descending, inclusive) {
                     (false, true) => ">",
                     (false, false) => ">=",
@@ -336,20 +367,45 @@ impl Runtime {
                         form.span,
                     ));
                 }
+                if let (Some(value), Some(name)) = (sum_form, sum_name.clone()) {
+                    do_items.push(Form::list(
+                        vec![Form::atom("INCF", form.span), name, value],
+                        form.span,
+                    ));
+                }
                 do_items.extend(items[body_start..].iter().cloned());
                 let do_form = Form::list(do_items, form.span);
-                if collect_form.is_some() {
+                if collect_form.is_some() || sum_name.is_some() {
+                    let mut bindings = vec![];
+                    if collect_form.is_some() {
+                        bindings.push(Form::list(
+                            vec![collect_name.clone(), Form::atom("NIL", form.span)],
+                            form.span,
+                        ));
+                    }
+                    if let Some(name) = sum_name.clone() {
+                        bindings.push(Form::list(
+                            vec![name.clone(), Form::atom("0", form.span)],
+                            form.span,
+                        ));
+                    }
+                    let result = if collect_form.is_some() {
+                        Form::list(
+                            vec![Form::atom("NREVERSE", form.span), collect_name],
+                            form.span,
+                        )
+                    } else {
+                        sum_name.expect("SUM name is present")
+                    };
+                    let body_result = Form::list(
+                        vec![Form::atom("PROGN", form.span), do_form, result],
+                        form.span,
+                    );
                     return Ok(Form::list(
                         vec![
                             Form::atom("LET", form.span),
-                            Form::list(
-                                vec![Form::list(
-                                    vec![collect_name, Form::atom("NIL", form.span)],
-                                    form.span,
-                                )],
-                                form.span,
-                            ),
-                            do_form,
+                            Form::list(bindings, form.span),
+                            body_result,
                         ],
                         form.span,
                     ));

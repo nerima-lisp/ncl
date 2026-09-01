@@ -500,6 +500,7 @@ pub fn execute_list_binary_instruction(
     let list = stack.pop().ok_or_else(|| invalid("binary list operation has too few stack values", span))?;
     let index = stack.pop().ok_or_else(|| invalid("binary list operation has too few stack values", span))?;
     let result = match operation {
+        "NTH" => crate::builtins::nth(&[index, list]),
         "NTHCDR" => crate::builtins::nthcdr(&[index, list]),
         _ => Err(invalid("unknown binary list operation", span)),
     }?;

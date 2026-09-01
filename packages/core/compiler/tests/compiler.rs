@@ -1098,6 +1098,11 @@ fn emits_eval_and_mapcar_instructions() {
         .instructions
         .iter()
         .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTHCDR")));
+    let nth = compile("(nth 1 '(1 2 3))");
+    assert!(nth.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTH")));
     for operation in ["CAR", "CDR", "FIRST", "REST", "COPY-LIST", "COPY-ALIST", "ENDP"] {
         let program = compile(&format!("(flet (({operation} (value) :shadowed)) ({operation} nil))"));
         assert!(!program.functions[0].instructions.iter().any(|instruction| {
@@ -1109,6 +1114,11 @@ fn emits_eval_and_mapcar_instructions() {
         .instructions
         .iter()
         .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTHCDR")));
+    let shadowed_nth = compile("(flet ((nth (index list) :shadowed)) (nth 1 nil))");
+    assert!(!shadowed_nth.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTH")));
     let tree_equal = compile("(tree-equal '(1 (2)) '(1 (2)) :test #'equal)");
     assert!(tree_equal.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::TreeEqual { option_count: 2 })

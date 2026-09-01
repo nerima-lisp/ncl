@@ -826,4 +826,12 @@ fn compiled_evaluates_value_unary_operations() {
     assert_eq!(values[0].to_string(), "(42 INTEGER)");
 }
 
+#[test]
+fn compiled_evaluates_cons_with_list_and_dotted_tail() {
+    let values = Runtime::new()
+        .eval_compiled_source("(list (cons 1 '(2 3)) (cons 1 2))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "((1 2 3) (1 . 2))");
+}
+
 use super::*;

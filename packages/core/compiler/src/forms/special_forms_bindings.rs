@@ -310,7 +310,7 @@ impl CompileState {
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }
-            "NTH" | "NTHCDR" => self.compile_list_binary(function, span, items, name),
+            "CONS" | "NTH" | "NTHCDR" => self.compile_list_binary(function, span, items, name),
             "ATOM" | "CONSP" | "LISTP" | "NUMBERP" | "COMPLEXP" | "INTEGERP"
             | "FLOATP" | "RATIONALP" | "STRINGP" | "SIMPLE-STRING-P" | "CHARACTERP"
             | "SYMBOLP" | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP"

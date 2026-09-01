@@ -28,7 +28,6 @@ impl CompileState {
         };
         self.compile_expression(function, &items[1])?;
         self.compile_expression(function, &items[2])?;
-        self.compile_expression(function, &items[2])?;
         self.emit(function, Instruction::Remf { name, escaped }, span)?;
         Ok(Some(()))
     }

@@ -5,6 +5,7 @@ mod keywords;
 mod loop_aggregate;
 mod loop_hash;
 mod loop_on;
+mod loop_with;
 mod r#loop;
 mod modify_macro;
 mod modify_macro_tests;

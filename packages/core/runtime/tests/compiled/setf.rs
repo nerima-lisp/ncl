@@ -183,6 +183,20 @@ fn compiled_evaluates_remf_with_a_generalized_place() {
 }
 
 #[test]
+fn compiled_evaluates_remf_on_get_places() {
+    assert_eq!(
+        evaluate(
+            "(let ((symbol 'compiled-remf-get-target))
+               (setf (get symbol :plist) (list :a 1 :b 2))
+               (list (multiple-value-list (remf (get symbol :plist) :a))
+                     (get symbol :plist)))",
+        )
+        .to_string(),
+        "(((:B 2) T) (:B 2))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_modify_on_nested_list_places() {
     assert_eq!(
         evaluate("(let ((xs (list (list 4)))) (list (incf (car (car xs))) xs))").to_string(),

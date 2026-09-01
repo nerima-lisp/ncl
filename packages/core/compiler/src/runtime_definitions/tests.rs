@@ -41,6 +41,22 @@ fn compile_remf_symbol_place_uses_native_instruction() {
 }
 
 #[test]
+fn compile_remf_get_place_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(remf (get symbol :plist) :key)");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &items)
+        .expect("REMF GET should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.last(),
+        Some(Instruction::RemfGetDynamic)
+    ));
+}
+
+#[test]
 fn compile_defstruct_reports_an_internal_error_for_an_invalid_function_id() {
     let mut state = CompileState::default();
     let span = Span::new(0, 1);
@@ -246,7 +262,11 @@ fn compile_psetf_uses_setf_native_instruction_for_one_generalized_place() {
 
     assert!(matches!(
         state.functions[function].instructions.as_slice(),
-        [Instruction::Load(_), Instruction::Constant(_), Instruction::SetfList { .. }]
+        [
+            Instruction::Load(_),
+            Instruction::Constant(_),
+            Instruction::SetfList { .. }
+        ]
     ));
 }
 
@@ -286,7 +306,8 @@ fn compile_psetf_uses_mixed_native_instruction_for_symbol_and_list_places() {
 fn compile_psetf_uses_native_instruction_for_symbol_plist_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());
-    let items = parse_items("(psetf (symbol-plist first) '(:one 1) (symbol-plist second) '(:two 2))");
+    let items =
+        parse_items("(psetf (symbol-plist first) '(:one 1) (symbol-plist second) '(:two 2))");
 
     state
         .compile_psetf(function, Span::new(0, 1), &items)

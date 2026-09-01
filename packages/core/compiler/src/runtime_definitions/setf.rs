@@ -11,10 +11,23 @@ impl CompileState {
         if items.len() != 3 {
             return Ok(None);
         }
+        if let FormKind::List(place_items) = &items[1].kind {
+            if place_items.len() == 3
+                && Self::symbol_name_info(&place_items[0], "REMF place operator")
+                    .is_ok_and(|(name, _)| name == "GET")
+            {
+                self.compile_expression(function, &place_items[1])?;
+                self.compile_expression(function, &place_items[2])?;
+                self.compile_expression(function, &items[2])?;
+                self.emit(function, Instruction::RemfGetDynamic, span)?;
+                return Ok(Some(()));
+            }
+        }
         let Some((name, escaped)) = Self::symbol_name_info(&items[1], "REMF place").ok() else {
             return Ok(None);
         };
         self.compile_expression(function, &items[1])?;
+        self.compile_expression(function, &items[2])?;
         self.compile_expression(function, &items[2])?;
         self.emit(function, Instruction::Remf { name, escaped }, span)?;
         Ok(Some(()))
@@ -138,7 +151,9 @@ impl CompileState {
                         return Some(crate::PsetfPlace::SymbolPlist);
                     }
                 }
-                while let Some((accessor, next_target)) = crate::helpers::list_accessor_target(target) {
+                while let Some((accessor, next_target)) =
+                    crate::helpers::list_accessor_target(target)
+                {
                     accessors.push(accessor);
                     target = next_target;
                 }
@@ -162,21 +177,33 @@ impl CompileState {
                     self.compile_expression(function, &place_items[1])?;
                 }
             }
-            if places.iter().all(|place| matches!(place, crate::PsetfPlace::Symbol(_, _))) {
+            if places
+                .iter()
+                .all(|place| matches!(place, crate::PsetfPlace::Symbol(_, _)))
+            {
                 let names = places
                     .into_iter()
                     .map(|place| match place {
                         crate::PsetfPlace::Symbol(name, escaped) => (name, escaped),
-                        crate::PsetfPlace::List(..) | crate::PsetfPlace::SymbolPlist => unreachable!(),
+                        crate::PsetfPlace::List(..) | crate::PsetfPlace::SymbolPlist => {
+                            unreachable!()
+                        }
                     })
                     .collect();
                 self.emit(function, Instruction::PsetfSymbols(names), span)?;
-            } else if places.iter().all(|place| matches!(place, crate::PsetfPlace::List(..))) {
+            } else if places
+                .iter()
+                .all(|place| matches!(place, crate::PsetfPlace::List(..)))
+            {
                 let list_places = places
                     .into_iter()
                     .map(|place| match place {
-                        crate::PsetfPlace::List(accessors, name, escaped) => (accessors, name, escaped),
-                        crate::PsetfPlace::Symbol(..) | crate::PsetfPlace::SymbolPlist => unreachable!(),
+                        crate::PsetfPlace::List(accessors, name, escaped) => {
+                            (accessors, name, escaped)
+                        }
+                        crate::PsetfPlace::Symbol(..) | crate::PsetfPlace::SymbolPlist => {
+                            unreachable!()
+                        }
                     })
                     .collect();
                 self.emit(function, Instruction::PsetfList(list_places), span)?;

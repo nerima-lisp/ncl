@@ -130,6 +130,7 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Remove a property from a dynamically selected GET place by EQL."] RemfGetDynamic,
     #[doc = "Update a hash-table-valued place through GETHASH."] SetfGethashDynamic,
     #[doc = "Update a CLOS instance slot through SLOT-VALUE."] SetfSlotValueDynamic,
     #[doc = "Update a dynamically selected symbol value or function cell."] SetfSymbolCellDynamic {

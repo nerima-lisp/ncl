@@ -2,7 +2,7 @@ use ncl_syntax::{Form, FormKind};
 
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
-use super::loop_aggregate::count_step;
+use super::loop_aggregate::{count_step, sum_step};
 
 impl Runtime {
     pub(super) fn expand_builtin_loop(form: &Form) -> Result<Form, RuntimeError> {
@@ -256,10 +256,7 @@ impl Runtime {
                         ));
                     }
                     if let (Some(value), Some(name)) = (sum_form, sum_name.clone()) {
-                        dolist_items.push(Form::list(
-                            vec![Form::atom("INCF", form.span), name, value],
-                            form.span,
-                        ));
+                        dolist_items.push(sum_step(form, value, name));
                     }
                     if let (Some(value), Some(name)) = (count_form, count_result_name.clone()) {
                         dolist_items.push(count_step(form, value, name));
@@ -522,10 +519,7 @@ impl Runtime {
                         }
                     }
                     if let (Some(value), Some(name)) = (sum_form.clone(), sum_name.clone()) {
-                        loop_body.push(Form::list(
-                            vec![Form::atom("INCF", form.span), name, value],
-                            form.span,
-                        ));
+                        loop_body.push(sum_step(form, value, name));
                     }
                     if let (Some(value), Some(name)) = (count_form.clone(), count_name.clone()) {
                         loop_body.push(count_step(form, value, name));
@@ -1023,10 +1017,7 @@ impl Runtime {
                     ));
                 }
                 if let (Some(value), Some(name)) = (sum_form, sum_name.clone()) {
-                    do_items.push(Form::list(
-                        vec![Form::atom("INCF", form.span), name, value],
-                        form.span,
-                    ));
+                    do_items.push(sum_step(form, value, name));
                 }
                 if let (Some(value), Some(name)) = (count_form, count_name.clone()) {
                     do_items.push(count_step(form, value, name));

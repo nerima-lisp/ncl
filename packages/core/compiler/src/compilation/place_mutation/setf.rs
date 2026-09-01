@@ -23,68 +23,10 @@ impl CompileState {
             if self.compile_setf_bit_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
-            let element_place = match &place.kind {
-                FormKind::List(items) if items.len() == 3 => {
-                    Self::symbol_name_info(&items[0], "setf place operator")
-                        .ok()
-                        .filter(|(name, _)| matches!(name.as_str(), "ELT" | "CHAR" | "SCHAR"))
-                        .and_then(|(operator, _)| {
-                            Self::symbol_name_info(&items[1], "setf element target")
-                                .ok()
-                                .map(|(name, escaped)| {
-                                    (operator, name, escaped, &items[1], &items[2])
-                                })
-                        })
-                }
-                _ => None,
-            };
-            if let Some((operator, name, escaped, target, index_form)) = element_place {
-                self.compile_expression(function, target)?;
-                self.compile_expression(function, index_form)?;
-                self.compile_expression(function, value_form)?;
-                self.emit(
-                    function,
-                    Instruction::SetfElementDynamic {
-                        operator,
-                        name,
-                        escaped,
-                    },
-                    place.span,
-                )?;
-                emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
+            if self.compile_setf_element_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
-            let subseq_place = match &place.kind {
-                FormKind::List(items) if (items.len() == 3 || items.len() == 4) => {
-                    Self::symbol_name_info(&items[0], "setf place operator")
-                        .ok()
-                        .filter(|(name, _)| name == "SUBSEQ")
-                        .and_then(|_| {
-                            Self::symbol_name_info(&items[1], "setf subseq target")
-                                .ok()
-                                .map(|(name, escaped)| {
-                                    (items.len() == 4, name, escaped, &items[1], &items[2..])
-                                })
-                        })
-                }
-                _ => None,
-            };
-            if let Some((has_end, name, escaped, target, bounds)) = subseq_place {
-                self.compile_expression(function, target)?;
-                for bound in bounds {
-                    self.compile_expression(function, bound)?;
-                }
-                self.compile_expression(function, value_form)?;
-                self.emit(
-                    function,
-                    Instruction::SetfSubseqDynamic {
-                        has_end,
-                        name,
-                        escaped,
-                    },
-                    place.span,
-                )?;
-                emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
+            if self.compile_setf_subseq_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
             let getf_place = match &place.kind {

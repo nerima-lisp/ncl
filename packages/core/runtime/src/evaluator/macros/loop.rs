@@ -4,6 +4,7 @@ use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, Ru
 
 use super::loop_aggregate::{append_step, count_step, sum_step};
 use super::loop_condition::expand_loop_condition;
+use super::loop_collect::expand_loop_collect;
 use super::loop_control::{clause_offset, named_loop_body_start};
 use super::loop_finalize::finalize;
 use super::loop_hash::{bind_hash_value_and_key, hash_iterator_name};
@@ -52,22 +53,10 @@ impl Runtime {
             } else if names_equal(clause, "WITH") {
                 return expand_loop_with(form, items);
             } else if names_equal(clause, "COLLECT") {
-                if items.len() < 3 {
-                    return Err(Self::invalid(
-                        "LOOP COLLECT clause requires a form",
-                        form.span,
-                    ));
-                }
-                collect_form = Some(items[2].clone());
-                body = vec![Form::list(
-                    vec![
-                        Form::atom("PUSH", form.span),
-                        items[2].clone(),
-                        collect_name.clone(),
-                    ],
-                    form.span,
-                )];
-                body.extend(items[3..].iter().cloned());
+                let (expanded_body, collected_form) =
+                    expand_loop_collect(form, items, &collect_name)?;
+                body = expanded_body;
+                collect_form = Some(collected_form);
             } else if names_equal(clause, "FOR") {
                 if items
                     .get(3)

@@ -5,6 +5,7 @@ mod keywords;
 mod r#loop;
 mod loop_aggregate;
 mod loop_condition;
+mod loop_collect;
 mod loop_control;
 mod loop_finalize;
 mod loop_hash;

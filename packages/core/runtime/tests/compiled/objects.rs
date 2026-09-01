@@ -479,6 +479,21 @@ fn compiled_evaluates_native_array_accessors() {
 }
 
 #[test]
+fn compiled_evaluates_native_array_metadata() {
+    assert_eq!(
+        evaluate(
+            "(list (array-element-type #(1 2))
+                   (array-rank (make-array '(2 3)))
+                   (array-dimensions (make-array '(2 3)))
+                   (array-dimension (make-array '(2 3)) 1)
+                   (array-total-size (make-array '(2 3))))",
+        )
+        .to_string(),
+        "(T 2 (2 3) 3 6)",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

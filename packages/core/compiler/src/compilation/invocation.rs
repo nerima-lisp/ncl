@@ -596,6 +596,29 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_array_metadata(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+        argument_count: usize,
+    ) -> Result<(), CompileError> {
+        Self::require_arity(items, operation, &argument_count.to_string(), argument_count, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::ArrayMetadata {
+                operation: operation.to_string(),
+                argument_count,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_list_set(
         &mut self,
         function: FunctionId,

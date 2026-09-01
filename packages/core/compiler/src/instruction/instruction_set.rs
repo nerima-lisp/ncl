@@ -458,6 +458,12 @@ pub enum Instruction {
         /// Number of values consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Return metadata about an array."] ArrayMetadata {
+        /// Array metadata operation name.
+        operation: String,
+        /// Number of values consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Apply a list set operation with keyword options."] ListSet {
         /// List set operation name.
         operation: String,

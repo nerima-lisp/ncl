@@ -59,6 +59,11 @@ impl CompileState {
                 | "SVREF"
                 | "BIT"
                 | "ROW-MAJOR-AREF"
+                | "ARRAY-ELEMENT-TYPE"
+                | "ARRAY-RANK"
+                | "ARRAY-DIMENSIONS"
+                | "ARRAY-DIMENSION"
+                | "ARRAY-TOTAL-SIZE"
                 | "CHAR-CODE"
                 | "CHAR-INT"
                 | "CODE-CHAR"
@@ -192,6 +197,10 @@ impl CompileState {
             "SVREF" | "ROW-MAJOR-AREF" => {
                 self.compile_array_element(function, span, items, name, true)
             }
+            "ARRAY-ELEMENT-TYPE" | "ARRAY-RANK" | "ARRAY-DIMENSIONS" | "ARRAY-TOTAL-SIZE" => {
+                self.compile_array_metadata(function, span, items, name, 1)
+            }
+            "ARRAY-DIMENSION" => self.compile_array_metadata(function, span, items, name, 2),
             "UNION" | "NUNION" | "INTERSECTION" | "NINTERSECTION" | "SET-DIFFERENCE"
             | "NSET-DIFFERENCE" | "SET-EXCLUSIVE-OR" | "NSET-EXCLUSIVE-OR" | "SUBSETP" => {
                 self.compile_list_set(function, span, items, name)

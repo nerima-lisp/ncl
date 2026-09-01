@@ -1111,6 +1111,18 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::ArrayElement { operation: emitted, argument_count: emitted_count } if emitted == operation && *emitted_count == argument_count)
         }), "missing native instruction for {operation}");
     }
+    for (operation, source, argument_count) in [
+        ("ARRAY-ELEMENT-TYPE", "(array-element-type #(1 2))", 1),
+        ("ARRAY-RANK", "(array-rank #(1 2))", 1),
+        ("ARRAY-DIMENSIONS", "(array-dimensions #(1 2))", 1),
+        ("ARRAY-DIMENSION", "(array-dimension #(1 2) 0)", 2),
+        ("ARRAY-TOTAL-SIZE", "(array-total-size #(1 2))", 1),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ArrayMetadata { operation: emitted, argument_count: emitted_count } if emitted == operation && *emitted_count == argument_count)
+        }), "missing native instruction for {operation}");
+    }
     for operation in ["ATOM", "CONSP", "LISTP", "NUMBERP", "INTEGERP", "STRINGP", "CHARACTERP", "SYMBOLP", "VECTORP", "FUNCTIONP", "SIMPLE-VECTOR-P", "BIT-VECTOR-P", "SIMPLE-BIT-VECTOR-P", "ARRAYP", "SIMPLE-ARRAY-P", "HASH-TABLE-P", "RANDOM-STATE-P", "ALPHA-CHAR-P", "ALPHANUMERICP", "GRAPHIC-CHAR-P", "STANDARD-CHAR-P", "UPPER-CASE-P", "LOWER-CASE-P", "BOTH-CASE-P", "STREAMP", "INPUT-STREAM-P", "OUTPUT-STREAM-P"] {
         let program = compile(&format!("({operation} nil)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {
@@ -1149,6 +1161,23 @@ fn emits_eval_and_mapcar_instructions() {
         let program = compile(&format!("(flet (({operation} (array index) :shadowed)) ({operation} #(1 2) 1))"));
         assert!(!program.functions[0].instructions.iter().any(|instruction| {
             matches!(instruction, Instruction::ArrayElement { operation: emitted, .. } if emitted == operation)
+        }), "native instruction incorrectly bypasses local function {operation}");
+    }
+    for operation in [
+        "ARRAY-ELEMENT-TYPE",
+        "ARRAY-RANK",
+        "ARRAY-DIMENSIONS",
+        "ARRAY-DIMENSION",
+        "ARRAY-TOTAL-SIZE",
+    ] {
+        let arguments = if operation == "ARRAY-DIMENSION" {
+            "#(1 2) 0"
+        } else {
+            "#(1 2)"
+        };
+        let program = compile(&format!("(flet (({operation} (array &optional index) :shadowed)) ({operation} {arguments}))"));
+        assert!(!program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ArrayMetadata { operation: emitted, .. } if emitted == operation)
         }), "native instruction incorrectly bypasses local function {operation}");
     }
     for operation in ["ATOM", "CONSP", "LISTP", "NUMBERP", "STRINGP", "SYMBOLP", "VECTORP", "FUNCTIONP"] {

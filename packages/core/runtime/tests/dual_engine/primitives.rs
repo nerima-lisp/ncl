@@ -148,6 +148,20 @@ fn evaluates_common_lisp_phase(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_float_decoding(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (multiple-value-list (decode-float 1.5)) (multiple-value-list (integer-decode-float 1.5)) (multiple-value-list (decode-float -0.0)))"
+        )
+        .to_string(),
+        "((0.75 1 1.0) (6755399441055744 -52 1) (-0.0 0 -1.0))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_integer_bit_operations_on_bignums(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

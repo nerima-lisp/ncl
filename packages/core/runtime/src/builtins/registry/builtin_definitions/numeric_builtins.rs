@@ -20,6 +20,8 @@ pub(super) const NUMERIC_BUILTINS: &[BuiltinDefinition] = &[
     ("float-precision", float_precision as _),
     ("float-radix", float_radix as _),
     ("scale-float", scale_float as _),
+    ("decode-float", decode_float as _),
+    ("integer-decode-float", integer_decode_float as _),
     ("rational", rational as _),
     ("rationalize", rationalize as _),
     ("=", numeric_equal as _),

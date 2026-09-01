@@ -7,6 +7,15 @@ fn float_argument(function: &str, value: &Value) -> Result<f64, RuntimeError> {
     }
 }
 
+fn finite_float_argument(function: &str, value: &Value) -> Result<f64, RuntimeError> {
+    let value = float_argument(function, value)?;
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(type_error(function, "a finite float", &Value::Float(value)))
+    }
+}
+
 pub fn float_sign(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() || arguments.len() > 2 {
         return Err(arity("float-sign", "1 to 2", arguments.len()));
@@ -58,4 +67,46 @@ pub fn scale_float(arguments: &[Value]) -> Result<Value, RuntimeError> {
         value => return Err(type_error("scale-float", "an integer", value)),
     };
     Ok(Value::Float(value * 2.0_f64.powi(exponent)))
+}
+
+pub fn decode_float(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "decode-float", 1)?;
+    let value = finite_float_argument("decode-float", &arguments[0])?;
+    if value == 0.0 {
+        return Ok(Value::values(vec![
+            Value::Float(value),
+            Value::Integer(0),
+            Value::Float(if value.is_sign_negative() { -1.0 } else { 1.0 }),
+        ]));
+    }
+    let exponent = value.abs().log2().floor() as i64 + 1;
+    let significand = value / 2.0_f64.powi(exponent as i32);
+    Ok(Value::values(vec![
+        Value::Float(significand),
+        Value::Integer(exponent),
+        Value::Float(if value.is_sign_negative() { -1.0 } else { 1.0 }),
+    ]))
+}
+
+pub fn integer_decode_float(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "integer-decode-float", 1)?;
+    let value = finite_float_argument("integer-decode-float", &arguments[0])?;
+    let bits = value.abs().to_bits();
+    let raw_exponent = (bits >> 52) & 0x7ff;
+    let mut significand = bits & ((1_u64 << 52) - 1);
+    let mut exponent = if raw_exponent == 0 {
+        -1022 - 52
+    } else {
+        significand |= 1_u64 << 52;
+        raw_exponent as i64 - 1023 - 52
+    };
+    while significand != 0 && significand < (1_u64 << 52) {
+        significand <<= 1;
+        exponent -= 1;
+    }
+    Ok(Value::values(vec![
+        Value::Integer(significand as i64),
+        Value::Integer(exponent),
+        Value::Integer(if value.is_sign_negative() { -1 } else { 1 }),
+    ]))
 }

@@ -346,6 +346,14 @@ fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
         "1"
     );
     assert_eq!(
+        evaluate(r"(loop for value = (list 1) then (list (+ (car value) 1)) repeat 3 append value)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = (list 1) then (list (+ (car value) 1)) repeat 3 nconc value into result)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
         evaluate(r"(loop for tail on (list 1 2 3) collect (car tail))").to_string(),
         "(1 2 3)"
     );

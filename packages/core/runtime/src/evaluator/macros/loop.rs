@@ -740,6 +740,7 @@ impl Runtime {
                     let mut extremum_form = None;
                     let mut extremum_name = None;
                     let mut maximize = false;
+                    let mut append_form = None;
                     let mut loop_condition = None;
                     if items
                         .get(body_start)
@@ -749,7 +750,6 @@ impl Runtime {
                         body_start += 1;
                     }
                     let mut loop_body = Vec::new();
-                    let mut append_form = None;
                     if items
                         .get(body_start)
                         .and_then(atom_name)
@@ -1109,6 +1109,7 @@ impl Runtime {
                     let mut extremum_name = None;
                     let mut maximize = false;
                     let mut loop_condition = None;
+                    let mut append_form = None;
                     let condition_block = Form::atom(
                         format!("NCL-LOOP-BLOCK-{}", form.span.start),
                         form.span,
@@ -1192,11 +1193,11 @@ impl Runtime {
                     {
                         body_start += 1;
                     }
-                    if items
-                        .get(body_start)
-                        .and_then(atom_name)
-                        .is_some_and(|name| names_equal(name, "COLLECT"))
-                    {
+                    if items.get(body_start).and_then(atom_name).is_some_and(|name| {
+                        names_equal(name, "COLLECT")
+                            || names_equal(name, "APPEND")
+                            || names_equal(name, "NCONC")
+                    }) {
                         if items.len() <= body_start + 1 {
                             return Err(Self::invalid(
                                 "LOOP COLLECT clause requires a form",
@@ -1204,7 +1205,24 @@ impl Runtime {
                             ));
                         }
                         collect_form = Some(items[body_start + 1].clone());
+                        if !names_equal(atom_name(&items[body_start]).unwrap(), "COLLECT") {
+                            append_form = Some(items[body_start + 1].clone());
+                        }
                         body_start += 2;
+                        if items
+                            .get(body_start)
+                            .and_then(atom_name)
+                            .is_some_and(|name| names_equal(name, "INTO"))
+                        {
+                            if items.len() <= body_start + 1 {
+                                return Err(Self::invalid(
+                                    "LOOP APPEND/COLLECT INTO requires a variable",
+                                    form.span,
+                                ));
+                            }
+                            collect_name = items[body_start + 1].clone();
+                            body_start += 2;
+                        }
                     }
                     if items
                         .get(body_start)
@@ -1290,10 +1308,15 @@ impl Runtime {
                         termination,
                     ];
                     if let Some(value) = collect_form.clone() {
-                        do_items.push(Form::list(
-                            vec![Form::atom("PUSH", form.span), value, collect_name.clone()],
-                            form.span,
-                        ));
+                        if append_form.is_none() {
+                            do_items.push(Form::list(
+                                vec![Form::atom("PUSH", form.span), value, collect_name.clone()],
+                                form.span,
+                            ));
+                        }
+                    }
+                    if let Some(value) = append_form {
+                        do_items.push(append_step(form, value, collect_name.clone()));
                     }
                     if let (Some(value), Some(name)) = (sum_form, sum_name.clone()) {
                         do_items.push(sum_step(form, value, name));

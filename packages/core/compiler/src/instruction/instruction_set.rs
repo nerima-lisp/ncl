@@ -436,6 +436,12 @@ pub enum Instruction {
         /// Unary operation name.
         operation: String,
     },
+    #[doc = "Compare numeric arguments."] NumericComparison {
+        /// Comparison operation name.
+        operation: String,
+        /// Number of arguments to compare.
+        argument_count: usize,
+    },
     #[doc = "Apply a list tail operation with an optional count."] ListTail {
         /// List operation name.
         operation: String,

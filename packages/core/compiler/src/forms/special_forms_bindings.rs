@@ -195,6 +195,9 @@ impl CompileState {
             }
             "1+" | "1-" | "ABS" | "SIGNUM" | "ZEROP" | "PLUSP" | "MINUSP" | "EVENP"
             | "ODDP" => self.compile_numeric_unary(function, span, items, name),
+            "=" | "<" | ">" | "<=" | ">=" => {
+                self.compile_numeric_comparison(function, span, items, name)
+            }
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

@@ -8,6 +8,7 @@ use crate::vm::execution::application::{
     execute_list_binary_instruction, execute_list_tail_instruction, execute_list_unary_instruction,
     execute_character_unary_instruction, execute_type_predicate_instruction,
     execute_numeric_unary_instruction,
+    execute_numeric_comparison_instruction,
     execute_character_digit_predicate_instruction,
     execute_list_mapping_instruction,
     execute_list_set_instruction,
@@ -243,6 +244,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::NumericUnary { operation } => {
             execute_numeric_unary_instruction(operation, stack, span)?;
+        }
+        Instruction::NumericComparison { operation, argument_count } => {
+            execute_numeric_comparison_instruction(stack, operation, *argument_count, span)?;
         }
         Instruction::ListTail { operation, option_count } => {
             execute_list_tail_instruction(operation, *option_count, stack, span)?;

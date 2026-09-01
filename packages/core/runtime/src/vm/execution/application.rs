@@ -518,6 +518,29 @@ pub fn execute_numeric_unary_instruction(
     Ok(())
 }
 
+pub fn execute_numeric_comparison_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("numeric comparison has too few stack values", span));
+    }
+    let start = stack.len() - argument_count;
+    let arguments = stack.drain(start..).collect::<Vec<_>>();
+    let result = match operation {
+        "=" => crate::builtins::numeric_equal(&arguments),
+        "<" => crate::builtins::less_than(&arguments),
+        ">" => crate::builtins::greater_than(&arguments),
+        "<=" => crate::builtins::less_equal(&arguments),
+        ">=" => crate::builtins::greater_equal(&arguments),
+        _ => Err(invalid("unknown numeric comparison operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_character_comparison_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

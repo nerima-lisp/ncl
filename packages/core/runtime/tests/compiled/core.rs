@@ -79,6 +79,11 @@ fn compiled_evaluates_integer_square_root() {
 }
 
 #[test]
+fn compiled_evaluates_logarithm() {
+    assert_eq!(evaluate("(log 1)").to_string(), "0.0");
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

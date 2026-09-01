@@ -299,7 +299,7 @@ impl CompileState {
                 self.compile_numeric_bitfield(function, span, items, name)
             }
             "FLOAT" | "FLOAT-SIGN" | "FLOAT-DIGITS" | "FLOAT-PRECISION" | "FLOAT-RADIX"
-            | "SCALE-FLOAT" | "DECODE-FLOAT" | "INTEGER-DECODE-FLOAT" => {
+            | "SCALE-FLOAT" | "DECODE-FLOAT" | "INTEGER-DECODE-FLOAT" | "LOG" | "ATAN" => {
                 self.compile_numeric_float(function, span, items, name)
             }
             "LAST" | "BUTLAST" | "NBUTLAST" => {

@@ -308,6 +308,7 @@ pub enum Instruction {
     #[doc = "Define a class through the runtime class registry."] Defclass(Form),
     #[doc = "Define a generic function through the runtime method registry."] Defgeneric(Form),
     #[doc = "Define a method through the runtime method registry."] Defmethod(Form),
+    #[doc = "Define a SETF function through the runtime place registry."] Defsetf(Form),
     #[doc = "Define a constant through the runtime constant registry."] Defconstant(Form),
     #[doc = "Define a symbol macro through the runtime macro registry."] DefineSymbolMacro(Form),
     #[doc = "Define a SETF expander through the runtime macro registry."] DefineSetfExpander(Form),

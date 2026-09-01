@@ -87,6 +87,22 @@ fn compile_defmethod_uses_native_instruction() {
 }
 
 #[test]
+fn compile_defsetf_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(defsetf access writer)");
+
+    state
+        .compile_defsetf(function, Span::new(0, 1), &items)
+        .expect("DEFSETF should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.as_slice(),
+        [Instruction::Defsetf(_)]
+    ));
+}
+
+#[test]
 fn compile_defconstant_uses_native_instruction() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

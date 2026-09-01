@@ -90,6 +90,23 @@ impl CompileState {
         Ok(())
     }
 
+    pub(super) fn compile_defsetf(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() != 3 {
+            return Err(Self::arity_error(items, "DEFSETF", "two", span));
+        }
+        self.emit(
+            function,
+            Instruction::Defsetf(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(super) fn compile_defconstant(
         &mut self,
         function: FunctionId,

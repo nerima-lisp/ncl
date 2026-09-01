@@ -22,11 +22,11 @@ impl CompileState {
             | "PUSHNEW"
             | "ROTATEF"
             | "SHIFTF"
-            | "DEFSETF"
             | "DEFINE-MODIFY-MACRO"
             | "GET-SETF-EXPANSION" => self.compile_runtime_definition(function, span, items),
             "DEFINE-SYMBOL-MACRO" => self.compile_define_symbol_macro(function, span, items),
             "DEFINE-SETF-EXPANDER" => self.compile_define_setf_expander(function, span, items),
+            "DEFSETF" => self.compile_defsetf(function, span, items),
             "THE" => self.compile_the(function, span, items),
             "IF" => self.compile_if(function, span, items),
             "PROG1" => self.compile_prog1(function, span, items),

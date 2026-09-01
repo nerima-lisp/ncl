@@ -53,6 +53,15 @@ pub(super) fn execute_value_instruction(
             };
             stack.push(Runtime::special_defmethod(items, environment)?);
         }
+        Instruction::Defsetf(form) => {
+            let FormKind::List(items) = &form.kind else {
+                return Err(RuntimeError::InvalidForm {
+                    message: "DEFSETF instruction requires a list".to_string(),
+                    span: Some(form.span),
+                });
+            };
+            stack.push(runtime.special_defsetf(items, environment)?);
+        }
         Instruction::Defconstant(form) => {
             let FormKind::List(items) = &form.kind else {
                 return Err(RuntimeError::InvalidForm {

@@ -43,3 +43,31 @@ fn coerce_validates_sequence_and_character_result_types() {
         Err(RuntimeError::InvalidForm { .. })
     ));
 }
+
+#[test]
+fn coerce_converts_sequences_to_sequence_types() {
+    assert_eq!(
+        coerce(&[
+            Value::list(vec![Value::Integer(1), Value::Integer(2)]),
+            Value::keyword("vector"),
+        ])
+        .unwrap()
+        .to_string(),
+        "#(1 2)"
+    );
+    assert_eq!(
+        coerce(&[
+            Value::vector(vec![Value::Character('a'), Value::Character('b')]),
+            Value::keyword("string"),
+        ])
+        .unwrap()
+        .to_string(),
+        "\"ab\""
+    );
+    assert_eq!(
+        coerce(&[Value::keyword("abc"), Value::keyword("string")])
+            .unwrap()
+            .to_string(),
+        "\"ABC\""
+    );
+}

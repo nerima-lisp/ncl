@@ -89,6 +89,39 @@ fn adjust_array_resizes_adjustable_vector_in_place() {
 }
 
 #[test]
+fn adjust_array_updates_vector_fill_pointer() {
+    let vector = make_array(&[
+        Value::Integer(3),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+        Value::keyword("fill-pointer"),
+        Value::Integer(1),
+    ])
+    .expect("make-array should construct a vector");
+
+    let adjusted = adjust_array(&[
+        vector.clone(),
+        Value::Integer(4),
+        Value::keyword("fill-pointer"),
+        Value::Integer(3),
+    ])
+    .expect("adjust-array should accept :fill-pointer");
+
+    assert_eq!(adjusted.vector_length(), Some(3));
+    assert_eq!(vector.vector_length(), Some(3));
+    assert!(matches!(
+        adjust_array(&[
+            vector,
+            Value::Integer(2),
+            Value::keyword("fill-pointer"),
+            Value::Integer(3),
+        ]),
+        Err(RuntimeError::InvalidForm { message, .. })
+            if message.contains("fill pointer exceeds vector length")
+    ));
+}
+
+#[test]
 fn array_coordinate_index_reports_overflow_in_stride_and_contribution() {
     let stride_overflow = array_coordinate_index(
         "test",

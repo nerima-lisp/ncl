@@ -98,6 +98,24 @@ pub fn execute_property_list_instruction(
     stack.push(value); Ok(())
 }
 
+pub fn execute_symbol_value_instruction(
+    runtime: &Runtime,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    operation: &str,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.is_empty() {
+        return Err(invalid("symbol value operation has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - 1)
+        .into_iter().map(|value| value.primary_value()).collect::<Vec<_>>();
+    let value = runtime.apply_symbol_value_primitive(operation, &arguments, environment, span)
+        .unwrap_or_else(|| Err(invalid("unknown symbol value operation", span)))?;
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_hash_table_instruction(
     stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
 ) -> Result<(), RuntimeError> {

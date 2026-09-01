@@ -1030,6 +1030,28 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_symbol_value(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        let valid_arity = match operation {
+            "CONSTANTP" => (2..=3).contains(&items.len()),
+            _ => items.len() == 2,
+        };
+        if !valid_arity {
+            let expected = if operation == "CONSTANTP" { "one or two" } else { "one" };
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(function, Instruction::SymbolValue { operation: operation.to_string() }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_hash_table(
         &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
     ) -> Result<(), CompileError> {

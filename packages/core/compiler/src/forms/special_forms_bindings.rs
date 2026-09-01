@@ -127,6 +127,9 @@ impl CompileState {
                 | "PUTPROP"
                 | "REMPROP"
                 | "SYMBOL-PLIST"
+                | "BOUNDP"
+                | "CONSTANTP"
+                | "SYMBOL-VALUE"
                 | "GETHASH"
                 | "REMHASH"
                 | "MAKE-HASH-TABLE"
@@ -289,6 +292,9 @@ impl CompileState {
             }
             "GETF" | "GET-PROPERTIES" | "GET" | "PUTPROP" | "REMPROP" | "SYMBOL-PLIST" => {
                 self.compile_property_list(function, span, items, name)
+            }
+            "BOUNDP" | "CONSTANTP" | "SYMBOL-VALUE" => {
+                self.compile_symbol_value(function, span, items, name)
             }
             "GETHASH" | "REMHASH" | "MAKE-HASH-TABLE" | "CLRHASH" | "HASH-TABLE-COUNT"
             | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS" | "NCL-HASH-TABLE-VALUES" => {

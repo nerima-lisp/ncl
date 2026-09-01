@@ -489,3 +489,11 @@ fn compiled_evaluates_symbol_property_access() {
         "(7 (:VALUE 7) T 42)"
     );
 }
+
+#[test]
+fn compiled_evaluates_symbol_value_operations() {
+    assert_eq!(
+        evaluate("(let ((value 7)) (list (boundp 'value) (symbol-value 'value) (constantp t) (constantp 'value)))").to_string(),
+        "(T 7 T NIL)"
+    );
+}

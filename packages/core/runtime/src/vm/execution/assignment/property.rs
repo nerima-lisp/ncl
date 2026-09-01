@@ -3,6 +3,7 @@ use super::super::*;
 
 mod getf;
 mod gethash;
+mod remf;
 mod slot_value;
 
 pub(super) fn execute(
@@ -33,6 +34,9 @@ pub(super) fn execute(
     )? {
         return Ok(true);
     }
+    if remf::execute(runtime, instruction, stack, environment, program_counter, span)? {
+        return Ok(true);
+    }
     if slot_value::execute(
         runtime,
         instruction,
@@ -44,40 +48,6 @@ pub(super) fn execute(
         return Ok(true);
     }
     match instruction {
-        Instruction::Remf { name, escaped } => {
-            let indicator = stack
-                .pop()
-                .ok_or_else(|| invalid("remf has no indicator", span))?
-                .primary_value();
-            let current = stack
-                .pop()
-                .ok_or_else(|| invalid("remf has no property list", span))?
-                .primary_value();
-            let mut properties = current.list_items().ok_or_else(|| RuntimeError::Type {
-                expected: "LIST".to_string(),
-                actual: current.type_name().to_string(),
-                span: Some(span),
-            })?;
-            if !properties.len().is_multiple_of(2) {
-                return Err(invalid("REMF needs an even property list", span));
-            }
-            let found_index = (0..properties.len())
-                .step_by(2)
-                .find(|&index| crate::builtins::eql_value(&properties[index], &indicator));
-            let found = found_index.is_some();
-            if let Some(index) = found_index {
-                properties.drain(index..=index + 1);
-            }
-            let updated = Value::list(properties);
-            if *escaped {
-                runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?;
-            } else {
-                runtime.set_or_define_in(name, updated.clone(), environment, span)?;
-            }
-            stack.push(Value::values(vec![updated, Value::boolean(found)]));
-            *program_counter += 1;
-            Ok(true)
-        }
         Instruction::SetfGetDynamic => {
             let value = stack
                 .pop()

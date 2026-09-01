@@ -149,6 +149,14 @@ pub enum Instruction {
     },
     #[doc = "Push a value onto a list-valued GETHASH place."] PushGethash,
     #[doc = "Push a value onto a list-valued GETHASH place when absent by EQL."] PushNewGethash,
+    #[doc = "Push a value onto a list-valued GETHASH place with PUSHNEW comparison options."] PushNewGethashOptions {
+        /// Whether the comparison function came from :TEST-NOT.
+        test_not: bool,
+        /// Whether a key function value is present on the stack.
+        has_key: bool,
+        /// Whether the source form evaluates :KEY before the test designator.
+        key_before_test: bool,
+    },
     #[doc = "Pop the first value from a list-valued GETHASH place."] PopGethash,
     #[doc = "Push onto or pop from a CAR/CDR list place held by a symbol."] ListPlaceMutation {
         /// The mutation operator.

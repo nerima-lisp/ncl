@@ -169,6 +169,29 @@ fn compile_pushnew_with_options_and_a_generalized_place_uses_native_instruction(
 }
 
 #[test]
+fn compile_pushnew_gethash_options_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let pushnew = parse_items("(pushnew 1 (gethash key table) :test #'equal)");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
+        .unwrap();
+
+    assert!(state.functions[function]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(
+            instruction,
+            Instruction::PushNewGethashOptions {
+                test_not: false,
+                has_key: false,
+                key_before_test: false,
+            }
+        )));
+}
+
+#[test]
 fn compile_modify_symbol_rejects_too_many_operands() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

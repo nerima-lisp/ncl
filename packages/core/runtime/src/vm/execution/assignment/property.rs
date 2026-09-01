@@ -221,6 +221,126 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::PushNewGethashOptions {
+            test_not,
+            has_key,
+            key_before_test,
+        } => {
+            let table = stack
+                .pop()
+                .ok_or_else(|| invalid("pushnew gethash has no table", span))?
+                .primary_value();
+            let key = stack
+                .pop()
+                .ok_or_else(|| invalid("pushnew gethash has no key", span))?
+                .primary_value();
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("pushnew gethash has no value", span))?
+                .primary_value();
+            let (test, item_key) = if *key_before_test {
+                let test = stack
+                    .pop()
+                    .ok_or_else(|| invalid("pushnew gethash has no test", span))?
+                    .primary_value();
+                let key_fn = stack
+                    .pop()
+                    .ok_or_else(|| invalid("pushnew gethash has no key function", span))?
+                    .primary_value();
+                (test, Some(key_fn))
+            } else {
+                let key_fn = if *has_key {
+                    Some(
+                        stack
+                            .pop()
+                            .ok_or_else(|| invalid("pushnew gethash has no key function", span))?
+                            .primary_value(),
+                    )
+                } else {
+                    None
+                };
+                let test = stack
+                    .pop()
+                    .ok_or_else(|| invalid("pushnew gethash has no test", span))?
+                    .primary_value();
+                (test, key_fn)
+            };
+            let test =
+                Value::Function(runtime.resolve_function_designator(&test, span, environment)?);
+            let key_fn = item_key
+                .map(|v| {
+                    runtime
+                        .resolve_function_designator(&v, span, environment)
+                        .map(Value::Function)
+                })
+                .transpose()?;
+            let test_key = key_fn.as_ref().map_or_else(
+                || Ok(value.clone()),
+                |f| {
+                    runtime
+                        .apply_in(f, std::slice::from_ref(&value), span, environment)
+                        .map(|v| v.primary_value())
+                },
+            )?;
+            let hash_test = table.hash_table_test().ok_or_else(|| RuntimeError::Type {
+                expected: "HASH-TABLE".into(),
+                actual: table.type_name().into(),
+                span: Some(span),
+            })?;
+            let entries = table
+                .hash_table_entries()
+                .ok_or_else(|| RuntimeError::Type {
+                    expected: "HASH-TABLE".into(),
+                    actual: table.type_name().into(),
+                    span: Some(span),
+                })?;
+            let mut entries = entries.borrow_mut();
+            if let Some((_, slot)) = entries.iter_mut().find(|(stored_key, _)| {
+                crate::builtins::hash_table_key_equal(hash_test, stored_key, &key)
+            }) {
+                let mut values = slot.list_items().ok_or_else(|| RuntimeError::Type {
+                    expected: "LIST".into(),
+                    actual: slot.type_name().into(),
+                    span: Some(span),
+                })?;
+                let found = values
+                    .iter()
+                    .map(|candidate| {
+                        let candidate_key = key_fn.as_ref().map_or_else(
+                            || Ok(candidate.clone()),
+                            |f| {
+                                runtime
+                                    .apply_in(f, std::slice::from_ref(candidate), span, environment)
+                                    .map(|v| v.primary_value())
+                            },
+                        )?;
+                        runtime
+                            .apply_in(&test, &[test_key.clone(), candidate_key], span, environment)
+                            .map(|v| {
+                                let equal = v.primary_value().is_truthy();
+                                if *test_not {
+                                    !equal
+                                } else {
+                                    equal
+                                }
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter()
+                    .any(|v| v);
+                if !found {
+                    values.insert(0, value);
+                    *slot = Value::list(values);
+                }
+                stack.push(slot.clone());
+            } else {
+                let updated = Value::list(vec![value]);
+                entries.push((key, updated.clone()));
+                stack.push(updated);
+            }
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PopGethash => {
             let table = stack
                 .pop()

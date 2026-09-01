@@ -19,12 +19,13 @@ impl CompileState {
             return Ok(None);
         }
         let expected = if operator == "POP" { 2 } else { 3 };
-        if operator == "PUSHNEW" && items.len() > expected {
+        if operator == "PUSHNEW"
+            && items.len() > expected
+            && (generalized_list_place(&items[2]).is_some()
+                || Self::symbol_name_info(&items[2], "list place").is_ok())
+        {
             let generalized = generalized_list_place(&items[2]);
             let symbol_place = Self::symbol_name_info(&items[2], "list place").ok();
-            if generalized.is_none() && symbol_place.is_none() {
-                return Ok(None);
-            }
             if !(items.len() - 3).is_multiple_of(2) {
                 return Ok(None);
             }
@@ -104,7 +105,17 @@ impl CompileState {
             )?;
             return Ok(Some(()));
         }
-        if items.len() != expected {
+        let gethash_options = operator == "PUSHNEW"
+            && items.len() > expected
+            && matches!(
+                &items[2].kind,
+                FormKind::List(place_items)
+                    if place_items.len() == 3
+                        && Self::symbol_name_info(&place_items[0], "list place operator")
+                            .ok()
+                            .is_some_and(|(name, _)| name == "GETHASH")
+            );
+        if items.len() != expected && !gethash_options {
             return Err(Self::arity_error(
                 items,
                 &operator,
@@ -119,6 +130,50 @@ impl CompileState {
                     .ok()
                     .is_some_and(|(name, _)| name == "GETHASH")
             {
+                if operator == "PUSHNEW" && items.len() > expected {
+                    if !(items.len() - 3).is_multiple_of(2) {
+                        return Ok(None);
+                    }
+                    let mut test_not = false;
+                    let mut has_test = false;
+                    let mut has_key = false;
+                    let mut key_before_test = false;
+                    for pair in items[3..].chunks_exact(2) {
+                        let FormKind::Atom(keyword) = &pair[0].kind else {
+                            return Ok(None);
+                        };
+                        match keyword.to_ascii_uppercase().as_str() {
+                            ":TEST" if !has_test && !test_not => has_test = true,
+                            ":TEST-NOT" if !has_test && !test_not => test_not = true,
+                            ":KEY" if !has_key => {
+                                key_before_test = !has_test && !test_not;
+                                has_key = true;
+                            }
+                            _ => return Ok(None),
+                        }
+                        self.compile_expression(function, &pair[1])?;
+                    }
+                    if !has_test && !test_not {
+                        self.emit(
+                            function,
+                            Instruction::Quote(Form::atom("EQL", items[0].span)),
+                            items[0].span,
+                        )?;
+                    }
+                    self.compile_expression(function, &items[1])?;
+                    self.compile_expression(function, &place_items[1])?;
+                    self.compile_expression(function, &place_items[2])?;
+                    self.emit(
+                        function,
+                        Instruction::PushNewGethashOptions {
+                            test_not,
+                            has_key,
+                            key_before_test,
+                        },
+                        items[0].span,
+                    )?;
+                    return Ok(Some(()));
+                }
                 if operator == "PUSH" || operator == "PUSHNEW" {
                     self.compile_expression(function, &items[1])?;
                 }

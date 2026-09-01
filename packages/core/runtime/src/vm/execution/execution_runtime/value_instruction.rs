@@ -18,6 +18,7 @@ use crate::vm::execution::application::{
     execute_sequence_length_instruction,
     execute_sequence_element_instruction,
     execute_character_element_instruction,
+    execute_array_element_instruction,
     execute_tree_equal_instruction,
     execute_sequence_search_instruction,
     execute_sequence_sort_instruction,
@@ -248,6 +249,12 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::CharacterElement { operation } => {
             execute_character_element_instruction(stack, operation, span)?;
+        }
+        Instruction::ArrayElement {
+            operation,
+            argument_count,
+        } => {
+            execute_array_element_instruction(stack, operation, *argument_count, span)?;
         }
         Instruction::MultipleValueCall(value_form_count) => {
             execute_multiple_value_call_instruction(

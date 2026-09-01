@@ -22,7 +22,7 @@ pub use builtin_characters::{
 };
 
 mod builtin_arrays;
-use builtin_arrays::{
+pub use builtin_arrays::{
     aref, array_dimension, array_dimensions, array_element_type, array_in_bounds_p, array_rank,
     array_row_major_index, array_total_size, bit, make_array, row_major_aref, svref, vector,
 };

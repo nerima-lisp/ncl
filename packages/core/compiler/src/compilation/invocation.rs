@@ -569,6 +569,33 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_array_element(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+        exact_arity: bool,
+    ) -> Result<(), CompileError> {
+        if exact_arity {
+            Self::require_arity(items, operation, "two", 2, span)?;
+        } else if items.len() < 3 {
+            return Err(Self::arity_error(items, operation, "at least two", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::ArrayElement {
+                operation: operation.to_string(),
+                argument_count: items.len().saturating_sub(1),
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_list_set(
         &mut self,
         function: FunctionId,

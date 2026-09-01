@@ -465,6 +465,20 @@ fn compiled_evaluates_array_constructors_and_validation() {
 }
 
 #[test]
+fn compiled_evaluates_native_array_accessors() {
+    assert_eq!(
+        evaluate(
+            "(list (aref (make-array '(2 2) :initial-contents '((1 2) (3 4))) 1 0)
+                   (svref (vector 4 5 6) 1)
+                   (bit #(0 1) 1)
+                   (row-major-aref #(7 8 9) 2))",
+        )
+        .to_string(),
+        "(3 5 1 9)",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

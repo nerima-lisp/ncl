@@ -669,6 +669,27 @@ pub fn execute_character_element_instruction(
     Ok(())
 }
 
+pub fn execute_array_element_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("array-element has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    let value = match operation {
+        "AREF" => crate::builtins::aref(&arguments)?,
+        "SVREF" => crate::builtins::svref(&arguments)?,
+        "BIT" => crate::builtins::bit(&arguments)?,
+        "ROW-MAJOR-AREF" => crate::builtins::row_major_aref(&arguments)?,
+        _ => return Err(invalid("unknown array-element operation", span)),
+    };
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

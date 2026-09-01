@@ -55,6 +55,10 @@ impl CompileState {
                 | "CHARACTER"
                 | "CHAR"
                 | "SCHAR"
+                | "AREF"
+                | "SVREF"
+                | "BIT"
+                | "ROW-MAJOR-AREF"
                 | "CHAR-CODE"
                 | "CHAR-INT"
                 | "CODE-CHAR"
@@ -184,6 +188,10 @@ impl CompileState {
             "LENGTH" => self.compile_sequence_length(function, span, items),
             "ELT" => self.compile_sequence_element(function, span, items),
             "CHAR" | "SCHAR" => self.compile_character_element(function, span, items, name),
+            "AREF" | "BIT" => self.compile_array_element(function, span, items, name, false),
+            "SVREF" | "ROW-MAJOR-AREF" => {
+                self.compile_array_element(function, span, items, name, true)
+            }
             "UNION" | "NUNION" | "INTERSECTION" | "NINTERSECTION" | "SET-DIFFERENCE"
             | "NSET-DIFFERENCE" | "SET-EXCLUSIVE-OR" | "NSET-EXCLUSIVE-OR" | "SUBSETP" => {
                 self.compile_list_set(function, span, items, name)

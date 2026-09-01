@@ -23,7 +23,18 @@ pub fn exponential(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn logarithm(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() == 1 {
-        return unary_real("log", arguments, f64::ln);
+        exact(arguments, "log", 1)?;
+        return match &arguments[0] {
+            Value::Complex(value) => {
+                let real = number_argument("log", &value.real)?.as_float();
+                let imag = number_argument("log", &value.imag)?.as_float();
+                Ok(Value::complex(
+                    Value::Float(real.hypot(imag).ln()),
+                    Value::Float(imag.atan2(real)),
+                ))
+            }
+            value => Ok(Value::Float(number_argument("log", value)?.as_float().ln())),
+        };
     }
     exact(arguments, "log", 2)?;
     let value = number_argument("log", &arguments[0])?.as_float();
@@ -73,5 +84,13 @@ mod tests {
                 .to_string(),
             "3.0"
         );
+    }
+
+    #[test]
+    fn logarithm_returns_the_complex_principal_value() {
+        let result = logarithm(&[Value::complex(Value::Integer(-1), Value::Integer(0))])
+            .unwrap()
+            .to_string();
+        assert_eq!(result, "#C(0.0 3.141592653589793)");
     }
 }

@@ -279,15 +279,47 @@ impl Runtime {
                             form.span,
                         ));
                     };
+                    let mut using_binding = None;
                     if items
                         .get(8)
                         .and_then(atom_name)
                         .is_some_and(|name| names_equal(name, "USING"))
                     {
-                        return Err(Self::invalid(
-                            "LOOP HASH-TABLE USING bindings are not supported yet",
-                            form.span,
-                        ));
+                        let Some(using_form) = items.get(9) else {
+                            return Err(Self::invalid(
+                                "LOOP HASH-TABLE USING requires a binding",
+                                form.span,
+                            ));
+                        };
+                        let FormKind::List(using_items) = &using_form.kind else {
+                            return Err(Self::invalid(
+                                "LOOP HASH-TABLE USING requires (HASH-KEY/HASH-VALUE variable)",
+                                form.span,
+                            ));
+                        };
+                        if using_items.len() != 2 {
+                            return Err(Self::invalid(
+                                "LOOP HASH-TABLE USING requires (HASH-KEY/HASH-VALUE variable)",
+                                form.span,
+                            ));
+                        }
+                        let Some(binding_kind) = atom_name(&using_items[0]) else {
+                            return Err(Self::invalid(
+                                "LOOP HASH-TABLE USING requires HASH-KEY or HASH-VALUE",
+                                form.span,
+                            ));
+                        };
+                        if (names_equal(kind, "HASH-KEYS")
+                            && !names_equal(binding_kind, "HASH-VALUE"))
+                            || (names_equal(kind, "HASH-VALUES")
+                                && !names_equal(binding_kind, "HASH-KEY"))
+                        {
+                            return Err(Self::invalid(
+                                "LOOP HASH-TABLE USING binding does not match iterator",
+                                form.span,
+                            ));
+                        }
+                        using_binding = Some(using_items[1].clone());
                     }
                     let mut rewritten = vec![
                         items[0].clone(),
@@ -299,7 +331,16 @@ impl Runtime {
                             form.span,
                         ),
                     ];
-                    rewritten.extend(items[8..].iter().cloned());
+                    if let Some(binding) = using_binding {
+                        rewritten.extend([
+                            Form::atom("NCL-HASH-BIND", form.span),
+                            binding,
+                            items[7].clone(),
+                        ]);
+                        rewritten.extend(items[10..].iter().cloned());
+                    } else {
+                        rewritten.extend(items[8..].iter().cloned());
+                    }
                     return Self::expand_builtin_loop(&Form::list(rewritten, form.span));
                 } else if items
                     .get(3)
@@ -314,6 +355,23 @@ impl Runtime {
                     }
                     let variable = items[2].clone();
                     let mut body_start = 5;
+                    let hash_binding = if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "NCL-HASH-BIND"))
+                    {
+                        if items.len() <= body_start + 2 {
+                            return Err(Self::invalid(
+                                "LOOP hash binding requires a variable and table",
+                                form.span,
+                            ));
+                        }
+                        let binding = (items[body_start + 1].clone(), items[body_start + 2].clone());
+                        body_start += 3;
+                        Some(binding)
+                    } else {
+                        None
+                    };
                     let mut sum_form = None;
                     let mut sum_name = None;
                     let mut count_form = None;
@@ -416,7 +474,7 @@ impl Runtime {
                     }
                     let mut dolist_items = vec![
                         Form::atom("DOLIST", form.span),
-                        Form::list(vec![variable, items[4].clone()], form.span),
+                        Form::list(vec![variable.clone(), items[4].clone()], form.span),
                     ];
                     if let Some(value) = collect_form.clone() {
                         if append {
@@ -481,6 +539,34 @@ impl Runtime {
                         ));
                     }
                     dolist_items.extend(items[body_start..].iter().cloned());
+                    if let Some((binding, table)) = hash_binding {
+                        for item in &mut dolist_items[2..] {
+                            *item = Form::list(
+                                vec![
+                                    Form::atom("LET", form.span),
+                                    Form::list(
+                                        vec![Form::list(
+                                            vec![
+                                                binding.clone(),
+                                                Form::list(
+                                                    vec![
+                                                        Form::atom("GETHASH", form.span),
+                                                        variable.clone(),
+                                                        table.clone(),
+                                                    ],
+                                                    form.span,
+                                                ),
+                                            ],
+                                            form.span,
+                                        )],
+                                        form.span,
+                                    ),
+                                    item.clone(),
+                                ],
+                                form.span,
+                            );
+                        }
+                    }
                     let dolist = Form::list(dolist_items, form.span);
                     if collect_form.is_some()
                         || sum_name.is_some()

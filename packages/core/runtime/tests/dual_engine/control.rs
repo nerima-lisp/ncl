@@ -95,6 +95,30 @@ fn expands_loop_hash_table_iteration(#[case] eval_fn: EvalFn) {
         .to_string(),
         "3"
     );
+    assert_eq!(
+        evaluate(
+            r#"(let ((table (make-hash-table)))
+                 (setf (gethash :first table) 1
+                       (gethash :second table) 2)
+                 (loop for key being the hash-keys of table
+                       using (hash-value value)
+                       sum value))"#
+        )
+        .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(let ((table (make-hash-table)))
+                 (setf (gethash :first table) 1
+                       (gethash :second table) 2)
+                 (loop for key being the hash-keys of table
+                       using (hash-value value)
+                       collect value))"#
+        )
+        .to_string(),
+        "(1 2)"
+    );
 }
 
 #[rstest]

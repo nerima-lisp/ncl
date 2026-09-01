@@ -122,6 +122,8 @@ pub(super) fn printed_value(value: &Value, escape: bool) -> String {
     match value {
         Value::String(value) if !escape => value.to_string(),
         Value::String(value) => format!("{value:?}"),
+        Value::MutableString(value) if !escape => value.borrow().clone(),
+        Value::MutableString(value) => format!("{:?}", value.borrow()),
         Value::List(values) => delimited_values(values, "(", ")", escape),
         Value::DottedList { items, tail } => {
             let mut text = String::from("(");

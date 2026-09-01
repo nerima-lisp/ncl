@@ -36,6 +36,15 @@ pub fn subseq(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 .collect::<String>();
             Ok(Value::string(result))
         }
+        Value::MutableString(value) => {
+            let result = value
+                .borrow()
+                .chars()
+                .skip(start)
+                .take(end - start)
+                .collect::<String>();
+            Ok(Value::mutable_string(result))
+        }
         _ => Err(type_error("subseq", "sequence", &arguments[0])),
     }
 }
@@ -54,7 +63,9 @@ pub fn fill(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let length = sequence_length(&arguments[1])
         .ok_or_else(|| type_error("fill", "sequence", &arguments[1]))?;
     let (start, end) = sequence_bounds("fill", length, &arguments[2..])?;
-    if matches!(arguments[1], Value::String(_)) && !matches!(arguments[0], Value::Character(_)) {
+    if matches!(arguments[1], Value::String(_) | Value::MutableString(_))
+        && !matches!(arguments[0], Value::Character(_))
+    {
         return Err(type_error(
             "fill",
             "a character for a string",
@@ -88,7 +99,7 @@ pub fn replace(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut result = sequence_elements("replace", &arguments[0])?;
     let source = sequence_elements("replace", &arguments[1])?;
     let count = (end1 - start1).min(end2 - start2);
-    if matches!(arguments[0], Value::String(_))
+    if matches!(arguments[0], Value::String(_) | Value::MutableString(_))
         && source[start2..start2 + count]
             .iter()
             .any(|value| !matches!(value, Value::Character(_)))

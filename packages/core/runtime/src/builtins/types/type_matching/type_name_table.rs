@@ -29,7 +29,7 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
             matches!(value, Value::Character(_))
         }
         "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => {
-            matches!(value, Value::String(_))
+            matches!(value, Value::String(_) | Value::MutableString(_))
         }
         "STREAM" => matches!(value, Value::Stream(_)),
         "RANDOM-STATE" => matches!(value, Value::RandomState(_)),

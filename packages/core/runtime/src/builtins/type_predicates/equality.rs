@@ -26,8 +26,16 @@ pub fn equalp_value(left: &Value, right: &Value) -> bool {
     if let (Ok(left), Ok(right)) = (number(left), number(right)) {
         return numeric_equalp(&left, &right);
     }
+    if matches!(
+        (left, right),
+        (Value::String(_) | Value::MutableString(_), Value::String(_) | Value::MutableString(_))
+    ) {
+        return left
+            .string_contents()
+            .zip(right.string_contents())
+            .is_some_and(|(left, right)| left.eq_ignore_ascii_case(&right));
+    }
     match (left, right) {
-        (Value::String(left), Value::String(right)) => left.eq_ignore_ascii_case(right),
         (Value::Character(left), Value::Character(right)) => left.eq_ignore_ascii_case(right),
         (Value::List(left), Value::List(right)) => left.len() == right.len()
             && left.iter().zip(right.iter()).all(|(l, r)| equalp_value(l, r)),

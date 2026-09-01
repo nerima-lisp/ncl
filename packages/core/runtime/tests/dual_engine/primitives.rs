@@ -1202,6 +1202,27 @@ fn evaluates_write_escape_options(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_mutable_string_sequence_and_type_operations(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((text (make-string 3 #\a)))
+                 (list (stringp text)
+                       (simple-string-p text)
+                       (typep text 'base-string)
+                       (equalp text "AaA")
+                       (write-to-string text)
+                       (write-to-string text :escape nil)
+                       (subseq text 1 3)))"#,
+        )
+        .to_string(),
+        r#"(T T T T "\"aaa\"" "aaa" "aa")"#,
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_write_to_stream(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

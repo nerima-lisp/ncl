@@ -1210,6 +1210,14 @@ fn emits_eval_and_mapcar_instructions() {
         .instructions
         .iter()
         .any(|instruction| matches!(instruction, Instruction::SequenceElement)));
+    let subseq = compile("(subseq '(a b c) 1 3)");
+    assert!(subseq.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceSubseq { argument_count: 3 })
+    }));
+    let shadowed_subseq = compile("(flet ((subseq (sequence start) :shadowed)) (subseq '(a b) 1))");
+    assert!(!shadowed_subseq.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceSubseq { .. })
+    }));
     for operation in [
         "UNION", "NUNION", "INTERSECTION", "NINTERSECTION", "SET-DIFFERENCE",
         "NSET-DIFFERENCE", "SET-EXCLUSIVE-OR", "NSET-EXCLUSIVE-OR", "SUBSETP",

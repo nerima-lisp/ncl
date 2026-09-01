@@ -649,6 +649,19 @@ pub fn execute_sequence_element_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_subseq_instruction(
+    stack: &mut Vec<Value>,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("sequence-subseq has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    stack.push(crate::builtins::subseq(&arguments)?);
+    Ok(())
+}
+
 pub fn execute_character_element_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

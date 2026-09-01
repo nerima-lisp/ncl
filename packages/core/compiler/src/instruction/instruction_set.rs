@@ -448,6 +448,10 @@ pub enum Instruction {
     },
     #[doc = "Return the length of a sequence."] SequenceLength,
     #[doc = "Return an element from a sequence."] SequenceElement,
+    #[doc = "Return a subsequence with optional end bound."] SequenceSubseq {
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Return a character from a string."] CharacterElement {
         /// Character access operation name.
         operation: String,

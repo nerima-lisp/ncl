@@ -494,6 +494,14 @@ fn compiled_evaluates_native_array_metadata() {
 }
 
 #[test]
+fn compiled_evaluates_native_subseq() {
+    assert_eq!(
+        evaluate("(list (subseq '(a b c d) 1 3) (subseq \"abcd\" 0 2))").to_string(),
+        "((B C) \"ab\")",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

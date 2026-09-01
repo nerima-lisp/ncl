@@ -17,6 +17,7 @@ use crate::vm::execution::application::{
     execute_sequence_unary_instruction,
     execute_sequence_length_instruction,
     execute_sequence_element_instruction,
+    execute_sequence_subseq_instruction,
     execute_character_element_instruction,
     execute_array_element_instruction,
     execute_array_metadata_instruction,
@@ -247,6 +248,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::SequenceElement => {
             execute_sequence_element_instruction(stack, span)?;
+        }
+        Instruction::SequenceSubseq { argument_count } => {
+            execute_sequence_subseq_instruction(stack, *argument_count, span)?;
         }
         Instruction::CharacterElement { operation } => {
             execute_character_element_instruction(stack, operation, span)?;

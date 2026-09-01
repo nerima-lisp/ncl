@@ -12,6 +12,7 @@ use crate::vm::execution::application::{
     execute_numeric_fold_instruction,
     execute_numeric_binary_instruction,
     execute_numeric_boole_instruction,
+    execute_numeric_bitfield_instruction,
     execute_character_digit_predicate_instruction,
     execute_list_mapping_instruction,
     execute_list_set_instruction,
@@ -259,6 +260,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::NumericBoole => {
             execute_numeric_boole_instruction(stack, span)?;
+        }
+        Instruction::NumericBitfield { operation, argument_count } => {
+            execute_numeric_bitfield_instruction(stack, operation, *argument_count, span)?;
         }
         Instruction::ListTail { operation, option_count } => {
             execute_list_tail_instruction(operation, *option_count, stack, span)?;

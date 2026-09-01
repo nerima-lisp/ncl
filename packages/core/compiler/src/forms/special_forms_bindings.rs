@@ -209,6 +209,9 @@ impl CompileState {
             }
             "LOGBITP" => self.compile_numeric_binary(function, span, items, name),
             "BOOLE" => self.compile_numeric_boole(function, span, items),
+            "BYTE" | "LDB" | "MASK-FIELD" | "DPB" | "DEPOSIT-FIELD" => {
+                self.compile_numeric_bitfield(function, span, items, name)
+            }
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

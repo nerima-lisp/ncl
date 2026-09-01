@@ -607,6 +607,29 @@ pub fn execute_numeric_boole_instruction(
     Ok(())
 }
 
+pub fn execute_numeric_bitfield_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("numeric bitfield operation has too few stack values", span));
+    }
+    let start = stack.len() - argument_count;
+    let arguments = stack.split_off(start);
+    let result = match operation {
+        "BYTE" => crate::builtins::byte(&arguments),
+        "LDB" => crate::builtins::ldb(&arguments),
+        "MASK-FIELD" => crate::builtins::mask_field(&arguments),
+        "DPB" => crate::builtins::dpb(&arguments),
+        "DEPOSIT-FIELD" => crate::builtins::deposit_field(&arguments),
+        _ => Err(invalid("unknown numeric bitfield operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_character_comparison_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

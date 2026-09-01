@@ -74,6 +74,16 @@ fn evaluates_boole_and_logbitp(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_bitfield_operations(#[case] eval_fn: EvalFn) {
+    assert_eq!(
+        evaluate_with(eval_fn, "(let ((b (byte 4 4))) (list b (ldb b #xabc) (mask-field b #xabc) (dpb 2 b #xabc) (deposit-field #x050 b #xabc)))").to_string(),
+        "((4 4) 11 176 2604 2652)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_numeric_remainders(#[case] eval_fn: EvalFn) {
     assert_eq!(
         evaluate_with(eval_fn, "(list (mod -7 3) (rem -7 3))").to_string(),

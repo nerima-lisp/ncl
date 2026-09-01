@@ -539,6 +539,33 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_numeric_bitfield(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        let argument_count = match operation {
+            "BYTE" | "LDB" | "MASK-FIELD" => 2,
+            "DPB" | "DEPOSIT-FIELD" => 3,
+            _ => unreachable!("numeric bitfield operation was not dispatched"),
+        };
+        Self::require_arity(items, operation, &argument_count.to_string(), argument_count, span)?;
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::NumericBitfield {
+                operation: operation.to_string(),
+                argument_count,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_digit_predicate(
         &mut self,
         function: FunctionId,

@@ -1177,6 +1177,18 @@ fn emits_eval_and_mapcar_instructions() {
         .instructions
         .iter()
         .any(|instruction| matches!(instruction, Instruction::NumericBoole)));
+    for operation in ["BYTE", "LDB", "MASK-FIELD"] {
+        let program = compile(&format!("({operation} '(4 4) 12)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericBitfield { operation: emitted, argument_count: 2 } if emitted == operation)
+        }));
+    }
+    for operation in ["DPB", "DEPOSIT-FIELD"] {
+        let program = compile(&format!("({operation} 2 '(4 4) 12)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericBitfield { operation: emitted, argument_count: 3 } if emitted == operation)
+        }));
+    }
     for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
         let program = compile(&format!("({operation} '(1 2 3) 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

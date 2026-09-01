@@ -571,6 +571,12 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Apply a method-context operation."] MethodOperation {
+        /// Name of the method operation to invoke.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Apply a package introspection operation."] PackageIntrospection {
         /// Name of the package introspection operation to invoke.
         operation: String,

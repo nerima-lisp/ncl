@@ -1,5 +1,5 @@
 pub(super) fn is_shadowable_primitive(name: &str) -> bool {
-    matches!(
+    is_composite_list_accessor(name) || matches!(
         name,
         "FIND" | "POSITION" | "COUNT" | "FIND-IF" | "POSITION-IF" | "COUNT-IF"
             | "FIND-IF-NOT" | "POSITION-IF-NOT" | "COUNT-IF-NOT" | "SEARCH" | "MISMATCH"
@@ -49,4 +49,14 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
             | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR" | "DIGIT-CHAR-P" | "DIGIT-CHAR"
             | "SYMBOL-NAME" | "SYMBOL-PACKAGE" | "IDENTITY" | "TYPE-OF"
     )
+}
+
+pub(super) fn is_composite_list_accessor(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    bytes.len() >= 4
+        && bytes[0] == b'C'
+        && bytes[bytes.len() - 1] == b'R'
+        && bytes[1..bytes.len() - 1]
+            .iter()
+            .all(|byte| *byte == b'A' || *byte == b'D')
 }

@@ -190,9 +190,29 @@ pub fn execute_list_unary_instruction(
         "EIGHTH" => crate::builtins::nth(&[Value::Integer(7), value]),
         "NINTH" => crate::builtins::nth(&[Value::Integer(8), value]),
         "TENTH" => crate::builtins::nth(&[Value::Integer(9), value]),
+        name if is_composite_list_accessor(name) => {
+            let mut result = Ok(value);
+            for accessor in name[1..name.len() - 1].chars().rev() {
+                result = result.and_then(|current| match accessor {
+                    'A' => crate::builtins::car(&[current]),
+                    'D' => crate::builtins::cdr(&[current]),
+                    _ => unreachable!("validated composite list accessor"),
+                });
+            }
+            result
+        }
         _ => Err(invalid("unknown unary list operation", span)),
     }?;
     stack.push(result);
     Ok(())
 }
 
+fn is_composite_list_accessor(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    bytes.len() >= 4
+        && bytes[0] == b'C'
+        && bytes[bytes.len() - 1] == b'R'
+        && bytes[1..bytes.len() - 1]
+            .iter()
+            .all(|byte| *byte == b'A' || *byte == b'D')
+}

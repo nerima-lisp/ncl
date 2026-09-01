@@ -1,5 +1,7 @@
 #[test]
 fn compiled_evaluates_setf_places() {
+    assert_eq!(evaluate("(cadr '(a b c))").to_string(), "B");
+    assert_eq!(evaluate("(caddr '(a b c d))").to_string(), "C");
     assert_eq!(
         evaluate("(let ((xs (list 1 2 3))) (setf (car xs) 9 (nth 2 xs) 7) xs)").to_string(),
         "(9 2 7)"

@@ -13,6 +13,9 @@ impl CompileState {
         {
             return None;
         }
+        if super::special_forms_bindings_catalog::is_composite_list_accessor(name) {
+            return Some(self.compile_list_unary(function, span, items, name));
+        }
         Some(match name {
             "EQ" | "EQL" | "EQUAL" | "EQUALP" => {
                 self.compile_equality(function, span, items, name)

@@ -24,6 +24,31 @@ fn expands_basic_loop_iteration(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_condition_clauses(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop while (< value 3) do (incf value))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop until (= value 3) (incf value))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn captures_an_active_tagbody_target_in_a_closure(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     let source = r"

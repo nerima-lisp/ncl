@@ -21,16 +21,14 @@ pub fn float_sign(arguments: &[Value]) -> Result<Value, RuntimeError> {
         return Err(arity("float-sign", "1 to 2", arguments.len()));
     }
     let value = float_argument("float-sign", &arguments[0])?;
-    let sign = arguments
-        .get(1)
-        .map(|value| match value {
-            Value::Integer(value) => *value >= 0,
-            Value::BigInteger(value) => value.as_ref() >= &ibig::IBig::from(0),
-            Value::Rational(value) => value.numerator() >= &ibig::IBig::from(0),
-            Value::Float(value) => *value >= 0.0,
-            _ => false,
-        })
-        .unwrap_or_else(|| value.is_sign_positive());
+    let sign = match arguments.get(1) {
+        Some(Value::Integer(value)) => *value >= 0,
+        Some(Value::BigInteger(value)) => value.as_ref() >= &ibig::IBig::from(0),
+        Some(Value::Rational(value)) => value.numerator() >= &ibig::IBig::from(0),
+        Some(Value::Float(value)) => *value >= 0.0,
+        Some(value) => return Err(type_error("float-sign", "a number", value)),
+        None => value.is_sign_positive(),
+    };
     Ok(Value::Float(if sign {
         value.abs()
     } else {
@@ -109,4 +107,17 @@ pub fn integer_decode_float(arguments: &[Value]) -> Result<Value, RuntimeError> 
         Value::Integer(exponent),
         Value::Integer(if value.is_sign_negative() { -1 } else { 1 }),
     ]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn float_sign_rejects_a_non_numeric_sign_argument() {
+        assert!(matches!(
+            float_sign(&[Value::Float(1.0), Value::Nil]),
+            Err(RuntimeError::Type { .. })
+        ));
+    }
 }

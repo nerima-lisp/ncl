@@ -279,6 +279,14 @@ fn evaluates_common_lisp_float_operations(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn rejects_non_numeric_float_sign_argument(#[case] eval_fn: EvalFn) {
+    let result = eval_fn(&Runtime::new(), "(float-sign 1.0 nil)");
+    assert!(result.is_err());
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_common_lisp_phase(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

@@ -13,7 +13,8 @@ impl Runtime {
         let mut repeat_count = None;
         let mut collect_form = None;
         let count_name = Form::atom(format!("NCL-LOOP-COUNT-{}", form.span.start), form.span);
-        let collect_name = Form::atom(format!("NCL-LOOP-COLLECT-{}", form.span.start), form.span);
+        let mut collect_name =
+            Form::atom(format!("NCL-LOOP-COLLECT-{}", form.span.start), form.span);
         if let Some(clause) = items.get(1).and_then(atom_name) {
             if names_equal(clause, "WHILE") || names_equal(clause, "UNTIL") {
                 if items.len() < 3 {
@@ -197,6 +198,20 @@ impl Runtime {
                         collect_form = Some(items[body_start + 1].clone());
                         append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
                         body_start += 2;
+                        if items
+                            .get(body_start)
+                            .and_then(atom_name)
+                            .is_some_and(|name| names_equal(name, "INTO"))
+                        {
+                            if items.len() <= body_start + 1 {
+                                return Err(Self::invalid(
+                                    "LOOP APPEND/COLLECT INTO requires a variable",
+                                    form.span,
+                                ));
+                            }
+                            collect_name = items[body_start + 1].clone();
+                            body_start += 2;
+                        }
                     }
                     if items
                         .get(body_start)

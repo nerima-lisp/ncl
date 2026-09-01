@@ -463,6 +463,7 @@ impl Runtime {
                     let mut extremum_form = None;
                     let mut extremum_name = None;
                     let mut maximize = false;
+                    let mut append = false;
                     if items
                         .get(body_start)
                         .and_then(atom_name)
@@ -474,7 +475,9 @@ impl Runtime {
                     if items
                         .get(body_start)
                         .and_then(atom_name)
-                        .is_some_and(|name| names_equal(name, "COLLECT"))
+                        .is_some_and(|name| {
+                            names_equal(name, "COLLECT") || names_equal(name, "APPEND")
+                        })
                     {
                         if items.len() <= body_start + 1 {
                             return Err(Self::invalid(
@@ -483,15 +486,38 @@ impl Runtime {
                             ));
                         }
                         collect_form = Some(items[body_start + 1].clone());
-                        loop_body.push(Form::list(
-                            vec![
-                                Form::atom("PUSH", form.span),
+                        append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
+                        if append {
+                            loop_body.push(append_step(
+                                form,
                                 items[body_start + 1].clone(),
                                 collect_name.clone(),
-                            ],
-                            form.span,
-                        ));
+                            ));
+                        } else {
+                            loop_body.push(Form::list(
+                                vec![
+                                    Form::atom("PUSH", form.span),
+                                    items[body_start + 1].clone(),
+                                    collect_name.clone(),
+                                ],
+                                form.span,
+                            ));
+                        }
                         body_start += 2;
+                        if items
+                            .get(body_start)
+                            .and_then(atom_name)
+                            .is_some_and(|name| names_equal(name, "INTO"))
+                        {
+                            if items.len() <= body_start + 1 {
+                                return Err(Self::invalid(
+                                    "LOOP APPEND/COLLECT INTO requires a variable",
+                                    form.span,
+                                ));
+                            }
+                            collect_name = items[body_start + 1].clone();
+                            body_start += 2;
+                        }
                     }
                     if items
                         .get(body_start)

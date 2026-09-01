@@ -64,6 +64,11 @@ fn compiled_evaluates_rational_conversion() {
 }
 
 #[test]
+fn compiled_evaluates_float_conversion() {
+    assert_eq!(evaluate("(float 3)").to_string(), "3.0");
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

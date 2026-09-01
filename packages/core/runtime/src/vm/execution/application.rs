@@ -879,6 +879,7 @@ pub fn execute_numeric_float_instruction(
     }
     let arguments = stack.split_off(stack.len() - argument_count);
     let result = match operation {
+        "FLOAT" => crate::builtins::float_value(&arguments),
         "FLOAT-SIGN" => crate::builtins::float_sign(&arguments),
         "FLOAT-DIGITS" => crate::builtins::float_digits(&arguments),
         "FLOAT-PRECISION" => crate::builtins::float_precision(&arguments),

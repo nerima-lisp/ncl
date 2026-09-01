@@ -554,7 +554,7 @@ impl CompileState {
         operation: &str,
     ) -> Result<(), CompileError> {
         let argument_count = match operation {
-            "FLOAT-SIGN" => 1..=2,
+            "FLOAT" | "FLOAT-SIGN" => 1..=2,
             "FLOAT-DIGITS" | "FLOAT-PRECISION" | "FLOAT-RADIX" | "DECODE-FLOAT"
             | "INTEGER-DECODE-FLOAT" => 1..=1,
             "SCALE-FLOAT" => 2..=2,
@@ -562,7 +562,7 @@ impl CompileState {
         };
         if !argument_count.contains(&(items.len() - 1)) {
             let expected = match operation {
-                "FLOAT-SIGN" => "one or two",
+                "FLOAT" | "FLOAT-SIGN" => "one or two",
                 "SCALE-FLOAT" => "two",
                 _ => "one",
             };

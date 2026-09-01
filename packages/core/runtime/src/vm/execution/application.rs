@@ -501,6 +501,15 @@ pub fn execute_list_unary_instruction(
         "COPY-ALIST" => crate::builtins::copy_alist(&[value]),
         "ENDP" => crate::builtins::endp(&[value]),
         "LIST-LENGTH" => crate::builtins::list_length(&[value]),
+        "SECOND" => crate::builtins::nth(&[Value::Integer(1), value]),
+        "THIRD" => crate::builtins::nth(&[Value::Integer(2), value]),
+        "FOURTH" => crate::builtins::nth(&[Value::Integer(3), value]),
+        "FIFTH" => crate::builtins::nth(&[Value::Integer(4), value]),
+        "SIXTH" => crate::builtins::nth(&[Value::Integer(5), value]),
+        "SEVENTH" => crate::builtins::nth(&[Value::Integer(6), value]),
+        "EIGHTH" => crate::builtins::nth(&[Value::Integer(7), value]),
+        "NINTH" => crate::builtins::nth(&[Value::Integer(8), value]),
+        "TENTH" => crate::builtins::nth(&[Value::Integer(9), value]),
         _ => Err(invalid("unknown unary list operation", span)),
     }?;
     stack.push(result);

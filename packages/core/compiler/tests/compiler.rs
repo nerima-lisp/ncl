@@ -1083,6 +1083,7 @@ fn emits_eval_and_mapcar_instructions() {
     }
     for operation in [
         "CAR", "CDR", "FIRST", "REST", "COPY-LIST", "COPY-ALIST", "ENDP", "LIST-LENGTH",
+        "SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH", "SEVENTH", "EIGHTH", "NINTH", "TENTH",
     ] {
         let program = compile(&format!("({operation} '(1 2))"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

@@ -33,7 +33,8 @@ mod builtin_helpers;
 use builtin_helpers::{arity, exact, type_error};
 
 mod builtin_reading;
-use builtin_reading::{read, read_from_string, read_preserving_whitespace};
+use builtin_reading::{read, read_preserving_whitespace};
+pub(crate) use builtin_reading::read_from_string;
 
 mod builtin_hash_tables;
 pub use builtin_hash_tables::{

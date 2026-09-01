@@ -4,7 +4,7 @@ use super::{
     RuntimeError, Value, arity, quoted_form_value, stream_bound, stream_state_error, type_error,
 };
 
-pub(super) fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("read-from-string", "at least 1", arguments.len()));
     }

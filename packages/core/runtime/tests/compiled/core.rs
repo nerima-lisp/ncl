@@ -818,4 +818,12 @@ fn compiled_reports_compile_errors() {
     assert!(matches!(error, RuntimeError::Compile(_)));
 }
 
+#[test]
+fn compiled_evaluates_value_unary_operations() {
+    let values = Runtime::new()
+        .eval_compiled_source("(list (identity 42) (type-of 42))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(42 INTEGER)");
+}
+
 use super::*;

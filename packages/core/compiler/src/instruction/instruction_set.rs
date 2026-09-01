@@ -432,6 +432,10 @@ pub enum Instruction {
         /// Unary operation name.
         operation: String,
     },
+    #[doc = "Apply a unary value operation."] ValueUnary {
+        /// Unary operation name.
+        operation: String,
+    },
     #[doc = "Apply a unary type predicate operation."] TypePredicate {
         /// Type predicate name.
         operation: String,

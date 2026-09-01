@@ -945,6 +945,21 @@ pub fn execute_symbol_unary_instruction(
     Ok(())
 }
 
+pub fn execute_value_unary_instruction(
+    operation: &str,
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let value = stack.pop().ok_or_else(|| invalid("unary value operation has too few stack values", span))?;
+    let result = match operation {
+        "IDENTITY" => crate::builtins::identity(&[value]),
+        "TYPE-OF" => crate::builtins::type_of(&[value]),
+        _ => Err(invalid("unknown unary value operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_type_predicate_instruction(
     operation: &str,
     stack: &mut Vec<Value>,

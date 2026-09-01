@@ -1,7 +1,7 @@
 use super::{arity, array_option_name, exact, type_error, write_destination};
 use crate::{RuntimeError, Value};
 
-pub(super) fn identity(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn identity(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "identity", 1)?;
     Ok(arguments[0].clone())
 }
@@ -27,7 +27,7 @@ pub(super) fn constantly(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::constantly(arguments[0].clone()))
 }
 
-pub(super) fn type_of(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn type_of(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "type-of", 1)?;
     Ok(Value::symbol(
         arguments[0]

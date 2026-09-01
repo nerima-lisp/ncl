@@ -2,6 +2,31 @@
 use super::super::*;
 
 impl CompileState {
+    pub(super) fn compile_setf_symbol_plist_place(
+        &mut self,
+        function: FunctionId,
+        place: &Form,
+        value_form: &Form,
+    ) -> Result<bool, CompileError> {
+        let FormKind::List(items) = &place.kind else {
+            return Ok(false);
+        };
+        if items.len() != 2 {
+            return Ok(false);
+        }
+        let Some((operator, _)) = Self::symbol_name_info(&items[0], "setf place operator").ok()
+        else {
+            return Ok(false);
+        };
+        if operator != "SYMBOL-PLIST" {
+            return Ok(false);
+        }
+        self.compile_expression(function, &items[1])?;
+        self.compile_expression(function, value_form)?;
+        self.emit(function, Instruction::SetfSymbolPlistDynamic, place.span)?;
+        Ok(true)
+    }
+
     pub(super) fn compile_setf_getf_place(
         &mut self,
         function: FunctionId,

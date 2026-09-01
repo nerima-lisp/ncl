@@ -87,6 +87,26 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::SetfSymbolPlistDynamic => {
+            let value = stack
+                .pop()
+                .ok_or_else(|| invalid("setf symbol-plist has no value on the stack", span))?
+                .primary_value();
+            let symbol = stack
+                .pop()
+                .ok_or_else(|| invalid("setf symbol-plist has no target on the stack", span))?
+                .primary_value();
+            if symbol.symbol_reference().is_none() {
+                return Err(invalid("setf symbol-plist target must be a symbol", span));
+            }
+            if !value.list_items().is_some_and(|items| items.len().is_multiple_of(2)) {
+                return Err(invalid("SYMBOL-PLIST needs an even property list", span));
+            }
+            environment.set_symbol_plist(&symbol, value.clone());
+            stack.push(value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PushNewGethash => {
             let table = stack
                 .pop()

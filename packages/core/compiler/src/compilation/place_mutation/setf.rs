@@ -36,6 +36,10 @@ impl CompileState {
                 emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
                 continue;
             }
+            if self.compile_setf_symbol_plist_place(function, place, value_form)? {
+                emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
+                continue;
+            }
             if self.compile_setf_symbol_cell_place(function, place, value_form)? {
                 emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
                 continue;

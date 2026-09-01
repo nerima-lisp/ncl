@@ -154,6 +154,10 @@ fn compiled_evaluates_setf_places() {
         "(7 (:KEY 7))"
     );
     assert_eq!(
+        evaluate("(let ((symbol 'compiled-plist-target)) (list (setf (symbol-plist symbol) '(:key 42)) (symbol-plist symbol)))").to_string(),
+        "((:KEY 42) (:KEY 42))"
+    );
+    assert_eq!(
         evaluate(
             "(progn
                (defparameter *compiled-setf-symbol-value-target* 1)

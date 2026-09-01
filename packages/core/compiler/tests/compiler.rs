@@ -1085,6 +1085,15 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(tree_equal.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::TreeEqual { option_count: 2 })
     }));
+    for operation in [
+        "UNION", "NUNION", "INTERSECTION", "NINTERSECTION", "SET-DIFFERENCE",
+        "NSET-DIFFERENCE", "SET-EXCLUSIVE-OR", "NSET-EXCLUSIVE-OR", "SUBSETP",
+    ] {
+        let program = compile(&format!("({operation} '(1 2) '(2 3) :test #'eql)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListSet { operation: emitted, option_count: 2 } if emitted == operation)
+        }));
+    }
     assert!(
         map_into.functions[0]
             .instructions

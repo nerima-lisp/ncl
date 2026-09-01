@@ -424,6 +424,12 @@ pub enum Instruction {
         /// Number of option values following the two trees.
         option_count: usize,
     },
+    #[doc = "Apply a list set operation with keyword options."] ListSet {
+        /// List set operation name.
+        operation: String,
+        /// Number of option values following the two lists.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

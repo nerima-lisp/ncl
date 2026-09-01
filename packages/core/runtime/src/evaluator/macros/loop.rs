@@ -3,6 +3,7 @@ use ncl_syntax::{Form, FormKind};
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
 use super::loop_aggregate::{append_step, count_step, sum_step};
+use super::loop_hash::bind_hash_value_and_key;
 
 impl Runtime {
     pub(super) fn expand_builtin_loop(form: &Form) -> Result<Form, RuntimeError> {
@@ -611,29 +612,13 @@ impl Runtime {
                     }
                     if let Some((value_binding, key_binding, table)) = hash_dual_binding {
                         for item in &mut dolist_items[2..] {
-                            *item = Form::list(
-                                vec![
-                                    Form::atom("LET", form.span),
-                                    Form::list(
-                                        vec![
-                                            Form::list(vec![
-                                                value_binding.clone(),
-                                                Form::list(
-                                                    vec![
-                                                        Form::atom("GETHASH", form.span),
-                                                        variable.clone(),
-                                                        table.clone(),
-                                                    ],
-                                                    form.span,
-                                                ),
-                                            ], form.span),
-                                            Form::list(vec![key_binding.clone(), variable.clone()], form.span),
-                                        ],
-                                        form.span,
-                                    ),
-                                    item.clone(),
-                                ],
-                                form.span,
+                            *item = bind_hash_value_and_key(
+                                form,
+                                &value_binding,
+                                &key_binding,
+                                &variable,
+                                &table,
+                                item.clone(),
                             );
                         }
                     }

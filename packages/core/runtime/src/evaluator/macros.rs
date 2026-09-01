@@ -3,6 +3,7 @@ mod destructuring;
 mod dispatch;
 mod keywords;
 mod loop_aggregate;
+mod loop_hash;
 mod r#loop;
 mod modify_macro;
 mod modify_macro_tests;

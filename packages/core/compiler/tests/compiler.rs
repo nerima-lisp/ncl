@@ -1360,6 +1360,15 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::PropertyList { .. })
         }));
     }
+    for (operation, source, argument_count) in [
+        ("GETHASH", "(gethash :a (make-hash-table))", 2),
+        ("REMHASH", "(remhash :a (make-hash-table))", 2),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::HashTable { operation: emitted, argument_count: count } if emitted == operation && *count == argument_count)
+        }));
+    }
     let make_array = compile("(make-array 2 :initial-element 7)");
     assert!(make_array.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::ArrayConstruction { argument_count: 3 })

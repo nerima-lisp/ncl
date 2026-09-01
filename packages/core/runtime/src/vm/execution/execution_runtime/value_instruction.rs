@@ -1,5 +1,5 @@
 use ncl_compiler::Instruction;
-use ncl_syntax::{FormKind, Span};
+use ncl_syntax::Span;
 
 use super::mutation_instruction;
 use crate::vm::execution::application::{
@@ -56,6 +56,7 @@ use crate::vm::execution::application::{
 };
 use crate::vm::primitives::pop_value;
 use crate::{Environment, Runtime, RuntimeError, Value};
+use super::value_instruction_definitions::execute_definition_instruction;
 
 pub(super) fn execute_value_instruction(
     runtime: &Runtime,
@@ -65,115 +66,15 @@ pub(super) fn execute_value_instruction(
     program_counter: &mut usize,
     span: Span,
 ) -> Result<bool, RuntimeError> {
+    if let Some(result) = execute_definition_instruction(runtime, instruction, stack, environment) {
+        return result.map(|handled| {
+            if handled {
+                *program_counter += 1;
+            }
+            handled
+        });
+    }
     match instruction {
-        Instruction::Defstruct(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "DEFSTRUCT instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(runtime.special_defstruct(items, environment)?);
-        }
-        Instruction::Defclass(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "DEFCLASS instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(Runtime::special_defclass(items, environment)?);
-        }
-        Instruction::Defgeneric(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "DEFGENERIC instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(Runtime::special_defgeneric(items, environment)?);
-        }
-        Instruction::Defmethod(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "DEFMETHOD instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(Runtime::special_defmethod(items, environment)?);
-        }
-        Instruction::Defsetf(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "DEFSETF instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(runtime.special_defsetf(items, environment)?);
-        }
-        Instruction::Defconstant(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "DEFCONSTANT instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(runtime.special_defconstant(items, environment)?);
-        }
-        Instruction::DefineSymbolMacro(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "DEFINE-SYMBOL-MACRO instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(Runtime::special_define_symbol_macro(items, environment)?);
-        }
-        Instruction::DefineModifyMacro(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "DEFINE-MODIFY-MACRO instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(runtime.special_define_modify_macro(items, environment)?);
-        }
-        Instruction::DefineSetfExpander(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "DEFINE-SETF-EXPANDER instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(Runtime::special_define_setf_expander(items, environment)?);
-        }
-        Instruction::GetSetfExpansion(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "GET-SETF-EXPANSION instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(runtime.special_get_setf_expansion(items, environment)?);
-        }
-        Instruction::Psetf(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "PSETF instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(runtime.special_psetf(items, environment)?);
-        }
-        Instruction::LoadTimeValue(form) => {
-            let FormKind::List(items) = &form.kind else {
-                return Err(RuntimeError::InvalidForm {
-                    message: "LOAD-TIME-VALUE instruction requires a list".to_string(),
-                    span: Some(form.span),
-                });
-            };
-            stack.push(runtime.special_load_time_value(items, environment)?);
-        }
         Instruction::RuntimeMutation(form) => {
             mutation_instruction::execute(runtime, form, stack, environment)?;
         }

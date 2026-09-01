@@ -117,6 +117,36 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::ListMutationNthDynamic { operator, name, escaped } => {
+            let current = stack.pop().ok_or_else(|| invalid("nth mutation has no target", span))?.primary_value();
+            let index = stack.pop().ok_or_else(|| invalid("nth mutation has no index", span))?.primary_value();
+            let index = crate::builtins::index_argument("nth mutation", &index)?;
+            let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: current.type_name().to_string(), span: Some(span) })?;
+            let slot = elements.get(index).ok_or_else(|| crate::builtins::out_of_bounds("nth mutation", index))?.clone();
+            let value = if operator == "PUSH" {
+                let value = stack.pop().ok_or_else(|| invalid("nth PUSH has no value", span))?.primary_value();
+                let mut slot = slot.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: slot.type_name().to_string(), span: Some(span) })?;
+                slot.insert(0, value);
+                Value::list(slot)
+            } else {
+                let mut slot = slot.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: slot.type_name().to_string(), span: Some(span) })?;
+                let popped = slot.first().cloned().unwrap_or(Value::Nil);
+                if !slot.is_empty() { slot.remove(0); }
+                let updated = Value::list(slot);
+                elements[index] = updated;
+                let outer = Value::list(elements);
+                if *escaped { runtime.set_or_define_exact_in(name, outer, environment, span)?; } else { runtime.set_or_define_in(name, outer, environment, span)?; }
+                stack.push(popped);
+                *program_counter += 1;
+                return Ok(true);
+            };
+            elements[index] = value.clone();
+            let updated = Value::list(elements);
+            if *escaped { runtime.set_or_define_exact_in(name, updated, environment, span)?; } else { runtime.set_or_define_in(name, updated, environment, span)?; }
+            stack.push(value);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::PopList { name, escaped } => {
             let current = stack
                 .pop()

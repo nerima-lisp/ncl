@@ -84,6 +84,33 @@ fn compile_push_and_pop_with_car_places_use_native_instructions() {
 }
 
 #[test]
+fn compile_push_and_pop_with_dynamic_nth_places_use_native_instructions() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let push = parse_items("(push 1 (nth index xs))");
+    let pop = parse_items("(pop (nth 0 |Mixed|))");
+
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &push)
+        .expect("dynamic NTH PUSH should use a native mutation instruction");
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pop)
+        .expect("dynamic NTH POP should use a native mutation instruction");
+
+    let instructions = &state.functions[function].instructions;
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::ListMutationNthDynamic { operator, name, escaped }
+            if operator == "PUSH" && name == "XS" && !escaped
+    )));
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::ListMutationNthDynamic { operator, name, escaped }
+            if operator == "POP" && name == "Mixed" && *escaped
+    )));
+}
+
+#[test]
 fn compile_push_and_pop_use_native_gethash_instructions() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

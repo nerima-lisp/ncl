@@ -192,6 +192,22 @@ impl CompileState {
             }
         }
         let generalized = generalized_list_place(place);
+        if let Some((index_form, target, name, escaped)) = nth_list_place(place) {
+            if operator == "PUSHNEW" {
+                return Ok(None);
+            }
+            if operator == "PUSH" {
+                self.compile_expression(function, &items[1])?;
+            }
+            self.compile_expression(function, index_form)?;
+            self.compile_expression(function, target)?;
+            self.emit(
+                function,
+                Instruction::ListMutationNthDynamic { operator, name, escaped },
+                items[0].span,
+            )?;
+            return Ok(Some(()));
+        }
         let symbol_place = Self::symbol_name_info(place, "list place").ok();
         if generalized.is_none() && symbol_place.is_none() {
             return Ok(None);
@@ -234,4 +250,18 @@ impl CompileState {
         )?;
         Ok(Some(()))
     }
+}
+
+fn nth_list_place(place: &Form) -> Option<(&Form, &Form, String, bool)> {
+    let FormKind::List(items) = &place.kind else { return None };
+    if items.len() != 3
+        || CompileState::symbol_name_info(&items[0], "list place operator")
+            .ok()?
+            .0
+            != "NTH"
+    {
+        return None;
+    }
+    let (name, escaped) = CompileState::symbol_name_info(&items[2], "list place target").ok()?;
+    Some((&items[1], &items[2], name, escaped))
 }

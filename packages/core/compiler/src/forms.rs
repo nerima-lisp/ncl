@@ -5,4 +5,5 @@ mod prog_handlers;
 mod quote_handlers;
 mod sequencing_handlers;
 mod special_forms_bindings;
+mod special_forms_bindings_catalog;
 mod special_forms_core;

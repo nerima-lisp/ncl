@@ -14,6 +14,10 @@ impl CompileState {
         let (pairs, _) = operands.as_chunks::<2>();
         let pair_count = operands.len() / 2;
         for (index, [place, value_form]) in pairs.iter().enumerate() {
+            if self.compile_setf_nth_place(function, place, value_form, index, pair_count)? {
+                continue;
+            }
+            /*
             let nth_place = match &place.kind {
                 FormKind::List(items) if (items.len() == 2 || items.len() == 3) => {
                     let operator = Self::symbol_name_info(&items[0], "setf place operator")
@@ -87,6 +91,7 @@ impl CompileState {
                 emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
                 continue;
             }
+            */
             let aref_place = match &place.kind {
                 FormKind::List(items) if items.len() >= 3 => {
                     let operator = Self::symbol_name_info(&items[0], "setf place operator")

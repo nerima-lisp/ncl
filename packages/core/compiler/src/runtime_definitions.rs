@@ -19,7 +19,12 @@ impl CompileState {
                 span,
             ));
         }
-        self.compile_runtime_definition(function, span, items)
+        self.emit(
+            function,
+            Instruction::LoadTimeValue(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
     }
 
     pub(super) fn compile_defstruct(

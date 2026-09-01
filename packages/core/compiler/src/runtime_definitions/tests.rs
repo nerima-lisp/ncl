@@ -234,6 +234,22 @@ fn compile_load_time_value_rejects_more_than_two_arguments() {
 }
 
 #[test]
+fn compile_load_time_value_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(load-time-value (+ 1 2) nil)");
+
+    state
+        .compile_load_time_value(function, Span::new(0, 1), &items)
+        .expect("LOAD-TIME-VALUE should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.as_slice(),
+        [Instruction::LoadTimeValue(_)]
+    ));
+}
+
+#[test]
 fn compile_runtime_definition_uses_native_rotate_and_shift_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

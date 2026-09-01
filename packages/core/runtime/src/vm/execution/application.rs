@@ -36,13 +36,19 @@ pub use application_array_ops::{
 #[path = "application_object.rs"]
 mod application_object;
 pub use application_object::{
+    execute_evaluation_operation_instruction, execute_package_introspection_instruction,
+    execute_package_listing_instruction, execute_package_mutation_instruction,
+    execute_property_list_instruction, execute_symbol_binding_instruction,
+    execute_symbol_creation_instruction, execute_symbol_function_instruction,
+    execute_symbol_value_instruction,
+};
+
+#[path = "application_object_system.rs"]
+mod application_object_system;
+pub use application_object_system::{
     execute_class_introspection_instruction, execute_condition_operation_instruction,
-    execute_evaluation_operation_instruction, execute_method_operation_instruction,
-    execute_package_introspection_instruction, execute_package_listing_instruction,
-    execute_package_mutation_instruction, execute_property_list_instruction,
-    execute_restart_operation_instruction, execute_slot_operation_instruction,
-    execute_symbol_binding_instruction, execute_symbol_creation_instruction,
-    execute_symbol_function_instruction, execute_symbol_value_instruction,
+    execute_method_operation_instruction, execute_restart_operation_instruction,
+    execute_slot_operation_instruction,
 };
 
 #[path = "application_io.rs"]

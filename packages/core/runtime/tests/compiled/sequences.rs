@@ -511,6 +511,11 @@ fn compiled_evaluates_symbol_function_operations() {
 }
 
 #[test]
+fn compiled_evaluates_symbol_creation_operations() {
+    assert_eq!(evaluate("(list (symbolp (make-symbol \"foo\")) (symbolp (gensym \"G\")))").to_string(), "(T T)");
+}
+
+#[test]
 fn compiled_evaluates_package_introspection_operations() {
     assert_eq!(evaluate("(let ((package (find-package :ncl-user))) (list (package-name package) (package-use-list package) (package-nicknames package)))").to_string(), "(\"NCL-USER\" (#<PACKAGE \"COMMON-LISP\">) NIL)");
 }

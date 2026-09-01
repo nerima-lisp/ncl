@@ -184,6 +184,25 @@ fn expands_loop_condition_clauses(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_across_collection_and_aggregation(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) collect (* value 2))").to_string(),
+        "(2 4 6)"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) sum value)").to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #((1) (2) (3)) append value)").to_string(),
+        "(1 2 3)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn expands_loop_repeat_clause(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

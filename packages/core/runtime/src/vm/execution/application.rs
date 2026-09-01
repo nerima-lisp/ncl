@@ -99,7 +99,7 @@ pub fn execute_hash_table_instruction(
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count { return Err(invalid("hash-table operation has too few stack values", span)); }
     let arguments = stack.split_off(stack.len() - argument_count).into_iter().map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = match operation { "GETHASH" => crate::builtins::gethash(&arguments), "REMHASH" => crate::builtins::remhash(&arguments), _ => Err(invalid("unknown hash-table operation", span)) }?;
+    let value = match operation { "GETHASH" => crate::builtins::gethash(&arguments), "REMHASH" => crate::builtins::remhash(&arguments), "MAKE-HASH-TABLE" => crate::builtins::make_hash_table(&arguments), _ => Err(invalid("unknown hash-table operation", span)) }?;
     stack.push(value); Ok(())
 }
 

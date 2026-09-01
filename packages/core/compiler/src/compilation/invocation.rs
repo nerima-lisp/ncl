@@ -1025,8 +1025,15 @@ impl CompileState {
     pub(crate) fn compile_hash_table(
         &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
     ) -> Result<(), CompileError> {
-        let valid_arity = match operation { "GETHASH" => (3..=4).contains(&items.len()), "REMHASH" => items.len() == 3, _ => false };
-        if !valid_arity { let expected = if operation == "GETHASH" { "two or three" } else { "two" }; return Err(Self::arity_error(items, operation, expected, span)); }
+        let (valid_arity, expected) = match operation {
+            "GETHASH" => ((3..=4).contains(&items.len()), "two or three"),
+            "REMHASH" => (items.len() == 3, "two"),
+            "MAKE-HASH-TABLE" => ((items.len() - 1).is_multiple_of(2), "keyword/value pairs"),
+            _ => (false, "valid arguments"),
+        };
+        if !valid_arity {
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
         for item in &items[1..] { self.compile_expression(function, item)?; }
         self.emit(function, Instruction::HashTable { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
         Ok(())

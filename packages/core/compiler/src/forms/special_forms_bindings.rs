@@ -125,6 +125,7 @@ impl CompileState {
                 | "GET-PROPERTIES"
                 | "GETHASH"
                 | "REMHASH"
+                | "MAKE-HASH-TABLE"
                 | "MAKE-ARRAY"
                 | "COPY-SEQ"
                 | "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
@@ -278,7 +279,7 @@ impl CompileState {
                 self.compile_list_append(function, span, items, name)
             }
             "GETF" | "GET-PROPERTIES" => self.compile_property_list(function, span, items, name),
-            "GETHASH" | "REMHASH" => self.compile_hash_table(function, span, items, name),
+            "GETHASH" | "REMHASH" | "MAKE-HASH-TABLE" => self.compile_hash_table(function, span, items, name),
             "MAKE-ARRAY" => self.compile_array_construction(function, span, items),
             "MAKE-LIST" => self.compile_list_construction_with_options(function, span, items),
             "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"

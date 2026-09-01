@@ -474,6 +474,7 @@ fn compiled_evaluates_character_string_access() {
 
 #[test]
 fn compiled_evaluates_hash_table_access() {
+    assert_eq!(evaluate("(let ((table (make-hash-table :test #'equal))) (setf (gethash \"a\" table) 7) (gethash \"a\" table))").to_string(), "7");
     assert_eq!(evaluate("(multiple-value-call #'list (gethash :missing (make-hash-table) 42))").to_string(), "(42 NIL)");
     assert_eq!(evaluate("(multiple-value-call #'list (let ((table (make-hash-table))) (setf (gethash :a table) 7) (gethash :a table)))").to_string(), "(7 T)");
     assert_eq!(evaluate("(let ((table (make-hash-table))) (setf (gethash :a table) 7) (list (remhash :a table) (multiple-value-call #'list (gethash :a table 42))))").to_string(), "(T (42 NIL))");

@@ -1120,6 +1120,10 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::ArrayElement { operation: emitted, argument_count: emitted_count } if emitted == operation && *emitted_count == argument_count)
         }), "missing native instruction for {operation}");
     }
+    let make_hash_table = compile("(make-hash-table :test #'equal)");
+    assert!(make_hash_table.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::HashTable { operation, argument_count: 2 } if operation == "MAKE-HASH-TABLE")
+    }));
     for (operation, source, argument_count) in [
         ("ARRAY-ELEMENT-TYPE", "(array-element-type #(1 2))", 1),
         ("ARRAY-RANK", "(array-rank #(1 2))", 1),

@@ -1024,10 +1024,11 @@ fn evaluates_print_variants_to_string_stream(#[case] eval_fn: EvalFn) {
                    (list (princ "a" output)
                          (prin1 "a" output)
                          (print 1 output)
+                         (write "a" :stream output)
                          (get-output-stream-string output)))"#,
         )
         .to_string(),
-        r#"("a" "a" 1 "a\"a\"\n1\n")"#,
+        r#"("a" "a" 1 "a" "a\"a\"\n1\n\"a\"")"#,
     );
 }
 

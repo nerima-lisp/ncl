@@ -12,6 +12,13 @@ pub(crate) fn read(
     match (accessors.first().map(String::as_str), accessors.len()) {
         (Some("CAR" | "FIRST"), 1) => Ok(elements[0].clone()),
         (Some("CDR" | "REST"), 1) => Ok(Value::list(elements[1..].to_vec())),
+        (Some(accessor), 1) if super::fixed_accessor_index(accessor).is_some() => {
+            let index = super::fixed_accessor_index(accessor).expect("checked fixed accessor");
+            elements
+                .get(index)
+                .cloned()
+                .ok_or_else(|| invalid("list accessor index is out of bounds", span))
+        }
         (Some("CAR" | "FIRST"), _) => read(
             elements[0].list_items().ok_or_else(|| RuntimeError::Type {
                 expected: "LIST".to_string(),
@@ -22,6 +29,14 @@ pub(crate) fn read(
             span,
         ),
         (Some("CDR" | "REST"), _) => read(elements[1..].to_vec(), &accessors[1..], span),
+        (Some(accessor), _) if super::fixed_accessor_index(accessor).is_some() => {
+            let index = super::fixed_accessor_index(accessor).expect("checked fixed accessor");
+            let child = elements
+                .get(index)
+                .and_then(Value::list_items)
+                .ok_or_else(|| invalid("unsupported native nested list accessor", span))?;
+            read(child, &accessors[1..], span)
+        }
         _ => Err(invalid("unsupported native nested list accessor", span)),
     }
 }
@@ -46,6 +61,13 @@ pub(crate) fn update(
             replacement.insert(0, elements[0].clone());
             elements = replacement;
         }
+        (Some(accessor), 1) if super::fixed_accessor_index(accessor).is_some() => {
+            let index = super::fixed_accessor_index(accessor).expect("checked fixed accessor");
+            let slot = elements
+                .get_mut(index)
+                .ok_or_else(|| invalid("list accessor index is out of bounds", span))?;
+            *slot = value.clone();
+        }
         (Some("CAR" | "FIRST"), _) => {
             let child = elements[0].list_items().ok_or_else(|| RuntimeError::Type {
                 expected: "LIST".to_string(),
@@ -58,6 +80,15 @@ pub(crate) fn update(
             let updated = update(elements[1..].to_vec(), &accessors[1..], value, span)?;
             elements.truncate(1);
             elements.extend(updated);
+        }
+        (Some(accessor), _) if super::fixed_accessor_index(accessor).is_some() => {
+            let index = super::fixed_accessor_index(accessor).expect("checked fixed accessor");
+            let child = elements
+                .get(index)
+                .and_then(Value::list_items)
+                .ok_or_else(|| invalid("unsupported native nested list accessor", span))?;
+            let updated = update(child, &accessors[1..], value, span)?;
+            elements[index] = Value::list(updated);
         }
         _ => {
             return Err(invalid(

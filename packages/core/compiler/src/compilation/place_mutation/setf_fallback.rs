@@ -17,7 +17,24 @@ impl CompileState {
             let operator = Self::symbol_name_info(&items[0], "setf place operator")
                 .ok()
                 .map(|(name, _)| name);
-            if !matches!(operator.as_deref(), Some("CAR" | "FIRST" | "CDR" | "REST")) {
+            if !matches!(
+                operator.as_deref(),
+                Some(
+                    "CAR"
+                        | "FIRST"
+                        | "CDR"
+                        | "REST"
+                        | "SECOND"
+                        | "THIRD"
+                        | "FOURTH"
+                        | "FIFTH"
+                        | "SIXTH"
+                        | "SEVENTH"
+                        | "EIGHTH"
+                        | "NINTH"
+                        | "TENTH"
+                )
+            ) {
                 break;
             }
             accessors.push(operator.expect("matched list accessor"));

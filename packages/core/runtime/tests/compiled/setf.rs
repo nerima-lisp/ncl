@@ -290,6 +290,21 @@ fn compiled_evaluates_nested_push_and_pop_places() {
 }
 
 #[test]
+fn compiled_evaluates_nested_fixed_position_places() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list (list (list 2 3) (list 4 5))))) (list (setf (second (car xs)) 9) xs))"
+        )
+        .to_string(),
+        "(9 (((2 3) 9)))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list (list (list 2 3) (list 4 5))))) (list (push 1 (second (car xs))) (pop (second (car xs))) xs))").to_string(),
+        "((1 4 5) 1 (((2 3) (4 5))))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_nested_pushnew_places() {
     assert_eq!(
         evaluate(

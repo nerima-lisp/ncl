@@ -273,6 +273,9 @@ fn mutate_nested(
         let child = match accessors[0].as_str() {
             "CAR" | "FIRST" => elements[0].list_items(),
             "CDR" | "REST" => Some(elements[1..].to_vec()),
+            accessor if fixed_accessor_index(accessor).is_some() => elements
+                .get(fixed_accessor_index(accessor).expect("checked fixed accessor"))
+                .and_then(Value::list_items),
             _ => None,
         }
         .ok_or_else(|| invalid("unsupported native nested list accessor", span))?;
@@ -283,6 +286,10 @@ fn mutate_nested(
                 elements.truncate(1);
                 elements.extend(child);
             }
+            accessor if fixed_accessor_index(accessor).is_some() => {
+                let index = fixed_accessor_index(accessor).expect("checked fixed accessor");
+                elements[index] = Value::list(child);
+            }
             _ => unreachable!(),
         }
         return Ok((elements, result));
@@ -290,6 +297,10 @@ fn mutate_nested(
     let current = match accessors[0].as_str() {
         "CAR" | "FIRST" => elements[0].clone(),
         "CDR" | "REST" => Value::list(elements[1..].to_vec()),
+        accessor if fixed_accessor_index(accessor).is_some() => elements
+            .get(fixed_accessor_index(accessor).expect("checked fixed accessor"))
+            .cloned()
+            .ok_or_else(|| invalid("list accessor index is out of bounds", span))?,
         _ => return Err(invalid("unsupported native nested list accessor", span)),
     };
     let mut items = current.list_items().ok_or_else(|| RuntimeError::Type {
@@ -335,6 +346,10 @@ fn mutate_nested(
         "CDR" | "REST" => {
             elements.truncate(1);
             elements.extend(updated.list_items().unwrap_or_default());
+        }
+        accessor if fixed_accessor_index(accessor).is_some() => {
+            let index = fixed_accessor_index(accessor).expect("checked fixed accessor");
+            elements[index] = updated;
         }
         _ => unreachable!(),
     }

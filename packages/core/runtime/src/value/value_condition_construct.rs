@@ -65,7 +65,7 @@ impl Value {
         )
     }
 
-    pub(super) fn condition_from_parts_with_types(
+    pub(crate) fn condition_from_parts_with_types(
         actual_type: String,
         type_names: Vec<String>,
         slots: Vec<(String, Self)>,

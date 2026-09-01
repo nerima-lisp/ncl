@@ -154,6 +154,22 @@ fn evaluates_condition_message(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_type_error_accessors(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((condition (make-condition 'type-error :datum 7 :expected-type 'integer)))
+               (list (type-error-datum condition)
+                     (type-error-expected-type condition)))",
+        )
+        .to_string(),
+        "(7 INTEGER)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_error_through_condition_handlers(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

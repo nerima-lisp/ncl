@@ -68,6 +68,17 @@ fn condition_message_returns_the_constructed_message() {
 }
 
 #[test]
+fn type_error_accessors_read_standard_condition_slots() {
+    let result = Runtime::new()
+        .eval_source(
+            "(list (type-error-datum (make-condition 'type-error :datum 7 :expected-type 'integer))
+                   (type-error-expected-type (make-condition 'type-error :datum 7 :expected-type 'integer)))",
+        )
+        .unwrap_or_else(|error| panic!("type-error accessors failed: {error}"));
+    assert_eq!(result.last().unwrap().to_string(), "(7 INTEGER)");
+}
+
+#[test]
 fn rejects_malformed_character_operations_at_their_boundaries() {
     for source in support::MALFORMED_CHARACTER_FORMS {
         Runtime::eval_source(&Runtime::new(), source).must_fail();

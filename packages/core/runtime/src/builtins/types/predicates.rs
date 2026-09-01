@@ -125,3 +125,17 @@ pub fn condition_message(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .map(|message| Value::string(message.to_owned()))
         .ok_or_else(|| type_error("condition-message", "CONDITION", &arguments[0]))
 }
+
+pub fn type_error_datum(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "type-error-datum", 1)?;
+    arguments[0]
+        .condition_slot("TYPE-ERROR", "DATUM")
+        .ok_or_else(|| type_error("type-error-datum", "TYPE-ERROR", &arguments[0]))
+}
+
+pub fn type_error_expected_type(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "type-error-expected-type", 1)?;
+    arguments[0]
+        .condition_slot("TYPE-ERROR", "EXPECTED-TYPE")
+        .ok_or_else(|| type_error("type-error-expected-type", "TYPE-ERROR", &arguments[0]))
+}

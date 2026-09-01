@@ -38,4 +38,6 @@ pub(super) const PREDICATE_BUILTINS: &[BuiltinDefinition] = &[
     ("type-of", type_of as _),
     ("typep", typep as _),
     ("condition-message", condition_message as _),
+    ("type-error-datum", type_error_datum as _),
+    ("type-error-expected-type", type_error_expected_type as _),
 ];

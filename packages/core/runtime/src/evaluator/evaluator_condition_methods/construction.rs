@@ -100,6 +100,7 @@ impl Runtime {
         let actual_type = Self::name_designator_from_value(&arguments[0], span)?;
         let mut format_control = None;
         let mut format_arguments = Vec::new();
+        let mut slots = Vec::new();
         for pair in initargs.as_chunks::<2>().0 {
             let initarg = Self::name_designator_from_value(&pair[0], span)?;
             match initarg.as_str() {
@@ -120,6 +121,9 @@ impl Runtime {
                         span: Some(span),
                     })?;
                 }
+                "DATUM" | "EXPECTED-TYPE" => {
+                    slots.push((initarg, pair[1].clone()));
+                }
                 _ => {
                     return Err(Self::invalid(
                         &format!("unknown make-condition initarg :{initarg}"),
@@ -133,8 +137,10 @@ impl Runtime {
             Some(control) => builtins::format_control(control, &format_arguments)?,
             None => String::new(),
         };
-        Ok(Value::condition_from_parts(
-            actual_type,
+        Ok(Value::condition_from_parts_with_types(
+            actual_type.clone(),
+            vec![actual_type],
+            slots,
             message,
             format_control,
             format_arguments,

@@ -10,6 +10,65 @@ pub fn vector(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::vector(arguments.to_vec()))
 }
 
+pub fn fill_pointer(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() != 1 {
+        return Err(arity("fill-pointer", "one", arguments.len()));
+    }
+    let pointer = arguments[0]
+        .vector_fill_pointer()
+        .flatten()
+        .ok_or_else(|| crate::builtins::type_error("fill-pointer", "vector with a fill pointer", &arguments[0]))?;
+    crate::builtins::integer_from_usize("fill-pointer", pointer)
+}
+
+pub fn vector_push(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() != 2 {
+        return Err(arity("vector-push", "two", arguments.len()));
+    }
+    let vector = &arguments[1];
+    let pointer = vector_fill_pointer_for("vector-push", vector)?;
+    let length = vector_items_length("vector-push", vector)?;
+    if pointer >= length {
+        return Ok(Value::Nil);
+    }
+    vector.set_vector_item(pointer, arguments[0].clone());
+    vector.set_vector_fill_pointer(Some(pointer + 1));
+    crate::builtins::integer_from_usize("vector-push", pointer)
+}
+
+pub fn vector_push_extend(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if !(2..=3).contains(&arguments.len()) {
+        return Err(arity("vector-push-extend", "two or three", arguments.len()));
+    }
+    let vector = &arguments[1];
+    let pointer = vector_fill_pointer_for("vector-push-extend", vector)?;
+    let mut length = vector_items_length("vector-push-extend", vector)?;
+    if pointer >= length {
+        if vector.vector_adjustable() != Some(true) {
+            return Err(crate::builtins::type_error("vector-push-extend", "adjustable vector", vector));
+        }
+        let extension = arguments.get(2).map(|value| index_argument("vector-push-extend", value)).transpose()?.unwrap_or(1).max(1);
+        if let Value::Vector(items) = vector {
+            length = length.checked_add(extension).ok_or_else(|| crate::RuntimeError::InvalidForm { message: "vector-push-extend length overflow".to_string(), span: None })?;
+            items.borrow_mut().resize(length, Value::Nil);
+        }
+    }
+    vector.set_vector_item(pointer, arguments[0].clone());
+    vector.set_vector_fill_pointer(Some(pointer + 1));
+    crate::builtins::integer_from_usize("vector-push-extend", pointer)
+}
+
+fn vector_fill_pointer_for(function: &str, vector: &Value) -> Result<usize, RuntimeError> {
+    vector.vector_fill_pointer().flatten().ok_or_else(|| crate::builtins::type_error(function, "vector with a fill pointer", vector))
+}
+
+fn vector_items_length(function: &str, vector: &Value) -> Result<usize, RuntimeError> {
+    match vector {
+        Value::Vector(items) => Ok(items.borrow().len()),
+        _ => Err(crate::builtins::type_error(function, "vector", vector)),
+    }
+}
+
 pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("make-array", "at least one", 0));

@@ -556,3 +556,17 @@ fn compiled_evaluates_adjust_array() {
         "(3 1 2 NIL)"
     );
 }
+
+#[test]
+fn compiled_evaluates_vector_push_operations() {
+    assert_eq!(
+        evaluate(
+            "(let ((vector (make-array 1 :fill-pointer 0 :adjustable t)))\
+               (list (vector-push 7 vector) (fill-pointer vector)\
+                     (vector-push-extend 8 vector) (fill-pointer vector)\
+                     (aref vector 1)))",
+        )
+        .to_string(),
+        "(0 1 1 2 8)"
+    );
+}

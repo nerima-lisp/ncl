@@ -122,6 +122,22 @@ fn adjust_array_updates_vector_fill_pointer() {
 }
 
 #[test]
+fn vector_push_uses_and_extends_fill_pointer() {
+    let vector = make_array(&[
+        Value::Integer(3),
+        Value::keyword("fill-pointer"),
+        Value::Integer(0),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])
+    .unwrap();
+    assert!(vector_push(&[Value::Integer(7), vector.clone()]).unwrap().equal_value(&Value::Integer(0)));
+    assert!(fill_pointer(&[vector.clone()]).unwrap().equal_value(&Value::Integer(1)));
+    assert!(vector_push_extend(&[Value::Integer(8), vector.clone()]).unwrap().equal_value(&Value::Integer(1)));
+    assert!(vector.vector_items().unwrap()[1].equal_value(&Value::Integer(8)));
+}
+
+#[test]
 fn array_coordinate_index_reports_overflow_in_stride_and_contribution() {
     let stride_overflow = array_coordinate_index(
         "test",

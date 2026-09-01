@@ -201,6 +201,16 @@ fn compiled_evaluates_format_indentation_directive() {
 }
 
 #[test]
+fn compiled_evaluates_format_absolute_argument_pointer_directive() {
+    assert_eq!(
+        evaluate(r#"(list (format nil "~2@*~A" 'zero 'one 'two)
+                       (format nil "~@*~A" 'zero))"#)
+            .to_string(),
+        r#"("TWO" "ZERO")"#,
+    );
+}
+
+#[test]
 fn compiled_evaluates_format_conditional_tab_directive() {
     assert_eq!(
         evaluate(r#"(list (format nil "abc~5:T") (format nil "abcde~5:T"))"#).to_string(),

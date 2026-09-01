@@ -264,6 +264,8 @@ fn evaluates_format_directives_from_table_cases() {
         ),
         (r#"(format nil "~C/~~/~%end" #\!)"#, r#""!/~/\nend""#),
         (r#"(format nil "line~&next")"#, r#""line\nnext""#),
+        (r#"(format nil "~2@*~A" 'zero 'one 'two)"#, r#""TWO""#),
+        (r#"(format nil "~@*~A" 'zero)"#, r#""ZERO""#),
     ];
 
     assert_value_cases(evaluate, &cases);

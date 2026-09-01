@@ -113,8 +113,12 @@ pub(super) fn format_simple_directive(
             Ok(true)
         }
         '*' => {
-            let count = format_parameter_count(parameters, 0, 1)?;
-            *argument_index = argument_index.saturating_add(count).min(arguments.len());
+            let count = format_parameter_count(parameters, 0, i64::from(!at_sign_modifier))?;
+            *argument_index = if at_sign_modifier {
+                count.min(arguments.len())
+            } else {
+                argument_index.saturating_add(count).min(arguments.len())
+            };
             Ok(true)
         }
         _ => Ok(false),

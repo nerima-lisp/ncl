@@ -32,6 +32,7 @@ pub(in crate::builtins::format) fn parse_format_directive(
     let supports_modifiers = matches!(
         directive,
         '{' | '['
+            | '*'
             | '<'
             | 'A'
             | 'S'

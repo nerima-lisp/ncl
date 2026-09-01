@@ -122,6 +122,8 @@ fn renders_simple_directives_from_table_cases() {
         ("~:C", vec![Value::Character(' ')], "Space"),
         ("~_", vec![], ""),
         ("~*~A", vec![Value::Integer(1), Value::Integer(2)], "2"),
+        ("~2@*~A", vec![Value::Integer(0), Value::Integer(1), Value::Integer(2)], "2"),
+        ("~@*~A", vec![Value::Integer(0), Value::Integer(1)], "0"),
         ("~P", vec![Value::Integer(2)], "s"),
         ("~@P", vec![Value::Integer(2)], "ies"),
     ];

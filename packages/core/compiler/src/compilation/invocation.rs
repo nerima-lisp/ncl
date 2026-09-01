@@ -481,8 +481,8 @@ impl CompileState {
         items: &[Form],
         operation: &str,
     ) -> Result<(), CompileError> {
-        if items.len() < 2 {
-            return Err(Self::arity_error(items, operation, "at least one", span));
+        if matches!(operation, "REVAPPEND" | "NRECONC") {
+            Self::require_arity(items, operation, "two", 2, span)?;
         }
         for item in &items[1..] {
             self.compile_expression(function, item)?;
@@ -941,6 +941,26 @@ impl CompileState {
             },
             span,
         )?;
+        Ok(())
+    }
+
+    pub(crate) fn compile_list_append(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() < 2 {
+            return Err(Self::arity_error(items, operation, "at least one", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(function, Instruction::ListAppend {
+            operation: operation.to_string(),
+            argument_count: items.len() - 1,
+        }, span)?;
         Ok(())
     }
 

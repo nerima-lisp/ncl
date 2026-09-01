@@ -51,6 +51,20 @@ pub fn execute_list_construction_instruction(
     Ok(())
 }
 
+pub fn execute_list_append_instruction(
+    stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count { return Err(invalid("list append has too few stack values", span)); }
+    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
+        .map(|value| value.primary_value()).collect::<Vec<_>>();
+    let value = match operation {
+        "APPEND" => crate::builtins::append(&arguments), "NCONC" => crate::builtins::nconc(&arguments),
+        "REVAPPEND" => crate::builtins::revappend(&arguments), "NRECONC" => crate::builtins::nreconc(&arguments),
+        _ => Err(invalid("unknown list append operation", span)),
+    }?;
+    stack.push(value); Ok(())
+}
+
 pub fn execute_apply_instruction(
     runtime: &Runtime,
     argument_count: usize,

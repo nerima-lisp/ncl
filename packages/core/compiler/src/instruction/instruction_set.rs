@@ -511,6 +511,12 @@ pub enum Instruction {
         /// Whether the final argument is the tail of the list.
         dotted: bool,
     },
+    #[doc = "Append evaluated lists using a list operation."] ListAppend {
+        /// Name of the list operation to invoke.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Construct an array from evaluated arguments."] ArrayConstruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,

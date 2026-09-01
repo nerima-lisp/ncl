@@ -1314,6 +1314,16 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(!shadowed_list.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::ListConstruction { .. })
     }));
+    for (operation, argument_count) in [("APPEND", 2), ("NCONC", 2), ("REVAPPEND", 2), ("NRECONC", 2)] {
+        let program = compile(&format!("({operation} '(1) '(2))"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListAppend { operation: emitted, argument_count: count } if emitted == operation && *count == argument_count)
+        }));
+    }
+    let shadowed_append = compile("(flet ((append (first second) :shadowed)) (append '(1) '(2)))");
+    assert!(!shadowed_append.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::ListAppend { .. })
+    }));
     let make_array = compile("(make-array 2 :initial-element 7)");
     assert!(make_array.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::ArrayConstruction { argument_count: 3 })

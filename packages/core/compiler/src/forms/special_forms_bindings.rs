@@ -117,6 +117,10 @@ impl CompileState {
                 | "VECTOR"
                 | "LIST"
                 | "LIST*"
+                | "APPEND"
+                | "NCONC"
+                | "REVAPPEND"
+                | "NRECONC"
                 | "MAKE-ARRAY"
                 | "COPY-SEQ"
                 | "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
@@ -264,6 +268,9 @@ impl CompileState {
             }
             "VECTOR" => self.compile_vector(function, span, items),
             "LIST" | "LIST*" => self.compile_list_construction(function, span, items, name),
+            "APPEND" | "NCONC" | "REVAPPEND" | "NRECONC" => {
+                self.compile_list_append(function, span, items, name)
+            }
             "MAKE-ARRAY" => self.compile_array_construction(function, span, items),
             "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
             | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"

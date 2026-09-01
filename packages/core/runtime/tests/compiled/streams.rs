@@ -78,3 +78,31 @@ fn compiled_with_output_to_string_binds_standard_output_and_returns_text() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), r#""alpha beta\n""#);
 }
+
+#[test]
+fn compiled_with_output_to_string_updates_destination_variable() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(let ((destination ""))
+                 (with-output-to-string (stream destination)
+                   (write-string "alpha" stream))
+                 destination)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), r#""alpha""#);
+}
+
+#[test]
+fn evaluator_with_output_to_string_updates_destination_variable() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(let ((destination ""))
+                 (with-output-to-string (stream destination)
+                   (write-string "alpha" stream))
+                 destination)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), r#""alpha""#);
+}

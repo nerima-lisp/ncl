@@ -169,10 +169,28 @@ impl Runtime {
         if items.len() < 2 { return Err(Self::arity("with-output-to-string", "at least 1", 0)); }
         let binding = match &items[1].kind { ncl_syntax::FormKind::List(parts) if !parts.is_empty() => parts, _ => return Err(Self::invalid("with-output-to-string binding must contain a variable", items[1].span)) };
         let name = match &binding[0].kind { ncl_syntax::FormKind::Atom(name) => name, _ => return Err(Self::invalid("with-output-to-string variable must be a symbol", binding[0].span)) };
+        let destination = if let Some(form) = binding.get(1) {
+            let value = self.eval_values_in(form, environment)?.primary_value();
+            if !matches!(value, Value::String(_)) {
+                return Err(Self::invalid("with-output-to-string destination must be a string", form.span));
+            }
+            match &form.kind {
+                ncl_syntax::FormKind::Atom(name) => Some(name.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        };
         let stream = Value::string_output_stream();
         let local = environment.child();
         local.define(name, stream.clone());
         { let _guard = crate::builtins::standard_streams::bind(Value::Nil, stream.clone()); self.special_progn(&items[2..], &local)?; }
-        crate::builtins::get_output_stream_string(&[stream])
+        let output = crate::builtins::get_output_stream_string(&[stream])?;
+        if let Some(destination) = destination {
+            if !environment.set(&destination, output.clone()) {
+                environment.define(destination, output.clone());
+            }
+        }
+        Ok(output)
     }
 }

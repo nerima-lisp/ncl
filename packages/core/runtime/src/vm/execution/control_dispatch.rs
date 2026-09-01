@@ -65,8 +65,8 @@ pub(super) fn execute_scope_control_instruction(
             context.environment,
             context.span,
         )?,
-        Instruction::StandardStreamBind { input, stream, variable, index, body } => execute_standard_stream_bind_instruction(
-            context.runtime, context.program, *input, *stream, variable, index.as_deref(), *body,
+        Instruction::StandardStreamBind { input, stream, variable, index, destination, body } => execute_standard_stream_bind_instruction(
+            context.runtime, context.program, *input, *stream, variable, index.as_deref(), destination.as_deref(), *body,
             context.stack, context.environment, context.span,
         )?,
         Instruction::Throw => {

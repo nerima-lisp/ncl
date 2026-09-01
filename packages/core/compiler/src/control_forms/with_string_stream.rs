@@ -15,6 +15,11 @@ impl CompileState {
         let FormKind::List(binding) = &items[1].kind else { return Err(CompileError::new(CompileErrorKind::ExpectedList { context: format!("{operator} binding") }, items[1].span)); };
         if binding.is_empty() || (input && binding.len() < 2) { return Err(CompileError::new(CompileErrorKind::InvalidForm { message: format!("{operator} binding needs a variable{}", if input { " and string form" } else { "" }) }, items[1].span)); }
         let variable = Self::symbol_name(&binding[0], &format!("{operator} variable"))?;
+        let destination = if !input && binding.len() > 1 {
+            Some(Self::symbol_name(&binding[1], &format!("{operator} destination"))?)
+        } else {
+            None
+        };
         let stream = self.reserve_function(None, Vec::new());
         let mut stream_form = vec![Form::atom(if input { "MAKE-STRING-INPUT-STREAM" } else { "MAKE-STRING-OUTPUT-STREAM" }, span)];
         let mut index = None;
@@ -34,7 +39,7 @@ impl CompileState {
         let body = self.reserve_function(None, Vec::new());
         self.compile_sequence(body, &items[2..])?;
         self.emit(body, Instruction::Return, span)?;
-        self.emit(function, Instruction::StandardStreamBind { input, stream, variable, index, body }, span)?;
+        self.emit(function, Instruction::StandardStreamBind { input, stream, variable, index, destination, body }, span)?;
         Ok(())
     }
 }

@@ -301,6 +301,8 @@ pub enum Instruction {
         variable: String,
         /// Optional variable receiving the final input position.
         index: Option<String>,
+        /// Optional destination variable receiving the output string.
+        destination: Option<String>,
         /// Body function.
         body: FunctionId,
     },

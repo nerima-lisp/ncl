@@ -3,6 +3,7 @@ use ncl_syntax::{Form, FormKind};
 use crate::{environment::names_equal, evaluator::helpers::atom_name, Runtime, RuntimeError};
 
 use super::loop_aggregate::{append_step, count_step, sum_step};
+use super::loop_clause::across_clause;
 use super::loop_collect::expand_loop_collect;
 use super::loop_condition::expand_loop_condition;
 use super::loop_control::named_loop_body_start;
@@ -55,11 +56,7 @@ impl Runtime {
                 if let Some(expanded) = expand_loop_for_prefix(form, items)? {
                     return Ok(expanded);
                 }
-                if items
-                    .get(3)
-                    .and_then(atom_name)
-                    .is_some_and(|name| names_equal(name, "ACROSS"))
-                {
+                if across_clause(items) {
                     if items.len() < 5 {
                         return Err(Self::invalid(
                             "LOOP FOR ACROSS requires a variable and vector form",

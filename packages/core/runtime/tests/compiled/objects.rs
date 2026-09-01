@@ -507,6 +507,14 @@ fn compiled_evaluates_native_copy_seq() {
 }
 
 #[test]
+fn compiled_evaluates_native_sequence_mutations() {
+    assert_eq!(
+        evaluate("(list (fill 9 (vector 1 2 3) :start 1 :end 3) (replace (vector 0 0 0) #(4 5) :start1 1))").to_string(),
+        "(#(1 9 9) #(0 4 5))",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

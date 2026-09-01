@@ -1226,6 +1226,12 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(!shadowed_copy_seq.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::SequenceUnary { operation } if operation == "COPY-SEQ")
     }));
+    for operation in ["FILL", "REPLACE"] {
+        let program = compile(&format!("({operation} (vector 1 2) (vector 3 4))"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequenceMutation { operation: emitted, argument_count: 2 } if emitted == operation)
+        }));
+    }
     for operation in [
         "UNION", "NUNION", "INTERSECTION", "NINTERSECTION", "SET-DIFFERENCE",
         "NSET-DIFFERENCE", "SET-EXCLUSIVE-OR", "NSET-EXCLUSIVE-OR", "SUBSETP",

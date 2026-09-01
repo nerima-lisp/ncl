@@ -663,6 +663,25 @@ pub fn execute_sequence_subseq_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_mutation_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("sequence mutation has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    let value = match operation {
+        "FILL" => crate::builtins::fill(&arguments)?,
+        "REPLACE" => crate::builtins::replace(&arguments)?,
+        _ => return Err(invalid("unknown sequence mutation operation", span)),
+    };
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_character_element_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

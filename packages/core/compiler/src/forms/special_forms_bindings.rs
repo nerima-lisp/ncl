@@ -65,6 +65,8 @@ impl CompileState {
                 | "ARRAY-DIMENSION"
                 | "ARRAY-TOTAL-SIZE"
                 | "SUBSEQ"
+                | "FILL"
+                | "REPLACE"
                 | "CHAR-CODE"
                 | "CHAR-INT"
                 | "CODE-CHAR"
@@ -195,6 +197,7 @@ impl CompileState {
             "LENGTH" => self.compile_sequence_length(function, span, items),
             "ELT" => self.compile_sequence_element(function, span, items),
             "SUBSEQ" => self.compile_sequence_subseq(function, span, items),
+            "FILL" | "REPLACE" => self.compile_sequence_mutation(function, span, items, name),
             "CHAR" | "SCHAR" => self.compile_character_element(function, span, items, name),
             "AREF" | "BIT" => self.compile_array_element(function, span, items, name, false),
             "SVREF" | "ROW-MAJOR-AREF" => {

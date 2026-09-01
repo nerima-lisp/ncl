@@ -109,6 +109,22 @@ fn remf_symbol_place_matches_between_engines(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn remf_symbol_macro_place_matches_between_engines(#[case] eval_fn: EvalFn) {
+    assert_eq!(
+        evaluate_with(
+            eval_fn,
+            "(let ((plist (list :key 1 :other 2)))
+               (define-symbol-macro remf-alias plist)
+               (list (multiple-value-list (remf remf-alias :key)) plist))",
+        )
+        .to_string(),
+        "(((:OTHER 2) T) (:OTHER 2))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn proclaim_special_is_compiled_as_a_declaration(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

@@ -20,13 +20,13 @@ pub(super) fn execute(
         .pop()
         .ok_or_else(|| invalid("setf bitfield has no value on the stack", span))?
         .primary_value();
-    let byte_spec = stack
-        .pop()
-        .ok_or_else(|| invalid("setf bitfield has no byte specifier on the stack", span))?
-        .primary_value();
     let old_value = stack
         .pop()
         .ok_or_else(|| invalid("setf bitfield has no target on the stack", span))?
+        .primary_value();
+    let byte_spec = stack
+        .pop()
+        .ok_or_else(|| invalid("setf bitfield has no byte specifier on the stack", span))?
         .primary_value();
     let updated = match operator.as_str() {
         "LDB" => crate::builtins::dpb(&[value.clone(), byte_spec, old_value])?,

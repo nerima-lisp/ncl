@@ -171,6 +171,17 @@ fn compile_setf_uses_native_bitfield_accessors_for_symbol_places() {
         name: "YS".to_string(),
         escaped: false,
     }));
+    let target_load = instructions
+        .iter()
+        .position(|instruction| matches!(instruction, Instruction::Load(name) if name == "XS"))
+        .unwrap();
+    let byte_spec_constants_before_target = instructions[..target_load]
+        .iter()
+        .filter(|instruction| {
+            matches!(instruction, Instruction::Constant(Constant::Integer(value)) if *value == 4)
+        })
+        .count();
+    assert_eq!(byte_spec_constants_before_target, 2);
 }
 
 #[test]

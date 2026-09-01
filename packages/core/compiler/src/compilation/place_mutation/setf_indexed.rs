@@ -27,8 +27,8 @@ impl CompileState {
         else {
             return Ok(false);
         };
-        self.compile_expression(function, &items[2])?;
         self.compile_expression(function, &items[1])?;
+        self.compile_expression(function, &items[2])?;
         self.compile_expression(function, value_form)?;
         self.emit(
             function,

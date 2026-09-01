@@ -419,6 +419,24 @@ fn declare_special_makes_a_lambda_parameter_dynamic(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn lambda_keyword_supplied_p_tracks_present_and_absent_keys(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list
+                (funcall (lambda (&key (value 10 supplied))
+                          (list value supplied)))
+                (funcall (lambda (&key (value 10 supplied))
+                          (list value supplied)) :value 20))",
+        )
+        .to_string(),
+        "((10 NIL) (20 T))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn declare_special_makes_all_lambda_list_bindings_dynamic(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source).to_string();
     assert_eq!(

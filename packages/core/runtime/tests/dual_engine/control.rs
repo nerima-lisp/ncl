@@ -156,6 +156,18 @@ fn expands_loop_condition_clauses(#[case] eval_fn: EvalFn) {
         evaluate("(loop for value in (list 1 2 3) never (= value 4))").to_string(),
         "T"
     );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) thereis (= value 2))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) always (< value 4))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) never (= value 4))").to_string(),
+        "T"
+    );
 }
 
 #[rstest]

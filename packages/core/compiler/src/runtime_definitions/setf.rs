@@ -117,6 +117,30 @@ impl CompileState {
             self.emit(function, Instruction::PsetfSymbols(names), span)?;
             return Ok(());
         }
+        if let Some(places) = items[1..]
+            .chunks_exact(2)
+            .map(|pair| {
+                let mut accessors = Vec::new();
+                let mut target = &pair[0];
+                while let Some((accessor, next_target)) = crate::helpers::list_accessor_target(target) {
+                    accessors.push(accessor);
+                    target = next_target;
+                }
+                if accessors.is_empty() {
+                    return None;
+                }
+                let (name, escaped) = Self::symbol_name_info(target, "PSETF list target").ok()?;
+                accessors.reverse();
+                Some((accessors, name, escaped))
+            })
+            .collect::<Option<Vec<_>>>()
+        {
+            for pair in items[1..].chunks_exact(2) {
+                self.compile_expression(function, &pair[1])?;
+            }
+            self.emit(function, Instruction::PsetfList(places), span)?;
+            return Ok(());
+        }
         self.emit(
             function,
             Instruction::Psetf(Form::list(items.to_vec(), span)),

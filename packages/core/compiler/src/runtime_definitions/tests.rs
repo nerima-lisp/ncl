@@ -235,6 +235,22 @@ fn compile_psetf_uses_setf_native_instruction_for_one_generalized_place() {
 }
 
 #[test]
+fn compile_psetf_uses_parallel_list_native_instruction_for_multiple_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(psetf (car xs) 1 (cdr ys) '(2 3))");
+
+    state
+        .compile_psetf(function, Span::new(0, 1), &items)
+        .expect("PSETF should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.last(),
+        Some(Instruction::PsetfList(_))
+    ));
+}
+
+#[test]
 fn compile_runtime_definition_reports_an_internal_error_for_an_invalid_function_id() {
     let mut state = CompileState::default();
     let span = Span::new(0, 1);

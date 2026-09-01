@@ -58,6 +58,9 @@ pub(super) fn execute_parallel_set_instruction(
             *program_counter += 1;
             Ok(true)
         }
+        Instruction::PsetfList(places) => super::assignment::list::execute_parallel(
+            runtime, places, stack, environment, program_counter, span,
+        ),
         Instruction::MultipleValueSetq(names) => {
             let source = pop_value(stack, span, "multiple-value-setq")?;
             let values = source.multiple_values();

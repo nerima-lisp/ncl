@@ -353,6 +353,7 @@ pub enum Instruction {
     #[doc = "Compute a generalized-place expansion through the runtime SETF registry."] GetSetfExpansion(Form),
     #[doc = "Perform parallel generalized-place assignments through the runtime SETF machinery."] Psetf(Form),
     #[doc = "Perform parallel assignment to symbol places after evaluating all values."] PsetfSymbols(Vec<(String, bool)>),
+    #[doc = "Perform parallel list-place assignments rooted at symbols after evaluating all values."] PsetfList(Vec<(Vec<String>, String, bool)>),
     #[doc = "Evaluate and cache a load-time value through the runtime evaluator."] LoadTimeValue(Form),
     #[doc = "Evaluate a compiled source span."] Eval(Span),
     #[doc = "Call a function with positional arguments."] Call(usize),

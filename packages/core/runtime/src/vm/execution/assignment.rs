@@ -4,7 +4,7 @@ use super::*;
 mod array;
 mod bitfield;
 mod element;
-mod list;
+pub(super) mod list;
 mod property;
 mod pushnew;
 mod pushnew_nested;

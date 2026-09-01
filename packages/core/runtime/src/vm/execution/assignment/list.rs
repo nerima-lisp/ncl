@@ -98,6 +98,44 @@ pub(super) fn execute_nested(
     Ok(true)
 }
 
+pub(crate) fn execute_parallel(
+    runtime: &Runtime,
+    places: &[(Vec<String>, String, bool)],
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    if stack.len() < places.len() {
+        return Err(invalid("psetf has fewer values than list places", span));
+    }
+    let values = stack.split_off(stack.len() - places.len());
+    let mut last = Value::Nil;
+    for ((accessors, name, escaped), value) in places.iter().zip(values) {
+        last = value.primary_value();
+        let current = if *escaped {
+            runtime.lookup_exact_in(name, environment)
+        } else {
+            runtime.lookup_in(name, environment)
+        }
+        .ok_or_else(|| invalid("unbound PSETF list target", span))?;
+        let elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+            expected: "LIST".to_string(),
+            actual: current.type_name().to_string(),
+            span: Some(span),
+        })?;
+        let updated = Value::list(nested::update(elements, accessors, &last, span)?);
+        if *escaped {
+            runtime.set_or_define_exact_in(name, updated, environment, span)?;
+        } else {
+            runtime.set_or_define_in(name, updated, environment, span)?;
+        }
+    }
+    stack.push(last);
+    *program_counter += 1;
+    Ok(true)
+}
+
 pub(super) fn execute_place_mutation(
     runtime: &Runtime,
     operator: &str,

@@ -1,7 +1,7 @@
 use super::{arity, exact, stream_keyword_name, stream_reference};
 use crate::{RuntimeError, Value};
 
-pub(super) fn close_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn close_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() != 1 && arguments.len() != 3 {
         return Err(arity("close", "1 or 3", arguments.len()));
     }

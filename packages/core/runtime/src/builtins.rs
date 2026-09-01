@@ -47,7 +47,7 @@ use builtin_array_helpers::*;
 
 mod builtin_stream_predicates;
 pub use builtin_stream_predicates::{input_stream_p, output_stream_p, streamp};
-use builtin_stream_predicates::close_stream;
+pub(crate) use builtin_stream_predicates::close_stream;
 
 mod builtin_random;
 pub(crate) use builtin_random::{

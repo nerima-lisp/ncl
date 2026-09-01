@@ -1103,6 +1103,7 @@ pub fn execute_stream_operation_instruction(
         "READ-LINE" => crate::builtins::read_line(&arguments),
         "PEEK-CHAR" => crate::builtins::peek_char(&arguments),
         "UNREAD-CHAR" => crate::builtins::unread_char(&arguments),
+        "CLOSE" => crate::builtins::close_stream(&arguments),
         _ => Err(invalid("unknown stream operation", span)),
     }?;
     stack.push(result);

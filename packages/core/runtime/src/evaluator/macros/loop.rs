@@ -196,7 +196,7 @@ impl Runtime {
                             ));
                         }
                         collect_form = Some(items[body_start + 1].clone());
-                        append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
+                        let append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
                         body_start += 2;
                         if items
                             .get(body_start)
@@ -463,7 +463,6 @@ impl Runtime {
                     let mut extremum_form = None;
                     let mut extremum_name = None;
                     let mut maximize = false;
-                    let mut append = false;
                     if items
                         .get(body_start)
                         .and_then(atom_name)
@@ -486,7 +485,7 @@ impl Runtime {
                             ));
                         }
                         collect_form = Some(items[body_start + 1].clone());
-                        append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
+                        let append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
                         if append {
                             loop_body.push(append_step(
                                 form,

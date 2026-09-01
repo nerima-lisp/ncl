@@ -22,7 +22,7 @@ pub(super) fn write_destination(
     }
 }
 
-pub(super) fn write_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn write_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("write-char", "1 to 2", arguments.len()));
     }
@@ -48,7 +48,7 @@ pub(super) fn write_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(arguments[0].clone())
 }
 
-pub(super) fn terpri(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn terpri(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 1 {
         return Err(arity("terpri", "0 to 1", arguments.len()));
     }
@@ -56,7 +56,7 @@ pub(super) fn terpri(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Nil)
 }
 
-pub(super) fn fresh_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn fresh_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 1 {
         return Err(arity("fresh-line", "0 to 1", arguments.len()));
     }

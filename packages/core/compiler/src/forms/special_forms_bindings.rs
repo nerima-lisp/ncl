@@ -318,6 +318,9 @@ impl CompileState {
             "FILL-POINTER" | "VECTOR-PUSH" | "VECTOR-PUSH-EXTEND" | "VECTOR-POP" => {
                 self.compile_vector_operation(function, span, items, name)
             }
+            "TERPRI" | "FRESH-LINE" | "WRITE-CHAR" => {
+                self.compile_stream_operation(function, span, items, name)
+            }
             "ATOM" | "CONSP" | "LISTP" | "NUMBERP" | "COMPLEXP" | "INTEGERP"
             | "FLOATP" | "RATIONALP" | "STRINGP" | "SIMPLE-STRING-P" | "CHARACTERP"
             | "SYMBOLP" | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP"

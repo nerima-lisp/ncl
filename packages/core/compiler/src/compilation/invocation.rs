@@ -679,6 +679,20 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_stream_operation(
+        &mut self, function: FunctionId, span: Span, items: &[Form], operation: &str,
+    ) -> Result<(), CompileError> {
+        let valid = match operation {
+            "TERPRI" | "FRESH-LINE" => items.len() <= 2,
+            "WRITE-CHAR" => (2..=3).contains(&items.len()),
+            _ => false,
+        };
+        if !valid { return Err(Self::arity_error(items, operation, "the supported argument count", span)); }
+        for item in &items[1..] { self.compile_expression(function, item)?; }
+        self.emit(function, Instruction::StreamOperation { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_tree_equal(
         &mut self,
         function: FunctionId,

@@ -1087,6 +1087,21 @@ pub fn execute_vector_operation_instruction(
     Ok(())
 }
 
+pub fn execute_stream_operation_instruction(
+    operation: &str, argument_count: usize, stack: &mut Vec<Value>, span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count { return Err(invalid("stream operation has too few stack values", span)); }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    let result = match operation {
+        "TERPRI" => crate::builtins::terpri(&arguments),
+        "FRESH-LINE" => crate::builtins::fresh_line(&arguments),
+        "WRITE-CHAR" => crate::builtins::write_char(&arguments),
+        _ => Err(invalid("unknown stream operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_tree_equal_instruction(
     runtime: &Runtime,
     option_count: usize,

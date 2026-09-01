@@ -327,4 +327,19 @@ fn compiled_evaluates_subtypep() {
         "((T T) (T T) (NIL T) (T T) (T T) (T T))"
     );
 }
+#[test]
+fn compiled_evaluates_character_stream_output_operations() {
+    assert_eq!(
+        evaluate(
+            r"(let ((stream (make-string-output-stream)))
+                 (list (write-char #\A stream)
+                       (terpri stream)
+                       (fresh-line stream)
+                       (get-output-stream-string stream)))",
+        )
+        .to_string(),
+        "(#\\A NIL NIL \"A\\n\")"
+    );
+}
+
 use super::*;

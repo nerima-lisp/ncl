@@ -529,6 +529,12 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Apply a stream I/O operation."] StreamOperation {
+        /// Stream operation name.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Construct a list from evaluated arguments."] ListConstruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,

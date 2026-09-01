@@ -117,9 +117,8 @@ use builtin_stream_reading::{
 };
 
 mod builtin_stream_writing;
-use builtin_stream_writing::{
-    fresh_line, terpri, write_char, write_destination, write_line, write_string,
-};
+use builtin_stream_writing::{write_destination, write_line, write_string};
+pub(crate) use builtin_stream_writing::{fresh_line, terpri, write_char};
 
 mod format;
 pub use format::format_control;

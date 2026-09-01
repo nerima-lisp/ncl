@@ -737,6 +737,32 @@ pub fn execute_string_case_instruction(
     Ok(())
 }
 
+pub fn execute_string_comparison_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < 2 {
+        return Err(invalid("string comparison has too few stack values", span));
+    }
+    let arguments = stack
+        .split_off(stack.len() - 2)
+        .into_iter()
+        .map(|value| value.primary_value())
+        .collect::<Vec<_>>();
+    let value = match operation {
+        "STRING=" => crate::builtins::string_equal(&arguments)?,
+        "STRING-EQUAL" => crate::builtins::string_case_equal(&arguments)?,
+        "STRING<" => crate::builtins::string_less_than(&arguments)?,
+        "STRING>" => crate::builtins::string_greater_than(&arguments)?,
+        "STRING<=" => crate::builtins::string_less_equal(&arguments)?,
+        "STRING>=" => crate::builtins::string_greater_equal(&arguments)?,
+        _ => return Err(invalid("unknown string comparison operation", span)),
+    };
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_character_element_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

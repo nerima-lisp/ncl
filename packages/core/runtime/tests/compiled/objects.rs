@@ -546,6 +546,14 @@ fn compiled_evaluates_native_string_case() {
 }
 
 #[test]
+fn compiled_evaluates_native_string_comparisons() {
+    assert_eq!(
+        evaluate("(list (string= \"a\" \"a\") (string-equal \"A\" \"a\") (string< \"a\" \"b\") (string> \"b\" \"a\") (string<= \"a\" \"a\") (string>= \"b\" \"a\"))").to_string(),
+        "(T T 0 0 1 0)",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

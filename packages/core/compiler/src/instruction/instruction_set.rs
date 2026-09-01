@@ -474,6 +474,10 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Compare two strings."] StringComparison {
+        /// String comparison operation name.
+        operation: String,
+    },
     #[doc = "Return a character from a string."] CharacterElement {
         /// Character access operation name.
         operation: String,

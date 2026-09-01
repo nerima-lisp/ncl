@@ -660,6 +660,26 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_string_comparison(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        Self::require_arity(items, operation, "two", 2, span)?;
+        self.compile_expression(function, &items[1])?;
+        self.compile_expression(function, &items[2])?;
+        self.emit(
+            function,
+            Instruction::StringComparison {
+                operation: operation.to_string(),
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_element(
         &mut self,
         function: FunctionId,

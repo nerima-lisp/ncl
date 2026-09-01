@@ -1249,6 +1249,15 @@ fn emits_eval_and_mapcar_instructions() {
             .count(),
         2,
     );
+    let string_comparisons = compile("(list (string= \"a\" \"a\") (string-equal \"A\" \"a\") (string< \"a\" \"b\") (string> \"b\" \"a\") (string<= \"a\" \"a\") (string>= \"b\" \"a\"))");
+    assert_eq!(
+        string_comparisons.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::StringComparison { .. }))
+            .count(),
+        6,
+    );
     let string_cases = compile("(list (string-upcase \"ab c\") (nstring-downcase \"AB C\" :start 1))");
     assert_eq!(
         string_cases.functions[0]

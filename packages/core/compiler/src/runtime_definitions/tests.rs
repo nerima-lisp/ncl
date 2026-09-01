@@ -135,6 +135,22 @@ fn compile_define_symbol_macro_uses_native_instruction() {
 }
 
 #[test]
+fn compile_define_modify_macro_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(define-modify-macro adjust (delta) +)");
+
+    state
+        .compile_define_modify_macro(function, Span::new(0, 1), &items)
+        .expect("DEFINE-MODIFY-MACRO should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.as_slice(),
+        [Instruction::DefineModifyMacro(_)]
+    ));
+}
+
+#[test]
 fn compile_define_setf_expander_uses_native_instruction() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

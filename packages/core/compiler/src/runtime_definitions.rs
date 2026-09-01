@@ -168,6 +168,28 @@ impl CompileState {
         Ok(())
     }
 
+    pub(super) fn compile_define_modify_macro(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 4 {
+            return Err(Self::arity_error(
+                items,
+                "DEFINE-MODIFY-MACRO",
+                "at least three",
+                span,
+            ));
+        }
+        self.emit(
+            function,
+            Instruction::DefineModifyMacro(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(super) fn compile_runtime_definition(
         &mut self,
         function: FunctionId,

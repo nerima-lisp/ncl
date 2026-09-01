@@ -16,16 +16,12 @@ impl CompileState {
             "EVAL-WHEN" => self.compile_eval_when(function, span, items),
             "LOAD-TIME-VALUE" => self.compile_load_time_value(function, span, items),
             "NTH-VALUE" => self.compile_nth_value(function, span, items),
-            "PSETF"
-            | "PUSH"
-            | "POP"
-            | "PUSHNEW"
-            | "ROTATEF"
-            | "SHIFTF"
-            | "DEFINE-MODIFY-MACRO"
-            | "GET-SETF-EXPANSION" => self.compile_runtime_definition(function, span, items),
+            "PSETF" | "PUSH" | "POP" | "PUSHNEW" | "ROTATEF" | "SHIFTF" | "GET-SETF-EXPANSION" => {
+                self.compile_runtime_definition(function, span, items)
+            }
             "DEFINE-SYMBOL-MACRO" => self.compile_define_symbol_macro(function, span, items),
             "DEFINE-SETF-EXPANDER" => self.compile_define_setf_expander(function, span, items),
+            "DEFINE-MODIFY-MACRO" => self.compile_define_modify_macro(function, span, items),
             "DEFSETF" => self.compile_defsetf(function, span, items),
             "THE" => self.compile_the(function, span, items),
             "IF" => self.compile_if(function, span, items),

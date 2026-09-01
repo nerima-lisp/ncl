@@ -80,6 +80,15 @@ pub(super) fn execute_value_instruction(
             };
             stack.push(Runtime::special_define_symbol_macro(items, environment)?);
         }
+        Instruction::DefineModifyMacro(form) => {
+            let FormKind::List(items) = &form.kind else {
+                return Err(RuntimeError::InvalidForm {
+                    message: "DEFINE-MODIFY-MACRO instruction requires a list".to_string(),
+                    span: Some(form.span),
+                });
+            };
+            stack.push(runtime.special_define_modify_macro(items, environment)?);
+        }
         Instruction::DefineSetfExpander(form) => {
             let FormKind::List(items) = &form.kind else {
                 return Err(RuntimeError::InvalidForm {

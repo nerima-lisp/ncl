@@ -615,6 +615,20 @@ fn evaluates_make_package_with_options() {
 }
 
 #[test]
+fn evaluates_delete_package_and_removes_nicknames_and_uses() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"deletable-package\" :nicknames (list \"deletable-nickname\"))))
+               (list (delete-package package)
+                     (find-package :deletable-package)
+                     (find-package :deletable-nickname)))"
+        )
+        .to_string(),
+        "(T NIL NIL)"
+    );
+}
+
+#[test]
 fn rejects_invalid_package_and_method_primitive_arguments_from_table() {
     let cases = [
         "(documentation 1 2)",

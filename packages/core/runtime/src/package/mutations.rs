@@ -2,6 +2,22 @@ use super::names::{canonical_symbol_name, normalize_symbol_name};
 use super::{KEYWORD_PACKAGE, PackageState, SymbolStatus};
 
 impl PackageState {
+    pub(crate) fn delete_package(&mut self, name: &str) -> bool {
+        let name = self.canonical_package_name(name);
+        if name == super::COMMON_LISP_PACKAGE || name == super::KEYWORD_PACKAGE || name == self.current {
+            return false;
+        }
+        let removed = self.packages.remove(&name).is_some();
+        if removed {
+            self.nicknames.retain(|_, package| package != &name);
+            for package in self.packages.values_mut() {
+                package.use_packages.retain(|used| used != &name);
+                package.local_nicknames.retain(|_, target| target != &name);
+            }
+        }
+        removed
+    }
+
     pub(crate) fn intern_symbol(&mut self, package: &str, name: &str) -> Option<SymbolStatus> {
         let package = self.canonical_package_name(package);
         let name = normalize_symbol_name(name);

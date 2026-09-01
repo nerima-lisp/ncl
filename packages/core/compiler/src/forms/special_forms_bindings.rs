@@ -147,6 +147,7 @@ impl CompileState {
                 | "SYMBOL-FUNCTION"
                 | "FIND-PACKAGE"
                 | "MAKE-PACKAGE"
+                | "DELETE-PACKAGE"
                 | "PACKAGE-NAME"
                 | "PACKAGE-USE-LIST"
                 | "PACKAGE-NICKNAMES"

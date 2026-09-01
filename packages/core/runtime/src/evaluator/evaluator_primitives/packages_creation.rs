@@ -9,6 +9,15 @@ impl Runtime {
         arguments: &[Value],
         span: Span,
     ) -> Option<Result<Value, RuntimeError>> {
+        if name == "DELETE-PACKAGE" {
+            return Some((|| -> Result<Value, RuntimeError> {
+                if arguments.len() != 1 {
+                    return Err(Self::arity(name, "one", arguments.len()));
+                }
+                let package_name = Self::package_designator_name(&arguments[0], span)?;
+                Ok(Value::boolean(self.packages.borrow_mut().delete_package(&package_name)))
+            })());
+        }
         if name != "MAKE-PACKAGE" {
             return None;
         }

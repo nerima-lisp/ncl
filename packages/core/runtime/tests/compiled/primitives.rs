@@ -385,3 +385,17 @@ fn evaluates_make_package_with_options() {
         "(\"CREATED-PACKAGE\" \"CREATED-PACKAGE\")"
     );
 }
+
+#[test]
+fn evaluates_delete_package_and_removes_nicknames_and_uses() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"compiled-deletable-package\" :nicknames (list \"compiled-deletable-nickname\"))))
+               (list (delete-package package)
+                     (find-package :compiled-deletable-package)
+                     (find-package :compiled-deletable-nickname)))"
+        )
+        .to_string(),
+        "(T NIL NIL)"
+    );
+}

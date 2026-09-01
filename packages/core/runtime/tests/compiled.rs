@@ -27,3 +27,5 @@ mod random;
 mod sequences;
 #[path = "compiled/setf.rs"]
 mod setf;
+#[path = "compiled/streams.rs"]
+mod streams;

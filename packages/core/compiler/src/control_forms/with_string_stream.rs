@@ -13,10 +13,12 @@ impl CompileState {
     fn compile_with_string_stream(&mut self, function: FunctionId, span: Span, items: &[Form], input: bool, operator: &str) -> Result<(), CompileError> {
         if items.len() < 2 { return Err(Self::arity_error(items, operator, "at least one", span)); }
         let FormKind::List(binding) = &items[1].kind else { return Err(CompileError::new(CompileErrorKind::ExpectedList { context: format!("{operator} binding") }, items[1].span)); };
-        if binding.len() < 2 { return Err(CompileError::new(CompileErrorKind::InvalidForm { message: format!("{operator} binding needs a variable and string form") }, items[1].span)); }
+        if binding.is_empty() || (input && binding.len() < 2) { return Err(CompileError::new(CompileErrorKind::InvalidForm { message: format!("{operator} binding needs a variable{}", if input { " and string form" } else { "" }) }, items[1].span)); }
         let variable = Self::symbol_name(&binding[0], &format!("{operator} variable"))?;
         let stream = self.reserve_function(None, Vec::new());
-        self.compile_expression(stream, &Form::list(vec![Form::atom(if input { "MAKE-STRING-INPUT-STREAM" } else { "MAKE-STRING-OUTPUT-STREAM" }, span), binding[1].clone()], span))?;
+        let mut stream_form = vec![Form::atom(if input { "MAKE-STRING-INPUT-STREAM" } else { "MAKE-STRING-OUTPUT-STREAM" }, span)];
+        if input { stream_form.push(binding[1].clone()); }
+        self.compile_expression(stream, &Form::list(stream_form, span))?;
         self.emit(stream, Instruction::Return, span)?;
         let body = self.reserve_function(None, Vec::new());
         self.compile_sequence(body, &items[2..])?;

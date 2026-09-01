@@ -134,6 +134,14 @@ fn expands_loop_for_numeric_limit_clauses(#[case] eval_fn: EvalFn) {
         evaluate(r"(loop for value from 3 above 1 collect value)").to_string(),
         "(3 2)"
     );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 6 by 2 collect value)").to_string(),
+        "(1 3 5)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 6 downto 1 by 2 collect value)").to_string(),
+        "(6 4 2)"
+    );
 }
 
 #[rstest]

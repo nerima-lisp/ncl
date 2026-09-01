@@ -208,13 +208,34 @@ impl Runtime {
                     ));
                 }
                 let variable = items[2].clone();
-                let step_operator = if descending { "1-" } else { "1+" };
+                let mut body_start = 7;
+                let step_form = if items
+                    .get(body_start)
+                    .and_then(atom_name)
+                    .is_some_and(|name| names_equal(name, "BY"))
+                {
+                    if items.len() <= body_start + 1 {
+                        return Err(Self::invalid(
+                            "LOOP BY clause requires a step form",
+                            form.span,
+                        ));
+                    }
+                    let step = items[body_start + 1].clone();
+                    body_start += 2;
+                    step
+                } else {
+                    Form::atom("1", form.span)
+                };
+                let step_operator = if descending { "-" } else { "+" };
                 let step = Form::list(
-                    vec![Form::atom(step_operator, form.span), variable.clone()],
+                    vec![
+                        Form::atom(step_operator, form.span),
+                        variable.clone(),
+                        step_form,
+                    ],
                     form.span,
                 );
                 let binding = Form::list(vec![variable.clone(), items[4].clone(), step], form.span);
-                let mut body_start = 7;
                 if items
                     .get(body_start)
                     .and_then(atom_name)

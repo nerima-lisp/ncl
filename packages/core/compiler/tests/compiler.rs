@@ -1090,6 +1090,11 @@ fn emits_eval_and_mapcar_instructions() {
         .instructions
         .iter()
         .any(|instruction| matches!(instruction, Instruction::SequenceLength)));
+    let elt = compile("(elt '(a b) 1)");
+    assert!(elt.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::SequenceElement)));
     for operation in [
         "UNION", "NUNION", "INTERSECTION", "NINTERSECTION", "SET-DIFFERENCE",
         "NSET-DIFFERENCE", "SET-EXCLUSIVE-OR", "NSET-EXCLUSIVE-OR", "SUBSETP",

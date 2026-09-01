@@ -110,6 +110,7 @@ impl CompileState {
             }
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),
             "LENGTH" => self.compile_sequence_length(function, span, items),
+            "ELT" => self.compile_sequence_element(function, span, items),
             "UNION" | "NUNION" | "INTERSECTION" | "NINTERSECTION" | "SET-DIFFERENCE"
             | "NSET-DIFFERENCE" | "SET-EXCLUSIVE-OR" | "NSET-EXCLUSIVE-OR" | "SUBSETP" => {
                 self.compile_list_set(function, span, items, name)

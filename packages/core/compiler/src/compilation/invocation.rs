@@ -442,6 +442,19 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_sequence_element(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        Self::require_arity(items, "ELT", "two", 2, span)?;
+        self.compile_expression(function, &items[1])?;
+        self.compile_expression(function, &items[2])?;
+        self.emit(function, Instruction::SequenceElement, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_list_set(
         &mut self,
         function: FunctionId,

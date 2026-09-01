@@ -205,6 +205,9 @@ fn compiled_evaluates_tree_and_sequence_unary_operations() {
     assert_eq!(evaluate("(length #(1 2))").to_string(), "2");
     assert_eq!(evaluate("(length \"abc\")").to_string(), "3");
     assert_eq!(evaluate("(length nil)").to_string(), "0");
+    assert_eq!(evaluate("(elt '(a b) 1)").to_string(), "B");
+    assert_eq!(evaluate("(elt #(a b) 0)").to_string(), "A");
+    assert_eq!(evaluate("(elt \"abc\" 2)").to_string(), "#\\c");
     assert_eq!(evaluate("(copy-tree '(1 (2 3)))").to_string(), "(1 (2 3))");
     assert_eq!(evaluate("(reverse '(1 2 3))").to_string(), "(3 2 1)");
     assert_eq!(evaluate("(nreverse #(1 2 3))").to_string(), "#(3 2 1)");

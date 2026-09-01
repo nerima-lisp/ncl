@@ -506,6 +506,20 @@ pub fn execute_sequence_length_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_element_instruction(
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let index = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence-element has too few stack values", span))?;
+    let sequence = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence-element has too few stack values", span))?;
+    stack.push(crate::builtins::elt(&[sequence, index])?);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

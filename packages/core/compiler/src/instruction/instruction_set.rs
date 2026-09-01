@@ -425,6 +425,7 @@ pub enum Instruction {
         option_count: usize,
     },
     #[doc = "Return the length of a sequence."] SequenceLength,
+    #[doc = "Return an element from a sequence."] SequenceElement,
     #[doc = "Apply a list set operation with keyword options."] ListSet {
         /// List set operation name.
         operation: String,

@@ -115,6 +115,26 @@ fn compile_push_and_pop_use_native_gethash_instructions() {
 }
 
 #[test]
+fn compile_setf_property_places_evaluate_nested_targets_natively() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let setf = parse_items("(setf (get (car objects) key) value)");
+
+    state
+        .compile_setf(function, setf[0].span, &setf)
+        .expect("SETF GET should compile through the native property instruction");
+
+    let instructions = &state.functions[function].instructions;
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::SetfGetDynamic
+    )));
+    assert!(!instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::Setf(_))));
+}
+
+#[test]
 fn compile_pushnew_uses_native_gethash_instruction() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

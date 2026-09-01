@@ -270,6 +270,18 @@ fn compiled_evaluates_push_and_pop_on_car_and_cdr_places() {
 }
 
 #[test]
+fn compiled_evaluates_push_and_pop_on_fixed_position_places() {
+    assert_eq!(
+        evaluate("(let ((xs (list (list 2 3) (list 4 5)))) (list (push 1 (second xs)) (pop (second xs)) xs))").to_string(),
+        "((1 4 5) 1 ((2 3) (4 5)))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 2 3) (list 4 5)))) (list (pushnew 1 (second xs)) (pushnew 1 (second xs)) xs))").to_string(),
+        "((1 4 5) (1 4 5) ((2 3) (1 4 5)))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_nested_push_and_pop_places() {
     assert_eq!(
         evaluate("(let ((xs (list (list (list 2 3))))) (list (push 1 (car (car xs))) (pop (car (car xs))) xs))").to_string(),

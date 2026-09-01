@@ -8,7 +8,22 @@ pub(crate) fn generalized_list_place(form: &Form) -> Option<(Vec<String>, String
         return None;
     }
     let (accessor, _) = CompileState::symbol_name_info(&items[0], "list accessor").ok()?;
-    if !matches!(accessor.as_str(), "CAR" | "FIRST" | "CDR" | "REST") {
+    if !matches!(
+        accessor.as_str(),
+        "CAR"
+            | "FIRST"
+            | "CDR"
+            | "REST"
+            | "SECOND"
+            | "THIRD"
+            | "FOURTH"
+            | "FIFTH"
+            | "SIXTH"
+            | "SEVENTH"
+            | "EIGHTH"
+            | "NINTH"
+            | "TENTH"
+    ) {
         return None;
     }
     if let Some((mut accessors, name, escaped)) = generalized_list_place(&items[1]) {

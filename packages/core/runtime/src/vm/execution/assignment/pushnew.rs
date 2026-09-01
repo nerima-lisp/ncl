@@ -77,6 +77,10 @@ pub(super) fn execute_place_pushnew_options(
     let current = match accessor {
         "CAR" | "FIRST" => outer_items[0].clone(),
         "CDR" | "REST" => Value::list(outer_items[1..].to_vec()),
+        accessor if super::list::fixed_accessor_index(accessor).is_some() => outer_items
+            .get(super::list::fixed_accessor_index(accessor).expect("checked fixed accessor"))
+            .cloned()
+            .ok_or_else(|| invalid("list accessor index is out of bounds", span))?,
         _ => return Err(invalid("unsupported native list accessor", span)),
     };
     let value = stack
@@ -106,6 +110,14 @@ pub(super) fn execute_place_pushnew_options(
         "CDR" | "REST" => {
             outer_items = vec![outer_items[0].clone()];
             outer_items.extend(updated_place.list_items().unwrap_or_default());
+        }
+        accessor if super::list::fixed_accessor_index(accessor).is_some() => {
+            let index =
+                super::list::fixed_accessor_index(accessor).expect("checked fixed accessor");
+            let slot = outer_items
+                .get_mut(index)
+                .ok_or_else(|| invalid("list accessor index is out of bounds", span))?;
+            *slot = updated_place.clone();
         }
         _ => unreachable!(),
     }

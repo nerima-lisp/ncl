@@ -3,6 +3,21 @@ use super::super::*;
 
 pub(super) mod nested;
 
+pub(super) fn fixed_accessor_index(accessor: &str) -> Option<usize> {
+    match accessor {
+        "SECOND" => Some(1),
+        "THIRD" => Some(2),
+        "FOURTH" => Some(3),
+        "FIFTH" => Some(4),
+        "SIXTH" => Some(5),
+        "SEVENTH" => Some(6),
+        "EIGHTH" => Some(7),
+        "NINTH" => Some(8),
+        "TENTH" => Some(9),
+        _ => None,
+    }
+}
+
 pub(super) fn execute(
     runtime: &Runtime,
     operator: &str,
@@ -39,6 +54,13 @@ pub(super) fn execute(
             })?;
             replacement.insert(0, elements[0].clone());
             elements = replacement;
+        }
+        accessor if fixed_accessor_index(accessor).is_some() => {
+            let index = fixed_accessor_index(accessor).expect("checked fixed accessor");
+            let slot = elements
+                .get_mut(index)
+                .ok_or_else(|| invalid("list accessor index is out of bounds", span))?;
+            *slot = value.clone();
         }
         _ => return Err(invalid("unsupported native list SETF operator", span)),
     }
@@ -113,6 +135,10 @@ pub(super) fn execute_place_mutation(
     let current = match accessor {
         "CAR" | "FIRST" => outer[0].clone(),
         "CDR" | "REST" => Value::list(outer[1..].to_vec()),
+        accessor if fixed_accessor_index(accessor).is_some() => outer
+            .get(fixed_accessor_index(accessor).expect("checked fixed accessor"))
+            .cloned()
+            .ok_or_else(|| invalid("list accessor index is out of bounds", span))?,
         _ => return Err(invalid("unsupported native list accessor", span)),
     };
     let (result, updated_place) = match operator {
@@ -170,6 +196,13 @@ pub(super) fn execute_place_mutation(
         "CDR" | "REST" => {
             outer = vec![outer[0].clone()];
             outer.extend(updated_place.list_items().unwrap_or_default());
+        }
+        accessor if fixed_accessor_index(accessor).is_some() => {
+            let index = fixed_accessor_index(accessor).expect("checked fixed accessor");
+            let slot = outer
+                .get_mut(index)
+                .ok_or_else(|| invalid("list accessor index is out of bounds", span))?;
+            *slot = updated_place;
         }
         _ => unreachable!(),
     }

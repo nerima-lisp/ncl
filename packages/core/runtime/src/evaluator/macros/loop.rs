@@ -1105,6 +1105,9 @@ impl Runtime {
                     let mut sum_name = None;
                     let mut count_form = None;
                     let mut count_result_name = None;
+                    let mut extremum_form = None;
+                    let mut extremum_name = None;
+                    let mut maximize = false;
                     let mut loop_condition = None;
                     let condition_block = Form::atom(
                         format!("NCL-LOOP-BLOCK-{}", form.span.start),
@@ -1206,7 +1209,12 @@ impl Runtime {
                     if items
                         .get(body_start)
                         .and_then(atom_name)
-                        .is_some_and(|name| names_equal(name, "SUM") || names_equal(name, "COUNT"))
+                        .is_some_and(|name| {
+                            names_equal(name, "SUM")
+                                || names_equal(name, "COUNT")
+                                || names_equal(name, "MAXIMIZE")
+                                || names_equal(name, "MINIMIZE")
+                        })
                     {
                         if items.len() <= body_start + 1 {
                             return Err(Self::invalid(
@@ -1239,9 +1247,13 @@ impl Runtime {
                         if names_equal(aggregate, "SUM") {
                             sum_form = Some(value);
                             sum_name = Some(name);
-                        } else {
+                        } else if names_equal(aggregate, "COUNT") {
                             count_form = Some(value);
                             count_result_name = Some(name);
+                        } else {
+                            maximize = names_equal(aggregate, "MAXIMIZE");
+                            extremum_form = Some(value);
+                            extremum_name = Some(name);
                         }
                     }
                     if items
@@ -1288,6 +1300,51 @@ impl Runtime {
                     }
                     if let (Some(value), Some(name)) = (count_form, count_result_name.clone()) {
                         do_items.push(count_step(form, value, name));
+                    }
+                    if let (Some(value), Some(name)) = (extremum_form, extremum_name.clone()) {
+                        let comparison = if maximize { ">" } else { "<" };
+                        let candidate = Form::atom(
+                            format!("NCL-LOOP-CANDIDATE-{}", form.span.start),
+                            form.span,
+                        );
+                        do_items.push(Form::list(
+                            vec![
+                                Form::atom("LET", form.span),
+                                Form::list(
+                                    vec![Form::list(vec![candidate.clone(), value], form.span)],
+                                    form.span,
+                                ),
+                                Form::list(
+                                    vec![
+                                        Form::atom("WHEN", form.span),
+                                        Form::list(
+                                            vec![
+                                                Form::atom("OR", form.span),
+                                                Form::list(
+                                                    vec![Form::atom("NULL", form.span), name.clone()],
+                                                    form.span,
+                                                ),
+                                                Form::list(
+                                                    vec![
+                                                        Form::atom(comparison, form.span),
+                                                        candidate.clone(),
+                                                        name.clone(),
+                                                    ],
+                                                    form.span,
+                                                ),
+                                            ],
+                                            form.span,
+                                        ),
+                                        Form::list(
+                                            vec![Form::atom("SETQ", form.span), name, candidate],
+                                            form.span,
+                                        ),
+                                    ],
+                                    form.span,
+                                ),
+                            ],
+                            form.span,
+                        ));
                     }
                     if let Some((condition_name, condition)) = loop_condition.clone() {
                         let (predicate, value) = if names_equal(&condition_name, "THEREIS") {
@@ -1349,6 +1406,12 @@ impl Runtime {
                             form.span,
                         ));
                     }
+                    if let Some(name) = extremum_name.clone() {
+                        bindings.push(Form::list(
+                            vec![name, Form::atom("NIL", form.span)],
+                            form.span,
+                        ));
+                    }
                     let result = if let Some((condition_name, _)) = &loop_condition {
                         if names_equal(condition_name, "THEREIS") {
                             Form::atom("NIL", form.span)
@@ -1363,6 +1426,8 @@ impl Runtime {
                     } else if let Some(name) = sum_name {
                         name
                     } else if let Some(name) = count_result_name {
+                        name
+                    } else if let Some(name) = extremum_name {
                         name
                     } else {
                         Form::atom("NIL", form.span)

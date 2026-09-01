@@ -654,6 +654,7 @@ impl CompileState {
             "MAKE-STRING-OUTPUT-STREAM" => items.len() == 1,
             "WRITE-TO-STRING" => items.len() >= 2,
             "READ-FROM-STRING" => items.len() >= 2,
+            "READ" | "READ-PRESERVING-WHITESPACE" => (1..=5).contains(&items.len()),
             _ => false,
         };
         if !valid { return Err(Self::arity_error(items, operation, "the supported argument count", span)); }

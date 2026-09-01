@@ -82,11 +82,11 @@ pub(crate) fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeErro
     Ok(Value::values(vec![value, Value::Integer(position)]))
 }
 
-pub(super) fn read(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn read(arguments: &[Value]) -> Result<Value, RuntimeError> {
     read_stream_form("read", arguments, false)
 }
 
-pub(super) fn read_preserving_whitespace(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn read_preserving_whitespace(arguments: &[Value]) -> Result<Value, RuntimeError> {
     read_stream_form("read-preserving-whitespace", arguments, true)
 }
 

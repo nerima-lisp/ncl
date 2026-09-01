@@ -64,6 +64,8 @@ impl CompileState {
                 | "ARRAY-DIMENSIONS"
                 | "ARRAY-DIMENSION"
                 | "ARRAY-TOTAL-SIZE"
+                | "ARRAY-ROW-MAJOR-INDEX"
+                | "ARRAY-IN-BOUNDS-P"
                 | "SUBSEQ"
                 | "FILL"
                 | "REPLACE"
@@ -263,6 +265,9 @@ impl CompileState {
             "AREF" | "BIT" => self.compile_array_element(function, span, items, name, false),
             "SVREF" | "ROW-MAJOR-AREF" => {
                 self.compile_array_element(function, span, items, name, true)
+            }
+            "ARRAY-ROW-MAJOR-INDEX" | "ARRAY-IN-BOUNDS-P" => {
+                self.compile_array_element(function, span, items, name, false)
             }
             "ARRAY-ELEMENT-TYPE" | "ARRAY-RANK" | "ARRAY-DIMENSIONS" | "ARRAY-TOTAL-SIZE" => {
                 self.compile_array_metadata(function, span, items, name, 1)

@@ -1048,6 +1048,8 @@ pub fn execute_array_element_instruction(
         "SVREF" => crate::builtins::svref(&arguments)?,
         "BIT" => crate::builtins::bit(&arguments)?,
         "ROW-MAJOR-AREF" => crate::builtins::row_major_aref(&arguments)?,
+        "ARRAY-ROW-MAJOR-INDEX" => crate::builtins::array_row_major_index(&arguments)?,
+        "ARRAY-IN-BOUNDS-P" => crate::builtins::array_in_bounds_p(&arguments)?,
         _ => return Err(invalid("unknown array-element operation", span)),
     };
     stack.push(value);

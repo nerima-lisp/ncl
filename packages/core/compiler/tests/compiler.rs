@@ -2023,7 +2023,7 @@ fn lowers_dynamic_condition_restart_and_catch_forms() {
          (catch 'tag (throw 'tag 42))
          (with-simple-restart (abort \"abort\") nil)
          (with-condition-restarts nil nil nil)
-         (with-open-file (stream \"/tmp/ncl-compiler-test\") stream)
+         (with-open-file ((stream \"/tmp/ncl-compiler-test\")) stream)
          (restart-case (invoke-restart 'abort) (abort () nil))
          (progv '(name) '(value) name)",
     );

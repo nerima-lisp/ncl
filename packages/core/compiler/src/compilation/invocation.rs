@@ -655,6 +655,30 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_vector_operation(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        let valid = match operation {
+            "FILL-POINTER" | "VECTOR-POP" => items.len() == 2,
+            "VECTOR-PUSH" => items.len() == 3,
+            "VECTOR-PUSH-EXTEND" => (3..=4).contains(&items.len()),
+            _ => false,
+        };
+        if !valid {
+            let expected = if operation == "VECTOR-PUSH-EXTEND" { "two or three" } else if operation == "VECTOR-PUSH" { "two" } else { "one" };
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(function, Instruction::VectorOperation { operation: operation.to_string(), argument_count: items.len() - 1 }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_tree_equal(
         &mut self,
         function: FunctionId,

@@ -81,6 +81,10 @@ impl CompileState {
                 | "NBUTLAST"
                 | "NTHCDR"
                 | "NTH"
+                | "FILL-POINTER"
+                | "VECTOR-PUSH"
+                | "VECTOR-PUSH-EXTEND"
+                | "VECTOR-POP"
                 | "ATOM"
                 | "CONSP"
                 | "LISTP"
@@ -311,6 +315,9 @@ impl CompileState {
                 self.compile_list_tail(function, span, items, name)
             }
             "CONS" | "NTH" | "NTHCDR" => self.compile_list_binary(function, span, items, name),
+            "FILL-POINTER" | "VECTOR-PUSH" | "VECTOR-PUSH-EXTEND" | "VECTOR-POP" => {
+                self.compile_vector_operation(function, span, items, name)
+            }
             "ATOM" | "CONSP" | "LISTP" | "NUMBERP" | "COMPLEXP" | "INTEGERP"
             | "FLOATP" | "RATIONALP" | "STRINGP" | "SIMPLE-STRING-P" | "CHARACTERP"
             | "SYMBOLP" | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP"

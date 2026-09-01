@@ -1066,6 +1066,27 @@ pub fn execute_list_binary_instruction(
     Ok(())
 }
 
+pub fn execute_vector_operation_instruction(
+    operation: &str,
+    argument_count: usize,
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("vector operation has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    let result = match operation {
+        "FILL-POINTER" => crate::builtins::fill_pointer(&arguments),
+        "VECTOR-PUSH" => crate::builtins::vector_push(&arguments),
+        "VECTOR-PUSH-EXTEND" => crate::builtins::vector_push_extend(&arguments),
+        "VECTOR-POP" => crate::builtins::vector_pop(&arguments),
+        _ => Err(invalid("unknown vector operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_tree_equal_instruction(
     runtime: &Runtime,
     option_count: usize,

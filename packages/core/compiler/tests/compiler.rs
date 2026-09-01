@@ -1302,6 +1302,18 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(!shadowed_vector.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::VectorConstruction { .. })
     }));
+    let list = compile("(list 1 2)");
+    assert!(list.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::ListConstruction { argument_count: 2, dotted: false })
+    }));
+    let list_star = compile("(list* 1 '(2 3))");
+    assert!(list_star.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::ListConstruction { argument_count: 2, dotted: true })
+    }));
+    let shadowed_list = compile("(flet ((list (first) :shadowed)) (list 1))");
+    assert!(!shadowed_list.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::ListConstruction { .. })
+    }));
     let make_array = compile("(make-array 2 :initial-element 7)");
     assert!(make_array.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::ArrayConstruction { argument_count: 3 })
@@ -1482,10 +1494,12 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
         program.functions[0].instructions,
         vec![
             Instruction::EnterScope,
-            Instruction::FunctionLoad("LIST".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(2)),
-            Instruction::Call(2),
+            Instruction::ListConstruction {
+                argument_count: 2,
+                dotted: false,
+            },
             Instruction::Define("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Pop,
             Instruction::Constant(Constant::Nil),
@@ -1494,8 +1508,8 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
             Instruction::FunctionLoad("ENDP".to_string()),
             Instruction::Load("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Call(1),
-            Instruction::JumpIfFalse(15),
-            Instruction::Jump(31),
+            Instruction::JumpIfFalse(14),
+            Instruction::Jump(30),
             Instruction::FunctionLoad("CAR".to_string()),
             Instruction::Load("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Call(1),
@@ -1511,7 +1525,7 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
             Instruction::Call(1),
             Instruction::Set("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Pop,
-            Instruction::Jump(10),
+            Instruction::Jump(9),
             Instruction::Constant(Constant::Nil),
             Instruction::Set("ITEM".to_string()),
             Instruction::Pop,

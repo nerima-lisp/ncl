@@ -29,6 +29,28 @@ pub fn execute_call_instruction(
     Ok(())
 }
 
+pub fn execute_list_construction_instruction(
+    stack: &mut Vec<Value>,
+    argument_count: usize,
+    dotted: bool,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("list construction has too few stack values", span));
+    }
+    let arguments = stack
+        .split_off(stack.len() - argument_count)
+        .into_iter()
+        .map(|value| value.primary_value())
+        .collect::<Vec<_>>();
+    stack.push(if dotted {
+        crate::builtins::list_star(&arguments)?
+    } else {
+        crate::builtins::list(&arguments)?
+    });
+    Ok(())
+}
+
 pub fn execute_apply_instruction(
     runtime: &Runtime,
     argument_count: usize,

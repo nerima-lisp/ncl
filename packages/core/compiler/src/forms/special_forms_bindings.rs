@@ -115,6 +115,8 @@ impl CompileState {
                 | "INPUT-STREAM-P"
                 | "OUTPUT-STREAM-P"
                 | "VECTOR"
+                | "LIST"
+                | "LIST*"
                 | "MAKE-ARRAY"
                 | "COPY-SEQ"
                 | "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
@@ -261,6 +263,7 @@ impl CompileState {
                 self.compile_string_construction(function, span, items, name)
             }
             "VECTOR" => self.compile_vector(function, span, items),
+            "LIST" | "LIST*" => self.compile_list_construction(function, span, items, name),
             "MAKE-ARRAY" => self.compile_array_construction(function, span, items),
             "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
             | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"

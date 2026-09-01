@@ -920,6 +920,30 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_list_construction(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if operation == "LIST*" && items.len() < 2 {
+            return Err(Self::arity_error(items, operation, "at least one", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::ListConstruction {
+                argument_count: items.len().saturating_sub(1),
+                dotted: operation == "LIST*",
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_element(
         &mut self,
         function: FunctionId,

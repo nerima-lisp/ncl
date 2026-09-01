@@ -505,6 +505,12 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Construct a list from evaluated arguments."] ListConstruction {
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+        /// Whether the final argument is the tail of the list.
+        dotted: bool,
+    },
     #[doc = "Construct an array from evaluated arguments."] ArrayConstruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,

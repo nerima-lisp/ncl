@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 
 use super::Value;
 
@@ -22,16 +23,26 @@ impl Value {
     /// Returns a copied proper-list payload when this value is a list.
     #[must_use]
     pub fn list_items(&self) -> Option<Vec<Self>> {
-        match self {
-            Self::Nil => Some(Vec::new()),
-            Self::List(items) => Some(items.as_ref().clone()),
-            Self::MutableCons(cell) => {
-                let (car, cdr) = cell.borrow().clone();
-                let mut items = vec![car];
-                items.extend(cdr.list_items()?);
-                Some(items)
+        let mut current = self.clone();
+        let mut items = Vec::new();
+        let mut visited = HashSet::new();
+        loop {
+            match current {
+                Self::Nil => return Some(items),
+                Self::List(values) => {
+                    items.extend(values.as_ref().iter().cloned());
+                    return Some(items);
+                }
+                Self::MutableCons(cell) => {
+                    if !visited.insert(std::rc::Rc::as_ptr(&cell)) {
+                        return None;
+                    }
+                    let (car, cdr) = cell.borrow().clone();
+                    items.push(car);
+                    current = cdr;
+                }
+                _ => return None,
             }
-            _ => None,
         }
     }
 
@@ -248,6 +259,16 @@ mod tests {
                 .primary_value()
                 .equal_value(&Value::Nil)
         );
+    }
+
+    #[test]
+    fn cyclic_mutable_cons_is_not_a_proper_list() {
+        let cell = Value::cons_cell(Value::Integer(1), Value::Nil);
+        let Value::MutableCons(storage) = &cell else {
+            panic!("expected mutable cons");
+        };
+        storage.borrow_mut().1 = cell.clone();
+        assert!(cell.list_items().is_none());
     }
 
     #[test]

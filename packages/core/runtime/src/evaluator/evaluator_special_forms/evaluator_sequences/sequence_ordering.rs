@@ -11,7 +11,14 @@ impl Runtime {
         let (kind, mut items) = match sequence {
             Value::Nil => (SequenceKind::List, Vec::new()),
             Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::MutableCons(_) => (SequenceKind::List, sequence.list_items().unwrap_or_default()),
+            Value::MutableCons(_) => (
+                SequenceKind::List,
+                sequence.list_items().ok_or_else(|| RuntimeError::Type {
+                    expected: "PROPER-LIST".to_string(),
+                    actual: sequence.type_name().to_string(),
+                    span: Some(span),
+                })?,
+            ),
             Value::Vector(items) => (SequenceKind::Vector, items.borrow().clone()),
             Value::String(value) => (
                 SequenceKind::String,
@@ -45,7 +52,14 @@ impl Runtime {
         let (kind, items) = match sequence {
             Value::Nil => (SequenceKind::List, Vec::new()),
             Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::MutableCons(_) => (SequenceKind::List, sequence.list_items().unwrap_or_default()),
+            Value::MutableCons(_) => (
+                SequenceKind::List,
+                sequence.list_items().ok_or_else(|| RuntimeError::Type {
+                    expected: "PROPER-LIST".to_string(),
+                    actual: sequence.type_name().to_string(),
+                    span: Some(span),
+                })?,
+            ),
             Value::Vector(items) => (SequenceKind::Vector, items.borrow().clone()),
             Value::String(value) => (
                 SequenceKind::String,

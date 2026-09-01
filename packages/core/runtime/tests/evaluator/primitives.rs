@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn evaluates_remf_with_a_generalized_place() {
+    assert_eq!(
+        evaluate(
+            "(let ((plist (list :a 1 :b 2)))
+               (list (multiple-value-list (remf plist :a)) plist))",
+        )
+        .to_string(),
+        "(((:B 2) T) (:B 2))"
+    );
+}
+
+#[test]
 fn evaluates_function_namespace_introspection() {
     assert_eq!(
         evaluate(

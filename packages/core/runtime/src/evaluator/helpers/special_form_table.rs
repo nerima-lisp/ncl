@@ -84,6 +84,7 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "DEFSETF",
     "INCF",
     "DECF",
+    "REMF",
     "DEFSTRUCT",
     "DEFCLASS",
     "DEFGENERIC",

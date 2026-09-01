@@ -28,6 +28,7 @@ impl Runtime {
             "SHIFTF" => Some(self.special_shiftf(items, environment)?),
             "INCF" => Some(self.special_modify_symbol(items, environment, "INCF", "+")?),
             "DECF" => Some(self.special_modify_symbol(items, environment, "DECF", "-")?),
+            "REMF" => Some(self.special_remf(items, environment)?),
             "DEFSTRUCT" => Some(self.special_defstruct(items, environment)?),
             "DEFCLASS" => Some(Self::special_defclass(items, environment)?),
             "DEFGENERIC" => Some(Self::special_defgeneric(items, environment)?),

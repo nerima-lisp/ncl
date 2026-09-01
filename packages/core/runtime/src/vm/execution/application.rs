@@ -1008,6 +1008,24 @@ pub fn execute_type_predicate_instruction(
     Ok(())
 }
 
+pub fn execute_character_predicate_instruction(
+    operation: &str, stack: &mut Vec<Value>, span: Span,
+) -> Result<(), RuntimeError> {
+    let value = stack.pop().ok_or_else(|| invalid("character predicate has too few stack values", span))?;
+    let result = match operation {
+        "ALPHA-CHAR-P" => crate::builtins::alpha_character_p(&[value]),
+        "ALPHANUMERICP" => crate::builtins::alphanumeric_p(&[value]),
+        "GRAPHIC-CHAR-P" => crate::builtins::graphic_character_p(&[value]),
+        "STANDARD-CHAR-P" => crate::builtins::standard_character_p(&[value]),
+        "UPPER-CASE-P" => crate::builtins::upper_case_p(&[value]),
+        "LOWER-CASE-P" => crate::builtins::lower_case_p(&[value]),
+        "BOTH-CASE-P" => crate::builtins::both_case_p(&[value]),
+        _ => Err(invalid("unknown character predicate operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_equality_instruction(
     operation: &str,
     stack: &mut Vec<Value>,

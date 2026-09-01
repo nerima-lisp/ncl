@@ -12,7 +12,7 @@ use crate::vm::execution::application::{
     execute_list_binary_instruction, execute_list_tail_instruction, execute_list_unary_instruction,
     execute_vector_operation_instruction, execute_stream_operation_instruction,
     execute_character_unary_instruction, execute_symbol_unary_instruction, execute_value_unary_instruction, execute_equality_instruction,
-    execute_type_predicate_instruction,
+    execute_type_predicate_instruction, execute_character_predicate_instruction,
     execute_numeric_unary_instruction,
     execute_numeric_rounding_instruction,
     execute_numeric_comparison_instruction,
@@ -261,6 +261,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::TypePredicate { operation } => {
             execute_type_predicate_instruction(operation, stack, span)?;
+        }
+        Instruction::CharacterPredicate { operation } => {
+            execute_character_predicate_instruction(operation, stack, span)?;
         }
         Instruction::Equality { operation } => {
             execute_equality_instruction(operation, stack, span)?;

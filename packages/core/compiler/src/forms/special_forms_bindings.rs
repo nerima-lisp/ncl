@@ -327,9 +327,7 @@ impl CompileState {
             | "FLOATP" | "RATIONALP" | "STRINGP" | "SIMPLE-STRING-P" | "CHARACTERP"
             | "SYMBOLP" | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP"
             | "SIMPLE-VECTOR-P" | "BIT-VECTOR-P" | "SIMPLE-BIT-VECTOR-P" | "ARRAYP"
-            | "SIMPLE-ARRAY-P" | "HASH-TABLE-P" | "RANDOM-STATE-P" | "ALPHA-CHAR-P"
-            | "ALPHANUMERICP" | "GRAPHIC-CHAR-P" | "STANDARD-CHAR-P" | "UPPER-CASE-P"
-            | "LOWER-CASE-P" | "BOTH-CASE-P" | "DIGIT-CHAR-P" | "STREAMP" | "INPUT-STREAM-P"
+            | "SIMPLE-ARRAY-P" | "HASH-TABLE-P" | "RANDOM-STATE-P" | "STREAMP" | "INPUT-STREAM-P"
             | "NOT" | "NULL"
             | "OUTPUT-STREAM-P" => {
                 if name == "DIGIT-CHAR-P" {
@@ -337,6 +335,10 @@ impl CompileState {
                 } else {
                     self.compile_type_predicate(function, span, items, name)
                 }
+            }
+            "ALPHA-CHAR-P" | "ALPHANUMERICP" | "GRAPHIC-CHAR-P" | "STANDARD-CHAR-P"
+            | "UPPER-CASE-P" | "LOWER-CASE-P" | "BOTH-CASE-P" => {
+                self.compile_character_predicate(function, span, items, name)
             }
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),
             "LENGTH" => self.compile_sequence_length(function, span, items),

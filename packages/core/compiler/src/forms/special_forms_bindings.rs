@@ -52,6 +52,11 @@ impl CompileState {
                 | "COPY-LIST"
                 | "COPY-ALIST"
                 | "ENDP"
+                | "CHARACTER"
+                | "CHAR-CODE"
+                | "CHAR-INT"
+                | "CODE-CHAR"
+                | "INT-CHAR"
                 | "LAST"
                 | "BUTLAST"
                 | "NBUTLAST"
@@ -155,6 +160,9 @@ impl CompileState {
             }
             "CAR" | "CDR" | "FIRST" | "REST" | "COPY-LIST" | "COPY-ALIST" | "ENDP" => {
                 self.compile_list_unary(function, span, items, name)
+            }
+            "CHARACTER" | "CHAR-CODE" | "CHAR-INT" | "CODE-CHAR" | "INT-CHAR" => {
+                self.compile_character_unary(function, span, items, name)
             }
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)

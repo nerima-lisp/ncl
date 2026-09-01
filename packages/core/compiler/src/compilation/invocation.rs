@@ -427,6 +427,25 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_character_unary(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() != 2 {
+            return Err(Self::arity_error(items, operation, "one", span));
+        }
+        self.compile_expression(function, &items[1])?;
+        self.emit(
+            function,
+            Instruction::CharacterUnary { operation: operation.to_string() },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_type_predicate(
         &mut self,
         function: FunctionId,

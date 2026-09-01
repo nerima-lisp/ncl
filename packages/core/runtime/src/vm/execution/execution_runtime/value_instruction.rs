@@ -6,7 +6,7 @@ use crate::vm::execution::application::{
     execute_apply_instruction, execute_association_search_instruction, execute_call_instruction,
     execute_list_membership_instruction,
     execute_list_binary_instruction, execute_list_tail_instruction, execute_list_unary_instruction,
-    execute_type_predicate_instruction,
+    execute_character_unary_instruction, execute_type_predicate_instruction,
     execute_list_mapping_instruction,
     execute_list_set_instruction,
     execute_multiple_value_call_instruction, execute_sequence_mapping_instruction,
@@ -220,6 +220,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::ListUnary { operation } => {
             execute_list_unary_instruction(runtime, operation, stack, environment, span)?;
+        }
+        Instruction::CharacterUnary { operation } => {
+            execute_character_unary_instruction(operation, stack, span)?;
         }
         Instruction::TypePredicate { operation } => {
             execute_type_predicate_instruction(operation, stack, span)?;

@@ -424,6 +424,10 @@ pub enum Instruction {
         /// Unary list operation name.
         operation: String,
     },
+    #[doc = "Apply a unary character conversion operation."] CharacterUnary {
+        /// Unary operation name.
+        operation: String,
+    },
     #[doc = "Apply a unary type predicate operation."] TypePredicate {
         /// Type predicate name.
         operation: String,

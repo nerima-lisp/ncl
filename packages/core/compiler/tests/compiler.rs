@@ -1087,6 +1087,13 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::ListUnary { operation: emitted } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for operation in ["CHARACTER", "CHAR-CODE", "CHAR-INT", "CODE-CHAR", "INT-CHAR"] {
+        let argument = if operation == "CHARACTER" { "\"A\"" } else { "nil" };
+        let program = compile(&format!("({operation} {argument})"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::CharacterUnary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     for operation in ["ATOM", "CONSP", "LISTP", "NUMBERP", "INTEGERP", "STRINGP", "CHARACTERP", "SYMBOLP", "VECTORP", "FUNCTIONP", "SIMPLE-VECTOR-P", "BIT-VECTOR-P", "SIMPLE-BIT-VECTOR-P", "ARRAYP", "SIMPLE-ARRAY-P", "HASH-TABLE-P", "RANDOM-STATE-P", "ALPHA-CHAR-P", "ALPHANUMERICP", "GRAPHIC-CHAR-P", "STANDARD-CHAR-P", "UPPER-CASE-P", "LOWER-CASE-P", "BOTH-CASE-P", "STREAMP", "INPUT-STREAM-P", "OUTPUT-STREAM-P"] {
         let program = compile(&format!("({operation} nil)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

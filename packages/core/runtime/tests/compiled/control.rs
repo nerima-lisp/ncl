@@ -776,4 +776,14 @@ fn compiled_executes_restart_case_and_handler_case_paths() {
         "9"
     );
 }
+#[test]
+fn compiled_evaluates_character_conversions() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(list (character "A") (char-code #\A) (char-int #\A) (code-char 65) (int-char 66))"#,
+        )
+        .must_exist();
+    assert_eq!(values.last().must_exist().to_string(), "(#\\A 65 65 #\\A #\\B)");
+}
+
 use super::*;

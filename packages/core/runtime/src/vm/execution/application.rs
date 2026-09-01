@@ -469,6 +469,26 @@ pub fn execute_list_unary_instruction(
     Ok(())
 }
 
+pub fn execute_character_unary_instruction(
+    operation: &str,
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("unary character operation has too few stack values", span))?;
+    let result = match operation {
+        "CHARACTER" => crate::builtins::character_value(&[value]),
+        "CHAR-CODE" => crate::builtins::char_code(&[value]),
+        "CHAR-INT" => crate::builtins::char_int(&[value]),
+        "CODE-CHAR" => crate::builtins::code_char(&[value]),
+        "INT-CHAR" => crate::builtins::int_char(&[value]),
+        _ => Err(invalid("unknown unary character operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_type_predicate_instruction(
     operation: &str,
     stack: &mut Vec<Value>,

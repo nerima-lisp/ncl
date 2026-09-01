@@ -329,7 +329,7 @@ impl CompileState {
             | "SIMPLE-VECTOR-P" | "BIT-VECTOR-P" | "SIMPLE-BIT-VECTOR-P" | "ARRAYP"
             | "SIMPLE-ARRAY-P" | "HASH-TABLE-P" | "RANDOM-STATE-P" | "STREAMP" | "INPUT-STREAM-P"
             | "NOT" | "NULL"
-            | "OUTPUT-STREAM-P" => {
+            | "OUTPUT-STREAM-P" | "DIGIT-CHAR-P" => {
                 if name == "DIGIT-CHAR-P" {
                     self.compile_character_digit_predicate(function, span, items)
                 } else {

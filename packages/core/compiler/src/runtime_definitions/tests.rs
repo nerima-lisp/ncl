@@ -167,6 +167,22 @@ fn compile_define_setf_expander_uses_native_instruction() {
 }
 
 #[test]
+fn compile_get_setf_expansion_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(get-setf-expansion place)");
+
+    state
+        .compile_get_setf_expansion(function, Span::new(0, 1), &items)
+        .expect("GET-SETF-EXPANSION should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.as_slice(),
+        [Instruction::GetSetfExpansion(_)]
+    ));
+}
+
+#[test]
 fn compile_runtime_definition_reports_an_internal_error_for_an_invalid_function_id() {
     let mut state = CompileState::default();
     let span = Span::new(0, 1);

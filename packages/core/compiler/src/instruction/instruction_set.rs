@@ -313,6 +313,7 @@ pub enum Instruction {
     #[doc = "Define a symbol macro through the runtime macro registry."] DefineSymbolMacro(Form),
     #[doc = "Define a modifying macro through the runtime macro registry."] DefineModifyMacro(Form),
     #[doc = "Define a SETF expander through the runtime macro registry."] DefineSetfExpander(Form),
+    #[doc = "Compute a generalized-place expansion through the runtime SETF registry."] GetSetfExpansion(Form),
     #[doc = "Evaluate a compiled source span."] Eval(Span),
     #[doc = "Call a function with positional arguments."] Call(usize),
     #[doc = "Apply a final list of arguments."] Apply(usize),

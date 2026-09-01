@@ -190,6 +190,28 @@ impl CompileState {
         Ok(())
     }
 
+    pub(super) fn compile_get_setf_expansion(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if !(2..=3).contains(&items.len()) {
+            return Err(Self::arity_error(
+                items,
+                "GET-SETF-EXPANSION",
+                "one or two",
+                span,
+            ));
+        }
+        self.emit(
+            function,
+            Instruction::GetSetfExpansion(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(super) fn compile_runtime_definition(
         &mut self,
         function: FunctionId,

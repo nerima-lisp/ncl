@@ -407,6 +407,28 @@ impl CompileState {
         )?;
         Ok(())
     }
+
+    pub(crate) fn compile_tree_equal(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 3 {
+            return Err(Self::arity_error(items, "TREE-EQUAL", "at least two", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::TreeEqual {
+                option_count: items.len().saturating_sub(3),
+            },
+            span,
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

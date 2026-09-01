@@ -420,6 +420,10 @@ pub enum Instruction {
         /// Unary operation name.
         operation: String,
     },
+    #[doc = "Compare trees with keyword options."] TreeEqual {
+        /// Number of option values following the two trees.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

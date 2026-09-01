@@ -108,6 +108,7 @@ impl CompileState {
             "COPY-TREE" | "REVERSE" | "NREVERSE" => {
                 self.compile_sequence_unary(function, span, items, name)
             }
+            "TREE-EQUAL" => self.compile_tree_equal(function, span, items),
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)
             }

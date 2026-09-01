@@ -199,6 +199,8 @@ fn compiled_evaluates_sequence_substitutions() {
 
 #[test]
 fn compiled_evaluates_tree_and_sequence_unary_operations() {
+    assert_eq!(evaluate("(tree-equal '(1 (2)) '(1 (2)))").to_string(), "T");
+    assert_eq!(evaluate("(tree-equal '(1 (2)) '(1 (3)))").to_string(), "NIL");
     assert_eq!(evaluate("(copy-tree '(1 (2 3)))").to_string(), "(1 (2 3))");
     assert_eq!(evaluate("(reverse '(1 2 3))").to_string(), "(3 2 1)");
     assert_eq!(evaluate("(nreverse #(1 2 3))").to_string(), "#(3 2 1)");

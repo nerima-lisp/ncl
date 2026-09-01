@@ -65,6 +65,10 @@ pub(super) fn execute_scope_control_instruction(
             context.environment,
             context.span,
         )?,
+        Instruction::StandardStreamBind { input, stream, variable, body } => execute_standard_stream_bind_instruction(
+            context.runtime, context.program, *input, *stream, variable, *body,
+            context.stack, context.environment, context.span,
+        )?,
         Instruction::Throw => {
             let value = pop_value(context.stack, context.span, "throw")?;
             let tag = pop_value(context.stack, context.span, "throw")?.primary_value();

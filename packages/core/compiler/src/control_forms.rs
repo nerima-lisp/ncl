@@ -10,3 +10,4 @@ mod restart_case;
 mod tagbody;
 mod values;
 mod with_open_file;
+mod with_string_stream;

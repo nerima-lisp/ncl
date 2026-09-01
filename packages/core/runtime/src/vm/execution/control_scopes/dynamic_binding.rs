@@ -68,3 +68,26 @@ pub(in crate::vm::execution) fn execute_progv_instruction(
     )?);
     Ok(())
 }
+
+pub(in crate::vm::execution) fn execute_standard_stream_bind_instruction(
+    runtime: &Runtime, program: &Rc<Program>, input: bool, stream: FunctionId,
+    variable: &str, body: FunctionId, stack: &mut Vec<Value>, environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let stream_function = program.functions.get(stream).ok_or_else(|| invalid("compiled standard stream function id is out of range", span))?;
+    let stream_value = run_code(runtime, program, stream_function, environment.clone(), span)?.primary_value();
+    let body_function = program.functions.get(body).ok_or_else(|| invalid("compiled standard stream body function id is out of range", span))?;
+    let body_environment = environment.child();
+    body_environment.define(variable, stream_value.clone());
+    let _guard = crate::builtins::standard_streams::bind(
+        if input { stream_value.clone() } else { crate::Value::Nil },
+        if input { crate::Value::Nil } else { stream_value.clone() },
+    );
+    let body_value = run_code(runtime, program, body_function, body_environment, span)?;
+    stack.push(if input {
+        body_value
+    } else {
+        crate::builtins::get_output_stream_string(&[stream_value])?
+    });
+    Ok(())
+}

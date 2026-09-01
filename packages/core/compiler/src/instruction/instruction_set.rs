@@ -291,6 +291,17 @@ pub enum Instruction {
         /// Body function.
         body: FunctionId,
     },
+    #[doc = "Bind a string stream as the standard input or output around a body."]
+    StandardStreamBind {
+        /// Whether the binding is for standard input.
+        input: bool,
+        /// Stream-producing function.
+        stream: FunctionId,
+        /// Lexical variable name visible to the body.
+        variable: String,
+        /// Body function.
+        body: FunctionId,
+    },
     #[doc = "Throw the current tag and values."] Throw,
     #[doc = "Establish a named non-local return target."] Block {
         /// Body function.

@@ -26,191 +26,119 @@ pub use application_array::{
     execute_array_element_instruction, execute_array_metadata_instruction,
 };
 
-pub fn execute_property_list_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
-    operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("property-list operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = match operation {
-        "GETF" => crate::builtins::getf(&arguments),
-        "GET-PROPERTIES" => crate::builtins::get_properties(&arguments),
-        "GET" | "PUTPROP" | "REMPROP" | "SYMBOL-PLIST" => runtime
-            .apply_symbol_property_primitive(operation, &arguments, environment, span)
-            .unwrap_or_else(|| Err(invalid("unknown property-list operation", span))),
-        _ => Err(invalid("unknown property-list operation", span)),
-    }?;
-    stack.push(value); Ok(())
-}
+#[path = "application_object.rs"]
+mod application_object;
+pub use application_object::{
+    execute_class_introspection_instruction, execute_condition_operation_instruction,
+    execute_method_operation_instruction, execute_property_list_instruction,
+    execute_restart_operation_instruction, execute_slot_operation_instruction,
+    execute_symbol_binding_instruction, execute_symbol_creation_instruction,
+    execute_symbol_function_instruction, execute_symbol_value_instruction,
+};
 
-pub fn execute_symbol_value_instruction(
+pub fn execute_evaluation_operation_instruction(
     runtime: &Runtime,
     stack: &mut Vec<Value>,
     environment: &Environment,
-    operation: &str, argument_count: usize,
+    operation: &str,
+    argument_count: usize,
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
-        return Err(invalid("symbol value operation has too few stack values", span));
+        return Err(invalid(
+            "evaluation operation has too few stack values",
+            span,
+        ));
     }
-    let arguments = stack.split_off(stack.len() - argument_count)
-        .into_iter().map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_symbol_value_primitive(operation, &arguments, environment, span)
-        .unwrap_or_else(|| Err(invalid("unknown symbol value operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_symbol_binding_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
-    operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("symbol binding operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_symbol_property_primitive(operation, &arguments, environment, span)
-        .unwrap_or_else(|| Err(invalid("unknown symbol binding operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_symbol_function_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
-    operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("symbol function operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_symbol_function_primitive(operation, &arguments, environment, span)
-        .unwrap_or_else(|| Err(invalid("unknown symbol function operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_symbol_creation_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("symbol creation operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_symbol_creation_primitive(operation, &arguments, span)
-        .unwrap_or_else(|| Err(invalid("unknown symbol creation operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_class_introspection_instruction(
-    _runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
-    operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("class introspection operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = Runtime::apply_class_introspection_primitive(operation, &arguments, environment, span)
-        .unwrap_or_else(|| Err(invalid("unknown class introspection operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_slot_operation_instruction(
-    _runtime: &Runtime, stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("slot operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = Runtime::apply_slot_primitive(operation, &arguments, span)
-        .unwrap_or_else(|| Err(invalid("unknown slot operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_condition_operation_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
-    operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("condition operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_condition_primitive(operation, &arguments, environment, span)
-        .unwrap_or_else(|| Err(invalid("unknown condition operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_restart_operation_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
-    operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("restart operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_restart_primitive(operation, &arguments, environment, span)
-        .unwrap_or_else(|| Err(invalid("unknown restart operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_method_operation_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
-    operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("method operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_method_primitive(operation, &arguments, environment, span)
-        .unwrap_or_else(|| Err(invalid("unknown method operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_evaluation_operation_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, environment: &Environment,
-    operation: &str, argument_count: usize, span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("evaluation operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_evaluation_primitive(operation, &arguments, environment, span)
+    let arguments = stack
+        .split_off(stack.len() - argument_count)
+        .into_iter()
+        .map(|value| value.primary_value())
+        .collect::<Vec<_>>();
+    let value = runtime
+        .apply_evaluation_primitive(operation, &arguments, environment, span)
         .unwrap_or_else(|| Err(invalid("unknown evaluation operation", span)))?;
     stack.push(value);
     Ok(())
 }
 
 pub fn execute_package_introspection_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
+    runtime: &Runtime,
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("package introspection operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_package_introspection_primitive(operation, &arguments, span)
+    if stack.len() < argument_count {
+        return Err(invalid(
+            "package introspection operation has too few stack values",
+            span,
+        ));
+    }
+    let arguments = stack
+        .split_off(stack.len() - argument_count)
+        .into_iter()
+        .map(|value| value.primary_value())
+        .collect::<Vec<_>>();
+    let value = runtime
+        .apply_package_introspection_primitive(operation, &arguments, span)
         .unwrap_or_else(|| Err(invalid("unknown package introspection operation", span)))?;
     stack.push(value);
     Ok(())
 }
 
 pub fn execute_package_mutation_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
+    runtime: &Runtime,
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("package mutation operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
+    if stack.len() < argument_count {
+        return Err(invalid(
+            "package mutation operation has too few stack values",
+            span,
+        ));
+    }
+    let arguments = stack
+        .split_off(stack.len() - argument_count)
+        .into_iter()
+        .map(|value| value.primary_value())
+        .collect::<Vec<_>>();
     let value = match operation {
-        "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT" => runtime.apply_package_use_primitive(operation, &arguments, span),
-        "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN" => runtime.apply_package_symbol_primitive(operation, &arguments, span),
+        "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT" => {
+            runtime.apply_package_use_primitive(operation, &arguments, span)
+        }
+        "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN" => {
+            runtime.apply_package_symbol_primitive(operation, &arguments, span)
+        }
         _ => None,
-    }.unwrap_or_else(|| Err(invalid("unknown package mutation operation", span)))?;
+    }
+    .unwrap_or_else(|| Err(invalid("unknown package mutation operation", span)))?;
     stack.push(value);
     Ok(())
 }
 
 pub fn execute_package_listing_instruction(
-    runtime: &Runtime, stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
+    runtime: &Runtime,
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("package listing operation has too few stack values", span)); }
-    let arguments = stack.split_off(stack.len() - argument_count).into_iter()
-        .map(|value| value.primary_value()).collect::<Vec<_>>();
-    let value = runtime.apply_package_listing_primitive(operation, &arguments, span)
+    if stack.len() < argument_count {
+        return Err(invalid(
+            "package listing operation has too few stack values",
+            span,
+        ));
+    }
+    let arguments = stack
+        .split_off(stack.len() - argument_count)
+        .into_iter()
+        .map(|value| value.primary_value())
+        .collect::<Vec<_>>();
+    let value = runtime
+        .apply_package_listing_primitive(operation, &arguments, span)
         .unwrap_or_else(|| Err(invalid("unknown package listing operation", span)))?;
     stack.push(value);
     Ok(())
@@ -298,7 +226,10 @@ pub fn execute_sequence_quantifier_instruction(
 ) -> Result<(), RuntimeError> {
     if sequence_count == 0 || stack.len() < sequence_count.saturating_add(1) {
         return Err(invalid(
-            &format!("{} has too few stack values", operation.to_ascii_lowercase()),
+            &format!(
+                "{} has too few stack values",
+                operation.to_ascii_lowercase()
+            ),
             span,
         ));
     }
@@ -332,8 +263,12 @@ pub fn execute_sequence_mapping_instruction(
     }
     let sequences_start = stack.len() - sequence_count;
     let sequences = stack.split_off(sequences_start);
-    let function_value = stack.pop().ok_or_else(|| invalid("map has no function value", span))?;
-    let result_type = stack.pop().ok_or_else(|| invalid("map has no result type", span))?;
+    let function_value = stack
+        .pop()
+        .ok_or_else(|| invalid("map has no function value", span))?;
+    let result_type = stack
+        .pop()
+        .ok_or_else(|| invalid("map has no result type", span))?;
     stack.push(runtime.apply_sequence_mapping(
         &result_type.primary_value(),
         &function_value.primary_value(),
@@ -356,8 +291,12 @@ pub fn execute_sequence_map_into_instruction(
     }
     let sequences_start = stack.len() - sequence_count;
     let sequences = stack.split_off(sequences_start);
-    let function_value = stack.pop().ok_or_else(|| invalid("map-into has no function value", span))?;
-    let destination = stack.pop().ok_or_else(|| invalid("map-into has no destination value", span))?;
+    let function_value = stack
+        .pop()
+        .ok_or_else(|| invalid("map-into has no function value", span))?;
+    let destination = stack
+        .pop()
+        .ok_or_else(|| invalid("map-into has no destination value", span))?;
     stack.push(runtime.apply_sequence_map_into(
         &destination.primary_value(),
         &function_value.primary_value(),
@@ -408,10 +347,18 @@ pub fn execute_sequence_merge_instruction(
     }
     let options_start = stack.len() - option_count;
     let options = stack.split_off(options_start);
-    let predicate = stack.pop().ok_or_else(|| invalid("merge has no predicate value", span))?;
-    let sequence2 = stack.pop().ok_or_else(|| invalid("merge has no second sequence value", span))?;
-    let sequence1 = stack.pop().ok_or_else(|| invalid("merge has no first sequence value", span))?;
-    let result_type = stack.pop().ok_or_else(|| invalid("merge has no result type value", span))?;
+    let predicate = stack
+        .pop()
+        .ok_or_else(|| invalid("merge has no predicate value", span))?;
+    let sequence2 = stack
+        .pop()
+        .ok_or_else(|| invalid("merge has no second sequence value", span))?;
+    let sequence1 = stack
+        .pop()
+        .ok_or_else(|| invalid("merge has no first sequence value", span))?;
+    let result_type = stack
+        .pop()
+        .ok_or_else(|| invalid("merge has no result type value", span))?;
     stack.push(runtime.apply_sequence_merge_values(
         &result_type.primary_value(),
         &sequence1.primary_value(),
@@ -437,8 +384,12 @@ pub fn execute_sequence_sort_instruction(
     }
     let options_start = stack.len() - option_count;
     let options = stack.split_off(options_start);
-    let predicate = stack.pop().ok_or_else(|| invalid("sort has no predicate value", span))?;
-    let sequence = stack.pop().ok_or_else(|| invalid("sort has no sequence value", span))?;
+    let predicate = stack
+        .pop()
+        .ok_or_else(|| invalid("sort has no predicate value", span))?;
+    let sequence = stack
+        .pop()
+        .ok_or_else(|| invalid("sort has no sequence value", span))?;
     stack.push(runtime.apply_sequence_sort(
         operation,
         &sequence.primary_value(),
@@ -464,12 +415,30 @@ pub fn execute_sequence_search_instruction(
     }
     let options_start = stack.len() - option_count;
     let options = stack.split_off(options_start);
-    let sequence = stack.pop().ok_or_else(|| invalid("sequence search has no sequence", span))?;
-    let first = stack.pop().ok_or_else(|| invalid("sequence search has no item or predicate", span))?;
+    let sequence = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence search has no sequence", span))?;
+    let first = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence search has no item or predicate", span))?;
     let result = if predicate {
-        runtime.apply_sequence_search_if(operation, &first.primary_value(), &sequence.primary_value(), &options, environment, span)?
+        runtime.apply_sequence_search_if(
+            operation,
+            &first.primary_value(),
+            &sequence.primary_value(),
+            &options,
+            environment,
+            span,
+        )?
     } else {
-        runtime.apply_sequence_search(operation, &first.primary_value(), &sequence.primary_value(), &options, environment, span)?
+        runtime.apply_sequence_search(
+            operation,
+            &first.primary_value(),
+            &sequence.primary_value(),
+            &options,
+            environment,
+            span,
+        )?
     };
     stack.push(result);
     Ok(())
@@ -484,11 +453,18 @@ pub fn execute_sequence_pair_search_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < option_count.saturating_add(2) {
-        return Err(invalid("sequence pair search has too few stack values", span));
+        return Err(invalid(
+            "sequence pair search has too few stack values",
+            span,
+        ));
     }
     let options = stack.split_off(stack.len() - option_count);
-    let sequence2 = stack.pop().ok_or_else(|| invalid("sequence pair search has no second sequence", span))?;
-    let sequence1 = stack.pop().ok_or_else(|| invalid("sequence pair search has no first sequence", span))?;
+    let sequence2 = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence pair search has no second sequence", span))?;
+    let sequence1 = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence pair search has no first sequence", span))?;
     stack.push(runtime.apply_sequence_pair_search(
         operation,
         &sequence1.primary_value(),
@@ -513,8 +489,12 @@ pub fn execute_list_membership_instruction(
         return Err(invalid("list membership has too few stack values", span));
     }
     let options = stack.split_off(stack.len() - option_count);
-    let list = stack.pop().ok_or_else(|| invalid("list membership has no list", span))?;
-    let item_or_predicate = stack.pop().ok_or_else(|| invalid("list membership has no item or predicate", span))?;
+    let list = stack
+        .pop()
+        .ok_or_else(|| invalid("list membership has no list", span))?;
+    let item_or_predicate = stack
+        .pop()
+        .ok_or_else(|| invalid("list membership has no item or predicate", span))?;
     stack.push(runtime.apply_list_membership(
         operation,
         &item_or_predicate.primary_value(),
@@ -539,8 +519,12 @@ pub fn execute_association_search_instruction(
         return Err(invalid("association search has too few stack values", span));
     }
     let options = stack.split_off(stack.len() - option_count);
-    let alist = stack.pop().ok_or_else(|| invalid("association search has no alist", span))?;
-    let item_or_predicate = stack.pop().ok_or_else(|| invalid("association search has no item or predicate", span))?;
+    let alist = stack
+        .pop()
+        .ok_or_else(|| invalid("association search has no alist", span))?;
+    let item_or_predicate = stack
+        .pop()
+        .ok_or_else(|| invalid("association search has no item or predicate", span))?;
     stack.push(runtime.apply_association_search(
         operation,
         &item_or_predicate.primary_value(),
@@ -567,11 +551,15 @@ pub fn execute_sequence_removal_instruction(
         return Err(invalid("sequence removal has too few stack values", span));
     }
     let options = stack.split_off(stack.len() - option_count);
-    let sequence = stack.pop().ok_or_else(|| invalid("sequence removal has no sequence", span))?;
+    let sequence = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence removal has no sequence", span))?;
     let item_or_predicate = if _duplicates {
         Value::Nil
     } else {
-        stack.pop().ok_or_else(|| invalid("sequence removal has no item or predicate", span))?
+        stack
+            .pop()
+            .ok_or_else(|| invalid("sequence removal has no item or predicate", span))?
     };
     stack.push(runtime.apply_sequence_remove(
         operation,
@@ -594,12 +582,21 @@ pub fn execute_sequence_substitution_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < option_count.saturating_add(3) {
-        return Err(invalid("sequence substitution has too few stack values", span));
+        return Err(invalid(
+            "sequence substitution has too few stack values",
+            span,
+        ));
     }
     let options = stack.split_off(stack.len() - option_count);
-    let sequence = stack.pop().ok_or_else(|| invalid("sequence substitution has no sequence", span))?;
-    let old_or_predicate = stack.pop().ok_or_else(|| invalid("sequence substitution has no old item or predicate", span))?;
-    let new_item = stack.pop().ok_or_else(|| invalid("sequence substitution has no new item", span))?;
+    let sequence = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence substitution has no sequence", span))?;
+    let old_or_predicate = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence substitution has no old item or predicate", span))?;
+    let new_item = stack
+        .pop()
+        .ok_or_else(|| invalid("sequence substitution has no new item", span))?;
     stack.push(runtime.apply_sequence_substitute_values(
         operation,
         &new_item,
@@ -815,8 +812,12 @@ pub fn execute_numeric_binary_instruction(
     operation: &str,
     span: Span,
 ) -> Result<(), RuntimeError> {
-    let right = stack.pop().ok_or_else(|| invalid("numeric binary operation has too few stack values", span))?;
-    let left = stack.pop().ok_or_else(|| invalid("numeric binary operation has too few stack values", span))?;
+    let right = stack
+        .pop()
+        .ok_or_else(|| invalid("numeric binary operation has too few stack values", span))?;
+    let left = stack
+        .pop()
+        .ok_or_else(|| invalid("numeric binary operation has too few stack values", span))?;
     let result = match operation {
         "MOD" => crate::builtins::modulo(&[left, right]),
         "REM" => crate::builtins::remainder(&[left, right]),
@@ -841,9 +842,15 @@ pub fn execute_numeric_boole_instruction(
     stack: &mut Vec<Value>,
     span: Span,
 ) -> Result<(), RuntimeError> {
-    let right = stack.pop().ok_or_else(|| invalid("BOOLE has too few stack values", span))?;
-    let left = stack.pop().ok_or_else(|| invalid("BOOLE has too few stack values", span))?;
-    let operation = stack.pop().ok_or_else(|| invalid("BOOLE has too few stack values", span))?;
+    let right = stack
+        .pop()
+        .ok_or_else(|| invalid("BOOLE has too few stack values", span))?;
+    let left = stack
+        .pop()
+        .ok_or_else(|| invalid("BOOLE has too few stack values", span))?;
+    let operation = stack
+        .pop()
+        .ok_or_else(|| invalid("BOOLE has too few stack values", span))?;
     let result = crate::builtins::boole(&[operation, left, right])?;
     stack.push(result);
     Ok(())
@@ -856,7 +863,10 @@ pub fn execute_numeric_bitfield_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
-        return Err(invalid("numeric bitfield operation has too few stack values", span));
+        return Err(invalid(
+            "numeric bitfield operation has too few stack values",
+            span,
+        ));
     }
     let start = stack.len() - argument_count;
     let arguments = stack.split_off(start);
@@ -879,7 +889,10 @@ pub fn execute_numeric_float_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
-        return Err(invalid("numeric float operation has too few stack values", span));
+        return Err(invalid(
+            "numeric float operation has too few stack values",
+            span,
+        ));
     }
     let arguments = stack.split_off(stack.len() - argument_count);
     let result = match operation {
@@ -907,10 +920,16 @@ pub fn execute_character_comparison_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
-        return Err(invalid("character comparison has too few stack values", span));
+        return Err(invalid(
+            "character comparison has too few stack values",
+            span,
+        ));
     }
     let start = stack.len() - argument_count;
-    let arguments = stack.drain(start..).map(|value| value.primary_value()).collect::<Vec<_>>();
+    let arguments = stack
+        .drain(start..)
+        .map(|value| value.primary_value())
+        .collect::<Vec<_>>();
     let result = match operation {
         "CHAR=" => crate::builtins::character_equal(&arguments),
         "CHAR/=" => crate::builtins::character_not_equal(&arguments),
@@ -935,7 +954,9 @@ pub fn execute_symbol_unary_instruction(
     stack: &mut Vec<Value>,
     span: Span,
 ) -> Result<(), RuntimeError> {
-    let value = stack.pop().ok_or_else(|| invalid("unary symbol operation has too few stack values", span))?;
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("unary symbol operation has too few stack values", span))?;
     let result = match operation {
         "SYMBOL-NAME" => crate::builtins::symbol_name_value(&[value]),
         "SYMBOL-PACKAGE" => crate::builtins::symbol_package_value(&[value]),
@@ -950,7 +971,9 @@ pub fn execute_value_unary_instruction(
     stack: &mut Vec<Value>,
     span: Span,
 ) -> Result<(), RuntimeError> {
-    let value = stack.pop().ok_or_else(|| invalid("unary value operation has too few stack values", span))?;
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("unary value operation has too few stack values", span))?;
     let result = match operation {
         "IDENTITY" => crate::builtins::identity(&[value]),
         "TYPE-OF" => crate::builtins::type_of(&[value]),
@@ -965,7 +988,9 @@ pub fn execute_type_predicate_instruction(
     stack: &mut Vec<Value>,
     span: Span,
 ) -> Result<(), RuntimeError> {
-    let value = stack.pop().ok_or_else(|| invalid("type predicate has too few stack values", span))?;
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("type predicate has too few stack values", span))?;
     let result = match operation {
         "ATOM" => crate::builtins::atom(&[value]),
         "CONSP" => crate::builtins::consp(&[value]),
@@ -1010,9 +1035,13 @@ pub fn execute_type_predicate_instruction(
 }
 
 pub fn execute_character_predicate_instruction(
-    operation: &str, stack: &mut Vec<Value>, span: Span,
+    operation: &str,
+    stack: &mut Vec<Value>,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    let value = stack.pop().ok_or_else(|| invalid("character predicate has too few stack values", span))?;
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("character predicate has too few stack values", span))?;
     let result = match operation {
         "ALPHA-CHAR-P" => crate::builtins::alpha_character_p(&[value]),
         "ALPHANUMERICP" => crate::builtins::alphanumeric_p(&[value]),
@@ -1032,8 +1061,12 @@ pub fn execute_equality_instruction(
     stack: &mut Vec<Value>,
     span: Span,
 ) -> Result<(), RuntimeError> {
-    let right = stack.pop().ok_or_else(|| invalid("equality predicate has too few stack values", span))?;
-    let left = stack.pop().ok_or_else(|| invalid("equality predicate has too few stack values", span))?;
+    let right = stack
+        .pop()
+        .ok_or_else(|| invalid("equality predicate has too few stack values", span))?;
+    let left = stack
+        .pop()
+        .ok_or_else(|| invalid("equality predicate has too few stack values", span))?;
     let result = match operation {
         "EQ" => left.eq_value(&right),
         "EQL" => crate::builtins::eql_value(&left, &right),
@@ -1052,10 +1085,15 @@ pub fn execute_list_tail_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < option_count + 1 {
-        return Err(invalid("list tail operation has too few stack values", span));
+        return Err(invalid(
+            "list tail operation has too few stack values",
+            span,
+        ));
     }
     let options = stack.split_off(stack.len() - option_count);
-    let value = stack.pop().ok_or_else(|| invalid("list tail operation has no list value", span))?;
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("list tail operation has no list value", span))?;
     let mut arguments = vec![value];
     arguments.extend(options);
     let result = match operation {
@@ -1073,8 +1111,12 @@ pub fn execute_list_binary_instruction(
     stack: &mut Vec<Value>,
     span: Span,
 ) -> Result<(), RuntimeError> {
-    let second = stack.pop().ok_or_else(|| invalid("binary list operation has too few stack values", span))?;
-    let first = stack.pop().ok_or_else(|| invalid("binary list operation has too few stack values", span))?;
+    let second = stack
+        .pop()
+        .ok_or_else(|| invalid("binary list operation has too few stack values", span))?;
+    let first = stack
+        .pop()
+        .ok_or_else(|| invalid("binary list operation has too few stack values", span))?;
     let result = match operation {
         "CONS" => crate::builtins::cons(&[first, second]),
         "NTH" => crate::builtins::nth(&[first, second]),
@@ -1109,9 +1151,14 @@ pub fn execute_vector_operation_instruction(
 }
 
 pub fn execute_stream_operation_instruction(
-    operation: &str, argument_count: usize, stack: &mut Vec<Value>, span: Span,
+    operation: &str,
+    argument_count: usize,
+    stack: &mut Vec<Value>,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("stream operation has too few stack values", span)); }
+    if stack.len() < argument_count {
+        return Err(invalid("stream operation has too few stack values", span));
+    }
     let arguments = stack.split_off(stack.len() - argument_count);
     let result = match operation {
         "TERPRI" => crate::builtins::terpri(&arguments),
@@ -1154,9 +1201,14 @@ pub fn execute_stream_operation_instruction(
 }
 
 pub fn execute_integer_operation_instruction(
-    operation: &str, argument_count: usize, stack: &mut Vec<Value>, span: Span,
+    operation: &str,
+    argument_count: usize,
+    stack: &mut Vec<Value>,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("integer operation has too few stack values", span)); }
+    if stack.len() < argument_count {
+        return Err(invalid("integer operation has too few stack values", span));
+    }
     let arguments = stack.split_off(stack.len() - argument_count);
     let result = match operation {
         "PARSE-INTEGER" => crate::builtins::parse_integer(&arguments),
@@ -1167,9 +1219,14 @@ pub fn execute_integer_operation_instruction(
 }
 
 pub fn execute_file_operation_instruction(
-    operation: &str, argument_count: usize, stack: &mut Vec<Value>, span: Span,
+    operation: &str,
+    argument_count: usize,
+    stack: &mut Vec<Value>,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("file operation has too few stack values", span)); }
+    if stack.len() < argument_count {
+        return Err(invalid("file operation has too few stack values", span));
+    }
     let arguments = stack.split_off(stack.len() - argument_count);
     let result = match operation {
         "OPEN" => crate::builtins::open_file(&arguments),
@@ -1180,9 +1237,17 @@ pub fn execute_file_operation_instruction(
 }
 
 pub fn execute_file_metadata_operation_instruction(
-    operation: &str, argument_count: usize, stack: &mut Vec<Value>, span: Span,
+    operation: &str,
+    argument_count: usize,
+    stack: &mut Vec<Value>,
+    span: Span,
 ) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count { return Err(invalid("file metadata operation has too few stack values", span)); }
+    if stack.len() < argument_count {
+        return Err(invalid(
+            "file metadata operation has too few stack values",
+            span,
+        ));
+    }
     let arguments = stack.split_off(stack.len() - argument_count);
     let result = match operation {
         "PROBE-FILE" => crate::builtins::probe_file(&arguments),
@@ -1309,7 +1374,10 @@ pub fn execute_sequence_concatenate_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
-        return Err(invalid("sequence-concatenate has too few stack values", span));
+        return Err(invalid(
+            "sequence-concatenate has too few stack values",
+            span,
+        ));
     }
     let arguments = stack.split_off(stack.len() - argument_count);
     stack.push(crate::builtins::concatenate(&arguments)?);
@@ -1323,7 +1391,10 @@ pub fn execute_sequence_conversion_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
-        return Err(invalid("sequence conversion has too few stack values", span));
+        return Err(invalid(
+            "sequence conversion has too few stack values",
+            span,
+        ));
     }
     let arguments = stack.split_off(stack.len() - argument_count);
     let value = match operation {
@@ -1341,7 +1412,10 @@ pub fn execute_vector_construction_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
-        return Err(invalid("vector construction has too few stack values", span));
+        return Err(invalid(
+            "vector construction has too few stack values",
+            span,
+        ));
     }
     let arguments = stack.split_off(stack.len() - argument_count);
     stack.push(crate::builtins::vector(&arguments)?);
@@ -1453,7 +1527,10 @@ pub fn execute_string_construction_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
-        return Err(invalid("string construction has too few stack values", span));
+        return Err(invalid(
+            "string construction has too few stack values",
+            span,
+        ));
     }
     let arguments = stack.split_off(stack.len() - argument_count);
     let value = match operation {
@@ -1491,7 +1568,10 @@ pub fn execute_character_digit_predicate_instruction(
     span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
-        return Err(invalid("character digit predicate has too few stack values", span));
+        return Err(invalid(
+            "character digit predicate has too few stack values",
+            span,
+        ));
     }
     let arguments = stack.split_off(stack.len() - argument_count);
     stack.push(crate::builtins::digit_character_p(&arguments)?);

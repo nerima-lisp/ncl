@@ -30,119 +30,13 @@ pub use application_array::{
 mod application_object;
 pub use application_object::{
     execute_class_introspection_instruction, execute_condition_operation_instruction,
-    execute_method_operation_instruction, execute_property_list_instruction,
+    execute_evaluation_operation_instruction, execute_method_operation_instruction,
+    execute_package_introspection_instruction, execute_package_listing_instruction,
+    execute_package_mutation_instruction, execute_property_list_instruction,
     execute_restart_operation_instruction, execute_slot_operation_instruction,
     execute_symbol_binding_instruction, execute_symbol_creation_instruction,
     execute_symbol_function_instruction, execute_symbol_value_instruction,
 };
-
-pub fn execute_evaluation_operation_instruction(
-    runtime: &Runtime,
-    stack: &mut Vec<Value>,
-    environment: &Environment,
-    operation: &str,
-    argument_count: usize,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count {
-        return Err(invalid(
-            "evaluation operation has too few stack values",
-            span,
-        ));
-    }
-    let arguments = stack
-        .split_off(stack.len() - argument_count)
-        .into_iter()
-        .map(|value| value.primary_value())
-        .collect::<Vec<_>>();
-    let value = runtime
-        .apply_evaluation_primitive(operation, &arguments, environment, span)
-        .unwrap_or_else(|| Err(invalid("unknown evaluation operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_package_introspection_instruction(
-    runtime: &Runtime,
-    stack: &mut Vec<Value>,
-    operation: &str,
-    argument_count: usize,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count {
-        return Err(invalid(
-            "package introspection operation has too few stack values",
-            span,
-        ));
-    }
-    let arguments = stack
-        .split_off(stack.len() - argument_count)
-        .into_iter()
-        .map(|value| value.primary_value())
-        .collect::<Vec<_>>();
-    let value = runtime
-        .apply_package_introspection_primitive(operation, &arguments, span)
-        .unwrap_or_else(|| Err(invalid("unknown package introspection operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_package_mutation_instruction(
-    runtime: &Runtime,
-    stack: &mut Vec<Value>,
-    operation: &str,
-    argument_count: usize,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count {
-        return Err(invalid(
-            "package mutation operation has too few stack values",
-            span,
-        ));
-    }
-    let arguments = stack
-        .split_off(stack.len() - argument_count)
-        .into_iter()
-        .map(|value| value.primary_value())
-        .collect::<Vec<_>>();
-    let value = match operation {
-        "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT" => {
-            runtime.apply_package_use_primitive(operation, &arguments, span)
-        }
-        "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN" => {
-            runtime.apply_package_symbol_primitive(operation, &arguments, span)
-        }
-        _ => None,
-    }
-    .unwrap_or_else(|| Err(invalid("unknown package mutation operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
-
-pub fn execute_package_listing_instruction(
-    runtime: &Runtime,
-    stack: &mut Vec<Value>,
-    operation: &str,
-    argument_count: usize,
-    span: Span,
-) -> Result<(), RuntimeError> {
-    if stack.len() < argument_count {
-        return Err(invalid(
-            "package listing operation has too few stack values",
-            span,
-        ));
-    }
-    let arguments = stack
-        .split_off(stack.len() - argument_count)
-        .into_iter()
-        .map(|value| value.primary_value())
-        .collect::<Vec<_>>();
-    let value = runtime
-        .apply_package_listing_primitive(operation, &arguments, span)
-        .unwrap_or_else(|| Err(invalid("unknown package listing operation", span)))?;
-    stack.push(value);
-    Ok(())
-}
 
 pub fn execute_apply_instruction(
     runtime: &Runtime,

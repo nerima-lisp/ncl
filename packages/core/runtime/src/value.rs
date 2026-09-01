@@ -119,6 +119,8 @@ pub enum Value {
     KeywordExact(Rc<str>),
     /// A proper list.
     List(Rc<Vec<Self>>),
+    /// A mutable cons cell represented by its car and cdr.
+    MutableCons(Rc<RefCell<(Self, Self)>>),
     /// A list with an explicit non-list tail.
     DottedList {
         /// Elements preceding the dotted tail.

@@ -25,6 +25,12 @@ impl Value {
         match self {
             Self::Nil => Some(Vec::new()),
             Self::List(items) => Some(items.as_ref().clone()),
+            Self::MutableCons(cell) => {
+                let (car, cdr) = cell.borrow().clone();
+                let mut items = vec![car];
+                items.extend(cdr.list_items()?);
+                Some(items)
+            }
             _ => None,
         }
     }

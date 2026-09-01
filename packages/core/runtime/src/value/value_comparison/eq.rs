@@ -26,6 +26,7 @@ impl Value {
                 Rc::ptr_eq(left, right)
             }
             (Self::List(left), Self::List(right)) => Rc::ptr_eq(left, right),
+            (Self::MutableCons(left), Self::MutableCons(right)) => Rc::ptr_eq(left, right),
             (Self::Vector(left), Self::Vector(right)) => Rc::ptr_eq(left, right),
             (
                 Self::Array {

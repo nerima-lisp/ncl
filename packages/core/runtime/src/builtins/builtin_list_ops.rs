@@ -19,6 +19,13 @@ fn reverse_list(function: &str, value: &Value) -> Result<Value, RuntimeError> {
             items.reverse();
             Ok(Value::list(items))
         }
+        Value::MutableCons(_) => {
+            let mut items = value
+                .list_items()
+                .ok_or_else(|| type_error(function, "sequence", value))?;
+            items.reverse();
+            Ok(Value::list(items))
+        }
         Value::Vector(items) => {
             let mut items = items.borrow().clone();
             items.reverse();

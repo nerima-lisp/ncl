@@ -22,6 +22,8 @@ pub(super) const LIST_BUILTINS: &[BuiltinDefinition] = &[
     ("cons", cons as _),
     ("car", car as _),
     ("cdr", cdr as _),
+    ("rplaca", rplaca as _),
+    ("rplacd", rplacd as _),
     ("first", first as _),
     ("rest", rest as _),
     ("append", append as _),

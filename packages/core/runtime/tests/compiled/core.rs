@@ -834,4 +834,14 @@ fn compiled_evaluates_cons_with_list_and_dotted_tail() {
     assert_eq!(values[0].to_string(), "((1 2 3) (1 . 2))");
 }
 
+#[test]
+fn compiled_evaluates_destructive_cons_updates() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(let ((pair (cons 1 (list 2 3))))\n  (rplaca pair 9)\n  (rplacd pair (list 4 5))\n  (list (car pair) (cdr pair) (typep pair 'cons)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(9 (4 5) T)");
+}
+
 use super::*;

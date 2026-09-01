@@ -55,7 +55,7 @@ impl Value {
             Self::Environment(_) => "ENVIRONMENT",
             Self::Symbol(_) | Self::SymbolExact(_) | Self::UninternedSymbol(_) => "SYMBOL",
             Self::Keyword(_) | Self::KeywordExact(_) => "KEYWORD",
-            Self::List(_) | Self::DottedList { .. } => "LIST",
+            Self::List(_) | Self::MutableCons(_) | Self::DottedList { .. } => "LIST",
             Self::Vector(_) => "VECTOR",
             Self::Array { .. } => "ARRAY",
             Self::HashTable { .. } => "HASH-TABLE",

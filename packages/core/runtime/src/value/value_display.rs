@@ -46,6 +46,16 @@ impl fmt::Display for Value {
                 write_sequence(formatter, values)?;
                 formatter.write_str(")")
             }
+            Self::MutableCons(cell) => {
+                let (car, cdr) = cell.borrow().clone();
+                if let Some(items) = self.list_items() {
+                    formatter.write_str("(")?;
+                    write_sequence(formatter, &items)?;
+                    formatter.write_str(")")
+                } else {
+                    write!(formatter, "({car} . {cdr})")
+                }
+            }
             Self::DottedList { items, tail } => {
                 formatter.write_str("(")?;
                 write_sequence(formatter, items)?;

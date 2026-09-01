@@ -4,13 +4,11 @@ use crate::{RuntimeError, Value};
 pub fn cons(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "cons", 2)?;
     match &arguments[1] {
-        Value::Nil => Ok(Value::list(vec![arguments[0].clone()])),
-        Value::List(items) => {
-            let mut values = Vec::with_capacity(items.len() + 1);
-            values.push(arguments[0].clone());
-            values.extend(items.iter().cloned());
-            Ok(Value::list(values))
-        }
+        Value::Nil => Ok(Value::cons_cell(arguments[0].clone(), Value::Nil)),
+        Value::List(_) | Value::MutableCons(_) => Ok(Value::cons_cell(
+            arguments[0].clone(),
+            arguments[1].clone(),
+        )),
         Value::DottedList { items, tail } => {
             let mut values = Vec::with_capacity(items.len() + 1);
             values.push(arguments[0].clone());
@@ -36,6 +34,7 @@ pub fn car(arguments: &[Value]) -> Result<Value, RuntimeError> {
             .first()
             .cloned()
             .ok_or_else(|| type_error("car", "non-empty list", &arguments[0])),
+        Value::MutableCons(cell) => Ok(cell.borrow().0.clone()),
         value => Err(type_error("car", "list", value)),
     }
 }
@@ -50,7 +49,30 @@ pub fn cdr(arguments: &[Value]) -> Result<Value, RuntimeError> {
             tail.as_ref().clone(),
         )),
         Value::DottedList { tail, .. } => Ok(tail.as_ref().clone()),
+        Value::MutableCons(cell) => Ok(cell.borrow().1.clone()),
         value => Err(type_error("cdr", "list", value)),
+    }
+}
+
+pub fn rplaca(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "rplaca", 2)?;
+    match &arguments[0] {
+        Value::MutableCons(cell) => {
+            cell.borrow_mut().0 = arguments[1].clone();
+            Ok(arguments[0].clone())
+        }
+        value => Err(type_error("rplaca", "cons", value)),
+    }
+}
+
+pub fn rplacd(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "rplacd", 2)?;
+    match &arguments[0] {
+        Value::MutableCons(cell) => {
+            cell.borrow_mut().1 = arguments[1].clone();
+            Ok(arguments[0].clone())
+        }
+        value => Err(type_error("rplacd", "cons", value)),
     }
 }
 

@@ -66,6 +66,14 @@ impl Runtime {
                     .collect::<Result<Vec<_>, _>>()?,
                 span,
             )),
+            Value::MutableCons(cell) => {
+                let (car, cdr) = cell.borrow().clone();
+                Ok(Form::dotted_list(
+                    vec![Self::form_from_value(&car, span)?],
+                    Self::form_from_value(&cdr, span)?,
+                    span,
+                ))
+            }
             Value::DottedList { items, tail } => Ok(Form::dotted_list(
                 items
                     .iter()

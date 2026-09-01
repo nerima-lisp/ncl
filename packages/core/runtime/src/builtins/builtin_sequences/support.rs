@@ -66,6 +66,9 @@ pub fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Value>, Ru
     match value {
         Value::Nil => Ok(Vec::new()),
         Value::List(items) => Ok(items.as_ref().clone()),
+        Value::MutableCons(_) => value
+            .list_items()
+            .ok_or_else(|| type_error(function, "sequence", value)),
         Value::Vector(items) => Ok(items.borrow().clone()),
         Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
         _ => Err(type_error(function, "sequence", value)),
@@ -78,7 +81,7 @@ pub fn rebuild_sequence(
     items: Vec<Value>,
 ) -> Result<Value, RuntimeError> {
     match template {
-        Value::Nil | Value::List(_) => Ok(Value::list(items)),
+        Value::Nil | Value::List(_) | Value::MutableCons(_) => Ok(Value::list(items)),
         Value::Vector(_) => Ok(Value::vector(items)),
         Value::String(_) => {
             let mut result = String::new();
@@ -102,6 +105,7 @@ pub fn sequence_length(value: &Value) -> Option<usize> {
     match value {
         Value::Nil => Some(0),
         Value::List(items) => Some(items.len()),
+        Value::MutableCons(_) => value.list_items().map(|items| items.len()),
         Value::Vector(items) => value.vector_length().or_else(|| Some(items.borrow().len())),
         Value::String(value) => Some(value.chars().count()),
         _ => None,

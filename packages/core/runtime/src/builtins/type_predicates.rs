@@ -13,7 +13,7 @@ pub fn atom(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "atom", 1)?;
     Ok(Value::boolean(!matches!(
         &arguments[0],
-        Value::List(_) | Value::DottedList { .. }
+        Value::List(_) | Value::MutableCons(_) | Value::DottedList { .. }
     )))
 }
 
@@ -21,7 +21,7 @@ pub fn consp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "consp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
-        Value::List(_) | Value::DottedList { .. }
+        Value::List(_) | Value::MutableCons(_) | Value::DottedList { .. }
     )))
 }
 
@@ -29,7 +29,7 @@ pub fn listp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "listp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
-        Value::Nil | Value::List(_)
+        Value::Nil | Value::List(_) | Value::MutableCons(_)
     )))
 }
 

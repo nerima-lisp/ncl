@@ -6,6 +6,10 @@ pub fn length(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let length = match &arguments[0] {
         Value::Nil => 0,
         Value::List(items) => items.len(),
+        Value::MutableCons(_) => match arguments[0].list_items() {
+            Some(items) => items.len(),
+            None => return Err(type_error("length", "sequence", &arguments[0])),
+        },
         Value::Vector(items) => arguments[0].vector_length().unwrap_or_else(|| items.borrow().len()),
         Value::String(value) => value.chars().count(),
         _ => {

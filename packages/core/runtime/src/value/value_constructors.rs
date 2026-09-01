@@ -96,6 +96,12 @@ impl Value {
         }
     }
 
+    /// Creates a mutable cons cell.
+    #[must_use]
+    pub fn cons_cell(car: Self, cdr: Self) -> Self {
+        Self::MutableCons(std::rc::Rc::new(std::cell::RefCell::new((car, cdr))))
+    }
+
     /// Creates a dotted list from its proper prefix and tail.
     #[must_use]
     pub fn dotted_list(items: Vec<Self>, tail: Self) -> Self {

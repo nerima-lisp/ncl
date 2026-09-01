@@ -29,28 +29,7 @@ impl CompileState {
             if self.compile_setf_subseq_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
-            let getf_place = match &place.kind {
-                FormKind::List(items) if items.len() == 3 => {
-                    Self::symbol_name_info(&items[0], "setf place operator")
-                        .ok()
-                        .filter(|(name, _)| name == "GETF")
-                        .and_then(|_| {
-                            Self::symbol_name_info(&items[1], "setf getf target")
-                                .ok()
-                                .map(|(name, escaped)| (name, escaped, &items[1], &items[2]))
-                        })
-                }
-                _ => None,
-            };
-            if let Some((name, escaped, target, indicator)) = getf_place {
-                self.compile_expression(function, target)?;
-                self.compile_expression(function, indicator)?;
-                self.compile_expression(function, value_form)?;
-                self.emit(
-                    function,
-                    Instruction::SetfGetfDynamic { name, escaped },
-                    place.span,
-                )?;
+            if self.compile_setf_getf_place(function, place, value_form)? {
                 emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
                 continue;
             }

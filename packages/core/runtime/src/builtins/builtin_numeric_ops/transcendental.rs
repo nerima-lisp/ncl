@@ -12,6 +12,16 @@ pub fn cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
     })
 }
 
+pub fn cis(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "cis", 1)?;
+    let value = &arguments[0];
+    if matches!(value, Value::Complex(_)) {
+        return Err(super::type_error("cis", "a real number", value));
+    }
+    let angle = number_argument("cis", value)?.as_float();
+    Ok(Value::complex(Value::Float(angle.cos()), Value::Float(angle.sin())))
+}
+
 pub fn tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "tan", 1)?;
     let (real, imag, complex) = match &arguments[0] {
@@ -227,6 +237,18 @@ mod tests {
             tangent(&[value]).unwrap().to_string(),
             "#C(0.0 0.7615941559557649)"
         );
+    }
+
+    #[test]
+    fn complex_unit_circle_function_accepts_real_numbers_only() {
+        assert_eq!(cis(&[Value::Integer(0)]).unwrap().to_string(), "#C(1.0 0.0)");
+        assert_eq!(
+            cis(&[Value::Float(std::f64::consts::FRAC_PI_2)])
+                .unwrap()
+                .to_string(),
+            "#C(0.00000000000000006123233995736766 1.0)"
+        );
+        assert!(cis(&[Value::complex(Value::Integer(0), Value::Integer(1))]).is_err());
     }
 
     #[test]

@@ -175,6 +175,17 @@ fn evaluates_common_lisp_real_transcendental_functions(#[case] eval_fn: EvalFn) 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_complex_unit_circle_function(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (cis 0) (realpart (cis 1.5707963267948966)) (imagpart (cis 1.5707963267948966)))").to_string(),
+        "(#C(1.0 0.0) 0.00000000000000006123233995736766 1.0)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_common_lisp_two_argument_arctangent(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

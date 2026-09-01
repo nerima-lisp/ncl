@@ -99,6 +99,11 @@ fn compiled_evaluates_not_and_null() {
 }
 
 #[test]
+fn compiled_evaluates_symbol_accessors() {
+    assert_eq!(evaluate("(list (symbol-name 'cl:car) (symbol-package 'cl:car))").to_string(), "(\"CAR\" COMMON-LISP)");
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

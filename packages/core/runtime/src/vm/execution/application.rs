@@ -930,6 +930,21 @@ pub fn execute_character_comparison_instruction(
     Ok(())
 }
 
+pub fn execute_symbol_unary_instruction(
+    operation: &str,
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let value = stack.pop().ok_or_else(|| invalid("unary symbol operation has too few stack values", span))?;
+    let result = match operation {
+        "SYMBOL-NAME" => crate::builtins::symbol_name_value(&[value]),
+        "SYMBOL-PACKAGE" => crate::builtins::symbol_package_value(&[value]),
+        _ => Err(invalid("unknown unary symbol operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_type_predicate_instruction(
     operation: &str,
     stack: &mut Vec<Value>,

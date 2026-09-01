@@ -177,7 +177,7 @@ impl CompileState {
                 | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
                 | "CHAR-NOT-GREATERP"
                 | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR"
-                | "DIGIT-CHAR-P"
+                | "DIGIT-CHAR-P" | "SYMBOL-NAME" | "SYMBOL-PACKAGE"
         ) && self.has_local_function(name)
         {
             return None;
@@ -276,6 +276,7 @@ impl CompileState {
             | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR" => {
                 self.compile_character_unary(function, span, items, name)
             }
+            "SYMBOL-NAME" | "SYMBOL-PACKAGE" => self.compile_symbol_unary(function, span, items, name),
             "1+" | "1-" | "ABS" | "SIGNUM" | "ZEROP" | "PLUSP" | "MINUSP" | "EVENP"
             | "ODDP" | "LOGNOT" | "LOGCOUNT" | "INTEGER-LENGTH" | "ISQRT" | "SQRT" | "SIN" | "COS"
             | "CIS" | "TAN" | "EXP" | "ASIN" | "ACOS" | "SINH" | "COSH" | "TANH"

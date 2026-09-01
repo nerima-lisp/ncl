@@ -103,23 +103,12 @@ impl CompileState {
                         if !matches!(operator.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF") {
                             return None;
                         }
-                        Self::symbol_name_info(&items[1], "setf aref target")
-                            .ok()
-                            .map(|(name, escaped)| {
-                                (
-                                    operator,
-                                    items.len() - 2,
-                                    name,
-                                    escaped,
-                                    &items[1],
-                                    &items[2..],
-                                )
-                            })
+                        Some((operator, items.len() - 2, Self::symbol_name_info(&items[1], "setf aref target").ok(), &items[1], &items[2..]))
                     })
                 }
                 _ => None,
             };
-            if let Some((operator, rank, name, escaped, target, indices)) = aref_place {
+            if let Some((operator, rank, symbol, target, indices)) = aref_place {
                 self.compile_expression(function, target)?;
                 for index_form in indices {
                     self.compile_expression(function, index_form)?;
@@ -127,11 +116,9 @@ impl CompileState {
                 self.compile_expression(function, value_form)?;
                 self.emit(
                     function,
-                    Instruction::SetfArefDynamic {
-                        rank,
-                        operator,
-                        name,
-                        escaped,
+                    match symbol {
+                        Some((name, escaped)) => Instruction::SetfArefDynamic { rank, operator, name, escaped },
+                        None => Instruction::SetfArefPlace { rank, operator },
                     },
                     place.span,
                 )?;

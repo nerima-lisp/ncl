@@ -9,6 +9,7 @@ pub(super) const NUMERIC_BUILTINS: &[BuiltinDefinition] = &[
     ("complex", complex as _),
     ("expt", exponentiate as _),
     ("sqrt", square_root as _),
+    ("isqrt", integer_square_root_builtin as _),
     ("sin", sine as _),
     ("cos", cosine as _),
     ("tan", tangent as _),

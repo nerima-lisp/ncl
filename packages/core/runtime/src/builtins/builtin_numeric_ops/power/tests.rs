@@ -133,3 +133,20 @@ fn square_root_handles_complex_principal_values() {
         "#C(1.0 2.0)"
     );
 }
+
+#[test]
+fn integer_square_root_handles_fixnums_bignums_and_invalid_inputs() {
+    assert_eq!(ok_string(integer_square_root_builtin(&[Value::Integer(15)])), "3");
+    assert_eq!(
+        ok_string(integer_square_root_builtin(&[Value::big_integer(ibig::IBig::from(16))])),
+        "4"
+    );
+    assert!(matches!(
+        integer_square_root_builtin(&[Value::Integer(-1)]),
+        Err(RuntimeError::Type { .. })
+    ));
+    assert!(matches!(
+        integer_square_root_builtin(&[Value::Float(4.0)]),
+        Err(RuntimeError::Type { .. })
+    ));
+}

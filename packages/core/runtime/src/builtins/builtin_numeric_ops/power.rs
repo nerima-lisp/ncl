@@ -1,7 +1,8 @@
 use super::{
-    Number, RuntimeError, Value, exact, exceeds_exact_bignum_digit_cap, number_argument,
-    number_to_value, rational_number,
+    Number, RuntimeError, Value, big_integer_argument, exact, exceeds_exact_bignum_digit_cap,
+    number_argument, number_from_big, number_to_value, rational_number,
 };
+use crate::builtins::builtin_helpers::type_error;
 
 mod exponentiation;
 
@@ -87,6 +88,15 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
             Value::Float((-Number::Big(value).as_float()).sqrt()),
         )),
     }
+}
+
+pub fn integer_square_root_builtin(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "isqrt", 1)?;
+    let value = big_integer_argument("isqrt", &arguments[0])?;
+    if value < ibig::IBig::from(0) {
+        return Err(type_error("isqrt", "a non-negative integer", &arguments[0]));
+    }
+    number_to_value(number_from_big(ibig_square_root(&value)))
 }
 
 fn complex_square_root(real: &Value, imag: &Value) -> Result<Value, RuntimeError> {

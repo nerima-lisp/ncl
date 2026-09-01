@@ -116,6 +116,9 @@ impl CompileState {
                 | "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
                 | "NSTRING-UPCASE" | "NSTRING-DOWNCASE" | "NSTRING-CAPITALIZE"
                 | "STRING=" | "STRING-EQUAL" | "STRING<" | "STRING>" | "STRING<=" | "STRING>="
+                | "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
+                | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
+                | "CHAR-NOT-GREATERP"
         ) && self.has_local_function(name)
         {
             return None;
@@ -215,6 +218,9 @@ impl CompileState {
             "STRING=" | "STRING-EQUAL" | "STRING<" | "STRING>" | "STRING<=" | "STRING>=" => {
                 self.compile_string_comparison(function, span, items, name)
             }
+            "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
+            | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
+            | "CHAR-NOT-GREATERP" => self.compile_character_comparison(function, span, items, name),
             "CHAR" | "SCHAR" => self.compile_character_element(function, span, items, name),
             "AREF" | "BIT" => self.compile_array_element(function, span, items, name, false),
             "SVREF" | "ROW-MAJOR-AREF" => {

@@ -490,6 +490,36 @@ pub fn execute_character_unary_instruction(
     Ok(())
 }
 
+pub fn execute_character_comparison_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("character comparison has too few stack values", span));
+    }
+    let start = stack.len() - argument_count;
+    let arguments = stack.drain(start..).map(|value| value.primary_value()).collect::<Vec<_>>();
+    let result = match operation {
+        "CHAR=" => crate::builtins::character_equal(&arguments),
+        "CHAR/=" => crate::builtins::character_not_equal(&arguments),
+        "CHAR-EQUAL" => crate::builtins::character_case_equal(&arguments),
+        "CHAR-NOT-EQUAL" => crate::builtins::character_case_not_equal(&arguments),
+        "CHAR<" => crate::builtins::character_less_than(&arguments),
+        "CHAR>" => crate::builtins::character_greater_than(&arguments),
+        "CHAR<=" => crate::builtins::character_less_equal(&arguments),
+        "CHAR>=" => crate::builtins::character_greater_equal(&arguments),
+        "CHAR-LESSP" => crate::builtins::character_case_less_than(&arguments),
+        "CHAR-GREATERP" => crate::builtins::character_case_greater_than(&arguments),
+        "CHAR-NOT-LESSP" => crate::builtins::character_case_greater_equal(&arguments),
+        "CHAR-NOT-GREATERP" => crate::builtins::character_case_less_equal(&arguments),
+        _ => Err(invalid("unknown character comparison operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_type_predicate_instruction(
     operation: &str,
     stack: &mut Vec<Value>,

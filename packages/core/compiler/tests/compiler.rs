@@ -1258,6 +1258,15 @@ fn emits_eval_and_mapcar_instructions() {
             .count(),
         6,
     );
+    let character_comparisons = compile("(list (char= #\\a #\\a) (char/= #\\a #\\b #\\c) (char-equal #\\A #\\a) (char< #\\a #\\b) (char-not-greaterp #\\A #\\a))");
+    assert_eq!(
+        character_comparisons.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::CharacterComparison { .. }))
+            .count(),
+        5,
+    );
     let string_cases = compile("(list (string-upcase \"ab c\") (nstring-downcase \"AB C\" :start 1))");
     assert_eq!(
         string_cases.functions[0]

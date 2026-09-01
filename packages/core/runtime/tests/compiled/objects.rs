@@ -554,6 +554,14 @@ fn compiled_evaluates_native_string_comparisons() {
 }
 
 #[test]
+fn compiled_evaluates_native_character_comparisons() {
+    assert_eq!(
+        evaluate("(list (char= #\\a #\\a) (char/= #\\a #\\b #\\c) (char-equal #\\A #\\a) (char< #\\a #\\b) (char-not-greaterp #\\A #\\a))").to_string(),
+        "(T T T T T)",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

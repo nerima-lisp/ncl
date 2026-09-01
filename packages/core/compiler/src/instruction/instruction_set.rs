@@ -478,6 +478,12 @@ pub enum Instruction {
         /// String comparison operation name.
         operation: String,
     },
+    #[doc = "Compare two or more characters."] CharacterComparison {
+        /// Character comparison operation name.
+        operation: String,
+        /// Number of characters consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Return a character from a string."] CharacterElement {
         /// Character access operation name.
         operation: String,

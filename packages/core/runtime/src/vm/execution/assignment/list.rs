@@ -1,6 +1,8 @@
 #[allow(clippy::wildcard_imports)]
 use super::super::*;
 
+#[path = "list_mutation.rs"]
+pub(super) mod mutation;
 pub(super) mod nested;
 
 pub(super) fn fixed_accessor_index(accessor: &str) -> Option<usize> {
@@ -141,56 +143,8 @@ pub(super) fn execute_place_mutation(
             .ok_or_else(|| invalid("list accessor index is out of bounds", span))?,
         _ => return Err(invalid("unsupported native list accessor", span)),
     };
-    let (result, updated_place) = match operator {
-        "PUSH" => {
-            let value = stack
-                .pop()
-                .ok_or_else(|| invalid("push has no value", span))?
-                .primary_value();
-            let mut items = current.list_items().ok_or_else(|| RuntimeError::Type {
-                expected: "LIST".to_string(),
-                actual: current.type_name().to_string(),
-                span: Some(span),
-            })?;
-            items.insert(0, value);
-            let updated = Value::list(items);
-            (updated.clone(), updated)
-        }
-        "POP" => {
-            let mut items = current.list_items().ok_or_else(|| RuntimeError::Type {
-                expected: "LIST".to_string(),
-                actual: current.type_name().to_string(),
-                span: Some(span),
-            })?;
-            let value = items.first().cloned().unwrap_or(Value::Nil);
-            if !items.is_empty() {
-                items.remove(0);
-            }
-            (value, Value::list(items))
-        }
-        "PUSHNEW" => {
-            let value = stack
-                .pop()
-                .ok_or_else(|| invalid("pushnew has no value", span))?
-                .primary_value();
-            let mut items = current.list_items().ok_or_else(|| RuntimeError::Type {
-                expected: "LIST".to_string(),
-                actual: current.type_name().to_string(),
-                span: Some(span),
-            })?;
-            if items
-                .iter()
-                .any(|candidate| crate::builtins::type_predicates::eql_value(&value, candidate))
-            {
-                (current.clone(), current)
-            } else {
-                items.insert(0, value);
-                let updated = Value::list(items);
-                (updated.clone(), updated)
-            }
-        }
-        _ => return Err(invalid("unsupported native list place mutation", span)),
-    };
+    let (result, updated_place) = mutation::apply(operator, current, stack, span)?;
+
     match accessor {
         "CAR" | "FIRST" => outer[0] = updated_place,
         "CDR" | "REST" => {

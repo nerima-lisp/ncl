@@ -427,6 +427,31 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_list_tail(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if !(2..=3).contains(&items.len()) {
+            return Err(Self::arity_error(items, operation, "one or two", span));
+        }
+        self.compile_expression(function, &items[1])?;
+        for item in &items[2..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::ListTail {
+                operation: operation.to_string(),
+                option_count: items.len() - 2,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_tree_equal(
         &mut self,
         function: FunctionId,

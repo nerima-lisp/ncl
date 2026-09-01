@@ -469,6 +469,29 @@ pub fn execute_list_unary_instruction(
     Ok(())
 }
 
+pub fn execute_list_tail_instruction(
+    operation: &str,
+    option_count: usize,
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < option_count + 1 {
+        return Err(invalid("list tail operation has too few stack values", span));
+    }
+    let options = stack.split_off(stack.len() - option_count);
+    let value = stack.pop().ok_or_else(|| invalid("list tail operation has no list value", span))?;
+    let mut arguments = vec![value];
+    arguments.extend(options);
+    let result = match operation {
+        "LAST" => crate::builtins::last(&arguments),
+        "BUTLAST" => crate::builtins::butlast(&arguments),
+        "NBUTLAST" => crate::builtins::nbutlast(&arguments),
+        _ => Err(invalid("unknown list tail operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_tree_equal_instruction(
     runtime: &Runtime,
     option_count: usize,

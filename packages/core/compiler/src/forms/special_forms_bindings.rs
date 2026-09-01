@@ -118,6 +118,9 @@ impl CompileState {
             "CAR" | "CDR" | "FIRST" | "REST" | "COPY-LIST" | "COPY-ALIST" | "ENDP" => {
                 self.compile_list_unary(function, span, items, name)
             }
+            "LAST" | "BUTLAST" | "NBUTLAST" => {
+                self.compile_list_tail(function, span, items, name)
+            }
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),
             "LENGTH" => self.compile_sequence_length(function, span, items),
             "ELT" => self.compile_sequence_element(function, span, items),

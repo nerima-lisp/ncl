@@ -424,6 +424,12 @@ pub enum Instruction {
         /// Unary list operation name.
         operation: String,
     },
+    #[doc = "Apply a list tail operation with an optional count."] ListTail {
+        /// List operation name.
+        operation: String,
+        /// Number of optional values following the list.
+        option_count: usize,
+    },
     #[doc = "Compare trees with keyword options."] TreeEqual {
         /// Number of option values following the two trees.
         option_count: usize,

@@ -102,6 +102,8 @@ impl Runtime {
                 let expanded = Self::expand_with_open_stream(form)?;
                 Some(self.eval_expanded_values(&expanded, environment)?)
             }
+            "WITH-INPUT-FROM-STRING" => Some(self.special_with_input_from_string(items, environment)?),
+            "WITH-OUTPUT-TO-STRING" => Some(self.special_with_output_to_string(items, environment)?),
             "RESTART-CASE" => Some(self.special_restart_case(items, environment)?),
             "UNWIND-PROTECT" => Some(self.special_unwind_protect(items, environment)?),
             "BLOCK" => Some(self.special_block(items, environment)?),
@@ -116,5 +118,41 @@ impl Runtime {
             _ => None,
         };
         Ok(value)
+    }
+}
+
+impl Runtime {
+    fn special_with_input_from_string(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 3 {
+            return Err(Self::arity("with-input-from-string", "at least 2", items.len().saturating_sub(1)));
+        }
+        let binding = match &items[1].kind { ncl_syntax::FormKind::List(parts) if parts.len() >= 2 => parts, _ => return Err(Self::invalid("with-input-from-string binding must contain a variable and string form", items[1].span)) };
+        let name = match &binding[0].kind { ncl_syntax::FormKind::Atom(name) => name, _ => return Err(Self::invalid("with-input-from-string variable must be a symbol", binding[0].span)) };
+        let source = self.eval_values_in(&binding[1], environment)?.primary_value();
+        let Value::String(source) = source else { return Err(Self::invalid("with-input-from-string string form must evaluate to a string", binding[1].span)); };
+        let stream = Value::string_input_stream(&source, 0, source.chars().count());
+        let local = environment.child();
+        local.define(name, stream.clone());
+        let _guard = crate::builtins::standard_streams::bind(stream, Value::Nil);
+        self.special_progn(&items[2..], &local)
+    }
+
+    fn special_with_output_to_string(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 2 { return Err(Self::arity("with-output-to-string", "at least 1", 0)); }
+        let binding = match &items[1].kind { ncl_syntax::FormKind::List(parts) if !parts.is_empty() => parts, _ => return Err(Self::invalid("with-output-to-string binding must contain a variable", items[1].span)) };
+        let name = match &binding[0].kind { ncl_syntax::FormKind::Atom(name) => name, _ => return Err(Self::invalid("with-output-to-string variable must be a symbol", binding[0].span)) };
+        let stream = Value::string_output_stream();
+        let local = environment.child();
+        local.define(name, stream.clone());
+        { let _guard = crate::builtins::standard_streams::bind(Value::Nil, stream.clone()); self.special_progn(&items[2..], &local)?; }
+        crate::builtins::get_output_stream_string(&[stream])
     }
 }

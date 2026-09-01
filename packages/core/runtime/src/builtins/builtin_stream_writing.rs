@@ -8,8 +8,16 @@ pub(super) fn write_destination(
 ) -> Result<(), RuntimeError> {
     match destination {
         None | Some(Value::Nil | Value::Boolean(true)) => {
-            print!("{text}");
-            Ok(())
+            if let Some(stream) = super::standard_streams::output() {
+                match stream {
+                    Value::Stream(stream) if stream.borrow_mut().write(text) => Ok(()),
+                    Value::Stream(_) => Err(stream_state_error(function, "an open output stream")),
+                    value => Err(type_error(function, "an output stream", &value)),
+                }
+            } else {
+                print!("{text}");
+                Ok(())
+            }
         }
         Some(Value::Stream(stream)) => {
             if stream.borrow_mut().write(text) {

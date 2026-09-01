@@ -120,6 +120,7 @@ pub(crate) use builtin_stream_reading::{clear_input, listen, peek_char, read_cha
 pub(crate) use builtin_stream_reading::get_output_stream_string;
 
 mod builtin_stream_writing;
+pub(crate) mod standard_streams;
 use builtin_stream_writing::write_destination;
 pub(crate) use builtin_stream_writing::{write_line, write_sequence, write_string};
 pub(crate) use builtin_stream_writing::{fresh_line, terpri, write_char};

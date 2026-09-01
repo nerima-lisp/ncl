@@ -16,18 +16,19 @@ pub(super) fn stream_reference<'a>(
     }
 }
 
-pub(super) fn input_stream_reference<'a>(
+pub(super) fn input_stream_reference(
     function: &str,
-    value: Option<&'a Value>,
-) -> Result<&'a Rc<RefCell<Stream>>, RuntimeError> {
+    value: Option<&Value>,
+) -> Result<Rc<RefCell<Stream>>, RuntimeError> {
     match value {
-        Some(Value::Stream(stream)) => Ok(stream),
-        None | Some(Value::Nil | Value::Boolean(true)) => Err(RuntimeError::InvalidForm {
-            message: format!(
-                "{function} requires an explicit input stream; standard input is unavailable"
-            ),
-            span: None,
-        }),
+        Some(Value::Stream(stream)) => Ok(stream.clone()),
+        None | Some(Value::Nil | Value::Boolean(true)) => {
+            let stream = super::standard_streams::input().ok_or_else(|| RuntimeError::InvalidForm {
+                message: format!("{function} requires an explicit input stream; standard input is unavailable"),
+                span: None,
+            })?;
+            match stream { Value::Stream(stream) => Ok(stream), value => Err(type_error(function, "an input stream", &value)) }
+        }
         Some(value) => Err(type_error(function, "an input stream", value)),
     }
 }

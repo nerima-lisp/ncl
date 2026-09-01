@@ -376,6 +376,12 @@ pub enum Instruction {
         /// Number of option values following the sequence arguments.
         option_count: usize,
     },
+    #[doc = "Search two sequences with keyword options."] SequencePairSearch {
+        /// Search operation name.
+        operation: String,
+        /// Number of option values following the sequences.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

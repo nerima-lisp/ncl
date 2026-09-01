@@ -26,6 +26,17 @@ fn compiled_evaluates_sequence_search_operations() {
 }
 
 #[test]
+fn compiled_evaluates_sequence_pair_search_operations() {
+    assert_eq!(evaluate("(search '(2 3) '(1 2 3 4))").to_string(), "1");
+    assert_eq!(evaluate("(mismatch '(1 2 9) '(1 2 3))").to_string(), "2");
+    assert_eq!(
+        evaluate("(search '(2 3) '(1 2 3 2 3) :from-end t)").to_string(),
+        "3"
+    );
+    assert_eq!(evaluate("(funcall #'search '(2) '(0 2))").to_string(), "1");
+}
+
+#[test]
 fn compiled_evaluates_sequence_merge() {
     assert_eq!(
         evaluate("(merge 'list '(1 3 5) '(2 4 6) #'<)").to_string(),

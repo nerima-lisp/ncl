@@ -19,6 +19,8 @@ impl CompileState {
                 | "FIND-IF-NOT"
                 | "POSITION-IF-NOT"
                 | "COUNT-IF-NOT"
+                | "SEARCH"
+                | "MISMATCH"
         ) && self.has_local_function(name)
         {
             return None;
@@ -62,6 +64,9 @@ impl CompileState {
             "FIND" | "POSITION" | "COUNT" | "FIND-IF" | "POSITION-IF" | "COUNT-IF"
             | "FIND-IF-NOT" | "POSITION-IF-NOT" | "COUNT-IF-NOT" => {
                 self.compile_sequence_search(function, span, items, name)
+            }
+            "SEARCH" | "MISMATCH" => {
+                self.compile_sequence_pair_search(function, span, items, name)
             }
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)

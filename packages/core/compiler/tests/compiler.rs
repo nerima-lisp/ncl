@@ -1017,6 +1017,12 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::SequenceSearch { operation: emitted, option_count: 2, .. } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for operation in ["SEARCH", "MISMATCH"] {
+        let program = compile(&format!("({operation} '(1 2) '(1 2) :test #'eql)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequencePairSearch { operation: emitted, option_count: 2 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     assert!(
         map_into.functions[0]
             .instructions

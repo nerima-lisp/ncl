@@ -93,20 +93,17 @@ impl CompileState {
         if items.len() < 3 {
             return Err(Self::arity_error(items, "MAP-INTO", "at least two", span));
         }
-        let destination = items[1].clone();
-        self.emit(
-            function,
-            Instruction::FunctionLoad("MAP-INTO".to_string()),
-            items[0].span,
-        )?;
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }
         self.emit(
             function,
-            Instruction::Call(items.len().saturating_sub(1)),
+            Instruction::SequenceMapInto {
+                sequence_count: items.len().saturating_sub(3),
+            },
             span,
         )?;
+        let destination = items[1].clone();
         self.emit(
             function,
             match Self::symbol_name_info(&destination, "MAP-INTO destination") {

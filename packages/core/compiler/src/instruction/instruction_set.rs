@@ -350,6 +350,10 @@ pub enum Instruction {
         /// Number of sequences consumed after the function.
         sequence_count: usize,
     },
+    #[doc = "Map a function into a destination sequence."] SequenceMapInto {
+        /// Number of source sequences consumed after the function and destination.
+        sequence_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

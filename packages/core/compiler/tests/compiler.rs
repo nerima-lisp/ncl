@@ -991,6 +991,9 @@ fn emits_eval_and_mapcar_instructions() {
     }));
 
     let map_into = compile("(map-into result #'1+ '(1 2))");
+    assert!(map_into.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceMapInto { sequence_count: 1 })
+    }));
     assert!(
         map_into.functions[0]
             .instructions

@@ -133,6 +133,30 @@ pub fn execute_sequence_quantifier_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_mapping_instruction(
+    runtime: &Runtime,
+    sequence_count: usize,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if sequence_count == 0 || stack.len() < sequence_count.saturating_add(2) {
+        return Err(invalid("map has too few stack values", span));
+    }
+    let sequences_start = stack.len() - sequence_count;
+    let sequences = stack.split_off(sequences_start);
+    let function_value = stack.pop().ok_or_else(|| invalid("map has no function value", span))?;
+    let result_type = stack.pop().ok_or_else(|| invalid("map has no result type", span))?;
+    stack.push(runtime.apply_sequence_mapping(
+        &result_type.primary_value(),
+        &function_value.primary_value(),
+        &sequences,
+        environment,
+        span,
+    )?);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

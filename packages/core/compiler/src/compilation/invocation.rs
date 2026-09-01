@@ -141,6 +141,28 @@ impl CompileState {
         )?;
         Ok(())
     }
+
+    pub(crate) fn compile_sequence_mapping(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 4 {
+            return Err(Self::arity_error(items, "MAP", "at least three", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SequenceMapping {
+                sequence_count: items.len().saturating_sub(3),
+            },
+            span,
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

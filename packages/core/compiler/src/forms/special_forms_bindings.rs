@@ -40,6 +40,7 @@ impl CompileState {
             "EVERY" | "SOME" | "NOTANY" | "NOTEVERY" => {
                 self.compile_sequence_quantifier(function, span, items, name)
             }
+            "MAP" => self.compile_sequence_mapping(function, span, items),
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)
             }

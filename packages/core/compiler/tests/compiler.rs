@@ -985,6 +985,11 @@ fn emits_eval_and_mapcar_instructions() {
         );
     }
 
+    let map = compile("(map 'list #'numberp '(1 2) '(3 4))");
+    assert!(map.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceMapping { sequence_count: 2 })
+    }));
+
     let map_into = compile("(map-into result #'1+ '(1 2))");
     assert!(
         map_into.functions[0]

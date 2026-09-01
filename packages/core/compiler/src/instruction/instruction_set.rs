@@ -346,6 +346,10 @@ pub enum Instruction {
         /// Number of sequences consumed after the predicate.
         sequence_count: usize,
     },
+    #[doc = "Map a function over sequences into a requested result type."] SequenceMapping {
+        /// Number of sequences consumed after the function.
+        sequence_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

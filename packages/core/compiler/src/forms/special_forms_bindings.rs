@@ -114,6 +114,8 @@ impl CompileState {
                 | "STREAMP"
                 | "INPUT-STREAM-P"
                 | "OUTPUT-STREAM-P"
+                | "NOT"
+                | "NULL"
                 | "VECTOR"
                 | "LIST"
                 | "LIST*"
@@ -313,6 +315,7 @@ impl CompileState {
             | "SIMPLE-ARRAY-P" | "HASH-TABLE-P" | "RANDOM-STATE-P" | "ALPHA-CHAR-P"
             | "ALPHANUMERICP" | "GRAPHIC-CHAR-P" | "STANDARD-CHAR-P" | "UPPER-CASE-P"
             | "LOWER-CASE-P" | "BOTH-CASE-P" | "DIGIT-CHAR-P" | "STREAMP" | "INPUT-STREAM-P"
+            | "NOT" | "NULL"
             | "OUTPUT-STREAM-P" => {
                 if name == "DIGIT-CHAR-P" {
                     self.compile_character_digit_predicate(function, span, items)

@@ -89,6 +89,11 @@ fn compiled_evaluates_complex_constructor() {
 }
 
 #[test]
+fn compiled_evaluates_not_and_null() {
+    assert_eq!(evaluate("(list (not nil) (not 1) (null nil) (null 1))").to_string(), "(T NIL T NIL)");
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
 }

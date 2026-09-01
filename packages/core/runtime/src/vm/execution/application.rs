@@ -969,6 +969,7 @@ pub fn execute_type_predicate_instruction(
         "STREAMP" => crate::builtins::streamp(&[value]),
         "INPUT-STREAM-P" => crate::builtins::input_stream_p(&[value]),
         "OUTPUT-STREAM-P" => crate::builtins::output_stream_p(&[value]),
+        "NOT" | "NULL" => Ok(Value::boolean(!value.is_truthy())),
         _ => Err(invalid("unknown type predicate operation", span)),
     }?;
     stack.push(result);

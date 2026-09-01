@@ -3,7 +3,7 @@ use super::{
 };
 use crate::{RuntimeError, Value};
 
-pub(super) fn open_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn open_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("open", "at least 1", arguments.len()));
     }

@@ -103,7 +103,7 @@ mod builtin_file_open_modes;
 use builtin_file_open_modes::{open_input_file, open_io_file, open_output_file};
 
 mod builtin_file_open;
-use builtin_file_open::open_file;
+pub(crate) use builtin_file_open::open_file;
 
 mod builtin_stream_helpers;
 use builtin_stream_helpers::{

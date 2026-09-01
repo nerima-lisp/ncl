@@ -1226,6 +1226,10 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(parse_integer.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::IntegerOperation { operation, argument_count: 3 } if operation == "PARSE-INTEGER")
     }));
+    let open = compile("(open \"sample.txt\" :direction :input)");
+    assert!(open.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::FileOperation { operation, argument_count: 3 } if operation == "OPEN")
+    }));
     for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
         let program = compile(&format!("({operation} '(1 2 3) 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

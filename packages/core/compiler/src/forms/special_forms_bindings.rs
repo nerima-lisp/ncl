@@ -312,6 +312,7 @@ impl CompileState {
                 self.compile_numeric_float(function, span, items, name)
             }
             "PARSE-INTEGER" => self.compile_integer_operation(function, span, items, name),
+            "OPEN" => self.compile_file_operation(function, span, items, name),
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

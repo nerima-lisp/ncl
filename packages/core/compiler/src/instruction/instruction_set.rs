@@ -493,6 +493,12 @@ pub enum Instruction {
         /// Number of arguments supplied to the operation.
         argument_count: usize,
     },
+    #[doc = "Apply a file operation."] FileOperation {
+        /// File operation name.
+        operation: String,
+        /// Number of arguments supplied to the operation.
+        argument_count: usize,
+    },
     #[doc = "Apply a list tail operation with an optional count."] ListTail {
         /// List operation name.
         operation: String,

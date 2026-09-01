@@ -106,6 +106,14 @@ fn evaluates_push_pop_and_psetf(#[case] eval_fn: EvalFn) {
         "(8 (7 8))"
     );
     assert_eq!(
+        evaluate(
+            "(let ((first 0) (xs (list 1 2)))
+                   (list (psetf first 7 (car xs) 8) first xs))",
+        )
+        .to_string(),
+        "(8 7 (8 2))"
+    );
+    assert_eq!(
         evaluate("(let ((a nil)) (psetf a (values 7 8)))",).to_string(),
         "7"
     );

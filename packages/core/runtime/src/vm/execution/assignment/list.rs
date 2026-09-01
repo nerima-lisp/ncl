@@ -3,7 +3,7 @@ use super::super::*;
 
 #[path = "list_mutation.rs"]
 pub(super) mod mutation;
-pub(super) mod nested;
+pub(crate) mod nested;
 mod accessor;
 pub(super) use accessor::fixed_index as fixed_accessor_index;
 

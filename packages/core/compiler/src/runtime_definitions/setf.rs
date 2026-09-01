@@ -102,24 +102,14 @@ impl CompileState {
         if items.len() == 3 {
             return self.compile_setf(function, span, items);
         }
-        if let Some(names) = items[1..]
+        let places = items[1..]
             .chunks_exact(2)
             .map(|pair| {
-                matches!(pair[0].kind, FormKind::Atom(_))
-                    .then(|| Self::symbol_name_info(&pair[0], "PSETF place"))
-            })
-            .collect::<Option<Result<Vec<_>, _>>>()
-            .transpose()?
-        {
-            for pair in items[1..].chunks_exact(2) {
-                self.compile_expression(function, &pair[1])?;
-            }
-            self.emit(function, Instruction::PsetfSymbols(names), span)?;
-            return Ok(());
-        }
-        if let Some(places) = items[1..]
-            .chunks_exact(2)
-            .map(|pair| {
+                if matches!(pair[0].kind, FormKind::Atom(_)) {
+                    return Self::symbol_name_info(&pair[0], "PSETF place")
+                        .ok()
+                        .map(|(name, escaped)| crate::PsetfPlace::Symbol(name, escaped));
+                }
                 let mut accessors = Vec::new();
                 let mut target = &pair[0];
                 while let Some((accessor, next_target)) = crate::helpers::list_accessor_target(target) {
@@ -131,14 +121,34 @@ impl CompileState {
                 }
                 let (name, escaped) = Self::symbol_name_info(target, "PSETF list target").ok()?;
                 accessors.reverse();
-                Some((accessors, name, escaped))
+                Some(crate::PsetfPlace::List(accessors, name, escaped))
             })
-            .collect::<Option<Vec<_>>>()
-        {
+            .collect::<Option<Vec<_>>>();
+        if let Some(places) = places {
             for pair in items[1..].chunks_exact(2) {
                 self.compile_expression(function, &pair[1])?;
             }
-            self.emit(function, Instruction::PsetfList(places), span)?;
+            if places.iter().all(|place| matches!(place, crate::PsetfPlace::Symbol(_, _))) {
+                let names = places
+                    .into_iter()
+                    .map(|place| match place {
+                        crate::PsetfPlace::Symbol(name, escaped) => (name, escaped),
+                        crate::PsetfPlace::List(..) => unreachable!(),
+                    })
+                    .collect();
+                self.emit(function, Instruction::PsetfSymbols(names), span)?;
+            } else if places.iter().all(|place| matches!(place, crate::PsetfPlace::List(..))) {
+                let list_places = places
+                    .into_iter()
+                    .map(|place| match place {
+                        crate::PsetfPlace::List(accessors, name, escaped) => (accessors, name, escaped),
+                        crate::PsetfPlace::Symbol(..) => unreachable!(),
+                    })
+                    .collect();
+                self.emit(function, Instruction::PsetfList(list_places), span)?;
+            } else {
+                self.emit(function, Instruction::PsetfPlaces(places), span)?;
+            }
             return Ok(());
         }
         self.emit(

@@ -61,6 +61,49 @@ pub(super) fn execute_parallel_set_instruction(
         Instruction::PsetfList(places) => super::assignment::list::execute_parallel(
             runtime, places, stack, environment, program_counter, span,
         ),
+        Instruction::PsetfPlaces(places) => {
+            if stack.len() < places.len() {
+                return Err(invalid("psetf has fewer values than targets", span));
+            }
+            let values = stack.split_off(stack.len() - places.len());
+            let mut last = Value::Nil;
+            for (place, value) in places.iter().zip(values) {
+                last = value.primary_value();
+                match place {
+                    ncl_compiler::PsetfPlace::Symbol(name, escaped) => {
+                        if *escaped {
+                            runtime.set_or_define_exact_in(name, last.clone(), environment, span)?;
+                        } else {
+                            runtime.set_or_define_in(name, last.clone(), environment, span)?;
+                        }
+                    }
+                    ncl_compiler::PsetfPlace::List(accessors, name, escaped) => {
+                        let current = if *escaped {
+                            runtime.lookup_exact_in(name, environment)
+                        } else {
+                            runtime.lookup_in(name, environment)
+                        }
+                        .ok_or_else(|| invalid("unbound PSETF list target", span))?;
+                        let elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+                            expected: "LIST".to_string(),
+                            actual: current.type_name().to_string(),
+                            span: Some(span),
+                        })?;
+                        let updated = Value::list(super::assignment::list::nested::update(
+                            elements, accessors, &last, span,
+                        )?);
+                        if *escaped {
+                            runtime.set_or_define_exact_in(name, updated, environment, span)?;
+                        } else {
+                            runtime.set_or_define_in(name, updated, environment, span)?;
+                        }
+                    }
+                }
+            }
+            stack.push(last);
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::MultipleValueSetq(names) => {
             let source = pop_value(stack, span, "multiple-value-setq")?;
             let values = source.multiple_values();

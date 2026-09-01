@@ -34,7 +34,7 @@ pub use destructure_types::{
 };
 
 mod instruction;
-pub use instruction::{Instruction, RotateShiftPlace};
+pub use instruction::{Instruction, PsetfPlace, RotateShiftPlace};
 
 mod function_code;
 pub use function_code::{FunctionCode, Program};

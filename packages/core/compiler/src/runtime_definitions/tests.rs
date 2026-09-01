@@ -251,6 +251,22 @@ fn compile_psetf_uses_parallel_list_native_instruction_for_multiple_places() {
 }
 
 #[test]
+fn compile_psetf_uses_mixed_native_instruction_for_symbol_and_list_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(psetf first 1 (car xs) 2)");
+
+    state
+        .compile_psetf(function, Span::new(0, 1), &items)
+        .expect("mixed PSETF should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.last(),
+        Some(Instruction::PsetfPlaces(places)) if places.len() == 2
+    ));
+}
+
+#[test]
 fn compile_runtime_definition_reports_an_internal_error_for_an_invalid_function_id() {
     let mut state = CompileState::default();
     let span = Span::new(0, 1);

@@ -5,6 +5,15 @@ use crate::{
 use ncl_syntax::{Form, Span};
 
 #[derive(Clone, Debug, PartialEq)]
+/// A symbol-rooted place supported by native parallel `PSETF`.
+pub enum PsetfPlace {
+    /// A variable place and its escaped-name flag.
+    Symbol(String, bool),
+    /// A list accessor chain, variable name, and escaped-name flag.
+    List(Vec<String>, String, bool),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 /// A stack-bytecode instruction emitted by the compiler.
 #[rustfmt::skip]
 pub enum Instruction {
@@ -354,6 +363,7 @@ pub enum Instruction {
     #[doc = "Perform parallel generalized-place assignments through the runtime SETF machinery."] Psetf(Form),
     #[doc = "Perform parallel assignment to symbol places after evaluating all values."] PsetfSymbols(Vec<(String, bool)>),
     #[doc = "Perform parallel list-place assignments rooted at symbols after evaluating all values."] PsetfList(Vec<(Vec<String>, String, bool)>),
+    #[doc = "Perform parallel assignments to mixed symbol and list places after evaluating all values."] PsetfPlaces(Vec<PsetfPlace>),
     #[doc = "Evaluate and cache a load-time value through the runtime evaluator."] LoadTimeValue(Form),
     #[doc = "Evaluate a compiled source span."] Eval(Span),
     #[doc = "Call a function with positional arguments."] Call(usize),

@@ -361,6 +361,14 @@ fn evaluates_format_indentation_directive() {
 }
 
 #[test]
+fn evaluates_format_conditional_tab_directive() {
+    assert_eq!(
+        evaluate(r#"(list (format nil "abc~5:T") (format nil "abcde~5:T"))"#).to_string(),
+        r#"("abc  " "abcde")"#,
+    );
+}
+
+#[test]
 fn evaluates_standard_list_position_accessors() {
     assert_eq!(
         evaluate("(list (second '(a b c)) (third '(a b c)) (fourth '(a b c)) (tenth '(a b c)))")

@@ -28,15 +28,15 @@ pub(super) fn format_tab_output(
 ) -> Result<(), RuntimeError> {
     let column = format_parameter_count(parameters, 0, 1)?;
     let increment = format_parameter_count(parameters, 1, 1)?;
-    if colon_modifier {
-        return Ok(());
-    }
     let current_column = output
         .rsplit('\n')
         .next()
         .unwrap_or_default()
         .chars()
         .count();
+    if colon_modifier && current_column >= column {
+        return Ok(());
+    }
     let spaces = if at_sign_modifier {
         let relative_column = current_column.saturating_add(column);
         let additional = if increment == 0 {

@@ -566,6 +566,38 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_numeric_float(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        let argument_count = match operation {
+            "FLOAT-SIGN" => 1..=2,
+            "FLOAT-DIGITS" | "FLOAT-PRECISION" | "FLOAT-RADIX" | "DECODE-FLOAT"
+            | "INTEGER-DECODE-FLOAT" => 1..=1,
+            "SCALE-FLOAT" => 2..=2,
+            _ => unreachable!("numeric float operation was not dispatched"),
+        };
+        if !argument_count.contains(&(items.len() - 1)) {
+            let expected = match operation {
+                "FLOAT-SIGN" => "one or two",
+                "SCALE-FLOAT" => "two",
+                _ => "one",
+            };
+            return Err(Self::arity_error(items, operation, expected, span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(function, Instruction::NumericFloat {
+            operation: operation.to_string(),
+            argument_count: items.len() - 1,
+        }, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_digit_predicate(
         &mut self,
         function: FunctionId,

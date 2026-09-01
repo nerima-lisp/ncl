@@ -212,6 +212,10 @@ impl CompileState {
             "BYTE" | "LDB" | "MASK-FIELD" | "DPB" | "DEPOSIT-FIELD" => {
                 self.compile_numeric_bitfield(function, span, items, name)
             }
+            "FLOAT-SIGN" | "FLOAT-DIGITS" | "FLOAT-PRECISION" | "FLOAT-RADIX"
+            | "SCALE-FLOAT" | "DECODE-FLOAT" | "INTEGER-DECODE-FLOAT" => {
+                self.compile_numeric_float(function, span, items, name)
+            }
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }

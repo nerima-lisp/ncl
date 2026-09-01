@@ -1189,6 +1189,20 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::NumericBitfield { operation: emitted, argument_count: 3 } if emitted == operation)
         }));
     }
+    for operation in [
+        "FLOAT-DIGITS", "FLOAT-PRECISION", "FLOAT-RADIX", "DECODE-FLOAT", "INTEGER-DECODE-FLOAT",
+    ] {
+        let program = compile(&format!("({operation} 1.0)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericFloat { operation: emitted, argument_count: 1 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for (operation, source) in [("FLOAT-SIGN", "(float-sign -2.5 -1.0)"), ("SCALE-FLOAT", "(scale-float 1.5 2)")] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericFloat { operation: emitted, argument_count: 2 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
         let program = compile(&format!("({operation} '(1 2 3) 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {

@@ -630,6 +630,30 @@ pub fn execute_numeric_bitfield_instruction(
     Ok(())
 }
 
+pub fn execute_numeric_float_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("numeric float operation has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    let result = match operation {
+        "FLOAT-SIGN" => crate::builtins::float_sign(&arguments),
+        "FLOAT-DIGITS" => crate::builtins::float_digits(&arguments),
+        "FLOAT-PRECISION" => crate::builtins::float_precision(&arguments),
+        "FLOAT-RADIX" => crate::builtins::float_radix(&arguments),
+        "SCALE-FLOAT" => crate::builtins::scale_float(&arguments),
+        "DECODE-FLOAT" => crate::builtins::decode_float(&arguments),
+        "INTEGER-DECODE-FLOAT" => crate::builtins::integer_decode_float(&arguments),
+        _ => Err(invalid("unknown numeric float operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_character_comparison_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

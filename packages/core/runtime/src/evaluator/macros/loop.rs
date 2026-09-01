@@ -111,6 +111,80 @@ impl Runtime {
                 )];
                 body.extend(items[3..].iter().cloned());
             } else if names_equal(clause, "FOR") {
+                if items
+                    .get(3)
+                    .and_then(atom_name)
+                    .is_some_and(|name| names_equal(name, "IN"))
+                {
+                    if items.len() < 5 {
+                        return Err(Self::invalid(
+                            "LOOP FOR IN requires a variable and list form",
+                            form.span,
+                        ));
+                    }
+                    let variable = items[2].clone();
+                    let mut body_start = 5;
+                    if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "DO"))
+                    {
+                        body_start += 1;
+                    }
+                    if items
+                        .get(body_start)
+                        .and_then(atom_name)
+                        .is_some_and(|name| names_equal(name, "COLLECT"))
+                    {
+                        if items.len() <= body_start + 1 {
+                            return Err(Self::invalid(
+                                "LOOP COLLECT clause requires a form",
+                                form.span,
+                            ));
+                        }
+                        collect_form = Some(items[body_start + 1].clone());
+                        body_start += 2;
+                    }
+                    let mut dolist_items = vec![
+                        Form::atom("DOLIST", form.span),
+                        Form::list(vec![variable, items[4].clone()], form.span),
+                    ];
+                    if let Some(value) = collect_form.clone() {
+                        dolist_items.push(Form::list(
+                            vec![Form::atom("PUSH", form.span), value, collect_name.clone()],
+                            form.span,
+                        ));
+                    }
+                    dolist_items.extend(items[body_start..].iter().cloned());
+                    let dolist = Form::list(dolist_items, form.span);
+                    if collect_form.is_some() {
+                        return Ok(Form::list(
+                            vec![
+                                Form::atom("LET", form.span),
+                                Form::list(
+                                    vec![Form::list(
+                                        vec![collect_name.clone(), Form::atom("NIL", form.span)],
+                                        form.span,
+                                    )],
+                                    form.span,
+                                ),
+                                Form::list(
+                                    vec![
+                                        Form::atom("PROGN", form.span),
+                                        dolist,
+                                        Form::list(
+                                            vec![Form::atom("NREVERSE", form.span), collect_name],
+                                            form.span,
+                                        ),
+                                    ],
+                                    form.span,
+                                ),
+                            ],
+                            form.span,
+                        ));
+                    }
+                    return Ok(dolist);
+                }
                 if items.len() < 7
                     || !items
                         .get(3)

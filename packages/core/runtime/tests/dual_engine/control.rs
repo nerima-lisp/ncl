@@ -413,6 +413,18 @@ fn expands_loop_for_numeric_limit_clauses(#[case] eval_fn: EvalFn) {
         "1"
     );
     assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 thereis (= value 2))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 always (< value 4))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 never (= value 4))").to_string(),
+        "T"
+    );
+    assert_eq!(
         evaluate(r"(loop for value from 1 to 3 maximize value)").to_string(),
         "3"
     );

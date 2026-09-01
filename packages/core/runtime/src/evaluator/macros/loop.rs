@@ -1280,6 +1280,11 @@ impl Runtime {
                 let mut extremum_form = None;
                 let mut extremum_name = None;
                 let mut maximize = false;
+                let mut loop_condition = None;
+                let condition_block = Form::atom(
+                    format!("NCL-LOOP-BLOCK-{}", form.span.start),
+                    form.span,
+                );
                 let mut body_start = 7;
                 let step_form = if items
                     .get(body_start)
@@ -1377,6 +1382,27 @@ impl Runtime {
                         extremum_name = Some(aggregate_name);
                     }
                 }
+                if items
+                    .get(body_start)
+                    .and_then(atom_name)
+                    .is_some_and(|name| {
+                        names_equal(name, "THEREIS")
+                            || names_equal(name, "ALWAYS")
+                            || names_equal(name, "NEVER")
+                    })
+                {
+                    if items.len() <= body_start + 1 {
+                        return Err(Self::invalid(
+                            "LOOP condition clause requires a form",
+                            form.span,
+                        ));
+                    }
+                    loop_condition = Some((
+                        atom_name(&items[body_start]).unwrap().to_string(),
+                        items[body_start + 1].clone(),
+                    ));
+                    body_start += 2;
+                }
                 let termination_operator = match (descending, inclusive) {
                     (false, true) => ">",
                     (false, false) => ">=",
@@ -1466,8 +1492,60 @@ impl Runtime {
                         form.span,
                     ));
                 }
+                if let Some((condition_name, condition)) = loop_condition.clone() {
+                    let (predicate, value) = if names_equal(&condition_name, "THEREIS") {
+                        (condition.clone(), condition)
+                    } else if names_equal(&condition_name, "ALWAYS") {
+                        (
+                            Form::list(
+                                vec![Form::atom("NOT", form.span), condition],
+                                form.span,
+                            ),
+                            Form::atom("NIL", form.span),
+                        )
+                    } else {
+                        (condition, Form::atom("NIL", form.span))
+                    };
+                    do_items.push(Form::list(
+                        vec![
+                            Form::atom("WHEN", form.span),
+                            predicate,
+                            Form::list(
+                                vec![
+                                    Form::atom("RETURN-FROM", form.span),
+                                    condition_block.clone(),
+                                    value,
+                                ],
+                                form.span,
+                            ),
+                        ],
+                        form.span,
+                    ));
+                }
                 do_items.extend(items[body_start..].iter().cloned());
                 let do_form = Form::list(do_items, form.span);
+                let wrap_condition = |result: Form| {
+                    if let Some((condition_name, _)) = &loop_condition {
+                        let normal_result = if names_equal(condition_name, "THEREIS") {
+                            Form::atom("NIL", form.span)
+                        } else {
+                            Form::atom("T", form.span)
+                        };
+                        Form::list(
+                            vec![
+                                Form::atom("BLOCK", form.span),
+                                condition_block.clone(),
+                                Form::list(
+                                    vec![Form::atom("PROGN", form.span), result, normal_result],
+                                    form.span,
+                                ),
+                            ],
+                            form.span,
+                        )
+                    } else {
+                        result
+                    }
+                };
                 if collect_form.is_some()
                     || sum_name.is_some()
                     || count_name.is_some()
@@ -1514,16 +1592,16 @@ impl Runtime {
                         vec![Form::atom("PROGN", form.span), do_form, result],
                         form.span,
                     );
-                    return Ok(Form::list(
+                    return Ok(wrap_condition(Form::list(
                         vec![
                             Form::atom("LET", form.span),
                             Form::list(bindings, form.span),
                             body_result,
                         ],
                         form.span,
-                    ));
+                    )));
                 }
-                return Ok(do_form);
+                return Ok(wrap_condition(do_form));
             }
         }
 

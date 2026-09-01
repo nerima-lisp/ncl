@@ -430,6 +430,18 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_sequence_length(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        Self::require_arity(items, "LENGTH", "one", 1, span)?;
+        self.compile_expression(function, &items[1])?;
+        self.emit(function, Instruction::SequenceLength, span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_list_set(
         &mut self,
         function: FunctionId,

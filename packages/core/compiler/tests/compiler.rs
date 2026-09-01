@@ -1085,6 +1085,11 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(tree_equal.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::TreeEqual { option_count: 2 })
     }));
+    let length = compile("(length '(1 2 3))");
+    assert!(length.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::SequenceLength)));
     for operation in [
         "UNION", "NUNION", "INTERSECTION", "NINTERSECTION", "SET-DIFFERENCE",
         "NSET-DIFFERENCE", "SET-EXCLUSIVE-OR", "NSET-EXCLUSIVE-OR", "SUBSETP",

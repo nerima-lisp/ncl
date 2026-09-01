@@ -2026,3 +2026,16 @@ fn lowers_native_string_construction() {
         3
     );
 }
+
+#[test]
+fn lowers_native_character_case_operations() {
+    let program = compile("(list (char-upcase #\\a) (char-downcase #\\Z))");
+    assert_eq!(
+        program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::CharacterUnary { .. }))
+            .count(),
+        2
+    );
+}

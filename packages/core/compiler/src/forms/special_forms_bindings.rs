@@ -121,6 +121,7 @@ impl CompileState {
                 | "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
                 | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
                 | "CHAR-NOT-GREATERP"
+                | "CHAR-UPCASE" | "CHAR-DOWNCASE"
         ) && self.has_local_function(name)
         {
             return None;
@@ -187,7 +188,8 @@ impl CompileState {
             "CAR" | "CDR" | "FIRST" | "REST" | "COPY-LIST" | "COPY-ALIST" | "ENDP" => {
                 self.compile_list_unary(function, span, items, name)
             }
-            "CHARACTER" | "CHAR-CODE" | "CHAR-INT" | "CODE-CHAR" | "INT-CHAR" => {
+            "CHARACTER" | "CHAR-CODE" | "CHAR-INT" | "CODE-CHAR" | "INT-CHAR"
+            | "CHAR-UPCASE" | "CHAR-DOWNCASE" => {
                 self.compile_character_unary(function, span, items, name)
             }
             "LAST" | "BUTLAST" | "NBUTLAST" => {

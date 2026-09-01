@@ -597,6 +597,14 @@ fn compiled_evaluates_native_string_construction() {
 }
 
 #[test]
+fn compiled_evaluates_native_character_case_operations() {
+    assert_eq!(
+        evaluate("(list (char-upcase #\\a) (char-downcase #\\Z))").to_string(),
+        "(#\\A #\\z)",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_defstruct_invocations() {
     let cases = [
         (

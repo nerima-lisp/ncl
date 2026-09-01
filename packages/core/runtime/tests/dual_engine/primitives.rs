@@ -1241,6 +1241,22 @@ fn evaluates_destructive_mutable_string_sequences(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_read_sequence_into_mutable_string(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((text (make-string 4 #\_)))
+                 (list (read-sequence text (make-string-input-stream "abc"))
+                       (write-to-string text)))"#,
+        )
+        .to_string(),
+        r#"(3 "\"abc_\"")"#,
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_write_to_stream(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

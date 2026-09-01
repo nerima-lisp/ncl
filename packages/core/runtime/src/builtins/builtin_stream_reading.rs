@@ -127,7 +127,7 @@ pub(crate) fn read_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> 
         .sequence_items()
         .map(|items| items.len())
         .ok_or_else(|| type_error("read-sequence", "a vector sequence", destination))?;
-    if !matches!(destination, Value::Vector(_)) {
+    if !matches!(destination, Value::Vector(_) | Value::MutableString(_)) {
         return Err(type_error("read-sequence", "a vector sequence", destination));
     }
     let stream = input_stream_reference("read-sequence", arguments.get(1))?;
@@ -139,9 +139,17 @@ pub(crate) fn read_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> 
     let mut index = start;
     while index < end {
         let Some(character) = stream.read_char() else { break };
-        destination
-            .set_vector_item(index, Value::Character(character))
-            .ok_or_else(|| type_error("read-sequence", "a vector sequence", destination))?;
+        match destination {
+            Value::Vector(_) => destination
+                .set_vector_item(index, Value::Character(character))
+                .ok_or_else(|| type_error("read-sequence", "a vector sequence", destination))?,
+            Value::MutableString(value) => {
+                let mut characters: Vec<char> = value.borrow().chars().collect();
+                characters[index] = character;
+                *value.borrow_mut() = characters.into_iter().collect();
+            }
+            _ => unreachable!("read-sequence validates its destination before reading"),
+        }
         index += 1;
     }
     Ok(Value::Integer(index as i64))

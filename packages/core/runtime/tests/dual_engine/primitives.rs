@@ -1223,6 +1223,24 @@ fn evaluates_mutable_string_sequence_and_type_operations(#[case] eval_fn: EvalFn
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_destructive_mutable_string_sequences(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((text (make-string 3 #\a)))
+                 (list (write-to-string (fill #\x text :start 1))
+                       (write-to-string text)
+                       (write-to-string (replace text "XYZ" :start1 0 :end1 3 :start2 0 :end2 3))
+                       (write-to-string text)))"#,
+        )
+        .to_string(),
+        r#"("\"axx\"" "\"axx\"" "\"XYZ\"" "\"XYZ\"")"#,
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_write_to_stream(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

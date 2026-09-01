@@ -72,6 +72,15 @@ pub fn fill(arguments: &[Value]) -> Result<Value, RuntimeError> {
             &arguments[0],
         ));
     }
+    if let Value::MutableString(value) = &arguments[1] {
+        let mut characters: Vec<char> = value.borrow().chars().collect();
+        characters[start..end].fill(match arguments[0] {
+            Value::Character(character) => character,
+            _ => unreachable!("string fill validates its item before mutation"),
+        });
+        *value.borrow_mut() = characters.into_iter().collect();
+        return Ok(arguments[1].clone());
+    }
     let mut items = sequence_elements("fill", &arguments[1])?;
     for item in &mut items[start..end] {
         *item = arguments[0].clone();
@@ -109,6 +118,19 @@ pub fn replace(arguments: &[Value]) -> Result<Value, RuntimeError> {
             "characters in the source sequence for a string destination",
             &arguments[1],
         ));
+    }
+    if let Value::MutableString(destination) = &arguments[0] {
+        let source = source[start2..start2 + count]
+            .iter()
+            .map(|value| match value {
+                Value::Character(character) => *character,
+                _ => unreachable!("string replace validates its source before mutation"),
+            })
+            .collect::<Vec<_>>();
+        let mut characters: Vec<char> = destination.borrow().chars().collect();
+        characters[start1..start1 + count].clone_from_slice(&source);
+        *destination.borrow_mut() = characters.into_iter().collect();
+        return Ok(arguments[0].clone());
     }
     result[start1..start1 + count].clone_from_slice(&source[start2..start2 + count]);
     rebuild_sequence("replace", &arguments[0], result)

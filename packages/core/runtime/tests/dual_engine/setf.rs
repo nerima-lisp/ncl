@@ -140,6 +140,14 @@ fn evaluates_rotatef_and_shiftf(#[case] eval_fn: EvalFn) {
         .to_string(),
         "(1 (2 9))"
     );
+    assert_eq!(
+        evaluate("(let ((xs (list 1)) (y 2)) (rotatef (car xs) y) (list xs y))").to_string(),
+        "((2) 1)"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1)) (y 2)) (list (shiftf (car xs) y 9) xs y))").to_string(),
+        "(1 (2) 9)"
+    );
 }
 
 #[rstest]

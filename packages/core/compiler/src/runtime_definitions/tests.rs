@@ -298,27 +298,21 @@ fn compile_runtime_definition_uses_native_rotate_and_shift_for_symbol_places() {
 }
 
 #[test]
-fn compile_runtime_definition_falls_back_for_generalized_rotate_and_shift_places() {
+fn compile_runtime_definition_uses_native_generalized_rotate_and_shift_places() {
     let mut state = CompileState::default();
     for source in ["(rotatef (car xs) y)", "(shiftf (car xs) y 9)"] {
         let function = state.reserve_function(None, Vec::new());
         let items = parse_items(source);
         state
             .compile_runtime_definition(function, Span::new(0, 1), &items)
-            .expect("generalized places should use the runtime mutation instruction");
+            .expect("generalized places should use native mutation instructions");
         assert!(state.functions[function]
             .instructions
             .iter()
-            .any(|instruction| matches!(instruction, Instruction::RuntimeMutation(_))));
-        assert!(!state.functions[function]
-            .instructions
-            .iter()
-            .any(|instruction| {
-                matches!(
-                    instruction,
-                    Instruction::RotatefSymbols(_) | Instruction::ShiftfSymbols(_)
-                )
-            }));
+            .any(|instruction| matches!(
+                instruction,
+                Instruction::RotatefMixed(_) | Instruction::ShiftfMixed(_)
+            )));
     }
 }
 

@@ -4,6 +4,15 @@ use crate::{
 };
 use ncl_syntax::{Form, Span};
 
+/// A symbol or nested list place used by mixed ROTATEF/SHIFTF instructions.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RotateShiftPlace {
+    /// A variable name and its escaping mode.
+    Symbol(String, bool),
+    /// List accessors, root variable name, and its escaping mode.
+    NestedList(Vec<String>, String, bool),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 /// A stack-bytecode instruction emitted by the compiler.
 #[rustfmt::skip]
@@ -210,6 +219,8 @@ pub enum Instruction {
     #[doc = "Shift values through symbol places and return the first old value."] ShiftfSymbols(Vec<(String, bool)>),
     #[doc = "Rotate values among nested CAR/CDR list places."] RotatefNestedList(Vec<(Vec<String>, String, bool)>),
     #[doc = "Shift values through nested CAR/CDR list places."] ShiftfNestedList(Vec<(Vec<String>, String, bool)>),
+    #[doc = "Rotate values among symbol and nested CAR/CDR list places."] RotatefMixed(Vec<RotateShiftPlace>),
+    #[doc = "Shift values through symbol and nested CAR/CDR list places."] ShiftfMixed(Vec<RotateShiftPlace>),
     #[doc = "Execute a mutation special form through the runtime's direct implementation."] RuntimeMutation(Form),
     #[doc = "Update a symbol with the result of `MAP-INTO`."] MapIntoSetfSymbol {
         /// The symbol receiving the mapped sequence.

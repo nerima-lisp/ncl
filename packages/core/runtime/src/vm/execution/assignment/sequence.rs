@@ -153,6 +153,22 @@ pub(super) fn execute(
             program_counter,
             span,
         ),
+        Instruction::RotatefMixed(places) => rotate_shift::execute_rotatef_mixed(
+            places,
+            stack,
+            environment,
+            runtime,
+            program_counter,
+            span,
+        ),
+        Instruction::ShiftfMixed(places) => rotate_shift::execute_shiftf_mixed(
+            places,
+            stack,
+            environment,
+            runtime,
+            program_counter,
+            span,
+        ),
         _ => Ok(false),
     }
 }

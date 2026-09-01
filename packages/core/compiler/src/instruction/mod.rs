@@ -2,4 +2,4 @@
 
 mod instruction_set;
 
-pub use instruction_set::Instruction;
+pub use instruction_set::{Instruction, RotateShiftPlace};

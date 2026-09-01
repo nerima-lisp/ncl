@@ -58,7 +58,53 @@ impl CompileState {
             .map(crate::generalized_list_place)
             .collect::<Option<Vec<_>>>();
         let Some(nested) = nested.filter(|places| !places.is_empty()) else {
-            return Ok(None);
+            let mixed = place_forms
+                .iter()
+                .map(|place| {
+                    if let Ok((name, escaped)) = Self::symbol_name_info(place, "symbol place") {
+                        Ok(crate::RotateShiftPlace::Symbol(name, escaped))
+                    } else {
+                        crate::generalized_list_place(place)
+                            .map(|(accessors, name, escaped)| {
+                                crate::RotateShiftPlace::NestedList(accessors, name, escaped)
+                            })
+                            .ok_or(())
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>();
+            let Ok(mixed) = mixed else {
+                return Ok(None);
+            };
+            for place in place_forms {
+                let (name, escaped) =
+                    if let Some((_, name, escaped)) = crate::generalized_list_place(place) {
+                        (name, escaped)
+                    } else {
+                        Self::symbol_name_info(place, "symbol place").expect("checked above")
+                    };
+                self.emit(
+                    function,
+                    if escaped {
+                        Instruction::LoadExact(name)
+                    } else {
+                        Instruction::Load(name)
+                    },
+                    place.span,
+                )?;
+            }
+            if operator == "SHIFTF" {
+                self.compile_expression(function, &items[items.len() - 1])?;
+            }
+            self.emit(
+                function,
+                if operator == "ROTATEF" {
+                    Instruction::RotatefMixed(mixed)
+                } else {
+                    Instruction::ShiftfMixed(mixed)
+                },
+                items[0].span,
+            )?;
+            return Ok(Some(()));
         };
         for place in place_forms {
             let (_, name, escaped) = crate::generalized_list_place(place).expect("checked above");

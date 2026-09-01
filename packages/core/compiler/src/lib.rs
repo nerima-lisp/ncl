@@ -2,10 +2,10 @@
 
 pub(crate) use ncl_syntax::normalize_name;
 use ncl_syntax::{
-    Form, FormKind, LambdaListAuxiliaryParameter, LambdaListErrorKind, LambdaListKeywordParameter,
-    LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind, parse_float_literal,
-    parse_ordinary_lambda_list, parse_radix_integer_literal, parse_radix_integer_literal_text,
-    parse_symbol_token,
+    parse_float_literal, parse_ordinary_lambda_list, parse_radix_integer_literal,
+    parse_radix_integer_literal_text, parse_symbol_token, Form, FormKind,
+    LambdaListAuxiliaryParameter, LambdaListErrorKind, LambdaListKeywordParameter,
+    LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind,
 };
 use std::collections::HashSet;
 
@@ -34,7 +34,7 @@ pub use destructure_types::{
 };
 
 mod instruction;
-pub use instruction::Instruction;
+pub use instruction::{Instruction, RotateShiftPlace};
 
 mod function_code;
 pub use function_code::{FunctionCode, Program};

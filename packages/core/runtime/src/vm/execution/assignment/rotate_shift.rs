@@ -145,3 +145,117 @@ pub(super) fn execute_shiftf_nested(
     *program_counter += 1;
     Ok(true)
 }
+
+pub(super) fn execute_rotatef_mixed(
+    places: &[ncl_compiler::RotateShiftPlace],
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    runtime: &Runtime,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    if stack.len() < places.len() {
+        return Err(invalid("rotatef has too few values on the stack", span));
+    }
+    let roots = stack.split_off(stack.len() - places.len());
+    let mut old = Vec::with_capacity(places.len());
+    for (place, root) in places.iter().zip(&roots) {
+        old.push(match place {
+            ncl_compiler::RotateShiftPlace::Symbol(_, _) => root.clone(),
+            ncl_compiler::RotateShiftPlace::NestedList(accessors, _, _) => {
+                super::list::nested::read(
+                    root.list_items().ok_or_else(|| RuntimeError::Type {
+                        expected: "LIST".into(),
+                        actual: root.type_name().into(),
+                        span: Some(span),
+                    })?,
+                    accessors,
+                    span,
+                )?
+            }
+        });
+    }
+    for (index, (place, root)) in places.iter().zip(roots).enumerate() {
+        let value = old[(index + old.len() - 1) % old.len()]
+            .clone()
+            .primary_value();
+        match place {
+            ncl_compiler::RotateShiftPlace::Symbol(name, escaped) => {
+                if *escaped {
+                    runtime.set_or_define_exact_in(name, value, environment, span)?
+                } else {
+                    runtime.set_or_define_in(name, value, environment, span)?
+                }
+            }
+            ncl_compiler::RotateShiftPlace::NestedList(accessors, name, escaped) => {
+                let updated = Value::list(super::list::nested::update(
+                    root.list_items().unwrap(),
+                    accessors,
+                    &value,
+                    span,
+                )?);
+                if *escaped {
+                    runtime.set_or_define_exact_in(name, updated, environment, span)?
+                } else {
+                    runtime.set_or_define_in(name, updated, environment, span)?
+                }
+            }
+        }
+    }
+    stack.push(Value::Nil);
+    *program_counter += 1;
+    Ok(true)
+}
+
+pub(super) fn execute_shiftf_mixed(
+    places: &[ncl_compiler::RotateShiftPlace],
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    runtime: &Runtime,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    if stack.len() < places.len() + 1 {
+        return Err(invalid("shiftf has too few values on the stack", span));
+    }
+    let values = stack.split_off(stack.len() - places.len() - 1);
+    let roots = &values[..places.len()];
+    let old = places
+        .iter()
+        .zip(roots)
+        .map(|(place, root)| match place {
+            ncl_compiler::RotateShiftPlace::Symbol(_, _) => Ok(root.clone()),
+            ncl_compiler::RotateShiftPlace::NestedList(accessors, _, _) => {
+                super::list::nested::read(root.list_items().unwrap(), accessors, span)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for (index, (place, root)) in places.iter().zip(roots).enumerate() {
+        let value = values[index + 1].clone().primary_value();
+        match place {
+            ncl_compiler::RotateShiftPlace::Symbol(name, escaped) => {
+                if *escaped {
+                    runtime.set_or_define_exact_in(name, value, environment, span)?
+                } else {
+                    runtime.set_or_define_in(name, value, environment, span)?
+                }
+            }
+            ncl_compiler::RotateShiftPlace::NestedList(accessors, name, escaped) => {
+                let updated = Value::list(super::list::nested::update(
+                    root.list_items().unwrap(),
+                    accessors,
+                    &value,
+                    span,
+                )?);
+                if *escaped {
+                    runtime.set_or_define_exact_in(name, updated, environment, span)?
+                } else {
+                    runtime.set_or_define_in(name, updated, environment, span)?
+                }
+            }
+        }
+    }
+    stack.push(old[0].clone());
+    *program_counter += 1;
+    Ok(true)
+}

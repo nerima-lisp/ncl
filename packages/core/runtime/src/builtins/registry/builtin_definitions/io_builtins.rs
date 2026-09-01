@@ -29,6 +29,7 @@ pub(super) const IO_BUILTINS: &[BuiltinDefinition] = &[
     ("read-line", read_line as _),
     ("write-char", write_char as _),
     ("write-string", write_string as _),
+    ("write-sequence", write_sequence as _),
     ("terpri", terpri as _),
     ("fresh-line", fresh_line as _),
     ("write-line", write_line as _),

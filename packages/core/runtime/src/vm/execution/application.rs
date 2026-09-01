@@ -1118,6 +1118,7 @@ pub fn execute_stream_operation_instruction(
         "WRITE-CHAR" => crate::builtins::write_char(&arguments),
         "WRITE-STRING" => crate::builtins::write_string(&arguments),
         "WRITE-LINE" => crate::builtins::write_line(&arguments),
+        "WRITE-SEQUENCE" => crate::builtins::write_sequence(&arguments),
         "PRINC" => crate::builtins::princ(&arguments),
         "PRIN1" => crate::builtins::prin1(&arguments),
         "PRINT" => crate::builtins::print_value(&arguments),

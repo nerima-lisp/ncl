@@ -1,4 +1,4 @@
-use super::{arity, array_option_name, index_argument, stream_state_error, type_error};
+use super::{arity, array_option_name, index_argument, sequence_bounds, sequence_elements, stream_state_error, type_error};
 use crate::{RuntimeError, Value};
 
 pub(super) fn write_destination(
@@ -45,6 +45,21 @@ pub(crate) fn write_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let (destination, start, end) = write_options("write-string", string, &arguments[1..])?;
     let selected: String = string.chars().skip(start).take(end - start).collect();
     write_destination("write-string", destination.as_ref(), &selected)?;
+    Ok(arguments[0].clone())
+}
+
+pub(crate) fn write_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.is_empty() {
+        return Err(arity("write-sequence", "at least 1", arguments.len()));
+    }
+    let elements = sequence_elements("write-sequence", &arguments[0])?;
+    let (destination, start, end) = sequence_write_options(&arguments[1..], elements.len())?;
+    for element in &elements[start..end] {
+        let Value::Character(character) = element else {
+            return Err(type_error("write-sequence", "a sequence of characters", &element));
+        };
+        write_destination("write-sequence", destination.as_ref(), &character.to_string())?;
+    }
     Ok(arguments[0].clone())
 }
 
@@ -131,5 +146,22 @@ fn write_options(
             span: None,
         });
     }
+    Ok((destination, start, end))
+}
+
+fn sequence_write_options(
+    arguments: &[Value], length: usize,
+) -> Result<(Option<Value>, usize, usize), RuntimeError> {
+    let (destination, options) = match arguments.first() {
+        Some(Value::Stream(_) | Value::Nil | Value::Boolean(true)) => {
+            (Some(arguments[0].clone()), &arguments[1..])
+        }
+        Some(Value::Keyword(_)) | None => (None, arguments),
+        Some(value) => return Err(type_error("write-sequence", "NIL, T, or an output stream", value)),
+    };
+    if !options.len().is_multiple_of(2) {
+        return Err(arity("write-sequence", "keyword/value pairs", options.len()));
+    }
+    let (start, end) = sequence_bounds("write-sequence", length, options)?;
     Ok((destination, start, end))
 }

@@ -356,4 +356,17 @@ fn compiled_evaluates_string_stream_output_operations() {
     );
 }
 
+#[test]
+fn compiled_evaluates_sequence_stream_output_operations() {
+    assert_eq!(
+        evaluate(
+            r#"(let ((stream (make-string-output-stream)))
+                 (list (write-sequence '(#\A #\B #\C) stream :start 1)
+                       (get-output-stream-string stream)))"#,
+        )
+        .to_string(),
+        r#"((#\A #\B #\C) "BC")"#
+    );
+}
+
 use super::*;

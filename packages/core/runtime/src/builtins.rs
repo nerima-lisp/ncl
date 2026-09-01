@@ -116,7 +116,7 @@ pub(crate) use builtin_stream_reading::get_output_stream_string;
 
 mod builtin_stream_writing;
 use builtin_stream_writing::write_destination;
-pub(crate) use builtin_stream_writing::{write_line, write_string};
+pub(crate) use builtin_stream_writing::{write_line, write_sequence, write_string};
 pub(crate) use builtin_stream_writing::{fresh_line, terpri, write_char};
 
 mod format;

@@ -62,3 +62,17 @@ fn write_string_and_line_support_character_bounds() -> Result<(), RuntimeError> 
     );
     Ok(())
 }
+
+#[test]
+fn write_sequence_writes_character_sequences_with_bounds() -> Result<(), RuntimeError> {
+    let output = make_string_output_stream(&[])?;
+    write_sequence(&[
+        Value::list(vec![Value::Character('a'), Value::Character('b'), Value::Character('c')]),
+        output.clone(),
+        Value::keyword("start"),
+        Value::Integer(1),
+    ])?;
+    assert!(matches!(get_output_stream_string(&[output])?, Value::String(text) if text.as_ref() == "bc"));
+    assert!(write_sequence(&[Value::list(vec![Value::Integer(1)])]).is_err());
+    Ok(())
+}

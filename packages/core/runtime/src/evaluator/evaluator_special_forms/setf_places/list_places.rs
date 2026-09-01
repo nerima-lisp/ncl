@@ -55,7 +55,8 @@ impl Runtime {
                 rebuilt.append(&mut replacement);
                 self.set_place(&args[0], Value::list(rebuilt), environment)?;
             }
-            "NTH" | "SECOND" | "THIRD" => {
+            "NTH" | "SECOND" | "THIRD" | "FOURTH" | "FIFTH" | "SIXTH" | "SEVENTH" | "EIGHTH"
+            | "NINTH" | "TENTH" => {
                 let expected = if operator == "NTH" { 2 } else { 1 };
                 if args.len() != expected {
                     return Err(Self::arity(
@@ -67,6 +68,13 @@ impl Runtime {
                 let index = match operator {
                     "SECOND" => 1,
                     "THIRD" => 2,
+                    "FOURTH" => 3,
+                    "FIFTH" => 4,
+                    "SIXTH" => 5,
+                    "SEVENTH" => 6,
+                    "EIGHTH" => 7,
+                    "NINTH" => 8,
+                    "TENTH" => 9,
                     _ => Self::setf_index(self.eval_in(&args[0], environment)?, args[0].span)?,
                 };
                 let target = if operator == "NTH" {

@@ -203,7 +203,8 @@ fn compiled_evaluates_format_indentation_directive() {
 #[test]
 fn compiled_evaluates_standard_list_position_accessors() {
     assert_eq!(
-        evaluate("(list (second '(a b c)) (third '(a b c)) (second '(a)) (third nil))").to_string(),
+        evaluate("(list (second '(a b c)) (third '(a b c)) (fourth '(a b c)) (tenth '(a b c)))")
+            .to_string(),
         "(B C NIL NIL)"
     );
 }

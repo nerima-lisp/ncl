@@ -33,6 +33,41 @@ pub fn third(arguments: &[Value]) -> Result<Value, RuntimeError> {
     nth(&[Value::Integer(2), arguments[0].clone()])
 }
 
+pub fn fourth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "fourth", 1)?;
+    nth(&[Value::Integer(3), arguments[0].clone()])
+}
+
+pub fn fifth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "fifth", 1)?;
+    nth(&[Value::Integer(4), arguments[0].clone()])
+}
+
+pub fn sixth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "sixth", 1)?;
+    nth(&[Value::Integer(5), arguments[0].clone()])
+}
+
+pub fn seventh(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "seventh", 1)?;
+    nth(&[Value::Integer(6), arguments[0].clone()])
+}
+
+pub fn eighth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "eighth", 1)?;
+    nth(&[Value::Integer(7), arguments[0].clone()])
+}
+
+pub fn ninth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "ninth", 1)?;
+    nth(&[Value::Integer(8), arguments[0].clone()])
+}
+
+pub fn tenth(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "tenth", 1)?;
+    nth(&[Value::Integer(9), arguments[0].clone()])
+}
+
 pub fn elt(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "elt", 2)?;
     let index = index_argument("elt", &arguments[1])?;

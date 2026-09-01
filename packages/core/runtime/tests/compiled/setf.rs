@@ -224,8 +224,8 @@ fn compiled_evaluates_native_nth_setf_for_a_dynamic_index() {
 #[test]
 fn compiled_evaluates_native_second_and_third_setf() {
     assert_eq!(
-        evaluate("(let ((xs (list 1 2 3))) (setf (second xs) 8 (third xs) 9) xs)").to_string(),
-        "(1 8 9)"
+        evaluate("(let ((xs (list 1 2 3 4 5 6 7 8 9 10))) (setf (second xs) 8 (third xs) 9 (fourth xs) 10 (tenth xs) 11) xs)").to_string(),
+        "(1 8 9 10 5 6 7 8 9 11)"
     );
 }
 

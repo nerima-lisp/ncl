@@ -1,4 +1,4 @@
-use super::{RuntimeError, Value, exact, number_argument};
+use super::{RuntimeError, Value, arity, exact, number_argument};
 
 pub fn sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
     unary_complex("sin", arguments, |real, imag| {
@@ -106,7 +106,14 @@ pub fn arc_cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 pub fn arc_tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    exact(arguments, "atan", 1)?;
+    if arguments.len() == 2 {
+        let y = number_argument("atan", &arguments[0])?.as_float();
+        let x = number_argument("atan", &arguments[1])?.as_float();
+        return Ok(Value::Float(y.atan2(x)));
+    }
+    if arguments.len() != 1 {
+        return Err(arity("atan", "1 or 2", arguments.len()));
+    }
     match complex_argument("atan", &arguments[0])? {
         Some((real, imag)) => {
             let (left_real, left_imag) = complex_log(1.0 + imag, -real);
@@ -263,6 +270,22 @@ mod tests {
                 .unwrap()
                 .to_string(),
             "#C(0.0 0.0)"
+        );
+    }
+
+    #[test]
+    fn arc_tangent_accepts_two_real_arguments() {
+        assert_eq!(
+            arc_tangent(&[Value::Integer(1), Value::Integer(0)])
+                .unwrap()
+                .to_string(),
+            std::f64::consts::FRAC_PI_2.to_string()
+        );
+        assert_eq!(
+            arc_tangent(&[Value::Integer(1), Value::Integer(-1)])
+                .unwrap()
+                .to_string(),
+            std::f64::consts::FRAC_PI_4.mul_add(3.0, 0.0).to_string()
         );
     }
 }

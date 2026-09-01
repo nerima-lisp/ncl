@@ -494,6 +494,7 @@ impl Runtime {
                         body_start += 1;
                     }
                     let mut loop_body = Vec::new();
+                    let mut append_form = None;
                     if items
                         .get(body_start)
                         .and_then(atom_name)
@@ -510,11 +511,7 @@ impl Runtime {
                         collect_form = Some(items[body_start + 1].clone());
                         let append = names_equal(atom_name(&items[body_start]).unwrap(), "APPEND");
                         if append {
-                            loop_body.push(append_step(
-                                form,
-                                items[body_start + 1].clone(),
-                                collect_name.clone(),
-                            ));
+                            append_form = Some(items[body_start + 1].clone());
                         } else {
                             loop_body.push(Form::list(
                                 vec![
@@ -540,6 +537,9 @@ impl Runtime {
                             collect_name = items[body_start + 1].clone();
                             body_start += 2;
                         }
+                    }
+                    if let Some(value) = append_form {
+                        loop_body.push(append_step(form, value, collect_name.clone()));
                     }
                     if items
                         .get(body_start)

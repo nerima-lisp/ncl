@@ -230,6 +230,10 @@ fn expands_loop_for_numeric_limit_clauses(#[case] eval_fn: EvalFn) {
         "12"
     );
     assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 count (evenp value))").to_string(),
+        "1"
+    );
+    assert_eq!(
         evaluate(r"(loop for value from 1 to 3 maximize value)").to_string(),
         "3"
     );

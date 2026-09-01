@@ -233,6 +233,7 @@ pub enum Instruction {
     #[doc = "Rotate values among symbol and nested CAR/CDR list places."] RotatefMixed(Vec<RotateShiftPlace>),
     #[doc = "Shift values through symbol and nested CAR/CDR list places."] ShiftfMixed(Vec<RotateShiftPlace>),
     #[doc = "Execute a mutation special form through the runtime's direct implementation."] RuntimeMutation(Form),
+    #[doc = "Evaluate and execute MAP-INTO through the runtime SETF expansion path."] MapInto(Form),
     #[doc = "Update a symbol with the result of `MAP-INTO`."] MapIntoSetfSymbol {
         /// The symbol receiving the mapped sequence.
         name: String,

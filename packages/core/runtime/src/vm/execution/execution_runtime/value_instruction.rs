@@ -1,5 +1,5 @@
 use ncl_compiler::Instruction;
-use ncl_syntax::Span;
+use ncl_syntax::{FormKind, Span};
 
 use super::mutation_instruction;
 use crate::vm::execution::application::{
@@ -77,6 +77,15 @@ pub(super) fn execute_value_instruction(
     match instruction {
         Instruction::RuntimeMutation(form) => {
             mutation_instruction::execute(runtime, form, stack, environment)?;
+        }
+        Instruction::MapInto(form) => {
+            let FormKind::List(items) = &form.kind else {
+                return Err(RuntimeError::InvalidForm {
+                    message: "MAP-INTO instruction requires a list".to_string(),
+                    span: Some(form.span),
+                });
+            };
+            stack.push(runtime.special_map_into(items, environment)?);
         }
         Instruction::Eval(form_span) => {
             let value = pop_value(stack, span, "eval")?.primary_value();

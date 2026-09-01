@@ -420,6 +420,16 @@ fn compiled_evaluates_sequence_construction_and_conversion_table() {
 fn compiled_evaluates_map_into_over_sequences() {
     assert_eq!(
         evaluate(
+            "(let ((index -1)
+                   (results (vector #(0 0) #(8 8))))
+               (map-into (aref results (incf index)) #'1+ '(1 2))
+               (list index results))",
+        )
+        .to_string(),
+        "(0 #(#(2 3) #(8 8)))"
+    );
+    assert_eq!(
+        evaluate(
             "(let ((result (vector 0 0 0)))
                (map-into result #'+ '(1 2)))",
         )

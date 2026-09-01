@@ -35,6 +35,10 @@ impl CompileState {
         if items.len() < 3 {
             return Err(Self::arity_error(items, "MAP-INTO", "at least two", span));
         }
+        if !matches!(items[1].kind, FormKind::Atom(_)) {
+            self.emit(function, Instruction::MapInto(Form::list(items.to_vec(), span)), span)?;
+            return Ok(());
+        }
         for item in &items[1..] {
             self.compile_expression(function, item)?;
         }

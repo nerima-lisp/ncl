@@ -5,7 +5,8 @@ use super::mutation_instruction;
 use crate::vm::execution::application::{
     execute_apply_instruction, execute_association_search_instruction, execute_call_instruction,
     execute_list_membership_instruction,
-    execute_list_construction_instruction, execute_list_append_instruction,
+    execute_list_construction_instruction, execute_list_construction_with_options_instruction,
+    execute_list_append_instruction,
     execute_list_binary_instruction, execute_list_tail_instruction, execute_list_unary_instruction,
     execute_character_unary_instruction, execute_type_predicate_instruction,
     execute_numeric_unary_instruction,
@@ -315,6 +316,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::ArrayConstruction { argument_count } => {
             execute_array_construction_instruction(stack, *argument_count, span)?;
+        }
+        Instruction::ListConstructionWithOptions { argument_count } => {
+            execute_list_construction_with_options_instruction(stack, *argument_count, span)?;
         }
         Instruction::StringCase { operation, argument_count } => {
             execute_string_case_instruction(stack, operation, *argument_count, span)?;

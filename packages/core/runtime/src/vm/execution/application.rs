@@ -51,6 +51,20 @@ pub fn execute_list_construction_instruction(
     Ok(())
 }
 
+pub fn execute_list_construction_with_options_instruction(
+    stack: &mut Vec<Value>,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("MAKE-LIST has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count)
+        .into_iter().map(|value| value.primary_value()).collect::<Vec<_>>();
+    stack.push(crate::builtins::make_list(&arguments)?);
+    Ok(())
+}
+
 pub fn execute_list_append_instruction(
     stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
 ) -> Result<(), RuntimeError> {

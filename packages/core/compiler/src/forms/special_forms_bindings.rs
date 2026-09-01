@@ -274,6 +274,7 @@ impl CompileState {
                 self.compile_list_append(function, span, items, name)
             }
             "MAKE-ARRAY" => self.compile_array_construction(function, span, items),
+            "MAKE-LIST" => self.compile_list_construction_with_options(function, span, items),
             "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
             | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
             | "CHAR-NOT-GREATERP" => self.compile_character_comparison(function, span, items, name),

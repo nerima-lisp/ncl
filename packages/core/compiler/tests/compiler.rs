@@ -1061,6 +1061,10 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::SequenceRemoval { operation: emitted, option_count, .. } if emitted == operation && *option_count == expected_option_count)
         }), "missing native instruction for {operation}");
     }
+    let program = compile("(make-list 3 :initial-element 7)");
+    assert!(program.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::ListConstructionWithOptions { argument_count: 3 })
+    }));
     for operation in [
         "SUBSTITUTE", "SUBSTITUTE-IF", "SUBSTITUTE-IF-NOT", "NSUBSTITUTE",
         "NSUBSTITUTE-IF", "NSUBSTITUTE-IF-NOT",

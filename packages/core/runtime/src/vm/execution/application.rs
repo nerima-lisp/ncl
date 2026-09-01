@@ -469,6 +469,35 @@ pub fn execute_list_unary_instruction(
     Ok(())
 }
 
+pub fn execute_type_predicate_instruction(
+    operation: &str,
+    stack: &mut Vec<Value>,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let value = stack.pop().ok_or_else(|| invalid("type predicate has too few stack values", span))?;
+    let result = match operation {
+        "ATOM" => crate::builtins::atom(&[value]),
+        "CONSP" => crate::builtins::consp(&[value]),
+        "LISTP" => crate::builtins::listp(&[value]),
+        "NUMBERP" => crate::builtins::numberp(&[value]),
+        "COMPLEXP" => crate::builtins::complexp(&[value]),
+        "INTEGERP" => crate::builtins::integerp(&[value]),
+        "FLOATP" => crate::builtins::floatp(&[value]),
+        "RATIONALP" => crate::builtins::rationalp(&[value]),
+        "STRINGP" => crate::builtins::stringp(&[value]),
+        "SIMPLE-STRING-P" => crate::builtins::simple_string_p(&[value]),
+        "CHARACTERP" => crate::builtins::characterp(&[value]),
+        "SYMBOLP" => crate::builtins::symbolp(&[value]),
+        "PACKAGEP" => crate::builtins::packagep(&[value]),
+        "KEYWORDP" => crate::builtins::keywordp(&[value]),
+        "VECTORP" => crate::builtins::vectorp(&[value]),
+        "FUNCTIONP" => crate::builtins::functionp(&[value]),
+        _ => Err(invalid("unknown type predicate operation", span)),
+    }?;
+    stack.push(result);
+    Ok(())
+}
+
 pub fn execute_list_tail_instruction(
     operation: &str,
     option_count: usize,

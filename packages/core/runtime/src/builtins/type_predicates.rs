@@ -9,7 +9,7 @@ pub(super) fn null(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::boolean(!arguments[0].is_truthy()))
 }
 
-pub(super) fn atom(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn atom(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "atom", 1)?;
     Ok(Value::boolean(!matches!(
         &arguments[0],
@@ -17,7 +17,7 @@ pub(super) fn atom(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
-pub(super) fn consp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn consp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "consp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
@@ -25,7 +25,7 @@ pub(super) fn consp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
-pub(super) fn listp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn listp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "listp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
@@ -33,7 +33,7 @@ pub(super) fn listp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
-pub(super) fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "numberp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
@@ -45,12 +45,12 @@ pub(super) fn numberp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
-pub(super) fn complexp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn complexp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "complexp", 1)?;
     Ok(Value::boolean(arguments[0].is_complex()))
 }
 
-pub(super) fn integerp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn integerp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "integerp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
@@ -58,12 +58,12 @@ pub(super) fn integerp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
-pub(super) fn floatp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn floatp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "floatp", 1)?;
     Ok(Value::boolean(matches!(&arguments[0], Value::Float(_))))
 }
 
-pub(super) fn rationalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn rationalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "rationalp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
@@ -71,17 +71,17 @@ pub(super) fn rationalp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
-pub(super) fn stringp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn stringp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "stringp", 1)?;
     Ok(Value::boolean(matches!(&arguments[0], Value::String(_))))
 }
 
-pub(super) fn simple_string_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn simple_string_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-string-p", 1)?;
     Ok(Value::boolean(matches!(&arguments[0], Value::String(_))))
 }
 
-pub(super) fn symbolp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn symbolp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "symbolp", 1)?;
     Ok(Value::boolean(matches!(
         &arguments[0],
@@ -95,12 +95,12 @@ pub(super) fn symbolp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     )))
 }
 
-pub(super) fn packagep(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn packagep(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "packagep", 1)?;
     Ok(Value::boolean(matches!(&arguments[0], Value::Package(_))))
 }
 
-pub(super) fn functionp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub fn functionp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "functionp", 1)?;
     Ok(Value::boolean(matches!(&arguments[0], Value::Function(_))))
 }

@@ -35,6 +35,20 @@ fn compiled_evaluates_list_access_operations() {
 }
 
 #[test]
+fn compiled_evaluates_type_predicates() {
+    assert_eq!(evaluate("(atom 1)").to_string(), "T");
+    assert_eq!(evaluate("(atom '(a))").to_string(), "NIL");
+    assert_eq!(evaluate("(consp '(a))").to_string(), "T");
+    assert_eq!(evaluate("(listp '(a))").to_string(), "T");
+    assert_eq!(evaluate("(numberp 1)").to_string(), "T");
+    assert_eq!(evaluate("(integerp 1)").to_string(), "T");
+    assert_eq!(evaluate("(stringp \"x\")").to_string(), "T");
+    assert_eq!(evaluate("(characterp #\\x)").to_string(), "T");
+    assert_eq!(evaluate("(symbolp 'x)").to_string(), "T");
+    assert_eq!(evaluate("(vectorp #(1 2))").to_string(), "T");
+}
+
+#[test]
 fn compiled_evaluates_sequence_search_operations() {
     assert_eq!(evaluate("(find 2 '(1 2 3))").to_string(), "2");
     assert_eq!(evaluate("(position 2 '(1 2 3))").to_string(), "1");

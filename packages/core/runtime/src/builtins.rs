@@ -77,7 +77,7 @@ mod builtins_tests;
 pub mod type_predicates;
 pub use type_predicates::eql_value;
 #[allow(clippy::wildcard_imports)]
-use type_predicates::*;
+pub use type_predicates::*;
 
 mod builtin_printer;
 use builtin_printer::{

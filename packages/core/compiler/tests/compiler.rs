@@ -1087,6 +1087,12 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::ListUnary { operation: emitted } if emitted == operation)
         }), "missing native instruction for {operation}");
     }
+    for operation in ["ATOM", "CONSP", "LISTP", "NUMBERP", "INTEGERP", "STRINGP", "CHARACTERP", "SYMBOLP", "VECTORP", "FUNCTIONP"] {
+        let program = compile(&format!("({operation} nil)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::TypePredicate { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
         let program = compile(&format!("({operation} '(1 2 3) 2)"));
         assert!(program.functions[0].instructions.iter().any(|instruction| {
@@ -1107,6 +1113,12 @@ fn emits_eval_and_mapcar_instructions() {
         let program = compile(&format!("(flet (({operation} (value) :shadowed)) ({operation} nil))"));
         assert!(!program.functions[0].instructions.iter().any(|instruction| {
             matches!(instruction, Instruction::ListUnary { operation: emitted } if emitted == operation)
+        }), "native instruction incorrectly bypasses local function {operation}");
+    }
+    for operation in ["ATOM", "CONSP", "LISTP", "NUMBERP", "STRINGP", "SYMBOLP", "VECTORP", "FUNCTIONP"] {
+        let program = compile(&format!("(flet (({operation} (value) :shadowed)) ({operation} nil))"));
+        assert!(!program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::TypePredicate { operation: emitted } if emitted == operation)
         }), "native instruction incorrectly bypasses local function {operation}");
     }
     let shadowed_nthcdr = compile("(flet ((nthcdr (index list) :shadowed)) (nthcdr 1 nil))");

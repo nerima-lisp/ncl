@@ -57,6 +57,22 @@ impl CompileState {
                 | "NBUTLAST"
                 | "NTHCDR"
                 | "NTH"
+                | "ATOM"
+                | "CONSP"
+                | "LISTP"
+                | "NUMBERP"
+                | "COMPLEXP"
+                | "INTEGERP"
+                | "FLOATP"
+                | "RATIONALP"
+                | "STRINGP"
+                | "SIMPLE-STRING-P"
+                | "CHARACTERP"
+                | "SYMBOLP"
+                | "PACKAGEP"
+                | "KEYWORDP"
+                | "VECTORP"
+                | "FUNCTIONP"
         ) && self.has_local_function(name)
         {
             return None;
@@ -127,6 +143,11 @@ impl CompileState {
                 self.compile_list_tail(function, span, items, name)
             }
             "NTH" | "NTHCDR" => self.compile_list_binary(function, span, items, name),
+            "ATOM" | "CONSP" | "LISTP" | "NUMBERP" | "COMPLEXP" | "INTEGERP"
+            | "FLOATP" | "RATIONALP" | "STRINGP" | "SIMPLE-STRING-P" | "CHARACTERP"
+            | "SYMBOLP" | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP" => {
+                self.compile_type_predicate(function, span, items, name)
+            }
             "TREE-EQUAL" => self.compile_tree_equal(function, span, items),
             "LENGTH" => self.compile_sequence_length(function, span, items),
             "ELT" => self.compile_sequence_element(function, span, items),

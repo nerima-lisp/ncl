@@ -10,6 +10,7 @@ use crate::vm::execution::application::{
     execute_sequence_map_into_instruction,
     execute_sequence_merge_instruction, execute_sequence_reduce_instruction,
     execute_sequence_pair_search_instruction, execute_sequence_removal_instruction,
+    execute_sequence_substitution_instruction,
     execute_sequence_search_instruction,
     execute_sequence_sort_instruction,
     execute_sequence_quantifier_instruction,
@@ -203,6 +204,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::SequenceRemoval { operation, predicate, duplicates, option_count } => {
             execute_sequence_removal_instruction(runtime, operation, *predicate, *duplicates, *option_count, stack, environment, span)?;
+        }
+        Instruction::SequenceSubstitution { operation, predicate, option_count } => {
+            execute_sequence_substitution_instruction(runtime, operation, *predicate, *option_count, stack, environment, span)?;
         }
         Instruction::MultipleValueCall(value_form_count) => {
             execute_multiple_value_call_instruction(

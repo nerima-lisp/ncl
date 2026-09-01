@@ -408,6 +408,14 @@ pub enum Instruction {
         /// Number of option values following the sequence.
         option_count: usize,
     },
+    #[doc = "Substitute matching elements in a sequence with keyword options."] SequenceSubstitution {
+        /// Sequence substitution operation name.
+        operation: String,
+        /// Whether the old item argument is a predicate.
+        predicate: bool,
+        /// Number of option values following the sequence.
+        option_count: usize,
+    },
     #[doc = "Call a function with multiple-value arguments."] MultipleValueCall(usize),
     #[doc = "Return from the current function."] Return,
 }

@@ -1061,6 +1061,20 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::SequenceRemoval { operation: emitted, option_count, .. } if emitted == operation && *option_count == expected_option_count)
         }), "missing native instruction for {operation}");
     }
+    for operation in [
+        "SUBSTITUTE", "SUBSTITUTE-IF", "SUBSTITUTE-IF-NOT", "NSUBSTITUTE",
+        "NSUBSTITUTE-IF", "NSUBSTITUTE-IF-NOT",
+    ] {
+        let source = if operation.ends_with("-IF") || operation.ends_with("-IF-NOT") {
+            format!("({operation} 9 #'numberp '(1 2) :key #'identity)")
+        } else {
+            format!("({operation} 9 2 '(1 2) :test #'eql)")
+        };
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequenceSubstitution { operation: emitted, option_count: 2, .. } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     assert!(
         map_into.functions[0]
             .instructions

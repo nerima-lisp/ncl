@@ -39,6 +39,12 @@ impl CompileState {
                 | "DELETE-IF-NOT"
                 | "REMOVE-DUPLICATES"
                 | "DELETE-DUPLICATES"
+                | "SUBSTITUTE"
+                | "SUBSTITUTE-IF"
+                | "SUBSTITUTE-IF-NOT"
+                | "NSUBSTITUTE"
+                | "NSUBSTITUTE-IF"
+                | "NSUBSTITUTE-IF-NOT"
         ) && self.has_local_function(name)
         {
             return None;
@@ -94,6 +100,10 @@ impl CompileState {
             "REMOVE" | "REMOVE-IF" | "REMOVE-IF-NOT" | "DELETE" | "DELETE-IF"
             | "DELETE-IF-NOT" | "REMOVE-DUPLICATES" | "DELETE-DUPLICATES" => {
                 self.compile_sequence_removal(function, span, items, name)
+            }
+            "SUBSTITUTE" | "SUBSTITUTE-IF" | "SUBSTITUTE-IF-NOT" | "NSUBSTITUTE"
+            | "NSUBSTITUTE-IF" | "NSUBSTITUTE-IF-NOT" => {
+                self.compile_sequence_substitution(function, span, items, name)
             }
             "MAPCAR" | "MAPC" | "MAPL" | "MAPLIST" | "MAPCAN" | "MAPCON" => {
                 self.compile_list_mapping(function, span, items, name)

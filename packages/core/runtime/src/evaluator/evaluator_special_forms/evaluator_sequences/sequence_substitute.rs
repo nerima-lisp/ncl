@@ -3,6 +3,27 @@
 use super::*;
 
 impl Runtime {
+    pub(crate) fn apply_sequence_substitute_values(
+        &self,
+        operation: &str,
+        new_item: &Value,
+        old_or_predicate: &Value,
+        sequence: &Value,
+        options: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.apply_sequence_substitute(SequenceSubstituteContext {
+            operation,
+            new_item,
+            old_or_predicate,
+            sequence,
+            options,
+            environment,
+            span,
+        })
+    }
+
     pub(crate) fn apply_sequence_substitute(
         &self,
         context: SequenceSubstituteContext<'_>,

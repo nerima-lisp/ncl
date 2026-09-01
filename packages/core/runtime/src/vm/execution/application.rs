@@ -397,6 +397,34 @@ pub fn execute_sequence_removal_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_substitution_instruction(
+    runtime: &Runtime,
+    operation: &str,
+    _predicate: bool,
+    option_count: usize,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < option_count.saturating_add(3) {
+        return Err(invalid("sequence substitution has too few stack values", span));
+    }
+    let options = stack.split_off(stack.len() - option_count);
+    let sequence = stack.pop().ok_or_else(|| invalid("sequence substitution has no sequence", span))?;
+    let old_or_predicate = stack.pop().ok_or_else(|| invalid("sequence substitution has no old item or predicate", span))?;
+    let new_item = stack.pop().ok_or_else(|| invalid("sequence substitution has no new item", span))?;
+    stack.push(runtime.apply_sequence_substitute_values(
+        operation,
+        &new_item,
+        &old_or_predicate,
+        &sequence,
+        &options,
+        environment,
+        span,
+    )?);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

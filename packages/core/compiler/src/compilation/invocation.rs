@@ -361,6 +361,31 @@ impl CompileState {
         )?;
         Ok(())
     }
+
+    pub(crate) fn compile_sequence_substitution(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() < 4 {
+            return Err(Self::arity_error(items, operation, "at least three", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SequenceSubstitution {
+                operation: operation.to_string(),
+                predicate: operation.ends_with("-IF") || operation.ends_with("-IF-NOT"),
+                option_count: items.len().saturating_sub(4),
+            },
+            span,
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

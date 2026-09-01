@@ -140,6 +140,10 @@ fn evaluates_setf_aliases_and_sequence_places_from_shared_cases() {
                 "(7 2 3)",
             ),
             (
+                "(let ((xs (list 1 2 3))) (setf (second xs) 8 (third xs) 9) xs)",
+                "(1 8 9)",
+            ),
+            (
                 "(let ((xs (list 1 2 3))) (setf (elt xs 1) 8) xs)",
                 "(1 8 3)",
             ),

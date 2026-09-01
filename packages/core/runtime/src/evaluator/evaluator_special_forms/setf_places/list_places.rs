@@ -55,24 +55,38 @@ impl Runtime {
                 rebuilt.append(&mut replacement);
                 self.set_place(&args[0], Value::list(rebuilt), environment)?;
             }
-            "NTH" => {
-                if args.len() != 2 {
-                    return Err(Self::arity("setf nth", "two", args.len()));
+            "NTH" | "SECOND" | "THIRD" => {
+                let expected = if operator == "NTH" { 2 } else { 1 };
+                if args.len() != expected {
+                    return Err(Self::arity(
+                        "setf list accessor",
+                        if expected == 2 { "two" } else { "one" },
+                        args.len(),
+                    ));
                 }
-                let index = Self::setf_index(self.eval_in(&args[0], environment)?, args[0].span)?;
-                let current = self.eval_in(&args[1], environment)?;
+                let index = match operator {
+                    "SECOND" => 1,
+                    "THIRD" => 2,
+                    _ => Self::setf_index(self.eval_in(&args[0], environment)?, args[0].span)?,
+                };
+                let target = if operator == "NTH" {
+                    &args[1]
+                } else {
+                    &args[0]
+                };
+                let current = self.eval_in(target, environment)?;
                 let Some(mut elements) = current.list_items() else {
                     return Err(RuntimeError::Type {
                         expected: "LIST".to_string(),
                         actual: current.type_name().to_string(),
-                        span: Some(args[1].span),
+                        span: Some(target.span),
                     });
                 };
                 let Some(slot) = elements.get_mut(index) else {
                     return Err(Self::invalid("SETF index is out of bounds", args[0].span));
                 };
                 *slot = value;
-                self.set_place(&args[1], Value::list(elements), environment)?;
+                self.set_place(target, Value::list(elements), environment)?;
             }
             _ => return Ok(None),
         }

@@ -222,6 +222,14 @@ fn compiled_evaluates_native_nth_setf_for_a_dynamic_index() {
 }
 
 #[test]
+fn compiled_evaluates_native_second_and_third_setf() {
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2 3))) (setf (second xs) 8 (third xs) 9) xs)").to_string(),
+        "(1 8 9)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_push_and_pop_symbol_places() {
     assert_eq!(
         evaluate("(let ((xs (list 2 3))) (list (push 1 xs) xs (pop xs) xs))").to_string(),

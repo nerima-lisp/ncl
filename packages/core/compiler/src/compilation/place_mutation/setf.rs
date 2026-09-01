@@ -22,26 +22,41 @@ impl CompileState {
         let pair_count = operands.len() / 2;
         for (index, [place, value_form]) in pairs.iter().enumerate() {
             let nth_place = match &place.kind {
-                FormKind::List(items) if items.len() == 3 => {
+                FormKind::List(items) if (items.len() == 2 || items.len() == 3) => {
                     let operator = Self::symbol_name_info(&items[0], "setf place operator")
                         .ok()
                         .map(|(name, _)| name);
                     operator.and_then(|operator| {
-                        if operator != "NTH" {
-                            return None;
-                        }
-                        let index = match &items[1].kind {
-                            FormKind::Atom(atom) => match crate::helpers::literal_constant(atom) {
-                                Some(Constant::Integer(value)) if value >= 0 => {
-                                    Some(value as usize)
+                        let fixed_index = match operator.as_str() {
+                            "NTH" => None,
+                            "SECOND" => Some(1),
+                            "THIRD" => Some(2),
+                            _ => return None,
+                        };
+                        let index_form = items.get(1);
+                        let target_form = items.get(if fixed_index.is_some() { 1 } else { 2 })?;
+                        let index = match index_form.map(|form| &form.kind) {
+                            Some(FormKind::Atom(atom)) => {
+                                match crate::helpers::literal_constant(&atom) {
+                                    Some(Constant::Integer(value)) if value >= 0 => {
+                                        Some(value as usize)
+                                    }
+                                    _ => None,
                                 }
-                                _ => None,
-                            },
+                            }
                             _ => None,
                         };
-                        Self::symbol_name_info(&items[2], "setf nth target")
+                        Self::symbol_name_info(target_form, "setf nth target")
                             .ok()
-                            .map(|(name, escaped)| (index, name, escaped, &items[1], &items[2]))
+                            .map(|(name, escaped)| {
+                                (
+                                    fixed_index.or(index),
+                                    name,
+                                    escaped,
+                                    index_form.unwrap_or(target_form),
+                                    target_form,
+                                )
+                            })
                     })
                 }
                 _ => None,

@@ -75,7 +75,7 @@ impl Runtime {
 
         match lookup_name.as_str() {
             "SLOT-VALUE" => self.set_slot_value_place(args, value, environment, place.span),
-            "CAR" | "FIRST" | "CDR" | "REST" | "NTH" => self
+            "CAR" | "FIRST" | "CDR" | "REST" | "NTH" | "SECOND" | "THIRD" => self
                 .set_list_place(lookup_name.as_str(), args, value, environment, place.span)
                 .map(|_| ()),
             "ELT" | "CHAR" | "SCHAR" => {

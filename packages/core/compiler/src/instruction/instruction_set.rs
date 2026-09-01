@@ -1,17 +1,8 @@
 use crate::{
-    Constant, DestructureSpec, FunctionId, HandlerBindClause, HandlerCaseClause, RestartBindClause,
-    RestartCaseClause, RotateShiftPlace,
+    Constant, DestructureSpec, FunctionId, HandlerBindClause, HandlerCaseClause, PsetfPlace,
+    RestartBindClause, RestartCaseClause, RotateShiftPlace,
 };
 use ncl_syntax::{Form, Span};
-
-#[derive(Clone, Debug, PartialEq)]
-/// A symbol-rooted place supported by native parallel `PSETF`.
-pub enum PsetfPlace {
-    /// A variable place and its escaped-name flag.
-    Symbol(String, bool),
-    /// A list accessor chain, variable name, and escaped-name flag.
-    List(Vec<String>, String, bool),
-}
 
 #[derive(Clone, Debug, PartialEq)]
 /// A stack-bytecode instruction emitted by the compiler.

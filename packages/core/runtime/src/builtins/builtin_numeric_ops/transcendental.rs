@@ -6,15 +6,52 @@ fn unary_real(function: &str, arguments: &[Value], operation: impl FnOnce(f64) -
 }
 
 pub fn sine(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("sin", arguments, f64::sin)
+    unary_complex("sin", arguments, |real, imag| {
+        (real.sin() * imag.cosh(), real.cos() * imag.sinh())
+    })
 }
 
 pub fn cosine(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("cos", arguments, f64::cos)
+    unary_complex("cos", arguments, |real, imag| {
+        (real.cos() * imag.cosh(), -real.sin() * imag.sinh())
+    })
 }
 
 pub fn tangent(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    unary_real("tan", arguments, f64::tan)
+    exact(arguments, "tan", 1)?;
+    let (real, imag, complex) = match &arguments[0] {
+        Value::Complex(value) => (
+            number_argument("tan", &value.real)?.as_float(),
+            number_argument("tan", &value.imag)?.as_float(),
+            true,
+        ),
+        value => (number_argument("tan", value)?.as_float(), 0.0, false),
+    };
+    let denominator = (2.0 * real).cos() + (2.0 * imag).cosh();
+    let real = (2.0 * real).sin() / denominator;
+    let imag = (2.0 * imag).sinh() / denominator;
+    Ok(if complex {
+        Value::complex(Value::Float(real), Value::Float(imag))
+    } else {
+        Value::Float(real)
+    })
+}
+
+fn unary_complex(
+    function: &str,
+    arguments: &[Value],
+    operation: impl FnOnce(f64, f64) -> (f64, f64),
+) -> Result<Value, RuntimeError> {
+    exact(arguments, function, 1)?;
+    match &arguments[0] {
+        Value::Complex(value) => {
+            let real = number_argument(function, &value.real)?.as_float();
+            let imag = number_argument(function, &value.imag)?.as_float();
+            let (real, imag) = operation(real, imag);
+            Ok(Value::complex(Value::Float(real), Value::Float(imag)))
+        }
+        value => Ok(Value::Float(operation(number_argument(function, value)?.as_float(), 0.0).0)),
+    }
 }
 
 pub fn exponential(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -92,5 +129,22 @@ mod tests {
             .unwrap()
             .to_string();
         assert_eq!(result, "#C(0.0 3.141592653589793)");
+    }
+
+    #[test]
+    fn trigonometric_functions_return_complex_values() {
+        let value = Value::complex(Value::Integer(0), Value::Integer(1));
+        assert_eq!(
+            sine(std::slice::from_ref(&value)).unwrap().to_string(),
+            "#C(0.0 1.1752011936438014)"
+        );
+        assert_eq!(
+            cosine(std::slice::from_ref(&value)).unwrap().to_string(),
+            "#C(1.5430806348152437 -0.0)"
+        );
+        assert_eq!(
+            tangent(&[value]).unwrap().to_string(),
+            "#C(0.0 0.7615941559557649)"
+        );
     }
 }

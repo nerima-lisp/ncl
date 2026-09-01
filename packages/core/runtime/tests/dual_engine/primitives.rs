@@ -186,6 +186,18 @@ fn evaluates_common_lisp_complex_logarithm(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_complex_trigonometry(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (sin (complex 0 1)) (cos (complex 0 1)) (tan (complex 0 1)))")
+            .to_string(),
+        "(#C(0.0 1.1752011936438014) #C(1.5430806348152437 -0.0) #C(0.0 0.7615941559557649))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_common_lisp_float_decoding(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

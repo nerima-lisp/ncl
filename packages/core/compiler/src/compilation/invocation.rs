@@ -645,6 +645,8 @@ impl CompileState {
             "TERPRI" | "FRESH-LINE" => items.len() <= 2,
             "WRITE-CHAR" => (2..=3).contains(&items.len()),
             "WRITE-STRING" | "WRITE-LINE" => items.len() >= 2,
+            "PRINC" | "PRIN1" | "PRINT" => (2..=3).contains(&items.len()),
+            "WRITE" => items.len() >= 2,
             "GET-OUTPUT-STREAM-STRING" => items.len() == 2,
             "READ-CHAR" | "READ-LINE" => items.len() <= 5,
             "PEEK-CHAR" => items.len() <= 6,

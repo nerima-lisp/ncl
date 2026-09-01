@@ -84,9 +84,8 @@ pub use type_predicates::eql_value;
 pub use type_predicates::*;
 
 mod builtin_printer;
-use builtin_printer::{
-    complement, constantly, prin1, princ, print_value, printed_value, write_value,
-};
+use builtin_printer::{complement, constantly, printed_value};
+pub(crate) use builtin_printer::{prin1, princ, print_value, write_value};
 pub(crate) use builtin_printer::write_to_string;
 pub(crate) use builtin_printer::{identity, type_of};
 

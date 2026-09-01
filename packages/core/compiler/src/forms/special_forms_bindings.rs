@@ -321,6 +321,7 @@ impl CompileState {
                 self.compile_vector_operation(function, span, items, name)
             }
             "TERPRI" | "FRESH-LINE" | "WRITE-CHAR" | "WRITE-STRING" | "WRITE-LINE"
+            | "PRINC" | "PRIN1" | "PRINT" | "WRITE"
             | "GET-OUTPUT-STREAM-STRING" | "READ-CHAR" | "READ-LINE" | "PEEK-CHAR"
             | "UNREAD-CHAR" | "CLOSE" | "MAKE-STRING-INPUT-STREAM"
             | "MAKE-STRING-OUTPUT-STREAM" | "WRITE-TO-STRING" | "READ-FROM-STRING"

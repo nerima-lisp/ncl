@@ -36,7 +36,7 @@ pub(crate) fn type_of(arguments: &[Value]) -> Result<Value, RuntimeError> {
     ))
 }
 
-pub(super) fn print_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn print_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("print", "1 to 2", arguments.len()));
     }
@@ -47,7 +47,7 @@ pub(super) fn print_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(arguments[0].clone())
 }
 
-pub(super) fn princ(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn princ(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("princ", "1 to 2", arguments.len()));
     }
@@ -56,7 +56,7 @@ pub(super) fn princ(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(arguments[0].clone())
 }
 
-pub(super) fn prin1(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn prin1(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("prin1", "1 to 2", arguments.len()));
     }
@@ -65,7 +65,7 @@ pub(super) fn prin1(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(arguments[0].clone())
 }
 
-pub(super) fn write_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn write_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("write", "at least 1", arguments.len()));
     }

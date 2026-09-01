@@ -74,6 +74,11 @@ fn compiled_evaluates_rationalize_conversion() {
 }
 
 #[test]
+fn compiled_evaluates_rational_parts() {
+    assert_eq!(evaluate("(list (numerator 7/3) (denominator 7/3) (numerator 4) (denominator 4))").to_string(), "(7 3 4 1)");
+}
+
+#[test]
 fn compiled_evaluates_integer_square_root() {
     assert_eq!(evaluate("(isqrt 10)").to_string(), "3");
 }

@@ -462,6 +462,12 @@ pub enum Instruction {
         /// Number of arguments, including the result type.
         argument_count: usize,
     },
+    #[doc = "Convert or construct a sequence value."] SequenceConversion {
+        /// Sequence conversion operation name.
+        operation: String,
+        /// Number of arguments consumed from the stack.
+        argument_count: usize,
+    },
     #[doc = "Return a character from a string."] CharacterElement {
         /// Character access operation name.
         operation: String,

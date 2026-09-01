@@ -526,6 +526,18 @@ fn compiled_evaluates_native_concatenate() {
 }
 
 #[test]
+fn compiled_evaluates_native_sequence_conversions() {
+    assert_eq!(
+        evaluate(
+            "(list (make-sequence 'list 2 :initial-element 7)
+                   (coerce '(1 2) 'vector))",
+        )
+        .to_string(),
+        "((7 7) #(1 2))",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

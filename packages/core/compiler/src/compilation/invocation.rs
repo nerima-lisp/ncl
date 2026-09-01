@@ -612,6 +612,30 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_sequence_conversion(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+        operation: &str,
+    ) -> Result<(), CompileError> {
+        if items.len() < 3 || (operation == "COERCE" && items.len() != 3) {
+            return Err(Self::arity_error(items, operation, "two or more", span));
+        }
+        for item in &items[1..] {
+            self.compile_expression(function, item)?;
+        }
+        self.emit(
+            function,
+            Instruction::SequenceConversion {
+                operation: operation.to_string(),
+                argument_count: items.len() - 1,
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_character_element(
         &mut self,
         function: FunctionId,

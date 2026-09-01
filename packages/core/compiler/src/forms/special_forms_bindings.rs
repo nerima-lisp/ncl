@@ -68,6 +68,8 @@ impl CompileState {
                 | "FILL"
                 | "REPLACE"
                 | "CONCATENATE"
+                | "MAKE-SEQUENCE"
+                | "COERCE"
                 | "CHAR-CODE"
                 | "CHAR-INT"
                 | "CODE-CHAR"
@@ -200,6 +202,9 @@ impl CompileState {
             "SUBSEQ" => self.compile_sequence_subseq(function, span, items),
             "FILL" | "REPLACE" => self.compile_sequence_mutation(function, span, items, name),
             "CONCATENATE" => self.compile_sequence_concatenate(function, span, items),
+            "MAKE-SEQUENCE" | "COERCE" => {
+                self.compile_sequence_conversion(function, span, items, name)
+            }
             "CHAR" | "SCHAR" => self.compile_character_element(function, span, items, name),
             "AREF" | "BIT" => self.compile_array_element(function, span, items, name, false),
             "SVREF" | "ROW-MAJOR-AREF" => {

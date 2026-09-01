@@ -1240,6 +1240,15 @@ fn emits_eval_and_mapcar_instructions() {
     assert!(!shadowed_concatenate.functions[0].instructions.iter().any(|instruction| {
         matches!(instruction, Instruction::SequenceConcatenate { .. })
     }));
+    let conversions = compile("(list (make-sequence 'list 2 :initial-element 7) (coerce '(1 2) 'vector))");
+    assert_eq!(
+        conversions.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::SequenceConversion { .. }))
+            .count(),
+        2,
+    );
     for operation in [
         "UNION", "NUNION", "INTERSECTION", "NINTERSECTION", "SET-DIFFERENCE",
         "NSET-DIFFERENCE", "SET-EXCLUSIVE-OR", "NSET-EXCLUSIVE-OR", "SUBSETP",

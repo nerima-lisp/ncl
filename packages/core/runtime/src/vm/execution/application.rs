@@ -695,6 +695,25 @@ pub fn execute_sequence_concatenate_instruction(
     Ok(())
 }
 
+pub fn execute_sequence_conversion_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    if stack.len() < argument_count {
+        return Err(invalid("sequence conversion has too few stack values", span));
+    }
+    let arguments = stack.split_off(stack.len() - argument_count);
+    let value = match operation {
+        "MAKE-SEQUENCE" => crate::builtins::make_sequence(&arguments)?,
+        "COERCE" => crate::builtins::coerce(&arguments)?,
+        _ => return Err(invalid("unknown sequence conversion operation", span)),
+    };
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_character_element_instruction(
     stack: &mut Vec<Value>,
     operation: &str,

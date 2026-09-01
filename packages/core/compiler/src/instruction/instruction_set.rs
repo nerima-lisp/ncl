@@ -458,6 +458,10 @@ pub enum Instruction {
         /// Number of arguments consumed from the stack.
         argument_count: usize,
     },
+    #[doc = "Concatenate one or more sequences into a requested result type."] SequenceConcatenate {
+        /// Number of arguments, including the result type.
+        argument_count: usize,
+    },
     #[doc = "Return a character from a string."] CharacterElement {
         /// Character access operation name.
         operation: String,

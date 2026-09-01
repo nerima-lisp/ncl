@@ -1232,6 +1232,14 @@ fn emits_eval_and_mapcar_instructions() {
             matches!(instruction, Instruction::SequenceMutation { operation: emitted, argument_count: 2 } if emitted == operation)
         }));
     }
+    let concatenate = compile("(concatenate 'list '(1 2) #(3 4))");
+    assert!(concatenate.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceConcatenate { argument_count: 3 })
+    }));
+    let shadowed_concatenate = compile("(flet ((concatenate (type first) :shadowed)) (concatenate 'list '(1)))");
+    assert!(!shadowed_concatenate.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceConcatenate { .. })
+    }));
     for operation in [
         "UNION", "NUNION", "INTERSECTION", "NINTERSECTION", "SET-DIFFERENCE",
         "NSET-DIFFERENCE", "SET-EXCLUSIVE-OR", "NSET-EXCLUSIVE-OR", "SUBSETP",

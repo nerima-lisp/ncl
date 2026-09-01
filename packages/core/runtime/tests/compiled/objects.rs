@@ -515,6 +515,17 @@ fn compiled_evaluates_native_sequence_mutations() {
 }
 
 #[test]
+fn compiled_evaluates_native_concatenate() {
+    assert_eq!(
+        evaluate(
+            "(list (concatenate 'list '(a b) #(c d)) (concatenate 'string \"ab\" \"cd\"))",
+        )
+        .to_string(),
+        "((A B C D) \"abcd\")",
+    );
+}
+
+#[test]
 fn compiled_rejects_invalid_hash_table_options() {
     for source in [
         "(make-hash-table :test #'not-a-hash-test)",

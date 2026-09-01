@@ -19,6 +19,7 @@ use crate::vm::execution::application::{
     execute_sequence_element_instruction,
     execute_sequence_subseq_instruction,
     execute_sequence_mutation_instruction,
+    execute_sequence_concatenate_instruction,
     execute_character_element_instruction,
     execute_array_element_instruction,
     execute_array_metadata_instruction,
@@ -255,6 +256,9 @@ pub(super) fn execute_value_instruction(
         }
         Instruction::SequenceMutation { operation, argument_count } => {
             execute_sequence_mutation_instruction(stack, operation, *argument_count, span)?;
+        }
+        Instruction::SequenceConcatenate { argument_count } => {
+            execute_sequence_concatenate_instruction(stack, *argument_count, span)?;
         }
         Instruction::CharacterElement { operation } => {
             execute_character_element_instruction(stack, operation, span)?;

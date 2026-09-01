@@ -30,6 +30,8 @@ pub(super) fn execute(
         runtime.special_rotatef(items, environment)?
     } else if operator.eq_ignore_ascii_case("SHIFTF") {
         runtime.special_shiftf(items, environment)?
+    } else if operator.eq_ignore_ascii_case("REMF") {
+        runtime.special_remf(items, environment)?
     } else {
         return Err(RuntimeError::InvalidForm {
             message: format!("unsupported runtime mutation operator: {operator}"),

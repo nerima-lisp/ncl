@@ -16,7 +16,7 @@ impl CompileState {
             "EVAL-WHEN" => self.compile_eval_when(function, span, items),
             "LOAD-TIME-VALUE" => self.compile_load_time_value(function, span, items),
             "NTH-VALUE" => self.compile_nth_value(function, span, items),
-            "PUSH" | "POP" | "PUSHNEW" | "ROTATEF" | "SHIFTF" => {
+            "PUSH" | "POP" | "PUSHNEW" | "ROTATEF" | "SHIFTF" | "REMF" => {
                 self.compile_runtime_definition(function, span, items)
             }
             "PSETF" => self.compile_psetf(function, span, items),

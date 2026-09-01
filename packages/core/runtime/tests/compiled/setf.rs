@@ -154,6 +154,18 @@ fn compiled_evaluates_setf_places() {
 }
 
 #[test]
+fn compiled_evaluates_remf_with_a_generalized_place() {
+    assert_eq!(
+        evaluate(
+            "(let ((plist (list :a 1 :b 2)))
+               (list (multiple-value-list (remf plist :a)) plist))",
+        )
+        .to_string(),
+        "(((:B 2) T) (:B 2))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_modify_on_nested_list_places() {
     assert_eq!(
         evaluate("(let ((xs (list (list 4)))) (list (incf (car (car xs))) xs))").to_string(),

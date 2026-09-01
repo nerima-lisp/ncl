@@ -649,6 +649,26 @@ pub fn execute_sequence_element_instruction(
     Ok(())
 }
 
+pub fn execute_character_element_instruction(
+    stack: &mut Vec<Value>,
+    operation: &str,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let index = stack
+        .pop()
+        .ok_or_else(|| invalid("character-element has too few stack values", span))?;
+    let string = stack
+        .pop()
+        .ok_or_else(|| invalid("character-element has too few stack values", span))?;
+    let value = match operation {
+        "CHAR" => crate::builtins::character(&[string, index])?,
+        "SCHAR" => crate::builtins::simple_character(&[string, index])?,
+        _ => return Err(invalid("unknown character-element operation", span)),
+    };
+    stack.push(value);
+    Ok(())
+}
+
 pub fn execute_multiple_value_call_instruction(
     runtime: &Runtime,
     value_form_count: usize,

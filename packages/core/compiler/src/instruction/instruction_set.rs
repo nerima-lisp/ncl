@@ -448,6 +448,10 @@ pub enum Instruction {
     },
     #[doc = "Return the length of a sequence."] SequenceLength,
     #[doc = "Return an element from a sequence."] SequenceElement,
+    #[doc = "Return a character from a string."] CharacterElement {
+        /// Character access operation name.
+        operation: String,
+    },
     #[doc = "Apply a list set operation with keyword options."] ListSet {
         /// List set operation name.
         operation: String,

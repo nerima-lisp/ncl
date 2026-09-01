@@ -448,3 +448,8 @@ fn compiled_evaluates_map_into_over_sequences() {
     );
 }
 use super::*;
+
+#[test]
+fn compiled_evaluates_character_string_access() {
+    assert_eq!(evaluate("(list (char \"abc\" 1) (schar \"λx\" 0))").to_string(), "(#\\b #\\λ)");
+}

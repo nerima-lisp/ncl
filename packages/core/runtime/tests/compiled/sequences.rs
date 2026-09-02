@@ -607,6 +607,20 @@ fn compiled_evaluates_adjust_array_adjustable_option() {
 }
 
 #[test]
+fn compiled_evaluates_adjust_array_displacement() {
+    assert_eq!(
+        evaluate(
+            "(let* ((base (make-array 4 :initial-contents '(1 2 3 4)))\
+                    (array (adjust-array (make-array 2) 2 :displaced-to base :displaced-index-offset 1)))\
+               (setf (aref array 0) 9)\
+               (list (aref base 1) (array-displacement array)))",
+        )
+        .to_string(),
+        "(9 #(1 9 3 4))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_vector_push_operations() {
     assert_eq!(
         evaluate(

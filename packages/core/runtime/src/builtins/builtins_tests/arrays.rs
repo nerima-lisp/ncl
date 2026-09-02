@@ -192,6 +192,32 @@ fn adjust_array_updates_adjustable_metadata() {
 }
 
 #[test]
+fn adjust_array_preserves_displacement_aliasing() {
+    let base = make_array(&[
+        Value::Integer(4),
+        Value::keyword("initial-contents"),
+        Value::list(vec![Value::Integer(1), Value::Integer(2), Value::Integer(3), Value::Integer(4)]),
+    ])
+    .expect("make-array should construct a base vector");
+    let displaced = adjust_array(&[
+        make_array(&[Value::Integer(2)]).expect("make-array should construct a vector"),
+        Value::Integer(2),
+        Value::keyword("displaced-to"),
+        base.clone(),
+        Value::keyword("displaced-index-offset"),
+        Value::Integer(1),
+    ])
+    .expect("adjust-array should construct a displaced vector");
+
+    assert!(array_displacement(&[displaced.clone()])
+        .unwrap()
+        .equal_value(&Value::values(vec![base.clone(), Value::Integer(1)])));
+    assert!(aref(&[displaced.clone(), Value::Integer(0)]).unwrap().equal_value(&Value::Integer(2)));
+    displaced.set_vector_item(0, Value::Integer(9));
+    assert!(aref(&[base, Value::Integer(1)]).unwrap().equal_value(&Value::Integer(9)));
+}
+
+#[test]
 fn vector_push_uses_and_extends_fill_pointer() {
     let vector = make_array(&[
         Value::Integer(3),

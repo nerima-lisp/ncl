@@ -212,6 +212,8 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut initial_contents = None;
     let mut fill_pointer = None;
     let mut adjustable = None;
+    let mut displaced_to = None;
+    let mut displaced_index_offset = 0;
     for pair in arguments[2..].as_chunks::<2>().0 {
         let name = array_option_name("adjust-array", &pair[0])?;
         match name.as_str() {
@@ -222,10 +224,44 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }),
             "FILL-POINTER" => fill_pointer = Some(index_argument("adjust-array", &pair[1])?),
             "ADJUSTABLE" => adjustable = Some(pair[1].is_truthy()),
+            "DISPLACED-TO" => displaced_to = Some(pair[1].clone()),
+            "DISPLACED-INDEX-OFFSET" => {
+                displaced_index_offset = index_argument("adjust-array", &pair[1])?;
+            }
             _ => return Err(crate::RuntimeError::InvalidForm {
                 message: format!("adjust-array does not support keyword :{name}"), span: None,
             }),
         }
+    }
+    if displaced_to.is_some() && (initial_element.is_some() || initial_contents.is_some()) {
+        return Err(crate::RuntimeError::InvalidForm {
+            message: "adjust-array cannot combine displacement with initial contents".to_string(),
+            span: None,
+        });
+    }
+    if let Some(displaced_to) = displaced_to {
+        let mut make_arguments = vec![
+            arguments[1].clone(),
+            Value::keyword("displaced-to"),
+            displaced_to,
+            Value::keyword("displaced-index-offset"),
+            Value::Integer(displaced_index_offset as i64),
+            Value::keyword("adjustable"),
+            Value::Boolean(adjustable.unwrap_or(arguments[0].array_adjustable().unwrap_or(false))),
+        ];
+        if let Some(fill_pointer) = fill_pointer {
+            make_arguments.extend([
+                Value::keyword("fill-pointer"),
+                Value::Integer(fill_pointer as i64),
+            ]);
+        }
+        let array = make_array(&make_arguments)?;
+        array.set_array_element_type(
+            arguments[0]
+                .array_element_type()
+                .unwrap_or_else(|| Value::symbol("T")),
+        );
+        return Ok(array);
     }
     let mut elements = if let Some(contents) = initial_contents.as_ref() {
         let mut values = Vec::with_capacity(total_size);

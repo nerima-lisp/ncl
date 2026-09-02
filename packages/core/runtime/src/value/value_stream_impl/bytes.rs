@@ -13,6 +13,7 @@ impl Stream {
                 file: true,
             },
             closed: false,
+            delete_on_close: None,
             element_type: StreamElementType::UnsignedByte8,
             byte_data: Some(ByteStreamData::Input {
                 bytes: Rc::new(bytes),
@@ -32,6 +33,7 @@ impl Stream {
                 file_path: Some(Rc::new(path.clone())),
             },
             closed: false,
+            delete_on_close: None,
             element_type: StreamElementType::UnsignedByte8,
             byte_data: Some(ByteStreamData::Output {
                 bytes,
@@ -52,6 +54,7 @@ impl Stream {
                 file_path: Rc::new(path.clone()),
             },
             closed: false,
+            delete_on_close: None,
             element_type: StreamElementType::UnsignedByte8,
             byte_data: Some(ByteStreamData::Io {
                 bytes,

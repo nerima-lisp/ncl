@@ -26,6 +26,7 @@ impl Stream {
                 file: false,
             },
             closed: false,
+            delete_on_close: None,
             element_type: StreamElementType::Character,
             byte_data: None,
         }
@@ -40,6 +41,7 @@ impl Stream {
                 file: true,
             },
             closed: false,
+            delete_on_close: None,
             element_type: StreamElementType::Character,
             byte_data: None,
         }
@@ -62,6 +64,7 @@ impl Stream {
                 file_path: Rc::new(path),
             },
             closed: false,
+            delete_on_close: None,
             element_type: StreamElementType::Character,
             byte_data: None,
         }
@@ -77,6 +80,7 @@ impl Stream {
                 file_path: None,
             },
             closed: false,
+            delete_on_close: None,
             element_type: StreamElementType::Character,
             byte_data: None,
         }
@@ -103,6 +107,7 @@ impl Stream {
                 file_path: Some(Rc::new(path)),
             },
             closed: false,
+            delete_on_close: None,
             element_type: StreamElementType::Character,
             byte_data: None,
         }
@@ -119,6 +124,7 @@ impl Stream {
                 file_path: None,
             },
             closed: false,
+            delete_on_close: None,
             element_type: StreamElementType::Character,
             byte_data: None,
         }

@@ -2,6 +2,10 @@ use crate::Stream;
 use crate::value::value_stream::StreamKind;
 
 impl Stream {
+    pub(crate) fn delete_on_close(&mut self, path: std::path::PathBuf) {
+        self.delete_on_close = Some(path);
+    }
+
     pub(crate) fn write(&mut self, text: &str) -> bool {
         if self.closed {
             return false;
@@ -157,6 +161,11 @@ impl Stream {
             }
         }
         self.closed = true;
+        if !abort {
+            if let Some(path) = self.delete_on_close.take() {
+                std::fs::remove_file(path)?;
+            }
+        }
         Ok(())
     }
 }

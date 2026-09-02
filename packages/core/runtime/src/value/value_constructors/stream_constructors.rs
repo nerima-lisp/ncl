@@ -63,6 +63,14 @@ impl Value {
         ))))
     }
 
+    pub(crate) fn delete_stream_file_on_close(&self, path: PathBuf) -> bool {
+        let Self::Stream(stream) = self else {
+            return false;
+        };
+        stream.borrow_mut().delete_on_close(path);
+        true
+    }
+
     pub(crate) fn file_io_stream(path: PathBuf, source: &str, append: bool) -> Self {
         Self::Stream(Rc::new(RefCell::new(Stream::file_io(path, source, append))))
     }

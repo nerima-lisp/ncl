@@ -53,17 +53,24 @@ pub(super) fn open_output_file(
     if_exists: &str,
     byte: bool,
 ) -> Result<Value, RuntimeError> {
-    let renamed = if path.exists() && if_exists == "RENAME" {
+    let delete_on_close = if path.exists() && matches!(if_exists, "RENAME" | "RENAME-AND-DELETE") {
         let backup = unique_rename_path(path)?;
         std::fs::rename(path, &backup).map_err(|error| RuntimeError::Io {
             kind: error.kind(),
             message: format!("rename {}: {error}", path.display()),
         })?;
-        true
+        (
+            if if_exists == "RENAME-AND-DELETE" {
+                Some(backup)
+            } else {
+                None
+            },
+            true,
+        )
     } else {
-        false
+        (None, false)
     };
-    if path.exists() && !renamed {
+    if path.exists() && !delete_on_close.1 {
         match if_exists {
             "NIL" => return Ok(Value::Nil),
             "ERROR" => {
@@ -78,13 +85,21 @@ pub(super) fn open_output_file(
                         kind: error.kind(),
                         message: format!("open {}: {error}", path.display()),
                     })?;
-                    return Ok(Value::file_byte_output_stream(path.to_path_buf(), bytes));
+                    let stream = Value::file_byte_output_stream(path.to_path_buf(), bytes);
+                    if let Some(backup) = delete_on_close.0 {
+                        stream.delete_stream_file_on_close(backup);
+                    }
+                    return Ok(stream);
                 }
                 let source = std::fs::read_to_string(path).map_err(|error| RuntimeError::Io {
                     kind: error.kind(),
                     message: format!("open {}: {error}", path.display()),
                 })?;
-                return Ok(Value::file_output_stream(path.to_path_buf(), source));
+                let stream = Value::file_output_stream(path.to_path_buf(), source);
+                if let Some(backup) = delete_on_close.0 {
+                    stream.delete_stream_file_on_close(backup);
+                }
+                return Ok(stream);
             }
             "OVERWRITE" => {
                 if byte {
@@ -129,12 +144,17 @@ pub(super) fn open_output_file(
         }
     }
     if byte {
-        Ok(Value::file_byte_output_stream(
-            path.to_path_buf(),
-            Vec::new(),
-        ))
+        let stream = Value::file_byte_output_stream(path.to_path_buf(), Vec::new());
+        if let Some(backup) = delete_on_close.0 {
+            stream.delete_stream_file_on_close(backup);
+        }
+        Ok(stream)
     } else {
-        Ok(Value::file_output_stream(path.to_path_buf(), String::new()))
+        let stream = Value::file_output_stream(path.to_path_buf(), String::new());
+        if let Some(backup) = delete_on_close.0 {
+            stream.delete_stream_file_on_close(backup);
+        }
+        Ok(stream)
     }
 }
 

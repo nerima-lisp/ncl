@@ -7,6 +7,7 @@ use std::rc::Rc;
 pub struct Stream {
     pub(super) kind: StreamKind,
     pub(super) closed: bool,
+    pub(super) delete_on_close: Option<PathBuf>,
     pub(super) element_type: StreamElementType,
     pub(super) byte_data: Option<ByteStreamData>,
 }

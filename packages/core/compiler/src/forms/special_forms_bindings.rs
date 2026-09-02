@@ -78,7 +78,9 @@ impl CompileState {
             "CALL-NEXT-METHOD" | "NEXT-METHOD-P" => {
                 self.compile_method_operation(function, span, items, name)
             }
-            "MAKE-INSTANCE" => self.compile_evaluation_operation(function, span, items, name),
+            "MAKE-INSTANCE" | "REINITIALIZE-INSTANCE" => {
+                self.compile_evaluation_operation(function, span, items, name)
+            }
             "COMPILE" | "LOAD" | "PROVIDE" | "REQUIRE" => {
                 self.compile_evaluation_operation(function, span, items, name)
             }

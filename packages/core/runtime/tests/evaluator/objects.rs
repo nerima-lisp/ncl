@@ -24,6 +24,23 @@ fn evaluates_basic_clos_instances_and_accessors() {
 }
 
 #[test]
+fn evaluates_reinitialize_instance() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass reinit-point ()
+                   ((x :initarg :x :initform 1)
+                    (y :initarg :y :initform 2)))
+                 (let ((point (make-instance 'reinit-point :x 10 :y 20)))
+                   (reinitialize-instance point :x 30)
+                   (list (slot-value point 'x) (slot-value point 'y))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(30 20)");
+}
+
+#[test]
 fn rejects_invalid_make_instance_arguments() {
     for source in [
         "(make-instance)",

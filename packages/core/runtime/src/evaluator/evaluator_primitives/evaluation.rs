@@ -11,7 +11,13 @@ impl Runtime {
     ) -> Option<Result<Value, RuntimeError>> {
         if !matches!(
             name,
-            "EVAL" | "COMPILE" | "LOAD" | "MAKE-INSTANCE" | "PROVIDE" | "REQUIRE"
+            "EVAL"
+                | "COMPILE"
+                | "LOAD"
+                | "MAKE-INSTANCE"
+                | "REINITIALIZE-INSTANCE"
+                | "PROVIDE"
+                | "REQUIRE"
         ) {
             return None;
         }
@@ -24,6 +30,7 @@ impl Runtime {
             "COMPILE" => self.compile_function(arguments, environment, span),
             "LOAD" => self.load_file(arguments, span),
             "MAKE-INSTANCE" => self.make_instance(arguments, environment, span),
+            "REINITIALIZE-INSTANCE" => self.reinitialize_instance(arguments, span),
             "PROVIDE" => self.provide_feature(arguments, span),
             "REQUIRE" => self.require_feature(arguments, span),
             _ => unreachable!("evaluation primitive name was prevalidated"),
@@ -72,12 +79,10 @@ impl Runtime {
             return Ok(Value::boolean(true));
         }
         if let Some(paths) = arguments.get(1) {
-            let paths = paths.list_items().ok_or_else(|| {
-                RuntimeError::Type {
-                    expected: "LIST".to_owned(),
-                    actual: paths.type_name().to_owned(),
-                    span: Some(span),
-                }
+            let paths = paths.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_owned(),
+                actual: paths.type_name().to_owned(),
+                span: Some(span),
             })?;
             for path in paths {
                 self.load_file(&[path], span)?;

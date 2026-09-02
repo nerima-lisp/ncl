@@ -130,4 +130,49 @@ impl Runtime {
         }
         Ok(instance)
     }
+
+    pub(crate) fn reinitialize_instance(
+        &self,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() {
+            return Err(Self::arity(
+                "reinitialize-instance",
+                "at least one",
+                arguments.len(),
+            ));
+        }
+        if !(arguments.len() - 1).is_multiple_of(2) {
+            return Err(Self::invalid(
+                "reinitialize-instance initargs require pairs",
+                span,
+            ));
+        }
+        let instance = &arguments[0];
+        let Some(class) = instance.instance_class_definition() else {
+            return Err(Self::invalid(
+                "reinitialize-instance requires an instance",
+                span,
+            ));
+        };
+        for pair in arguments[1..].as_chunks::<2>().0 {
+            let initarg = Self::name_designator_from_value(&pair[0], span)?;
+            let Some(slot) = class
+                .slots
+                .iter()
+                .find(|slot| slot.initargs.iter().any(|name| name == &initarg))
+            else {
+                return Err(Self::invalid("unknown reinitialize-instance initarg", span));
+            };
+            self.set_instance_slot_checked(
+                instance,
+                &class.name,
+                &slot.name,
+                pair[1].clone(),
+                span,
+            )?;
+        }
+        Ok(instance.clone())
+    }
 }

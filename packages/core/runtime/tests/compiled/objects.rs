@@ -44,6 +44,23 @@ fn compiled_evaluates_builtin_method_combinations() {
 }
 
 #[test]
+fn compiled_evaluates_reinitialize_instance() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass compiled-reinit-point ()
+                   ((x :initarg :x :initform 1)
+                    (y :initarg :y :initform 2)))
+                 (let ((point (make-instance 'compiled-reinit-point :x 10 :y 20)))
+                   (reinitialize-instance point :x 30)
+                   (list (slot-value point 'x) (slot-value point 'y))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(30 20)");
+}
+
+#[test]
 fn compiled_evaluates_native_make_instance_operation() {
     let values = Runtime::new()
         .eval_compiled_source(

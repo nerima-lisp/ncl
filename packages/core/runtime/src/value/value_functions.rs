@@ -91,6 +91,8 @@ pub enum Function {
         name: String,
         /// The defining lambda list, when supplied by `defgeneric`.
         lambda_list: Option<Form>,
+        /// Documentation string supplied when the generic function was defined.
+        documentation: Option<String>,
         /// Built-in method combination used by the generic function.
         method_combination: MethodCombination,
         /// The methods currently registered on the generic function.

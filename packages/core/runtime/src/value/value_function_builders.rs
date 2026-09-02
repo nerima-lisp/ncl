@@ -38,6 +38,7 @@ impl Value {
         Self::Function(Rc::new(Function::Generic {
             name: name.into(),
             lambda_list: None,
+            documentation: None,
             method_combination,
             methods: Rc::new(RefCell::new(Vec::new())),
         }))
@@ -47,10 +48,12 @@ impl Value {
         name: impl Into<String>,
         lambda_list: Form,
         method_combination: MethodCombination,
+        documentation: Option<String>,
     ) -> Self {
         Self::Function(Rc::new(Function::Generic {
             name: name.into(),
             lambda_list: Some(lambda_list),
+            documentation,
             method_combination,
             methods: Rc::new(RefCell::new(Vec::new())),
         }))

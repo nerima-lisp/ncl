@@ -22,6 +22,7 @@ impl Runtime {
         let name = unqualified_name(&name);
         let _ = Self::parameters(&items[2])?;
         let mut method_combination = MethodCombination::Standard;
+        let mut documentation = None;
         for option in items.iter().skip(3) {
             let option_items = Self::list_form_items(option, "defgeneric option")?;
             if option_items.is_empty() {
@@ -42,7 +43,12 @@ impl Runtime {
                         option.span,
                     ));
                 }
-                "DOCUMENTATION" => {}
+                "DOCUMENTATION" => {
+                    let FormKind::String(value) = &option_items[1].kind else {
+                        unreachable!()
+                    };
+                    documentation = Some(value.clone());
+                }
                 "METHOD-COMBINATION" if option_items.len() == 2 => {
                     method_combination = match Self::definition_name_from_form(
                         &option_items[1],
@@ -81,7 +87,12 @@ impl Runtime {
         }
         environment.define_function(
             &name,
-            Value::generic_with_lambda_list(name.clone(), items[2].clone(), method_combination),
+            Value::generic_with_lambda_list(
+                name.clone(),
+                items[2].clone(),
+                method_combination,
+                documentation,
+            ),
         );
         Ok(Value::symbol(name))
     }

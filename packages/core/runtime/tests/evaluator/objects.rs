@@ -1042,3 +1042,15 @@ fn evaluates_ensure_generic_function() {
         .must_exist();
     assert_eq!(values[0].to_string(), "(T ENSURED-GENERIC LIST (:OK))");
 }
+
+#[test]
+fn evaluates_generic_function_documentation() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defgeneric documented-generic (x) (:documentation "generic docs"))
+                 (generic-function-documentation #'documented-generic))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "\"generic docs\"");
+}

@@ -90,6 +90,7 @@ impl Runtime {
                 | "GENERIC-FUNCTION-NAME"
                 | "GENERIC-FUNCTION-METHOD-COMBINATION"
                 | "GENERIC-FUNCTION-LAMBDA-LIST"
+                | "GENERIC-FUNCTION-DOCUMENTATION"
                 | "GENERIC-FUNCTION-METHODS"
                 | "ENSURE-GENERIC-FUNCTION"
                 | "FIND-METHOD"
@@ -113,6 +114,7 @@ impl Runtime {
                     }
                     let mut lambda_list = None;
                     let mut method_combination = MethodCombination::Standard;
+                    let mut documentation = None;
                     let mut index = 1;
                     while index < arguments.len() {
                         let key = Self::name_designator_from_value(&arguments[index], span)?;
@@ -142,8 +144,17 @@ impl Runtime {
                                     }
                                 };
                             }
-                            "DOCUMENTATION"
-                            | "ARGUMENT-PRECEDENCE-ORDER"
+                            "DOCUMENTATION" => {
+                                let Value::String(value) = value else {
+                                    return Err(RuntimeError::Type {
+                                        expected: "STRING".into(),
+                                        actual: value.type_name().into(),
+                                        span: Some(span),
+                                    });
+                                };
+                                documentation = Some(value.to_string());
+                            }
+                            "ARGUMENT-PRECEDENCE-ORDER"
                             | "DECLARATIONS"
                             | "GENERIC-FUNCTION-CLASS"
                             | "METHOD-CLASS" => {}
@@ -164,9 +175,12 @@ impl Runtime {
                         return Err(Self::invalid("function name is already defined", span));
                     }
                     let function = match lambda_list {
-                        Some(form) => {
-                            Value::generic_with_lambda_list(name.clone(), form, method_combination)
-                        }
+                        Some(form) => Value::generic_with_lambda_list(
+                            name.clone(),
+                            form,
+                            method_combination,
+                            documentation,
+                        ),
                         None => Value::generic_with_combination(name.clone(), method_combination),
                     };
                     environment.define_function(&name, function.clone());
@@ -309,6 +323,33 @@ impl Runtime {
                         .as_ref()
                         .map(quoted_form_value)
                         .transpose()?
+                        .unwrap_or(Value::Nil))
+                }
+                "GENERIC-FUNCTION-DOCUMENTATION" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity(
+                            "generic-function-documentation",
+                            "one",
+                            arguments.len(),
+                        ));
+                    }
+                    let Value::Function(function) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Function::Generic { documentation, .. } = function.as_ref() else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    Ok(documentation
+                        .as_deref()
+                        .map(Value::string)
                         .unwrap_or(Value::Nil))
                 }
                 "GENERIC-FUNCTION-METHODS" => {

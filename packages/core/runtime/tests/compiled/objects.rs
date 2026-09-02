@@ -998,3 +998,15 @@ fn compiled_evaluates_ensure_generic_function() {
         "(T COMPILED-ENSURED-GENERIC LIST (:OK))"
     );
 }
+
+#[test]
+fn compiled_evaluates_generic_function_documentation() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defgeneric compiled-documented-generic (x) (:documentation "compiled docs"))
+                 (generic-function-documentation #'compiled-documented-generic))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "\"compiled docs\"");
+}

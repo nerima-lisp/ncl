@@ -82,6 +82,9 @@ impl CompileState {
             "GENERIC-FUNCTION-LAMBDA-LIST" => {
                 self.compile_class_introspection(function, span, items, name)
             }
+            "GENERIC-FUNCTION-DOCUMENTATION" => {
+                self.compile_class_introspection(function, span, items, name)
+            }
             "GENERIC-FUNCTION-METHODS"
             | "ENSURE-GENERIC-FUNCTION"
             | "FIND-METHOD"

@@ -24,6 +24,7 @@ impl CompileState {
             "GENERIC-FUNCTION-NAME"
             | "GENERIC-FUNCTION-METHOD-COMBINATION"
             | "GENERIC-FUNCTION-LAMBDA-LIST"
+            | "GENERIC-FUNCTION-DOCUMENTATION"
             | "GENERIC-FUNCTION-METHODS"
             | "METHOD-QUALIFIERS"
             | "METHOD-SPECIALIZERS"

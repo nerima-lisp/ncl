@@ -54,6 +54,20 @@ fn compiled_make_condition_accepts_inherited_initargs() {
 }
 
 #[test]
+fn compiled_make_condition_inherits_initforms_and_allows_explicit_override() {
+    let result = Runtime::new()
+        .eval_compiled_source(
+            "(define-condition base-default-condition (condition)
+                ((payload :initarg :payload :initform 5 :reader base-default-payload)))
+             (define-condition child-default-condition (base-default-condition) ())
+             (list (base-default-payload (make-condition 'child-default-condition))
+                   (base-default-payload (make-condition 'child-default-condition :payload 9)))",
+        )
+        .expect("compiled inherited condition initform should work");
+    assert_eq!(result.last().expect("no result").to_string(), "(5 9)");
+}
+
+#[test]
 fn compiled_define_condition_preserves_deep_type_hierarchy() {
     let result = Runtime::new()
         .eval_compiled_source(

@@ -636,3 +636,18 @@ fn compiled_evaluates_array_metadata_predicates() {
         "(T NIL NIL)",
     );
 }
+
+#[test]
+fn compiled_evaluates_array_displacement_metadata() {
+    assert_eq!(
+        evaluate(
+            "(let* ((base (make-array 3 :initial-contents '(10 20 30)))\
+                    (displaced (make-array 2 :displaced-to base :displaced-index-offset 1)))\
+               (list (equal (nth-value 0 (array-displacement displaced)) base)\
+                     (nth-value 1 (array-displacement displaced))\
+                     (aref displaced 0)))",
+        )
+        .to_string(),
+        "(T 1 20)",
+    );
+}

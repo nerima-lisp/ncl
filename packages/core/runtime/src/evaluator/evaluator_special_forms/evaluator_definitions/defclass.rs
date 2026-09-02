@@ -37,6 +37,7 @@ impl Runtime {
         let mut slots: Vec<ClassSlot> = Vec::new();
         let mut readers = Vec::new();
         let mut writers = Vec::new();
+        let mut setf_writers = Vec::new();
         let mut default_initargs = Vec::new();
         let mut documentation = None;
 
@@ -45,6 +46,7 @@ impl Runtime {
             let slot_name = registration.slot.name.clone();
             readers.extend(registration.readers);
             writers.extend(registration.writers);
+            setf_writers.extend(registration.setf_writers);
             if let Some(existing) = slots.iter_mut().find(|slot| slot.name == slot_name) {
                 *existing = registration.slot;
             } else {
@@ -91,6 +93,12 @@ impl Runtime {
         for (writer_name, slot_name) in writers {
             environment.define_function(
                 &writer_name,
+                Value::slot_writer(class_name.clone(), slot_name),
+            );
+        }
+        for (accessor_name, slot_name) in setf_writers {
+            environment.define_setf_function(
+                &accessor_name,
                 Value::slot_writer(class_name.clone(), slot_name),
             );
         }

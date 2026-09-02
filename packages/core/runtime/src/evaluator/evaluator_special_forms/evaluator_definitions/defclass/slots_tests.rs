@@ -102,4 +102,17 @@ mod tests {
             "(\"slot doc\" (:VALUE) :CLASS 42 INTEGER (VALUE-READER) (VALUE-WRITER))"
         );
     }
+
+    #[test]
+    fn defclass_accessor_is_setfable() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass accessor-class () ((value :accessor accessor-value)))
+                 (let ((object (make-instance 'accessor-class)))
+                   (setf (accessor-value object) 42)
+                   (accessor-value object))",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "42");
+    }
 }

@@ -7,6 +7,7 @@ pub(super) struct DefclassSlotRegistration {
     pub(super) slot: ClassSlot,
     pub(super) readers: Vec<(String, String)>,
     pub(super) writers: Vec<(String, String)>,
+    pub(super) setf_writers: Vec<(String, String)>,
 }
 
 impl Runtime {
@@ -36,6 +37,7 @@ impl Runtime {
         let mut class_value = None;
         let mut readers = Vec::new();
         let mut writers = Vec::new();
+        let mut setf_writers = Vec::new();
         if !options.len().is_multiple_of(2) {
             return Err(Self::invalid(
                 "defclass slot options require a value",
@@ -72,6 +74,9 @@ impl Runtime {
                     let accessor_name =
                         Self::variable_name(&option[1], "defclass accessor must be a symbol")?;
                     readers.push((unqualified_name(&accessor_name), slot_name.clone()));
+                    if option_name == "ACCESSOR" {
+                        setf_writers.push((unqualified_name(&accessor_name), slot_name.clone()));
+                    }
                 }
                 "WRITER" => {
                     let writer_name =
@@ -109,6 +114,7 @@ impl Runtime {
             },
             readers,
             writers,
+            setf_writers,
         })
     }
 }

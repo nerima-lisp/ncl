@@ -46,4 +46,18 @@ mod tests {
         ).expect("condition initform should be evaluated");
         assert_eq!(values.last().map(ToString::to_string).as_deref(), Some("5"));
     }
+
+    #[test]
+    fn make_condition_inherits_initforms_and_allows_explicit_override() {
+        let values = Runtime::new()
+            .eval_source(
+                "(define-condition base-default-condition (condition)
+                   ((payload :initarg :payload :initform 5 :reader base-default-payload)))
+                 (define-condition child-default-condition (base-default-condition) ())
+                 (list (base-default-payload (make-condition 'child-default-condition))
+                       (base-default-payload (make-condition 'child-default-condition :payload 9)))",
+            )
+            .expect("inherited condition initform should work");
+        assert_eq!(values.last().map(ToString::to_string).as_deref(), Some("(5 9)"));
+    }
 }

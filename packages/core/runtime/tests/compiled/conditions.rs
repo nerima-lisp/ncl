@@ -42,6 +42,21 @@ fn compiled_define_condition_registers_condition_readers() {
 }
 
 #[test]
+fn compiled_define_condition_preserves_deep_type_hierarchy() {
+    let result = Runtime::new()
+        .eval_compiled_source(
+            "(define-condition root-condition (condition) ())
+             (define-condition middle-condition (root-condition) ())
+             (define-condition leaf-condition (middle-condition) ())
+             (let ((condition (make-condition 'leaf-condition)))
+               (list (typep condition 'root-condition)
+                     (typep condition 'middle-condition)))",
+        )
+        .expect("deep custom condition hierarchy failed");
+    assert_eq!(result.last().expect("no result").to_string(), "(T T)");
+}
+
+#[test]
 fn compiled_propagates_unmatched_control_transfers_from_scopes() {
     for source in [
         "(catch 'tag (throw 'other 9))",

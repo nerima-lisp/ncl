@@ -28,13 +28,30 @@ impl Runtime {
             };
             slots.push((slot_name.clone(), pair[1].clone()));
         }
-        let mut type_names = vec![actual_type.clone()];
-        for parent in definition.parents {
-            type_names.push(parent.clone());
-            if let Some(parent_definition) = environment.lookup_condition(&parent) {
-                type_names.extend(parent_definition.parents);
+        fn append_condition_types(
+            environment: &Environment,
+            name: &str,
+            type_names: &mut Vec<String>,
+            visited: &mut std::collections::HashSet<String>,
+        ) {
+            if !visited.insert(name.to_owned()) {
+                return;
+            }
+            type_names.push(name.to_owned());
+            if let Some(definition) = environment.lookup_condition(name) {
+                for parent in definition.parents {
+                    append_condition_types(environment, &parent, type_names, visited);
+                }
             }
         }
+
+        let mut type_names = Vec::new();
+        append_condition_types(
+            environment,
+            &actual_type,
+            &mut type_names,
+            &mut std::collections::HashSet::new(),
+        );
         Ok(Value::condition_from_parts_with_types(
             actual_type,
             type_names,

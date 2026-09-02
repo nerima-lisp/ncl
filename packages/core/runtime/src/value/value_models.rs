@@ -65,7 +65,7 @@ pub enum MethodSpecializer {
 
 #[derive(Clone, Debug)]
 pub struct Instance {
-    pub class: Rc<ClassDefinition>,
+    pub class: Rc<RefCell<Rc<ClassDefinition>>>,
     pub slots: SlotValues,
 }
 

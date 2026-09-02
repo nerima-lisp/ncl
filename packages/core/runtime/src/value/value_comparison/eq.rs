@@ -71,7 +71,8 @@ impl Value {
             (Self::Class(left), Self::Class(right)) => Rc::ptr_eq(left, right),
             (Self::Environment(left), Self::Environment(right)) => left.same(right),
             (Self::Instance(left), Self::Instance(right)) => {
-                Rc::ptr_eq(&left.class, &right.class) && Rc::ptr_eq(&left.slots, &right.slots)
+                Rc::ptr_eq(&left.class, &right.class)
+                    && Rc::ptr_eq(&left.slots, &right.slots)
             }
             (
                 Self::DottedList {

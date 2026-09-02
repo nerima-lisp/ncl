@@ -78,7 +78,12 @@ impl Value {
             }
             (Self::Class(left), Self::Class(right)) => left.name.eq_ignore_ascii_case(&right.name),
             (Self::Instance(left), Self::Instance(right)) => {
-                if !left.class.name.eq_ignore_ascii_case(&right.class.name) {
+                if !left
+                    .class
+                    .borrow()
+                    .name
+                    .eq_ignore_ascii_case(&right.class.borrow().name)
+                {
                     return false;
                 }
                 let left_slots = left.slots.borrow();

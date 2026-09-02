@@ -140,7 +140,7 @@ impl Runtime {
                         return Err(Self::arity("class-of", "one", arguments.len()));
                     }
                     let class = if let Value::Instance(instance) = &arguments[0] {
-                        instance.class.clone()
+                        instance.class.borrow().clone()
                     } else {
                         let n = arguments[0].type_name().to_owned();
                         Rc::new(ClassDefinition {

@@ -13,6 +13,7 @@ impl CompileState {
             "MAKE-INSTANCE"
             | "INITIALIZE-INSTANCE"
             | "ALLOCATE-INSTANCE"
+            | "CHANGE-CLASS"
             | "SHARED-INITIALIZE"
             | "REINITIALIZE-INSTANCE" => items.len() >= 2,
             "COMPILE" => (2..=3).contains(&items.len()),
@@ -26,6 +27,7 @@ impl CompileState {
                 "MAKE-INSTANCE"
                 | "INITIALIZE-INSTANCE"
                 | "ALLOCATE-INSTANCE"
+                | "CHANGE-CLASS"
                 | "SHARED-INITIALIZE"
                 | "REINITIALIZE-INSTANCE" => "at least one",
                 "COMPILE" => "one or two",

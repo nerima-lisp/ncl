@@ -327,4 +327,25 @@ mod tests {
         assert_eq!(slots[0].instance_slot("NAME").unwrap().to_string(), "X");
         assert_eq!(slots[1].instance_slot("NAME").unwrap().to_string(), "Y");
     }
+
+    #[test]
+    fn change_class_replaces_class_and_preserves_shared_slot_names() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_compiled_source(
+                "(defclass old-point () ((x)))
+                 (defclass new-point () ((x) (y)))
+                 (let ((point (make-instance 'old-point)))
+                   (setf (slot-value point 'x) 7)
+                   (change-class point 'new-point)
+                   (list (class-name (class-of point))
+                         (slot-value point 'x)
+                         (slot-boundp point 'y)))",
+            )
+            .expect("compiled change-class succeeds");
+        let items = values.last().unwrap().list_items().unwrap();
+        assert_eq!(items[0].to_string(), "NEW-POINT");
+        assert!(matches!(items[1], Value::Integer(7)));
+        assert!(matches!(items[2], Value::Nil | Value::Boolean(false)));
+    }
 }

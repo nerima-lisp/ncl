@@ -90,7 +90,7 @@ impl fmt::Display for Value {
                 formatter.write_char(')')
             }
             Self::Class(definition) => write!(formatter, "#<CLASS {}>", definition.name),
-            Self::Instance(instance) => write!(formatter, "#<{} INSTANCE>", instance.class.name),
+            Self::Instance(instance) => write!(formatter, "#<{} INSTANCE>", instance.class.borrow().name),
             Self::Function(function) => fmt_function(formatter, function),
         }
     }

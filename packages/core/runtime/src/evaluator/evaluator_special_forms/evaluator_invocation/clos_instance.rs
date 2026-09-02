@@ -1,6 +1,25 @@
 use super::{Environment, Runtime, RuntimeError, Span, Value, quoted_form_value};
 
 impl Runtime {
+    pub(crate) fn change_class(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() != 2 {
+            return Err(Self::arity("change-class", "two", arguments.len()));
+        }
+        let class_name = Self::name_designator_from_value(&arguments[1], span)?;
+        let class = environment
+            .lookup_class(&class_name)
+            .ok_or_else(|| Self::invalid("unknown class", span))?;
+        if !arguments[0].change_instance_class(class) {
+            return Err(Self::invalid("change-class requires an instance", span));
+        }
+        Ok(arguments[0].clone())
+    }
+
     pub(crate) fn allocate_instance(
         &self,
         arguments: &[Value],

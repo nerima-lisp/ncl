@@ -16,6 +16,7 @@ impl Runtime {
                 | "LOAD"
                 | "MAKE-INSTANCE"
                 | "ALLOCATE-INSTANCE"
+                | "CHANGE-CLASS"
                 | "INITIALIZE-INSTANCE"
                 | "SHARED-INITIALIZE"
                 | "REINITIALIZE-INSTANCE"
@@ -34,6 +35,7 @@ impl Runtime {
             "LOAD" => self.load_file(arguments, span),
             "MAKE-INSTANCE" => self.make_instance(arguments, environment, span),
             "ALLOCATE-INSTANCE" => self.allocate_instance(arguments, span),
+            "CHANGE-CLASS" => self.change_class(arguments, environment, span),
             "INITIALIZE-INSTANCE" => self.initialize_instance(arguments, environment, span),
             "SHARED-INITIALIZE" => self.shared_initialize(arguments, environment, span),
             "REINITIALIZE-INSTANCE" => self.reinitialize_instance(arguments, environment, span),

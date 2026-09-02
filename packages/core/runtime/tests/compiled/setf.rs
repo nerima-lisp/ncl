@@ -185,6 +185,11 @@ fn compiled_evaluates_setf_places() {
 }
 
 #[test]
+fn compiled_setf_bitfield_evaluates_target_without_binding() {
+    assert_eq!(evaluate("(setf (ldb (byte 4 0) (identity 0)) 3)").to_string(), "3");
+}
+
+#[test]
 fn compiled_mutates_array_list_places_with_push_and_pop() {
     assert_eq!(
         evaluate("(let ((values (vector (list 2 3)))) (push 1 (aref values 0)) values)")

@@ -251,6 +251,10 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update an evaluated integer place through LDB or MASK-FIELD."] SetfBitfieldValue {
+        /// The bitfield place operator.
+        operator: String,
+    },
     #[doc = "Update a dynamically indexed sequence or string-valued symbol through an element accessor."] SetfElementDynamic {
         /// The sequence element accessor name.
         operator: String,

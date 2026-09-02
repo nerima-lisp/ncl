@@ -2,6 +2,7 @@
 use super::*;
 
 mod clos;
+mod clos_slots;
 mod clos_tests;
 mod condition_warnings;
 mod condition_warnings_tests;

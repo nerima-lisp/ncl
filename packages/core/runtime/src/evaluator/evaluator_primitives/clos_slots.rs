@@ -40,6 +40,24 @@ impl Runtime {
                     ),
                 ),
                 (
+                    "READERS".to_owned(),
+                    Value::list(
+                        slot.readers
+                            .iter()
+                            .map(|name| Value::symbol(Rc::from(name.clone())))
+                            .collect(),
+                    ),
+                ),
+                (
+                    "WRITERS".to_owned(),
+                    Value::list(
+                        slot.writers
+                            .iter()
+                            .map(|name| Value::symbol(Rc::from(name.clone())))
+                            .collect(),
+                    ),
+                ),
+                (
                     "ALLOCATION".to_owned(),
                     Value::keyword(if slot.class_value.is_some() {
                         "CLASS"
@@ -78,6 +96,8 @@ impl Runtime {
                 | "SLOT-DEFINITION-ALLOCATION"
                 | "SLOT-DEFINITION-INITFORM"
                 | "SLOT-DEFINITION-TYPE"
+                | "SLOT-DEFINITION-READERS"
+                | "SLOT-DEFINITION-WRITERS"
         ) {
             return None;
         }
@@ -102,7 +122,9 @@ impl Runtime {
                 "SLOT-DEFINITION-INITARGS" => "INITARGS",
                 "SLOT-DEFINITION-ALLOCATION" => "ALLOCATION",
                 "SLOT-DEFINITION-INITFORM" => "INITFORM",
-                _ => "TYPE",
+                "SLOT-DEFINITION-TYPE" => "TYPE",
+                "SLOT-DEFINITION-READERS" => "READERS",
+                _ => "WRITERS",
             };
             arguments[0]
                 .instance_slot(slot_name)

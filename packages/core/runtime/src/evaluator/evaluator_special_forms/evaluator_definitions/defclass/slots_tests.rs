@@ -77,7 +77,8 @@ mod tests {
             .eval_source(
                 "(defclass documented-slot ()
                    ((value :documentation \"slot doc\" :initarg :value
-                           :initform 42 :type integer)
+                           :initform 42 :type integer
+                           :reader value-reader :writer value-writer)
                     (class-value :allocation :class)))
                  (list
                    (slot-definition-documentation
@@ -89,12 +90,16 @@ mod tests {
                    (slot-definition-initform
                      (first (class-direct-slots (find-class 'documented-slot))))
                    (slot-definition-type
+                     (first (class-direct-slots (find-class 'documented-slot))))
+                   (slot-definition-readers
+                     (first (class-direct-slots (find-class 'documented-slot))))
+                   (slot-definition-writers
                      (first (class-direct-slots (find-class 'documented-slot)))))",
             )
             .unwrap();
         assert_eq!(
             values.last().unwrap().to_string(),
-            "(\"slot doc\" (:VALUE) :CLASS 42 INTEGER)"
+            "(\"slot doc\" (:VALUE) :CLASS 42 INTEGER (VALUE-READER) (VALUE-WRITER))"
         );
     }
 }

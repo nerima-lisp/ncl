@@ -101,6 +101,8 @@ impl Runtime {
                 name: slot_name,
                 documentation,
                 initargs,
+                readers: readers.iter().map(|(name, _)| name.clone()).collect(),
+                writers: writers.iter().map(|(name, _)| name.clone()).collect(),
                 init_form,
                 type_form,
                 class_value,

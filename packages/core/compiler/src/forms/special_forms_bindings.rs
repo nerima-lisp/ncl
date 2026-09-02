@@ -104,7 +104,9 @@ impl CompileState {
             | "SLOT-DEFINITION-INITARGS"
             | "SLOT-DEFINITION-ALLOCATION"
             | "SLOT-DEFINITION-INITFORM"
-            | "SLOT-DEFINITION-TYPE" => {
+            | "SLOT-DEFINITION-TYPE"
+            | "SLOT-DEFINITION-READERS"
+            | "SLOT-DEFINITION-WRITERS" => {
                 self.compile_slot_operation(function, span, items, name)
             }
             "ERROR" | "SIGNAL" | "WARN" | "CERROR" | "MAKE-CONDITION" => {

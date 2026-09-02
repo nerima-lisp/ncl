@@ -93,6 +93,7 @@ impl Value {
                 let metadata = metadata.borrow();
                 Some(metadata.displaced_to_value.clone().map(|array| (array, metadata.displaced_index_offset)))
             }
+            Self::String(_) | Self::MutableString(_) => Some(None),
             _ => None,
         }
     }
@@ -108,6 +109,7 @@ impl Value {
         match self {
             Self::Vector(items) => Some(items.metadata.borrow().fill_pointer.is_some()),
             Self::Array { metadata, .. } => Some(metadata.borrow().fill_pointer.is_some()),
+            Self::String(_) | Self::MutableString(_) => Some(false),
             _ => None,
         }
     }
@@ -174,6 +176,7 @@ impl Value {
         match self {
             Self::Vector(items) => Some(items.metadata.borrow().adjustable),
             Self::Array { metadata, .. } => Some(metadata.borrow().adjustable),
+            Self::String(_) | Self::MutableString(_) => Some(false),
             _ => None,
         }
     }
@@ -182,6 +185,7 @@ impl Value {
         match self {
             Self::Vector(items) => Some(items.metadata.borrow().element_type.clone()),
             Self::Array { metadata, .. } => Some(metadata.borrow().element_type.clone()),
+            Self::String(_) | Self::MutableString(_) => Some(Self::symbol("CHARACTER")),
             _ => None,
         }
     }

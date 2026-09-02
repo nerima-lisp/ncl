@@ -65,6 +65,15 @@ fn compiled_evaluates_type_predicates() {
     assert_eq!(evaluate("(vectorp #(1 2))").to_string(), "T");
     assert_eq!(evaluate("(simple-vector-p #(1 2))").to_string(), "T");
     assert_eq!(evaluate("(arrayp #(1 2))").to_string(), "T");
+    assert_eq!(evaluate("(arrayp \"abc\")").to_string(), "T");
+    assert_eq!(evaluate("(array-rank \"abc\")").to_string(), "1");
+    assert_eq!(evaluate("(array-dimensions \"abc\")").to_string(), "(3)");
+    assert_eq!(evaluate("(array-total-size \"abc\")").to_string(), "3");
+    assert_eq!(evaluate("(array-element-type \"abc\")").to_string(), "CHARACTER");
+    assert_eq!(evaluate("(array-has-fill-pointer-p \"abc\")").to_string(), "NIL");
+    assert_eq!(evaluate("(adjustable-array-p \"abc\")").to_string(), "NIL");
+    assert_eq!(evaluate("(multiple-value-list (array-displacement \"abc\"))").to_string(), "(NIL 0)");
+    assert_eq!(evaluate("(simple-array-p \"abc\")").to_string(), "T");
     assert_eq!(evaluate("(simple-array-p #(1 2))").to_string(), "T");
     assert_eq!(
         evaluate("(simple-array-p (make-array 2 :fill-pointer 1))").to_string(),

@@ -131,12 +131,18 @@ pub(super) fn dimensions_for_array(value: &Value) -> Option<Vec<usize>> {
     match value {
         Value::Vector(items) => Some(vec![items.borrow().len()]),
         Value::Array { dimensions, .. } => Some(dimensions.as_ref().clone()),
+        Value::String(value) => Some(vec![value.chars().count()]),
+        Value::MutableString(value) => Some(vec![value.borrow().chars().count()]),
         _ => None,
     }
 }
 
 pub(super) fn array_elements(value: &Value) -> Option<Vec<Value>> {
-    value.vector_items().or_else(|| value.array_items())
+    value.vector_items().or_else(|| value.array_items()).or_else(|| {
+        value
+            .string_contents()
+            .map(|text| text.chars().map(Value::Character).collect())
+    })
 }
 
 pub(super) fn sequence_items(value: &Value) -> Option<Vec<Value>> {

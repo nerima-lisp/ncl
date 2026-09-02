@@ -17,7 +17,7 @@ impl Runtime {
             .map(|argument| self.eval_in(argument, environment))
             .collect::<Result<Vec<_>, _>>()?;
         match &current {
-            Value::Vector(_) => {
+            Value::Vector(_) | Value::MutableString(_) => {
                 if indices.len() != 1 {
                     return Err(Self::arity("setf aref", "two", args.len()));
                 }

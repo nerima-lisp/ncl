@@ -772,7 +772,7 @@ fn execute_aref(
         .map(|index| crate::builtins::index_argument("setf array accessor", index))
         .collect::<Result<Vec<_>, _>>()?;
     let updated = match &current {
-        Value::Vector(_) => {
+        Value::Vector(_) | Value::MutableString(_) => {
             if rank != 1 {
                 return Err(invalid("setf aref requires one vector index", span));
             }

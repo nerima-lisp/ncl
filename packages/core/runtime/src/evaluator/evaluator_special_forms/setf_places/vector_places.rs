@@ -35,7 +35,7 @@ impl Runtime {
                 let current = self.eval_in(&args[0], environment)?;
                 let index = Self::setf_index(self.eval_in(&args[1], environment)?, args[1].span)?;
                 match &current {
-                    Value::Vector(_) => {
+                    Value::Vector(_) | Value::MutableString(_) => {
                         let Some(()) = current.set_vector_item(index, value.clone()) else {
                             return Err(Self::invalid("SETF index is out of bounds", args[1].span));
                         };

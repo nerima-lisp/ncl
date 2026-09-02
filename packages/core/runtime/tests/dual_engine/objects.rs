@@ -68,6 +68,23 @@ fn evaluates_arrays_and_multidimensional_setf(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_mutable_strings_as_one_dimensional_arrays(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((text (make-string 3 #\a)))
+                 (setf (aref text 1) #\b
+                       (row-major-aref text 2) #\c)
+                 (list text (aref text 1) (row-major-aref text 2)))"#,
+        )
+        .to_string(),
+        "(\"abc\" #\\b #\\c)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_hash_tables_and_gethash_setf(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

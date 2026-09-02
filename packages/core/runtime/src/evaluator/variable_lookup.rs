@@ -44,6 +44,7 @@ impl Runtime {
     ) -> Option<Value> {
         environment
             .lookup_function_interned(&intern_name(name))
+            .or_else(|| environment.lookup_function(&unqualified_name(name)))
             .or_else(|| self.lookup_in(name, environment))
     }
 

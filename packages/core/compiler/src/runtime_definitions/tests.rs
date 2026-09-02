@@ -103,6 +103,22 @@ fn compile_defclass_uses_native_instruction() {
 }
 
 #[test]
+fn compile_deftype_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(deftype point () integer)");
+
+    state
+        .compile_deftype(function, Span::new(0, 1), &items)
+        .expect("DEFTYPE should compile");
+
+    assert!(matches!(
+        state.functions[function].instructions.as_slice(),
+        [Instruction::Deftype(_)]
+    ));
+}
+
+#[test]
 fn compile_defgeneric_uses_native_instruction() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

@@ -8,6 +8,7 @@ mod defclass_tests;
 mod defmethod;
 mod defmethod_tests;
 mod defstruct;
+mod deftype;
 mod defstruct_tests;
 mod parsing;
 mod variables;

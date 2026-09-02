@@ -2,8 +2,23 @@ use std::rc::Rc;
 
 use crate::environment::{ConditionDefinition, Environment, intern_name};
 use crate::value::{ClassDefinition, StructureDefinition};
+use crate::Value;
 
 impl Environment {
+    pub(crate) fn define_type_alias(&self, name: impl AsRef<str>, designator: Value) {
+        let key = intern_name(name.as_ref());
+        self.0.borrow_mut().type_aliases.insert(key, designator);
+    }
+
+    pub(crate) fn lookup_type_alias(&self, name: &str) -> Option<Value> {
+        let key = intern_name(name);
+        let (definition, parent) = {
+            let frame = self.0.borrow();
+            (frame.type_aliases.get(&key).cloned(), frame.parent.clone())
+        };
+        definition.or_else(|| parent.and_then(|environment| environment.lookup_type_alias(name)))
+    }
+
     pub(crate) fn define_condition(&self, name: impl AsRef<str>, definition: ConditionDefinition) {
         let key = intern_name(name.as_ref());
         self.0.borrow_mut().conditions.insert(key, definition);

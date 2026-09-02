@@ -11,6 +11,7 @@ pub(super) fn execute_definition_instruction(
 ) -> Option<Result<bool, RuntimeError>> {
     let (form, operation) = match instruction {
         Instruction::Defstruct(form) => (form, "DEFSTRUCT"),
+        Instruction::Deftype(form) => (form, "DEFTYPE"),
         Instruction::Defclass(form) => (form, "DEFCLASS"),
         Instruction::DefineCondition(form) => (form, "DEFINE-CONDITION"),
         Instruction::Defgeneric(form) => (form, "DEFGENERIC"),
@@ -33,6 +34,7 @@ pub(super) fn execute_definition_instruction(
     };
     let value = match operation {
         "DEFSTRUCT" => runtime.special_defstruct(items, environment),
+        "DEFTYPE" => runtime.special_deftype(items, environment),
         "DEFCLASS" => Runtime::special_defclass(items, environment),
         "DEFINE-CONDITION" => Runtime::special_define_condition(items, environment),
         "DEFGENERIC" => Runtime::special_defgeneric(items, environment),

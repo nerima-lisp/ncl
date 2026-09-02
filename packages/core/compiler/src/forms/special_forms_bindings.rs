@@ -41,6 +41,7 @@ impl CompileState {
             "DEFPARAMETER" => self.compile_defvar(function, span, items, true),
             "DEFCONSTANT" => self.compile_defconstant(function, span, items),
             "DEFSTRUCT" => self.compile_defstruct(function, span, items),
+            "DEFTYPE" => self.compile_deftype(function, span, items),
             "DEFCLASS" => self.compile_defclass(function, span, items),
             "DEFINE-CONDITION" => self.compile_define_condition(function, span, items),
             "DEFGENERIC" => self.compile_defgeneric(function, span, items),

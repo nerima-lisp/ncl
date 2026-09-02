@@ -519,6 +519,7 @@ pub enum Instruction {
         tag: String,
     },
     #[doc = "Define a structure through the runtime structure registry."] Defstruct(Form),
+    #[doc = "Define a type alias through the runtime type registry."] Deftype(Form),
     #[doc = "Define a class through the runtime class registry."] Defclass(Form),
     #[doc = "Define a condition through the runtime condition registry."] DefineCondition(Form),
     #[doc = "Define a generic function through the runtime method registry."] Defgeneric(Form),

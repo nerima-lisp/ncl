@@ -1,6 +1,7 @@
 mod array_specs;
 mod cons_vector_specs;
 mod dispatch;
+pub(super) use dispatch::type_matches_designator_in;
 mod numeric_specs;
 mod spec_utils;
 mod type_name_table;

@@ -11,7 +11,21 @@ use crate::builtins::types::type_matching::spec_utils::{
     invalid_type_spec, require_type_spec_arity,
 };
 use crate::builtins::types::type_matching::type_name_table::type_matches;
-use crate::{RuntimeError, Value};
+use crate::{Environment, RuntimeError, Value};
+
+pub(in crate::builtins::types) fn type_matches_designator_in(
+    function: &str,
+    value: &Value,
+    type_designator: &Value,
+    environment: &Environment,
+) -> Result<bool, RuntimeError> {
+    if let Ok(name) = type_designator_name(function, type_designator)
+        && let Some(alias) = environment.lookup_type_alias(&name)
+    {
+        return type_matches_designator(function, value, &alias);
+    }
+    type_matches_designator(function, value, type_designator)
+}
 
 pub(in crate::builtins::types) fn type_matches_designator(
     function: &str,

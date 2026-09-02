@@ -30,6 +30,7 @@ impl Runtime {
             "DECF" => Some(self.special_modify_symbol(items, environment, "DECF", "-")?),
             "REMF" => Some(self.special_remf(items, environment)?),
             "DEFSTRUCT" => Some(self.special_defstruct(items, environment)?),
+            "DEFTYPE" => Some(self.special_deftype(items, environment)?),
             "DEFCLASS" => Some(Self::special_defclass(items, environment)?),
             "DEFINE-CONDITION" => Some(Self::special_define_condition(items, environment)?),
             "DEFGENERIC" => Some(Self::special_defgeneric(items, environment)?),

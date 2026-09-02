@@ -18,7 +18,9 @@ pub fn typep_value_in(
             return Ok(value.condition_is_type(&type_name));
         }
     }
-    typep_value(value, type_designator)
+    type_matching::type_matches_designator_in(
+        "typep", value, type_designator, environment,
+    )
 }
 
 pub fn subtypep_value(

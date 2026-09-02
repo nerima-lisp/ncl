@@ -41,6 +41,23 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_deftype(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() != 4 {
+            return Err(Self::arity_error(items, "DEFTYPE", "three", span));
+        }
+        self.emit(
+            function,
+            Instruction::Deftype(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_defclass(
         &mut self,
         function: FunctionId,

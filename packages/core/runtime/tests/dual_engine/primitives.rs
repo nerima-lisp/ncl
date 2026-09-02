@@ -7,6 +7,21 @@ use super::EvalFn;
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_deftype_aliases(#[case] eval_fn: EvalFn) {
+    let result = evaluate_with(
+        eval_fn,
+        "(progn (deftype nonnegative-integer () (integer 0 *))\
+                (list (typep 3 'nonnegative-integer)\
+                      (typep -1 'nonnegative-integer)\
+                      (multiple-value-list (subtypep 'nonnegative-integer\
+                                                       'nonnegative-integer))))",
+    );
+    assert_eq!(result.to_string(), "(T NIL (T T))");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_unary_numeric_operations(#[case] eval_fn: EvalFn) {
     assert_eq!(evaluate_with(eval_fn, "(list (1+ 2) (1- 2) (abs -2) (signum -2) (zerop 0) (plusp 2) (minusp -2) (evenp 4) (oddp 3))").to_string(), "(3 1 2 -1 T T T T T)");
 }

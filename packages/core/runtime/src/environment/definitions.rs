@@ -10,10 +10,11 @@ impl Environment {
         name: impl AsRef<str>,
         parameters: Vec<Rc<str>>,
         optional_parameters: Vec<(Rc<str>, Value)>,
+        rest_parameter: Option<Rc<str>>,
         designator: Value,
     ) {
         let key = intern_name(name.as_ref());
-        self.0.borrow_mut().type_aliases.insert(key, TypeAliasDefinition { parameters, optional_parameters, designator });
+        self.0.borrow_mut().type_aliases.insert(key, TypeAliasDefinition { parameters, optional_parameters, rest_parameter, designator });
     }
 
     pub(crate) fn lookup_type_alias(&self, name: &str) -> Option<Value> {

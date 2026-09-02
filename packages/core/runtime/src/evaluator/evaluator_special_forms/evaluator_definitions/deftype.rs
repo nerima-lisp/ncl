@@ -17,7 +17,7 @@ impl Runtime {
         let mut parameters = Vec::with_capacity(arguments.len());
         for argument in arguments {
             if let Some(marker) = atom_name(argument) {
-                if marker.eq_ignore_ascii_case("&optional") {
+                if marker.eq_ignore_ascii_case("&optional") || marker.eq_ignore_ascii_case("&rest") {
                     break;
                 }
             }
@@ -30,24 +30,32 @@ impl Runtime {
         }
         let marker = parameters.len();
         let mut optional_parameters = Vec::new();
+        let mut rest_parameter = None;
         if marker < arguments.len() {
-            if !atom_name(&arguments[marker]).is_some_and(|name| name.eq_ignore_ascii_case("&optional")) {
+            if atom_name(&arguments[marker]).is_some_and(|name| name.eq_ignore_ascii_case("&rest")) {
+                if arguments.len() != marker + 2 {
+                    return Err(Self::invalid("deftype &rest must be followed by one parameter", arguments[marker].span));
+                }
+                let (parameter, _) = Self::variable_name_info(&arguments[marker + 1], "deftype rest parameter")?;
+                rest_parameter = Some(crate::environment::intern_name(&unqualified_name(&parameter)));
+            } else if !atom_name(&arguments[marker]).is_some_and(|name| name.eq_ignore_ascii_case("&optional")) {
                 return Err(Self::invalid("invalid deftype lambda list", arguments[marker].span));
-            }
-            for argument in arguments.iter().skip(marker + 1) {
-                let (parameter, default) = match &argument.kind {
-                    FormKind::Atom(_) => (Self::variable_name_info(argument, "deftype parameter")?.0, Value::Nil),
-                    FormKind::List(items) if (1..=2).contains(&items.len()) => {
-                        (Self::variable_name_info(&items[0], "deftype parameter")?.0,
-                         items.get(1).map(Self::quoted_value).transpose()?.unwrap_or(Value::Nil))
-                    }
-                    _ => return Err(Self::invalid("invalid deftype optional parameter", argument.span)),
-                };
-                optional_parameters.push((crate::environment::intern_name(&unqualified_name(&parameter)), default));
+            } else {
+                for argument in arguments.iter().skip(marker + 1) {
+                    let (parameter, default) = match &argument.kind {
+                        FormKind::Atom(_) => (Self::variable_name_info(argument, "deftype parameter")?.0, Value::Nil),
+                        FormKind::List(items) if (1..=2).contains(&items.len()) => {
+                            (Self::variable_name_info(&items[0], "deftype parameter")?.0,
+                             items.get(1).map(Self::quoted_value).transpose()?.unwrap_or(Value::Nil))
+                        }
+                        _ => return Err(Self::invalid("invalid deftype optional parameter", argument.span)),
+                    };
+                    optional_parameters.push((crate::environment::intern_name(&unqualified_name(&parameter)), default));
+                }
             }
         }
         let designator = Self::quoted_value(&items[3])?;
-        environment.define_type_alias(unqualified_name(&name), parameters, optional_parameters, designator);
+        environment.define_type_alias(unqualified_name(&name), parameters, optional_parameters, rest_parameter, designator);
         Ok(Value::symbol(unqualified_name(&name)))
     }
 }

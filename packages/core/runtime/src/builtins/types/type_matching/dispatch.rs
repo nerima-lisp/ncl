@@ -52,7 +52,7 @@ fn resolve_type_designator(
     let Some(alias) = environment.lookup_type_alias_definition(&name) else {
         return Ok(designator.clone());
     };
-    if !alias.parameters.is_empty() || !alias.optional_parameters.is_empty() {
+    if !alias.parameters.is_empty() || !alias.optional_parameters.is_empty() || alias.rest_parameter.is_some() {
         return Err(invalid_type_spec(
             function,
             format!("type alias {name} requires arguments"),
@@ -77,7 +77,10 @@ fn resolve_compound_type_designator(
     };
     if let Some(alias) = environment.lookup_type_alias_definition(operator) {
         let argument_count = items.len().saturating_sub(1);
-        if argument_count < alias.parameters.len() || argument_count > alias.parameters.len() + alias.optional_parameters.len() {
+        if alias.rest_parameter.is_none()
+            && (argument_count < alias.parameters.len()
+                || argument_count > alias.parameters.len() + alias.optional_parameters.len())
+        {
             return Err(invalid_type_spec(function, format!("type alias {operator} expects {} to {} arguments", alias.parameters.len(), alias.parameters.len() + alias.optional_parameters.len())));
         }
         if !active_aliases.insert(operator.to_string()) {
@@ -89,7 +92,11 @@ fn resolve_compound_type_designator(
         }
         let mut names = alias.parameters.clone();
         names.extend(alias.optional_parameters.iter().map(|(name, _)| name.clone()));
-        let substituted = substitute_type_parameters(&alias.designator, &names, &arguments);
+        let rest_arguments = if alias.rest_parameter.is_some() {
+            let fixed = alias.parameters.len() + alias.optional_parameters.len();
+            Value::list(arguments.split_off(fixed.min(arguments.len())))
+        } else { Value::Nil };
+        let substituted = substitute_type_parameters(&alias.designator, &names, &arguments, alias.rest_parameter.as_deref(), &rest_arguments);
         let resolved = resolve_type_designator(function, &substituted, environment, active_aliases);
         active_aliases.remove(operator);
         return resolved;
@@ -121,14 +128,27 @@ fn resolve_compound_type_designator(
     Ok(Value::list(resolved))
 }
 
-fn substitute_type_parameters(value: &Value, parameters: &[std::rc::Rc<str>], arguments: &[Value]) -> Value {
+fn substitute_type_parameters(value: &Value, parameters: &[std::rc::Rc<str>], arguments: &[Value], rest_name: Option<&str>, rest: &Value) -> Value {
+    if rest_name.is_some_and(|name| value.symbol_name() == Some(name)) {
+        return rest.clone();
+    }
     if let Some(name) = value.symbol_name() {
         if let Some(index) = parameters.iter().position(|parameter| parameter.as_ref() == name) {
             return arguments[index].clone();
         }
     }
     match value {
-        Value::List(items) => Value::list(items.iter().map(|item| substitute_type_parameters(item, parameters, arguments)).collect()),
+        Value::List(items) => {
+            let mut result = Vec::new();
+            for item in items.iter() {
+                if rest_name.is_some_and(|name| item.symbol_name() == Some(name)) {
+                    if let Value::List(rest_items) = rest { result.extend(rest_items.iter().cloned()); }
+                } else {
+                    result.push(substitute_type_parameters(item, parameters, arguments, rest_name, rest));
+                }
+            }
+            Value::list(result)
+        }
         _ => value.clone(),
     }
 }

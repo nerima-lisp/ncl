@@ -19,6 +19,7 @@ pub(crate) struct ConditionDefinition {
 pub(crate) struct TypeAliasDefinition {
     pub(crate) parameters: Vec<Rc<str>>,
     pub(crate) optional_parameters: Vec<(Rc<str>, Value)>,
+    pub(crate) rest_parameter: Option<Rc<str>>,
     pub(crate) designator: Value,
 }
 

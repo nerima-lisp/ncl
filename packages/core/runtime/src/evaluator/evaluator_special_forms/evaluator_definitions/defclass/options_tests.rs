@@ -53,7 +53,14 @@ mod tests {
     #[test]
     fn defclass_rejects_an_unsupported_class_option() {
         let error = eval_err("(defclass unsupported-option-class () () (:metaclass custom))");
-        assert!(error.to_string().contains("unsupported defclass option"));
+        assert!(error.to_string().contains("unsupported defclass metaclass"));
+    }
+
+    #[test]
+    fn defclass_accepts_standard_class_metaclass() {
+        Runtime::new()
+            .eval_source("(defclass standard-metaclass-class () () (:metaclass standard-class))")
+            .unwrap_or_else(|error| panic!("standard-class should be accepted: {error}"));
     }
 
     #[test]

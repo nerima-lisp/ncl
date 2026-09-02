@@ -18,6 +18,18 @@ impl Runtime {
         let option_name =
             Self::definition_name_from_form(&option_items[0], "defclass option name")?;
         match option_name.as_str() {
+            "METACLASS" if option_items.len() == 2 => {
+                let metaclass = Self::definition_name_from_form(&option_items[1], "defclass metaclass")?;
+                if metaclass != "STANDARD-CLASS" {
+                    return Err(Self::invalid("unsupported defclass metaclass", option.span));
+                }
+            }
+            "METACLASS" => {
+                return Err(Self::invalid(
+                    "defclass :metaclass needs one class name",
+                    option.span,
+                ));
+            }
             "DEFAULT-INITARGS" => {
                 if option_items.len() < 3 || !(option_items.len() - 1).is_multiple_of(2) {
                     return Err(Self::invalid(

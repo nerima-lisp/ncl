@@ -294,3 +294,14 @@ fn compile_setf_uses_native_gethash_for_general_places() {
             .contains(&Instruction::SetfGethashDynamic)
     );
 }
+
+#[test]
+fn compile_setf_uses_native_slot_value_for_general_places() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (slot-value object 'name) value)");
+    state.compile_setf(function, items[0].span, &items).unwrap();
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::SetfSlotValueDynamic));
+}

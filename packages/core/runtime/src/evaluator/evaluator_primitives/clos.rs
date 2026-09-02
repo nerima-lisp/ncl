@@ -91,6 +91,7 @@ impl Runtime {
                 | "GENERIC-FUNCTION-METHOD-COMBINATION"
                 | "GENERIC-FUNCTION-LAMBDA-LIST"
                 | "GENERIC-FUNCTION-METHODS"
+                | "ENSURE-GENERIC-FUNCTION"
                 | "FIND-METHOD"
                 | "ADD-METHOD"
                 | "REMOVE-METHOD"
@@ -102,6 +103,75 @@ impl Runtime {
         }
         Some((|| -> Result<Value, RuntimeError> {
             match name {
+                "ENSURE-GENERIC-FUNCTION" => {
+                    if arguments.is_empty() {
+                        return Err(Self::arity("ensure-generic-function", "at least one", 0));
+                    }
+                    let name = Self::name_designator_from_value(&arguments[0], span)?;
+                    if arguments.len() % 2 == 0 {
+                        return Err(Self::invalid("keyword arguments must be paired", span));
+                    }
+                    let mut lambda_list = None;
+                    let mut method_combination = MethodCombination::Standard;
+                    let mut index = 1;
+                    while index < arguments.len() {
+                        let key = Self::name_designator_from_value(&arguments[index], span)?;
+                        let value = &arguments[index + 1];
+                        match key.as_str() {
+                            "LAMBDA-LIST" => {
+                                lambda_list = Some(Self::form_from_value(value, span)?)
+                            }
+                            "METHOD-COMBINATION" => {
+                                let combination = Self::name_designator_from_value(value, span)?;
+                                method_combination = match combination.as_str() {
+                                    "STANDARD" => MethodCombination::Standard,
+                                    "AND" => MethodCombination::And,
+                                    "OR" => MethodCombination::Or,
+                                    "PROGN" => MethodCombination::Progn,
+                                    "LIST" => MethodCombination::List,
+                                    "APPEND" => MethodCombination::Append,
+                                    "NCONC" => MethodCombination::Nconc,
+                                    "+" => MethodCombination::Plus,
+                                    "MAX" => MethodCombination::Max,
+                                    "MIN" => MethodCombination::Min,
+                                    _ => {
+                                        return Err(Self::invalid(
+                                            "unknown method combination",
+                                            span,
+                                        ))
+                                    }
+                                };
+                            }
+                            "DOCUMENTATION"
+                            | "ARGUMENT-PRECEDENCE-ORDER"
+                            | "DECLARATIONS"
+                            | "GENERIC-FUNCTION-CLASS"
+                            | "METHOD-CLASS" => {}
+                            _ => {
+                                return Err(Self::invalid(
+                                    "unknown ensure-generic-function option",
+                                    span,
+                                ))
+                            }
+                        }
+                        index += 2;
+                    }
+                    if let Some(function) = environment.lookup_function(&name) {
+                        if matches!(function, Value::Function(ref f) if matches!(f.as_ref(), Function::Generic { .. }))
+                        {
+                            return Ok(function);
+                        }
+                        return Err(Self::invalid("function name is already defined", span));
+                    }
+                    let function = match lambda_list {
+                        Some(form) => {
+                            Value::generic_with_lambda_list(name.clone(), form, method_combination)
+                        }
+                        None => Value::generic_with_combination(name.clone(), method_combination),
+                    };
+                    environment.define_function(&name, function.clone());
+                    Ok(function)
+                }
                 "SUBTYPEP" => {
                     if arguments.len() != 2 {
                         return Err(Self::arity("subtypep", "two", arguments.len()));

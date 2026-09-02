@@ -83,6 +83,7 @@ impl CompileState {
                 self.compile_class_introspection(function, span, items, name)
             }
             "GENERIC-FUNCTION-METHODS"
+            | "ENSURE-GENERIC-FUNCTION"
             | "FIND-METHOD"
             | "ADD-METHOD"
             | "REMOVE-METHOD"

@@ -177,6 +177,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
                 | "GENERIC-FUNCTION-METHOD-COMBINATION"
                 | "GENERIC-FUNCTION-LAMBDA-LIST"
                 | "GENERIC-FUNCTION-METHODS"
+                | "ENSURE-GENERIC-FUNCTION"
                 | "FIND-METHOD"
                 | "ADD-METHOD"
                 | "REMOVE-METHOD"

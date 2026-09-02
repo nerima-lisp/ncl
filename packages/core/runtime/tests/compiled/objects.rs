@@ -977,3 +977,24 @@ fn compiled_evaluates_class_direct_superclasses() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "((STANDARD-OBJECT) (PARENT))");
 }
+
+#[test]
+fn compiled_evaluates_ensure_generic_function() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (let ((generic (ensure-generic-function 'compiled-ensured-generic
+                                  :lambda-list '(x)
+                                  :method-combination 'list)))
+                   (defmethod compiled-ensured-generic ((x integer)) :ok)
+                   (list (eq generic #'compiled-ensured-generic)
+                         (generic-function-name generic)
+                         (generic-function-method-combination generic)
+                         (compiled-ensured-generic 3))))"#,
+        )
+        .must_exist();
+    assert_eq!(
+        values[0].to_string(),
+        "(T COMPILED-ENSURED-GENERIC LIST (:OK))"
+    );
+}

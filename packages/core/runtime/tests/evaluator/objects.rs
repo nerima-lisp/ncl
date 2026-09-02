@@ -1024,3 +1024,21 @@ fn evaluates_clos_class_slots_including_inherited_slots() {
         .must_exist();
     assert_eq!(values[0].to_string(), "(OWN INHERITED)");
 }
+
+#[test]
+fn evaluates_ensure_generic_function() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (let ((generic (ensure-generic-function 'ensured-generic
+                                  :lambda-list '(x)
+                                  :method-combination 'list)))
+                   (defmethod ensured-generic ((x integer)) :ok)
+                   (list (eq generic #'ensured-generic)
+                         (generic-function-name generic)
+                         (generic-function-method-combination generic)
+                         (ensured-generic 3))))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(T ENSURED-GENERIC LIST (:OK))");
+}

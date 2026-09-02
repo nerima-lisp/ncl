@@ -23,7 +23,11 @@ impl CompileState {
             | "FINALIZE-INHERITANCE" => (items.len() == 2, "one"),
             "GENERIC-FUNCTION-NAME"
             | "GENERIC-FUNCTION-METHOD-COMBINATION"
-            | "GENERIC-FUNCTION-LAMBDA-LIST" => (items.len() == 2, "one"),
+            | "GENERIC-FUNCTION-LAMBDA-LIST"
+            | "GENERIC-FUNCTION-METHODS"
+            | "METHOD-QUALIFIERS"
+            | "METHOD-SPECIALIZERS"
+            | "METHOD-FUNCTION" => (items.len() == 2, "one"),
             "FIND-CLASS" => ((2..=3).contains(&items.len()), "one or two"),
             _ => (false, "valid arguments"),
         };

@@ -85,6 +85,10 @@ impl Runtime {
                 span,
                 environment,
             ),
+            crate::Function::Method { .. } => Err(RuntimeError::NotCallable {
+                value: Value::Function(function.clone()).to_string(),
+                span: Some(span),
+            }),
             crate::Function::SlotReader {
                 class_name,
                 slot_name,

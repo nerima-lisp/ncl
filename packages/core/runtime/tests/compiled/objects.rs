@@ -55,6 +55,14 @@ fn compiled_evaluates_generic_function_lambda_list() {
 }
 
 #[test]
+fn compiled_evaluates_generic_function_method_introspection() {
+    let values = Runtime::new()
+        .eval_compiled_source("(progn (defgeneric compiled-method-introspection (x)) (defmethod compiled-method-introspection ((x t)) (+ x 1)) (let ((method (car (generic-function-methods #'compiled-method-introspection)))) (list (length (generic-function-methods #'compiled-method-introspection)) (method-qualifiers method) (method-specializers method) (funcall (method-function method) 3))))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(1 NIL (T) 4)");
+}
+
+#[test]
 fn compiled_evaluates_reinitialize_instance() {
     let values = Runtime::new()
         .eval_compiled_source(

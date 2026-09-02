@@ -89,6 +89,10 @@ impl Runtime {
                 | "GENERIC-FUNCTION-NAME"
                 | "GENERIC-FUNCTION-METHOD-COMBINATION"
                 | "GENERIC-FUNCTION-LAMBDA-LIST"
+                | "GENERIC-FUNCTION-METHODS"
+                | "METHOD-QUALIFIERS"
+                | "METHOD-SPECIALIZERS"
+                | "METHOD-FUNCTION"
         ) {
             return None;
         }
@@ -232,6 +236,70 @@ impl Runtime {
                         .map(quoted_form_value)
                         .transpose()?
                         .unwrap_or(Value::Nil))
+                }
+                "GENERIC-FUNCTION-METHODS" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity(
+                            "generic-function-methods",
+                            "one",
+                            arguments.len(),
+                        ));
+                    }
+                    let Value::Function(function) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Function::Generic { methods, .. } = function.as_ref() else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    Ok(Value::list(
+                        methods
+                            .borrow()
+                            .iter()
+                            .cloned()
+                            .map(Value::method)
+                            .collect(),
+                    ))
+                }
+                "METHOD-QUALIFIERS" | "METHOD-SPECIALIZERS" | "METHOD-FUNCTION" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity("method introspection", "one", arguments.len()));
+                    }
+                    let Value::Function(function) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "METHOD".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Function::Method { definition } = function.as_ref() else {
+                        return Err(RuntimeError::Type {
+                            expected: "METHOD".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    match name {
+                        "METHOD-QUALIFIERS" => Ok(Value::list(
+                            definition.qualifiers.iter().map(Value::symbol).collect(),
+                        )),
+                        "METHOD-SPECIALIZERS" => Ok(Value::list(
+                            definition
+                                .specializers
+                                .iter()
+                                .map(|name| Value::symbol(name.as_ref()))
+                                .collect(),
+                        )),
+                        "METHOD-FUNCTION" => Ok(definition.function.clone()),
+                        _ => unreachable!(),
+                    }
                 }
                 "CLASS-PRECEDENCE-LIST" => {
                     if arguments.len() != 1 {

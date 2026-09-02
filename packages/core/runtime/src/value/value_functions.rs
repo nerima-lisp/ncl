@@ -96,6 +96,11 @@ pub enum Function {
         /// The methods currently registered on the generic function.
         methods: Rc<RefCell<Vec<MethodDefinition>>>,
     },
+    /// A method object associated with a generic function.
+    Method {
+        /// Metadata and effective function for the method.
+        definition: MethodDefinition,
+    },
     /// A reader method for a class slot.
     SlotReader {
         /// The class name.

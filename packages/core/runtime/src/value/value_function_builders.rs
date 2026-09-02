@@ -5,7 +5,8 @@ use ncl_compiler::{FunctionId, Program};
 use ncl_syntax::{Form, LambdaListAuxiliaryParameter, LambdaListOptionalParameter};
 
 use super::{
-    Builtin, ClosureOptions, Environment, Function, MacroLambdaList, MethodCombination, Value,
+    Builtin, ClosureOptions, Environment, Function, MacroLambdaList, MethodCombination,
+    MethodDefinition, Value,
 };
 
 impl Value {
@@ -53,6 +54,10 @@ impl Value {
             method_combination,
             methods: Rc::new(RefCell::new(Vec::new())),
         }))
+    }
+
+    pub(crate) fn method(definition: MethodDefinition) -> Self {
+        Self::Function(Rc::new(Function::Method { definition }))
     }
 
     pub(crate) fn slot_reader(class_name: impl Into<String>, slot_name: impl Into<String>) -> Self {

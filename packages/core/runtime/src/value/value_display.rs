@@ -116,6 +116,7 @@ fn fmt_function(formatter: &mut fmt::Formatter<'_>, function: &Function) -> fmt:
         ),
         Function::StructureCopier { name } => write!(formatter, "#<STRUCTURE-COPIER {name}>"),
         Function::Generic { name, .. } => write!(formatter, "#<GENERIC-FUNCTION {name}>"),
+        Function::Method { .. } => formatter.write_str("#<METHOD>"),
         Function::SlotReader {
             class_name,
             slot_name,

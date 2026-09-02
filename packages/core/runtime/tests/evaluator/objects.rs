@@ -91,6 +91,14 @@ fn evaluates_generic_function_lambda_list() {
 }
 
 #[test]
+fn evaluates_generic_function_method_introspection() {
+    let values = Runtime::new()
+        .eval_source("(progn (defgeneric method-introspection (x)) (defmethod method-introspection ((x t)) (+ x 1)) (let ((method (car (generic-function-methods #'method-introspection)))) (list (length (generic-function-methods #'method-introspection)) (method-qualifiers method) (method-specializers method) (funcall (method-function method) 3))))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(1 NIL (T) 4)");
+}
+
+#[test]
 fn evaluates_finalize_inheritance() {
     let values = Runtime::new()
         .eval_source("(progn (defclass finalize-class () ()) (finalize-inheritance (find-class 'finalize-class)))")

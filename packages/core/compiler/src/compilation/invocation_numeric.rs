@@ -162,8 +162,14 @@ impl CompileState {
         items: &[Form],
         operation: &str,
     ) -> Result<(), CompileError> {
-        if matches!(operation, "REVAPPEND" | "NRECONC") {
-            Self::require_arity(items, operation, "two", 2, span)?;
+        let minimum_items = if operation == "/=" { 2 } else { 3 };
+        if items.len() < minimum_items {
+            let expected = if operation == "/=" {
+                "one or more"
+            } else {
+                "two or more"
+            };
+            return Err(Self::arity_error(items, operation, expected, span));
         }
         for item in &items[1..] {
             self.compile_expression(function, item)?;

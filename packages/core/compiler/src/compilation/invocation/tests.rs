@@ -125,3 +125,17 @@ fn compile_map_into_reports_an_internal_error_for_an_invalid_function_id() {
     );
     assert!(matches!(error.kind, CompileErrorKind::Internal { .. }));
 }
+
+#[test]
+fn compile_numeric_comparison_requires_two_operands() {
+    let mut state = CompileState::default();
+    let span = Span::new(0, 1);
+    let items = vec![Form::atom("=", span), Form::atom("1", span)];
+    let error = state
+        .compile_numeric_comparison(0, span, &items, "=")
+        .map_or_else(
+            |error| error,
+            |value| panic!("a comparison with one operand should fail to compile, got {value:?}"),
+        );
+    assert!(matches!(error.kind, CompileErrorKind::Arity { .. }));
+}

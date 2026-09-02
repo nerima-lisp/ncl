@@ -132,6 +132,7 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "CLASS-FINALIZED-P",
     "FINALIZE-INHERITANCE",
     "GENERIC-FUNCTION-NAME",
+    "GENERIC-FUNCTION-METHOD-COMBINATION",
     "SLOT-EXISTS-P",
     "SLOT-BOUNDP",
     "SLOT-MAKUNBOUND",

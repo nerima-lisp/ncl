@@ -90,9 +90,21 @@ fn evaluates_finalize_inheritance() {
 #[test]
 fn evaluates_generic_function_name() {
     let values = Runtime::new()
-        .eval_source("(progn (defgeneric named-generic (x)) (generic-function-name #'named-generic))")
+        .eval_source(
+            "(progn (defgeneric named-generic (x)) (generic-function-name #'named-generic))",
+        )
         .must_exist();
     assert_eq!(values[0].to_string(), "NAMED-GENERIC");
+}
+
+#[test]
+fn evaluates_generic_function_method_combination() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn (defgeneric combined-generic (x) (:method-combination and)) (generic-function-method-combination #'combined-generic))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "AND");
 }
 
 #[test]

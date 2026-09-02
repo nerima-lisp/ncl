@@ -76,6 +76,9 @@ impl CompileState {
             "GENERIC-FUNCTION-NAME" => {
                 self.compile_class_introspection(function, span, items, name)
             }
+            "GENERIC-FUNCTION-METHOD-COMBINATION" => {
+                self.compile_class_introspection(function, span, items, name)
+            }
             "FINALIZE-INHERITANCE" => self.compile_class_introspection(function, span, items, name),
             "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND" => {
                 self.compile_slot_operation(function, span, items, name)

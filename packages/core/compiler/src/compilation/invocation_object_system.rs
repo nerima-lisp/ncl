@@ -21,7 +21,9 @@ impl CompileState {
             | "CLASS-DIRECT-DEFAULT-INITARGS"
             | "CLASS-FINALIZED-P"
             | "FINALIZE-INHERITANCE" => (items.len() == 2, "one"),
-            "GENERIC-FUNCTION-NAME" => (items.len() == 2, "one"),
+            "GENERIC-FUNCTION-NAME" | "GENERIC-FUNCTION-METHOD-COMBINATION" => {
+                (items.len() == 2, "one")
+            }
             "FIND-CLASS" => ((2..=3).contains(&items.len()), "one or two"),
             _ => (false, "valid arguments"),
         };

@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::value::MethodCombination;
 use crate::Function;
 
 impl Runtime {
@@ -86,6 +87,7 @@ impl Runtime {
                 | "CLASS-FINALIZED-P"
                 | "FINALIZE-INHERITANCE"
                 | "GENERIC-FUNCTION-NAME"
+                | "GENERIC-FUNCTION-METHOD-COMBINATION"
         ) {
             return None;
         }
@@ -162,6 +164,45 @@ impl Runtime {
                         });
                     };
                     Ok(Value::symbol(name.clone()))
+                }
+                "GENERIC-FUNCTION-METHOD-COMBINATION" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity(
+                            "generic-function-method-combination",
+                            "one",
+                            arguments.len(),
+                        ));
+                    }
+                    let Value::Function(function) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Function::Generic {
+                        method_combination, ..
+                    } = function.as_ref()
+                    else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let name = match method_combination {
+                        MethodCombination::Standard => "STANDARD",
+                        MethodCombination::And => "AND",
+                        MethodCombination::Or => "OR",
+                        MethodCombination::Progn => "PROGN",
+                        MethodCombination::List => "LIST",
+                        MethodCombination::Append => "APPEND",
+                        MethodCombination::Nconc => "NCONC",
+                        MethodCombination::Plus => "+",
+                        MethodCombination::Max => "MAX",
+                        MethodCombination::Min => "MIN",
+                    };
+                    Ok(Value::symbol(name))
                 }
                 "CLASS-PRECEDENCE-LIST" => {
                     if arguments.len() != 1 {

@@ -118,6 +118,16 @@ fn compiled_evaluates_generic_function_name() {
 }
 
 #[test]
+fn compiled_evaluates_generic_function_method_combination() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(progn (defgeneric compiled-combined-generic (x) (:method-combination and)) (generic-function-method-combination #'compiled-combined-generic))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "AND");
+}
+
+#[test]
 fn compiled_evaluates_class_direct_default_initargs() {
     let values = Runtime::new()
         .eval_compiled_source(

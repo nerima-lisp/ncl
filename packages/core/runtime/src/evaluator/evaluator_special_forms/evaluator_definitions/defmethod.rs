@@ -3,7 +3,7 @@ use super::*;
 
 mod parameters;
 
-use crate::value::MethodCombination;
+use crate::value::{MethodCombination, MethodDefinition, MethodSpecializer};
 use parameters::DefmethodParameters;
 
 impl Runtime {
@@ -161,6 +161,17 @@ impl Runtime {
 
         let generic = environment.lookup_function(&name).or_else(|| {
             let generic = Value::generic(name.clone());
+            if name == "INITIALIZE-INSTANCE" {
+                if let Value::Function(function) = &generic
+                    && let crate::Function::Generic { methods, .. } = function.as_ref()
+                {
+                    methods.borrow_mut().push(MethodDefinition {
+                        qualifiers: Vec::new(),
+                        specializers: vec![MethodSpecializer::Class("T".into())],
+                        function: Value::primitive("INITIALIZE-INSTANCE"),
+                    });
+                }
+            }
             environment.define_function(&name, generic.clone());
             Some(generic)
         });

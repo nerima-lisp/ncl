@@ -154,6 +154,21 @@ mod tests {
     }
 
     #[test]
+    fn initialize_instance_method_can_call_the_standard_next_method() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass next-method-class () ((value :initarg :value)))
+                 (defmethod initialize-instance ((object next-method-class) &rest initargs)
+                   (call-next-method)
+                   (setf (slot-value object 'value) 99)
+                   object)
+                 (slot-value (make-instance 'next-method-class :value 41) 'value)",
+            )
+            .unwrap_or_else(|error| panic!("initialize-instance next method failed: {error}"));
+        assert_eq!(values.last().unwrap().to_string(), "99");
+    }
+
+    #[test]
     fn defclass_accessor_is_setfable() {
         let values = Runtime::new()
             .eval_source(

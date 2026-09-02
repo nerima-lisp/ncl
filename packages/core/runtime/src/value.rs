@@ -62,6 +62,7 @@ pub struct ArrayMetadata {
     pub displaced_index_offset: usize,
 }
 
+#[derive(Debug)]
 pub struct VectorData {
     pub elements: Rc<RefCell<Vec<Value>>>,
     pub metadata: RefCell<ArrayMetadata>,

@@ -81,8 +81,16 @@ fn output_file_options_are_table_driven() {
                 "{}.ncl-rename-0",
                 path.file_name().unwrap().to_string_lossy()
             ));
-        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(&path);
         let _ = fs::remove_file(backup);
+        let version = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(format!(
+                "{}.ncl-version-0",
+                path.file_name().unwrap().to_string_lossy()
+            ));
+        let _ = fs::remove_file(version);
     }
     for (index, (option, succeeds)) in [("CREATE", true), ("NIL", true), ("ERROR", false)]
         .into_iter()
@@ -98,6 +106,30 @@ fn output_file_options_are_table_driven() {
 
     let _ = fs::remove_file(existing);
     let _ = fs::remove_file(missing);
+}
+
+#[test]
+fn open_new_version_preserves_existing_output_file() {
+    let path = temporary_path("open-new-version");
+    let version = path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!(
+            "{}.ncl-version-0",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+    assert!(fs::write(&path, "old").is_ok());
+
+    let stream = open_output_file(&path, "CREATE", "NEW-VERSION", false)
+        .unwrap_or_else(|error| panic!("new-version open failed: {error}"));
+    write_string(&[Value::string("new"), stream.clone()])
+        .unwrap_or_else(|error| panic!("new-version write failed: {error}"));
+    close_stream(&[stream]).unwrap_or_else(|error| panic!("new-version close failed: {error}"));
+
+    assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+    assert_eq!(fs::read_to_string(&version).unwrap(), "new");
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_file(version);
 }
 
 #[test]

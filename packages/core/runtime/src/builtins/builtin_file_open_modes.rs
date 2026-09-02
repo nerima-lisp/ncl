@@ -53,6 +53,11 @@ pub(super) fn open_output_file(
     if_exists: &str,
     byte: bool,
 ) -> Result<Value, RuntimeError> {
+    let output_path = if path.exists() && if_exists == "NEW-VERSION" {
+        unique_version_path(path)?
+    } else {
+        path.to_path_buf()
+    };
     let delete_on_close = if path.exists() && matches!(if_exists, "RENAME" | "RENAME-AND-DELETE") {
         let backup = unique_rename_path(path)?;
         std::fs::rename(path, &backup).map_err(|error| RuntimeError::Io {
@@ -144,18 +149,39 @@ pub(super) fn open_output_file(
         }
     }
     if byte {
-        let stream = Value::file_byte_output_stream(path.to_path_buf(), Vec::new());
+        let stream = Value::file_byte_output_stream(output_path, Vec::new());
         if let Some(backup) = delete_on_close.0 {
             stream.delete_stream_file_on_close(backup);
         }
         Ok(stream)
     } else {
-        let stream = Value::file_output_stream(path.to_path_buf(), String::new());
+        let stream = Value::file_output_stream(output_path, String::new());
         if let Some(backup) = delete_on_close.0 {
             stream.delete_stream_file_on_close(backup);
         }
         Ok(stream)
     }
+}
+
+fn unique_version_path(path: &Path) -> Result<std::path::PathBuf, RuntimeError> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path.file_name().ok_or_else(|| RuntimeError::InvalidForm {
+        message: format!("open cannot version path {}", path.display()),
+        span: None,
+    })?;
+    for index in 0..1000 {
+        let candidate = parent.join(format!("{}.ncl-version-{index}", name.to_string_lossy()));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err(RuntimeError::Io {
+        kind: std::io::ErrorKind::AlreadyExists,
+        message: format!(
+            "could not find a unique version target for {}",
+            path.display()
+        ),
+    })
 }
 
 fn unique_rename_path(path: &Path) -> Result<std::path::PathBuf, RuntimeError> {

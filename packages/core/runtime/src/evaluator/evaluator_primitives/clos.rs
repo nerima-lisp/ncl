@@ -90,6 +90,7 @@ impl Runtime {
                 | "GENERIC-FUNCTION-METHOD-COMBINATION"
                 | "GENERIC-FUNCTION-LAMBDA-LIST"
                 | "GENERIC-FUNCTION-METHODS"
+                | "FIND-METHOD"
                 | "METHOD-QUALIFIERS"
                 | "METHOD-SPECIALIZERS"
                 | "METHOD-FUNCTION"
@@ -267,6 +268,62 @@ impl Runtime {
                             .map(Value::method)
                             .collect(),
                     ))
+                }
+                "FIND-METHOD" => {
+                    if arguments.len() != 3 {
+                        return Err(Self::arity("find-method", "three", arguments.len()));
+                    }
+                    let Value::Function(function) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Function::Generic { methods, .. } = function.as_ref() else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let qualifiers =
+                        arguments[1]
+                            .list_items()
+                            .ok_or_else(|| RuntimeError::Type {
+                                expected: "LIST".into(),
+                                actual: arguments[1].type_name().into(),
+                                span: Some(span),
+                            })?;
+                    let specializers =
+                        arguments[2]
+                            .list_items()
+                            .ok_or_else(|| RuntimeError::Type {
+                                expected: "LIST".into(),
+                                actual: arguments[2].type_name().into(),
+                                span: Some(span),
+                            })?;
+                    let qualifier_names = qualifiers
+                        .iter()
+                        .map(|value| Self::name_designator_from_value(value, span))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let methods = methods.borrow();
+                    let matches = methods.iter().find(|method| {
+                        method.qualifiers == qualifier_names
+                            && method.specializers.len() == specializers.len()
+                            && method.specializers.iter().zip(&specializers).all(
+                                |(method_specializer, requested)| match method_specializer {
+                                    crate::value::MethodSpecializer::Class(name) => {
+                                        Self::name_designator_from_value(requested, span)
+                                            .is_ok_and(|requested| requested == name.as_ref())
+                                    }
+                                    crate::value::MethodSpecializer::Eql(value) => {
+                                        crate::builtins::eql_value(value, requested)
+                                    }
+                                },
+                            )
+                    });
+                    Ok(matches.cloned().map(Value::method).unwrap_or(Value::Nil))
                 }
                 "METHOD-QUALIFIERS" | "METHOD-SPECIALIZERS" | "METHOD-FUNCTION" => {
                     if arguments.len() != 1 {

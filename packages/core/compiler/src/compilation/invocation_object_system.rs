@@ -28,6 +28,7 @@ impl CompileState {
             | "METHOD-QUALIFIERS"
             | "METHOD-SPECIALIZERS"
             | "METHOD-FUNCTION" => (items.len() == 2, "one"),
+            "FIND-METHOD" => (items.len() == 4, "three"),
             "FIND-CLASS" => ((2..=3).contains(&items.len()), "one or two"),
             _ => (false, "valid arguments"),
         };

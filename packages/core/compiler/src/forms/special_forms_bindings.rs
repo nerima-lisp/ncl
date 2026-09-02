@@ -82,7 +82,10 @@ impl CompileState {
             "GENERIC-FUNCTION-LAMBDA-LIST" => {
                 self.compile_class_introspection(function, span, items, name)
             }
-            "GENERIC-FUNCTION-METHODS" | "METHOD-QUALIFIERS" | "METHOD-SPECIALIZERS"
+            "GENERIC-FUNCTION-METHODS"
+            | "FIND-METHOD"
+            | "METHOD-QUALIFIERS"
+            | "METHOD-SPECIALIZERS"
             | "METHOD-FUNCTION" => self.compile_class_introspection(function, span, items, name),
             "FINALIZE-INHERITANCE" => self.compile_class_introspection(function, span, items, name),
             "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND" => {

@@ -99,6 +99,14 @@ fn evaluates_generic_function_method_introspection() {
 }
 
 #[test]
+fn evaluates_find_method_by_qualifiers_and_specializers() {
+    let values = Runtime::new()
+        .eval_source("(progn (defgeneric locate (x)) (defmethod locate :before ((x integer)) :before) (defmethod locate ((x integer)) :primary) (list (method-qualifiers (find-method #'locate nil '(integer))) (method-qualifiers (find-method #'locate '(:before) '(integer))) (find-method #'locate nil '(number))))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(NIL (BEFORE) NIL)");
+}
+
+#[test]
 fn evaluates_generic_methods_with_builtin_class_specializers() {
     let values = Runtime::new()
         .eval_source(

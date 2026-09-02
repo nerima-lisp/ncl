@@ -10,6 +10,7 @@ impl CompileState {
         operation: &str,
     ) -> Result<(), CompileError> {
         let (valid_arity, expected) = match operation {
+            "MAPHASH" => (items.len() == 3, "two"),
             "GETHASH" => ((3..=4).contains(&items.len()), "two or three"),
             "REMHASH" => (items.len() == 3, "two"),
             "MAKE-HASH-TABLE" => ((items.len() - 1).is_multiple_of(2), "keyword/value pairs"),

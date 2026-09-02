@@ -598,6 +598,21 @@ fn compiled_evaluates_hash_table_access() {
     assert_eq!(evaluate("(let ((table (make-hash-table :test #'equal))) (setf (gethash \"a\" table) 7) (list (hash-table-count table) (hash-table-test table) (ncl-hash-table-keys table) (ncl-hash-table-values table)))").to_string(), "(1 EQUAL (\"a\") (7))");
     assert_eq!(evaluate("(let ((table (make-hash-table))) (setf (gethash :a table) 7) (clrhash table) (hash-table-count table))").to_string(), "0");
     assert_eq!(evaluate("(hash-table-size (make-hash-table :size 16))").to_string(), "16");
+    assert_eq!(
+        evaluate(
+            "(let ((table (make-hash-table)))
+               (setf (gethash 'a table) 1)
+               (setf (gethash 'b table) 2)
+               (let ((total 0))
+                 (maphash (lambda (key value)
+                            (declare (ignore key))
+                            (incf total value))
+                          table)
+                 total))",
+        )
+        .to_string(),
+        "3"
+    );
 }
 
 #[test]

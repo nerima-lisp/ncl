@@ -2,7 +2,12 @@
 use super::*;
 
 pub fn execute_hash_table_instruction(
-    stack: &mut Vec<Value>, operation: &str, argument_count: usize, span: Span,
+    runtime: &Runtime,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    operation: &str,
+    argument_count: usize,
+    span: Span,
 ) -> Result<(), RuntimeError> {
     if stack.len() < argument_count {
         return Err(invalid("hash-table operation has too few stack values", span));
@@ -12,6 +17,18 @@ pub fn execute_hash_table_instruction(
         .into_iter()
         .map(|value| value.primary_value())
         .collect::<Vec<_>>();
+    if operation == "MAPHASH" {
+        let table = arguments.get(1).ok_or_else(|| invalid("MAPHASH has too few arguments", span))?;
+        let Some(entries) = table.hash_table_entries() else {
+            return Err(RuntimeError::Type { expected: "HASH-TABLE".into(), actual: table.type_name().into(), span: Some(span) });
+        };
+        let entries = entries.borrow().clone();
+        for (key, value) in entries {
+            runtime.apply_in(&arguments[0], &[key, value], span, environment)?;
+        }
+        stack.push(Value::Nil);
+        return Ok(());
+    }
     let value = match operation {
         "GETHASH" => crate::builtins::gethash(&arguments),
         "REMHASH" => crate::builtins::remhash(&arguments),

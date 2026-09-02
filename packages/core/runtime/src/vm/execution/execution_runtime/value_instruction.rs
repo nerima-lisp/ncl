@@ -311,7 +311,7 @@ pub(super) fn execute_value_instruction(
             execute_package_listing_instruction(runtime, stack, operation, *argument_count, span)?;
         }
         Instruction::HashTable { operation, argument_count } => {
-            execute_hash_table_instruction(stack, operation, *argument_count, span)?;
+            execute_hash_table_instruction(runtime, stack, environment, operation, *argument_count, span)?;
         }
         Instruction::ArrayConstruction { argument_count } => {
             execute_array_construction_instruction(stack, *argument_count, span)?;

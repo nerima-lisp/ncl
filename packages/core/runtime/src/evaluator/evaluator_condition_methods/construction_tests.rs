@@ -47,6 +47,20 @@ mod tests {
     }
 
     #[test]
+    fn make_condition_preserves_cell_error_slots_for_standard_accessors() {
+        let values = Runtime::new()
+            .eval_source(
+                "(list (cell-error-name (make-condition 'undefined-function :name 'missing))
+                       (undefined-function-name (make-condition 'undefined-function :name 'missing))
+                       (unbound-slot-instance
+                         (make-condition 'unbound-slot :name 'slot :instance 42)))",
+            )
+            .expect("standard cell-error accessors should read their slots");
+        let result = values.last().expect("list result");
+        assert_eq!(result.to_string(), "(MISSING MISSING 42)");
+    }
+
+    #[test]
     fn make_condition_rejects_an_unnameable_condition_type() {
         let result = Runtime::make_condition(&[Value::Integer(1)], SPAN);
         assert!(result.is_err());

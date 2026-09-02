@@ -46,4 +46,7 @@ pub(super) const PREDICATE_BUILTINS: &[BuiltinDefinition] = &[
     ("file-error-pathname", file_error_pathname as _),
     ("package-error-package", package_error_package as _),
     ("stream-error-stream", stream_error_stream as _),
+    ("cell-error-name", cell_error_name as _),
+    ("undefined-function-name", undefined_function_name as _),
+    ("unbound-slot-instance", unbound_slot_instance as _),
 ];

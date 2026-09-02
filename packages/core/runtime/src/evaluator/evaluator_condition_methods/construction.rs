@@ -180,7 +180,7 @@ impl Runtime {
                     })?;
                 }
                 "DATUM" | "EXPECTED-TYPE" | "NAME" | "OPERATION" | "OPERANDS" | "PACKAGE"
-                | "PATHNAME" | "STREAM" => {
+                | "PATHNAME" | "STREAM" | "INSTANCE" => {
                     slots.push((initarg, pair[1].clone()));
                 }
                 _ => {

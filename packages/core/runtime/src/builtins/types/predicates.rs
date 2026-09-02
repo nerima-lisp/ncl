@@ -181,3 +181,24 @@ pub fn stream_error_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .condition_slot("STREAM-ERROR", "STREAM")
         .ok_or_else(|| type_error("stream-error-stream", "STREAM-ERROR", &arguments[0]))
 }
+
+pub fn cell_error_name(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "cell-error-name", 1)?;
+    arguments[0]
+        .condition_slot("CELL-ERROR", "NAME")
+        .ok_or_else(|| type_error("cell-error-name", "CELL-ERROR", &arguments[0]))
+}
+
+pub fn undefined_function_name(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "undefined-function-name", 1)?;
+    arguments[0]
+        .condition_slot("UNDEFINED-FUNCTION", "NAME")
+        .ok_or_else(|| type_error("undefined-function-name", "UNDEFINED-FUNCTION", &arguments[0]))
+}
+
+pub fn unbound_slot_instance(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "unbound-slot-instance", 1)?;
+    arguments[0]
+        .condition_slot("UNBOUND-SLOT", "INSTANCE")
+        .ok_or_else(|| type_error("unbound-slot-instance", "UNBOUND-SLOT", &arguments[0]))
+}

@@ -142,6 +142,21 @@ fn compile_pushnew_with_options_and_dynamic_nth_uses_native_instruction() {
 }
 
 #[test]
+fn compile_dynamic_nth_mutation_through_nested_list_place_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let push = parse_items("(push 1 (nth index (car xs)))");
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &push)
+        .expect("nested dynamic NTH PUSH should use a native mutation instruction");
+    assert!(state.functions[function].instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::NestedListMutationNthDynamic { operator, accessors, name, escaped }
+            if operator == "PUSH" && accessors == &["CAR".to_owned()] && name == "XS" && !escaped
+    )));
+}
+
+#[test]
 fn compile_push_and_pop_use_native_gethash_instructions() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

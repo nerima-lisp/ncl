@@ -145,6 +145,14 @@ pub(super) fn execute_set_instruction(
             program_counter,
             span,
         ),
+        Instruction::NestedListMutationNthDynamic { .. } => sequence::execute(
+            runtime,
+            instruction,
+            stack,
+            environment,
+            program_counter,
+            span,
+        ),
         Instruction::ListPlacePushNewOptions {
             accessor,
             name,

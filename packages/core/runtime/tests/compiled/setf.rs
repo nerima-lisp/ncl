@@ -283,6 +283,14 @@ fn compiled_evaluates_pushnew_on_dynamic_nth_places() {
 }
 
 #[test]
+fn compiled_evaluates_dynamic_nth_mutations_through_nested_list_places() {
+    assert_eq!(
+        evaluate("(let ((xs (list (list (list 2 4))))) (list (push 1 (nth 0 (car xs))) (pop (nth 0 (car xs))) xs))").to_string(),
+        "((1 2 4) 1 (((2 4))))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_pushnew_with_options_on_dynamic_nth_places() {
     assert_eq!(
         evaluate("(let ((xs (list (list 2) (list 4))) (index 1)) (list (pushnew 4 (nth index xs) :test #'equal) (pushnew 3 (nth index xs) :test #'equal) xs))").to_string(),

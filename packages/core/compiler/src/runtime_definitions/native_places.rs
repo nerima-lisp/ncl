@@ -244,7 +244,7 @@ impl CompileState {
             }
         }
         let generalized = generalized_list_place(place);
-        if let Some((index_form, target, name, escaped)) = nth_list_place(place) {
+        if let Some((index_form, target, accessors, name, escaped)) = dynamic_nth_list_place(place) {
             if matches!(operator.as_str(), "PUSH" | "PUSHNEW") {
                 self.compile_expression(function, &items[1])?;
             }
@@ -252,7 +252,9 @@ impl CompileState {
             self.compile_expression(function, target)?;
             self.emit(
                 function,
-                if operator == "PUSHNEW" {
+                if !accessors.is_empty() {
+                    Instruction::NestedListMutationNthDynamic { accessors, operator, name, escaped }
+                } else if operator == "PUSHNEW" {
                     Instruction::ListMutationNthPushNew { name, escaped }
                 } else {
                     Instruction::ListMutationNthDynamic { operator, name, escaped }

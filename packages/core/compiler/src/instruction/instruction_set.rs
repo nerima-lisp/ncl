@@ -94,6 +94,16 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Mutate a dynamically indexed list element through a nested list place."] NestedListMutationNthDynamic {
+        /// Accessors from the symbol outward to the list being indexed.
+        accessors: Vec<String>,
+        /// The mutation operator.
+        operator: String,
+        /// The symbol holding the outer list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Push a value onto a dynamically indexed list element through NTH when absent by EQL."] ListMutationNthPushNew {
         /// The symbol holding the outer list.
         name: String,

@@ -259,17 +259,17 @@ mod tests {
     }
 
     #[test]
-    fn allocate_instance_creates_an_instance_with_slot_defaults() {
+    fn allocate_instance_creates_an_uninitialized_instance() {
         let values = Runtime::new()
             .eval_source(
                 "(progn
                    (defclass allocated-class () ((value :initform 41)))
                    (let ((object (allocate-instance (find-class 'allocated-class))))
                      (list (typep object 'allocated-class)
-                           (slot-value object 'value))))",
+                           (slot-boundp object 'value))))",
             )
             .unwrap();
-        assert_eq!(values.last().unwrap().to_string(), "(T 41)");
+        assert_eq!(values.last().unwrap().to_string(), "(T NIL)");
     }
 
     #[test]

@@ -33,7 +33,7 @@ impl Runtime {
             "COMPILE" => self.compile_function(arguments, environment, span),
             "LOAD" => self.load_file(arguments, span),
             "MAKE-INSTANCE" => self.make_instance(arguments, environment, span),
-            "ALLOCATE-INSTANCE" => self.allocate_instance(arguments, environment, span),
+            "ALLOCATE-INSTANCE" => self.allocate_instance(arguments, span),
             "INITIALIZE-INSTANCE" => self.initialize_instance(arguments, environment, span),
             "SHARED-INITIALIZE" => self.shared_initialize(arguments, environment, span),
             "REINITIALIZE-INSTANCE" => self.reinitialize_instance(arguments, environment, span),

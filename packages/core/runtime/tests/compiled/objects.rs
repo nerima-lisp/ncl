@@ -746,3 +746,18 @@ fn compiled_rejects_invalid_defstruct_invocations() {
     }
 }
 use super::*;
+
+#[test]
+fn compiled_evaluates_class_direct_superclasses() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass parent () ())
+                 (defclass child (parent) ())
+                 (mapcar #'class-name
+                         (class-direct-superclasses (find-class 'child))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(PARENT)");
+}

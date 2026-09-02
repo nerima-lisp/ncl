@@ -21,7 +21,7 @@ pub(crate) enum StreamElementType {
 pub(super) enum ByteStreamData {
     Input { bytes: Rc<Vec<u8>>, position: usize },
     Io { bytes: Vec<u8>, position: usize, file_path: Rc<PathBuf> },
-    Output { bytes: Vec<u8>, file_path: Rc<PathBuf> },
+    Output { bytes: Vec<u8>, position: usize, file_path: Rc<PathBuf> },
 }
 
 #[derive(Debug)]

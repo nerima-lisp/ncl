@@ -100,7 +100,7 @@ impl Stream {
             if let Some(super::super::value_stream::ByteStreamData::Io { bytes, file_path, .. }) = &self.byte_data {
                 std::fs::write(file_path.as_ref(), bytes)?;
             }
-            if let Some(super::super::value_stream::ByteStreamData::Output { bytes, file_path }) = &self.byte_data {
+            if let Some(super::super::value_stream::ByteStreamData::Output { bytes, file_path, .. }) = &self.byte_data {
                 std::fs::write(file_path.as_ref(), bytes)?;
             }
             if self.byte_data.is_none() && let StreamKind::Output {

@@ -191,6 +191,22 @@ fn byte_io_streams_share_a_file_cursor_for_read_and_write() -> Result<(), Runtim
 }
 
 #[test]
+fn byte_output_stream_file_position_repositions_writes() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let path = std::env::temp_dir().join(format!("ncl-byte-output-position-{suffix}"));
+    let stream = Value::file_byte_output_stream(path.clone(), vec![1, 2, 3]);
+
+    assert_eq!(file_position(std::slice::from_ref(&stream))?.to_string(), "3");
+    assert_eq!(file_position(&[stream.clone(), Value::Integer(1)])?.to_string(), "1");
+    write_byte(&[Value::Integer(9), stream.clone()])?;
+    close_stream(&[stream])?;
+
+    assert_eq!(std::fs::read(&path).unwrap(), vec![1, 9, 3]);
+    std::fs::remove_file(path).unwrap();
+    Ok(())
+}
+
+#[test]
 fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeError> {
     let suffix = nanosecond_suffix()?;
     let missing_path = std::env::temp_dir().join(format!("ncl-open-options-{suffix}-missing"));

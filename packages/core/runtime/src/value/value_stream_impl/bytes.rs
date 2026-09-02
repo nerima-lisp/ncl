@@ -9,7 +9,8 @@ impl Stream {
     }
 
     pub(in crate::value) fn file_byte_output(path: PathBuf, bytes: Vec<u8>) -> Self {
-        Self { kind: super::super::value_stream::StreamKind::Output { buffer: String::new(), destination: None, at_line_start: true, file_path: Some(Rc::new(path.clone())) }, closed: false, element_type: StreamElementType::UnsignedByte8, byte_data: Some(ByteStreamData::Output { bytes, file_path: Rc::new(path) }) }
+        let position = bytes.len();
+        Self { kind: super::super::value_stream::StreamKind::Output { buffer: String::new(), destination: None, at_line_start: true, file_path: Some(Rc::new(path.clone())) }, closed: false, element_type: StreamElementType::UnsignedByte8, byte_data: Some(ByteStreamData::Output { bytes, position, file_path: Rc::new(path) }) }
     }
 
     pub(in crate::value) fn file_byte_io(path: PathBuf, bytes: Vec<u8>, append: bool) -> Self {
@@ -36,7 +37,14 @@ impl Stream {
     pub(crate) fn write_byte(&mut self, byte: u8) -> bool {
         let Some(data) = self.byte_data.as_mut() else { return false };
         match data {
-            ByteStreamData::Output { bytes, .. } => bytes.push(byte),
+            ByteStreamData::Output { bytes, position, .. } => {
+                if *position < bytes.len() {
+                    bytes[*position] = byte;
+                } else {
+                    bytes.push(byte);
+                }
+                *position += 1;
+            }
             ByteStreamData::Io { bytes, position, .. } => {
                 if *position < bytes.len() {
                     bytes[*position] = byte;

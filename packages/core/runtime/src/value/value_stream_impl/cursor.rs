@@ -8,7 +8,7 @@ impl Stream {
             return Some(match byte_data {
                 super::super::value_stream::ByteStreamData::Input { position, .. } => *position,
                 super::super::value_stream::ByteStreamData::Io { position, .. } => *position,
-                super::super::value_stream::ByteStreamData::Output { bytes, .. } => bytes.len(),
+                super::super::value_stream::ByteStreamData::Output { position, .. } => *position,
             });
         }
         match &self.kind {
@@ -47,7 +47,10 @@ impl Stream {
                     if position > bytes.len() { return false; }
                     *cursor = position; true
                 }
-                super::super::value_stream::ByteStreamData::Output { .. } => false,
+                super::super::value_stream::ByteStreamData::Output { bytes, position: cursor, .. } => {
+                    if position > bytes.len() { return false; }
+                    *cursor = position; true
+                },
             };
         }
         match &mut self.kind {

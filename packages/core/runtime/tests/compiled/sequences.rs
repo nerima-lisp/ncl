@@ -728,6 +728,14 @@ fn compiled_evaluates_vector_push_operations() {
 }
 
 #[test]
+fn compiled_setf_fill_pointer_updates_vector_length() {
+    assert_eq!(
+        evaluate("(let ((vector (make-array 3 :fill-pointer 0))) (list (setf (fill-pointer vector) 2) (length vector)))").to_string(),
+        "(2 2)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_vector_pop() {
     assert_eq!(
         evaluate(

@@ -146,6 +146,12 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update the fill pointer of a vector-valued symbol."] SetfFillPointerDynamic {
+        /// The symbol holding the vector.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Modify a dynamically indexed vector or array-valued symbol through an array accessor."] ModifyArefDynamic {
         /// The number of subscripts.
         rank: usize,

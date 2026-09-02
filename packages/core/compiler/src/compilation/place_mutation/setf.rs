@@ -20,6 +20,9 @@ impl CompileState {
             if self.compile_setf_aref_place(function, place, value_form, index, pair_count)? {
                 continue;
             }
+            if self.compile_setf_fill_pointer_place(function, place, value_form, index, pair_count)? {
+                continue;
+            }
             if self.compile_setf_bit_place(function, place, value_form, index, pair_count)? {
                 continue;
             }

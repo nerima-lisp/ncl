@@ -10,6 +10,9 @@ pub(super) fn execute(
     span: Span,
 ) -> Result<bool, RuntimeError> {
     match instruction {
+        Instruction::SetfFillPointerDynamic { name, escaped } => {
+            execute_fill_pointer(runtime, name, *escaped, stack, environment, program_counter, span)
+        }
         Instruction::SetfArefDynamic {
             rank,
             operator,
@@ -144,6 +147,28 @@ pub(super) fn execute(
         ),
         _ => Ok(false),
     }
+}
+
+pub(super) fn execute_fill_pointer(
+    runtime: &Runtime, name: &str, escaped: bool, stack: &mut Vec<Value>,
+    environment: &Environment, program_counter: &mut usize, span: Span,
+) -> Result<bool, RuntimeError> {
+    let value = stack.pop().ok_or_else(|| invalid("setf fill-pointer has no value on the stack", span))?.primary_value();
+    let current = stack.pop().ok_or_else(|| invalid("setf fill-pointer has no target on the stack", span))?.primary_value();
+    let pointer = value.as_integer().and_then(|value| usize::try_from(value).ok()).ok_or_else(|| RuntimeError::Type {
+        expected: "NON-NEGATIVE-INTEGER".to_string(), actual: value.type_name().to_string(), span: Some(span),
+    })?;
+    if current.vector_fill_pointer().flatten().is_none() {
+        return Err(RuntimeError::Type { expected: "VECTOR WITH A FILL POINTER".to_string(), actual: current.type_name().to_string(), span: Some(span) });
+    }
+    let length = current.vector_items().map(|items| items.len()).unwrap_or(0);
+    if pointer > length { return Err(invalid("setf fill-pointer exceeds vector length", span)); }
+    current.set_vector_fill_pointer(Some(pointer));
+    if escaped { runtime.set_or_define_exact_in(name, current, environment, span)?; }
+    else { runtime.set_or_define_in(name, current, environment, span)?; }
+    stack.push(value);
+    *program_counter += 1;
+    Ok(true)
 }
 
 fn execute_nested_array_mutation(

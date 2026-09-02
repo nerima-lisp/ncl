@@ -59,7 +59,7 @@ impl Number {
 }
 
 impl Value {
-    pub(super) const fn as_integer(&self) -> Option<i64> {
+    pub(crate) const fn as_integer(&self) -> Option<i64> {
         match self {
             Self::Integer(value) => Some(*value),
             _ => None,

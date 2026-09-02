@@ -92,9 +92,9 @@ impl Runtime {
                 let current = class_value.borrow().clone();
                 if matches!(current, Value::Unbound) {
                     let value = slot
-                        .init_form
+                        .init_function
                         .as_ref()
-                        .map(|form| self.eval_in(form, environment))
+                        .map(|function| self.apply_in(function, &[], span, environment))
                         .transpose()?
                         .unwrap_or(Value::Unbound);
                     *class_value.borrow_mut() = value.clone();
@@ -103,9 +103,9 @@ impl Runtime {
                     current
                 }
             } else {
-                slot.init_form
+                slot.init_function
                     .as_ref()
-                    .map(|form| self.eval_in(form, environment))
+                    .map(|function| self.apply_in(function, &[], span, environment))
                     .transpose()?
                     .unwrap_or(Value::Unbound)
             };

@@ -123,6 +123,22 @@ mod tests {
     }
 
     #[test]
+    fn make_instance_uses_captured_slot_initfunction_environment() {
+        let values = Runtime::new()
+            .eval_source(
+                "(let ((initial 41))
+                   (defclass captured-instance-initfunction-class ()
+                     ((value :initform initial)))
+                   (let ((initial 99))
+                     (slot-value
+                       (make-instance 'captured-instance-initfunction-class)
+                       'value)))",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "41");
+    }
+
+    #[test]
     fn defclass_accessor_is_setfable() {
         let values = Runtime::new()
             .eval_source(

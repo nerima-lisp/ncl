@@ -150,6 +150,7 @@ impl Runtime {
                 | "SLOT-BOUNDP"
                 | "SLOT-MAKUNBOUND"
                 | "SLOT-VALUE-USING-CLASS"
+                | "SLOT-EXISTS-P-USING-CLASS"
                 | "SLOT-BOUNDP-USING-CLASS"
                 | "SLOT-MAKUNBOUND-USING-CLASS"
         ) {
@@ -206,7 +207,9 @@ impl Runtime {
                     }
                     Ok(value)
                 }
-                "SLOT-EXISTS-P" => Ok(Value::boolean(object.instance_slot_exists(&slot_name))),
+                "SLOT-EXISTS-P" | "SLOT-EXISTS-P-USING-CLASS" => {
+                    Ok(Value::boolean(object.instance_slot_exists(&slot_name)))
+                }
                 "SLOT-BOUNDP" | "SLOT-BOUNDP-USING-CLASS" => Ok(Value::boolean(
                     object.instance_slot_is_bound(&slot_name).unwrap_or(false),
                 )),

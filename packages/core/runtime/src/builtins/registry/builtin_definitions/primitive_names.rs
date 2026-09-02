@@ -123,6 +123,7 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "REINITIALIZE-INSTANCE",
     "SLOT-VALUE",
     "SLOT-VALUE-USING-CLASS",
+    "SLOT-EXISTS-P-USING-CLASS",
     "CLASS-OF",
     "FIND-CLASS",
     "CLASS-NAME",

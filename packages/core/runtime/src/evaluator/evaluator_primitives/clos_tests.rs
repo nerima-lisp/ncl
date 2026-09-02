@@ -73,6 +73,18 @@ mod tests {
         .expect("using-class primitive is recognized")
         .expect("slot value succeeds");
         assert!(matches!(value, Value::Integer(7)));
+        let exists = Runtime::apply_slot_primitive(
+            "SLOT-EXISTS-P-USING-CLASS",
+            &[
+                class_value.clone(),
+                instance.clone(),
+                Value::symbol("value"),
+            ],
+            SPAN,
+        )
+        .expect("using-class exists primitive is recognized")
+        .expect("slot exists succeeds");
+        assert!(matches!(exists, Value::Boolean(true)));
         let bound = Runtime::apply_slot_primitive(
             "SLOT-BOUNDP-USING-CLASS",
             &[

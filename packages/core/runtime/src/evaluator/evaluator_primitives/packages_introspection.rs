@@ -18,11 +18,25 @@ impl Runtime {
                 | "PACKAGE-USED-BY-LIST"
                 | "FIND-ALL-SYMBOLS"
                 | "__NCL-PACKAGE-SYMBOLS"
+                | "__NCL-ALL-SYMBOLS"
         ) {
             return None;
         }
         Some((|| -> Result<Value, RuntimeError> {
             match name {
+                "__NCL-ALL-SYMBOLS" => {
+                    if !arguments.is_empty() {
+                        return Err(Self::arity("__ncl-all-symbols", "zero", arguments.len()));
+                    }
+                    Ok(Value::list(
+                        self.packages
+                            .borrow()
+                            .all_symbols()
+                            .into_iter()
+                            .map(Value::symbol)
+                            .collect(),
+                    ))
+                }
                 "__NCL-PACKAGE-SYMBOLS" => {
                     if arguments.len() != 2 {
                         return Err(Self::arity("__ncl-package-symbols", "two", arguments.len()));

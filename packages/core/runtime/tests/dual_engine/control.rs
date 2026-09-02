@@ -54,6 +54,22 @@ fn expands_package_symbol_iteration(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_all_symbol_iteration(#[case] eval_fn: EvalFn) {
+    let result = evaluate_with(
+        eval_fn,
+        r#"(progn
+             (intern "ALL-SYMBOLS-MARK" :ncl-user)
+             (let ((found nil))
+             (do-all-symbols (symbol)
+               (when (string= (symbol-name symbol) "ALL-SYMBOLS-MARK") (setf found t)))
+             found))"#,
+    );
+    assert_eq!(result.to_string(), "T");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn expands_named_loop_and_loop_finish(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

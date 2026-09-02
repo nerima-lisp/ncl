@@ -174,4 +174,15 @@ impl PackageState {
         symbols.sort();
         symbols
     }
+
+    pub(crate) fn all_symbols(&self) -> Vec<String> {
+        let mut symbols = self
+            .all_package_names()
+            .into_iter()
+            .flat_map(|package| self.symbols_for(&package, false))
+            .collect::<Vec<_>>();
+        symbols.sort();
+        symbols.dedup();
+        symbols
+    }
 }

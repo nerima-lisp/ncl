@@ -111,6 +111,51 @@ pub fn copy_tree(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(copy_tree_value(&arguments[0]))
 }
 
+pub fn tailp(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "tailp", 2)?;
+    let mut current = arguments[1].clone();
+    loop {
+        if current.eq_value(&arguments[0]) {
+            return Ok(Value::Boolean(true));
+        }
+        current = match current {
+            Value::MutableCons(cell) => cell.borrow().1.clone(),
+            Value::Nil | Value::List(_) => return Ok(Value::Nil),
+            Value::DottedList { tail, .. } => {
+                return Ok(Value::boolean(tail.eq_value(&arguments[0])));
+            }
+            value => return Err(type_error("tailp", "list", &value)),
+        };
+    }
+}
+
+pub fn ldiff(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "ldiff", 2)?;
+    let target = &arguments[1];
+    let mut current = arguments[0].clone();
+    let mut prefix = Vec::new();
+    loop {
+        if current.eq_value(target) {
+            return Ok(Value::list(prefix));
+        }
+        current = match current {
+            Value::MutableCons(cell) => {
+                let cell = cell.borrow();
+                prefix.push(cell.0.clone());
+                cell.1.clone()
+            }
+            Value::Nil | Value::List(_) => {
+                return Err(type_error("ldiff", "tail of list", target));
+            }
+            Value::DottedList { items, tail } => {
+                prefix.extend(items.iter().cloned());
+                tail.as_ref().clone()
+            }
+            value => return Err(type_error("ldiff", "list", &value)),
+        };
+    }
+}
+
 fn copy_tree_value(value: &Value) -> Value {
     match value {
         Value::List(items) => Value::list(items.iter().map(copy_tree_value).collect()),

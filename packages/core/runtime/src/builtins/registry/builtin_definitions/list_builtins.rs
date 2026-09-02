@@ -39,4 +39,6 @@ pub(super) const LIST_BUILTINS: &[BuiltinDefinition] = &[
     ("copy-list", copy_list as _),
     ("copy-alist", copy_alist as _),
     ("copy-tree", copy_tree as _),
+    ("tailp", tailp as _),
+    ("ldiff", ldiff as _),
 ];

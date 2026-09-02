@@ -327,6 +327,10 @@ fn evaluates_tree_substitution(#[case] eval_fn: EvalFn) {
         evaluate("(list (subst 'x 'a '(a (b a) . a)) (nsubst 'x 'a '(a b)))").to_string(),
         "((X (B X) . X) (X B))"
     );
+    assert_eq!(
+        evaluate("(let* ((tail (cons 'a nil)) (tree (cons tail tail))) (nsubst 'x 'a tree) (list (car (car tree)) (car (cdr tree))))").to_string(),
+        "(X X)"
+    );
 }
 
 #[rstest]

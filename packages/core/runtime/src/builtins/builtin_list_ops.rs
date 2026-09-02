@@ -163,7 +163,7 @@ pub fn subst(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn nsubst(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "nsubst", 3)?;
-    Ok(subst_tree(&arguments[2], &arguments[1], &arguments[0]))
+    Ok(nsubst_tree(&arguments[2], &arguments[1], &arguments[0]))
 }
 
 pub fn tree_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -195,6 +195,40 @@ fn subst_tree(value: &Value, old: &Value, new: &Value) -> Value {
                 .map(|item| subst_tree(item, old, new))
                 .collect(),
             subst_tree(tail, old, new),
+        ),
+        value => value.clone(),
+    }
+}
+
+fn nsubst_tree(value: &Value, old: &Value, new: &Value) -> Value {
+    if value.eq_value(old) {
+        return new.clone();
+    }
+    match value {
+        Value::MutableCons(cell) => {
+            let (car, cdr) = {
+                let cell = cell.borrow();
+                (cell.0.clone(), cell.1.clone())
+            };
+            let car = nsubst_tree(&car, old, new);
+            let cdr = nsubst_tree(&cdr, old, new);
+            let mut cell = cell.borrow_mut();
+            cell.0 = car;
+            cell.1 = cdr;
+            value.clone()
+        }
+        Value::List(items) => Value::list(
+            items
+                .iter()
+                .map(|item| nsubst_tree(item, old, new))
+                .collect(),
+        ),
+        Value::DottedList { items, tail } => Value::dotted_list(
+            items
+                .iter()
+                .map(|item| nsubst_tree(item, old, new))
+                .collect(),
+            nsubst_tree(tail, old, new),
         ),
         value => value.clone(),
     }

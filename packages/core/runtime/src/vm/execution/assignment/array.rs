@@ -162,15 +162,7 @@ pub(super) fn execute_fill_pointer(
 ) -> Result<bool, RuntimeError> {
     let value = stack.pop().ok_or_else(|| invalid("setf fill-pointer has no value on the stack", span))?.primary_value();
     let current = stack.pop().ok_or_else(|| invalid("setf fill-pointer has no target on the stack", span))?.primary_value();
-    let pointer = value.as_integer().and_then(|value| usize::try_from(value).ok()).ok_or_else(|| RuntimeError::Type {
-        expected: "NON-NEGATIVE-INTEGER".to_string(), actual: value.type_name().to_string(), span: Some(span),
-    })?;
-    if current.vector_fill_pointer().flatten().is_none() {
-        return Err(RuntimeError::Type { expected: "VECTOR WITH A FILL POINTER".to_string(), actual: current.type_name().to_string(), span: Some(span) });
-    }
-    let length = current.vector_items().map(|items| items.len()).unwrap_or(0);
-    if pointer > length { return Err(invalid("setf fill-pointer exceeds vector length", span)); }
-    current.set_vector_fill_pointer(Some(pointer));
+    set_fill_pointer(&current, &value, span)?;
     if escaped { runtime.set_or_define_exact_in(name, current, environment, span)?; }
     else { runtime.set_or_define_in(name, current, environment, span)?; }
     stack.push(value);
@@ -183,6 +175,13 @@ pub(super) fn execute_fill_pointer_value(
 ) -> Result<bool, RuntimeError> {
     let value = stack.pop().ok_or_else(|| invalid("setf fill-pointer has no value on the stack", span))?.primary_value();
     let current = stack.pop().ok_or_else(|| invalid("setf fill-pointer has no target on the stack", span))?.primary_value();
+    set_fill_pointer(&current, &value, span)?;
+    stack.push(value);
+    *program_counter += 1;
+    Ok(true)
+}
+
+fn set_fill_pointer(current: &Value, value: &Value, span: Span) -> Result<(), RuntimeError> {
     let pointer = value.as_integer().and_then(|value| usize::try_from(value).ok()).ok_or_else(|| RuntimeError::Type {
         expected: "NON-NEGATIVE-INTEGER".to_string(), actual: value.type_name().to_string(), span: Some(span),
     })?;
@@ -192,9 +191,7 @@ pub(super) fn execute_fill_pointer_value(
     let length = current.vector_items().map(|items| items.len()).unwrap_or(0);
     if pointer > length { return Err(invalid("setf fill-pointer exceeds vector length", span)); }
     current.set_vector_fill_pointer(Some(pointer));
-    stack.push(value);
-    *program_counter += 1;
-    Ok(true)
+    Ok(())
 }
 
 fn execute_nested_array_mutation(

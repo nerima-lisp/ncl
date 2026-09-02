@@ -31,8 +31,8 @@ mod tests {
         let error = eval_err("(defgeneric unsupported-generic (x) (:method-combination and))");
         assert!(matches!(
             error,
-            RuntimeError::InvalidForm { message, .. }
-                if message == "unsupported defgeneric option"
+                RuntimeError::InvalidForm { message, .. }
+                if message == "unsupported defgeneric method combination"
         ));
     }
 

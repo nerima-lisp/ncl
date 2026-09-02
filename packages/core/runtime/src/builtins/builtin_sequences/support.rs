@@ -81,7 +81,9 @@ pub fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Value>, Ru
         Value::MutableCons(_) => value
             .list_items()
             .ok_or_else(|| type_error(function, "sequence", value)),
-        Value::Vector(items) => Ok(items.borrow().clone()),
+        Value::Vector(_) => value
+            .vector_sequence_items()
+            .ok_or_else(|| type_error(function, "sequence", value)),
         Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
         Value::MutableString(value) => Ok(value.borrow().chars().map(Value::Character).collect()),
         _ => Err(type_error(function, "sequence", value)),

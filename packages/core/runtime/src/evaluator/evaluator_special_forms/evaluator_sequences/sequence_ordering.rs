@@ -19,7 +19,14 @@ impl Runtime {
                     span: Some(span),
                 })?,
             ),
-            Value::Vector(items) => (SequenceKind::Vector, items.borrow().clone()),
+            Value::Vector(_) => (
+                SequenceKind::Vector,
+                sequence.vector_sequence_items().ok_or_else(|| RuntimeError::Type {
+                    expected: "SEQUENCE".to_string(),
+                    actual: sequence.type_name().to_string(),
+                    span: Some(span),
+                })?,
+            ),
             Value::String(value) => (
                 SequenceKind::String,
                 value.chars().map(Value::Character).collect(),
@@ -60,7 +67,14 @@ impl Runtime {
                     span: Some(span),
                 })?,
             ),
-            Value::Vector(items) => (SequenceKind::Vector, items.borrow().clone()),
+            Value::Vector(_) => (
+                SequenceKind::Vector,
+                sequence.vector_sequence_items().ok_or_else(|| RuntimeError::Type {
+                    expected: "SEQUENCE".to_string(),
+                    actual: sequence.type_name().to_string(),
+                    span: Some(span),
+                })?,
+            ),
             Value::String(value) => (
                 SequenceKind::String,
                 value.chars().map(Value::Character).collect(),

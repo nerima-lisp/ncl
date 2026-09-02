@@ -980,6 +980,16 @@ fn sequence_operations_respect_vector_fill_pointers() {
             .to_string(),
         "T"
     );
+    assert_eq!(
+        evaluate("(length (copy-seq (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2)))")
+            .to_string(),
+        "2"
+    );
+    assert_eq!(
+        evaluate("(reverse (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))")
+            .to_string(),
+        "#(2 1)"
+    );
 }
 
 #[test]

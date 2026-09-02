@@ -88,6 +88,7 @@ impl Runtime {
                 | "FINALIZE-INHERITANCE"
                 | "GENERIC-FUNCTION-NAME"
                 | "GENERIC-FUNCTION-METHOD-COMBINATION"
+                | "GENERIC-FUNCTION-LAMBDA-LIST"
         ) {
             return None;
         }
@@ -203,6 +204,34 @@ impl Runtime {
                         MethodCombination::Min => "MIN",
                     };
                     Ok(Value::symbol(name))
+                }
+                "GENERIC-FUNCTION-LAMBDA-LIST" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity(
+                            "generic-function-lambda-list",
+                            "one",
+                            arguments.len(),
+                        ));
+                    }
+                    let Value::Function(function) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Function::Generic { lambda_list, .. } = function.as_ref() else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    Ok(lambda_list
+                        .as_ref()
+                        .map(quoted_form_value)
+                        .transpose()?
+                        .unwrap_or(Value::Nil))
                 }
                 "CLASS-PRECEDENCE-LIST" => {
                     if arguments.len() != 1 {

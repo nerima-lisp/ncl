@@ -175,6 +175,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
                 | "FINALIZE-INHERITANCE"
                 | "GENERIC-FUNCTION-NAME"
                 | "GENERIC-FUNCTION-METHOD-COMBINATION"
+                | "GENERIC-FUNCTION-LAMBDA-LIST"
                 | "SLOT-VALUE"
                 | "SLOT-EXISTS-P"
                 | "SLOT-BOUNDP"

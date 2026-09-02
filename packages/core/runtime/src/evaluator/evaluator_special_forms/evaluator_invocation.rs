@@ -76,6 +76,7 @@ impl Runtime {
                 name,
                 method_combination,
                 methods,
+                ..
             } => self.apply_generic(
                 name,
                 *method_combination,

@@ -3,8 +3,8 @@ use super::*;
 
 mod parameters;
 
-use parameters::DefmethodParameters;
 use crate::value::MethodCombination;
+use parameters::DefmethodParameters;
 
 impl Runtime {
     pub(crate) fn special_defgeneric(
@@ -81,7 +81,7 @@ impl Runtime {
         }
         environment.define_function(
             &name,
-            Value::generic_with_combination(name.clone(), method_combination),
+            Value::generic_with_lambda_list(name.clone(), items[2].clone(), method_combination),
         );
         Ok(Value::symbol(name))
     }

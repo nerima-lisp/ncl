@@ -80,6 +80,17 @@ fn evaluates_class_finalized_p() {
 }
 
 #[test]
+fn evaluates_generic_function_lambda_list() {
+    let values = Runtime::new()
+        .eval_source("(progn (defgeneric lambda-list-generic (object &optional prefix &key suffix)) (generic-function-lambda-list #'lambda-list-generic))")
+        .must_exist();
+    assert_eq!(
+        values[0].to_string(),
+        "(OBJECT &OPTIONAL PREFIX &KEY SUFFIX)"
+    );
+}
+
+#[test]
 fn evaluates_finalize_inheritance() {
     let values = Runtime::new()
         .eval_source("(progn (defclass finalize-class () ()) (finalize-inheritance (find-class 'finalize-class)))")

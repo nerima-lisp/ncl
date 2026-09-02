@@ -4,7 +4,9 @@ use std::rc::Rc;
 use ncl_compiler::{FunctionId, Program};
 use ncl_syntax::{Form, LambdaListAuxiliaryParameter, LambdaListOptionalParameter};
 
-use super::{Builtin, ClosureOptions, Environment, Function, MacroLambdaList, MethodCombination, Value};
+use super::{
+    Builtin, ClosureOptions, Environment, Function, MacroLambdaList, MethodCombination, Value,
+};
 
 impl Value {
     pub(crate) fn complement(function: Self) -> Self {
@@ -34,6 +36,20 @@ impl Value {
     ) -> Self {
         Self::Function(Rc::new(Function::Generic {
             name: name.into(),
+            lambda_list: None,
+            method_combination,
+            methods: Rc::new(RefCell::new(Vec::new())),
+        }))
+    }
+
+    pub(crate) fn generic_with_lambda_list(
+        name: impl Into<String>,
+        lambda_list: Form,
+        method_combination: MethodCombination,
+    ) -> Self {
+        Self::Function(Rc::new(Function::Generic {
+            name: name.into(),
+            lambda_list: Some(lambda_list),
             method_combination,
             methods: Rc::new(RefCell::new(Vec::new())),
         }))
@@ -53,14 +69,20 @@ impl Value {
         }))
     }
 
-    pub(crate) fn condition_reader(condition_name: impl Into<String>, slot_name: impl Into<String>) -> Self {
+    pub(crate) fn condition_reader(
+        condition_name: impl Into<String>,
+        slot_name: impl Into<String>,
+    ) -> Self {
         Self::Function(Rc::new(Function::ConditionReader {
             condition_name: condition_name.into(),
             slot_name: slot_name.into(),
         }))
     }
 
-    pub(crate) fn condition_writer(condition_name: impl Into<String>, slot_name: impl Into<String>) -> Self {
+    pub(crate) fn condition_writer(
+        condition_name: impl Into<String>,
+        slot_name: impl Into<String>,
+    ) -> Self {
         Self::Function(Rc::new(Function::ConditionWriter {
             condition_name: condition_name.into(),
             slot_name: slot_name.into(),

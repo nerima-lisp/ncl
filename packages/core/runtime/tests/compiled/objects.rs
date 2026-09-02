@@ -44,6 +44,17 @@ fn compiled_evaluates_builtin_method_combinations() {
 }
 
 #[test]
+fn compiled_evaluates_generic_function_lambda_list() {
+    let values = Runtime::new()
+        .eval_compiled_source("(progn (defgeneric compiled-lambda-list-generic (object &optional prefix &key suffix)) (generic-function-lambda-list #'compiled-lambda-list-generic))")
+        .must_exist();
+    assert_eq!(
+        values[0].to_string(),
+        "(OBJECT &OPTIONAL PREFIX &KEY SUFFIX)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_reinitialize_instance() {
     let values = Runtime::new()
         .eval_compiled_source(

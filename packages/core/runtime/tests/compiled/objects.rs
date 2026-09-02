@@ -9,11 +9,15 @@ fn compiled_evaluates_builtin_method_combinations() {
                  (defgeneric any-true (x) (:method-combination or))
                  (defmethod any-true ((x t)) nil)
                  (defmethod any-true ((x t)) t)
-                 (list (all-true 1) (any-true 1) (ncl-user::any-true 1)))",
+                 (defgeneric sequence (x) (:method-combination progn))
+                 (defmethod sequence ((x t)) 1)
+                 (defmethod sequence ((x t)) 2)
+                 (list (all-true 1) (any-true 1) (ncl-user::any-true 1)
+                       (sequence 1)))",
         )
         .must_exist();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].to_string(), "(NIL T T)");
+    assert_eq!(values[0].to_string(), "(NIL T T 2)");
 }
 
 #[test]

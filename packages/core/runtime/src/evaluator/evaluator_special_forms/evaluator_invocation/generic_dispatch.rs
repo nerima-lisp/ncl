@@ -89,6 +89,13 @@ impl Runtime {
                     span,
                 ));
             }
+            if method_combination == MethodCombination::Progn {
+                let mut result = Value::Nil;
+                for method in primary {
+                    result = self.invoke_method(&method, arguments, None, span, environment)?;
+                }
+                return Ok(result);
+            }
             let is_and = method_combination == MethodCombination::And;
             for method in primary {
                 let value = self.invoke_method(&method, arguments, None, span, environment)?;

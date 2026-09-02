@@ -53,6 +53,19 @@ mod tests {
     }
 
     #[test]
+    fn builtin_progn_method_combination_returns_last_value() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric sequence (x) (:method-combination progn))\
+                 (defmethod sequence ((x t)) 1)\
+                 (defmethod sequence ((x t)) 2)\
+                 (sequence 1)",
+            )
+            .unwrap_or_else(|error| panic!("progn method combination should work: {error}"));
+        assert_eq!(values.last().expect("generic result").to_string(), "2");
+    }
+
+    #[test]
     fn builtin_method_combinations_preserve_values_and_short_circuit() {
         let values = Runtime::new()
             .eval_source(

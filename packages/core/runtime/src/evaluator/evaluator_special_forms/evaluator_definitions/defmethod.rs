@@ -53,6 +53,7 @@ impl Runtime {
                         "STANDARD" => MethodCombination::Standard,
                         "AND" => MethodCombination::And,
                         "OR" => MethodCombination::Or,
+                        "PROGN" => MethodCombination::Progn,
                         _ => {
                             return Err(Self::invalid(
                                 "unsupported defgeneric method combination",

@@ -43,4 +43,5 @@ pub(super) const LIST_BUILTINS: &[BuiltinDefinition] = &[
     ("ldiff", ldiff as _),
     ("subst", subst as _),
     ("nsubst", nsubst as _),
+    ("tree-equal", tree_equal as _),
 ];

@@ -166,6 +166,11 @@ pub fn nsubst(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(subst_tree(&arguments[2], &arguments[1], &arguments[0]))
 }
 
+pub fn tree_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "tree-equal", 2)?;
+    Ok(Value::boolean(arguments[0].equal_value(&arguments[1])))
+}
+
 fn subst_tree(value: &Value, old: &Value, new: &Value) -> Value {
     if value.eq_value(old) {
         return new.clone();

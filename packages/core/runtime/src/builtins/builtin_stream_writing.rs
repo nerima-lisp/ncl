@@ -64,6 +64,20 @@ pub(crate) fn write_sequence(arguments: &[Value]) -> Result<Value, RuntimeError>
     }
     let elements = sequence_elements("write-sequence", &arguments[0])?;
     let (destination, start, end) = sequence_write_options(&arguments[1..], elements.len())?;
+    if let Some(Value::Stream(stream)) = destination.as_ref() {
+        if stream.borrow().element_type_name() == "UNSIGNED-BYTE" {
+            for element in &elements[start..end] {
+                let byte = match element {
+                    Value::Integer(value) if (0..=255).contains(value) => *value as u8,
+                    value => return Err(type_error("write-sequence", "a sequence of unsigned bytes", value)),
+                };
+                if !stream.borrow_mut().write_byte(byte) {
+                    return Err(stream_state_error("write-sequence", "an open unsigned-byte stream"));
+                }
+            }
+            return Ok(arguments[0].clone());
+        }
+    }
     for element in &elements[start..end] {
         let Value::Character(character) = element else {
             return Err(type_error("write-sequence", "a sequence of characters", &element));

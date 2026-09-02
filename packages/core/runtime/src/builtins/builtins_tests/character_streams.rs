@@ -179,7 +179,11 @@ fn character_input_operations_reject_byte_streams() -> Result<(), RuntimeError> 
     assert!(read_char_no_hang(std::slice::from_ref(&stream)).is_err());
     assert!(clear_input(std::slice::from_ref(&stream)).is_err());
     assert!(read_line(std::slice::from_ref(&stream)).is_err());
-    assert!(read_sequence(&[sequence, stream]).is_err());
+    assert!(matches!(
+        read_sequence(&[sequence.clone(), stream])?,
+        Value::Integer(1)
+    ));
+    assert!(matches!(sequence.vector_items().unwrap()[0], Value::Integer(65)));
     Ok(())
 }
 

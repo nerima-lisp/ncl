@@ -129,6 +129,43 @@ fn byte_file_streams_read_write_and_append_raw_bytes() -> Result<(), RuntimeErro
 }
 
 #[test]
+fn byte_streams_support_sequence_io() -> Result<(), RuntimeError> {
+    let input = Value::file_byte_input_stream(vec![4, 5, 6]);
+    let destination = Value::vector(vec![Value::Nil, Value::Nil, Value::Nil, Value::Nil]);
+    assert!(matches!(
+        read_sequence(&[
+            destination.clone(),
+            input,
+            Value::keyword("start"),
+            Value::Integer(1),
+            Value::keyword("end"),
+            Value::Integer(4),
+        ])?,
+        Value::Integer(4)
+    ));
+    assert_eq!(
+        destination.vector_items().unwrap().iter().map(Value::to_string).collect::<Vec<_>>(),
+        vec!["NIL", "4", "5", "6"]
+    );
+
+    let suffix = nanosecond_suffix()?;
+    let path = std::env::temp_dir().join(format!("ncl-byte-sequence-{suffix}"));
+    let output = Value::file_byte_output_stream(path.clone(), Vec::new());
+    write_sequence(&[
+        Value::vector(vec![Value::Integer(7), Value::Integer(8), Value::Integer(9)]),
+        output.clone(),
+        Value::keyword("start"),
+        Value::Integer(1),
+        Value::keyword("end"),
+        Value::Integer(3),
+    ])?;
+    close_stream(&[output])?;
+    assert_eq!(std::fs::read(&path).unwrap(), vec![8, 9]);
+    std::fs::remove_file(path).unwrap();
+    Ok(())
+}
+
+#[test]
 fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeError> {
     let suffix = nanosecond_suffix()?;
     let missing_path = std::env::temp_dir().join(format!("ncl-open-options-{suffix}-missing"));

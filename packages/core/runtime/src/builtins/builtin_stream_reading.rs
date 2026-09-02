@@ -161,7 +161,18 @@ pub(crate) fn read_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> 
         return Err(stream_state_error("read-sequence", "an input stream"));
     }
     if stream.element_type_name() != "CHARACTER" {
-        return Err(stream_state_error("read-sequence", "a character stream"));
+        if stream.element_type_name() != "UNSIGNED-BYTE" || !matches!(destination, Value::Vector(_)) {
+            return Err(stream_state_error("read-sequence", "a character stream or unsigned-byte vector"));
+        }
+        let mut index = start;
+        while index < end {
+            let Some(byte) = stream.read_byte() else { break };
+            destination
+                .set_vector_item(index, Value::Integer(byte as i64))
+                .ok_or_else(|| type_error("read-sequence", "a vector sequence", destination))?;
+            index += 1;
+        }
+        return Ok(Value::Integer(index as i64));
     }
     let mut index = start;
     while index < end {

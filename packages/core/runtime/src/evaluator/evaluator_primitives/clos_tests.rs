@@ -121,6 +121,18 @@ mod tests {
     }
 
     #[test]
+    fn compiled_slot_exists_p_using_class_accepts_three_arguments() {
+        let values = Runtime::new()
+            .eval_compiled_source(
+                "(defclass exists-point () ((value)))
+                 (let ((point (make-instance 'exists-point)))
+                   (slot-exists-p-using-class (find-class 'exists-point) point 'value))",
+            )
+            .expect("compiled using-class SLOT-EXISTS-P succeeds");
+        assert!(matches!(values.last(), Some(Value::Boolean(true))));
+    }
+
+    #[test]
     fn class_of_a_non_instance_value_synthesizes_a_class_definition() {
         let environment = Environment::new();
         let result = Runtime::apply_class_introspection_primitive(

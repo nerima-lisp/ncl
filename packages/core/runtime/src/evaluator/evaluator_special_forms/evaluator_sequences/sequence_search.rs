@@ -15,19 +15,11 @@ impl Runtime {
         let search_options = parse_sequence_search_options(options, span)?;
         let predicate =
             Value::Function(self.resolve_function_designator(predicate, span, environment)?);
-        let items = match sequence {
-            Value::Nil => Vec::new(),
-            Value::List(items) => items.as_ref().clone(),
-                Value::Vector(items) => items.borrow().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
+        let items = sequence.sequence_items().ok_or_else(|| RuntimeError::Type {
+            expected: "SEQUENCE".to_string(),
+            actual: sequence.type_name().to_string(),
+            span: Some(span),
+        })?;
         let end = search_options.end.unwrap_or(items.len());
         if search_options.start > end || end > items.len() {
             return Err(Self::invalid("sequence search bounds are invalid", span));
@@ -101,19 +93,11 @@ impl Runtime {
     ) -> Result<Value, RuntimeError> {
         let search_options = parse_sequence_search_options(options, span)?;
 
-        let items = match sequence {
-            Value::Nil => Vec::new(),
-            Value::List(items) => items.as_ref().clone(),
-                Value::Vector(items) => items.borrow().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
+        let items = sequence.sequence_items().ok_or_else(|| RuntimeError::Type {
+            expected: "SEQUENCE".to_string(),
+            actual: sequence.type_name().to_string(),
+            span: Some(span),
+        })?;
         let end = search_options.end.unwrap_or(items.len());
         if search_options.start > end || end > items.len() {
             return Err(Self::invalid("sequence search bounds are invalid", span));

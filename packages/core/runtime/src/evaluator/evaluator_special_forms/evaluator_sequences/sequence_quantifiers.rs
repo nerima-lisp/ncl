@@ -19,17 +19,11 @@ impl Runtime {
             Value::Function(self.resolve_function_designator(predicate, span, environment)?);
         let sequences = sequences
             .iter()
-            .map(|value| match value {
-                Value::Nil => Ok(Vec::new()),
-                Value::List(items) => Ok(items.as_ref().clone()),
-                Value::Vector(items) => Ok(items.borrow().clone()),
-                Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
-                value => Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                }),
-            })
+            .map(|value| value.sequence_items().ok_or_else(|| RuntimeError::Type {
+                expected: "SEQUENCE".to_string(),
+                actual: value.type_name().to_string(),
+                span: Some(span),
+            }))
             .collect::<Result<Vec<_>, _>>()?;
         let length = sequences.iter().map(Vec::len).min().unwrap_or(0);
 

@@ -167,6 +167,16 @@ fn compiled_sequence_operations_respect_vector_fill_pointers() {
             .to_string(),
         "#(2 3)"
     );
+    assert_eq!(
+        evaluate("(position 9 (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))")
+            .to_string(),
+        "NIL"
+    );
+    assert_eq!(
+        evaluate("(every #'numberp (make-array 3 :initial-contents '(1 2 nil) :fill-pointer 2))")
+            .to_string(),
+        "T"
+    );
 }
 
 #[test]

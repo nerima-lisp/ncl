@@ -20,32 +20,16 @@ impl Runtime {
         }
         let pair_options = parse_sequence_pair_search_options(options, span)?;
 
-        let items1 = match sequence1 {
-            Value::Nil => Vec::new(),
-            Value::List(items) => items.as_ref().clone(),
-                Value::Vector(items) => items.borrow().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
-        let items2 = match sequence2 {
-            Value::Nil => Vec::new(),
-            Value::List(items) => items.as_ref().clone(),
-                Value::Vector(items) => items.borrow().clone(),
-            Value::String(value) => value.chars().map(Value::Character).collect(),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
-        };
+        let items1 = sequence1.sequence_items().ok_or_else(|| RuntimeError::Type {
+            expected: "SEQUENCE".to_string(),
+            actual: sequence1.type_name().to_string(),
+            span: Some(span),
+        })?;
+        let items2 = sequence2.sequence_items().ok_or_else(|| RuntimeError::Type {
+            expected: "SEQUENCE".to_string(),
+            actual: sequence2.type_name().to_string(),
+            span: Some(span),
+        })?;
 
         let end1 = pair_options.end1.unwrap_or(items1.len());
         let end2 = pair_options.end2.unwrap_or(items2.len());

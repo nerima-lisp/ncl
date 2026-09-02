@@ -183,7 +183,8 @@ impl CompileState {
                             .is_some_and(|(name, _)| {
                                 matches!(name.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF")
                             })
-                        && Self::symbol_name_info(&place_items[1], "array place target").is_ok()
+                        && (Self::symbol_name_info(&place_items[1], "array place target").is_ok()
+                            || generalized_list_place(&place_items[1]).is_some())
             );
         if items.len() != expected && !gethash_options && !array_options {
             return Err(Self::arity_error(
@@ -194,6 +195,43 @@ impl CompileState {
             ));
         }
         let place = &items[expected - 1];
+        if operator == "PUSHNEW"
+            && let Some((accessor, accessors, name, escaped)) = generalized_array_place(place)
+            && !accessors.is_empty()
+        {
+            let Some(options) =
+                self.compile_pushnew_options(function, items[0].span, &items[3..])?
+            else {
+                return Ok(None);
+            };
+            let FormKind::List(place_items) = &place.kind else {
+                unreachable!()
+            };
+            self.compile_expression(function, &items[1])?;
+            self.emit(
+                function,
+                Instruction::Load(name.clone()),
+                place_items[1].span,
+            )?;
+            for index in &place_items[2..] {
+                self.compile_expression(function, index)?;
+            }
+            self.emit(
+                function,
+                Instruction::ArrayMutationNestedPushNewOptions {
+                    rank: place_items.len() - 2,
+                    accessor,
+                    accessors,
+                    name,
+                    escaped,
+                    test_not: options.test_not,
+                    has_key: options.has_key,
+                    key_before_test: options.key_before_test,
+                },
+                items[0].span,
+            )?;
+            return Ok(Some(()));
+        }
         if operator != "PUSHNEW"
             && let Some((accessor, accessors, name, escaped)) = generalized_array_place(place)
             && !accessors.is_empty()

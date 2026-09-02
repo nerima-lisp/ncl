@@ -200,6 +200,24 @@ pub enum Instruction {
         /// Whether KEY appeared before TEST or TEST-NOT.
         key_before_test: bool,
     },
+    #[doc = "Pushnew onto an array-valued nested list place through an array accessor with comparison options."] ArrayMutationNestedPushNewOptions {
+        /// The number of subscripts.
+        rank: usize,
+        /// The array accessor name.
+        accessor: String,
+        /// The nested list accessors.
+        accessors: Vec<String>,
+        /// The symbol holding the base list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+        /// Whether the comparison predicate is TEST-NOT.
+        test_not: bool,
+        /// Whether a KEY function is present.
+        has_key: bool,
+        /// Whether KEY appeared before TEST or TEST-NOT.
+        key_before_test: bool,
+    },
     #[doc = "Update a dynamically indexed bit vector or array-valued symbol through BIT."] SetfBitDynamic {
         /// The number of subscripts.
         rank: usize,

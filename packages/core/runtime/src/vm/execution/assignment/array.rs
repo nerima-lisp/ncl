@@ -118,6 +118,30 @@ pub(super) fn execute(
             program_counter,
             span,
         ),
+        Instruction::ArrayMutationNestedPushNewOptions {
+            rank,
+            accessor,
+            accessors,
+            name,
+            escaped,
+            test_not,
+            has_key,
+            key_before_test,
+        } => execute_nested_array_pushnew_options(
+            runtime,
+            *rank,
+            accessor,
+            accessors,
+            name,
+            *escaped,
+            *test_not,
+            *has_key,
+            *key_before_test,
+            stack,
+            environment,
+            program_counter,
+            span,
+        ),
         _ => Ok(false),
     }
 }
@@ -212,6 +236,136 @@ fn execute_nested_array_mutation(
         runtime.set_or_define_in(name, updated_base, environment, span)?;
     }
     stack.push(returned);
+    *program_counter += 1;
+    Ok(true)
+}
+
+fn execute_nested_array_pushnew_options(
+    runtime: &Runtime,
+    rank: usize,
+    accessor: &str,
+    accessors: &[String],
+    name: &str,
+    escaped: bool,
+    test_not: bool,
+    has_key: bool,
+    key_before_test: bool,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    if stack.len() < rank + 3 + usize::from(has_key) {
+        return Err(invalid(
+            "nested array pushnew has an incomplete stack",
+            span,
+        ));
+    }
+    let indices = stack.split_off(stack.len() - rank);
+    let base = stack
+        .pop()
+        .ok_or_else(|| invalid("nested array pushnew has no base", span))?
+        .primary_value();
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("nested array pushnew has no value", span))?
+        .primary_value();
+    let (test, key) = if key_before_test {
+        let test = stack
+            .pop()
+            .ok_or_else(|| invalid("nested array pushnew has no test", span))?
+            .primary_value();
+        let key = stack
+            .pop()
+            .ok_or_else(|| invalid("nested array pushnew has no key", span))?
+            .primary_value();
+        (test, Some(key))
+    } else {
+        let key = if has_key {
+            Some(
+                stack
+                    .pop()
+                    .ok_or_else(|| invalid("nested array pushnew has no key", span))?
+                    .primary_value(),
+            )
+        } else {
+            None
+        };
+        let test = stack
+            .pop()
+            .ok_or_else(|| invalid("nested array pushnew has no test", span))?
+            .primary_value();
+        (test, key)
+    };
+    let test = Value::Function(runtime.resolve_function_designator(&test, span, environment)?);
+    let key = key
+        .filter(|v| v.is_truthy())
+        .map(|v| {
+            runtime
+                .resolve_function_designator(&v, span, environment)
+                .map(Value::Function)
+        })
+        .transpose()?;
+    let base_items = base.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".to_string(),
+        actual: base.type_name().to_string(),
+        span: Some(span),
+    })?;
+    let target =
+        crate::vm::execution::assignment::list::nested::read(base_items.clone(), accessors, span)?;
+    let indices = indices
+        .iter()
+        .map(|v| crate::builtins::index_argument("nested array pushnew", v))
+        .collect::<Result<Vec<_>, _>>()?;
+    let offset = array_mutation_offset(&target, accessor, rank, &indices, span)?;
+    let current = array_mutation_item(&target, offset, span)?;
+    let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".to_string(),
+        actual: current.type_name().to_string(),
+        span: Some(span),
+    })?;
+    let item_key = key.as_ref().map_or_else(
+        || Ok(value.clone()),
+        |k| {
+            runtime
+                .apply_in(k, std::slice::from_ref(&value), span, environment)
+                .map(|v| v.primary_value())
+        },
+    )?;
+    let found = elements
+        .iter()
+        .map(|candidate| {
+            let candidate_key = key.as_ref().map_or_else(
+                || Ok(candidate.clone()),
+                |k| {
+                    runtime
+                        .apply_in(k, std::slice::from_ref(candidate), span, environment)
+                        .map(|v| v.primary_value())
+                },
+            )?;
+            runtime
+                .apply_in(&test, &[item_key.clone(), candidate_key], span, environment)
+                .map(|v| v.primary_value().is_truthy())
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .any(|equal| if test_not { !equal } else { equal });
+    let result = if found {
+        current
+    } else {
+        elements.insert(0, value);
+        Value::list(elements)
+    };
+    set_array_mutation_item(&target, offset, result.clone(), span)?;
+    let updated_base = Value::list(crate::vm::execution::assignment::list::nested::update(
+        base_items, accessors, &target, span,
+    )?);
+    if escaped {
+        runtime.set_or_define_exact_in(name, updated_base, environment, span)?;
+    } else {
+        runtime.set_or_define_in(name, updated_base, environment, span)?;
+    }
+    stack.push(result);
     *program_counter += 1;
     Ok(true)
 }

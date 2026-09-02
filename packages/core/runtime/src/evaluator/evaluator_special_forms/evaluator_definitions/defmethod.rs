@@ -8,13 +8,13 @@ use parameters::DefmethodParameters;
 
 impl Runtime {
     fn ensure_standard_protocol_default(name: &str, generic: &Value) {
-        if !matches!(name, "INITIALIZE-INSTANCE" | "SHARED-INITIALIZE") {
+        if !matches!(name, "INITIALIZE-INSTANCE" | "SHARED-INITIALIZE" | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS") {
             return;
         }
-        let primitive_name = if name == "INITIALIZE-INSTANCE" {
-            "INITIALIZE-INSTANCE"
-        } else {
-            "SHARED-INITIALIZE"
+        let primitive_name = match name {
+            "INITIALIZE-INSTANCE" => "INITIALIZE-INSTANCE",
+            "SHARED-INITIALIZE" => "SHARED-INITIALIZE",
+            _ => "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS",
         };
         let Value::Function(function) = generic else {
             return;

@@ -126,7 +126,8 @@ impl CompileState {
             | "ALLOCATE-INSTANCE"
             | "CHANGE-CLASS"
             | "SHARED-INITIALIZE"
-            | "REINITIALIZE-INSTANCE" => {
+            | "REINITIALIZE-INSTANCE"
+            | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS" => {
                 self.compile_evaluation_operation(function, span, items, name)
             }
             "COMPILE" | "LOAD" | "PROVIDE" | "REQUIRE" => {

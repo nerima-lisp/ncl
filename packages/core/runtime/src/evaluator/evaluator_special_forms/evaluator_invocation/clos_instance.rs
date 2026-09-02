@@ -7,17 +7,27 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        if arguments.len() != 2 {
-            return Err(Self::arity("change-class", "two", arguments.len()));
+        if arguments.len() < 2 || !(arguments.len() - 2).is_multiple_of(2) {
+            return Err(Self::arity("change-class", "at least two", arguments.len()));
         }
         let class_name = Self::name_designator_from_value(&arguments[1], span)?;
         let class = environment
             .lookup_class(&class_name)
             .ok_or_else(|| Self::invalid("unknown class", span))?;
+        let old_instance = arguments[0]
+            .instance_snapshot()
+            .ok_or_else(|| Self::invalid("change-class requires an instance", span))?;
         if !arguments[0].change_instance_class(class) {
             return Err(Self::invalid("change-class requires an instance", span));
         }
-        Ok(arguments[0].clone())
+        let mut update_arguments = vec![old_instance, arguments[0].clone()];
+        update_arguments.extend_from_slice(&arguments[2..]);
+        self.apply_in(
+            &Value::symbol("update-instance-for-different-class"),
+            &update_arguments,
+            span,
+            environment,
+        )
     }
 
     pub(crate) fn allocate_instance(
@@ -257,5 +267,21 @@ impl Runtime {
         }
         let _ = environment;
         Ok(instance.clone())
+    }
+
+    pub(crate) fn update_instance_for_different_class(
+        &self,
+        arguments: &[Value],
+        _environment: &Environment,
+        _span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() < 2 || !(arguments.len() - 2).is_multiple_of(2) {
+            return Err(Self::arity(
+                "update-instance-for-different-class",
+                "at least two",
+                arguments.len(),
+            ));
+        }
+        Ok(arguments[1].clone())
     }
 }

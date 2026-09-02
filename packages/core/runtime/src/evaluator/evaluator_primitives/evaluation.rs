@@ -20,6 +20,7 @@ impl Runtime {
                 | "INITIALIZE-INSTANCE"
                 | "SHARED-INITIALIZE"
                 | "REINITIALIZE-INSTANCE"
+                | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS"
                 | "PROVIDE"
                 | "REQUIRE"
         ) {
@@ -39,6 +40,7 @@ impl Runtime {
             "INITIALIZE-INSTANCE" => self.initialize_instance(arguments, environment, span),
             "SHARED-INITIALIZE" => self.shared_initialize(arguments, environment, span),
             "REINITIALIZE-INSTANCE" => self.reinitialize_instance(arguments, environment, span),
+            "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS" => self.update_instance_for_different_class(arguments, environment, span),
             "PROVIDE" => self.provide_feature(arguments, span),
             "REQUIRE" => self.require_feature(arguments, span),
             _ => unreachable!("evaluation primitive name was prevalidated"),

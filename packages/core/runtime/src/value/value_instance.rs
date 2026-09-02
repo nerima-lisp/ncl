@@ -34,6 +34,20 @@ impl Value {
         }
     }
 
+    pub(crate) fn instance_snapshot(&self) -> Option<Self> {
+        let Self::Instance(instance) = self else {
+            return None;
+        };
+        let class = instance.class.borrow().clone();
+        let slots = instance
+            .slots
+            .borrow()
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.clone()))
+            .collect();
+        Some(Self::instance(class, slots))
+    }
+
     pub(crate) fn instance_is_type(&self, expected: &str) -> bool {
         let Self::Instance(instance) = self else {
             return false;

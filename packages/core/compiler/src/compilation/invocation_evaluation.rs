@@ -15,7 +15,8 @@ impl CompileState {
             | "ALLOCATE-INSTANCE"
             | "CHANGE-CLASS"
             | "SHARED-INITIALIZE"
-            | "REINITIALIZE-INSTANCE" => items.len() >= 2,
+            | "REINITIALIZE-INSTANCE"
+            | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS" => items.len() >= 2,
             "COMPILE" => (2..=3).contains(&items.len()),
             "LOAD" => items.len() == 2,
             "PROVIDE" => items.len() == 2,
@@ -29,7 +30,8 @@ impl CompileState {
                 | "ALLOCATE-INSTANCE"
                 | "CHANGE-CLASS"
                 | "SHARED-INITIALIZE"
-                | "REINITIALIZE-INSTANCE" => "at least one",
+                | "REINITIALIZE-INSTANCE"
+                | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS" => "at least one",
                 "COMPILE" => "one or two",
                 "LOAD" => "one",
                 "PROVIDE" => "one",

@@ -993,6 +993,18 @@ fn sequence_operations_respect_vector_fill_pointers() {
 }
 
 #[test]
+fn simple_bit_vector_predicates_respect_array_metadata() {
+    assert_eq!(
+        evaluate("(list (simple-bit-vector-p #(0 1))\
+                       (simple-bit-vector-p (make-array 2 :element-type 'bit :adjustable t))\
+                       (simple-bit-vector-p (make-array 2 :element-type 'bit :fill-pointer 1))\
+                       (typep (make-array 2 :element-type 'bit :adjustable t) 'simple-bit-vector))")
+            .to_string(),
+        "(T NIL NIL NIL)"
+    );
+}
+
+#[test]
 fn rejects_invalid_map_into_inputs_and_propagates_errors() {
     assert!(matches!(
         Runtime::new().eval_source("(map-into (vector 0) #'+ 5)"),

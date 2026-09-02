@@ -84,11 +84,18 @@ pub fn bit_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn simple_bit_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-bit-vector-p", 1)?;
-    Ok(Value::boolean(is_bit_vector(&arguments[0])))
+    Ok(Value::boolean(is_simple_bit_vector(&arguments[0])))
 }
 
 fn is_bit_vector(value: &Value) -> bool {
     matches!(value, Value::Vector(items) if items.borrow().iter().all(|item| matches!(item, Value::Integer(bit) if *bit == 0 || *bit == 1)))
+}
+
+fn is_simple_bit_vector(value: &Value) -> bool {
+    is_bit_vector(value)
+        && value.vector_adjustable() != Some(true)
+        && !value.array_has_fill_pointer().unwrap_or(false)
+        && !value.is_displaced()
 }
 
 pub fn typep(arguments: &[Value]) -> Result<Value, RuntimeError> {

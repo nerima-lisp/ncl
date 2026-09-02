@@ -112,6 +112,13 @@ pub(in crate::builtins::types::type_matching) fn is_bit_vector_value(value: &Val
     matches!(value, Value::Vector(items) if items.borrow().iter().all(is_bit_value))
 }
 
+pub(in crate::builtins::types::type_matching) fn is_simple_bit_vector_value(value: &Value) -> bool {
+    is_bit_vector_value(value)
+        && value.vector_adjustable() != Some(true)
+        && !value.array_has_fill_pointer().unwrap_or(false)
+        && !value.is_displaced()
+}
+
 pub(in crate::builtins::types::type_matching) const fn is_bit_value(value: &Value) -> bool {
     matches!(value, Value::Integer(bit) if *bit == 0 || *bit == 1)
 }

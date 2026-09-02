@@ -170,6 +170,20 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Push onto or pop from an array-valued nested list place through an array accessor."] ArrayMutationNestedDynamic {
+        /// The mutation operator.
+        operator: String,
+        /// The number of subscripts.
+        rank: usize,
+        /// The array accessor name.
+        accessor: String,
+        /// The list accessors from the base value to the array.
+        accessors: Vec<String>,
+        /// The base variable name.
+        name: String,
+        /// Whether the base variable is package-qualified.
+        escaped: bool,
+    },
     #[doc = "Pushnew onto a dynamically indexed array-valued symbol through an array accessor with comparison options."] ArrayMutationPushNewOptions {
         /// The number of subscripts.
         rank: usize,

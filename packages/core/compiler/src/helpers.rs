@@ -13,5 +13,6 @@ pub use eval_when::compile_eval_when_executes;
 
 mod list_places;
 pub(crate) use list_places::{
-    dynamic_nth_list_place, generalized_list_place, is_composite_list_accessor, list_accessor_target,
+    dynamic_nth_list_place, generalized_array_place, generalized_list_place,
+    is_composite_list_accessor, list_accessor_target,
 };

@@ -7,8 +7,7 @@ fn compiled_evaluates_setf_places() {
         "(1 9 3)"
     );
     assert_eq!(
-        evaluate("(let ((xs (list (list 1 2) (list 3 4)))) (setf (caar xs) 9) xs)")
-            .to_string(),
+        evaluate("(let ((xs (list (list 1 2) (list 3 4)))) (setf (caar xs) 9) xs)").to_string(),
         "((9 2) (3 4))"
     );
     assert_eq!(
@@ -184,12 +183,30 @@ fn compiled_evaluates_setf_places() {
 #[test]
 fn compiled_mutates_array_list_places_with_push_and_pop() {
     assert_eq!(
-        evaluate("(let ((values (vector (list 2 3)))) (push 1 (aref values 0)) values)").to_string(),
+        evaluate("(let ((values (vector (list 2 3)))) (push 1 (aref values 0)) values)")
+            .to_string(),
         "#((1 2 3))"
     );
     assert_eq!(
-        evaluate("(let ((values (vector (list 1 2)))) (list (pop (svref values 0)) values))").to_string(),
+        evaluate("(let ((values (vector (list 1 2)))) (list (pop (svref values 0)) values))")
+            .to_string(),
         "(1 #((2)))"
+    );
+}
+
+#[test]
+fn compiled_mutates_array_list_places_with_generalized_array_places() {
+    assert_eq!(
+        evaluate("(let ((cells (list (vector (list 2 3))))) (push 1 (aref (car cells) 0)) cells)")
+            .to_string(),
+        "(#((1 2 3)))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((cells (list (vector (list 1 2))))) (list (pop (svref (car cells) 0)) cells))"
+        )
+        .to_string(),
+        "(1 (#((2))))"
     );
 }
 
@@ -264,7 +281,7 @@ fn compiled_evaluates_psetf_on_dynamic_nth_places_in_parallel() {
                (list xs other))",
         )
         .to_string(),
-            "((1 20 3) 1)"
+        "((1 20 3) 1)"
     );
     assert_eq!(
         evaluate(
@@ -310,7 +327,10 @@ fn compiled_evaluates_modify_on_get_places() {
 #[test]
 fn compiled_evaluates_modify_on_aref_places() {
     assert_eq!(
-        evaluate("(let ((xs #(4 8)) (index 1)) (list (incf (aref xs index) 3) xs (decf (aref xs 0)) xs))").to_string(),
+        evaluate(
+            "(let ((xs #(4 8)) (index 1)) (list (incf (aref xs index) 3) xs (decf (aref xs 0)) xs))"
+        )
+        .to_string(),
         "(11 #(3 11) 3 #(3 11))"
     );
 }
@@ -382,19 +402,27 @@ fn compiled_evaluates_native_single_place_rotatef() {
 #[test]
 fn compiled_evaluates_native_dynamic_nth_rotate_and_shift() {
     assert_eq!(
-        evaluate("(let ((xs (list 1 2)) (index 1)) (list (rotatef (nth index xs)) xs))").to_string(),
+        evaluate("(let ((xs (list 1 2)) (index 1)) (list (rotatef (nth index xs)) xs))")
+            .to_string(),
         "(NIL (1 2))"
     );
     assert_eq!(
-        evaluate("(let ((xs (list 1 2)) (index 1)) (list (shiftf (nth index xs) 9) xs))").to_string(),
+        evaluate("(let ((xs (list 1 2)) (index 1)) (list (shiftf (nth index xs) 9) xs))")
+            .to_string(),
         "(2 (1 9))"
     );
     assert_eq!(
-        evaluate("(let ((xs (list (list 1 2))) (index 1)) (list (rotatef (nth index (car xs))) xs))").to_string(),
+        evaluate(
+            "(let ((xs (list (list 1 2))) (index 1)) (list (rotatef (nth index (car xs))) xs))"
+        )
+        .to_string(),
         "(NIL ((1 2)))"
     );
     assert_eq!(
-        evaluate("(let ((xs (list (list 1 2))) (index 1)) (list (shiftf (nth index (car xs)) 9) xs))").to_string(),
+        evaluate(
+            "(let ((xs (list (list 1 2))) (index 1)) (list (shiftf (nth index (car xs)) 9) xs))"
+        )
+        .to_string(),
         "(2 ((1 9)))"
     );
     assert_eq!(
@@ -406,11 +434,13 @@ fn compiled_evaluates_native_dynamic_nth_rotate_and_shift() {
         "(1 (4 2) (3 9))"
     );
     assert_eq!(
-        evaluate("(let ((xs (list 1 2)) (i 0) (j 1)) (rotatef (nth i xs) (nth j xs)) xs)").to_string(),
+        evaluate("(let ((xs (list 1 2)) (i 0) (j 1)) (rotatef (nth i xs) (nth j xs)) xs)")
+            .to_string(),
         "(2 1)"
     );
     assert_eq!(
-        evaluate("(let ((xs (list 1 2)) (i 0) (j 1)) (list (shiftf (nth i xs) (nth j xs) 9) xs))").to_string(),
+        evaluate("(let ((xs (list 1 2)) (i 0) (j 1)) (list (shiftf (nth i xs) (nth j xs) 9) xs))")
+            .to_string(),
         "(1 (2 9))"
     );
 }

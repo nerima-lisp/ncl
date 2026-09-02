@@ -77,9 +77,40 @@ pub(crate) fn generalized_list_place(form: &Form) -> Option<(Vec<String>, String
     }
 }
 
-pub(crate) fn dynamic_nth_list_place(form: &Form) -> Option<(&Form, &Form, Vec<String>, String, bool)> {
-    let FormKind::List(items) = &form.kind else { return None };
-    if items.len() != 3 || CompileState::symbol_name_info(&items[0], "list accessor").ok()?.0 != "NTH" { return None; }
+pub(crate) fn generalized_array_place(form: &Form) -> Option<(String, Vec<String>, String, bool)> {
+    let FormKind::List(items) = &form.kind else {
+        return None;
+    };
+    if items.len() < 3 {
+        return None;
+    }
+    let (accessor, _) = CompileState::symbol_name_info(&items[0], "array place operator").ok()?;
+    if !matches!(accessor.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF") {
+        return None;
+    }
+    if let Some((accessors, name, escaped)) = generalized_list_place(&items[1]) {
+        Some((accessor, accessors, name, escaped))
+    } else {
+        let (name, escaped) =
+            CompileState::symbol_name_info(&items[1], "array place target").ok()?;
+        Some((accessor, Vec::new(), name, escaped))
+    }
+}
+
+pub(crate) fn dynamic_nth_list_place(
+    form: &Form,
+) -> Option<(&Form, &Form, Vec<String>, String, bool)> {
+    let FormKind::List(items) = &form.kind else {
+        return None;
+    };
+    if items.len() != 3
+        || CompileState::symbol_name_info(&items[0], "list accessor")
+            .ok()?
+            .0
+            != "NTH"
+    {
+        return None;
+    }
     let mut accessors = Vec::new();
     let mut target = &items[2];
     while let Some((accessor, next_target)) = list_accessor_target(target) {

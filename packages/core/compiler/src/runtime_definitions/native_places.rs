@@ -39,7 +39,11 @@ impl CompileState {
         if !has_test && !test_not {
             self.emit(function, Instruction::Quote(Form::atom("EQL", span)), span)?;
         }
-        Ok(Some(PushNewOptions { test_not, has_key, key_before_test }))
+        Ok(Some(PushNewOptions {
+            test_not,
+            has_key,
+            key_before_test,
+        }))
     }
 
     pub(super) fn compile_native_push_pop(
@@ -63,16 +67,38 @@ impl CompileState {
             && items.len() > expected
             && dynamic_nth_list_place(&items[2]).is_some()
         {
-            let Some(options) = self.compile_pushnew_options(function, items[0].span, &items[3..])? else { return Ok(None); };
-            let (index_form, target, accessors, name, escaped) = dynamic_nth_list_place(&items[2]).expect("checked above");
+            let Some(options) =
+                self.compile_pushnew_options(function, items[0].span, &items[3..])?
+            else {
+                return Ok(None);
+            };
+            let (index_form, target, accessors, name, escaped) =
+                dynamic_nth_list_place(&items[2]).expect("checked above");
             self.compile_expression(function, &items[1])?;
             self.compile_expression(function, index_form)?;
             self.compile_expression(function, target)?;
-            self.emit(function, if accessors.is_empty() {
-                Instruction::ListMutationNthPushNewOptions { name, escaped, test_not: options.test_not, has_key: options.has_key, key_before_test: options.key_before_test }
-            } else {
-                Instruction::NestedListMutationNthPushNewOptions { accessors, name, escaped, test_not: options.test_not, has_key: options.has_key, key_before_test: options.key_before_test }
-            }, items[0].span)?;
+            self.emit(
+                function,
+                if accessors.is_empty() {
+                    Instruction::ListMutationNthPushNewOptions {
+                        name,
+                        escaped,
+                        test_not: options.test_not,
+                        has_key: options.has_key,
+                        key_before_test: options.key_before_test,
+                    }
+                } else {
+                    Instruction::NestedListMutationNthPushNewOptions {
+                        accessors,
+                        name,
+                        escaped,
+                        test_not: options.test_not,
+                        has_key: options.has_key,
+                        key_before_test: options.key_before_test,
+                    }
+                },
+                items[0].span,
+            )?;
             return Ok(Some(()));
         }
         if operator == "PUSHNEW"
@@ -85,7 +111,9 @@ impl CompileState {
             if !(items.len() - 3).is_multiple_of(2) {
                 return Ok(None);
             }
-            let Some(options) = self.compile_pushnew_options(function, items[0].span, &items[3..])? else {
+            let Some(options) =
+                self.compile_pushnew_options(function, items[0].span, &items[3..])?
+            else {
                 return Ok(None);
             };
             self.compile_expression(function, &items[1])?;
@@ -166,14 +194,51 @@ impl CompileState {
             ));
         }
         let place = &items[expected - 1];
+        if operator != "PUSHNEW"
+            && let Some((accessor, accessors, name, escaped)) = generalized_array_place(place)
+            && !accessors.is_empty()
+        {
+            let FormKind::List(place_items) = &place.kind else {
+                unreachable!()
+            };
+            if operator == "PUSH" {
+                self.compile_expression(function, &items[1])?;
+            }
+            self.emit(
+                function,
+                Instruction::Load(name.clone()),
+                place_items[1].span,
+            )?;
+            for index in &place_items[2..] {
+                self.compile_expression(function, index)?;
+            }
+            self.emit(
+                function,
+                Instruction::ArrayMutationNestedDynamic {
+                    operator,
+                    rank: place_items.len() - 2,
+                    accessor,
+                    accessors,
+                    name,
+                    escaped,
+                },
+                items[0].span,
+            )?;
+            return Ok(Some(()));
+        }
         if let FormKind::List(place_items) = &place.kind {
             if place_items.len() >= 3 {
-                if let Ok((accessor, _)) = Self::symbol_name_info(&place_items[0], "array place operator") {
+                if let Ok((accessor, _)) =
+                    Self::symbol_name_info(&place_items[0], "array place operator")
+                {
                     if matches!(accessor.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF")
-                        && let Ok((name, escaped)) = Self::symbol_name_info(&place_items[1], "array place target")
+                        && let Ok((name, escaped)) =
+                            Self::symbol_name_info(&place_items[1], "array place target")
                     {
                         if operator == "PUSHNEW" {
-                            let Some(options) = self.compile_pushnew_options(function, items[0].span, &items[3..])? else {
+                            let Some(options) =
+                                self.compile_pushnew_options(function, items[0].span, &items[3..])?
+                            else {
                                 return Ok(None);
                             };
                             self.compile_expression(function, &items[1])?;
@@ -181,15 +246,19 @@ impl CompileState {
                             for index in &place_items[2..] {
                                 self.compile_expression(function, index)?;
                             }
-                            self.emit(function, Instruction::ArrayMutationPushNewOptions {
-                                rank: place_items.len() - 2,
-                                accessor,
-                                name,
-                                escaped,
-                                test_not: options.test_not,
-                                has_key: options.has_key,
-                                key_before_test: options.key_before_test,
-                            }, items[0].span)?;
+                            self.emit(
+                                function,
+                                Instruction::ArrayMutationPushNewOptions {
+                                    rank: place_items.len() - 2,
+                                    accessor,
+                                    name,
+                                    escaped,
+                                    test_not: options.test_not,
+                                    has_key: options.has_key,
+                                    key_before_test: options.key_before_test,
+                                },
+                                items[0].span,
+                            )?;
                             return Ok(Some(()));
                         }
                         if operator == "PUSH" {
@@ -199,13 +268,17 @@ impl CompileState {
                         for index in &place_items[2..] {
                             self.compile_expression(function, index)?;
                         }
-                        self.emit(function, Instruction::ArrayMutationDynamic {
-                            operator,
-                            rank: place_items.len() - 2,
-                            accessor,
-                            name,
-                            escaped,
-                        }, items[0].span)?;
+                        self.emit(
+                            function,
+                            Instruction::ArrayMutationDynamic {
+                                operator,
+                                rank: place_items.len() - 2,
+                                accessor,
+                                name,
+                                escaped,
+                            },
+                            items[0].span,
+                        )?;
                         return Ok(Some(()));
                     }
                 }
@@ -279,7 +352,8 @@ impl CompileState {
             }
         }
         let generalized = generalized_list_place(place);
-        if let Some((index_form, target, accessors, name, escaped)) = dynamic_nth_list_place(place) {
+        if let Some((index_form, target, accessors, name, escaped)) = dynamic_nth_list_place(place)
+        {
             if matches!(operator.as_str(), "PUSH" | "PUSHNEW") {
                 self.compile_expression(function, &items[1])?;
             }
@@ -288,11 +362,20 @@ impl CompileState {
             self.emit(
                 function,
                 if !accessors.is_empty() {
-                    Instruction::NestedListMutationNthDynamic { accessors, operator, name, escaped }
+                    Instruction::NestedListMutationNthDynamic {
+                        accessors,
+                        operator,
+                        name,
+                        escaped,
+                    }
                 } else if operator == "PUSHNEW" {
                     Instruction::ListMutationNthPushNew { name, escaped }
                 } else {
-                    Instruction::ListMutationNthDynamic { operator, name, escaped }
+                    Instruction::ListMutationNthDynamic {
+                        operator,
+                        name,
+                        escaped,
+                    }
                 },
                 items[0].span,
             )?;

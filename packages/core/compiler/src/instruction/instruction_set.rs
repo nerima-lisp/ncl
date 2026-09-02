@@ -122,6 +122,20 @@ pub enum Instruction {
         /// Whether KEY appeared before TEST or TEST-NOT.
         key_before_test: bool,
     },
+    #[doc = "Push a value onto a dynamically indexed nested list element through NTH with comparison options."] NestedListMutationNthPushNewOptions {
+        /// Accessors from the symbol outward to the list being indexed.
+        accessors: Vec<String>,
+        /// The symbol holding the outer list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+        /// Whether the comparison predicate is TEST-NOT.
+        test_not: bool,
+        /// Whether a KEY function is present.
+        has_key: bool,
+        /// Whether KEY appeared before TEST or TEST-NOT.
+        key_before_test: bool,
+    },
     #[doc = "Update a dynamically indexed vector or array-valued symbol through an array accessor."] SetfArefDynamic {
         /// The number of subscripts.
         rank: usize,

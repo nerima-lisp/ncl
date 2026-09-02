@@ -61,14 +61,18 @@ impl CompileState {
         let expected = if operator == "POP" { 2 } else { 3 };
         if operator == "PUSHNEW"
             && items.len() > expected
-            && nth_list_place(&items[2]).is_some()
+            && dynamic_nth_list_place(&items[2]).is_some()
         {
             let Some(options) = self.compile_pushnew_options(function, items[0].span, &items[3..])? else { return Ok(None); };
-            let (index_form, target, name, escaped) = nth_list_place(&items[2]).expect("checked above");
+            let (index_form, target, accessors, name, escaped) = dynamic_nth_list_place(&items[2]).expect("checked above");
             self.compile_expression(function, &items[1])?;
             self.compile_expression(function, index_form)?;
             self.compile_expression(function, target)?;
-            self.emit(function, Instruction::ListMutationNthPushNewOptions { name, escaped, test_not: options.test_not, has_key: options.has_key, key_before_test: options.key_before_test }, items[0].span)?;
+            self.emit(function, if accessors.is_empty() {
+                Instruction::ListMutationNthPushNewOptions { name, escaped, test_not: options.test_not, has_key: options.has_key, key_before_test: options.key_before_test }
+            } else {
+                Instruction::NestedListMutationNthPushNewOptions { accessors, name, escaped, test_not: options.test_not, has_key: options.has_key, key_before_test: options.key_before_test }
+            }, items[0].span)?;
             return Ok(Some(()));
         }
         if operator == "PUSHNEW"
@@ -305,18 +309,4 @@ impl CompileState {
         )?;
         Ok(Some(()))
     }
-}
-
-fn nth_list_place(place: &Form) -> Option<(&Form, &Form, String, bool)> {
-    let FormKind::List(items) = &place.kind else { return None };
-    if items.len() != 3
-        || CompileState::symbol_name_info(&items[0], "list place operator")
-            .ok()?
-            .0
-            != "NTH"
-    {
-        return None;
-    }
-    let (name, escaped) = CompileState::symbol_name_info(&items[2], "list place target").ok()?;
-    Some((&items[1], &items[2], name, escaped))
 }

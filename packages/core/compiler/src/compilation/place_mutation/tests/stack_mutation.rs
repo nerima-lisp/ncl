@@ -138,7 +138,7 @@ fn compile_pushnew_with_options_and_dynamic_nth_uses_native_instruction() {
             has_key,
             key_before_test,
         } if name == "XS" && !escaped && *test_not && *has_key && !*key_before_test
-    )));
+    )), "{:?}", state.functions[function].instructions);
 }
 
 #[test]
@@ -154,6 +154,21 @@ fn compile_dynamic_nth_mutation_through_nested_list_place_uses_native_instructio
         Instruction::NestedListMutationNthDynamic { operator, accessors, name, escaped }
             if operator == "PUSH" && accessors == &["CAR".to_owned()] && name == "XS" && !escaped
     )));
+}
+
+#[test]
+fn compile_dynamic_nth_pushnew_options_through_nested_list_place_uses_native_instruction() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let pushnew = parse_items("(pushnew (list 2 :c) (nth index (car xs)) :key #'car :test #'eql)");
+    state
+        .compile_runtime_definition(function, Span::new(0, 1), &pushnew)
+        .expect("nested dynamic NTH PUSHNEW with options should use a native mutation instruction");
+    assert!(state.functions[function].instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::NestedListMutationNthPushNewOptions { accessors, name, escaped, test_not, has_key, key_before_test }
+            if accessors == &["CAR".to_owned()] && name == "XS" && !escaped && !test_not && *has_key && *key_before_test
+    )), "{:?}", state.functions[function].instructions);
 }
 
 #[test]

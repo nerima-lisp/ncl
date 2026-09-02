@@ -307,6 +307,14 @@ fn compiled_evaluates_dynamic_nth_pushnew_key_and_test_not() {
 }
 
 #[test]
+fn compiled_evaluates_pushnew_options_through_nested_dynamic_nth_place() {
+    assert_eq!(
+        evaluate("(let ((xs (list (list (list (list 2 :a) (list 3 :b)))))) (list (pushnew (list 2 :c) (nth 0 (car xs)) :key #'car :test #'eql) (pushnew (list 4 :d) (nth 0 (car xs)) :key #'car :test #'eql) xs))").to_string(),
+        "(((2 :A) (3 :B)) ((4 :D) (2 :A) (3 :B)) ((((4 :D) (2 :A) (3 :B)))))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_single_place_rotatef() {
     assert_eq!(
         evaluate("(let ((x 7)) (list (rotatef x) x))").to_string(),

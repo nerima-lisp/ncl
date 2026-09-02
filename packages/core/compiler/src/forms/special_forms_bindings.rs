@@ -84,6 +84,8 @@ impl CompileState {
             }
             "GENERIC-FUNCTION-METHODS"
             | "FIND-METHOD"
+            | "ADD-METHOD"
+            | "REMOVE-METHOD"
             | "METHOD-QUALIFIERS"
             | "METHOD-SPECIALIZERS"
             | "METHOD-FUNCTION" => self.compile_class_introspection(function, span, items, name),

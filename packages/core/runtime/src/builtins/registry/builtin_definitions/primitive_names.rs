@@ -136,6 +136,8 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "GENERIC-FUNCTION-LAMBDA-LIST",
     "GENERIC-FUNCTION-METHODS",
     "FIND-METHOD",
+    "ADD-METHOD",
+    "REMOVE-METHOD",
     "METHOD-QUALIFIERS",
     "METHOD-SPECIALIZERS",
     "METHOD-FUNCTION",

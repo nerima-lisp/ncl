@@ -1,6 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 use crate::value::MethodCombination;
+use crate::value::MethodSpecializer;
 use crate::Function;
 
 impl Runtime {
@@ -91,6 +92,8 @@ impl Runtime {
                 | "GENERIC-FUNCTION-LAMBDA-LIST"
                 | "GENERIC-FUNCTION-METHODS"
                 | "FIND-METHOD"
+                | "ADD-METHOD"
+                | "REMOVE-METHOD"
                 | "METHOD-QUALIFIERS"
                 | "METHOD-SPECIALIZERS"
                 | "METHOD-FUNCTION"
@@ -324,6 +327,78 @@ impl Runtime {
                             )
                     });
                     Ok(matches.cloned().map(Value::method).unwrap_or(Value::Nil))
+                }
+                "ADD-METHOD" | "REMOVE-METHOD" => {
+                    if arguments.len() != 2 {
+                        return Err(Self::arity("method mutation", "two", arguments.len()));
+                    }
+                    let Value::Function(generic_function) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Function::Generic { methods, .. } = generic_function.as_ref() else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Value::Function(method_function) = &arguments[1] else {
+                        return Err(RuntimeError::Type {
+                            expected: "METHOD".into(),
+                            actual: arguments[1].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Function::Method { definition } = method_function.as_ref() else {
+                        return Err(RuntimeError::Type {
+                            expected: "METHOD".into(),
+                            actual: arguments[1].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let same_signature = |candidate: &MethodDefinition| {
+                        candidate.qualifiers == definition.qualifiers
+                            && candidate.specializers.len() == definition.specializers.len()
+                            && candidate
+                                .specializers
+                                .iter()
+                                .zip(&definition.specializers)
+                                .all(|(left, right)| match (left, right) {
+                                    (
+                                        MethodSpecializer::Class(left),
+                                        MethodSpecializer::Class(right),
+                                    ) => left == right,
+                                    (
+                                        MethodSpecializer::Eql(left),
+                                        MethodSpecializer::Eql(right),
+                                    ) => builtins::eql_value(left, right),
+                                    _ => false,
+                                })
+                    };
+                    let mut methods = methods.borrow_mut();
+                    match name {
+                        "ADD-METHOD" => {
+                            if let Some(index) = methods.iter().position(same_signature) {
+                                methods[index] = definition.clone();
+                            } else {
+                                methods.push(definition.clone());
+                            }
+                        }
+                        "REMOVE-METHOD" => {
+                            if let Some(index) = methods.iter().position(|candidate| {
+                                same_signature(candidate)
+                                    && candidate.function.eq_value(&definition.function)
+                            }) {
+                                methods.remove(index);
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                    Ok(arguments[0].clone())
                 }
                 "METHOD-QUALIFIERS" | "METHOD-SPECIALIZERS" | "METHOD-FUNCTION" => {
                     if arguments.len() != 1 {

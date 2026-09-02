@@ -144,7 +144,20 @@ impl CompileState {
                             .ok()
                             .is_some_and(|(name, _)| name == "GETHASH")
             );
-        if items.len() != expected && !gethash_options {
+        let array_options = operator == "PUSHNEW"
+            && items.len() > expected
+            && matches!(
+                &items[expected - 1].kind,
+                FormKind::List(place_items)
+                    if place_items.len() >= 3
+                        && Self::symbol_name_info(&place_items[0], "array place operator")
+                            .ok()
+                            .is_some_and(|(name, _)| {
+                                matches!(name.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF")
+                            })
+                        && Self::symbol_name_info(&place_items[1], "array place target").is_ok()
+            );
+        if items.len() != expected && !gethash_options && !array_options {
             return Err(Self::arity_error(
                 items,
                 &operator,
@@ -159,7 +172,27 @@ impl CompileState {
                     if matches!(accessor.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF")
                         && let Ok((name, escaped)) = Self::symbol_name_info(&place_items[1], "array place target")
                     {
-                        if matches!(operator.as_str(), "PUSH" | "POP") {
+                        if operator == "PUSHNEW" {
+                            let Some(options) = self.compile_pushnew_options(function, items[0].span, &items[3..])? else {
+                                return Ok(None);
+                            };
+                            self.compile_expression(function, &items[1])?;
+                            self.compile_expression(function, &place_items[1])?;
+                            for index in &place_items[2..] {
+                                self.compile_expression(function, index)?;
+                            }
+                            self.emit(function, Instruction::ArrayMutationPushNewOptions {
+                                rank: place_items.len() - 2,
+                                accessor,
+                                name,
+                                escaped,
+                                test_not: options.test_not,
+                                has_key: options.has_key,
+                                key_before_test: options.key_before_test,
+                            }, items[0].span)?;
+                            return Ok(Some(()));
+                        }
+                        if operator == "PUSH" {
                             self.compile_expression(function, &items[1])?;
                         }
                         self.compile_expression(function, &place_items[1])?;

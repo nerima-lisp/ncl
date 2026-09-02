@@ -194,6 +194,23 @@ fn compiled_mutates_array_list_places_with_push_and_pop() {
 }
 
 #[test]
+fn compiled_mutates_array_list_places_with_pushnew_options() {
+    assert_eq!(
+        evaluate("(let ((values (vector (list 1)))) (list (pushnew 1 (aref values 0)) values))")
+            .to_string(),
+        "((1) #((1)))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((values (vector (list (list 1)))))
+               (list (pushnew (list 1) (aref values 0) :test #'eql :key #'car) values))",
+        )
+        .to_string(),
+        "(((1)) #(((1))))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_remf_with_a_generalized_place() {
     assert_eq!(
         evaluate(

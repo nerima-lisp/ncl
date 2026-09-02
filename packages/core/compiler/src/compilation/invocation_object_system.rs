@@ -17,7 +17,8 @@ impl CompileState {
             | "CLASS-DIRECT-SUPERCLASSES"
             | "CLASS-DIRECT-SLOTS"
             | "CLASS-SLOTS"
-            | "CLASS-DEFAULT-INITARGS" => (items.len() == 2, "one"),
+            | "CLASS-DEFAULT-INITARGS"
+            | "CLASS-DIRECT-DEFAULT-INITARGS" => (items.len() == 2, "one"),
             "FIND-CLASS" => ((2..=3).contains(&items.len()), "one or two"),
             _ => (false, "valid arguments"),
         };

@@ -81,6 +81,7 @@ impl Runtime {
                 | "CLASS-DIRECT-SLOTS"
                 | "CLASS-SLOTS"
                 | "CLASS-DEFAULT-INITARGS"
+                | "CLASS-DIRECT-DEFAULT-INITARGS"
         ) {
             return None;
         }
@@ -104,6 +105,7 @@ impl Runtime {
                             name: n.clone(),
                             direct_superclasses: vec!["STANDARD-OBJECT".into()],
                             direct_slots: Vec::new(),
+                            direct_default_initargs: Vec::new(),
                             precedence: vec![n.into(), "STANDARD-OBJECT".into()],
                             slots: Vec::new(),
                             default_initargs: Vec::new(),
@@ -154,6 +156,7 @@ impl Runtime {
                                 name: name.to_string(),
                                 direct_superclasses: Vec::new(),
                                 direct_slots: Vec::new(),
+                                direct_default_initargs: Vec::new(),
                                 precedence: vec![name.clone()],
                                 slots: Vec::new(),
                                 default_initargs: Vec::new(),
@@ -183,6 +186,7 @@ impl Runtime {
                                 name: name.to_string(),
                                 direct_superclasses: Vec::new(),
                                 direct_slots: Vec::new(),
+                                direct_default_initargs: Vec::new(),
                                 precedence: vec![name.clone()],
                                 slots: Vec::new(),
                                 default_initargs: Vec::new(),
@@ -246,6 +250,33 @@ impl Runtime {
                     };
                     let initargs = class
                         .default_initargs
+                        .iter()
+                        .map(|(name, form)| {
+                            Ok(Value::cons_cell(
+                                Value::symbol(name.clone()),
+                                quoted_form_value(form)?,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, RuntimeError>>()?;
+                    Ok(Value::list(initargs))
+                }
+                "CLASS-DIRECT-DEFAULT-INITARGS" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity(
+                            "class-direct-default-initargs",
+                            "one",
+                            arguments.len(),
+                        ));
+                    }
+                    let Value::Class(class) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "CLASS".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let initargs = class
+                        .direct_default_initargs
                         .iter()
                         .map(|(name, form)| {
                             Ok(Value::cons_cell(

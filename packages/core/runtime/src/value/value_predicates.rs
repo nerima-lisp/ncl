@@ -83,6 +83,7 @@ mod tests {
             name: "POINT".to_owned(),
             direct_superclasses: Vec::new(),
             direct_slots: Vec::new(),
+            direct_default_initargs: Vec::new(),
             precedence: Vec::new(),
             slots: Vec::new(),
             default_initargs: Vec::new(),

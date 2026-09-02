@@ -54,6 +54,7 @@ impl Runtime {
         for option in items.iter().skip(4) {
             Self::parse_defclass_option(option, &mut default_initargs)?;
         }
+        let direct_default_initargs = default_initargs.clone();
 
         let direct_slot_count = slots.len();
         let precedence = Self::merge_defclass_superclasses(
@@ -73,6 +74,7 @@ impl Runtime {
                 .take(direct_slot_count)
                 .map(|slot| slot.name.clone().into())
                 .collect(),
+            direct_default_initargs,
             precedence,
             slots,
             default_initargs,

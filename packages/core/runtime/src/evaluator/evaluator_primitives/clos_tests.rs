@@ -9,6 +9,7 @@ mod tests {
             name: name.to_string(),
             direct_superclasses: Vec::new(),
             direct_slots: Vec::new(),
+            direct_default_initargs: Vec::new(),
             precedence: vec![
                 name.to_string().into(),
                 "STANDARD-OBJECT".to_string().into(),
@@ -93,6 +94,7 @@ mod tests {
             name: "POINT".to_owned(),
             direct_superclasses: vec!["STANDARD-OBJECT".into()],
             direct_slots: vec!["X".into()],
+            direct_default_initargs: Vec::new(),
             precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
             slots: Vec::new(),
             default_initargs: Vec::new(),
@@ -116,6 +118,7 @@ mod tests {
             name: "POINT".to_owned(),
             direct_superclasses: vec!["STANDARD-OBJECT".into()],
             direct_slots: vec!["X".into(), "Y".into()],
+            direct_default_initargs: Vec::new(),
             precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
             slots: Vec::new(),
             default_initargs: Vec::new(),
@@ -138,6 +141,7 @@ mod tests {
             name: "POINT".to_owned(),
             direct_superclasses: vec!["STANDARD-OBJECT".into()],
             direct_slots: vec!["X".into()],
+            direct_default_initargs: Vec::new(),
             precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
             slots: vec![
                 ClassSlot {

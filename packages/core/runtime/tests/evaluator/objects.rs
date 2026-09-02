@@ -72,6 +72,26 @@ fn evaluates_class_default_initargs() {
 }
 
 #[test]
+fn evaluates_class_direct_default_initargs() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass direct-default-initarg-parent () () (:default-initargs :parent 1))
+                 (defclass direct-default-initarg-child (direct-default-initarg-parent) ()
+                   (:default-initargs :child 2))
+                 (list
+                   (class-direct-default-initargs (find-class 'direct-default-initarg-child))
+                   (class-default-initargs (find-class 'direct-default-initarg-child))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "(((CHILD . 2)) ((CHILD . 2) (PARENT . 1)))"
+    );
+}
+
+#[test]
 fn rejects_invalid_make_instance_arguments() {
     for source in [
         "(make-instance)",

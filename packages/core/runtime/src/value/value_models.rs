@@ -39,6 +39,7 @@ pub struct ClassDefinition {
     pub(crate) name: String,
     pub(crate) direct_superclasses: Vec<Rc<str>>,
     pub(crate) direct_slots: Vec<Rc<str>>,
+    pub(crate) direct_default_initargs: Vec<(String, Form)>,
     pub(crate) precedence: Vec<Rc<str>>,
     pub(crate) slots: Vec<ClassSlot>,
     pub(crate) default_initargs: Vec<(String, Form)>,

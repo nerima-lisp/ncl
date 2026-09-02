@@ -69,6 +69,9 @@ impl CompileState {
             | "CLASS-DEFAULT-INITARGS" => {
                 self.compile_class_introspection(function, span, items, name)
             }
+            "CLASS-DIRECT-DEFAULT-INITARGS" => {
+                self.compile_class_introspection(function, span, items, name)
+            }
             "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND" => {
                 self.compile_slot_operation(function, span, items, name)
             }

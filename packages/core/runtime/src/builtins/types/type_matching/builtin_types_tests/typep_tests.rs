@@ -63,7 +63,7 @@ fn typep_covers_atomic_designator_matrix() {
         (Value::list(vec![Value::Integer(1)]), "atom", false),
         (Value::String("text".into()), "string", true),
         (Value::String("text".into()), "sequence", true),
-        (Value::String("text".into()), "vector", false),
+        (Value::String("text".into()), "vector", true),
         (Value::Float(1.0), "rational", false),
         (Value::Character('x'), "atom", true),
         (Value::Character('x'), "sequence", false),

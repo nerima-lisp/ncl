@@ -7,7 +7,7 @@ use super::{ConditionData, RestartData, Value};
 
 impl Value {
     pub(crate) fn condition(error: &RuntimeError) -> Self {
-        let (actual_type, type_names, message, format_control, format_arguments) = match error {
+        let (actual_type, type_names, slots, message, format_control, format_arguments) = match error {
             RuntimeError::Signaled(error) => (
                 if error.warning {
                     "SIMPLE-WARNING".to_owned()
@@ -15,10 +15,15 @@ impl Value {
                     error.condition.to_string()
                 },
                 if error.condition_types.is_empty() {
-                    vec![error.condition.clone()]
+                    vec![error.condition.to_string()]
                 } else {
-                    error.condition_types.to_vec()
+                    error
+                        .condition_types
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect()
                 },
+                Vec::new(),
                 error.message.clone(),
                 error.format_control.clone(),
                 error
@@ -28,9 +33,18 @@ impl Value {
                     .map(ReturnValue::into_value)
                     .collect(),
             ),
+            RuntimeError::UnboundVariable { name, .. } => (
+                "UNBOUND-VARIABLE".to_owned(),
+                vec!["UNBOUND-VARIABLE".to_owned()],
+                vec![("NAME".to_owned(), Self::symbol(name))],
+                error.to_string(),
+                None,
+                Vec::new(),
+            ),
             _ => (
                 error.condition_type_name().into_owned(),
                 vec![error.condition_type_name().into_owned().into()],
+                Vec::new(),
                 error.to_string(),
                 None,
                 Vec::new(),
@@ -38,11 +52,8 @@ impl Value {
         };
         Self::condition_from_parts_with_types(
             actual_type,
-            type_names
-                .into_iter()
-                .map(|name| name.to_string())
-                .collect(),
-            Vec::new(),
+            type_names,
+            slots,
             message,
             format_control,
             format_arguments,

@@ -136,13 +136,14 @@ fn evaluates_locally_and_eval_when(#[case] eval_fn: EvalFn) {
                        seen)
                      (eval-when (:execute) (+ seen 1))
                      (eval-when (:compile-toplevel) (setq seen 99))
+                     (eval-when (:load-toplevel) (setq seen 98))
                      (progn
                        (declaim (optimize speed))
                        (proclaim '(inline seen))
                        seen)))",
         )
         .to_string(),
-        "(4 5 NIL 4)"
+        "(4 5 NIL NIL 4)"
     );
 }
 

@@ -171,6 +171,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
                 | "CLASS-SLOTS"
                 | "CLASS-DEFAULT-INITARGS"
                 | "CLASS-DIRECT-DEFAULT-INITARGS"
+                | "CLASS-FINALIZED-P"
                 | "SLOT-VALUE"
                 | "SLOT-EXISTS-P"
                 | "SLOT-BOUNDP"

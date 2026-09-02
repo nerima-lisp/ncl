@@ -88,6 +88,34 @@ mod tests {
     }
 
     #[test]
+    fn class_finalized_p_accepts_class_objects() {
+        let environment = Environment::new();
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-FINALIZED-P",
+            &[Value::class_object(empty_class("POINT"))],
+            &environment,
+            SPAN,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(result.is_truthy());
+    }
+
+    #[test]
+    fn class_finalized_p_rejects_non_class_objects() {
+        let environment = Environment::new();
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-FINALIZED-P",
+            &[Value::Integer(1)],
+            &environment,
+            SPAN,
+        )
+        .unwrap()
+        .unwrap_err();
+        assert!(matches!(result, RuntimeError::Type { expected, .. } if expected == "CLASS"));
+    }
+
+    #[test]
     fn class_direct_superclasses_returns_class_objects() {
         let environment = Environment::new();
         let class = Rc::new(ClassDefinition {

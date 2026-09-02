@@ -82,6 +82,7 @@ impl Runtime {
                 | "CLASS-SLOTS"
                 | "CLASS-DEFAULT-INITARGS"
                 | "CLASS-DIRECT-DEFAULT-INITARGS"
+                | "CLASS-FINALIZED-P"
         ) {
             return None;
         }
@@ -286,6 +287,19 @@ impl Runtime {
                         })
                         .collect::<Result<Vec<_>, RuntimeError>>()?;
                     Ok(Value::list(initargs))
+                }
+                "CLASS-FINALIZED-P" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity("class-finalized-p", "one", arguments.len()));
+                    }
+                    if !matches!(arguments[0], Value::Class(_)) {
+                        return Err(RuntimeError::Type {
+                            expected: "CLASS".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    }
+                    Ok(Value::boolean(true))
                 }
                 _ => unreachable!("class introspection primitive name was prevalidated"),
             }

@@ -72,6 +72,14 @@ fn evaluates_class_default_initargs() {
 }
 
 #[test]
+fn evaluates_class_finalized_p() {
+    let values = Runtime::new()
+        .eval_source("(progn (defclass finalized-class () ()) (class-finalized-p (find-class 'finalized-class)))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "T");
+}
+
+#[test]
 fn evaluates_class_direct_default_initargs() {
     let values = Runtime::new()
         .eval_source(

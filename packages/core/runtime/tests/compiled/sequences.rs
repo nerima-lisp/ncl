@@ -70,6 +70,13 @@ fn compiled_evaluates_type_predicates() {
         evaluate("(simple-array-p (make-array 2 :fill-pointer 1))").to_string(),
         "NIL"
     );
+    assert_eq!(
+        evaluate(
+            "(let ((base (make-array 4)))\n  (simple-array-p (make-array 2 :displaced-to base)))"
+        )
+        .to_string(),
+        "NIL"
+    );
     assert_eq!(evaluate("(hash-table-p (make-hash-table))").to_string(), "T");
     assert_eq!(evaluate("(alpha-char-p #\\A)").to_string(), "T");
     assert_eq!(evaluate("(alphanumericp #\\7)").to_string(), "T");

@@ -41,9 +41,10 @@ pub fn array_displacement(arguments: &[Value]) -> Result<Value, RuntimeError> {
 pub fn simple_array_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-array-p", 1)?;
     Ok(Value::boolean(
-        dimensions_for_array(&arguments[0]).is_some()
+            dimensions_for_array(&arguments[0]).is_some()
             && !arguments[0].array_adjustable().unwrap_or(false)
-            && !arguments[0].array_has_fill_pointer().unwrap_or(false),
+            && !arguments[0].array_has_fill_pointer().unwrap_or(false)
+            && !arguments[0].is_displaced(),
     ))
 }
 

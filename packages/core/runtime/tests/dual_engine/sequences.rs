@@ -291,6 +291,10 @@ fn evaluates_tree_equal(#[case] eval_fn: EvalFn) {
         evaluate("(tree-equal '(1 2) '(3 4) :test-not #'eql)").to_string(),
         "T"
     );
+    assert_eq!(
+        evaluate("(tree-equal '(1 2) '(-1 -2) :test #'= :key #'abs)").to_string(),
+        "T"
+    );
 }
 
 #[rstest]

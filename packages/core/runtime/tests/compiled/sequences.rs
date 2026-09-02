@@ -419,6 +419,10 @@ fn compiled_evaluates_tree_and_sequence_unary_operations() {
         evaluate("(tree-equal '(1 (2)) '(1 (3)))").to_string(),
         "NIL"
     );
+    assert_eq!(
+        evaluate("(tree-equal '(1 2) '(-1 -2) :test #'= :key #'abs)").to_string(),
+        "T"
+    );
     assert_eq!(evaluate("(length '(1 2 3))").to_string(), "3");
     assert_eq!(evaluate("(length #(1 2))").to_string(), "2");
     assert_eq!(evaluate("(length \"abc\")").to_string(), "3");

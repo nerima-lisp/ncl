@@ -33,6 +33,7 @@ pub fn vector_push(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if pointer >= length {
         return Ok(Value::Nil);
     }
+    ensure_vector_element_type("vector-push", vector, &arguments[0])?;
     vector.set_vector_item(pointer, arguments[0].clone());
     vector.set_vector_fill_pointer(Some(pointer + 1));
     crate::builtins::integer_from_usize("vector-push", pointer)
@@ -63,6 +64,7 @@ pub fn vector_push_extend(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let vector = &arguments[1];
     let pointer = vector_fill_pointer_for("vector-push-extend", vector)?;
     let mut length = vector_items_length("vector-push-extend", vector)?;
+    ensure_vector_element_type("vector-push-extend", vector, &arguments[0])?;
     if pointer >= length {
         if vector.vector_adjustable() != Some(true) {
             return Err(crate::builtins::type_error(
@@ -109,6 +111,17 @@ fn vector_fill_pointer_for(function: &str, vector: &Value) -> Result<usize, Runt
         .vector_fill_pointer()
         .flatten()
         .ok_or_else(|| crate::builtins::type_error(function, "vector with a fill pointer", vector))
+}
+
+fn ensure_vector_element_type(
+    function: &str,
+    vector: &Value,
+    value: &Value,
+) -> Result<(), RuntimeError> {
+    if !vector.array_element_type_accepts(value)? {
+        return Err(crate::builtins::type_error(function, "array element type", value));
+    }
+    Ok(())
 }
 
 fn vector_items_length(function: &str, vector: &Value) -> Result<usize, RuntimeError> {

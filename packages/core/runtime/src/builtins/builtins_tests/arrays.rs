@@ -361,6 +361,42 @@ fn vector_push_extend_rejects_zero_extension() {
 }
 
 #[test]
+fn vector_push_rejects_values_outside_the_element_type() {
+    let vector = make_array(&[
+        Value::Integer(1),
+        Value::keyword("element-type"),
+        Value::symbol("bit"),
+        Value::keyword("initial-element"),
+        Value::Integer(0),
+        Value::keyword("fill-pointer"),
+        Value::Integer(0),
+    ])
+    .unwrap();
+
+    assert!(vector_push(&[Value::Integer(2), vector.clone()]).is_err());
+    assert!(fill_pointer(&[vector]).unwrap().equal_value(&Value::Integer(0)));
+}
+
+#[test]
+fn vector_push_extend_rejects_values_before_extending() {
+    let vector = make_array(&[
+        Value::Integer(1),
+        Value::keyword("element-type"),
+        Value::symbol("bit"),
+        Value::keyword("initial-element"),
+        Value::Integer(0),
+        Value::keyword("fill-pointer"),
+        Value::Integer(1),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])
+    .unwrap();
+
+    assert!(vector_push_extend(&[Value::Integer(2), vector.clone()]).is_err());
+    assert_eq!(vector.vector_items().unwrap().len(), 1);
+}
+
+#[test]
 fn vector_pop_decrements_fill_pointer() {
     let vector = make_array(&[
         Value::Integer(2),

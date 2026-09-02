@@ -33,11 +33,14 @@ fn compiled_evaluates_builtin_method_combinations() {
                  (list (all-true 1) (any-true 1) (ncl-user::any-true 1)
                        (sequence 1) (collect-values 1) (append-values 1)
                        (sum-values 1) (max-values 1) (min-values 1)
-                       (nconc-values 1)))",
+                       (nconc-values 1)))"#,
         )
         .must_exist();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].to_string(), "(NIL T T 2 (1 2) (1 2 3) 5 3 2 (1 2 3))");
+    assert_eq!(
+        values[0].to_string(),
+        "(NIL T T 2 (1 2) (1 2 3) 5 3 2 (1 2 3))"
+    );
 }
 
 #[test]
@@ -49,7 +52,7 @@ fn compiled_evaluates_native_make_instance_operation() {
                    ((value :initarg :value)))
                  (slot-value
                    (make-instance 'native-make-instance-target :value 42)
-                   'value))",
+                   'value))"#,
         )
         .must_exist();
     assert_eq!(values.len(), 1);
@@ -116,9 +119,11 @@ fn compiled_evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(runtime
-        .eval_compiled_source("(with-accessors (x) object x)")
-        .is_err());
+    assert!(
+        runtime
+            .eval_compiled_source("(with-accessors (x) object x)")
+            .is_err()
+    );
 }
 
 #[test]

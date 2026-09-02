@@ -902,6 +902,20 @@ fn compiled_evaluates_array_has_fill_pointer_p() {
 }
 
 #[test]
+fn compiled_evaluates_array_has_fill_pointer_p_on_bound_arrays() {
+    assert_eq!(
+        evaluate(
+            "(let ((vector (make-array 2 :fill-pointer 1))\
+                   (array (make-array '(2 2))))\
+               (list (array-has-fill-pointer-p vector)\
+                     (array-has-fill-pointer-p array)))",
+        )
+        .to_string(),
+        "(T NIL)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_tailp_and_ldiff() {
     assert_eq!(
         evaluate(

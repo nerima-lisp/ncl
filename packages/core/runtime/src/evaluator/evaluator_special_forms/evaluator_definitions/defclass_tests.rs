@@ -57,6 +57,22 @@ mod tests {
     }
 
     #[test]
+    fn defclass_records_standard_object_as_the_implicit_superclass() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass implicit-root () ())
+                 (mapcar #'class-name
+                         (class-direct-superclasses (find-class 'implicit-root)))",
+            )
+            .unwrap_or_else(|error| {
+                panic!(
+                    "a class without explicit superclasses should inherit STANDARD-OBJECT: {error}"
+                )
+            });
+        assert_eq!(values[1].to_string(), "(STANDARD-OBJECT)");
+    }
+
+    #[test]
     fn defclass_rejects_a_list_shaped_superclass_name() {
         let error = eval_err("(defclass list-superclass-class ((nested)) ())");
         assert!(matches!(

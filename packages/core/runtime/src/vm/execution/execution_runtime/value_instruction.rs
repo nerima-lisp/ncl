@@ -476,7 +476,14 @@ pub(super) fn execute_value_instruction(
             operation,
             argument_count,
         } => {
-            execute_slot_operation_instruction(runtime, stack, operation, *argument_count, span)?;
+            execute_slot_operation_instruction(
+                runtime,
+                stack,
+                environment,
+                operation,
+                *argument_count,
+                span,
+            )?;
         }
         Instruction::ConditionOperation {
             operation,

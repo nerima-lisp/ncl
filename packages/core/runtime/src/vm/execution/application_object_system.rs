@@ -28,8 +28,9 @@ pub fn execute_class_introspection_instruction(
 }
 
 pub fn execute_slot_operation_instruction(
-    _runtime: &Runtime,
+    runtime: &Runtime,
     stack: &mut Vec<Value>,
+    environment: &Environment,
     operation: &str,
     argument_count: usize,
     span: Span,
@@ -42,9 +43,7 @@ pub fn execute_slot_operation_instruction(
         .into_iter()
         .map(|value| value.primary_value())
         .collect::<Vec<_>>();
-    let value = Runtime::apply_slot_primitive(operation, &arguments, span)
-        .or_else(|| Runtime::apply_slot_definition_primitive(operation, &arguments, span))
-        .unwrap_or_else(|| Err(invalid("unknown slot operation", span)))?;
+    let value = runtime.apply_primitive(operation, &arguments, environment, span)?;
     stack.push(value);
     Ok(())
 }

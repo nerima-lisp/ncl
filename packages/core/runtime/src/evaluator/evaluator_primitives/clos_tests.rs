@@ -163,6 +163,34 @@ mod tests {
     }
 
     #[test]
+    fn slot_makunbound_dispatches_missing_slots_to_slot_missing() {
+        let source = "(defclass makunbound-missing-object () ())
+                      (defmethod slot-missing ((class t) (object makunbound-missing-object)
+                                                (slot-name t) (operation t))
+                        (declare (ignore class object slot-name))
+                        (if (eq operation 'slot-makunbound) 42 0))
+                      (slot-makunbound (make-instance 'makunbound-missing-object) 'absent)";
+        let values = Runtime::new()
+            .eval_source(source)
+            .expect("SLOT-MISSING handles an undefined SLOT-MAKUNBOUND");
+        assert!(matches!(values.last(), Some(Value::Integer(42))));
+    }
+
+    #[test]
+    fn compiled_slot_makunbound_dispatches_missing_slots_to_slot_missing() {
+        let source = "(defclass compiled-makunbound-missing-object () ())
+                      (defmethod slot-missing ((class t) (object compiled-makunbound-missing-object)
+                                                (slot-name t) (operation t))
+                        (declare (ignore class object slot-name))
+                        (if (eq operation 'slot-makunbound) 42 0))
+                      (slot-makunbound (make-instance 'compiled-makunbound-missing-object) 'absent)";
+        let values = Runtime::new()
+            .eval_compiled_source(source)
+            .expect("compiled SLOT-MISSING handles an undefined SLOT-MAKUNBOUND");
+        assert!(matches!(values.last(), Some(Value::Integer(42))));
+    }
+
+    #[test]
     fn class_of_a_non_instance_value_synthesizes_a_class_definition() {
         let environment = Environment::new();
         let result = Runtime::apply_class_introspection_primitive(

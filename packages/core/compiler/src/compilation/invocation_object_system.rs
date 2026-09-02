@@ -71,6 +71,7 @@ impl CompileState {
         } else if matches!(
             operation,
             "SLOT-DEFINITION-NAME"
+                | "SLOT-DEFINITION-CLASS"
                 | "SLOT-DEFINITION-DOCUMENTATION"
                 | "SLOT-DEFINITION-INITARGS"
                 | "SLOT-DEFINITION-ALLOCATION"

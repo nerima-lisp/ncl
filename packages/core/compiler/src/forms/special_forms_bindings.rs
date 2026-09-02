@@ -104,6 +104,7 @@ impl CompileState {
             | "SLOT-MAKUNBOUND"
             | "SLOT-MAKUNBOUND-USING-CLASS"
             | "SLOT-DEFINITION-NAME"
+            | "SLOT-DEFINITION-CLASS"
             | "SLOT-DEFINITION-DOCUMENTATION"
             | "SLOT-DEFINITION-INITARGS"
             | "SLOT-DEFINITION-ALLOCATION"

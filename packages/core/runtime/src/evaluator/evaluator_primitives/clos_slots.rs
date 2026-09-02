@@ -18,8 +18,8 @@ impl Runtime {
             default_initargs: Vec::new(),
         });
         Value::instance(
-            class,
-            vec![
+            class.clone(),
+            vec![("CLASS".to_owned(), Value::class_object(class)),
                 (
                     "NAME".to_owned(),
                     Value::symbol(Rc::from(slot.name.clone())),
@@ -95,6 +95,7 @@ impl Runtime {
         if !matches!(
             name,
             "SLOT-DEFINITION-NAME"
+                | "SLOT-DEFINITION-CLASS"
                 | "SLOT-DEFINITION-DOCUMENTATION"
                 | "SLOT-DEFINITION-INITARGS"
                 | "SLOT-DEFINITION-ALLOCATION"
@@ -123,6 +124,7 @@ impl Runtime {
             }
             let slot_name = match name {
                 "SLOT-DEFINITION-NAME" => "NAME",
+                "SLOT-DEFINITION-CLASS" => "CLASS",
                 "SLOT-DEFINITION-DOCUMENTATION" => "DOCUMENTATION",
                 "SLOT-DEFINITION-INITARGS" => "INITARGS",
                 "SLOT-DEFINITION-ALLOCATION" => "ALLOCATION",

@@ -1304,6 +1304,12 @@ fn emits_eval_and_mapcar_instructions() {
         .instructions
         .iter()
         .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTH")));
+    for operation in ["TAILP", "LDIFF"] {
+        let program = compile(&format!("({operation} '(2 3) '(1 2 3))"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListBinary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
     for (operation, source, argument_count) in [
         ("ACONS", "(acons 'a 1 '((b . 2)))", 3),
         ("PAIRLIS", "(pairlis '(a) '(1) '((b . 2)))", 3),

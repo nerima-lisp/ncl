@@ -154,7 +154,7 @@ impl CompileState {
             "LAST" | "BUTLAST" | "NBUTLAST" => {
                 self.compile_list_tail(function, span, items, name)
             }
-            "CONS" | "NTH" | "NTHCDR" | "RPLACA" | "RPLACD" => {
+            "CONS" | "NTH" | "NTHCDR" | "RPLACA" | "RPLACD" | "TAILP" | "LDIFF" => {
                 self.compile_list_binary(function, span, items, name)
             }
             "FILL-POINTER" | "VECTOR-PUSH" | "VECTOR-PUSH-EXTEND" | "VECTOR-POP" => {

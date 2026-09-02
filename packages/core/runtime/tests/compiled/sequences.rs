@@ -870,6 +870,18 @@ fn compiled_evaluates_array_has_fill_pointer_p() {
 }
 
 #[test]
+fn compiled_evaluates_tailp_and_ldiff() {
+    assert_eq!(
+        evaluate(
+            "(let* ((list (cons 1 (cons 2 (cons 3 nil)))) (tail (cdr list)))\
+               (list (tailp tail list) (ldiff list tail)))",
+        )
+        .to_string(),
+        "(T (1))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_array_metadata_predicates() {
     assert_eq!(
         evaluate(

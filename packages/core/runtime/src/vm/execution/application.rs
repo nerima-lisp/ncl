@@ -196,6 +196,8 @@ pub fn execute_list_binary_instruction(
         "NTHCDR" => crate::builtins::nthcdr(&[first, second]),
         "RPLACA" => crate::builtins::rplaca(&[first, second]),
         "RPLACD" => crate::builtins::rplacd(&[first, second]),
+        "TAILP" => crate::builtins::tailp(&[first, second]),
+        "LDIFF" => crate::builtins::ldiff(&[first, second]),
         _ => Err(invalid("unknown binary list operation", span)),
     }?;
     stack.push(result);

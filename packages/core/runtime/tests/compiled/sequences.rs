@@ -868,6 +868,14 @@ fn compiled_setf_aref_accepts_an_evaluated_vector() {
 }
 
 #[test]
+fn compiled_setf_bit_accepts_an_evaluated_array() {
+    assert_eq!(
+        evaluate("(setf (bit (make-array 1 :element-type 'bit) 0) 1)").to_string(),
+        "1"
+    );
+}
+
+#[test]
 fn compiled_evaluates_vector_pop() {
     assert_eq!(
         evaluate(

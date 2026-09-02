@@ -49,6 +49,7 @@ pub(super) fn execute(
             program_counter,
             span,
         ),
+        Instruction::SetfBitValue { rank } => execute_bit_value(*rank, stack, program_counter, span),
         Instruction::ModifyArefDynamic {
             rank,
             arithmetic,
@@ -1027,6 +1028,36 @@ fn execute_bit(
         program_counter,
         span,
     )
+}
+
+fn execute_bit_value(
+    rank: usize,
+    stack: &mut Vec<Value>,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let value = stack.pop().ok_or_else(|| invalid("setf bit has no value on the stack", span))?.primary_value();
+    if stack.len() < rank.saturating_add(1) { return Err(invalid("setf bit has an incomplete stack", span)); }
+    let indices = stack.split_off(stack.len() - rank);
+    let current = stack.pop().ok_or_else(|| invalid("setf bit has no target on the stack", span))?.primary_value();
+    let dimensions = match &current {
+        Value::Vector(items) => vec![items.borrow().len()],
+        Value::Array { dimensions, .. } => dimensions.as_ref().clone(),
+        other => return Err(RuntimeError::Type { expected: "ARRAY".to_string(), actual: other.type_name().to_string(), span: Some(span) }),
+    };
+    let indices = indices.iter().map(|index| crate::builtins::index_argument("setf bit", index)).collect::<Result<Vec<_>, _>>()?;
+    let offset = array_offset(&dimensions, rank, &indices, "setf bit has the wrong number of indices", span)?;
+    if !matches!(&value, Value::Integer(bit) if *bit == 0 || *bit == 1) {
+        return Err(RuntimeError::Type { expected: "BIT".to_string(), actual: value.type_name().to_string(), span: Some(span) });
+    }
+    match &current {
+        Value::Vector(_) => { current.set_vector_item(offset, value.clone()).ok_or_else(|| invalid("SETF index is out of bounds", span))?; }
+        Value::Array { .. } => { current.set_array_item(offset, value.clone()).ok_or_else(|| invalid("SETF index is out of bounds", span))?; }
+        _ => unreachable!(),
+    }
+    stack.push(value);
+    *program_counter += 1;
+    Ok(true)
 }
 
 fn array_offset(

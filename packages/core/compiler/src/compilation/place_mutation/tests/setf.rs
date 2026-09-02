@@ -174,6 +174,19 @@ fn compile_setf_uses_native_aref_for_an_evaluated_place() {
 }
 
 #[test]
+fn compile_setf_uses_native_bit_for_an_evaluated_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (bit (make-array 1 :element-type 'bit) 0) 1)");
+
+    state.compile_setf(function, Span::new(0, 1), &items).unwrap();
+
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::SetfBitValue { rank: 1 }));
+}
+
+#[test]
 fn compile_setf_uses_native_array_accessors_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

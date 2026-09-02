@@ -239,6 +239,10 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update an evaluated bit vector or array target through BIT."] SetfBitValue {
+        /// The number of subscripts.
+        rank: usize,
+    },
     #[doc = "Update a symbol-valued place through LDB or MASK-FIELD."] SetfBitfieldDynamic {
         /// The bitfield place operator.
         operator: String,

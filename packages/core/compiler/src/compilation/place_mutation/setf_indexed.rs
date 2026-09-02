@@ -123,24 +123,19 @@ impl CompileState {
         {
             return Ok(false);
         }
-        let Some((name, escaped)) = Self::symbol_name_info(&items[1], "setf bit target").ok()
-        else {
-            return Ok(false);
-        };
         self.compile_expression(function, &items[1])?;
         for index_form in &items[2..] {
             self.compile_expression(function, index_form)?;
         }
         self.compile_expression(function, value_form)?;
-        self.emit(
-            function,
-            Instruction::SetfBitDynamic {
-                rank: items.len() - 2,
-                name,
-                escaped,
-            },
-            place.span,
-        )?;
+        let instruction = if let Some((name, escaped)) =
+            Self::symbol_name_info(&items[1], "setf bit target").ok()
+        {
+            Instruction::SetfBitDynamic { rank: items.len() - 2, name, escaped }
+        } else {
+            Instruction::SetfBitValue { rank: items.len() - 2 }
+        };
+        self.emit(function, instruction, place.span)?;
         emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
         Ok(true)
     }

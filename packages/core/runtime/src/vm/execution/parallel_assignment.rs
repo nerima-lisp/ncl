@@ -72,6 +72,7 @@ pub(super) fn execute_parallel_set_instruction(
                 .map(|place| match place {
                     ncl_compiler::PsetfPlace::SymbolPlist => 1,
                     ncl_compiler::PsetfPlace::Get => 2,
+                    ncl_compiler::PsetfPlace::Nth(..) => 2,
                     _ => 0,
                 })
                 .sum::<usize>();
@@ -112,6 +113,28 @@ pub(super) fn execute_parallel_set_instruction(
                         let updated = Value::list(super::assignment::list::nested::update(
                             elements, accessors, &last, span,
                         )?);
+                        if *escaped {
+                            runtime.set_or_define_exact_in(name, updated, environment, span)?;
+                        } else {
+                            runtime.set_or_define_in(name, updated, environment, span)?;
+                        }
+                    }
+                    ncl_compiler::PsetfPlace::Nth(accessors, name, escaped) => {
+                        let index = crate::builtins::index_argument(
+                            "PSETF NTH",
+                            &targets[target_index].primary_value(),
+                        )?;
+                        let current = targets[target_index + 1].primary_value();
+                        target_index += 2;
+                        let elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+                            expected: "LIST".to_string(),
+                            actual: current.type_name().to_string(),
+                            span: Some(span),
+                        })?;
+                        let elements = super::assignment::list::nested::update_dynamic(
+                            elements, accessors, index, &last, span,
+                        )?;
+                        let updated = Value::list(elements);
                         if *escaped {
                             runtime.set_or_define_exact_in(name, updated, environment, span)?;
                         } else {

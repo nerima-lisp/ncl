@@ -5,6 +5,8 @@ pub enum PsetfPlace {
     Symbol(String, bool),
     /// A list accessor chain, variable name, and escaped-name flag.
     List(Vec<String>, String, bool),
+    /// A dynamically indexed list place, followed by static accessors.
+    Nth(Vec<String>, String, bool),
     /// A dynamic symbol whose complete property list is replaced.
     SymbolPlist,
     /// A dynamically selected symbol property.

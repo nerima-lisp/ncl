@@ -224,6 +224,34 @@ fn compiled_evaluates_psetf_on_get_places_in_parallel() {
 }
 
 #[test]
+fn compiled_evaluates_psetf_on_dynamic_nth_places_in_parallel() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list 1 2 3))
+                   (index 1)
+                   (other 9))
+               (psetf (nth index xs) 20
+                      other (nth 0 xs))
+               (list xs other))",
+        )
+        .to_string(),
+            "((1 20 3) 1)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((groups (list (list 1 2 3)))
+                   (index 2)
+                   (other 0))
+               (psetf (nth index (car groups)) 8
+                      other 1)
+               groups)",
+        )
+        .to_string(),
+        "((1 2 8))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_modify_on_nested_list_places() {
     assert_eq!(
         evaluate("(let ((xs (list (list 4)))) (list (incf (car (car xs))) xs))").to_string(),

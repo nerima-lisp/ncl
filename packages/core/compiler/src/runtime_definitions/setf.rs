@@ -156,6 +156,11 @@ impl CompileState {
                         return Some(crate::PsetfPlace::Get);
                     }
                 }
+                if let Some((_, _, accessors, name, escaped)) =
+                    crate::helpers::dynamic_nth_list_place(&pair[0])
+                {
+                    return Some(crate::PsetfPlace::Nth(accessors, name, escaped));
+                }
                 while let Some((accessor, next_target)) =
                     crate::helpers::list_accessor_target(target)
                 {
@@ -175,7 +180,12 @@ impl CompileState {
                 self.compile_expression(function, &pair[1])?;
             }
             for (pair, place) in items[1..].chunks_exact(2).zip(&places) {
-                if matches!(place, crate::PsetfPlace::SymbolPlist) {
+                if let Some((index_form, target, ..)) =
+                    crate::helpers::dynamic_nth_list_place(&pair[0])
+                {
+                    self.compile_expression(function, index_form)?;
+                    self.compile_expression(function, target)?;
+                } else if matches!(place, crate::PsetfPlace::SymbolPlist) {
                     let FormKind::List(place_items) = &pair[0].kind else {
                         unreachable!("validated SYMBOL-PLIST place");
                     };
@@ -197,6 +207,7 @@ impl CompileState {
                     .map(|place| match place {
                         crate::PsetfPlace::Symbol(name, escaped) => (name, escaped),
                         crate::PsetfPlace::List(..)
+                        | crate::PsetfPlace::Nth(..)
                         | crate::PsetfPlace::SymbolPlist
                         | crate::PsetfPlace::Get => {
                             unreachable!()
@@ -215,6 +226,7 @@ impl CompileState {
                             (accessors, name, escaped)
                         }
                         crate::PsetfPlace::Symbol(..)
+                        | crate::PsetfPlace::Nth(..)
                         | crate::PsetfPlace::SymbolPlist
                         | crate::PsetfPlace::Get => {
                             unreachable!()

@@ -67,7 +67,13 @@ pub fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-vector-p", 1)?;
     Ok(Value::boolean(
         matches!(&arguments[0], Value::Vector(_))
-            && arguments[0].vector_adjustable() != Some(true),
+            && arguments[0].vector_adjustable() != Some(true)
+            && !arguments[0].array_has_fill_pointer().unwrap_or(false)
+            && !arguments[0].is_displaced()
+            && arguments[0]
+                .array_element_type()
+                .and_then(|element_type| element_type.symbol_name().map(str::to_ascii_uppercase))
+                .is_some_and(|element_type| element_type == "T"),
     ))
 }
 

@@ -54,10 +54,14 @@ fn evaluates_arrays_and_multidimensional_setf(#[case] eval_fn: EvalFn) {
                          (array-element-type array)
                          (simple-array-p array)
                          (simple-vector-p (vector 1 2))
-                         (simple-vector-p array)))",
+                         (simple-vector-p array)
+                         (simple-vector-p (make-array 2 :fill-pointer 1))
+                         (simple-vector-p (make-array 2 :element-type 'character))
+                         (let ((base (make-array 4)))
+                           (simple-vector-p (make-array 2 :displaced-to base)))))",
         )
         .to_string(),
-        "(5 T NIL 5 5 T T T NIL)"
+        "(5 T NIL 5 5 T T T NIL NIL NIL NIL)"
     );
 }
 

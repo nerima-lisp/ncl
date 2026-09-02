@@ -65,7 +65,7 @@ pub fn stream_element_type(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !stream.borrow().is_open() {
         return Err(stream_state_error("stream-element-type", "an open stream"));
     }
-    Ok(Value::symbol("CHARACTER"))
+    Ok(Value::symbol(stream.borrow().element_type_name()))
 }
 
 pub fn stream_external_format(arguments: &[Value]) -> Result<Value, RuntimeError> {

@@ -2,6 +2,12 @@ use crate::Stream;
 use crate::value::value_stream::StreamKind;
 
 impl Stream {
+    pub(crate) fn element_type_name(&self) -> &'static str {
+        match self.element_type {
+            super::super::value_stream::StreamElementType::Character => "CHARACTER",
+        }
+    }
+
     pub(crate) const fn kind_name(&self) -> &'static str {
         match &self.kind {
             StreamKind::Input { file, .. } => {

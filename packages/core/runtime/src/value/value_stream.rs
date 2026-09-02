@@ -7,6 +7,12 @@ use std::cell::RefCell;
 pub struct Stream {
     pub(super) kind: StreamKind,
     pub(super) closed: bool,
+    pub(super) element_type: StreamElementType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum StreamElementType {
+    Character,
 }
 
 #[derive(Debug)]

@@ -29,7 +29,19 @@ pub(crate) fn open_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
             "IF-EXISTS" => {
                 if_exists = Some(stream_keyword_name("open :if-exists", &pair[1])?);
             }
-            "ELEMENT-TYPE" | "EXTERNAL-FORMAT" => {}
+            "ELEMENT-TYPE" => {
+                let element_type = pair[1].symbol_name().ok_or_else(|| RuntimeError::InvalidForm {
+                    message: "open :element-type currently supports only CHARACTER".to_string(),
+                    span: None,
+                })?;
+                if element_type != "CHARACTER" {
+                    return Err(RuntimeError::InvalidForm {
+                        message: format!("open does not support :element-type {element_type}"),
+                        span: None,
+                    });
+                }
+            }
+            "EXTERNAL-FORMAT" => {}
             _ => {
                 return Err(RuntimeError::InvalidForm {
                     message: format!("open does not recognize keyword :{keyword}"),

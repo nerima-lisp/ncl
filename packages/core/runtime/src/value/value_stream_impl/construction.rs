@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::Stream;
-use crate::value::value_stream::StreamKind;
+use crate::value::value_stream::{StreamElementType, StreamKind};
 
 impl Stream {
     pub(in crate::value) fn attach_destination(&mut self, destination: Rc<std::cell::RefCell<String>>) {
@@ -20,6 +20,7 @@ impl Stream {
                 file: false,
             },
             closed: false,
+            element_type: StreamElementType::Character,
         }
     }
 
@@ -32,6 +33,7 @@ impl Stream {
                 file: true,
             },
             closed: false,
+            element_type: StreamElementType::Character,
         }
     }
 
@@ -52,6 +54,7 @@ impl Stream {
                 file_path: Rc::new(path),
             },
             closed: false,
+            element_type: StreamElementType::Character,
         }
     }
 
@@ -64,6 +67,7 @@ impl Stream {
                 file_path: None,
             },
             closed: false,
+            element_type: StreamElementType::Character,
         }
     }
 
@@ -77,6 +81,7 @@ impl Stream {
                 file_path: Some(Rc::new(path)),
             },
             closed: false,
+            element_type: StreamElementType::Character,
         }
     }
 
@@ -90,6 +95,7 @@ impl Stream {
                 file_path: None,
             },
             closed: false,
+            element_type: StreamElementType::Character,
         }
     }
 }

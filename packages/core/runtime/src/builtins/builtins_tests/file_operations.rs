@@ -135,6 +135,13 @@ fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeErr
     ])?;
     close_stream(&[io])?;
 
+    assert!(open_file(&[
+        existing.clone(),
+        Value::keyword("element-type"),
+        Value::keyword("unsigned-byte"),
+    ])
+    .is_err());
+
     assert!(open_file(&[existing.clone(), Value::keyword("unknown"), Value::Nil]).is_err());
     assert!(open_file(&[existing.clone(), Value::keyword("direction")]).is_err());
     assert!(

@@ -89,16 +89,18 @@ impl Runtime {
                     span,
                 ));
             }
-            let mut result = method_combination == MethodCombination::And;
+            let is_and = method_combination == MethodCombination::And;
             for method in primary {
                 let value = self.invoke_method(&method, arguments, None, span, environment)?;
-                result = if method_combination == MethodCombination::And {
-                    result && value.is_truthy()
-                } else {
-                    result || value.is_truthy()
-                };
+                if (is_and && !value.is_truthy()) || (!is_and && value.is_truthy()) {
+                    return Ok(value);
+                }
             }
-            return Ok(Value::boolean(result));
+            return Ok(if is_and {
+                Value::boolean(true)
+            } else {
+                Value::Nil
+            });
         }
         let core = MethodContinuation::Core {
             before,

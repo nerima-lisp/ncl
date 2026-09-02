@@ -53,6 +53,19 @@ mod tests {
     }
 
     #[test]
+    fn builtin_method_combinations_preserve_values_and_short_circuit() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric first-value (x) (:method-combination or))\
+                 (defmethod first-value ((x t)) 7)\
+                 (defmethod first-value ((x t)) (error \"must not run\"))\
+                 (first-value 1)",
+            )
+            .unwrap_or_else(|error| panic!("short-circuit method combination failed: {error}"));
+        assert_eq!(values.last().expect("generic result").to_string(), "7");
+    }
+
+    #[test]
     fn defgeneric_rejects_an_unsupported_method_combination() {
         let error = eval_err("(defgeneric unsupported-generic (x) (:method-combination max))");
         assert!(matches!(

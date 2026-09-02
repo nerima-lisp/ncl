@@ -1068,3 +1068,17 @@ fn evaluates_ensure_generic_function_documentation_without_lambda_list() {
         .must_exist();
     assert_eq!(values[0].to_string(), "\"ensured docs\"");
 }
+
+#[test]
+fn evaluates_class_documentation() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass documented-class () () (:documentation "class docs"))
+                 (defclass undocumented-class () ())
+                 (list (class-documentation (find-class 'documented-class))
+                       (class-documentation (find-class 'undocumented-class))))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(\"class docs\" NIL)");
+}

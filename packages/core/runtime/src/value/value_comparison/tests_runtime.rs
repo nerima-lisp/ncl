@@ -35,6 +35,7 @@ mod tests {
         );
         let class = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
+            documentation: None,
             direct_superclasses: Vec::new(),
             direct_slots: Vec::new(),
             direct_default_initargs: Vec::new(),
@@ -45,6 +46,7 @@ mod tests {
         let same_class = Value::class_object(Rc::clone(&class));
         let equivalent_class = Value::class_object(Rc::new(ClassDefinition {
             name: "point".to_owned(),
+            documentation: None,
             direct_superclasses: Vec::new(),
             direct_slots: Vec::new(),
             direct_default_initargs: Vec::new(),

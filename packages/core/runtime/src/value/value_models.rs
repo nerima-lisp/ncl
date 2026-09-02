@@ -37,6 +37,7 @@ pub struct ClassSlot {
 #[derive(Clone, Debug)]
 pub struct ClassDefinition {
     pub(crate) name: String,
+    pub(crate) documentation: Option<String>,
     pub(crate) direct_superclasses: Vec<Rc<str>>,
     pub(crate) direct_slots: Vec<Rc<str>>,
     pub(crate) direct_default_initargs: Vec<(String, Form)>,

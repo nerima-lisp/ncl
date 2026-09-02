@@ -38,6 +38,7 @@ impl Runtime {
         let mut readers = Vec::new();
         let mut writers = Vec::new();
         let mut default_initargs = Vec::new();
+        let mut documentation = None;
 
         for slot_form in slot_forms {
             let registration = Self::parse_defclass_slot(slot_form)?;
@@ -52,7 +53,7 @@ impl Runtime {
         }
 
         for option in items.iter().skip(4) {
-            Self::parse_defclass_option(option, &mut default_initargs)?;
+            Self::parse_defclass_option(option, &mut default_initargs, &mut documentation)?;
         }
         let direct_default_initargs = default_initargs.clone();
 
@@ -68,6 +69,7 @@ impl Runtime {
 
         let definition = Rc::new(ClassDefinition {
             name: class_name.clone(),
+            documentation,
             direct_superclasses: direct_superclasses.into_iter().map(Into::into).collect(),
             direct_slots: slots
                 .iter()

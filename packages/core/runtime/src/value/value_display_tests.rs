@@ -86,6 +86,7 @@ mod tests {
             (
                 Value::class_object(Rc::new(ClassDefinition {
                     name: "POINT".to_owned(),
+                    documentation: None,
                     direct_superclasses: Vec::new(),
                     direct_slots: Vec::new(),
                     direct_default_initargs: Vec::new(),
@@ -99,6 +100,7 @@ mod tests {
                 Value::instance(
                     Rc::new(ClassDefinition {
                         name: "POINT".to_owned(),
+                        documentation: None,
                         direct_superclasses: Vec::new(),
                         direct_slots: Vec::new(),
                         direct_default_initargs: Vec::new(),

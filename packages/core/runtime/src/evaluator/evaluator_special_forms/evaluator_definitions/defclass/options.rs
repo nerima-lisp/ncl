@@ -6,6 +6,7 @@ impl Runtime {
     pub(super) fn parse_defclass_option(
         option: &Form,
         default_initargs: &mut Vec<(String, Form)>,
+        documentation: &mut Option<String>,
     ) -> Result<(), RuntimeError> {
         let option_items = Self::list_form_items(option, "defclass option")?;
         if option_items.is_empty() {
@@ -46,7 +47,11 @@ impl Runtime {
                     option.span,
                 ));
             }
-            "DOCUMENTATION" => {}
+            "DOCUMENTATION" => {
+                if let FormKind::String(value) = &option_items[1].kind {
+                    *documentation = Some(value.to_string());
+                }
+            }
             _ => {
                 return Err(Self::invalid("unsupported defclass option", option.span));
             }

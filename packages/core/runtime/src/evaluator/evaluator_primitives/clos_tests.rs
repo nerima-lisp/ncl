@@ -7,6 +7,7 @@ mod tests {
     fn empty_class(name: &str) -> Rc<ClassDefinition> {
         Rc::new(ClassDefinition {
             name: name.to_string(),
+            documentation: None,
             direct_superclasses: Vec::new(),
             direct_slots: Vec::new(),
             direct_default_initargs: Vec::new(),
@@ -120,6 +121,7 @@ mod tests {
         let environment = Environment::new();
         let class = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
+            documentation: None,
             direct_superclasses: vec!["STANDARD-OBJECT".into()],
             direct_slots: vec!["X".into()],
             direct_default_initargs: Vec::new(),
@@ -144,6 +146,7 @@ mod tests {
         let environment = Environment::new();
         let class = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
+            documentation: None,
             direct_superclasses: vec!["STANDARD-OBJECT".into()],
             direct_slots: vec!["X".into(), "Y".into()],
             direct_default_initargs: Vec::new(),
@@ -167,6 +170,7 @@ mod tests {
         let environment = Environment::new();
         let class = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
+            documentation: None,
             direct_superclasses: vec!["STANDARD-OBJECT".into()],
             direct_slots: vec!["X".into()],
             direct_default_initargs: Vec::new(),

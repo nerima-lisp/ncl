@@ -62,6 +62,7 @@ impl CompileState {
             | "CLASS-OF"
             | "FIND-CLASS"
             | "CLASS-NAME"
+            | "CLASS-DOCUMENTATION"
             | "CLASS-PRECEDENCE-LIST"
             | "CLASS-DIRECT-SUPERCLASSES"
             | "CLASS-DIRECT-SLOTS"

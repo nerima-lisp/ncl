@@ -79,6 +79,7 @@ impl Runtime {
                 | "CLASS-OF"
                 | "FIND-CLASS"
                 | "CLASS-NAME"
+                | "CLASS-DOCUMENTATION"
                 | "CLASS-PRECEDENCE-LIST"
                 | "CLASS-DIRECT-SUPERCLASSES"
                 | "CLASS-DIRECT-SLOTS"
@@ -206,6 +207,7 @@ impl Runtime {
                         let n = arguments[0].type_name().to_owned();
                         Rc::new(ClassDefinition {
                             name: n.clone(),
+                            documentation: None,
                             direct_superclasses: vec!["STANDARD-OBJECT".into()],
                             direct_slots: Vec::new(),
                             direct_default_initargs: Vec::new(),
@@ -241,6 +243,21 @@ impl Runtime {
                         });
                     };
                     Ok(Value::symbol(c.name.clone()))
+                }
+                "CLASS-DOCUMENTATION" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity("class-documentation", "one", arguments.len()));
+                    }
+                    let Value::Class(c) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "CLASS".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    Ok(c.documentation
+                        .as_ref()
+                        .map_or(Value::Nil, |value| Value::string(value.clone())))
                 }
                 "GENERIC-FUNCTION-NAME" => {
                     if arguments.len() != 1 {
@@ -568,6 +585,7 @@ impl Runtime {
                         environment.lookup_class(name).unwrap_or_else(|| {
                             Rc::new(ClassDefinition {
                                 name: name.to_string(),
+                                documentation: None,
                                 direct_superclasses: Vec::new(),
                                 direct_slots: Vec::new(),
                                 direct_default_initargs: Vec::new(),
@@ -598,6 +616,7 @@ impl Runtime {
                         environment.lookup_class(name).unwrap_or_else(|| {
                             Rc::new(ClassDefinition {
                                 name: name.to_string(),
+                                documentation: None,
                                 direct_superclasses: Vec::new(),
                                 direct_slots: Vec::new(),
                                 direct_default_initargs: Vec::new(),

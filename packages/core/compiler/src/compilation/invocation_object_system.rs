@@ -13,6 +13,7 @@ impl CompileState {
             "SUBTYPEP" => (items.len() == 3, "two"),
             "CLASS-OF"
             | "CLASS-NAME"
+            | "CLASS-DOCUMENTATION"
             | "CLASS-PRECEDENCE-LIST"
             | "CLASS-DIRECT-SUPERCLASSES"
             | "CLASS-DIRECT-SLOTS"

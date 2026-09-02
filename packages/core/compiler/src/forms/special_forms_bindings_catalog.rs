@@ -166,6 +166,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
                 | "FIND-CLASS"
                 | "CLASS-PRECEDENCE-LIST"
                 | "CLASS-NAME"
+                | "CLASS-DOCUMENTATION"
                 | "CLASS-DIRECT-SUPERCLASSES"
                 | "CLASS-DIRECT-SLOTS"
                 | "CLASS-SLOTS"

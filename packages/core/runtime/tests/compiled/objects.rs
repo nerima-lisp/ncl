@@ -1024,3 +1024,15 @@ fn compiled_evaluates_ensure_generic_function_documentation_without_lambda_list(
         .must_exist();
     assert_eq!(values[0].to_string(), "\"ensured compiled docs\"");
 }
+
+#[test]
+fn compiled_evaluates_class_documentation() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass compiled-documented-class () () (:documentation "compiled class docs"))
+                 (class-documentation (find-class 'compiled-documented-class)))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "\"compiled class docs\"");
+}

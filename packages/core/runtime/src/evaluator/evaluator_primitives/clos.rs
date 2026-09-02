@@ -70,7 +70,7 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Option<Result<Value, RuntimeError>> {
-        if !matches!(name, "SUBTYPEP" | "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME") {
+        if !matches!(name, "SUBTYPEP" | "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME" | "CLASS-PRECEDENCE-LIST") {
             return None;
         }
         Some((|| -> Result<Value, RuntimeError> {
@@ -123,6 +123,29 @@ impl Runtime {
                         });
                     };
                     Ok(Value::symbol(c.name.clone()))
+                }
+                "CLASS-PRECEDENCE-LIST" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity("class-precedence-list", "one", arguments.len()));
+                    }
+                    let Value::Class(class) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "CLASS".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let classes = class.precedence.iter().map(|name| {
+                        environment.lookup_class(name).unwrap_or_else(|| {
+                            Rc::new(ClassDefinition {
+                                name: name.to_string(),
+                                precedence: vec![name.clone()],
+                                slots: Vec::new(),
+                                default_initargs: Vec::new(),
+                            })
+                        })
+                    });
+                    Ok(Value::list(classes.map(Value::class_object).collect()))
                 }
                 _ => unreachable!("class introspection primitive name was prevalidated"),
             }

@@ -463,3 +463,11 @@ fn evaluates_provide_and_require_features() {
         .eval_source("(require :missing-compiled-feature)")
         .is_err());
 }
+
+#[test]
+fn evaluates_class_precedence_list() {
+    assert_eq!(
+        evaluate("(progn (defclass point () ()) (mapcar #'class-name (class-precedence-list (find-class 'point))))").to_string(),
+        "(POINT STANDARD-OBJECT)"
+    );
+}

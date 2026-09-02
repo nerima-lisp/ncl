@@ -60,7 +60,7 @@ impl CompileState {
             "MAKE-SYMBOL" | "GENSYM" | "INTERN" | "FIND-SYMBOL" => {
                 self.compile_symbol_creation(function, span, items, name)
             }
-            "SUBTYPEP" | "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME" => {
+            "SUBTYPEP" | "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME" | "CLASS-PRECEDENCE-LIST" => {
                 self.compile_class_introspection(function, span, items, name)
             }
             "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND" => {

@@ -115,6 +115,19 @@ fn compiled_generic_methods_dispatch_on_eql_specializers() {
 }
 
 #[test]
+fn compiled_eql_specializer_precedes_matching_class_specializer() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(progn (defgeneric choose-specializer (x))
+             (defmethod choose-specializer ((x integer)) :class)
+             (defmethod choose-specializer ((x (eql 3))) :eql)
+             (list (choose-specializer 3) (choose-specializer 4)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(:EQL :CLASS)");
+}
+
+#[test]
 fn compiled_evaluates_reinitialize_instance() {
     let values = Runtime::new()
         .eval_compiled_source(

@@ -38,6 +38,7 @@ impl Runtime {
                 if !crate::builtins::eql_value(expected, argument) {
                     return None;
                 }
+                score.push(0);
                 continue;
             }
             let MethodSpecializer::Class(specializer) = specializer else {
@@ -52,14 +53,14 @@ impl Runtime {
                     .precedence
                     .iter()
                     .position(|name| name == specializer)?;
-                score.push(position);
+                score.push(position.saturating_add(1));
             } else {
                 let type_designator = Value::symbol(specializer.clone());
                 if !crate::builtins::typep_value_in(argument, &type_designator, environment).ok()? {
                     return None;
                 }
                 score.push(match specializer.as_ref() {
-                    "NIL" => 0,
+                    "NIL" => 1,
                     "BIT" | "FIXNUM" | "BIGNUM" | "INTEGER" => 100,
                     "RATIO" | "RATIONAL" => 200,
                     "FLOAT" | "SHORT-FLOAT" | "SINGLE-FLOAT" | "DOUBLE-FLOAT" | "LONG-FLOAT"

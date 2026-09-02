@@ -41,6 +41,51 @@ impl CompileState {
         self.compile_sequence(function, forms)
     }
 
+    pub(super) fn compile_locally(
+        &mut self,
+        function: FunctionId,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        let saved_special_names = self.special_names.clone();
+        for form in items.iter().skip(1) {
+            let FormKind::List(declaration) = &form.kind else {
+                break;
+            };
+            let Some(Form {
+                kind: FormKind::Atom(operator),
+                ..
+            }) = declaration.first()
+            else {
+                break;
+            };
+            if !operator.eq_ignore_ascii_case("DECLARE") {
+                break;
+            }
+            for spec in declaration.iter().skip(1) {
+                let FormKind::List(spec) = &spec.kind else {
+                    continue;
+                };
+                let Some(Form {
+                    kind: FormKind::Atom(kind),
+                    ..
+                }) = spec.first()
+                else {
+                    continue;
+                };
+                if !kind.eq_ignore_ascii_case("SPECIAL") {
+                    continue;
+                }
+                for name in spec.iter().skip(1) {
+                    let (name, escaped) = Self::symbol_name_info(name, "special declaration name")?;
+                    self.register_special(name, escaped);
+                }
+            }
+        }
+        let result = self.compile_sequence(function, items.get(1..).unwrap_or(&[]));
+        self.special_names = saved_special_names;
+        result
+    }
+
     pub(super) fn compile_declare(
         &mut self,
         function: FunctionId,

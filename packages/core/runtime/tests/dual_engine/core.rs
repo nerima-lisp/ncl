@@ -44,6 +44,27 @@ fn declare_special_is_honored_in_defun(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn declare_special_is_scoped_to_locally(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(progn
+               (setq locally-special 11)
+               (list
+                 (locally
+                   (declare (special locally-special))
+                   (let ((locally-special 22))
+                     (list locally-special (symbol-value 'locally-special))))
+                 (let ((locally-special 33)) locally-special)))",
+        )
+        .to_string(),
+        "((22 22) 33)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn proclaim_special_affects_later_bindings(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

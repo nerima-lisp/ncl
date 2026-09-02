@@ -79,6 +79,7 @@ impl Runtime {
                 | "CLASS-PRECEDENCE-LIST"
                 | "CLASS-DIRECT-SUPERCLASSES"
                 | "CLASS-DIRECT-SLOTS"
+                | "CLASS-SLOTS"
         ) {
             return None;
         }
@@ -205,6 +206,25 @@ impl Runtime {
                             .direct_slots
                             .iter()
                             .map(|name| Value::symbol(name.clone()))
+                            .collect(),
+                    ))
+                }
+                "CLASS-SLOTS" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity("class-slots", "one", arguments.len()));
+                    }
+                    let Value::Class(class) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "CLASS".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    Ok(Value::list(
+                        class
+                            .slots
+                            .iter()
+                            .map(|slot| Value::symbol(Rc::<str>::from(slot.name.clone())))
                             .collect(),
                     ))
                 }

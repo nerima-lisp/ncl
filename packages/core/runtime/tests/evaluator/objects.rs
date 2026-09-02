@@ -836,3 +836,16 @@ fn evaluates_clos_class_direct_slots() {
         .must_exist();
     assert_eq!(values[0].to_string(), "(OWN)");
 }
+
+#[test]
+fn evaluates_clos_class_slots_including_inherited_slots() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+             (defclass effective-slots-parent () ((inherited)))
+             (defclass effective-slots-child (effective-slots-parent) ((own)))
+             (class-slots (find-class 'effective-slots-child)))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(OWN INHERITED)");
+}

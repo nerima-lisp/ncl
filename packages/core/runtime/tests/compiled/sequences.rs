@@ -609,3 +609,16 @@ fn compiled_evaluates_vector_pop() {
         "(4 1 3 0)"
     );
 }
+
+#[test]
+fn compiled_evaluates_array_has_fill_pointer_p() {
+    assert_eq!(
+        evaluate(
+            "(list (array-has-fill-pointer-p (make-array 2 :fill-pointer 1))\
+                   (array-has-fill-pointer-p (make-array 2))\
+                   (array-has-fill-pointer-p (make-array '(2 2))))",
+        )
+        .to_string(),
+        "(T NIL NIL)"
+    );
+}

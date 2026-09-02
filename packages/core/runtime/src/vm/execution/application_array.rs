@@ -30,6 +30,7 @@ pub fn execute_array_metadata_instruction(
     let arguments = stack.split_off(stack.len() - argument_count);
     let value = match operation {
         "ARRAY-ELEMENT-TYPE" => crate::builtins::array_element_type(&arguments)?,
+        "ARRAY-HAS-FILL-POINTER-P" => crate::builtins::array_has_fill_pointer_p(&arguments)?,
         "ARRAY-RANK" => crate::builtins::array_rank(&arguments)?,
         "ARRAY-DIMENSIONS" => crate::builtins::array_dimensions(&arguments)?,
         "ARRAY-DIMENSION" => crate::builtins::array_dimension(&arguments)?,

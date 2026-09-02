@@ -90,6 +90,14 @@ impl Value {
         }
     }
 
+    pub(crate) fn array_has_fill_pointer(&self) -> Option<bool> {
+        match self {
+            Self::Vector(items) => Some(items.metadata.borrow().fill_pointer.is_some()),
+            Self::Array { metadata, .. } => Some(metadata.borrow().fill_pointer.is_some()),
+            _ => None,
+        }
+    }
+
     pub(crate) fn vector_length(&self) -> Option<usize> {
         match self {
             Self::Vector(items) => Some(self.vector_fill_pointer().flatten().unwrap_or_else(|| items.borrow().len())),

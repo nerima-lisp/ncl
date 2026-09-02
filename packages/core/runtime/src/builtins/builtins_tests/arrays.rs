@@ -69,6 +69,27 @@ fn make_array_tracks_vector_fill_pointer_and_adjustability() {
 }
 
 #[test]
+fn array_has_fill_pointer_p_distinguishes_vectors_and_arrays() {
+    let vector = make_array(&[
+        Value::Integer(2),
+        Value::keyword("fill-pointer"),
+        Value::Integer(1),
+    ])
+    .expect("make-array should construct a vector");
+    let simple_vector = make_array(&[Value::Integer(2)]).expect("make-array should construct a vector");
+    let array = make_array(&[Value::list(vec![Value::Integer(1), Value::Integer(2)])])
+        .expect("make-array should construct an array");
+
+    assert!(array_has_fill_pointer_p(&[vector]).unwrap().equal_value(&Value::Boolean(true)));
+    assert!(array_has_fill_pointer_p(&[simple_vector]).unwrap().equal_value(&Value::Boolean(false)));
+    assert!(array_has_fill_pointer_p(&[array]).unwrap().equal_value(&Value::Boolean(false)));
+    assert!(matches!(
+        array_has_fill_pointer_p(&[Value::Integer(1)]),
+        Err(RuntimeError::Type { expected, .. }) if expected.contains("array")
+    ));
+}
+
+#[test]
 fn adjust_array_resizes_adjustable_vector_in_place() {
     let vector = make_array(&[
         Value::Integer(2),

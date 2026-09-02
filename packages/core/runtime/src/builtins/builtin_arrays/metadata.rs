@@ -11,6 +11,14 @@ pub fn array_element_type(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::symbol("T"))
 }
 
+pub fn array_has_fill_pointer_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "array-has-fill-pointer-p", 1)?;
+    let has_fill_pointer = arguments[0]
+        .array_has_fill_pointer()
+        .ok_or_else(|| type_error("array-has-fill-pointer-p", "array", &arguments[0]))?;
+    Ok(Value::boolean(has_fill_pointer))
+}
+
 pub fn simple_array_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-array-p", 1)?;
     Ok(Value::boolean(

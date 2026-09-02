@@ -191,8 +191,8 @@ mod tests {
             .eval_source(
                 "(progn
                (defclass shared-init-class () ((value :initarg :value)))
-               (defmethod shared-initialize ((object shared-init-class) &rest initargs)
-                 (declare (ignore initargs))
+               (defmethod shared-initialize ((object shared-init-class) slot-names &rest initargs)
+                 (declare (ignore slot-names initargs))
                  (call-next-method)
                  (setf (slot-value object 'value) 77)
                  object)

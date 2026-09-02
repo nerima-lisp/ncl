@@ -8,7 +8,7 @@ impl Runtime {
         method: &MethodDefinition,
         arguments: &[Value],
         environment: &Environment,
-    ) -> Option<usize> {
+    ) -> Option<Vec<usize>> {
         let required_count = method.specializers.len();
         if arguments.len() < required_count {
             return None;
@@ -28,7 +28,7 @@ impl Runtime {
         {
             return None;
         }
-        let mut score = 0usize;
+        let mut score = Vec::with_capacity(required_count);
         for (specializer, argument) in method
             .specializers
             .iter()
@@ -44,7 +44,7 @@ impl Runtime {
                 unreachable!()
             };
             if specializer.as_ref() == "T" || specializer.as_ref() == "OBJECT" {
-                score = score.saturating_add(1_000_000);
+                score.push(1_000_000);
                 continue;
             }
             if let Some(class) = argument.instance_class_definition() {
@@ -52,13 +52,13 @@ impl Runtime {
                     .precedence
                     .iter()
                     .position(|name| name == specializer)?;
-                score = score.saturating_add(position);
+                score.push(position);
             } else {
                 let type_designator = Value::symbol(specializer.clone());
                 if !crate::builtins::typep_value_in(argument, &type_designator, environment).ok()? {
                     return None;
                 }
-                score = score.saturating_add(match specializer.as_ref() {
+                score.push(match specializer.as_ref() {
                     "NIL" => 0,
                     "BIT" | "FIXNUM" | "BIGNUM" | "INTEGER" => 100,
                     "RATIO" | "RATIONAL" => 200,
@@ -95,7 +95,7 @@ impl Runtime {
                 span,
             ));
         }
-        applicable.sort_by_key(|(score, _)| *score);
+        applicable.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         let mut around = Vec::new();
         let mut before = Vec::new();

@@ -458,4 +458,20 @@ mod tests {
             .expect("change-class invalid initarg is handled");
         assert_eq!(values.last().unwrap().to_string(), "OLD-POINT");
     }
+
+    #[test]
+    fn change_class_rejects_odd_initargs_before_mutating_instance() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_source(
+                "(defclass old-point () ())
+                 (defclass new-point () ((x :initarg :x)))
+                 (let ((point (make-instance 'old-point)))
+                   (handler-case
+                       (progn (change-class point 'new-point :x) :unexpected)
+                     (error () (class-name (class-of point)))))",
+            )
+            .expect("change-class odd initargs are handled");
+        assert_eq!(values.last().unwrap().to_string(), "OLD-POINT");
+    }
 }

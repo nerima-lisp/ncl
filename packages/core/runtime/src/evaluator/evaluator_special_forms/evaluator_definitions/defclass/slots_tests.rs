@@ -107,6 +107,22 @@ mod tests {
     }
 
     #[test]
+    fn slot_definition_initfunction_captures_defclass_environment() {
+        let values = Runtime::new()
+            .eval_source(
+                "(let ((initial 41))
+                   (defclass captured-initfunction-class ()
+                     ((value :initform initial)))
+                   (funcall
+                     (slot-definition-initfunction
+                       (first (class-direct-slots
+                                (find-class 'captured-initfunction-class))))))",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "41");
+    }
+
+    #[test]
     fn defclass_accessor_is_setfable() {
         let values = Runtime::new()
             .eval_source(

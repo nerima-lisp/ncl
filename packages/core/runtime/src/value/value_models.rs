@@ -34,6 +34,7 @@ pub struct ClassSlot {
     pub(crate) writers: Vec<String>,
     pub(crate) init_form: Option<Form>,
     pub(crate) type_form: Option<Form>,
+    pub(crate) init_function: Option<Value>,
     pub(crate) class_value: Option<Rc<RefCell<Value>>>,
 }
 

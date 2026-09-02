@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(crate) fn slot_definition_value(slot: &ClassSlot, environment: &Environment) -> Value {
+    pub(crate) fn slot_definition_value(slot: &ClassSlot) -> Value {
         let class = Rc::new(ClassDefinition {
             name: "STANDARD-DIRECT-SLOT-DEFINITION".to_owned(),
             documentation: None,
@@ -74,9 +74,7 @@ impl Runtime {
                 ),
                 (
                     "INITFUNCTION".to_owned(),
-                    slot.init_form.as_ref().map_or(Value::Nil, |form| {
-                        Value::closure(Vec::new(), vec![form.clone()], environment.clone())
-                    }),
+                    slot.init_function.clone().unwrap_or(Value::Nil),
                 ),
                 (
                     "TYPE".to_owned(),

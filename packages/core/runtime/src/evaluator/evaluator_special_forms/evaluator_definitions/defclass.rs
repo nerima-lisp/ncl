@@ -47,10 +47,15 @@ impl Runtime {
             readers.extend(registration.readers);
             writers.extend(registration.writers);
             setf_writers.extend(registration.setf_writers);
+            let mut slot = registration.slot;
+            slot.init_function = slot
+                .init_form
+                .as_ref()
+                .map(|form| Value::closure(Vec::new(), vec![form.clone()], environment.clone()));
             if let Some(existing) = slots.iter_mut().find(|slot| slot.name == slot_name) {
-                *existing = registration.slot;
+                *existing = slot;
             } else {
-                slots.push(registration.slot);
+                slots.push(slot);
             }
         }
 

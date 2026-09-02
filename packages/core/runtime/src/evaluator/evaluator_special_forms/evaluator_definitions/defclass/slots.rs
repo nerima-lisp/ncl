@@ -110,6 +110,7 @@ impl Runtime {
                 writers: writers.iter().map(|(name, _)| name.clone()).collect(),
                 init_form,
                 type_form,
+                init_function: None,
                 class_value,
             },
             readers,

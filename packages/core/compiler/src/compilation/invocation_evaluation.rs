@@ -18,6 +18,7 @@ impl CompileState {
             | "REINITIALIZE-INSTANCE"
             | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS" => items.len() >= 2,
             "SLOT-MISSING" => items.len() == 4,
+            "SLOT-UNBOUND" => items.len() == 3,
             "COMPILE" => (2..=3).contains(&items.len()),
             "LOAD" => items.len() == 2,
             "PROVIDE" => items.len() == 2,
@@ -34,6 +35,7 @@ impl CompileState {
                 | "REINITIALIZE-INSTANCE"
                 | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS" => "at least one",
                 "SLOT-MISSING" => "four",
+                "SLOT-UNBOUND" => "three",
                 "COMPILE" => "one or two",
                 "LOAD" => "one",
                 "PROVIDE" => "one",

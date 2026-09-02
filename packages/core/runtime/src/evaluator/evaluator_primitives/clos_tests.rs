@@ -148,6 +148,21 @@ mod tests {
     }
 
     #[test]
+    fn slot_value_dispatches_unbound_slots_to_slot_unbound() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass unbound-slot-object () ((value)))
+                 (defmethod slot-unbound ((class t) (object unbound-slot-object)
+                                           (slot-name t))
+                   (declare (ignore class object slot-name))
+                   42)
+                 (slot-value (make-instance 'unbound-slot-object) 'value)",
+            )
+            .expect("SLOT-UNBOUND method handles an unbound slot");
+        assert!(matches!(values.last(), Some(Value::Integer(42))));
+    }
+
+    #[test]
     fn class_of_a_non_instance_value_synthesizes_a_class_definition() {
         let environment = Environment::new();
         let result = Runtime::apply_class_introspection_primitive(

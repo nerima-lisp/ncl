@@ -129,7 +129,8 @@ impl CompileState {
             | "SHARED-INITIALIZE"
             | "REINITIALIZE-INSTANCE"
             | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS"
-            | "SLOT-MISSING" => {
+            | "SLOT-MISSING"
+            | "SLOT-UNBOUND" => {
                 self.compile_evaluation_operation(function, span, items, name)
             }
             "COMPILE" | "LOAD" | "PROVIDE" | "REQUIRE" => {

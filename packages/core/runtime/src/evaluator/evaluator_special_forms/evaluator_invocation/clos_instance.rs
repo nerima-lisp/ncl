@@ -13,6 +13,21 @@ impl Runtime {
         Err(Self::invalid("slot is not defined for this class", span))
     }
 
+    pub(crate) fn slot_unbound(
+        &self,
+        arguments: &[Value],
+        _environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() != 3 {
+            return Err(Self::arity("slot-unbound", "three", arguments.len()));
+        }
+        Err(RuntimeError::UnboundSlot {
+            name: Self::name_designator_from_value(&arguments[2], span)?.to_string(),
+            span: Some(span),
+        })
+    }
+
     pub(crate) fn change_class(
         &self,
         arguments: &[Value],

@@ -40,10 +40,19 @@ impl Runtime {
             );
         };
         if matches!(value, Value::Unbound) {
-            return Err(RuntimeError::UnboundSlot {
-                name: slot_name.to_owned(),
-                span: Some(span),
-            });
+            let function = environment
+                .lookup_function("SLOT-UNBOUND")
+                .unwrap_or_else(|| Value::primitive("SLOT-UNBOUND"));
+            return self.apply_in(
+                &function,
+                &[
+                    Value::class_object(arguments[0].instance_class_definition().expect("validated instance has a class")),
+                    arguments[0].clone(),
+                    Value::symbol(slot_name),
+                ],
+                span,
+                environment,
+            );
         }
         Ok(value)
     }

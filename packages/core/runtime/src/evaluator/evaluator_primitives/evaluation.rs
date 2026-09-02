@@ -22,6 +22,7 @@ impl Runtime {
                 | "REINITIALIZE-INSTANCE"
                 | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS"
                 | "SLOT-MISSING"
+                | "SLOT-UNBOUND"
                 | "PROVIDE"
                 | "REQUIRE"
         ) {
@@ -43,6 +44,7 @@ impl Runtime {
             "REINITIALIZE-INSTANCE" => self.reinitialize_instance(arguments, environment, span),
             "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS" => self.update_instance_for_different_class(arguments, environment, span),
             "SLOT-MISSING" => self.slot_missing(arguments, environment, span),
+            "SLOT-UNBOUND" => self.slot_unbound(arguments, environment, span),
             "PROVIDE" => self.provide_feature(arguments, span),
             "REQUIRE" => self.require_feature(arguments, span),
             _ => unreachable!("evaluation primitive name was prevalidated"),

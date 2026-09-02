@@ -69,6 +69,27 @@ impl Runtime {
                         environment,
                     )
                 }
+                Err(RuntimeError::UnboundSlot { .. })
+                    if matches!(name, "SLOT-VALUE" | "SLOT-VALUE-USING-CLASS") =>
+                {
+                    let (object, slot_name) = if name.ends_with("-USING-CLASS") {
+                        (&arguments[1], &arguments[2])
+                    } else {
+                        (&arguments[0], &arguments[1])
+                    };
+                    let class = object
+                        .instance_class_definition()
+                        .ok_or_else(|| Self::invalid("object has no class definition", span))?;
+                    let function = environment
+                        .lookup_function("SLOT-UNBOUND")
+                        .unwrap_or_else(|| Value::primitive("SLOT-UNBOUND"));
+                    self.apply_in(
+                        &function,
+                        &[Value::class_object(class), object.clone(), slot_name.clone()],
+                        span,
+                        environment,
+                    )
+                }
                 other => other,
             };
         }

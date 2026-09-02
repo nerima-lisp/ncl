@@ -211,6 +211,8 @@ fn byte_io_streams_share_a_file_cursor_for_read_and_write() -> Result<(), Runtim
         path,
         Value::keyword("direction"),
         Value::keyword("io"),
+        Value::keyword("if-exists"),
+        Value::keyword("overwrite"),
         Value::keyword("element-type"),
         byte_type,
     ])?;

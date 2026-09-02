@@ -211,6 +211,11 @@ pub(super) fn open_io_file(
     if_exists: &str,
     byte: bool,
 ) -> Result<Value, RuntimeError> {
+    let output_path = if path.exists() && if_exists == "NEW-VERSION" {
+        unique_version_path(path)?
+    } else {
+        path.to_path_buf()
+    };
     if byte {
         let bytes = if path.exists() {
             match if_exists {
@@ -221,12 +226,12 @@ pub(super) fn open_io_file(
                         message: format!("open {}: file already exists", path.display()),
                     });
                 }
-                "APPEND" | "NEW-VERSION" | "RENAME" | "RENAME-AND-DELETE" | "OVERWRITE" => {
-                    std::fs::read(path).map_err(|error| RuntimeError::Io {
+                "APPEND" | "RENAME" | "RENAME-AND-DELETE" | "OVERWRITE" => std::fs::read(path)
+                    .map_err(|error| RuntimeError::Io {
                         kind: error.kind(),
                         message: format!("open {}: {error}", path.display()),
-                    })?
-                }
+                    })?,
+                "NEW-VERSION" => Vec::new(),
                 "SUPERSEDE" => Vec::new(),
                 _ => {
                     return Err(RuntimeError::InvalidForm {
@@ -256,7 +261,7 @@ pub(super) fn open_io_file(
             }
         };
         return Ok(Value::file_byte_io_stream(
-            path.to_path_buf(),
+            output_path,
             bytes,
             if_exists == "APPEND",
         ));
@@ -278,12 +283,13 @@ pub(super) fn open_io_file(
                     message: format!("open {}: {error}", path.display()),
                 })?
             }
-            "NEW-VERSION" | "RENAME" | "RENAME-AND-DELETE" | "OVERWRITE" => {
+            "RENAME" | "RENAME-AND-DELETE" | "OVERWRITE" => {
                 std::fs::read_to_string(path).map_err(|error| RuntimeError::Io {
                     kind: error.kind(),
                     message: format!("open {}: {error}", path.display()),
                 })?
             }
+            "NEW-VERSION" => String::new(),
             "SUPERSEDE" => String::new(),
             _ => {
                 return Err(RuntimeError::InvalidForm {
@@ -312,5 +318,5 @@ pub(super) fn open_io_file(
             }
         }
     };
-    Ok(Value::file_io_stream(path.to_path_buf(), &source, append))
+    Ok(Value::file_io_stream(output_path, &source, append))
 }

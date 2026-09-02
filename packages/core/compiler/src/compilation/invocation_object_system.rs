@@ -16,7 +16,8 @@ impl CompileState {
             | "CLASS-PRECEDENCE-LIST"
             | "CLASS-DIRECT-SUPERCLASSES"
             | "CLASS-DIRECT-SLOTS"
-            | "CLASS-SLOTS" => (items.len() == 2, "one"),
+            | "CLASS-SLOTS"
+            | "CLASS-DEFAULT-INITARGS" => (items.len() == 2, "one"),
             "FIND-CLASS" => ((2..=3).contains(&items.len()), "one or two"),
             _ => (false, "valid arguments"),
         };

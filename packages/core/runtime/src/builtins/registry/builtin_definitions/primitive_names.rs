@@ -127,6 +127,7 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "CLASS-DIRECT-SUPERCLASSES",
     "CLASS-DIRECT-SLOTS",
     "CLASS-SLOTS",
+    "CLASS-DEFAULT-INITARGS",
     "SLOT-EXISTS-P",
     "SLOT-BOUNDP",
     "SLOT-MAKUNBOUND",

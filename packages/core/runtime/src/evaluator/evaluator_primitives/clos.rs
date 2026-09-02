@@ -80,6 +80,7 @@ impl Runtime {
                 | "CLASS-DIRECT-SUPERCLASSES"
                 | "CLASS-DIRECT-SLOTS"
                 | "CLASS-SLOTS"
+                | "CLASS-DEFAULT-INITARGS"
         ) {
             return None;
         }
@@ -227,6 +228,33 @@ impl Runtime {
                             .map(|slot| Value::symbol(Rc::<str>::from(slot.name.clone())))
                             .collect(),
                     ))
+                }
+                "CLASS-DEFAULT-INITARGS" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity(
+                            "class-default-initargs",
+                            "one",
+                            arguments.len(),
+                        ));
+                    }
+                    let Value::Class(class) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "CLASS".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let initargs = class
+                        .default_initargs
+                        .iter()
+                        .map(|(name, form)| {
+                            Ok(Value::cons_cell(
+                                Value::symbol(name.clone()),
+                                quoted_form_value(form)?,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, RuntimeError>>()?;
+                    Ok(Value::list(initargs))
                 }
                 _ => unreachable!("class introspection primitive name was prevalidated"),
             }

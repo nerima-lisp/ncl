@@ -77,6 +77,21 @@ fn compiled_evaluates_initialize_instance() {
 }
 
 #[test]
+fn compiled_evaluates_class_default_initargs() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass default-initarg-point ()
+                   ((x :initarg :x))
+                   (:default-initargs :x 42))
+                 (class-default-initargs (find-class 'default-initarg-point)))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "((X . 42))");
+}
+
+#[test]
 fn compiled_evaluates_native_make_instance_operation() {
     let values = Runtime::new()
         .eval_compiled_source(

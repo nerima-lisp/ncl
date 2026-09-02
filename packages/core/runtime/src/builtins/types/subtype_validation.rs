@@ -95,7 +95,9 @@ pub(super) fn validate_subtype_designator(
         )),
         _ => {
             let type_name = type_designator_name(function, designator)?;
-            if known_type_name(&type_name, environment) {
+            if known_type_name(&type_name, environment)
+                || environment.lookup_condition(&type_name).is_some()
+            {
                 Ok(())
             } else {
                 Err(invalid_type_spec(

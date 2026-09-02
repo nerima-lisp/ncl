@@ -342,12 +342,16 @@ fn compiled_evaluates_subtypep() {
             r"(progn
                  (defclass subtypep-parent () ())
                  (defclass subtypep-child (subtypep-parent) ())
+                 (define-condition subtypep-condition-parent (condition) ())
+                 (define-condition subtypep-condition-child (subtypep-condition-parent) ())
                  (defstruct subtypep-record value)
                  (list
                    (multiple-value-list (subtypep 'integer 'number))
                    (multiple-value-list (subtypep '(integer 0 5) '(integer -1 10)))
                    (multiple-value-list (subtypep '(integer 0 10) '(integer 1 5)))
                    (multiple-value-list (subtypep 'subtypep-child 'subtypep-parent))
+                   (multiple-value-list (subtypep 'subtypep-condition-child 'subtypep-condition-parent))
+                   (multiple-value-list (subtypep 'subtypep-condition-child 'condition))
                    (multiple-value-list (subtypep 'subtypep-record 'structure))
                    (multiple-value-list (subtypep 'string 'sequence))))",
         )
@@ -355,7 +359,7 @@ fn compiled_evaluates_subtypep() {
     assert_eq!(values.len(), 1);
     assert_eq!(
         values[0].to_string(),
-        "((T T) (T T) (NIL T) (T T) (T T) (T T))"
+        "((T T) (T T) (NIL T) (T T) (T T) (T T) (T T) (T T))"
     );
 }
 #[test]

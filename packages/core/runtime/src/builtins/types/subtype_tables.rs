@@ -63,11 +63,38 @@ pub(super) fn named_subtype_relation(
     {
         return Some(true);
     }
+    if environment.lookup_condition(subtype_name).is_some() {
+        return Some(condition_subtype_relation(
+            subtype_name,
+            supertype_name,
+            environment,
+            &mut std::collections::HashSet::new(),
+        ));
+    }
     if known_type_name(subtype_name, environment) && known_type_name(supertype_name, environment) {
         Some(false)
     } else {
         None
     }
+}
+
+fn condition_subtype_relation(
+    subtype_name: &str,
+    supertype_name: &str,
+    environment: &Environment,
+    visited: &mut std::collections::HashSet<String>,
+) -> bool {
+    if !visited.insert(subtype_name.to_owned()) {
+        return false;
+    }
+    let Some(definition) = environment.lookup_condition(subtype_name) else {
+        return false;
+    };
+    definition.parents.iter().any(|parent| {
+        parent.eq_ignore_ascii_case(supertype_name)
+            || builtin_subtype(parent, supertype_name)
+            || condition_subtype_relation(parent, supertype_name, environment, visited)
+    })
 }
 
 fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {

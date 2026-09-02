@@ -271,6 +271,23 @@ fn compiled_evaluates_basic_clos_instances_and_accessors() {
 }
 
 #[test]
+fn compiled_accepts_standard_class_metaclass() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass explicit-standard-metaclass ()
+                   ((value :initarg :value))
+                   (:metaclass standard-class))
+                 (slot-value
+                   (make-instance 'explicit-standard-metaclass :value 42)
+                   'value))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "42");
+}
+
+#[test]
 fn compiled_evaluates_clos_slot_value_setf() {
     let values = Runtime::new()
         .eval_compiled_source(

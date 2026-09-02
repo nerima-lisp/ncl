@@ -165,7 +165,7 @@ impl CompileState {
             | "UNREAD-CHAR" | "FILE-POSITION" | "FILE-LENGTH" | "CLOSE" | "MAKE-STRING-INPUT-STREAM"
             | "STREAM-ELEMENT-TYPE" | "STREAM-EXTERNAL-FORMAT"
             | "MAKE-STRING-OUTPUT-STREAM" | "WRITE-TO-STRING" | "READ-FROM-STRING"
-            | "READ" | "READ-PRESERVING-WHITESPACE" => {
+            | "READ" | "READ-PRESERVING-WHITESPACE" | "READ-BYTE" | "WRITE-BYTE" => {
                 self.compile_stream_operation(function, span, items, name)
             }
             "ATOM" | "CONSP" | "LISTP" | "NUMBERP" | "COMPLEXP" | "INTEGERP"

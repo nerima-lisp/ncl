@@ -16,6 +16,8 @@ impl CompileState {
             "WRITE-CHAR" => (2..=3).contains(&items.len()),
             "WRITE-STRING" | "WRITE-LINE" | "WRITE-SEQUENCE" => items.len() >= 2,
             "READ-SEQUENCE" => items.len() >= 3,
+            "READ-BYTE" => (2..=5).contains(&items.len()),
+            "WRITE-BYTE" => items.len() == 3,
             "LISTEN" | "READ-CHAR-NO-HANG" | "CLEAR-INPUT" => items.len() <= 2,
             "PRINC" | "PRIN1" | "PRINT" => (2..=3).contains(&items.len()),
             "WRITE" => items.len() >= 2,

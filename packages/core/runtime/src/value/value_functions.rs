@@ -17,6 +17,10 @@ pub enum MethodCombination {
     Progn,
     List,
     Append,
+    Nconc,
+    Plus,
+    Max,
+    Min,
 }
 
 /// Function pointer used by a registered runtime primitive.

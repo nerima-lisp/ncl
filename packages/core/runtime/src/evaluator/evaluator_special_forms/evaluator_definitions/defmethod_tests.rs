@@ -82,6 +82,28 @@ mod tests {
     }
 
     #[test]
+    fn builtin_numeric_and_nconc_method_combinations_combine_all_values() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric sum-values (x) (:method-combination +))\
+                 (defmethod sum-values ((x t)) 2)\
+                 (defmethod sum-values ((x t)) 3)\
+                 (defgeneric max-values (x) (:method-combination max))\
+                 (defmethod max-values ((x t)) 2)\
+                 (defmethod max-values ((x t)) 3)\
+                 (defgeneric min-values (x) (:method-combination min))\
+                 (defmethod min-values ((x t)) 2)\
+                 (defmethod min-values ((x t)) 3)\
+                 (defgeneric nconc-values (x) (:method-combination nconc))\
+                 (defmethod nconc-values ((x t)) (list 1))\
+                 (defmethod nconc-values ((x t)) (list 2 3))\
+                 (list (sum-values 1) (max-values 1) (min-values 1) (nconc-values 1))",
+            )
+            .unwrap_or_else(|error| panic!("numeric/nconc method combinations failed: {error}"));
+        assert_eq!(values.last().expect("generic result").to_string(), "(5 3 2 (1 2 3))");
+    }
+
+    #[test]
     fn builtin_method_combinations_preserve_values_and_short_circuit() {
         let values = Runtime::new()
             .eval_source(

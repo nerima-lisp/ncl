@@ -96,16 +96,26 @@ impl Runtime {
                 }
                 return Ok(result);
             }
-            if matches!(method_combination, MethodCombination::List | MethodCombination::Append) {
+            if matches!(
+                method_combination,
+                MethodCombination::List
+                    | MethodCombination::Append
+                    | MethodCombination::Nconc
+                    | MethodCombination::Plus
+                    | MethodCombination::Max
+                    | MethodCombination::Min
+            ) {
                 let values = primary
                     .iter()
                     .map(|method| self.invoke_method(method, arguments, None, span, environment))
                     .collect::<Result<Vec<_>, _>>()?;
                 return match method_combination {
                     MethodCombination::List => Ok(Value::list(values)),
-                    MethodCombination::Append => {
-                        crate::builtins::append_lists("append", &values)
-                    }
+                    MethodCombination::Append => crate::builtins::append_lists("append", &values),
+                    MethodCombination::Nconc => crate::builtins::nconc(&values),
+                    MethodCombination::Plus => crate::builtins::add(&values),
+                    MethodCombination::Max => crate::builtins::maximum(&values),
+                    MethodCombination::Min => crate::builtins::minimum(&values),
                     _ => unreachable!("method combination was checked above"),
                 };
             }

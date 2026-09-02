@@ -18,12 +18,26 @@ fn compiled_evaluates_builtin_method_combinations() {
                  (defgeneric append-values (x) (:method-combination append))
                  (defmethod append-values ((x t)) (list 1))
                  (defmethod append-values ((x t)) (list 2 3))
+                 (defgeneric sum-values (x) (:method-combination +))
+                 (defmethod sum-values ((x t)) 2)
+                 (defmethod sum-values ((x t)) 3)
+                 (defgeneric max-values (x) (:method-combination max))
+                 (defmethod max-values ((x t)) 2)
+                 (defmethod max-values ((x t)) 3)
+                 (defgeneric min-values (x) (:method-combination min))
+                 (defmethod min-values ((x t)) 2)
+                 (defmethod min-values ((x t)) 3)
+                 (defgeneric nconc-values (x) (:method-combination nconc))
+                 (defmethod nconc-values ((x t)) (list 1))
+                 (defmethod nconc-values ((x t)) (list 2 3))
                  (list (all-true 1) (any-true 1) (ncl-user::any-true 1)
-                       (sequence 1) (collect-values 1) (append-values 1)))",
+                       (sequence 1) (collect-values 1) (append-values 1)
+                       (sum-values 1) (max-values 1) (min-values 1)
+                       (nconc-values 1)))",
         )
         .must_exist();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].to_string(), "(NIL T T 2 (1 2) (1 2 3))");
+    assert_eq!(values[0].to_string(), "(NIL T T 2 (1 2) (1 2 3) 5 3 2 (1 2 3))");
 }
 
 #[test]

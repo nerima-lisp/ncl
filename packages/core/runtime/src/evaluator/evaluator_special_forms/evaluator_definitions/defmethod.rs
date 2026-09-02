@@ -56,6 +56,10 @@ impl Runtime {
                         "PROGN" => MethodCombination::Progn,
                         "LIST" => MethodCombination::List,
                         "APPEND" => MethodCombination::Append,
+                        "NCONC" => MethodCombination::Nconc,
+                        "+" => MethodCombination::Plus,
+                        "MAX" => MethodCombination::Max,
+                        "MIN" => MethodCombination::Min,
                         _ => {
                             return Err(Self::invalid(
                                 "unsupported defgeneric method combination",

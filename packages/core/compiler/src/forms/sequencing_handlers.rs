@@ -47,39 +47,47 @@ impl CompileState {
         items: &[Form],
     ) -> Result<(), CompileError> {
         let saved_special_names = self.special_names.clone();
-        for form in items.iter().skip(1) {
-            let FormKind::List(declaration) = &form.kind else {
-                break;
-            };
-            let Some(Form {
-                kind: FormKind::Atom(operator),
-                ..
-            }) = declaration.first()
-            else {
-                break;
-            };
-            if !operator.eq_ignore_ascii_case("DECLARE") {
-                break;
-            }
-            for spec in declaration.iter().skip(1) {
-                let FormKind::List(spec) = &spec.kind else {
-                    continue;
+        let declarations = (|| {
+            for form in items.iter().skip(1) {
+                let FormKind::List(declaration) = &form.kind else {
+                    break;
                 };
                 let Some(Form {
-                    kind: FormKind::Atom(kind),
+                    kind: FormKind::Atom(operator),
                     ..
-                }) = spec.first()
+                }) = declaration.first()
                 else {
-                    continue;
+                    break;
                 };
-                if !kind.eq_ignore_ascii_case("SPECIAL") {
-                    continue;
+                if !operator.eq_ignore_ascii_case("DECLARE") {
+                    break;
                 }
-                for name in spec.iter().skip(1) {
-                    let (name, escaped) = Self::symbol_name_info(name, "special declaration name")?;
-                    self.register_special(name, escaped);
+                for spec in declaration.iter().skip(1) {
+                    let FormKind::List(spec) = &spec.kind else {
+                        continue;
+                    };
+                    let Some(Form {
+                        kind: FormKind::Atom(kind),
+                        ..
+                    }) = spec.first()
+                    else {
+                        continue;
+                    };
+                    if !kind.eq_ignore_ascii_case("SPECIAL") {
+                        continue;
+                    }
+                    for name in spec.iter().skip(1) {
+                        let (name, escaped) =
+                            Self::symbol_name_info(name, "special declaration name")?;
+                        self.register_special(name, escaped);
+                    }
                 }
             }
+            Ok::<(), CompileError>(())
+        })();
+        if let Err(error) = declarations {
+            self.special_names = saved_special_names;
+            return Err(error);
         }
         let result = self.compile_sequence(function, items.get(1..).unwrap_or(&[]));
         self.special_names = saved_special_names;
@@ -235,5 +243,17 @@ mod tests {
                 .instructions
                 .contains(&Instruction::DefineDynamicSpecial("*X*".to_string()))
         );
+    }
+
+    #[test]
+    fn compile_locally_restores_special_names_when_declaration_is_invalid() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let forms = ncl_syntax::read("(locally (declare (special (x))))")
+            .unwrap_or_else(|error| panic!("test source should parse: {error}"));
+        let before = state.special_names.clone();
+
+        assert!(state.compile_sequence(function, &forms).is_err());
+        assert_eq!(state.special_names, before);
     }
 }

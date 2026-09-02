@@ -14,7 +14,7 @@ impl Runtime {
             "SIGNAL" => self.primitive_signal(arguments, environment, span),
             "WARN" => self.primitive_warn(arguments, environment, span),
             "CERROR" => self.primitive_cerror(arguments, environment, span),
-            "MAKE-CONDITION" => Self::make_condition_in(arguments, environment, span),
+            "MAKE-CONDITION" => self.make_condition_in(arguments, environment, span),
             _ => return None,
         };
         Some(result)

@@ -5,6 +5,7 @@ use crate::{Environment, ReturnValue, Runtime, RuntimeError, Value, builtins};
 
 impl Runtime {
     pub(crate) fn make_condition_in(
+        &self,
         arguments: &[Value],
         environment: &Environment,
         span: Span,
@@ -54,6 +55,41 @@ impl Runtime {
             };
             slots.push((slot_name.clone(), pair[1].clone()));
         }
+        fn append_condition_initforms(
+            runtime: &Runtime,
+            environment: &Environment,
+            name: &str,
+            slots: &mut Vec<(String, Value)>,
+            explicit: &std::collections::HashSet<String>,
+            visited: &mut std::collections::HashSet<String>,
+        ) -> Result<(), RuntimeError> {
+            if !visited.insert(name.to_owned()) {
+                return Ok(());
+            }
+            let Some(definition) = environment.lookup_condition(name) else {
+                return Ok(());
+            };
+            for parent in &definition.parents {
+                append_condition_initforms(runtime, environment, parent, slots, explicit, visited)?;
+            }
+            for (slot_name, form) in &definition.initforms {
+                if !explicit.contains(slot_name)
+                    && !slots.iter().any(|(name, _)| name.eq_ignore_ascii_case(slot_name))
+                {
+                    slots.push((slot_name.clone(), runtime.eval_values_in(form, environment)?.primary_value()));
+                }
+            }
+            Ok(())
+        }
+        let explicit = slots.iter().map(|(name, _)| name.clone()).collect();
+        append_condition_initforms(
+            self,
+            environment,
+            &actual_type,
+            &mut slots,
+            &explicit,
+            &mut std::collections::HashSet::new(),
+        )?;
         fn append_condition_types(
             environment: &Environment,
             name: &str,

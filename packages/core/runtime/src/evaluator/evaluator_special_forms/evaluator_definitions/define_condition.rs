@@ -26,6 +26,7 @@ impl Runtime {
         }
         let slots = Self::list_form_items(&items[3], "define-condition slot list")?;
         let mut initargs = Vec::new();
+        let mut initforms = Vec::new();
         for slot in slots {
             let (slot_name, options) = match &slot.kind {
                 FormKind::Atom(_) => (slot, &[][..]),
@@ -52,7 +53,8 @@ impl Runtime {
                         let initarg = Self::definition_name_from_form(&pair[1], "condition initarg")?;
                         initargs.push((initarg, slot_name.clone()));
                     }
-                    "INITFORM" | "TYPE" | "DOCUMENTATION" => {}
+                    "INITFORM" => initforms.push((slot_name.clone(), pair[1].clone())),
+                    "TYPE" | "DOCUMENTATION" => {}
                     _ => return Err(Self::invalid("unsupported define-condition slot option", pair[0].span)),
                 }
             }
@@ -70,6 +72,7 @@ impl Runtime {
         environment.define_condition(name.clone(), crate::environment::ConditionDefinition {
             parents: parent_names,
             initargs,
+            initforms,
         });
         Ok(Value::symbol(name))
     }

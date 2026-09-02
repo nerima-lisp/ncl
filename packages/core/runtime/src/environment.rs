@@ -12,6 +12,7 @@ use crate::value::{ClassDefinition, StructureDefinition};
 pub(crate) struct ConditionDefinition {
     pub(crate) parents: Vec<String>,
     pub(crate) initargs: Vec<(String, String)>,
+    pub(crate) initforms: Vec<(String, Form)>,
 }
 
 mod control_targets;

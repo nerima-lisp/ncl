@@ -37,4 +37,13 @@ mod tests {
         ).expect("inherited condition initarg should work");
         assert_eq!(values.last().map(ToString::to_string).as_deref(), Some("7"));
     }
+
+    #[test]
+    fn make_condition_evaluates_initform_when_initarg_is_absent() {
+        let values = Runtime::new().eval_source(
+            "(define-condition default-condition (condition) ((payload :initarg :payload :initform (+ 2 3) :reader default-payload)))
+             (default-payload (make-condition 'default-condition))",
+        ).expect("condition initform should be evaluated");
+        assert_eq!(values.last().map(ToString::to_string).as_deref(), Some("5"));
+    }
 }

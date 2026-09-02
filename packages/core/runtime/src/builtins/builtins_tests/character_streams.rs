@@ -4,6 +4,16 @@ use crate::builtins::*;
 mod writing;
 
 #[test]
+fn byte_builtins_reject_character_streams_without_falling_back_to_text_io() -> Result<(), RuntimeError> {
+    let input = make_string_input_stream(&[Value::string("a")])?;
+    assert!(read_byte(std::slice::from_ref(&input)).is_err());
+
+    let output = make_string_output_stream(&[])?;
+    assert!(write_byte(&[Value::Integer(65), output]).is_err());
+    Ok(())
+}
+
+#[test]
 fn character_stream_builtins_cover_peek_unread_and_output_boundaries() -> Result<(), RuntimeError> {
     let input = make_string_input_stream(&[Value::string("  ab")])?;
     assert!(matches!(

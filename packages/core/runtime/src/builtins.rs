@@ -115,6 +115,9 @@ use builtin_stream_helpers::{
     end_of_file_error, input_stream_reference, peek_character, stream_reference, stream_state_error,
 };
 
+mod builtin_stream_bytes;
+pub(crate) use builtin_stream_bytes::{read_byte, write_byte};
+
 mod builtin_stream_reading;
 pub(crate) use builtin_stream_reading::{clear_input, listen, peek_char, read_char, read_char_no_hang, read_line, read_sequence, unread_char};
 pub(crate) use builtin_stream_reading::get_output_stream_string;

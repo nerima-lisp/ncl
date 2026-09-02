@@ -182,6 +182,18 @@ fn compiled_evaluates_setf_places() {
 }
 
 #[test]
+fn compiled_mutates_array_list_places_with_push_and_pop() {
+    assert_eq!(
+        evaluate("(let ((values (vector (list 2 3)))) (push 1 (aref values 0)) values)").to_string(),
+        "#((1 2 3))"
+    );
+    assert_eq!(
+        evaluate("(let ((values (vector (list 1 2)))) (list (pop (svref values 0)) values))").to_string(),
+        "(1 #((2)))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_remf_with_a_generalized_place() {
     assert_eq!(
         evaluate(

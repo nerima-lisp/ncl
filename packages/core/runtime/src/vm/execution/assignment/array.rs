@@ -43,8 +43,44 @@ pub(super) fn execute(
         Instruction::ModifyArefDynamic { rank, arithmetic, operator, name, escaped } => execute_modify_aref(
             runtime, *rank, arithmetic, operator, name, *escaped, stack, environment, program_counter, span,
         ),
+        Instruction::ArrayMutationDynamic { operator, rank, accessor, name, escaped } => execute_array_mutation(
+            runtime, operator, *rank, accessor, name, *escaped, stack, environment, program_counter, span,
+        ),
         _ => Ok(false),
     }
+}
+
+fn execute_array_mutation(
+    runtime: &Runtime, operator: &str, rank: usize, accessor: &str, name: &str,
+    escaped: bool, stack: &mut Vec<Value>, environment: &Environment,
+    program_counter: &mut usize, span: Span,
+) -> Result<bool, RuntimeError> {
+    if stack.len() < rank + 1 { return Err(invalid("array mutation has an incomplete stack", span)); }
+    let indices = stack.split_off(stack.len() - rank);
+    let target = stack.pop().ok_or_else(|| invalid("array mutation has no target", span))?.primary_value();
+    let value = if operator == "PUSH" {
+        Some(stack.pop().ok_or_else(|| invalid("push array has no value", span))?.primary_value())
+    } else { None };
+    let indices = indices.iter().map(|index| crate::builtins::index_argument("array mutation", index)).collect::<Result<Vec<_>, _>>()?;
+    let offset = match &target {
+        Value::Vector(_) if rank == 1 => indices[0],
+        Value::Array { dimensions, .. } if accessor != "SVREF" => if accessor == "ROW-MAJOR-AREF" && rank == 1 { indices[0] } else { array_offset(dimensions, rank, &indices, "array mutation has the wrong number of indices", span)? },
+        other => return Err(RuntimeError::Type { expected: "ARRAY or VECTOR".to_string(), actual: other.type_name().to_string(), span: Some(span) }),
+    };
+    let current = match &target { Value::Vector(_) => target.vector_items().and_then(|items| items.get(offset).cloned()), Value::Array { .. } => target.array_items().and_then(|items| items.get(offset).cloned()), _ => None }.ok_or_else(|| invalid("array mutation index is out of bounds", span))?;
+    let mut elements = current.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: current.type_name().to_string(), span: Some(span) })?;
+    let result = if operator == "POP" {
+        if elements.is_empty() {
+            return Err(invalid("cannot POP from NIL", span));
+        }
+        elements.remove(0)
+    } else {
+        elements.insert(0, value.expect("PUSH value"));
+        elements[0].clone()
+    };
+    let updated = Value::list(elements);
+    match &target { Value::Vector(_) => { target.set_vector_item(offset, updated); }, Value::Array { .. } => { target.set_array_item(offset, updated); }, _ => unreachable!() }
+    store_array_value(runtime, name, escaped, target, result, stack, environment, program_counter, span)
 }
 
 fn execute_modify_aref(

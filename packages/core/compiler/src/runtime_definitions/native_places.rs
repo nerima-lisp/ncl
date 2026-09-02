@@ -154,6 +154,31 @@ impl CompileState {
         }
         let place = &items[expected - 1];
         if let FormKind::List(place_items) = &place.kind {
+            if place_items.len() >= 3 {
+                if let Ok((accessor, _)) = Self::symbol_name_info(&place_items[0], "array place operator") {
+                    if matches!(accessor.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF")
+                        && let Ok((name, escaped)) = Self::symbol_name_info(&place_items[1], "array place target")
+                    {
+                        if matches!(operator.as_str(), "PUSH" | "POP") {
+                            self.compile_expression(function, &items[1])?;
+                        }
+                        self.compile_expression(function, &place_items[1])?;
+                        for index in &place_items[2..] {
+                            self.compile_expression(function, index)?;
+                        }
+                        self.emit(function, Instruction::ArrayMutationDynamic {
+                            operator,
+                            rank: place_items.len() - 2,
+                            accessor,
+                            name,
+                            escaped,
+                        }, items[0].span)?;
+                        return Ok(Some(()));
+                    }
+                }
+            }
+        }
+        if let FormKind::List(place_items) = &place.kind {
             if place_items.len() == 3
                 && Self::symbol_name_info(&place_items[0], "list place operator")
                     .ok()

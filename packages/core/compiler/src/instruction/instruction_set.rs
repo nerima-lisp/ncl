@@ -158,6 +158,18 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Push onto or pop from a dynamically indexed array-valued symbol through an array accessor."] ArrayMutationDynamic {
+        /// The mutation operator.
+        operator: String,
+        /// The number of subscripts.
+        rank: usize,
+        /// The accessor name.
+        accessor: String,
+        /// The symbol holding the array.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Update a dynamically indexed bit vector or array-valued symbol through BIT."] SetfBitDynamic {
         /// The number of subscripts.
         rank: usize,

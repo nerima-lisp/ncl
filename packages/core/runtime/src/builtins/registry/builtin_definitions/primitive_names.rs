@@ -118,6 +118,7 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "FMAKUNBOUND",
     "MAKE-INSTANCE",
     "INITIALIZE-INSTANCE",
+    "SHARED-INITIALIZE",
     "REINITIALIZE-INSTANCE",
     "SLOT-VALUE",
     "CLASS-OF",

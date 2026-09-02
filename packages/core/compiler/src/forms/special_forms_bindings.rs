@@ -107,9 +107,7 @@ impl CompileState {
             | "SLOT-DEFINITION-INITFUNCTION"
             | "SLOT-DEFINITION-TYPE"
             | "SLOT-DEFINITION-READERS"
-            | "SLOT-DEFINITION-WRITERS" => {
-                self.compile_slot_operation(function, span, items, name)
-            }
+            | "SLOT-DEFINITION-WRITERS" => self.compile_slot_operation(function, span, items, name),
             "ERROR" | "SIGNAL" | "WARN" | "CERROR" | "MAKE-CONDITION" => {
                 self.compile_condition_operation(function, span, items, name)
             }
@@ -119,7 +117,10 @@ impl CompileState {
             "CALL-NEXT-METHOD" | "NEXT-METHOD-P" => {
                 self.compile_method_operation(function, span, items, name)
             }
-            "MAKE-INSTANCE" | "INITIALIZE-INSTANCE" | "REINITIALIZE-INSTANCE" => {
+            "MAKE-INSTANCE"
+            | "INITIALIZE-INSTANCE"
+            | "SHARED-INITIALIZE"
+            | "REINITIALIZE-INSTANCE" => {
                 self.compile_evaluation_operation(function, span, items, name)
             }
             "COMPILE" | "LOAD" | "PROVIDE" | "REQUIRE" => {

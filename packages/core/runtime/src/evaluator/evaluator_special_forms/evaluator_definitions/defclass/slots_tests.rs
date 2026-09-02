@@ -186,6 +186,23 @@ mod tests {
     }
 
     #[test]
+    fn initialize_instance_dispatches_shared_initialize_methods() {
+        let values = Runtime::new()
+            .eval_source(
+                "(progn
+               (defclass shared-init-class () ((value :initarg :value)))
+               (defmethod shared-initialize ((object shared-init-class) &rest initargs)
+                 (declare (ignore initargs))
+                 (call-next-method)
+                 (setf (slot-value object 'value) 77)
+                 object)
+               (slot-value (make-instance 'shared-init-class :value 41) 'value))",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "77");
+    }
+
+    #[test]
     fn defclass_accessor_is_setfable() {
         let values = Runtime::new()
             .eval_source(

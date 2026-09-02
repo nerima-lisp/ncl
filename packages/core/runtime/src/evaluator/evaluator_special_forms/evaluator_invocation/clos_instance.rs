@@ -187,8 +187,34 @@ impl Runtime {
     pub(crate) fn initialize_instance(
         &self,
         arguments: &[Value],
+        environment: &Environment,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        self.reinitialize_instance(arguments, span)
+        if arguments.is_empty() {
+            return Err(Self::arity("initialize-instance", "at least one", 0));
+        }
+        let mut shared = vec![arguments[0].clone(), Value::symbol("T")];
+        shared.extend_from_slice(&arguments[1..]);
+        let function = environment
+            .lookup_function("SHARED-INITIALIZE")
+            .unwrap_or_else(|| Value::primitive("SHARED-INITIALIZE"));
+        self.apply_in(&function, &shared, span, environment)
+    }
+
+    pub(crate) fn shared_initialize(
+        &self,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() < 2 {
+            return Err(Self::arity(
+                "shared-initialize",
+                "at least two",
+                arguments.len(),
+            ));
+        }
+        let mut initargs = vec![arguments[0].clone()];
+        initargs.extend(arguments[2..].iter().cloned());
+        self.reinitialize_instance(&initargs, span)
     }
 }

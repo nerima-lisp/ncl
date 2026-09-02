@@ -7,7 +7,15 @@ use crate::value::{MethodCombination, MethodDefinition, MethodSpecializer};
 use parameters::DefmethodParameters;
 
 impl Runtime {
-    fn ensure_initialize_instance_default(generic: &Value) {
+    fn ensure_standard_protocol_default(name: &str, generic: &Value) {
+        if !matches!(name, "INITIALIZE-INSTANCE" | "SHARED-INITIALIZE") {
+            return;
+        }
+        let primitive_name = if name == "INITIALIZE-INSTANCE" {
+            "INITIALIZE-INSTANCE"
+        } else {
+            "SHARED-INITIALIZE"
+        };
         let Value::Function(function) = generic else {
             return;
         };
@@ -18,14 +26,14 @@ impl Runtime {
             matches!(
                 &method.function,
                 Value::Function(function)
-                    if matches!(function.as_ref(), crate::Function::Primitive { name: "INITIALIZE-INSTANCE" })
+                    if matches!(function.as_ref(), crate::Function::Primitive { name } if *name == primitive_name)
             )
         });
         if !has_default {
             methods.borrow_mut().push(MethodDefinition {
                 qualifiers: Vec::new(),
                 specializers: vec![MethodSpecializer::Class("T".into())],
-                function: Value::primitive("INITIALIZE-INSTANCE"),
+                function: Value::primitive(primitive_name),
             });
         }
     }
@@ -114,9 +122,7 @@ impl Runtime {
             method_combination,
             documentation,
         );
-        if name == "INITIALIZE-INSTANCE" {
-            Self::ensure_initialize_instance_default(&generic);
-        }
+        Self::ensure_standard_protocol_default(&name, &generic);
         environment.define_function(&name, generic);
         Ok(Value::symbol(name))
     }
@@ -185,17 +191,6 @@ impl Runtime {
 
         let generic = environment.lookup_function(&name).or_else(|| {
             let generic = Value::generic(name.clone());
-            if name == "INITIALIZE-INSTANCE" {
-                if let Value::Function(function) = &generic
-                    && let crate::Function::Generic { methods, .. } = function.as_ref()
-                {
-                    methods.borrow_mut().push(MethodDefinition {
-                        qualifiers: Vec::new(),
-                        specializers: vec![MethodSpecializer::Class("T".into())],
-                        function: Value::primitive("INITIALIZE-INSTANCE"),
-                    });
-                }
-            }
             environment.define_function(&name, generic.clone());
             Some(generic)
         });
@@ -211,9 +206,7 @@ impl Runtime {
                 items[1].span,
             ));
         };
-        if name == "INITIALIZE-INSTANCE" {
-            Self::ensure_initialize_instance_default(&Value::Function(generic.clone()));
-        }
+        Self::ensure_standard_protocol_default(&name, &Value::Function(generic.clone()));
         let closure = Value::closure_with_keywords(
             crate::ClosureOptions {
                 parameters: required,

@@ -106,19 +106,42 @@ fn byte_file_streams_read_write_and_append_raw_bytes() -> Result<(), RuntimeErro
     let path = Value::string(root.to_string_lossy().to_string());
     let byte_type = Value::list(vec![Value::symbol("UNSIGNED-BYTE"), Value::Integer(8)]);
 
-    let input = open_file(&[path.clone(), Value::keyword("element-type"), byte_type.clone()])?;
-    assert_eq!(stream_element_type(std::slice::from_ref(&input))?.to_string(), "(UNSIGNED-BYTE 8)");
-    assert!(matches!(read_byte(std::slice::from_ref(&input))?, Value::Integer(1)));
-    assert!(matches!(read_byte(std::slice::from_ref(&input))?, Value::Integer(2)));
-    assert!(matches!(read_byte(&[input.clone(), Value::Integer(9), Value::Nil])?, Value::Integer(9)));
+    let input = open_file(&[
+        path.clone(),
+        Value::keyword("element-type"),
+        byte_type.clone(),
+    ])?;
+    assert_eq!(
+        stream_element_type(std::slice::from_ref(&input))?.to_string(),
+        "(UNSIGNED-BYTE 8)"
+    );
+    assert!(matches!(
+        read_byte(std::slice::from_ref(&input))?,
+        Value::Integer(1)
+    ));
+    assert!(matches!(
+        read_byte(std::slice::from_ref(&input))?,
+        Value::Integer(2)
+    ));
+    assert!(matches!(
+        read_byte(&[input.clone(), Value::Integer(9), Value::Nil])?,
+        Value::Integer(9)
+    ));
     close_stream(&[input])?;
 
     let output = open_file(&[
-        path.clone(), Value::keyword("direction"), Value::keyword("output"),
-        Value::keyword("if-exists"), Value::keyword("append"),
-        Value::keyword("element-type"), byte_type,
+        path.clone(),
+        Value::keyword("direction"),
+        Value::keyword("output"),
+        Value::keyword("if-exists"),
+        Value::keyword("append"),
+        Value::keyword("element-type"),
+        byte_type,
     ])?;
-    assert!(matches!(write_byte(&[Value::Integer(3), output.clone()])?, Value::Integer(3)));
+    assert!(matches!(
+        write_byte(&[Value::Integer(3), output.clone()])?,
+        Value::Integer(3)
+    ));
     close_stream(&[output])?;
     let bytes = std::fs::read(&root).map_err(|error| RuntimeError::Io {
         kind: error.kind(),
@@ -144,7 +167,12 @@ fn byte_streams_support_sequence_io() -> Result<(), RuntimeError> {
         Value::Integer(4)
     ));
     assert_eq!(
-        destination.vector_items().unwrap().iter().map(Value::to_string).collect::<Vec<_>>(),
+        destination
+            .vector_items()
+            .unwrap()
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>(),
         vec!["NIL", "4", "5", "6"]
     );
 
@@ -152,7 +180,11 @@ fn byte_streams_support_sequence_io() -> Result<(), RuntimeError> {
     let path = std::env::temp_dir().join(format!("ncl-byte-sequence-{suffix}"));
     let output = Value::file_byte_output_stream(path.clone(), Vec::new());
     write_sequence(&[
-        Value::vector(vec![Value::Integer(7), Value::Integer(8), Value::Integer(9)]),
+        Value::vector(vec![
+            Value::Integer(7),
+            Value::Integer(8),
+            Value::Integer(9),
+        ]),
         output.clone(),
         Value::keyword("start"),
         Value::Integer(1),
@@ -182,8 +214,14 @@ fn byte_io_streams_share_a_file_cursor_for_read_and_write() -> Result<(), Runtim
         Value::keyword("element-type"),
         byte_type,
     ])?;
-    assert!(matches!(read_byte(std::slice::from_ref(&stream))?, Value::Integer(1)));
-    assert!(matches!(write_byte(&[Value::Integer(9), stream.clone()])?, Value::Integer(9)));
+    assert!(matches!(
+        read_byte(std::slice::from_ref(&stream))?,
+        Value::Integer(1)
+    ));
+    assert!(matches!(
+        write_byte(&[Value::Integer(9), stream.clone()])?,
+        Value::Integer(9)
+    ));
     close_stream(&[stream])?;
     assert_eq!(std::fs::read(&root).unwrap(), vec![1, 9, 3]);
     std::fs::remove_file(root).unwrap();
@@ -196,8 +234,14 @@ fn byte_output_stream_file_position_repositions_writes() -> Result<(), RuntimeEr
     let path = std::env::temp_dir().join(format!("ncl-byte-output-position-{suffix}"));
     let stream = Value::file_byte_output_stream(path.clone(), vec![1, 2, 3]);
 
-    assert_eq!(file_position(std::slice::from_ref(&stream))?.to_string(), "3");
-    assert_eq!(file_position(&[stream.clone(), Value::Integer(1)])?.to_string(), "1");
+    assert_eq!(
+        file_position(std::slice::from_ref(&stream))?.to_string(),
+        "3"
+    );
+    assert_eq!(
+        file_position(&[stream.clone(), Value::Integer(1)])?.to_string(),
+        "1"
+    );
     write_byte(&[Value::Integer(9), stream.clone()])?;
     close_stream(&[stream])?;
 
@@ -246,12 +290,14 @@ fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeErr
     ])?;
     close_stream(&[io])?;
 
-    assert!(open_file(&[
-        existing.clone(),
-        Value::keyword("element-type"),
-        Value::keyword("unsigned-byte"),
-    ])
-    .is_err());
+    assert!(
+        open_file(&[
+            existing.clone(),
+            Value::keyword("element-type"),
+            Value::keyword("unsigned-byte"),
+        ])
+        .is_err()
+    );
 
     assert!(open_file(&[existing.clone(), Value::keyword("unknown"), Value::Nil]).is_err());
     assert!(open_file(&[existing.clone(), Value::keyword("direction")]).is_err());
@@ -266,5 +312,28 @@ fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeErr
 
     let _ = std::fs::remove_file(missing_path);
     let _ = std::fs::remove_file(existing_path);
+    Ok(())
+}
+
+#[test]
+fn open_supersede_replaces_existing_file_contents() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-open-supersede-{suffix}"));
+    std::fs::write(&root, "old content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let path = Value::string(root.to_string_lossy().to_string());
+    let stream = open_file(&[
+        path,
+        Value::keyword("direction"),
+        Value::keyword("output"),
+        Value::keyword("if-exists"),
+        Value::keyword("supersede"),
+    ])?;
+    write_line(&[Value::string("new"), stream.clone()])?;
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read_to_string(&root).unwrap(), "new\n");
+    std::fs::remove_file(root).unwrap();
     Ok(())
 }

@@ -16,7 +16,7 @@ fn evaluates_basic_clos_instances_and_accessors() {
                          (slot-boundp point 'y)
                          (typep point 'point)
                          (class-name (class-of point))
-                         (class-name (find-class 'point)))))",
+                         (class-name (find-class 'point)))))"#,
         )
         .must_exist();
     assert_eq!(values.len(), 1);
@@ -44,7 +44,7 @@ fn evaluates_setf_slot_value() {
                    ((x :initarg :x)))
                  (let ((point (make-instance 'setf-point :x 2)))
                    (setf (slot-value point 'x) 9)
-                   (slot-value point 'x)))",
+                   (slot-value point 'x)))"#,
         )
         .must_exist();
     assert_eq!(values.len(), 1);
@@ -289,7 +289,7 @@ fn enforces_clos_slot_types_on_initialization_and_writes() {
 fn evaluates_clos_method_combination() {
     let values = Runtime::new()
         .eval_source(
-             r#"(progn
+            r#"(progn
                  (defclass point () ((x :initarg :x)))
                  (let ((events nil))
                    (defgeneric point-value (object))
@@ -309,7 +309,7 @@ fn evaluates_clos_method_combination() {
                        (setf events (cons :around-after events))
                        (list :around value)))
                    (let ((point (make-instance 'point :x 7)))
-                     (list (point-value point) (reverse events)))))",
+                     (list (point-value point) (reverse events)))))"#,
         )
         .must_exist();
     assert_eq!(values.len(), 1);

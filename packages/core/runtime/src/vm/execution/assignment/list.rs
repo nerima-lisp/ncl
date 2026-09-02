@@ -1,10 +1,10 @@
 #[allow(clippy::wildcard_imports)]
 use super::super::*;
 
+mod accessor;
 #[path = "list_mutation.rs"]
 pub(super) mod mutation;
 pub(crate) mod nested;
-mod accessor;
 pub(super) use accessor::fixed_index as fixed_accessor_index;
 
 pub(super) fn execute(
@@ -34,7 +34,7 @@ pub(super) fn execute(
         return Err(invalid("cannot SETF CAR/CDR of NIL", span));
     }
     match operator {
-        "CAR" | "FIRST" => elements[0] = value.clone(),
+        "CAR" | "FIRST" => {}
         "CDR" | "REST" => {
             let mut replacement = value.list_items().ok_or_else(|| RuntimeError::Type {
                 expected: "LIST".to_string(),
@@ -42,7 +42,6 @@ pub(super) fn execute(
                 span: Some(span),
             })?;
             replacement.insert(0, elements[0].clone());
-            elements = replacement;
         }
         accessor if fixed_accessor_index(accessor).is_some() => {
             let index = fixed_accessor_index(accessor).expect("checked fixed accessor");
@@ -58,6 +57,45 @@ pub(super) fn execute(
         runtime.set_or_define_exact_in(name, updated, environment, span)?;
     } else {
         runtime.set_or_define_in(name, updated, environment, span)?;
+    }
+    stack.push(value);
+    *program_counter += 1;
+    Ok(true)
+}
+
+pub(super) fn execute_value(
+    operator: &str,
+    stack: &mut Vec<Value>,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("setf list has no value on the stack", span))?
+        .primary_value();
+    let current = stack
+        .pop()
+        .ok_or_else(|| invalid("setf list has no target on the stack", span))?
+        .primary_value();
+    let elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".to_string(),
+        actual: current.type_name().to_string(),
+        span: Some(span),
+    })?;
+    if elements.is_empty() {
+        return Err(invalid("cannot SETF CAR/CDR of NIL", span));
+    }
+    match operator {
+        "CAR" | "FIRST" => {}
+        "CDR" | "REST" => {
+            let mut replacement = value.list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: value.type_name().to_string(),
+                span: Some(span),
+            })?;
+            replacement.insert(0, elements[0].clone());
+        }
+        _ => return Err(invalid("unsupported native list SETF operator", span)),
     }
     stack.push(value);
     *program_counter += 1;
@@ -108,13 +146,32 @@ pub(super) fn execute_nested_nth_dynamic(
     program_counter: &mut usize,
     span: Span,
 ) -> Result<bool, RuntimeError> {
-    let value = stack.pop().ok_or_else(|| invalid("setf nth has no value on the stack", span))?.primary_value();
-    let current = stack.pop().ok_or_else(|| invalid("setf nth has no target on the stack", span))?.primary_value();
-    let index = stack.pop().ok_or_else(|| invalid("setf nth has no index on the stack", span))?.primary_value();
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("setf nth has no value on the stack", span))?
+        .primary_value();
+    let current = stack
+        .pop()
+        .ok_or_else(|| invalid("setf nth has no target on the stack", span))?
+        .primary_value();
+    let index = stack
+        .pop()
+        .ok_or_else(|| invalid("setf nth has no index on the stack", span))?
+        .primary_value();
     let index = crate::builtins::index_argument("setf nth", &index)?;
-    let elements = current.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: current.type_name().to_string(), span: Some(span) })?;
-    let updated = Value::list(nested::update_dynamic(elements, accessors, index, &value, span)?);
-    if escaped { runtime.set_or_define_exact_in(name, updated, environment, span)?; } else { runtime.set_or_define_in(name, updated, environment, span)?; }
+    let elements = current.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".to_string(),
+        actual: current.type_name().to_string(),
+        span: Some(span),
+    })?;
+    let updated = Value::list(nested::update_dynamic(
+        elements, accessors, index, &value, span,
+    )?);
+    if escaped {
+        runtime.set_or_define_exact_in(name, updated, environment, span)?;
+    } else {
+        runtime.set_or_define_in(name, updated, environment, span)?;
+    }
     stack.push(value);
     *program_counter += 1;
     Ok(true)

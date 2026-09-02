@@ -52,7 +52,7 @@ fn compile_setf_uses_direct_assignment_for_symbol_places() {
 }
 
 #[test]
-fn compile_setf_keeps_non_symbol_list_places_on_the_explicit_fallback() {
+fn compile_setf_uses_native_list_instruction_for_an_evaluated_target() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());
     let items = parse_items("(setf (car (list 1)) 2)");
@@ -61,8 +61,7 @@ fn compile_setf_keeps_non_symbol_list_places_on_the_explicit_fallback() {
 
     assert!(state.functions[function]
         .instructions
-        .iter()
-        .any(|instruction| matches!(instruction, Instruction::Setf(_))));
+        .contains(&Instruction::SetfListValue("CAR".to_string())));
 }
 
 #[test]

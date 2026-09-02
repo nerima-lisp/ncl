@@ -96,6 +96,9 @@ pub(super) fn execute_set_instruction(
             program_counter,
             span,
         ),
+        Instruction::SetfListValue(operator) => {
+            list::execute_value(operator, stack, program_counter, span)
+        }
         Instruction::SetfNestedList {
             accessors,
             name,
@@ -110,8 +113,19 @@ pub(super) fn execute_set_instruction(
             program_counter,
             span,
         ),
-        Instruction::SetfNestedNthDynamic { accessors, name, escaped } => list::execute_nested_nth_dynamic(
-            runtime, accessors, name, *escaped, stack, environment, program_counter, span,
+        Instruction::SetfNestedNthDynamic {
+            accessors,
+            name,
+            escaped,
+        } => list::execute_nested_nth_dynamic(
+            runtime,
+            accessors,
+            name,
+            *escaped,
+            stack,
+            environment,
+            program_counter,
+            span,
         ),
         Instruction::ListPlaceMutation {
             operator,
@@ -215,9 +229,9 @@ pub(super) fn execute_set_instruction(
             program_counter,
             span,
         ),
-        Instruction::SetfElementValue { operator } => element::execute_value(
-            operator, stack, program_counter, span,
-        ),
+        Instruction::SetfElementValue { operator } => {
+            element::execute_value(operator, stack, program_counter, span)
+        }
         Instruction::SetfSubseqDynamic {
             has_end,
             name,

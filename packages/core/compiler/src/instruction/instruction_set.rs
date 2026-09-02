@@ -48,6 +48,7 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update an evaluated list through CAR or CDR."] SetfListValue(String),
     #[doc = "Update a nested CAR/CDR list place rooted at a symbol."] SetfNestedList {
         /// Accessors from the symbol outward to the updated value.
         accessors: Vec<String>,

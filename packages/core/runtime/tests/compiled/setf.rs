@@ -411,6 +411,10 @@ fn compiled_evaluates_native_nested_rotatef_and_shiftf() {
         evaluate("(let ((xs (list (list 1 2)))) (list (shiftf (car (car xs)) 9) xs))").to_string(),
         "(1 ((9 2)))"
     );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 1 2) (list 3 4)))) (rotatef (car (car xs)) (car (car (cdr xs)))) xs)").to_string(),
+        "((3 2) (1 4))"
+    );
 }
 
 #[test]

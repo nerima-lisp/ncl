@@ -223,18 +223,26 @@ pub(super) fn execute_rotatef_nested(
             span,
         )?);
     }
+    let mut updated_roots: Vec<(&str, bool, Value)> = Vec::new();
     for (index, ((accessors, name, escaped), root)) in places.iter().zip(roots).enumerate() {
+        let current_root = updated_roots
+            .iter()
+            .rev()
+            .find(|(updated_name, updated_escaped, _)| *updated_name == name && *updated_escaped == *escaped)
+            .map(|(_, _, value)| value)
+            .unwrap_or(&root);
         let updated = Value::list(super::list::nested::update(
-            root.list_items().unwrap(),
+            current_root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: current_root.type_name().into(), span: Some(span) })?,
             accessors,
             &values[(index + values.len() - 1) % values.len()],
             span,
         )?);
         if *escaped {
-            runtime.set_or_define_exact_in(name, updated, environment, span)?;
+            runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?;
         } else {
-            runtime.set_or_define_in(name, updated, environment, span)?;
+            runtime.set_or_define_in(name, updated.clone(), environment, span)?;
         }
+        updated_roots.push((name, *escaped, updated));
     }
     stack.push(Value::Nil);
     *program_counter += 1;
@@ -317,7 +325,7 @@ pub(super) fn execute_rotatef_mixed(
             ncl_compiler::RotateShiftPlace::DynamicNth(_, _, _) => unreachable!(),
         });
     }
-    for (index, (place, root)) in places.iter().zip(roots).enumerate() {
+    for (index, (place, _root)) in places.iter().zip(roots).enumerate() {
         let value = old[(index + old.len() - 1) % old.len()]
             .clone()
             .primary_value();
@@ -330,8 +338,16 @@ pub(super) fn execute_rotatef_mixed(
                 }
             }
             ncl_compiler::RotateShiftPlace::NestedList(accessors, name, escaped) => {
+                let current_root = if *escaped {
+                    runtime.lookup_exact_in(name, environment)
+                } else {
+                    runtime.lookup_in(name, environment)
+                }
+                .ok_or_else(|| invalid("rotatef nested place root is unbound", span))?;
                 let updated = Value::list(super::list::nested::update(
-                    root.list_items().unwrap(),
+                    current_root.list_items().ok_or_else(|| RuntimeError::Type {
+                        expected: "LIST".into(), actual: current_root.type_name().into(), span: Some(span),
+                    })?,
                     accessors,
                     &value,
                     span,
@@ -381,16 +397,20 @@ pub(super) fn execute_rotatef_dynamic_mixed(
         };
         roots.push(root); old.push(target); indices.push(index);
     }
-    for (index, (place, root)) in places.iter().zip(roots).enumerate() {
+    for (index, (place, _root)) in places.iter().zip(roots).enumerate() {
         let value = old[(index + old.len() - 1) % old.len()].clone().primary_value();
         match place {
             ncl_compiler::RotateShiftPlace::Symbol(name, escaped) => if *escaped { runtime.set_or_define_exact_in(name, value, environment, span)? } else { runtime.set_or_define_in(name, value, environment, span)? },
             ncl_compiler::RotateShiftPlace::NestedList(accessors, name, escaped) => {
-                let updated = Value::list(super::list::nested::update(root.list_items().unwrap(), accessors, &value, span)?);
+                let current_root = if *escaped { runtime.lookup_exact_in(name, environment) } else { runtime.lookup_in(name, environment) }
+                    .ok_or_else(|| invalid("rotatef nested place root is unbound", span))?;
+                let updated = Value::list(super::list::nested::update(current_root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: current_root.type_name().into(), span: Some(span) })?, accessors, &value, span)?);
                 if *escaped { runtime.set_or_define_exact_in(name, updated, environment, span)? } else { runtime.set_or_define_in(name, updated, environment, span)? }
             }
             ncl_compiler::RotateShiftPlace::DynamicNth(accessors, name, escaped) => {
-                let updated = Value::list(super::list::nested::update_dynamic(root.list_items().unwrap(), accessors, indices[index].unwrap(), &value, span)?);
+                let current_root = if *escaped { runtime.lookup_exact_in(name, environment) } else { runtime.lookup_in(name, environment) }
+                    .ok_or_else(|| invalid("rotatef nested place root is unbound", span))?;
+                let updated = Value::list(super::list::nested::update_dynamic(current_root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: current_root.type_name().into(), span: Some(span) })?, accessors, indices[index].unwrap(), &value, span)?);
                 if *escaped { runtime.set_or_define_exact_in(name, updated, environment, span)? } else { runtime.set_or_define_in(name, updated, environment, span)? }
             }
         }
@@ -411,9 +431,9 @@ pub(super) fn execute_shiftf_dynamic_mixed(
         let target = match place { ncl_compiler::RotateShiftPlace::Symbol(_, _) => root.clone(), ncl_compiler::RotateShiftPlace::NestedList(a, _, _) | ncl_compiler::RotateShiftPlace::DynamicNth(a, _, _) => { let e = root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: root.type_name().into(), span: Some(span) })?; if let Some(i) = index { let l = if a.is_empty() { Value::list(e.clone()) } else { super::list::nested::read(e.clone(), a, span)? }; l.list_items().and_then(|x| x.get(i).cloned()).ok_or_else(|| crate::builtins::out_of_bounds("SHIFTF NTH", i))? } else { super::list::nested::read(e, a, span)? } } };
         roots.push(root); old.push(target); indices.push(index);
     }
-    for (i, (place, root)) in places.iter().zip(roots).enumerate() {
+    for (i, (place, _root)) in places.iter().zip(roots).enumerate() {
         let value = old.get(i + 1).cloned().unwrap_or_else(|| values.last().unwrap().clone()).primary_value();
-        match place { ncl_compiler::RotateShiftPlace::Symbol(n, e) => if *e { runtime.set_or_define_exact_in(n, value, environment, span)? } else { runtime.set_or_define_in(n, value, environment, span)? }, ncl_compiler::RotateShiftPlace::NestedList(a, n, e) => { let u = Value::list(super::list::nested::update(root.list_items().unwrap(), a, &value, span)?); if *e { runtime.set_or_define_exact_in(n, u, environment, span)? } else { runtime.set_or_define_in(n, u, environment, span)? } }, ncl_compiler::RotateShiftPlace::DynamicNth(a, n, e) => { let u = Value::list(super::list::nested::update_dynamic(root.list_items().unwrap(), a, indices[i].unwrap(), &value, span)?); if *e { runtime.set_or_define_exact_in(n, u, environment, span)? } else { runtime.set_or_define_in(n, u, environment, span)? } } }
+        match place { ncl_compiler::RotateShiftPlace::Symbol(n, e) => if *e { runtime.set_or_define_exact_in(n, value, environment, span)? } else { runtime.set_or_define_in(n, value, environment, span)? }, ncl_compiler::RotateShiftPlace::NestedList(a, n, e) => { let current_root = if *e { runtime.lookup_exact_in(n, environment) } else { runtime.lookup_in(n, environment) }.ok_or_else(|| invalid("shiftf nested place root is unbound", span))?; let u = Value::list(super::list::nested::update(current_root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: current_root.type_name().into(), span: Some(span) })?, a, &value, span)?); if *e { runtime.set_or_define_exact_in(n, u, environment, span)? } else { runtime.set_or_define_in(n, u, environment, span)? } }, ncl_compiler::RotateShiftPlace::DynamicNth(a, n, e) => { let current_root = if *e { runtime.lookup_exact_in(n, environment) } else { runtime.lookup_in(n, environment) }.ok_or_else(|| invalid("shiftf nested place root is unbound", span))?; let u = Value::list(super::list::nested::update_dynamic(current_root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: current_root.type_name().into(), span: Some(span) })?, a, indices[i].unwrap(), &value, span)?); if *e { runtime.set_or_define_exact_in(n, u, environment, span)? } else { runtime.set_or_define_in(n, u, environment, span)? } } }
     }
     stack.push(old[0].clone()); *program_counter += 1; Ok(true)
 }

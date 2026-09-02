@@ -111,23 +111,41 @@ impl CompileState {
                     _ => declaration,
                 };
                 let FormKind::List(declaration_items) = &declaration.kind else {
-                    continue;
+                    return Err(CompileError::new(
+                        crate::CompileErrorKind::InvalidForm {
+                            message: "declaration must be a proper list".into(),
+                        },
+                        declaration.span,
+                    ));
                 };
                 let Some(Form {
                     kind: FormKind::Atom(kind),
                     ..
                 }) = declaration_items.first()
                 else {
-                    continue;
+                    return Err(CompileError::new(
+                        crate::CompileErrorKind::InvalidForm {
+                            message: "declaration must name a declaration type".into(),
+                        },
+                        declaration.span,
+                    ));
                 };
-                if !kind.eq_ignore_ascii_case("SPECIAL") {
-                    continue;
-                }
-                for name in declaration_items.iter().skip(1) {
-                    if let Ok((name, escaped)) =
-                        Self::symbol_name_info(name, "special declaration name")
-                    {
-                        self.register_special(name, escaped);
+                if kind.eq_ignore_ascii_case("SPECIAL")
+                    || kind.eq_ignore_ascii_case("IGNORE")
+                    || kind.eq_ignore_ascii_case("IGNORABLE")
+                {
+                    for name in declaration_items.iter().skip(1) {
+                        let (name, escaped) = Self::symbol_name_info(
+                            name,
+                            if kind.eq_ignore_ascii_case("SPECIAL") {
+                                "special declaration name"
+                            } else {
+                                "ignored declaration name"
+                            },
+                        )?;
+                        if kind.eq_ignore_ascii_case("SPECIAL") {
+                            self.register_special(name, escaped);
+                        }
                     }
                 }
             }
@@ -255,5 +273,31 @@ mod tests {
 
         assert!(state.compile_sequence(function, &forms).is_err());
         assert_eq!(state.special_names, before);
+    }
+
+    #[test]
+    fn compile_declaim_accepts_standard_ignore_declarations() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let forms = ncl_syntax::read("(declaim (ignore x) (ignorable y))")
+            .unwrap_or_else(|error| panic!("standard declarations should parse: {error}"));
+
+        state
+            .compile_sequence(function, &forms)
+            .unwrap_or_else(|error| panic!("IGNORE declarations should compile: {error}"));
+    }
+
+    #[test]
+    fn compile_declaim_rejects_non_list_declarations() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let forms = ncl_syntax::read("(declaim special)")
+            .unwrap_or_else(|error| panic!("test source should parse: {error}"));
+
+        let error = state
+            .compile_sequence(function, &forms)
+            .map_or_else(|error| error, |_| panic!("malformed declaration should fail"));
+
+        assert!(matches!(error.kind, CompileErrorKind::InvalidForm { .. }));
     }
 }

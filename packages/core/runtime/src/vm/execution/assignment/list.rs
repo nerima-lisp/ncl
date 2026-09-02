@@ -36,7 +36,9 @@ pub(super) fn execute(
         return Err(invalid("cannot SETF CAR/CDR of NIL", span));
     }
     match operator {
-        "CAR" | "FIRST" => {}
+        "CAR" | "FIRST" => {
+            elements[0] = value.clone();
+        }
         "CDR" | "REST" => {
             let mut replacement = value.list_items().ok_or_else(|| RuntimeError::Type {
                 expected: "LIST".to_string(),
@@ -44,6 +46,7 @@ pub(super) fn execute(
                 span: Some(span),
             })?;
             replacement.insert(0, elements[0].clone());
+            elements = replacement;
         }
         accessor if fixed_accessor_index(accessor).is_some() => {
             let index = fixed_accessor_index(accessor).expect("checked fixed accessor");

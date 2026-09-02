@@ -284,6 +284,20 @@ fn compile_setf_uses_native_element_accessors_for_symbol_places() {
 }
 
 #[test]
+fn compile_setf_uses_native_element_accessor_for_an_evaluated_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (char (copy-seq \"abc\") 1) #\\X)");
+    state
+        .compile_setf(function, Span::new(0, 1), &items)
+        .unwrap();
+    let instructions = &state.functions[function].instructions;
+    assert!(instructions.contains(&Instruction::SetfElementValue {
+        operator: "CHAR".to_string(),
+    }));
+}
+
+#[test]
 fn compile_setf_uses_native_subseq_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

@@ -215,6 +215,9 @@ pub(super) fn execute_set_instruction(
             program_counter,
             span,
         ),
+        Instruction::SetfElementValue { operator } => element::execute_value(
+            operator, stack, program_counter, span,
+        ),
         Instruction::SetfSubseqDynamic {
             has_end,
             name,

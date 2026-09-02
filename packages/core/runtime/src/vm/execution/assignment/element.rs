@@ -11,6 +11,31 @@ pub(super) fn execute(
     program_counter: &mut usize,
     span: Span,
 ) -> Result<bool, RuntimeError> {
+    execute_inner(
+        operator,
+        stack,
+        program_counter,
+        span,
+        Some((runtime, name, escaped, environment)),
+    )
+}
+
+pub(super) fn execute_value(
+    operator: &str,
+    stack: &mut Vec<Value>,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    execute_inner(operator, stack, program_counter, span, None)
+}
+
+fn execute_inner(
+    operator: &str,
+    stack: &mut Vec<Value>,
+    program_counter: &mut usize,
+    span: Span,
+    binding: Option<(&Runtime, &str, bool, &Environment)>,
+) -> Result<bool, RuntimeError> {
     let value = stack
         .pop()
         .ok_or_else(|| invalid("setf element has no value on the stack", span))?
@@ -89,10 +114,12 @@ pub(super) fn execute(
                     .get_mut(index)
                     .ok_or_else(|| invalid("SETF index is out of bounds", span))? = character;
                 let updated = Value::string(chars.into_iter().collect::<String>());
-                if escaped {
-                    runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?;
-                } else {
-                    runtime.set_or_define_in(name, updated.clone(), environment, span)?;
+                if let Some((runtime, name, escaped, environment)) = binding {
+                    if escaped {
+                        runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?;
+                    } else {
+                        runtime.set_or_define_in(name, updated.clone(), environment, span)?;
+                    }
                 }
                 stack.push(value);
                 *program_counter += 1;
@@ -112,10 +139,12 @@ pub(super) fn execute(
         }
         _ => unreachable!(),
     };
-    if escaped {
-        runtime.set_or_define_exact_in(name, updated, environment, span)?;
-    } else {
-        runtime.set_or_define_in(name, updated, environment, span)?;
+    if let Some((runtime, name, escaped, environment)) = binding {
+        if escaped {
+            runtime.set_or_define_exact_in(name, updated, environment, span)?;
+        } else {
+            runtime.set_or_define_in(name, updated, environment, span)?;
+        }
     }
     stack.push(value);
     *program_counter += 1;

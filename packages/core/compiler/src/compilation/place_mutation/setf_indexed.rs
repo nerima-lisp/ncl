@@ -160,22 +160,17 @@ impl CompileState {
         else {
             return Ok(false);
         };
-        let Some((name, escaped)) = Self::symbol_name_info(&items[1], "setf element target").ok()
-        else {
-            return Ok(false);
-        };
         self.compile_expression(function, &items[1])?;
         self.compile_expression(function, &items[2])?;
         self.compile_expression(function, value_form)?;
-        self.emit(
-            function,
-            Instruction::SetfElementDynamic {
-                operator,
-                name,
-                escaped,
-            },
-            place.span,
-        )?;
+        let instruction = if let Some((name, escaped)) =
+            Self::symbol_name_info(&items[1], "setf element target").ok()
+        {
+            Instruction::SetfElementDynamic { operator, name, escaped }
+        } else {
+            Instruction::SetfElementValue { operator }
+        };
+        self.emit(function, instruction, place.span)?;
         emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
         Ok(true)
     }

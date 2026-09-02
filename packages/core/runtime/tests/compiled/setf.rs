@@ -31,6 +31,10 @@ fn compiled_evaluates_setf_places() {
         "\"aXc\""
     );
     assert_eq!(
+        evaluate("(setf (char (copy-seq \"abc\") 1) #\\X)").to_string(),
+        "#\\X"
+    );
+    assert_eq!(
         evaluate("(let ((text \"abc\")) (setf (schar text 1) #\\Y) text)").to_string(),
         "\"aYc\""
     );

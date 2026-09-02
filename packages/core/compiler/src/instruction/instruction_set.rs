@@ -259,6 +259,10 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update an evaluated sequence or string target through an element accessor."] SetfElementValue {
+        /// The sequence element accessor name.
+        operator: String,
+    },
     #[doc = "Update a dynamically bounded subsequence-valued symbol through SUBSEQ."] SetfSubseqDynamic {
         /// Whether an explicit end bound is present.
         has_end: bool,

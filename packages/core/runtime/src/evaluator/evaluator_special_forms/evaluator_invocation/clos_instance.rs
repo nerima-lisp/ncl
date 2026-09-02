@@ -154,6 +154,12 @@ impl Runtime {
 
         let instance = self.allocate_instance(&[Value::class_object(class.clone())], span)?;
         for slot in &class.slots {
+            if initargs
+                .iter()
+                .any(|(initarg, _)| slot.initargs.iter().any(|name| name == initarg))
+            {
+                continue;
+            }
             if slot
                 .class_value
                 .as_ref()

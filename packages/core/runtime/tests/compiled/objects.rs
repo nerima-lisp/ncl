@@ -391,6 +391,23 @@ fn compiled_evaluates_clos_class_allocated_slots() {
 }
 
 #[test]
+fn compiled_make_instance_does_not_evaluate_initform_when_initarg_is_supplied() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r"(progn
+                 (defparameter *compiled-initform-evaluations* 0)
+                 (defclass compiled-initform-suppressed ()
+                   ((value :initarg :value
+                           :initform (progn (incf *compiled-initform-evaluations*) 7))))
+                 (let ((object (make-instance 'compiled-initform-suppressed :value 42)))
+                   (list (slot-value object 'value)
+                         *compiled-initform-evaluations*)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(42 0)");
+}
+
+#[test]
 fn compiled_evaluates_clos_default_initargs() {
     let values = Runtime::new()
         .eval_compiled_source(

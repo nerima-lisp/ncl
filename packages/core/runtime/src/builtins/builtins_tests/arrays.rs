@@ -171,6 +171,58 @@ fn adjust_array_resizes_adjustable_vector_in_place() {
 }
 
 #[test]
+fn adjust_array_accepts_and_validates_element_type() {
+    let vector = make_array(&[
+        Value::Integer(2),
+        Value::keyword("initial-element"),
+        Value::Integer(1),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])
+    .expect("make-array should construct an adjustable vector");
+    let adjusted = adjust_array(&[
+        vector.clone(),
+        Value::Integer(3),
+        Value::keyword("element-type"),
+        Value::symbol("bit"),
+        Value::keyword("initial-element"),
+        Value::Integer(0),
+    ])
+    .expect("adjust-array should accept :element-type");
+
+    assert!(adjusted
+        .array_element_type()
+        .is_some_and(|value| value.equal_value(&Value::symbol("BIT"))));
+    assert_eq!(adjusted.vector_items().unwrap().len(), 3);
+}
+
+#[test]
+fn adjust_array_rejects_element_type_without_mutating_adjustable_vector() {
+    let vector = make_array(&[
+        Value::Integer(2),
+        Value::keyword("initial-element"),
+        Value::Integer(1),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])
+    .expect("make-array should construct an adjustable vector");
+    let result = adjust_array(&[
+        vector.clone(),
+        Value::Integer(3),
+        Value::keyword("element-type"),
+        Value::symbol("bit"),
+        Value::keyword("initial-element"),
+        Value::String("invalid".into()),
+    ]);
+
+    assert!(result.is_err());
+    assert!(vector
+        .array_element_type()
+        .is_some_and(|value| value.equal_value(&Value::symbol("T"))));
+    assert_eq!(vector.vector_items().unwrap().len(), 2);
+}
+
+#[test]
 fn adjust_array_updates_vector_fill_pointer() {
     let vector = make_array(&[
         Value::Integer(3),

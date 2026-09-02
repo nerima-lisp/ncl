@@ -313,6 +313,7 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
     let mut initial_element = None;
     let mut initial_contents = None;
+    let mut element_type = None;
     let mut fill_pointer = None;
     let mut adjustable = None;
     let mut displaced_to = None;
@@ -333,6 +334,7 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                     span: None,
                 })
             }
+            "ELEMENT-TYPE" => element_type = Some(pair[1].clone()),
             "FILL-POINTER" => fill_pointer = Some(pair[1].clone()),
             "ADJUSTABLE" => adjustable = Some(pair[1].is_truthy()),
             "DISPLACED-TO" => displaced_to = Some(pair[1].clone()),
@@ -362,6 +364,11 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             span: None,
         });
     }
+    let element_type = element_type.unwrap_or_else(|| {
+        arguments[0]
+            .array_element_type()
+            .unwrap_or_else(|| Value::symbol("T"))
+    });
     if let Some(displaced_to) = displaced_to {
         let mut make_arguments = vec![
             arguments[1].clone(),
@@ -371,6 +378,8 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             Value::Integer(displaced_index_offset as i64),
             Value::keyword("adjustable"),
             Value::Boolean(adjustable.unwrap_or(arguments[0].array_adjustable().unwrap_or(false))),
+            Value::keyword("element-type"),
+            element_type.clone(),
         ];
         if let Some(fill_pointer) = fill_pointer {
             make_arguments.extend([
@@ -379,11 +388,6 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             ]);
         }
         let array = make_array(&make_arguments)?;
-        array.set_array_element_type(
-            arguments[0]
-                .array_element_type()
-                .unwrap_or_else(|| Value::symbol("T")),
-        );
         return Ok(array);
     }
     let mut elements = if let Some(contents) = initial_contents.as_ref() {
@@ -398,6 +402,14 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             for (target, source) in elements.iter_mut().zip(old_elements).take(total_size) {
                 *target = source;
             }
+        }
+    }
+    for element in &elements {
+        if !crate::builtins::typep_value(element, &element_type)? {
+            return Err(RuntimeError::InvalidForm {
+                message: format!("adjust-array element does not satisfy element type {element_type}"),
+                span: None,
+            });
         }
     }
     if dimensions.len() == 1 {
@@ -455,15 +467,12 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                     *items.borrow_mut() = elements;
                 }
             }
+            arguments[0].set_array_element_type(element_type);
             arguments[0].set_vector_fill_pointer(fill_pointer.map(|value| value.min(total_size)));
             return Ok(arguments[0].clone());
         }
         let vector = Value::vector(elements);
-        vector.set_array_element_type(
-            arguments[0]
-                .array_element_type()
-                .unwrap_or_else(|| Value::symbol("T")),
-        );
+        vector.set_array_element_type(element_type.clone());
         vector.set_vector_adjustable(adjustable_value);
         vector.set_vector_fill_pointer(
             fill_pointer
@@ -473,11 +482,7 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
         Ok(vector)
     } else {
         let array = Value::array(dimensions, elements);
-        array.set_array_element_type(
-            arguments[0]
-                .array_element_type()
-                .unwrap_or_else(|| Value::symbol("T")),
-        );
+        array.set_array_element_type(element_type);
         array.set_array_adjustable(
             adjustable.unwrap_or(arguments[0].array_adjustable().unwrap_or(false)),
         );

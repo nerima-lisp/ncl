@@ -15,6 +15,12 @@ pub(crate) struct ConditionDefinition {
     pub(crate) initforms: Vec<(String, Form)>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct TypeAliasDefinition {
+    pub(crate) parameters: Vec<Rc<str>>,
+    pub(crate) designator: Value,
+}
+
 mod control_targets;
 mod definitions;
 mod functions;
@@ -43,7 +49,7 @@ struct Frame {
     structures: HashMap<Rc<str>, StructureDefinition>,
     classes: HashMap<Rc<str>, Rc<ClassDefinition>>,
     conditions: HashMap<Rc<str>, ConditionDefinition>,
-    type_aliases: HashMap<Rc<str>, Value>,
+    type_aliases: HashMap<Rc<str>, TypeAliasDefinition>,
     symbol_properties: Vec<(Value, Value)>,
     block_targets: HashMap<Rc<str>, u64>,
     tag_targets: HashMap<Rc<str>, u64>,

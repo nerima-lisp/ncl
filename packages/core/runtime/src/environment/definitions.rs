@@ -1,13 +1,18 @@
 use std::rc::Rc;
 
-use crate::environment::{ConditionDefinition, Environment, intern_name};
+use crate::environment::{ConditionDefinition, Environment, TypeAliasDefinition, intern_name};
 use crate::value::{ClassDefinition, StructureDefinition};
 use crate::Value;
 
 impl Environment {
-    pub(crate) fn define_type_alias(&self, name: impl AsRef<str>, designator: Value) {
+    pub(crate) fn define_type_alias(
+        &self,
+        name: impl AsRef<str>,
+        parameters: Vec<Rc<str>>,
+        designator: Value,
+    ) {
         let key = intern_name(name.as_ref());
-        self.0.borrow_mut().type_aliases.insert(key, designator);
+        self.0.borrow_mut().type_aliases.insert(key, TypeAliasDefinition { parameters, designator });
     }
 
     pub(crate) fn lookup_type_alias(&self, name: &str) -> Option<Value> {
@@ -16,7 +21,16 @@ impl Environment {
             let frame = self.0.borrow();
             (frame.type_aliases.get(&key).cloned(), frame.parent.clone())
         };
-        definition.or_else(|| parent.and_then(|environment| environment.lookup_type_alias(name)))
+        definition.map(|definition| definition.designator).or_else(|| parent.and_then(|environment| environment.lookup_type_alias(name)))
+    }
+
+    pub(crate) fn lookup_type_alias_definition(&self, name: &str) -> Option<TypeAliasDefinition> {
+        let key = intern_name(name);
+        let (definition, parent) = {
+            let frame = self.0.borrow();
+            (frame.type_aliases.get(&key).cloned(), frame.parent.clone())
+        };
+        definition.or_else(|| parent.and_then(|environment| environment.lookup_type_alias_definition(name)))
     }
 
     pub(crate) fn define_condition(&self, name: impl AsRef<str>, definition: ConditionDefinition) {

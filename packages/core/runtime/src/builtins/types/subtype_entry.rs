@@ -28,9 +28,11 @@ pub fn subtypep_value(
     supertype: &Value,
     environment: &Environment,
 ) -> Result<Value, RuntimeError> {
-    validate_subtype_designator("subtypep", subtype, environment)?;
-    validate_subtype_designator("subtypep", supertype, environment)?;
-    let relation = subtype_relation(subtype, supertype, environment)?;
+    let subtype = type_matching::resolve_type_designator_in("subtypep", subtype, environment)?;
+    let supertype = type_matching::resolve_type_designator_in("subtypep", supertype, environment)?;
+    validate_subtype_designator("subtypep", &subtype, environment)?;
+    validate_subtype_designator("subtypep", &supertype, environment)?;
+    let relation = subtype_relation(&subtype, &supertype, environment)?;
     Ok(Value::values(vec![
         Value::boolean(relation.unwrap_or(false)),
         Value::boolean(relation.is_some()),

@@ -36,6 +36,21 @@ fn expands_deftype_aliases_inside_compound_designators(#[case] eval_fn: EvalFn) 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_parameterized_deftype_aliases(#[case] eval_fn: EvalFn) {
+    let result = evaluate_with(
+        eval_fn,
+        "(progn (deftype integer-range (low high) (integer low high))\
+                (list (typep 3 '(integer-range 0 5))\
+                      (typep 8 '(integer-range 0 5))\
+                      (multiple-value-list (subtypep '(integer-range 0 5)\
+                                                       '(integer 0 10)))))",
+    );
+    assert_eq!(result.to_string(), "(T NIL (T T))");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_unary_numeric_operations(#[case] eval_fn: EvalFn) {
     assert_eq!(evaluate_with(eval_fn, "(list (1+ 2) (1- 2) (abs -2) (signum -2) (zerop 0) (plusp 2) (minusp -2) (evenp 4) (oddp 3))").to_string(), "(3 1 2 -1 T T T T T)");
 }

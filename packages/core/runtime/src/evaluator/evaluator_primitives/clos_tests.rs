@@ -130,4 +130,41 @@ mod tests {
         .unwrap();
         assert_eq!(result.to_string(), "(X Y)");
     }
+
+    #[test]
+    fn class_slots_returns_effective_slot_names() {
+        let environment = Environment::new();
+        let class = Rc::new(ClassDefinition {
+            name: "POINT".to_owned(),
+            direct_superclasses: vec!["STANDARD-OBJECT".into()],
+            direct_slots: vec!["X".into()],
+            precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
+            slots: vec![
+                ClassSlot {
+                    name: "X".to_owned(),
+                    initargs: Vec::new(),
+                    init_form: None,
+                    type_form: None,
+                    class_value: None,
+                },
+                ClassSlot {
+                    name: "Y".to_owned(),
+                    initargs: Vec::new(),
+                    init_form: None,
+                    type_form: None,
+                    class_value: None,
+                },
+            ],
+            default_initargs: Vec::new(),
+        });
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-SLOTS",
+            &[Value::class_object(class)],
+            &environment,
+            SPAN,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(result.to_string(), "(X Y)");
+    }
 }

@@ -117,6 +117,13 @@ pub enum Function {
         /// The slot name.
         slot_name: String,
     },
+    /// A SETF function for a class slot.
+    SlotSetfWriter {
+        /// The class name.
+        class_name: String,
+        /// The slot name.
+        slot_name: String,
+    },
     /// A reader method for a condition slot.
     ConditionReader {
         /// The condition name.

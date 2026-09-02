@@ -97,6 +97,20 @@ impl Runtime {
                 class_name,
                 slot_name,
             } => self.apply_slot_writer(class_name, slot_name, arguments, span),
+            crate::Function::SlotSetfWriter {
+                class_name,
+                slot_name,
+            } => {
+                if arguments.len() != 2 {
+                    return Err(Self::arity("slot writer", "two", arguments.len()));
+                }
+                self.apply_slot_writer(
+                    class_name,
+                    slot_name,
+                    &[arguments[1].clone(), arguments[0].clone()],
+                    span,
+                )
+            }
             crate::Function::ConditionReader {
                 condition_name,
                 slot_name,

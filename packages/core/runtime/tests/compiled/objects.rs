@@ -321,6 +321,20 @@ fn compiled_evaluates_clos_slot_initialization_options() {
 }
 
 #[test]
+fn compiled_evaluates_setf_writer_slot_option() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(progn
+               (defclass setf-writer-point ()
+                 ((x :initform 17 :writer (setf setf-writer-x))))
+               (let ((object (make-instance 'setf-writer-point)))
+                 (slot-value object 'x)))",
+        )
+        .must_exist();
+    assert_eq!(values.last().unwrap().to_string(), "17");
+}
+
+#[test]
 fn compiled_evaluates_clos_class_allocated_slots() {
     let values = Runtime::new()
         .eval_compiled_source(

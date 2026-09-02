@@ -898,6 +898,20 @@ fn rejects_invalid_slot_reader_and_writer_accessor_calls() {
 }
 
 #[test]
+fn evaluates_setf_writer_slot_option() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn
+               (defclass setf-writer-point () ((x :writer (setf setf-writer-x))))
+               (let ((object (make-instance 'setf-writer-point)))
+                 (setf (setf-writer-x object) 17)
+                 (slot-value object 'x)))",
+        )
+        .unwrap();
+    assert_eq!(values.last().unwrap().to_string(), "17");
+}
+
+#[test]
 fn rejects_structure_predicate_accessor_and_copier_arity_errors() {
     for source in [
         "(progn (defstruct arity-person name) (arity-person-p))",

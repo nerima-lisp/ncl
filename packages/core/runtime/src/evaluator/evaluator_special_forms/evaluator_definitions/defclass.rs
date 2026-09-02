@@ -104,7 +104,7 @@ impl Runtime {
         for (accessor_name, slot_name) in setf_writers {
             environment.define_setf_function(
                 &accessor_name,
-                Value::slot_writer(class_name.clone(), slot_name),
+                Value::slot_setf_writer(class_name.clone(), slot_name),
             );
         }
         Ok(Value::symbol(class_name))

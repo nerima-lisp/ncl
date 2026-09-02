@@ -78,6 +78,16 @@ impl Value {
         }))
     }
 
+    pub(crate) fn slot_setf_writer(
+        class_name: impl Into<String>,
+        slot_name: impl Into<String>,
+    ) -> Self {
+        Self::Function(Rc::new(Function::SlotSetfWriter {
+            class_name: class_name.into(),
+            slot_name: slot_name.into(),
+        }))
+    }
+
     pub(crate) fn condition_reader(
         condition_name: impl Into<String>,
         slot_name: impl Into<String>,

@@ -79,9 +79,40 @@ impl Runtime {
                     }
                 }
                 "WRITER" => {
-                    let writer_name =
-                        Self::variable_name(&option[1], "defclass writer must be a symbol")?;
-                    writers.push((unqualified_name(&writer_name), slot_name.clone()));
+                    let writer_name = match &option[1].kind {
+                        FormKind::Atom(_) => Self::variable_name(
+                            &option[1],
+                            "defclass writer must be a symbol or (setf symbol)",
+                        )?,
+                        FormKind::List(items) if items.len() == 2 => {
+                            let operator = Self::definition_name_from_form(
+                                &items[0],
+                                "defclass writer operator",
+                            )?;
+                            if operator != "SETF" {
+                                return Err(Self::invalid(
+                                    "defclass writer list must start with setf",
+                                    option[1].span,
+                                ));
+                            }
+                            Self::variable_name(
+                                &items[1],
+                                "defclass writer must be a symbol or (setf symbol)",
+                            )?
+                        }
+                        _ => {
+                            return Err(Self::invalid(
+                                "defclass writer must be a symbol or (setf symbol)",
+                                option[1].span,
+                            ));
+                        }
+                    };
+                    let writer_name = unqualified_name(&writer_name);
+                    if matches!(&option[1].kind, FormKind::List(_)) {
+                        setf_writers.push((writer_name.clone(), slot_name.clone()));
+                    } else {
+                        writers.push((writer_name, slot_name.clone()));
+                    }
                 }
                 "TYPE" => type_form = Some(option[1].clone()),
                 "DOCUMENTATION" => {

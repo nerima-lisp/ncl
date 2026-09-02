@@ -125,6 +125,10 @@ fn fmt_function(formatter: &mut fmt::Formatter<'_>, function: &Function) -> fmt:
             class_name,
             slot_name,
         } => write!(formatter, "#<SLOT-WRITER {class_name}-{slot_name}>"),
+        Function::SlotSetfWriter {
+            class_name,
+            slot_name,
+        } => write!(formatter, "#<SETF-SLOT-WRITER {class_name}-{slot_name}>"),
         Function::ConditionReader {
             condition_name,
             slot_name,

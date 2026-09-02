@@ -156,6 +156,45 @@ pub fn ldiff(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
+pub fn subst(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "subst", 3)?;
+    Ok(subst_tree(&arguments[2], &arguments[1], &arguments[0]))
+}
+
+pub fn nsubst(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "nsubst", 3)?;
+    Ok(subst_tree(&arguments[2], &arguments[1], &arguments[0]))
+}
+
+fn subst_tree(value: &Value, old: &Value, new: &Value) -> Value {
+    if value.eq_value(old) {
+        return new.clone();
+    }
+    match value {
+        Value::List(items) => Value::list(
+            items
+                .iter()
+                .map(|item| subst_tree(item, old, new))
+                .collect(),
+        ),
+        Value::MutableCons(cell) => {
+            let (car, cdr) = {
+                let cell = cell.borrow();
+                (cell.0.clone(), cell.1.clone())
+            };
+            Value::cons_cell(subst_tree(&car, old, new), subst_tree(&cdr, old, new))
+        }
+        Value::DottedList { items, tail } => Value::dotted_list(
+            items
+                .iter()
+                .map(|item| subst_tree(item, old, new))
+                .collect(),
+            subst_tree(tail, old, new),
+        ),
+        value => value.clone(),
+    }
+}
+
 fn copy_tree_value(value: &Value) -> Value {
     match value {
         Value::List(items) => Value::list(items.iter().map(copy_tree_value).collect()),

@@ -321,6 +321,17 @@ fn evaluates_tailp_and_ldiff(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_tree_substitution(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (subst 'x 'a '(a (b a) . a)) (nsubst 'x 'a '(a b)))").to_string(),
+        "((X (B X) . X) (X B))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_reverse(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(evaluate("(reverse '(1 2 3))").to_string(), "(3 2 1)");

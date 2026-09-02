@@ -51,6 +51,12 @@ mod tests {
     }
 
     #[test]
+    fn defclass_rejects_an_unsupported_class_option() {
+        let error = eval_err("(defclass unsupported-option-class () () (:metaclass custom))");
+        assert!(error.to_string().contains("unsupported defclass option"));
+    }
+
+    #[test]
     fn defclass_object_superclass_is_folded_into_standard_object() {
         let values = Runtime::new()
             .eval_source("(defclass object-rooted-class (object) ())")

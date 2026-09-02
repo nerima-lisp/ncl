@@ -550,6 +550,10 @@ fn rejects_malformed_structure_and_class_definitions() {
             r"(defclass record () () (:documentation 1))",
         ),
         (
+            "unsupported defclass option",
+            r"(defclass record () () (:metaclass custom))",
+        ),
+        (
             "defclass slot options require values",
             r"(defclass record () ((value :initarg)))",
         ),

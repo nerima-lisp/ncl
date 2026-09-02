@@ -46,7 +46,10 @@ impl Runtime {
                     option.span,
                 ));
             }
-            _ => {}
+            "DOCUMENTATION" => {}
+            _ => {
+                return Err(Self::invalid("unsupported defclass option", option.span));
+            }
         }
         Ok(())
     }

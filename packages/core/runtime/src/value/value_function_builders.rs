@@ -28,17 +28,18 @@ impl Value {
     }
 
     pub(crate) fn generic(name: impl Into<String>) -> Self {
-        Self::generic_with_combination(name, MethodCombination::Standard)
+        Self::generic_with_combination(name, MethodCombination::Standard, None)
     }
 
     pub(crate) fn generic_with_combination(
         name: impl Into<String>,
         method_combination: MethodCombination,
+        documentation: Option<String>,
     ) -> Self {
         Self::Function(Rc::new(Function::Generic {
             name: name.into(),
             lambda_list: None,
-            documentation: None,
+            documentation,
             method_combination,
             methods: Rc::new(RefCell::new(Vec::new())),
         }))

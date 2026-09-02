@@ -1010,3 +1010,17 @@ fn compiled_evaluates_generic_function_documentation() {
         .must_exist();
     assert_eq!(values[0].to_string(), "\"compiled docs\"");
 }
+
+#[test]
+fn compiled_evaluates_ensure_generic_function_documentation_without_lambda_list() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (ensure-generic-function 'compiled-undocumented-lambda-list-generic
+                   :documentation "ensured compiled docs")
+                 (generic-function-documentation
+                   #'compiled-undocumented-lambda-list-generic))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "\"ensured compiled docs\"");
+}

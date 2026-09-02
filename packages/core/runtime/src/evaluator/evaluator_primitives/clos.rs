@@ -181,7 +181,11 @@ impl Runtime {
                             method_combination,
                             documentation,
                         ),
-                        None => Value::generic_with_combination(name.clone(), method_combination),
+                        None => Value::generic_with_combination(
+                            name.clone(),
+                            method_combination,
+                            documentation,
+                        ),
                     };
                     environment.define_function(&name, function.clone());
                     Ok(function)

@@ -360,6 +360,17 @@ fn compile_setf_uses_native_symbol_plist_for_symbol_places() {
 }
 
 #[test]
+fn compile_setf_uses_native_symbol_plist_for_an_evaluated_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (symbol-plist (if flag 'target 'other)) '(:key 42))");
+    state.compile_setf(function, items[0].span, &items).unwrap();
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::SetfSymbolPlistValue));
+}
+
+#[test]
 fn compile_setf_uses_native_get_for_general_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

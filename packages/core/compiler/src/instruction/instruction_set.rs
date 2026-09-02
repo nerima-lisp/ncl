@@ -282,6 +282,7 @@ pub enum Instruction {
         escaped: bool,
     },
     #[doc = "Replace a symbol's entire property list through SYMBOL-PLIST."] SetfSymbolPlistDynamic,
+    #[doc = "Replace an evaluated symbol's entire property list through SYMBOL-PLIST."] SetfSymbolPlistValue,
     #[doc = "Update a symbol property through GET."] SetfGetDynamic,
     #[doc = "Modify a symbol property through GET."] ModifyGetDynamic {
         #[doc = "Arithmetic function name."]

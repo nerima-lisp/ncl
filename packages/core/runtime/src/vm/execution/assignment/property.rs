@@ -152,7 +152,7 @@ pub(super) fn execute(
             *program_counter += 1;
             Ok(true)
         }
-        Instruction::SetfSymbolPlistDynamic => {
+        Instruction::SetfSymbolPlistDynamic | Instruction::SetfSymbolPlistValue => {
             let value = stack
                 .pop()
                 .ok_or_else(|| invalid("setf symbol-plist has no value on the stack", span))?
@@ -322,11 +322,7 @@ pub(super) fn execute(
                             .apply_in(&test, &[test_key.clone(), candidate_key], span, environment)
                             .map(|v| {
                                 let equal = v.primary_value().is_truthy();
-                                if *test_not {
-                                    !equal
-                                } else {
-                                    equal
-                                }
+                                if *test_not { !equal } else { equal }
                             })
                     })
                     .collect::<Result<Vec<_>, _>>()?

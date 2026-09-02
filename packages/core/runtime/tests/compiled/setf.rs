@@ -1,5 +1,9 @@
 #[test]
 fn compiled_evaluates_setf_places() {
+    assert_eq!(
+        evaluate("(let ((target 'compiled-plist-evaluated)) (setf (symbol-plist (if t target 'other)) '(:key 42)) (symbol-plist target))").to_string(),
+        "(:KEY 42)"
+    );
     assert_eq!(evaluate("(cadr '(a b c))").to_string(), "B");
     assert_eq!(evaluate("(caddr '(a b c d))").to_string(), "C");
     assert_eq!(

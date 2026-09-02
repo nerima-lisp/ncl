@@ -23,7 +23,12 @@ impl CompileState {
         }
         self.compile_expression(function, &items[1])?;
         self.compile_expression(function, value_form)?;
-        self.emit(function, Instruction::SetfSymbolPlistDynamic, place.span)?;
+        let instruction = if Self::symbol_name_info(&items[1], "setf symbol-plist target").is_ok() {
+            Instruction::SetfSymbolPlistDynamic
+        } else {
+            Instruction::SetfSymbolPlistValue
+        };
+        self.emit(function, instruction, place.span)?;
         Ok(true)
     }
 

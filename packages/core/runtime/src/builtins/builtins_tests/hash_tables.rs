@@ -43,6 +43,13 @@ fn hash_table_options_accept_valid_keyword_values() -> Result<(), RuntimeError> 
 }
 
 #[test]
+fn make_hash_table_size_sets_initial_capacity() -> Result<(), RuntimeError> {
+    let table = make_hash_table(&[Value::keyword("size"), Value::Integer(16)])?;
+    assert!(hash_table_size(std::slice::from_ref(&table))?.as_integer() >= Some(16));
+    Ok(())
+}
+
+#[test]
 fn hash_table_operations_cover_successful_table_cases() -> Result<(), RuntimeError> {
     let table = make_hash_table(&[])?;
     assert!(matches!(table, Value::HashTable { .. }));

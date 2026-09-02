@@ -12,12 +12,13 @@ pub fn make_hash_table(arguments: &[Value]) -> Result<Value, RuntimeError> {
         ));
     }
     let mut test = "EQL".to_string();
+    let mut size = 0;
     for pair in arguments.as_chunks::<2>().0 {
         let name = hash_table_option_name("make-hash-table", &pair[0])?;
         match name.as_str() {
             "TEST" => test = hash_table_test_name("make-hash-table", &pair[1])?,
             "SIZE" => {
-                index_argument("make-hash-table", &pair[1])?;
+                size = index_argument("make-hash-table", &pair[1])?;
             }
             "REHASH-SIZE" => {
                 let value = number_argument("make-hash-table", &pair[1])?;
@@ -55,5 +56,5 @@ pub fn make_hash_table(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
         }
     }
-    Ok(Value::hash_table(test))
+    Ok(Value::hash_table_with_capacity(test, size))
 }

@@ -149,9 +149,13 @@ impl Value {
     }
 
     pub(crate) fn hash_table(test: impl AsRef<str>) -> Self {
+        Self::hash_table_with_capacity(test, 0)
+    }
+
+    pub(crate) fn hash_table_with_capacity(test: impl AsRef<str>, capacity: usize) -> Self {
         Self::HashTable {
             test: Rc::from(test.as_ref()),
-            entries: Rc::new(RefCell::new(Vec::new())),
+            entries: Rc::new(RefCell::new(Vec::with_capacity(capacity))),
         }
     }
 

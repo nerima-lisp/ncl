@@ -42,6 +42,18 @@ fn compiled_define_condition_registers_condition_readers() {
 }
 
 #[test]
+fn compiled_make_condition_accepts_inherited_initargs() {
+    let result = Runtime::new()
+        .eval_compiled_source(
+            "(define-condition base-condition (condition) ((payload :initarg :payload :reader base-payload)))
+             (define-condition child-condition (base-condition) ())
+             (base-payload (make-condition 'child-condition :payload 7))",
+        )
+        .expect("compiled inherited condition initarg should work");
+    assert_eq!(result.last().expect("no result").to_string(), "7");
+}
+
+#[test]
 fn compiled_define_condition_preserves_deep_type_hierarchy() {
     let result = Runtime::new()
         .eval_compiled_source(

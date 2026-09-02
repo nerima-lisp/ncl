@@ -13,17 +13,43 @@ impl Runtime {
             return Self::make_condition(arguments, span);
         }
         let actual_type = Self::name_designator_from_value(&arguments[0], span)?;
-        let Some(definition) = environment.lookup_condition(&actual_type) else {
+        if environment.lookup_condition(&actual_type).is_none() {
             return Self::make_condition(arguments, span);
-        };
+        }
         let initargs = &arguments[1..];
         if !initargs.len().is_multiple_of(2) {
             return Err(Self::invalid("make-condition initargs must be keyword/value pairs", span));
         }
+        fn find_condition_initarg(
+            environment: &Environment,
+            name: &str,
+            initarg: &str,
+            visited: &mut std::collections::HashSet<String>,
+        ) -> Option<String> {
+            if !visited.insert(name.to_owned()) {
+                return None;
+            }
+            let definition = environment.lookup_condition(name)?;
+            if let Some((_, slot_name)) = definition
+                .initargs
+                .iter()
+                .find(|(name, _)| name == initarg)
+            {
+                return Some(slot_name.clone());
+            }
+            definition.parents.iter().find_map(|parent| {
+                find_condition_initarg(environment, parent, initarg, visited)
+            })
+        }
         let mut slots = Vec::new();
         for pair in initargs.as_chunks::<2>().0 {
             let initarg = Self::name_designator_from_value(&pair[0], span)?;
-            let Some((_, slot_name)) = definition.initargs.iter().find(|(name, _)| name == &initarg) else {
+            let Some(slot_name) = find_condition_initarg(
+                environment,
+                &actual_type,
+                &initarg,
+                &mut std::collections::HashSet::new(),
+            ) else {
                 return Err(Self::invalid(&format!("unknown make-condition initarg :{initarg}"), span));
             };
             slots.push((slot_name.clone(), pair[1].clone()));

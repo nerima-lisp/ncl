@@ -27,4 +27,14 @@ mod tests {
         ).expect("custom condition inheritance should work");
         assert_eq!(values.last().map(ToString::to_string).as_deref(), Some("7"));
     }
+
+    #[test]
+    fn make_condition_accepts_inherited_initargs() {
+        let values = Runtime::new().eval_source(
+            "(define-condition base-condition (condition) ((payload :initarg :payload :reader base-payload)))
+             (define-condition child-condition (base-condition) ())
+             (base-payload (make-condition 'child-condition :payload 7))",
+        ).expect("inherited condition initarg should work");
+        assert_eq!(values.last().map(ToString::to_string).as_deref(), Some("7"));
+    }
 }

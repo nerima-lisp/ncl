@@ -112,6 +112,19 @@ fn evaluates_generic_methods_with_builtin_class_specializers() {
 }
 
 #[test]
+fn evaluates_generic_methods_with_eql_specializers() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn (defgeneric select (x))
+             (defmethod select ((x t)) :class)
+             (defmethod select ((x (eql 'target))) :eql)
+             (list (select 'target) (select 'other)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(:EQL :CLASS)");
+}
+
+#[test]
 fn evaluates_finalize_inheritance() {
     let values = Runtime::new()
         .eval_source("(progn (defclass finalize-class () ()) (finalize-inheritance (find-class 'finalize-class)))")

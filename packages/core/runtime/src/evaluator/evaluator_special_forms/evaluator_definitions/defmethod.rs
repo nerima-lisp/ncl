@@ -87,6 +87,7 @@ impl Runtime {
     }
 
     pub(crate) fn special_defmethod(
+        &self,
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
@@ -136,7 +137,7 @@ impl Runtime {
             specializers,
             mut normalized,
             required_count,
-        } = Self::parse_defmethod_required_parameters(parameters, environment)?;
+        } = self.parse_defmethod_required_parameters(parameters, environment)?;
         normalized.extend(
             parameters
                 .get(required_count..)

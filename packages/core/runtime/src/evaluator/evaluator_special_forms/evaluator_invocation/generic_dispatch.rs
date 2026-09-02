@@ -1,7 +1,7 @@
 use super::{
     Environment, MethodContinuation, MethodDefinition, RefCell, Runtime, RuntimeError, Span, Value,
 };
-use crate::value::MethodCombination;
+use crate::value::{MethodCombination, MethodSpecializer};
 
 impl Runtime {
     fn method_score(
@@ -34,6 +34,15 @@ impl Runtime {
             .iter()
             .zip(arguments.iter().take(required_count))
         {
+            if let MethodSpecializer::Eql(expected) = specializer {
+                if !crate::builtins::eql_value(expected, argument) {
+                    return None;
+                }
+                continue;
+            }
+            let MethodSpecializer::Class(specializer) = specializer else {
+                unreachable!()
+            };
             if specializer.as_ref() == "T" || specializer.as_ref() == "OBJECT" {
                 score = score.saturating_add(1_000_000);
                 continue;

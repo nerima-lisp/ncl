@@ -48,8 +48,14 @@ pub struct ClassDefinition {
 #[derive(Clone, Debug)]
 pub struct MethodDefinition {
     pub(crate) qualifiers: Vec<String>,
-    pub(crate) specializers: Vec<Rc<str>>,
+    pub(crate) specializers: Vec<MethodSpecializer>,
     pub(crate) function: Value,
+}
+
+#[derive(Clone, Debug)]
+pub enum MethodSpecializer {
+    Class(Rc<str>),
+    Eql(Value),
 }
 
 #[derive(Clone, Debug)]

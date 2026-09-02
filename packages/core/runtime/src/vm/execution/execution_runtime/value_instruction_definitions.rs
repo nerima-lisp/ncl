@@ -38,7 +38,7 @@ pub(super) fn execute_definition_instruction(
         "DEFCLASS" => Runtime::special_defclass(items, environment),
         "DEFINE-CONDITION" => Runtime::special_define_condition(items, environment),
         "DEFGENERIC" => Runtime::special_defgeneric(items, environment),
-        "DEFMETHOD" => Runtime::special_defmethod(items, environment),
+        "DEFMETHOD" => runtime.special_defmethod(items, environment),
         "DEFSETF" => runtime.special_defsetf(items, environment),
         "DEFCONSTANT" => runtime.special_defconstant(items, environment),
         "DEFINE-SYMBOL-MACRO" => Runtime::special_define_symbol_macro(items, environment),

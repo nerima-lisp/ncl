@@ -294,7 +294,12 @@ impl Runtime {
                             definition
                                 .specializers
                                 .iter()
-                                .map(|name| Value::symbol(name.as_ref()))
+                                .map(|specializer| match specializer {
+                                    crate::value::MethodSpecializer::Class(name) => {
+                                        Value::symbol(name.as_ref())
+                                    }
+                                    crate::value::MethodSpecializer::Eql(value) => value.clone(),
+                                })
                                 .collect(),
                         )),
                         "METHOD-FUNCTION" => Ok(definition.function.clone()),

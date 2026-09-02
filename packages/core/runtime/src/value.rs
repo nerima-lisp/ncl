@@ -22,7 +22,7 @@ use value_models::SlotValues;
 pub use value_models::{
     ClassDefinition, ClassSlot, ClosureOptions, Instance, MacroAuxiliaryParameter,
     MacroKeywordParameter, MacroLambdaList, MacroOptionalParameter, MacroPattern, MethodDefinition,
-    StructureDefinition, StructureSlot,
+    MethodSpecializer, StructureDefinition, StructureSlot,
 };
 
 mod value_functions;

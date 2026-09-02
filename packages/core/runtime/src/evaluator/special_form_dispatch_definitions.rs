@@ -34,7 +34,7 @@ impl Runtime {
             "DEFCLASS" => Some(Self::special_defclass(items, environment)?),
             "DEFINE-CONDITION" => Some(Self::special_define_condition(items, environment)?),
             "DEFGENERIC" => Some(Self::special_defgeneric(items, environment)?),
-            "DEFMETHOD" => Some(Self::special_defmethod(items, environment)?),
+            "DEFMETHOD" => Some(self.special_defmethod(items, environment)?),
             "DEFSETF" => Some(self.special_defsetf(items, environment)?),
             "DEFINE-SETF-EXPANDER" => Some(Self::special_define_setf_expander(items, environment)?),
             "GET-SETF-EXPANSION" => Some(self.special_get_setf_expansion(items, environment)?),

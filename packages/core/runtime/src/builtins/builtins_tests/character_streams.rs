@@ -182,3 +182,13 @@ fn character_input_operations_reject_byte_streams() -> Result<(), RuntimeError> 
     assert!(read_sequence(&[sequence, stream]).is_err());
     Ok(())
 }
+
+#[test]
+fn character_output_operations_reject_byte_streams() -> Result<(), RuntimeError> {
+    let path = std::env::temp_dir().join("ncl-byte-character-api-test");
+    let stream = Value::file_byte_output_stream(path, Vec::new());
+
+    assert!(fresh_line(std::slice::from_ref(&stream)).is_err());
+    assert!(get_output_stream_string(&[stream]).is_err());
+    Ok(())
+}

@@ -90,11 +90,16 @@ pub(crate) fn fresh_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
             println!();
             Ok(Value::boolean(true))
         }
-        Some(Value::Stream(stream)) => stream
-            .borrow_mut()
-            .fresh_line()
-            .map(Value::boolean)
-            .ok_or_else(|| stream_state_error("fresh-line", "an open output stream")),
+        Some(Value::Stream(stream)) => {
+            if stream.borrow().element_type_name() != "CHARACTER" {
+                return Err(stream_state_error("fresh-line", "a character output stream"));
+            }
+            stream
+                .borrow_mut()
+                .fresh_line()
+                .map(Value::boolean)
+                .ok_or_else(|| stream_state_error("fresh-line", "an open output stream"))
+        }
         Some(value) => Err(type_error(
             "fresh-line",
             "NIL, T, or an output stream",

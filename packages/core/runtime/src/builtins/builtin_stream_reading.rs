@@ -7,6 +7,12 @@ use crate::{RuntimeError, Value};
 pub(crate) fn get_output_stream_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "get-output-stream-string", 1)?;
     let stream = stream_reference("get-output-stream-string", &arguments[0])?;
+    if stream.borrow().element_type_name() != "CHARACTER" {
+        return Err(stream_state_error(
+            "get-output-stream-string",
+            "a character output stream",
+        ));
+    }
     let output = stream
         .borrow_mut()
         .take_output()

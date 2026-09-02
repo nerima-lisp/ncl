@@ -47,6 +47,20 @@ impl Runtime {
                         "INSTANCE"
                     }),
                 ),
+                (
+                    "INITFORM".to_owned(),
+                    slot.init_form
+                        .as_ref()
+                        .map_or(Ok(Value::Nil), quoted_form_value)
+                        .expect("slot initform is always quoteable"),
+                ),
+                (
+                    "TYPE".to_owned(),
+                    slot.type_form
+                        .as_ref()
+                        .map_or(Ok(Value::symbol("T")), quoted_form_value)
+                        .expect("slot type is always quoteable"),
+                ),
             ],
         )
     }
@@ -62,6 +76,8 @@ impl Runtime {
                 | "SLOT-DEFINITION-DOCUMENTATION"
                 | "SLOT-DEFINITION-INITARGS"
                 | "SLOT-DEFINITION-ALLOCATION"
+                | "SLOT-DEFINITION-INITFORM"
+                | "SLOT-DEFINITION-TYPE"
         ) {
             return None;
         }
@@ -84,7 +100,9 @@ impl Runtime {
                 "SLOT-DEFINITION-NAME" => "NAME",
                 "SLOT-DEFINITION-DOCUMENTATION" => "DOCUMENTATION",
                 "SLOT-DEFINITION-INITARGS" => "INITARGS",
-                _ => "ALLOCATION",
+                "SLOT-DEFINITION-ALLOCATION" => "ALLOCATION",
+                "SLOT-DEFINITION-INITFORM" => "INITFORM",
+                _ => "TYPE",
             };
             arguments[0]
                 .instance_slot(slot_name)

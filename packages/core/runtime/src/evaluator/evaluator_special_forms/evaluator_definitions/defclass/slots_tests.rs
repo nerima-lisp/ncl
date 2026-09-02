@@ -76,7 +76,8 @@ mod tests {
         let values = Runtime::new()
             .eval_source(
                 "(defclass documented-slot ()
-                   ((value :documentation \"slot doc\" :initarg :value)
+                   ((value :documentation \"slot doc\" :initarg :value
+                           :initform 42 :type integer)
                     (class-value :allocation :class)))
                  (list
                    (slot-definition-documentation
@@ -84,12 +85,16 @@ mod tests {
                    (slot-definition-initargs
                      (first (class-direct-slots (find-class 'documented-slot))))
                    (slot-definition-allocation
-                     (second (class-direct-slots (find-class 'documented-slot)))) )",
+                     (second (class-direct-slots (find-class 'documented-slot))))
+                   (slot-definition-initform
+                     (first (class-direct-slots (find-class 'documented-slot))))
+                   (slot-definition-type
+                     (first (class-direct-slots (find-class 'documented-slot)))))",
             )
             .unwrap();
         assert_eq!(
             values.last().unwrap().to_string(),
-            "(\"slot doc\" (:VALUE) :CLASS)"
+            "(\"slot doc\" (:VALUE) :CLASS 42 INTEGER)"
         );
     }
 }

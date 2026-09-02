@@ -66,6 +66,8 @@ impl CompileState {
                 | "SLOT-DEFINITION-DOCUMENTATION"
                 | "SLOT-DEFINITION-INITARGS"
                 | "SLOT-DEFINITION-ALLOCATION"
+                | "SLOT-DEFINITION-INITFORM"
+                | "SLOT-DEFINITION-TYPE"
         ) {
             1
         } else {

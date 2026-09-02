@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn defgeneric_rejects_an_unsupported_method_combination() {
-        let error = eval_err("(defgeneric unsupported-generic (x) (:method-combination max))");
+        let error = eval_err("(defgeneric unsupported-generic (x) (:method-combination median))");
         assert!(matches!(
             error,
             RuntimeError::InvalidForm { message, .. }

@@ -425,4 +425,21 @@ mod tests {
             .expect("compiled change-class hook succeeds");
         assert!(matches!(values.last().unwrap(), Value::Boolean(true)));
     }
+
+    #[test]
+    fn change_class_initializes_added_slots_from_initargs_and_initforms() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_compiled_source(
+                "(defclass old-point () ((x)))
+                 (defclass new-point () ((x) (y :initarg :y :initform 11) (z :initarg :z)))
+                 (let ((point (make-instance 'old-point)))
+                   (change-class point 'new-point :z 22)
+                   (list (slot-value point 'y) (slot-value point 'z)))",
+            )
+            .expect("compiled change-class initializes added slots");
+        let items = values.last().unwrap().list_items().unwrap();
+        assert!(matches!(items[0], Value::Integer(11)));
+        assert!(matches!(items[1], Value::Integer(22)));
+    }
 }

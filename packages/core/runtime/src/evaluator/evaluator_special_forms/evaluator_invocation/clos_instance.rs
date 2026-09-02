@@ -44,8 +44,44 @@ impl Runtime {
         let old_instance = arguments[0]
             .instance_snapshot()
             .ok_or_else(|| Self::invalid("change-class requires an instance", span))?;
-        if !arguments[0].change_instance_class(class) {
+        if !arguments[0].change_instance_class(class.clone()) {
             return Err(Self::invalid("change-class requires an instance", span));
+        }
+        let old_class = old_instance
+            .instance_class_definition()
+            .ok_or_else(|| Self::invalid("change-class requires an instance", span))?;
+        let initargs = arguments[2..].as_chunks::<2>().0;
+        for slot in &class.slots {
+            if old_class
+                .slots
+                .iter()
+                .any(|old_slot| old_slot.name.eq_ignore_ascii_case(&slot.name))
+            {
+                continue;
+            }
+            if let Some(pair) = initargs.iter().find(|pair| {
+                slot.initargs.iter().any(|name| {
+                    Self::name_designator_from_value(&pair[0], span)
+                        .is_ok_and(|initarg| initarg == *name)
+                })
+            }) {
+                self.set_instance_slot_checked(
+                    &arguments[0],
+                    &class.name,
+                    &slot.name,
+                    pair[1].clone(),
+                    span,
+                )?;
+            } else if let Some(function) = &slot.init_function {
+                let value = self.apply_in(function, &[], span, environment)?;
+                self.set_instance_slot_checked(
+                    &arguments[0],
+                    &class.name,
+                    &slot.name,
+                    value,
+                    span,
+                )?;
+            }
         }
         let mut update_arguments = vec![old_instance, arguments[0].clone()];
         update_arguments.extend_from_slice(&arguments[2..]);

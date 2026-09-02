@@ -1030,6 +1030,19 @@ fn simple_array_typep_respects_array_metadata() {
 }
 
 #[test]
+fn evaluates_fill_pointer_true() {
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array 3 :initial-contents '(1 2 3) :fill-pointer t)))\
+               (list (fill-pointer array)\
+                     (fill-pointer (adjust-array array 4 :fill-pointer t))))",
+        )
+        .to_string(),
+        "(3 4)"
+    );
+}
+
+#[test]
 fn rejects_invalid_map_into_inputs_and_propagates_errors() {
     assert!(matches!(
         Runtime::new().eval_source("(map-into (vector 0) #'+ 5)"),

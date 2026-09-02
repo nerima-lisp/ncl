@@ -137,7 +137,7 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 initial_contents = Some(pair[1].clone());
             }
             "ADJUSTABLE" => adjustable = pair[1].is_truthy(),
-            "FILL-POINTER" => fill_pointer = Some(index_argument("make-array", &pair[1])?),
+            "FILL-POINTER" => fill_pointer = Some(pair[1].clone()),
             "DISPLACED-TO" => displaced_to = Some(pair[1].clone()),
             "DISPLACED-INDEX-OFFSET" => displaced_index_offset = index_argument("make-array", &pair[1])?,
             _ => {
@@ -149,6 +149,15 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
         }
     }
     let total_size = array_total_size_for("make-array", &dimensions)?;
+    let fill_pointer = fill_pointer
+        .map(|value| {
+            if matches!(value, Value::Boolean(true)) {
+                Ok(total_size)
+            } else {
+                index_argument("make-array", &value)
+            }
+        })
+        .transpose()?;
     if fill_pointer.is_some() && dimensions.len() != 1 {
         return Err(crate::RuntimeError::InvalidForm {
             message: "make-array fill pointer requires a vector".to_string(),
@@ -222,7 +231,7 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             "INITIAL-ELEMENT" | "INITIAL-CONTENTS" => return Err(crate::RuntimeError::InvalidForm {
                 message: "adjust-array cannot combine :initial-element and :initial-contents".to_string(), span: None,
             }),
-            "FILL-POINTER" => fill_pointer = Some(index_argument("adjust-array", &pair[1])?),
+            "FILL-POINTER" => fill_pointer = Some(pair[1].clone()),
             "ADJUSTABLE" => adjustable = Some(pair[1].is_truthy()),
             "DISPLACED-TO" => displaced_to = Some(pair[1].clone()),
             "DISPLACED-INDEX-OFFSET" => {
@@ -233,6 +242,15 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }),
         }
     }
+    let fill_pointer = fill_pointer
+        .map(|value| {
+            if matches!(value, Value::Boolean(true)) {
+                Ok(total_size)
+            } else {
+                index_argument("adjust-array", &value)
+            }
+        })
+        .transpose()?;
     if displaced_to.is_some() && (initial_element.is_some() || initial_contents.is_some()) {
         return Err(crate::RuntimeError::InvalidForm {
             message: "adjust-array cannot combine displacement with initial contents".to_string(),

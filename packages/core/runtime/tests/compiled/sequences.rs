@@ -687,6 +687,19 @@ fn compiled_evaluates_adjust_array_adjustable_option() {
 }
 
 #[test]
+fn compiled_evaluates_fill_pointer_true() {
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array 3 :initial-contents '(1 2 3) :fill-pointer t)))\
+               (list (fill-pointer array)\
+                     (fill-pointer (adjust-array array 4 :fill-pointer t))))",
+        )
+        .to_string(),
+        "(3 4)",
+    );
+}
+
+#[test]
 fn compiled_evaluates_adjust_array_displacement() {
     assert_eq!(
         evaluate(

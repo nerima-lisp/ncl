@@ -348,4 +348,23 @@ mod tests {
         assert!(matches!(items[1], Value::Integer(7)));
         assert!(matches!(items[2], Value::Nil | Value::Boolean(false)));
     }
+
+    #[test]
+    fn change_class_dispatches_update_instance_for_different_class() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_compiled_source(
+                "(defclass old-point () ((x)))
+                 (defclass new-point () ((x) (updated)))
+                 (defmethod update-instance-for-different-class
+                   ((old old-point) (new new-point))
+                   (setf (slot-value new 'updated) t)
+                   new)
+                 (let ((point (make-instance 'old-point)))
+                   (change-class point 'new-point)
+                   (slot-value point 'updated))",
+            )
+            .expect("compiled change-class hook succeeds");
+        assert!(matches!(values.last().unwrap(), Value::Boolean(true)));
+    }
 }

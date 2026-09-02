@@ -100,6 +100,14 @@ fn compiled_evaluates_class_finalized_p() {
 }
 
 #[test]
+fn compiled_evaluates_finalize_inheritance() {
+    let values = Runtime::new()
+        .eval_compiled_source("(progn (defclass compiled-finalize-class () ()) (finalize-inheritance (find-class 'compiled-finalize-class)))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "#<CLASS COMPILED-FINALIZE-CLASS>");
+}
+
+#[test]
 fn compiled_evaluates_class_direct_default_initargs() {
     let values = Runtime::new()
         .eval_compiled_source(

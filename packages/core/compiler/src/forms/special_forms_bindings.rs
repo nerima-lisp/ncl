@@ -72,9 +72,8 @@ impl CompileState {
             "CLASS-DIRECT-DEFAULT-INITARGS" => {
                 self.compile_class_introspection(function, span, items, name)
             }
-            "CLASS-FINALIZED-P" => {
-                self.compile_class_introspection(function, span, items, name)
-            }
+            "CLASS-FINALIZED-P" => self.compile_class_introspection(function, span, items, name),
+            "FINALIZE-INHERITANCE" => self.compile_class_introspection(function, span, items, name),
             "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND" => {
                 self.compile_slot_operation(function, span, items, name)
             }

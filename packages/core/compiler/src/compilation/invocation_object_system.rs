@@ -19,7 +19,8 @@ impl CompileState {
             | "CLASS-SLOTS"
             | "CLASS-DEFAULT-INITARGS"
             | "CLASS-DIRECT-DEFAULT-INITARGS"
-            | "CLASS-FINALIZED-P" => (items.len() == 2, "one"),
+            | "CLASS-FINALIZED-P"
+            | "FINALIZE-INHERITANCE" => (items.len() == 2, "one"),
             "FIND-CLASS" => ((2..=3).contains(&items.len()), "one or two"),
             _ => (false, "valid arguments"),
         };

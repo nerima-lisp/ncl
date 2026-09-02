@@ -80,6 +80,14 @@ fn evaluates_class_finalized_p() {
 }
 
 #[test]
+fn evaluates_finalize_inheritance() {
+    let values = Runtime::new()
+        .eval_source("(progn (defclass finalize-class () ()) (finalize-inheritance (find-class 'finalize-class)))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "#<CLASS FINALIZE-CLASS>");
+}
+
+#[test]
 fn evaluates_class_direct_default_initargs() {
     let values = Runtime::new()
         .eval_source(

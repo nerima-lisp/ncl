@@ -83,6 +83,7 @@ impl Runtime {
                 | "CLASS-DEFAULT-INITARGS"
                 | "CLASS-DIRECT-DEFAULT-INITARGS"
                 | "CLASS-FINALIZED-P"
+                | "FINALIZE-INHERITANCE"
         ) {
             return None;
         }
@@ -300,6 +301,19 @@ impl Runtime {
                         });
                     }
                     Ok(Value::boolean(true))
+                }
+                "FINALIZE-INHERITANCE" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity("finalize-inheritance", "one", arguments.len()));
+                    }
+                    if !matches!(arguments[0], Value::Class(_)) {
+                        return Err(RuntimeError::Type {
+                            expected: "CLASS".to_owned(),
+                            actual: arguments[0].type_name().to_string(),
+                            span: Some(span),
+                        });
+                    }
+                    Ok(arguments[0].clone())
                 }
                 _ => unreachable!("class introspection primitive name was prevalidated"),
             }

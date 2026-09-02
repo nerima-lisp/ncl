@@ -123,6 +123,7 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "CLASS-NAME",
     "CLASS-PRECEDENCE-LIST",
     "CLASS-DIRECT-SUPERCLASSES",
+    "CLASS-DIRECT-SLOTS",
     "SLOT-EXISTS-P",
     "SLOT-BOUNDP",
     "SLOT-MAKUNBOUND",

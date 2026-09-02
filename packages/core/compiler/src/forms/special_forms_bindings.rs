@@ -63,9 +63,8 @@ impl CompileState {
             | "FIND-CLASS"
             | "CLASS-NAME"
             | "CLASS-PRECEDENCE-LIST"
-            | "CLASS-DIRECT-SUPERCLASSES" => {
-                self.compile_class_introspection(function, span, items, name)
-            }
+            | "CLASS-DIRECT-SUPERCLASSES"
+            | "CLASS-DIRECT-SLOTS" => self.compile_class_introspection(function, span, items, name),
             "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND" => {
                 self.compile_slot_operation(function, span, items, name)
             }

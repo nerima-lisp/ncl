@@ -119,11 +119,9 @@ fn compiled_evaluates_clos_with_slots_and_accessors() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(5 7 5 7 11 11 7)");
 
-    assert!(
-        runtime
-            .eval_compiled_source("(with-accessors (x) object x)")
-            .is_err()
-    );
+    assert!(runtime
+        .eval_compiled_source("(with-accessors (x) object x)")
+        .is_err());
 }
 
 #[test]
@@ -204,6 +202,19 @@ fn compiled_evaluates_clos_multiple_initargs() {
         .must_exist();
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "42");
+}
+
+#[test]
+fn compiled_evaluates_clos_class_direct_slots() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+             (defclass direct-slots-parent () ((inherited)))
+             (defclass direct-slots-child (direct-slots-parent) ((own)))
+             (class-direct-slots (find-class 'direct-slots-child)))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(OWN)");
 }
 
 #[test]

@@ -8,6 +8,7 @@ mod tests {
         Rc::new(ClassDefinition {
             name: name.to_string(),
             direct_superclasses: Vec::new(),
+            direct_slots: Vec::new(),
             precedence: vec![
                 name.to_string().into(),
                 "STANDARD-OBJECT".to_string().into(),
@@ -91,6 +92,7 @@ mod tests {
         let class = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
             direct_superclasses: vec!["STANDARD-OBJECT".into()],
+            direct_slots: vec!["X".into()],
             precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
             slots: Vec::new(),
             default_initargs: Vec::new(),
@@ -105,5 +107,27 @@ mod tests {
         .unwrap_or_else(|| panic!("CLASS-DIRECT-SUPERCLASSES is recognized"))
         .unwrap_or_else(|error| panic!("class introspection succeeds: {error}"));
         assert!(matches!(result, Value::List(_)));
+    }
+
+    #[test]
+    fn class_direct_slots_returns_slot_names() {
+        let environment = Environment::new();
+        let class = Rc::new(ClassDefinition {
+            name: "POINT".to_owned(),
+            direct_superclasses: vec!["STANDARD-OBJECT".into()],
+            direct_slots: vec!["X".into(), "Y".into()],
+            precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
+            slots: Vec::new(),
+            default_initargs: Vec::new(),
+        });
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-DIRECT-SLOTS",
+            &[Value::class_object(class)],
+            &environment,
+            SPAN,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(result.to_string(), "(X Y)");
     }
 }

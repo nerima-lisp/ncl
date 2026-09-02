@@ -78,6 +78,7 @@ impl Runtime {
                 | "CLASS-NAME"
                 | "CLASS-PRECEDENCE-LIST"
                 | "CLASS-DIRECT-SUPERCLASSES"
+                | "CLASS-DIRECT-SLOTS"
         ) {
             return None;
         }
@@ -100,6 +101,7 @@ impl Runtime {
                         Rc::new(ClassDefinition {
                             name: n.clone(),
                             direct_superclasses: vec!["STANDARD-OBJECT".into()],
+                            direct_slots: Vec::new(),
                             precedence: vec![n.into(), "STANDARD-OBJECT".into()],
                             slots: Vec::new(),
                             default_initargs: Vec::new(),
@@ -149,6 +151,7 @@ impl Runtime {
                             Rc::new(ClassDefinition {
                                 name: name.to_string(),
                                 direct_superclasses: Vec::new(),
+                                direct_slots: Vec::new(),
                                 precedence: vec![name.clone()],
                                 slots: Vec::new(),
                                 default_initargs: Vec::new(),
@@ -177,6 +180,7 @@ impl Runtime {
                             Rc::new(ClassDefinition {
                                 name: name.to_string(),
                                 direct_superclasses: Vec::new(),
+                                direct_slots: Vec::new(),
                                 precedence: vec![name.clone()],
                                 slots: Vec::new(),
                                 default_initargs: Vec::new(),
@@ -184,6 +188,25 @@ impl Runtime {
                         })
                     });
                     Ok(Value::list(classes.map(Value::class_object).collect()))
+                }
+                "CLASS-DIRECT-SLOTS" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity("class-direct-slots", "one", arguments.len()));
+                    }
+                    let Value::Class(class) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "CLASS".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    Ok(Value::list(
+                        class
+                            .direct_slots
+                            .iter()
+                            .map(|name| Value::symbol(name.clone()))
+                            .collect(),
+                    ))
                 }
                 _ => unreachable!("class introspection primitive name was prevalidated"),
             }

@@ -82,6 +82,7 @@ mod tests {
         let class_definition = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
             direct_superclasses: Vec::new(),
+            direct_slots: Vec::new(),
             precedence: Vec::new(),
             slots: Vec::new(),
             default_initargs: Vec::new(),

@@ -36,6 +36,7 @@ mod tests {
         let class = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
             direct_superclasses: Vec::new(),
+            direct_slots: Vec::new(),
             precedence: vec!["POINT".to_owned().into()],
             slots: Vec::new(),
             default_initargs: Vec::new(),
@@ -44,6 +45,7 @@ mod tests {
         let equivalent_class = Value::class_object(Rc::new(ClassDefinition {
             name: "point".to_owned(),
             direct_superclasses: Vec::new(),
+            direct_slots: Vec::new(),
             precedence: vec!["point".to_owned().into()],
             slots: Vec::new(),
             default_initargs: Vec::new(),

@@ -55,6 +55,7 @@ impl Runtime {
             Self::parse_defclass_option(option, &mut default_initargs)?;
         }
 
+        let direct_slot_count = slots.len();
         let precedence = Self::merge_defclass_superclasses(
             &class_name,
             &direct_superclasses,
@@ -67,6 +68,11 @@ impl Runtime {
         let definition = Rc::new(ClassDefinition {
             name: class_name.clone(),
             direct_superclasses: direct_superclasses.into_iter().map(Into::into).collect(),
+            direct_slots: slots
+                .iter()
+                .take(direct_slot_count)
+                .map(|slot| slot.name.clone().into())
+                .collect(),
             precedence,
             slots,
             default_initargs,

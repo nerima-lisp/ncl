@@ -148,6 +148,7 @@ impl Value {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn hash_table(test: impl AsRef<str>) -> Self {
         Self::hash_table_with_capacity(test, 0)
     }

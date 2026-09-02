@@ -60,6 +60,7 @@ impl Value {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn condition_from_parts(
         actual_type: String,
         message: String,

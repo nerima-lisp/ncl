@@ -41,6 +41,20 @@ impl Runtime {
                     ));
                 }
                 "DOCUMENTATION" => {}
+                "METHOD-COMBINATION"
+                    if option_items.len() == 2
+                        && Self::definition_name_from_form(
+                            &option_items[1],
+                            "defgeneric method combination",
+                        )?
+                            == "STANDARD" =>
+                {}
+                "METHOD-COMBINATION" => {
+                    return Err(Self::invalid(
+                        "unsupported defgeneric method combination",
+                        option.span,
+                    ));
+                }
                 _ => {
                     return Err(Self::invalid("unsupported defgeneric option", option.span));
                 }

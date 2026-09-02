@@ -37,6 +37,13 @@ mod tests {
     }
 
     #[test]
+    fn defgeneric_accepts_the_standard_method_combination() {
+        Runtime::new()
+            .eval_source("(defgeneric standard-combination (x) (:method-combination standard))")
+            .unwrap_or_else(|error| panic!("standard method combination should work: {error}"));
+    }
+
+    #[test]
     fn defgeneric_rejects_malformed_documentation() {
         let error = eval_err("(defgeneric malformed-documentation (x) (:documentation 1))");
         assert!(matches!(

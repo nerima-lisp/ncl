@@ -240,6 +240,19 @@ fn compiled_evaluates_remf_with_a_generalized_place() {
 }
 
 #[test]
+fn compiled_updates_getf_on_a_nested_generalized_place() {
+    assert_eq!(
+        evaluate(
+            "(let ((cells (list (list :a 1 :b 2))))
+               (list (setf (getf (car cells) :a) 9)
+                     cells))",
+        )
+        .to_string(),
+        "(9 ((:A 9 :B 2)))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_remf_on_get_places() {
     assert_eq!(
         evaluate(

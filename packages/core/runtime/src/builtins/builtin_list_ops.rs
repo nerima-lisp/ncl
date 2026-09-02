@@ -166,6 +166,18 @@ pub fn nsubst(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(nsubst_tree(&arguments[2], &arguments[1], &arguments[0]))
 }
 
+pub fn sublis(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "sublis", 2)?;
+    let substitutions = alist_entries("sublis", &arguments[0])?;
+    Ok(sublis_tree(&arguments[1], &substitutions))
+}
+
+pub fn nsublis(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "nsublis", 2)?;
+    let substitutions = alist_entries("nsublis", &arguments[0])?;
+    Ok(nsublis_tree(&arguments[1], &substitutions))
+}
+
 pub fn tree_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "tree-equal", 2)?;
     Ok(Value::boolean(arguments[0].equal_value(&arguments[1])))
@@ -229,6 +241,95 @@ fn nsubst_tree(value: &Value, old: &Value, new: &Value) -> Value {
                 .map(|item| nsubst_tree(item, old, new))
                 .collect(),
             nsubst_tree(tail, old, new),
+        ),
+        value => value.clone(),
+    }
+}
+
+fn alist_entries(function: &str, value: &Value) -> Result<Vec<(Value, Value)>, RuntimeError> {
+    let Some(entries) = value.list_items() else {
+        return Err(type_error(function, "association list", value));
+    };
+    entries
+        .into_iter()
+        .map(|entry| match entry {
+            Value::DottedList { items, tail } if items.len() == 1 => {
+                Ok((items[0].clone(), tail.as_ref().clone()))
+            }
+            Value::List(items) if items.len() == 2 => Ok((items[0].clone(), items[1].clone())),
+            value => Err(type_error(function, "association", &value)),
+        })
+        .collect()
+}
+
+fn substitution(value: &Value, substitutions: &[(Value, Value)]) -> Option<Value> {
+    substitutions
+        .iter()
+        .find(|(old, _)| value.eq_value(old))
+        .map(|(_, new)| new.clone())
+}
+
+fn sublis_tree(value: &Value, substitutions: &[(Value, Value)]) -> Value {
+    if let Some(new) = substitution(value, substitutions) {
+        return new;
+    }
+    match value {
+        Value::List(items) => Value::list(
+            items
+                .iter()
+                .map(|item| sublis_tree(item, substitutions))
+                .collect(),
+        ),
+        Value::MutableCons(cell) => {
+            let (car, cdr) = {
+                let cell = cell.borrow();
+                (cell.0.clone(), cell.1.clone())
+            };
+            Value::cons_cell(
+                sublis_tree(&car, substitutions),
+                sublis_tree(&cdr, substitutions),
+            )
+        }
+        Value::DottedList { items, tail } => Value::dotted_list(
+            items
+                .iter()
+                .map(|item| sublis_tree(item, substitutions))
+                .collect(),
+            sublis_tree(tail, substitutions),
+        ),
+        value => value.clone(),
+    }
+}
+
+fn nsublis_tree(value: &Value, substitutions: &[(Value, Value)]) -> Value {
+    if let Some(new) = substitution(value, substitutions) {
+        return new;
+    }
+    match value {
+        Value::MutableCons(cell) => {
+            let (car, cdr) = {
+                let cell = cell.borrow();
+                (cell.0.clone(), cell.1.clone())
+            };
+            let car = nsublis_tree(&car, substitutions);
+            let cdr = nsublis_tree(&cdr, substitutions);
+            let mut cell = cell.borrow_mut();
+            cell.0 = car;
+            cell.1 = cdr;
+            value.clone()
+        }
+        Value::List(items) => Value::list(
+            items
+                .iter()
+                .map(|item| nsublis_tree(item, substitutions))
+                .collect(),
+        ),
+        Value::DottedList { items, tail } => Value::dotted_list(
+            items
+                .iter()
+                .map(|item| nsublis_tree(item, substitutions))
+                .collect(),
+            nsublis_tree(tail, substitutions),
         ),
         value => value.clone(),
     }

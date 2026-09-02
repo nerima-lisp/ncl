@@ -296,6 +296,21 @@ fn evaluates_tree_equal(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_alist_substitution(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(sublis '((a . 1) (b . 2)) '(a (b c)))").to_string(),
+        "(1 (2 C))"
+    );
+    assert_eq!(
+        evaluate("(nsublis '((a . 1)) (cons 'a '(b)))").to_string(),
+        "(1 B)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_copy_tree(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(evaluate("(copy-tree '(1 (2 3)))").to_string(), "(1 (2 3))");

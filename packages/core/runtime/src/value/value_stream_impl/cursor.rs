@@ -4,6 +4,13 @@ use crate::value::value_stream::StreamKind;
 impl Stream {
     pub(crate) fn position(&self) -> Option<usize> {
         if self.closed { return None; }
+        if let Some(byte_data) = &self.byte_data {
+            return Some(match byte_data {
+                super::super::value_stream::ByteStreamData::Input { position, .. } => *position,
+                super::super::value_stream::ByteStreamData::Io { position, .. } => *position,
+                super::super::value_stream::ByteStreamData::Output { bytes, .. } => bytes.len(),
+            });
+        }
         match &self.kind {
             StreamKind::Input { position, pushback, .. } | StreamKind::Io { position, pushback, .. } => {
                 Some(position.saturating_sub(usize::from(pushback.is_some())))
@@ -14,6 +21,13 @@ impl Stream {
 
     pub(crate) fn length(&self) -> Option<usize> {
         if self.closed { return None; }
+        if let Some(byte_data) = &self.byte_data {
+            return Some(match byte_data {
+                super::super::value_stream::ByteStreamData::Input { bytes, .. } => bytes.len(),
+                super::super::value_stream::ByteStreamData::Io { bytes, .. } => bytes.len(),
+                super::super::value_stream::ByteStreamData::Output { bytes, .. } => bytes.len(),
+            });
+        }
         match &self.kind {
             StreamKind::Input { characters, .. } => Some(characters.len()),
             StreamKind::Io { characters, .. } => Some(characters.len()),
@@ -23,6 +37,19 @@ impl Stream {
 
     pub(crate) fn set_position(&mut self, position: usize) -> bool {
         if self.closed { return false; }
+        if let Some(byte_data) = &mut self.byte_data {
+            return match byte_data {
+                super::super::value_stream::ByteStreamData::Input { bytes, position: cursor } => {
+                    if position > bytes.len() { return false; }
+                    *cursor = position; true
+                }
+                super::super::value_stream::ByteStreamData::Io { bytes, position: cursor, .. } => {
+                    if position > bytes.len() { return false; }
+                    *cursor = position; true
+                }
+                super::super::value_stream::ByteStreamData::Output { .. } => false,
+            };
+        }
         match &mut self.kind {
             StreamKind::Input { characters, position: cursor, pushback, .. } => {
                 if position > characters.len() { return false; }

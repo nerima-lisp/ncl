@@ -627,6 +627,34 @@ fn compiled_file_io_stream_reads_writes_and_appends() {
 }
 
 #[test]
+fn compiled_byte_io_stream_reads_from_the_initial_cursor() {
+    let path = std::env::temp_dir().join(format!(
+        "ncl-byte-io-stream-compiled-{}",
+        std::process::id()
+    ));
+    let pathname = format!("{:?}", path.to_string_lossy().to_string());
+    std::fs::write(&path, [7_u8, 8_u8]).must_exist();
+    let source = format!(
+        r#"(let ((stream (open {pathname}
+                            :direction :io
+                            :element-type '(unsigned-byte 8)
+                            :if-exists :overwrite)))
+               (let ((result (list (stream-element-type stream)
+                                   (file-position stream)
+                                   (read-byte stream)
+                                   (file-position stream)
+                                   (read-byte stream)
+                                   (write-byte 9 stream))))
+                 (close stream)
+                 result))"#,
+    );
+
+    assert_eq!(evaluate(&source).to_string(), "((UNSIGNED-BYTE 8) 0 7 1 8 9)");
+    assert_eq!(std::fs::read(&path).must_exist(), [7_u8, 8_u8, 9_u8]);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn compiled_file_pathname_primitives_probe_rename_delete_and_date() {
     let source_path = std::env::temp_dir().join(format!(
         "ncl-file-pathname-primitives-source-compiled-{}",

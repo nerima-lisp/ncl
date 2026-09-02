@@ -102,6 +102,7 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "APPLY",
     "MAP-INTO",
     "MAPCAR",
+    "MAPHASH",
 ];
 
 pub(in crate::evaluator) fn is_special_form(form: &Form) -> bool {

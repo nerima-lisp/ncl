@@ -45,6 +45,7 @@ impl Runtime {
             "APPLY" => Some(self.special_apply(items, environment)?),
             "MAP-INTO" => Some(self.special_map_into(items, environment)?),
             "MAPCAR" => Some(self.special_mapcar(items, environment)?),
+            "MAPHASH" => Some(self.special_maphash(items, environment)?),
             _ => None,
         };
         Ok(value)

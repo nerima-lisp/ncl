@@ -1,6 +1,34 @@
 use super::{Environment, Form, Runtime, RuntimeError, Value, atom_name};
 
 impl Runtime {
+    pub(crate) fn special_maphash(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() != 3 {
+            return Err(Self::arity(
+                "maphash",
+                "two",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let function = self.eval_in(&items[1], environment)?;
+        let table = self.eval_in(&items[2], environment)?;
+        let Some(entries) = table.hash_table_entries() else {
+            return Err(RuntimeError::Type {
+                expected: "HASH-TABLE".to_string(),
+                actual: table.type_name().to_string(),
+                span: Some(items[2].span),
+            });
+        };
+        let entries = entries.borrow().clone();
+        for (key, value) in entries {
+            self.apply_in(&function, &[key, value], items[0].span, environment)?;
+        }
+        Ok(Value::Nil)
+    }
+
     pub(crate) fn special_mapcar(
         &self,
         items: &[Form],

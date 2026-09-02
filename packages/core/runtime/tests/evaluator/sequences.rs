@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn maphash_calls_function_for_each_entry_and_returns_nil() {
+    let result = evaluate(
+        "(let ((table (make-hash-table)))
+           (setf (gethash 'a table) 1)
+           (setf (gethash 'b table) 2)
+           (let ((total 0))
+             (maphash (lambda (key value)
+                        (declare (ignore key))
+                        (incf total value))
+                      table)
+             total))",
+    );
+    assert_eq!(result.to_string(), "3");
+}
+
+#[test]
 fn rejects_invalid_map_result_types_and_string_results() {
     for result_type in ["'hash-table", "'integer"] {
         assert!(matches!(

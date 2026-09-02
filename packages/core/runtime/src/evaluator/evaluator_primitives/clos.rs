@@ -99,15 +99,17 @@ impl Runtime {
                     Ok(Value::class_object(class))
                 }
                 "FIND-CLASS" => {
-                    if arguments.len() != 1 {
-                        return Err(Self::arity("find-class", "one", arguments.len()));
+                    if !(1..=2).contains(&arguments.len()) {
+                        return Err(Self::arity("find-class", "one or two", arguments.len()));
                     }
                     let n = Self::name_designator_from_value(&arguments[0], span)?;
-                    Ok(Value::class_object(
-                        environment
-                            .lookup_class(&n)
-                            .ok_or_else(|| Self::invalid("unknown class", span))?,
-                    ))
+                    match environment.lookup_class(&n) {
+                        Some(class) => Ok(Value::class_object(class)),
+                        None if arguments.get(1).is_some_and(|errorp| !errorp.is_truthy()) => {
+                            Ok(Value::Nil)
+                        }
+                        None => Err(Self::invalid("unknown class", span)),
+                    }
                 }
                 "CLASS-NAME" => {
                     if arguments.len() != 1 {

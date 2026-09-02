@@ -1,6 +1,111 @@
 #[allow(clippy::wildcard_imports)]
 use super::super::*;
 
+fn dynamic_nth_place_values(
+    places: &[(Vec<String>, String, bool)],
+    values: &[Value],
+    span: Span,
+) -> Result<Vec<Value>, RuntimeError> {
+    places
+        .iter()
+        .zip(values.chunks_exact(2))
+        .map(|((accessors, _, _), pair)| {
+            let index = crate::builtins::index_argument("ROTATEF/SHIFTF NTH", &pair[0].primary_value())?;
+            let elements = pair[1].list_items().ok_or_else(|| RuntimeError::Type {
+                expected: "LIST".into(),
+                actual: pair[1].type_name().into(),
+                span: Some(span),
+            })?;
+            let target = if accessors.is_empty() {
+                Value::list(elements.clone())
+            } else {
+                super::list::nested::read(elements.clone(), accessors, span)?
+            };
+            target
+                .list_items()
+                .and_then(|items| items.get(index).cloned())
+                .ok_or_else(|| crate::builtins::out_of_bounds("ROTATEF/SHIFTF NTH", index))
+        })
+        .collect()
+}
+
+pub(super) fn execute_rotatef_nth_dynamic_places(
+    places: &[(Vec<String>, String, bool)],
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    runtime: &Runtime,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let values = stack.split_off(stack.len().saturating_sub(places.len() * 2));
+    if values.len() != places.len() * 2 {
+        return Err(invalid("rotatef has too few values on the stack", span));
+    }
+    let old = dynamic_nth_place_values(places, &values, span)?;
+    let mut updated_roots: Vec<(&str, bool, Value)> = Vec::new();
+    for (index, ((accessors, name, escaped), pair)) in places.iter().zip(values.chunks_exact(2)).enumerate() {
+        let current_root = updated_roots
+            .iter()
+            .rev()
+            .find(|(updated_name, updated_escaped, _)| *updated_name == name && *updated_escaped == *escaped)
+            .map(|(_, _, value)| value)
+            .unwrap_or(&pair[1]);
+        let list = current_root.list_items().ok_or_else(|| RuntimeError::Type {
+            expected: "LIST".into(),
+            actual: current_root.type_name().into(),
+            span: Some(span),
+        })?;
+        let nth = crate::builtins::index_argument("ROTATEF NTH", &pair[0].primary_value())?;
+        let updated = Value::list(super::list::nested::update_dynamic(
+            list, accessors, nth, &old[(index + old.len() - 1) % old.len()], span,
+        )?);
+        if *escaped { runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?; }
+        else { runtime.set_or_define_in(name, updated.clone(), environment, span)?; }
+        updated_roots.push((name, *escaped, updated));
+    }
+    stack.push(Value::Nil);
+    *program_counter += 1;
+    Ok(true)
+}
+
+pub(super) fn execute_shiftf_nth_dynamic_places(
+    places: &[(Vec<String>, String, bool)],
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    runtime: &Runtime,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let values = stack.split_off(stack.len().saturating_sub(places.len() * 2 + 1));
+    if values.len() != places.len() * 2 + 1 {
+        return Err(invalid("shiftf has too few values on the stack", span));
+    }
+    let old = dynamic_nth_place_values(places, &values[..places.len() * 2], span)?;
+    let mut updated_roots: Vec<(&str, bool, Value)> = Vec::new();
+    for (index, ((accessors, name, escaped), pair)) in places.iter().zip(values[..places.len() * 2].chunks_exact(2)).enumerate() {
+        let current_root = updated_roots
+            .iter()
+            .rev()
+            .find(|(updated_name, updated_escaped, _)| *updated_name == name && *updated_escaped == *escaped)
+            .map(|(_, _, value)| value)
+            .unwrap_or(&pair[1]);
+        let list = current_root.list_items().ok_or_else(|| RuntimeError::Type {
+            expected: "LIST".into(),
+            actual: current_root.type_name().into(),
+            span: Some(span),
+        })?;
+        let nth = crate::builtins::index_argument("SHIFTF NTH", &pair[0].primary_value())?;
+        let value = old.get(index + 1).cloned().unwrap_or_else(|| values.last().unwrap().clone());
+        let updated = Value::list(super::list::nested::update_dynamic(list, accessors, nth, &value, span)?);
+        if *escaped { runtime.set_or_define_exact_in(name, updated.clone(), environment, span)?; }
+        else { runtime.set_or_define_in(name, updated.clone(), environment, span)?; }
+        updated_roots.push((name, *escaped, updated));
+    }
+    stack.push(old[0].clone());
+    *program_counter += 1;
+    Ok(true)
+}
+
 pub(super) fn execute_rotatef_nth_dynamic(
     accessors: &[String], name: &str, escaped: bool, stack: &mut Vec<Value>,
     environment: &Environment, runtime: &Runtime, program_counter: &mut usize, span: Span,

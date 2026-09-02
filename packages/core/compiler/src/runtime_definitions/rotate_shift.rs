@@ -30,6 +30,33 @@ impl CompileState {
         } else {
             &items[1..items.len() - 1]
         };
+        let dynamic_places = place_forms
+            .iter()
+            .map(crate::dynamic_nth_list_place)
+            .collect::<Option<Vec<_>>>();
+        if let Some(dynamic_places) = dynamic_places.filter(|places| places.len() > 1) {
+            for (index, target, _, _, _) in &dynamic_places {
+                self.compile_expression(function, index)?;
+                self.compile_expression(function, target)?;
+            }
+            if operator == "SHIFTF" {
+                self.compile_expression(function, &items[items.len() - 1])?;
+            }
+            let places = dynamic_places
+                .into_iter()
+                .map(|(_, _, accessors, name, escaped)| (accessors, name, escaped))
+                .collect();
+            self.emit(
+                function,
+                if operator == "ROTATEF" {
+                    Instruction::RotatefNthDynamicPlaces(places)
+                } else {
+                    Instruction::ShiftfNthDynamicPlaces(places)
+                },
+                items[0].span,
+            )?;
+            return Ok(Some(()));
+        }
         if place_forms.len() == 1 {
             if let Some((index, target, accessors, name, escaped)) =
                 crate::dynamic_nth_list_place(&place_forms[0])

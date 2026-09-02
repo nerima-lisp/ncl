@@ -340,6 +340,22 @@ fn compiled_evaluates_native_dynamic_nth_rotate_and_shift() {
         evaluate("(let ((xs (list (list 1 2))) (index 1)) (list (shiftf (nth index (car xs)) 9) xs))").to_string(),
         "(2 ((1 9)))"
     );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2)) (ys (list 3 4)) (i 0) (j 1)) (rotatef (nth i xs) (nth j ys)) (list xs ys))").to_string(),
+        "((4 2) (3 1))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2)) (ys (list 3 4)) (i 0) (j 1)) (list (shiftf (nth i xs) (nth j ys) 9) xs ys))").to_string(),
+        "(1 (4 2) (3 9))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2)) (i 0) (j 1)) (rotatef (nth i xs) (nth j xs)) xs)").to_string(),
+        "(2 1)"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2)) (i 0) (j 1)) (list (shiftf (nth i xs) (nth j xs) 9) xs))").to_string(),
+        "(1 (2 9))"
+    );
 }
 
 #[test]

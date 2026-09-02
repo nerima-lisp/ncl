@@ -306,6 +306,12 @@ pub(super) fn execute(
         Instruction::ShiftfNthDynamic { accessors, name, escaped } => rotate_shift::execute_shiftf_nth_dynamic(
             accessors, name, *escaped, stack, environment, runtime, program_counter, span,
         ),
+        Instruction::RotatefNthDynamicPlaces(places) => rotate_shift::execute_rotatef_nth_dynamic_places(
+            places, stack, environment, runtime, program_counter, span,
+        ),
+        Instruction::ShiftfNthDynamicPlaces(places) => rotate_shift::execute_shiftf_nth_dynamic_places(
+            places, stack, environment, runtime, program_counter, span,
+        ),
         Instruction::RotatefNestedList(places) => rotate_shift::execute_rotatef_nested(
             places,
             stack,

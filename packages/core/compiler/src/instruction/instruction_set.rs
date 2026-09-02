@@ -322,6 +322,8 @@ pub enum Instruction {
         /// Whether the root variable name is package-qualified.
         escaped: bool,
     },
+    #[doc = "Rotate values among multiple dynamically indexed NTH list places."] RotatefNthDynamicPlaces(Vec<(Vec<String>, String, bool)>),
+    #[doc = "Shift values through multiple dynamically indexed NTH list places."] ShiftfNthDynamicPlaces(Vec<(Vec<String>, String, bool)>),
     #[doc = "Rotate values among nested CAR/CDR list places."] RotatefNestedList(Vec<(Vec<String>, String, bool)>),
     #[doc = "Shift values through nested CAR/CDR list places."] ShiftfNestedList(Vec<(Vec<String>, String, bool)>),
     #[doc = "Rotate values among symbol and nested CAR/CDR list places."] RotatefMixed(Vec<RotateShiftPlace>),

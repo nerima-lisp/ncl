@@ -149,13 +149,18 @@ pub fn execute_type_predicate_instruction(
 pub fn execute_typep_instruction(
     stack: &mut Vec<Value>,
     span: Span,
+    environment: &Environment,
 ) -> Result<(), RuntimeError> {
     if stack.len() < 2 {
         return Err(invalid("typep has too few stack values", span));
     }
     let type_designator = stack.pop().expect("checked stack length");
     let value = stack.pop().expect("checked stack length");
-    stack.push(crate::builtins::typep(&[value, type_designator])?);
+    stack.push(Value::boolean(crate::builtins::typep_value_in(
+        &value,
+        &type_designator,
+        environment,
+    )?));
     Ok(())
 }
 

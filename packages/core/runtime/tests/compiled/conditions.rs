@@ -32,10 +32,13 @@ fn compiled_define_condition_registers_condition_readers() {
     let result = Runtime::new()
         .eval_compiled_source(
             "(define-condition sample-condition (condition) ((payload :initarg :payload :reader sample-payload)))
-             (sample-payload (make-condition 'sample-condition :payload 42))",
+             (let ((condition (make-condition 'sample-condition :payload 42)))
+               (list (sample-payload condition)
+                     (typep condition 'sample-condition)
+                     (typep condition 'condition)))",
         )
         .expect("compiled DEFINE-CONDITION failed");
-    assert_eq!(result.last().expect("no result").to_string(), "42");
+    assert_eq!(result.last().expect("no result").to_string(), "(42 T T)");
 }
 
 #[test]

@@ -176,7 +176,7 @@ pub(super) fn execute_value_instruction(
             execute_type_predicate_instruction(operation, stack, span)?;
         }
         Instruction::Typep => {
-            execute_typep_instruction(stack, span)?;
+            execute_typep_instruction(stack, span, environment)?;
         }
         Instruction::CharacterPredicate { operation } => {
             execute_character_predicate_instruction(operation, stack, span)?;

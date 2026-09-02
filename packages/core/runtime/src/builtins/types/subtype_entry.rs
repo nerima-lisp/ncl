@@ -5,6 +5,22 @@ pub fn typep_value(value: &Value, type_designator: &Value) -> Result<bool, Runti
     type_matches_designator("typep", value, type_designator)
 }
 
+pub fn typep_value_in(
+    value: &Value,
+    type_designator: &Value,
+    environment: &Environment,
+) -> Result<bool, RuntimeError> {
+    if let Ok(type_name) = crate::builtins::types::type_designator::type_designator_name(
+        "typep",
+        type_designator,
+    ) {
+        if environment.lookup_condition(&type_name).is_some() {
+            return Ok(value.condition_is_type(&type_name));
+        }
+    }
+    typep_value(value, type_designator)
+}
+
 pub fn subtypep_value(
     subtype: &Value,
     supertype: &Value,

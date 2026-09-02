@@ -52,6 +52,16 @@ impl Runtime {
     ) -> Result<Value, RuntimeError> {
         let function = self.resolve_function_designator(function, span, environment)?;
         match function.as_ref() {
+            crate::Function::Builtin { name, function } if name.eq_ignore_ascii_case("TYPEP") => {
+                if arguments.len() != 2 {
+                    return Err(Self::arity("typep", "two", arguments.len()));
+                }
+                Ok(Value::boolean(crate::builtins::typep_value_in(
+                    &arguments[0],
+                    &arguments[1],
+                    environment,
+                )?))
+            }
             crate::Function::Builtin { function, .. } => function(arguments),
             crate::Function::Complement { function } => Ok(Value::boolean(
                 !self

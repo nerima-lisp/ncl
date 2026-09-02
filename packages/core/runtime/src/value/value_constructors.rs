@@ -121,6 +121,7 @@ impl Value {
         Self::Vector(Rc::new(super::VectorData {
             elements: Rc::new(RefCell::new(values)),
             metadata: RefCell::new(super::ArrayMetadata {
+                element_type: Self::symbol("T"),
                 adjustable: false,
                 fill_pointer: None,
                 displaced_to: None,
@@ -137,6 +138,7 @@ impl Value {
             dimensions: Rc::new(dimensions),
             elements: Rc::new(RefCell::new(elements)),
             metadata: Rc::new(RefCell::new(super::ArrayMetadata {
+                element_type: Self::symbol("T"),
                 adjustable: false,
                 fill_pointer: None,
                 displaced_to: None,

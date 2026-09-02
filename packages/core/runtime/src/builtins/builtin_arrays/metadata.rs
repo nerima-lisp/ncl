@@ -6,9 +6,9 @@ use crate::{RuntimeError, Value};
 
 pub fn array_element_type(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "array-element-type", 1)?;
-    dimensions_for_array(&arguments[0])
-        .ok_or_else(|| type_error("array-element-type", "array", &arguments[0]))?;
-    Ok(Value::symbol("T"))
+    arguments[0]
+        .array_element_type()
+        .ok_or_else(|| type_error("array-element-type", "array", &arguments[0]))
 }
 
 pub fn array_has_fill_pointer_p(arguments: &[Value]) -> Result<Value, RuntimeError> {

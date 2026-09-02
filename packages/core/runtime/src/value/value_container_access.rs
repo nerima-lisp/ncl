@@ -178,6 +178,28 @@ impl Value {
         }
     }
 
+    pub(crate) fn array_element_type(&self) -> Option<Self> {
+        match self {
+            Self::Vector(items) => Some(items.metadata.borrow().element_type.clone()),
+            Self::Array { metadata, .. } => Some(metadata.borrow().element_type.clone()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn set_array_element_type(&self, element_type: Self) -> Option<()> {
+        match self {
+            Self::Vector(items) => {
+                items.metadata.borrow_mut().element_type = element_type;
+                Some(())
+            }
+            Self::Array { metadata, .. } => {
+                metadata.borrow_mut().element_type = element_type;
+                Some(())
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn set_array_adjustable(&self, adjustable: bool) -> Option<()> {
         match self {
             Self::Array { metadata, .. } => {

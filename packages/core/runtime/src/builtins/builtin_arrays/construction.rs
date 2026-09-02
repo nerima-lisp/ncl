@@ -100,6 +100,7 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let dimensions = parse_array_dimensions("make-array", &arguments[0])?;
     let mut initial_element = None;
     let mut initial_contents = None;
+    let mut element_type = Value::symbol("T");
     let mut adjustable = false;
     let mut fill_pointer = None;
     let mut displaced_to = None;
@@ -114,6 +115,7 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     for pair in arguments[1..].as_chunks::<2>().0 {
         let name = array_option_name("make-array", &pair[0])?;
         match name.as_str() {
+            "ELEMENT-TYPE" => element_type = pair[1].clone(),
             "INITIAL-ELEMENT" => {
                 if initial_contents.is_some() {
                     return Err(RuntimeError::InvalidForm {
@@ -173,8 +175,9 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     };
     if dimensions.len() == 1 {
         let vector = if let Some((storage, target_offset, _)) = displaced_storage {
-            Value::Vector(std::rc::Rc::new(crate::value::VectorData { elements: std::rc::Rc::new(std::cell::RefCell::new(elements)), metadata: std::cell::RefCell::new(crate::value::ArrayMetadata { adjustable, fill_pointer: None, displaced_to: Some(storage), displaced_to_value: displaced_to.clone(), displaced_index_offset: target_offset + displaced_index_offset }) }))
+            Value::Vector(std::rc::Rc::new(crate::value::VectorData { elements: std::rc::Rc::new(std::cell::RefCell::new(elements)), metadata: std::cell::RefCell::new(crate::value::ArrayMetadata { element_type: element_type.clone(), adjustable, fill_pointer: None, displaced_to: Some(storage), displaced_to_value: displaced_to.clone(), displaced_index_offset: target_offset + displaced_index_offset }) }))
         } else { Value::vector(elements) };
+        vector.set_array_element_type(element_type.clone());
         vector.set_vector_adjustable(adjustable);
         if let Some(fill_pointer) = fill_pointer {
             if fill_pointer > total_size {
@@ -188,6 +191,7 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
         Ok(vector)
     } else {
         let array = Value::array(dimensions, elements);
+        array.set_array_element_type(element_type);
         array.set_array_adjustable(adjustable);
         Ok(array)
     }
@@ -253,11 +257,21 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             return Ok(arguments[0].clone());
         }
         let vector = Value::vector(elements);
+        vector.set_array_element_type(
+            arguments[0]
+                .array_element_type()
+                .unwrap_or_else(|| Value::symbol("T")),
+        );
         vector.set_vector_adjustable(arguments[0].vector_adjustable().unwrap_or(false));
         vector.set_vector_fill_pointer(fill_pointer.or_else(|| arguments[0].vector_fill_pointer().flatten()).map(|value| value.min(total_size)));
         Ok(vector)
     } else {
         let array = Value::array(dimensions, elements);
+        array.set_array_element_type(
+            arguments[0]
+                .array_element_type()
+                .unwrap_or_else(|| Value::symbol("T")),
+        );
         array.set_array_adjustable(arguments[0].array_adjustable().unwrap_or(false));
         if fill_pointer.is_some() {
             return Err(crate::RuntimeError::InvalidForm {

@@ -54,6 +54,7 @@ mod value_stream_smoke_test;
 
 #[derive(Clone, Debug)]
 pub struct ArrayMetadata {
+    pub element_type: Value,
     pub adjustable: bool,
     pub fill_pointer: Option<usize>,
     pub displaced_to: Option<Rc<RefCell<Vec<Value>>>>,

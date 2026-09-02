@@ -556,13 +556,14 @@ fn compiled_evaluates_native_array_metadata() {
     assert_eq!(
         evaluate(
             "(list (array-element-type #(1 2))
+                   (array-element-type (make-array 2 :element-type 'character))
                    (array-rank (make-array '(2 3)))
                    (array-dimensions (make-array '(2 3)))
                    (array-dimension (make-array '(2 3)) 1)
                    (array-total-size (make-array '(2 3))))",
         )
         .to_string(),
-        "(T 2 (2 3) 3 6)",
+        "(T CHARACTER 2 (2 3) 3 6)",
     );
 }
 

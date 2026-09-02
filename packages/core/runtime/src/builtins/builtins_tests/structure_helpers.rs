@@ -57,6 +57,7 @@ fn data_helpers_cover_successful_table_cases() -> Result<(), RuntimeError> {
                 dimensions: Rc::new(vec![1, 2]),
                 elements: Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)])),
                 metadata: Rc::new(RefCell::new(crate::value::ArrayMetadata {
+                    element_type: Value::symbol("T"),
                     adjustable: false,
                 fill_pointer: None,
                     displaced_to: None,

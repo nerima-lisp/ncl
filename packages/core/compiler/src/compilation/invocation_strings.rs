@@ -79,8 +79,8 @@ impl CompileState {
                 1
             }
             "MAKE-STRING" => {
-                if !(2..=3).contains(&items.len()) {
-                    return Err(Self::arity_error(items, operation, "one or two", span));
+                if !(2..=4).contains(&items.len()) {
+                    return Err(Self::arity_error(items, operation, "one or two arguments or keyword/value pairs", span));
                 }
                 items.len() - 1
             }

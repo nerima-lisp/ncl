@@ -28,6 +28,17 @@ fn compiled_returns_condition_message() {
 }
 
 #[test]
+fn compiled_define_condition_registers_condition_readers() {
+    let result = Runtime::new()
+        .eval_compiled_source(
+            "(define-condition sample-condition (condition) ((datum :reader sample-datum)))
+             (sample-datum (make-condition 'sample-condition :datum 42))",
+        )
+        .expect("compiled DEFINE-CONDITION failed");
+    assert_eq!(result.last().expect("no result").to_string(), "42");
+}
+
+#[test]
 fn compiled_propagates_unmatched_control_transfers_from_scopes() {
     for source in [
         "(catch 'tag (throw 'other 9))",

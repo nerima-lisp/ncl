@@ -31,6 +31,7 @@ impl Runtime {
             "REMF" => Some(self.special_remf(items, environment)?),
             "DEFSTRUCT" => Some(self.special_defstruct(items, environment)?),
             "DEFCLASS" => Some(Self::special_defclass(items, environment)?),
+            "DEFINE-CONDITION" => Some(Self::special_define_condition(items, environment)?),
             "DEFGENERIC" => Some(Self::special_defgeneric(items, environment)?),
             "DEFMETHOD" => Some(Self::special_defmethod(items, environment)?),
             "DEFSETF" => Some(self.special_defsetf(items, environment)?),

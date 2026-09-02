@@ -58,6 +58,28 @@ impl CompileState {
         Ok(())
     }
 
+    pub(crate) fn compile_define_condition(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if items.len() < 4 {
+            return Err(Self::arity_error(
+                items,
+                "DEFINE-CONDITION",
+                "at least three",
+                span,
+            ));
+        }
+        self.emit(
+            function,
+            Instruction::DefineCondition(Form::list(items.to_vec(), span)),
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_defgeneric(
         &mut self,
         function: FunctionId,

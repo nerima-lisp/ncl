@@ -454,6 +454,7 @@ pub enum Instruction {
     },
     #[doc = "Define a structure through the runtime structure registry."] Defstruct(Form),
     #[doc = "Define a class through the runtime class registry."] Defclass(Form),
+    #[doc = "Define a condition through the runtime condition registry."] DefineCondition(Form),
     #[doc = "Define a generic function through the runtime method registry."] Defgeneric(Form),
     #[doc = "Define a method through the runtime method registry."] Defmethod(Form),
     #[doc = "Define a SETF function through the runtime place registry."] Defsetf(Form),

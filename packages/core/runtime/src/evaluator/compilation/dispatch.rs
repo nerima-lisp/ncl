@@ -116,6 +116,7 @@ impl Runtime {
                 | "PROCLAIM"
                 | "DEFSTRUCT"
                 | "DEFCLASS"
+                | "DEFINE-CONDITION"
                 | "DEFGENERIC"
                 | "DEFMETHOD"
                 | "DEFSETF"

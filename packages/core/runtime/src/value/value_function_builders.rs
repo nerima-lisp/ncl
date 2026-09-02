@@ -45,6 +45,20 @@ impl Value {
         }))
     }
 
+    pub(crate) fn condition_reader(condition_name: impl Into<String>, slot_name: impl Into<String>) -> Self {
+        Self::Function(Rc::new(Function::ConditionReader {
+            condition_name: condition_name.into(),
+            slot_name: slot_name.into(),
+        }))
+    }
+
+    pub(crate) fn condition_writer(condition_name: impl Into<String>, slot_name: impl Into<String>) -> Self {
+        Self::Function(Rc::new(Function::ConditionWriter {
+            condition_name: condition_name.into(),
+            slot_name: slot_name.into(),
+        }))
+    }
+
     /// Creates a closure with required parameters and a lexical environment.
     #[must_use]
     pub fn closure(parameters: Vec<String>, body: Vec<Form>, environment: Environment) -> Self {

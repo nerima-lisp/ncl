@@ -27,11 +27,37 @@ mod tests {
     }
 
     #[test]
-    fn defgeneric_rejects_an_unsupported_option() {
-        let error = eval_err("(defgeneric unsupported-generic (x) (:method-combination and))");
+    fn defgeneric_accepts_and_method_combination() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric all-true (x) (:method-combination and))\
+                 (defmethod all-true ((x t)) t)\
+                 (defmethod all-true ((x t)) nil)\
+                 (all-true 1)",
+            )
+            .unwrap_or_else(|error| panic!("and method combination should work: {error}"));
+        assert!(!values.last().expect("generic result").is_truthy());
+    }
+
+    #[test]
+    fn defgeneric_accepts_or_method_combination() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric any-true (x) (:method-combination or))\
+                 (defmethod any-true ((x t)) nil)\
+                 (defmethod any-true ((x t)) t)\
+                 (any-true 1)",
+            )
+            .unwrap_or_else(|error| panic!("or method combination should work: {error}"));
+        assert!(values.last().expect("generic result").is_truthy());
+    }
+
+    #[test]
+    fn defgeneric_rejects_an_unsupported_method_combination() {
+        let error = eval_err("(defgeneric unsupported-generic (x) (:method-combination max))");
         assert!(matches!(
             error,
-                RuntimeError::InvalidForm { message, .. }
+            RuntimeError::InvalidForm { message, .. }
                 if message == "unsupported defgeneric method combination"
         ));
     }

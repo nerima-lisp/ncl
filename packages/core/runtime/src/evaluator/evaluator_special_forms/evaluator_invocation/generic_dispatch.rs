@@ -1,6 +1,8 @@
 use super::{
-    Environment, MethodContinuation, MethodDefinition, RefCell, Runtime, RuntimeError, Span, Value,
+    Environment, MethodContinuation, MethodDefinition, RefCell, Runtime,
+    RuntimeError, Span, Value,
 };
+use crate::value::MethodCombination;
 
 impl Runtime {
     fn method_score(method: &MethodDefinition, arguments: &[Value]) -> Option<usize> {
@@ -46,6 +48,7 @@ impl Runtime {
     pub(super) fn apply_generic(
         &self,
         name: &str,
+        method_combination: MethodCombination,
         methods: &RefCell<Vec<MethodDefinition>>,
         arguments: &[Value],
         span: Span,
@@ -79,6 +82,24 @@ impl Runtime {
             }
         }
         after.reverse();
+        if method_combination != MethodCombination::Standard {
+            if !around.is_empty() || !before.is_empty() || !after.is_empty() {
+                return Err(Self::invalid(
+                    "auxiliary methods are not supported with this method combination",
+                    span,
+                ));
+            }
+            let mut result = method_combination == MethodCombination::And;
+            for method in primary {
+                let value = self.invoke_method(&method, arguments, None, span, environment)?;
+                result = if method_combination == MethodCombination::And {
+                    result && value.is_truthy()
+                } else {
+                    result || value.is_truthy()
+                };
+            }
+            return Ok(Value::boolean(result));
+        }
         let core = MethodContinuation::Core {
             before,
             primary,

@@ -4,7 +4,7 @@ use std::rc::Rc;
 use ncl_compiler::{FunctionId, Program};
 use ncl_syntax::{Form, LambdaListAuxiliaryParameter, LambdaListOptionalParameter};
 
-use super::{Builtin, ClosureOptions, Environment, Function, MacroLambdaList, Value};
+use super::{Builtin, ClosureOptions, Environment, Function, MacroLambdaList, MethodCombination, Value};
 
 impl Value {
     pub(crate) fn complement(function: Self) -> Self {
@@ -25,8 +25,16 @@ impl Value {
     }
 
     pub(crate) fn generic(name: impl Into<String>) -> Self {
+        Self::generic_with_combination(name, MethodCombination::Standard)
+    }
+
+    pub(crate) fn generic_with_combination(
+        name: impl Into<String>,
+        method_combination: MethodCombination,
+    ) -> Self {
         Self::Function(Rc::new(Function::Generic {
             name: name.into(),
+            method_combination,
             methods: Rc::new(RefCell::new(Vec::new())),
         }))
     }

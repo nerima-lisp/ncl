@@ -26,7 +26,7 @@ pub use value_models::{
 };
 
 mod value_functions;
-pub use value_functions::{Builtin, Function};
+pub use value_functions::{Builtin, Function, MethodCombination};
 
 mod value_constructors;
 mod value_stream;

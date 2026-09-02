@@ -4,6 +4,7 @@ use super::*;
 mod parameters;
 
 use parameters::DefmethodParameters;
+use crate::value::MethodCombination;
 
 impl Runtime {
     pub(crate) fn special_defgeneric(
@@ -20,6 +21,7 @@ impl Runtime {
         let name = Self::variable_name(&items[1], "defgeneric name must be a symbol")?;
         let name = unqualified_name(&name);
         let _ = Self::parameters(&items[2])?;
+        let mut method_combination = MethodCombination::Standard;
         for option in items.iter().skip(3) {
             let option_items = Self::list_form_items(option, "defgeneric option")?;
             if option_items.is_empty() {
@@ -41,14 +43,24 @@ impl Runtime {
                     ));
                 }
                 "DOCUMENTATION" => {}
-                "METHOD-COMBINATION"
-                    if option_items.len() == 2
-                        && Self::definition_name_from_form(
-                            &option_items[1],
-                            "defgeneric method combination",
-                        )?
-                            == "STANDARD" =>
-                {}
+                "METHOD-COMBINATION" if option_items.len() == 2 => {
+                    method_combination = match Self::definition_name_from_form(
+                        &option_items[1],
+                        "defgeneric method combination",
+                    )?
+                    .as_str()
+                    {
+                        "STANDARD" => MethodCombination::Standard,
+                        "AND" => MethodCombination::And,
+                        "OR" => MethodCombination::Or,
+                        _ => {
+                            return Err(Self::invalid(
+                                "unsupported defgeneric method combination",
+                                option.span,
+                            ));
+                        }
+                    };
+                }
                 "METHOD-COMBINATION" => {
                     return Err(Self::invalid(
                         "unsupported defgeneric method combination",
@@ -60,7 +72,10 @@ impl Runtime {
                 }
             }
         }
-        environment.define_function(&name, Value::generic(name.clone()));
+        environment.define_function(
+            &name,
+            Value::generic_with_combination(name.clone(), method_combination),
+        );
         Ok(Value::symbol(name))
     }
 

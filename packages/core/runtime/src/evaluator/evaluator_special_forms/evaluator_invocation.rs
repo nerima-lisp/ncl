@@ -72,8 +72,12 @@ impl Runtime {
             crate::Function::Primitive { name } => {
                 self.apply_primitive(name, arguments, environment, span)
             }
-            crate::Function::Generic { name, methods } => {
-                self.apply_generic(name, methods, arguments, span, environment)
+            crate::Function::Generic {
+                name,
+                method_combination,
+                methods,
+            } => {
+                self.apply_generic(name, *method_combination, methods, arguments, span, environment)
             }
             crate::Function::SlotReader {
                 class_name,

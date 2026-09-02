@@ -9,6 +9,13 @@ use ncl_syntax::{
 
 use super::{Environment, MacroLambdaList, MethodDefinition, RuntimeError, Value};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MethodCombination {
+    Standard,
+    And,
+    Or,
+}
+
 /// Function pointer used by a registered runtime primitive.
 pub type Builtin = fn(&[Value]) -> Result<Value, RuntimeError>;
 
@@ -75,6 +82,8 @@ pub enum Function {
     Generic {
         /// The generic function name.
         name: String,
+        /// Built-in method combination used by the generic function.
+        method_combination: MethodCombination,
         /// The methods currently registered on the generic function.
         methods: Rc<RefCell<Vec<MethodDefinition>>>,
     },

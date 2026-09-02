@@ -108,6 +108,16 @@ fn compiled_evaluates_finalize_inheritance() {
 }
 
 #[test]
+fn compiled_evaluates_generic_function_name() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(progn (defgeneric compiled-named-generic (x)) (generic-function-name #'compiled-named-generic))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "COMPILED-NAMED-GENERIC");
+}
+
+#[test]
 fn compiled_evaluates_class_direct_default_initargs() {
     let values = Runtime::new()
         .eval_compiled_source(

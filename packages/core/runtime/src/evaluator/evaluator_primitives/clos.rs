@@ -1,5 +1,6 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::Function;
 
 impl Runtime {
     pub(crate) fn apply_slot_primitive(
@@ -84,6 +85,7 @@ impl Runtime {
                 | "CLASS-DIRECT-DEFAULT-INITARGS"
                 | "CLASS-FINALIZED-P"
                 | "FINALIZE-INHERITANCE"
+                | "GENERIC-FUNCTION-NAME"
         ) {
             return None;
         }
@@ -140,6 +142,26 @@ impl Runtime {
                         });
                     };
                     Ok(Value::symbol(c.name.clone()))
+                }
+                "GENERIC-FUNCTION-NAME" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity("generic-function-name", "one", arguments.len()));
+                    }
+                    let Value::Function(function) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let Function::Generic { name, .. } = function.as_ref() else {
+                        return Err(RuntimeError::Type {
+                            expected: "GENERIC-FUNCTION".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    Ok(Value::symbol(name.clone()))
                 }
                 "CLASS-PRECEDENCE-LIST" => {
                     if arguments.len() != 1 {

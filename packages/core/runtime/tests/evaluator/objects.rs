@@ -88,6 +88,14 @@ fn evaluates_finalize_inheritance() {
 }
 
 #[test]
+fn evaluates_generic_function_name() {
+    let values = Runtime::new()
+        .eval_source("(progn (defgeneric named-generic (x)) (generic-function-name #'named-generic))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "NAMED-GENERIC");
+}
+
+#[test]
 fn evaluates_class_direct_default_initargs() {
     let values = Runtime::new()
         .eval_source(

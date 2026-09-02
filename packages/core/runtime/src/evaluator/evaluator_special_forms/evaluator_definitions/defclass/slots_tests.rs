@@ -59,4 +59,15 @@ mod tests {
             .unwrap_or_else(|error| panic!("a slot should accept each declared initarg: {error}"));
         assert_eq!(values[1].to_string(), "42");
     }
+
+    #[test]
+    fn defclass_rejects_non_string_slot_documentation() {
+        let error =
+            eval_err("(defclass invalid-slot-documentation () ((value :documentation 42)))");
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "defclass slot documentation must be a string"
+        ));
+    }
 }

@@ -30,6 +30,7 @@ impl Runtime {
             "defclass slot must be a symbol",
         )?);
         let mut initargs = Vec::new();
+        let mut documentation = None;
         let mut init_form = None;
         let mut type_form = None;
         let mut class_value = None;
@@ -78,7 +79,15 @@ impl Runtime {
                     writers.push((unqualified_name(&writer_name), slot_name.clone()));
                 }
                 "TYPE" => type_form = Some(option[1].clone()),
-                "DOCUMENTATION" => {}
+                "DOCUMENTATION" => {
+                    let FormKind::String(value) = &option[1].kind else {
+                        return Err(Self::invalid(
+                            "defclass slot documentation must be a string",
+                            option[1].span,
+                        ));
+                    };
+                    documentation = Some(value.clone());
+                }
                 _ => {
                     return Err(Self::invalid(
                         "unsupported defclass slot option",
@@ -90,6 +99,7 @@ impl Runtime {
         Ok(DefclassSlotRegistration {
             slot: ClassSlot {
                 name: slot_name,
+                documentation,
                 initargs,
                 init_form,
                 type_form,

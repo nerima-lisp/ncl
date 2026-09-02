@@ -178,6 +178,7 @@ mod tests {
             slots: vec![
                 ClassSlot {
                     name: "X".to_owned(),
+                    documentation: None,
                     initargs: Vec::new(),
                     init_form: None,
                     type_form: None,
@@ -185,6 +186,7 @@ mod tests {
                 },
                 ClassSlot {
                     name: "Y".to_owned(),
+                    documentation: None,
                     initargs: Vec::new(),
                     init_form: None,
                     type_form: None,

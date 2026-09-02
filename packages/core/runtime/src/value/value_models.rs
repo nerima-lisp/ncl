@@ -28,6 +28,7 @@ pub struct StructureDefinition {
 #[derive(Clone, Debug)]
 pub struct ClassSlot {
     pub(crate) name: String,
+    pub(crate) documentation: Option<String>,
     pub(crate) initargs: Vec<String>,
     pub(crate) init_form: Option<Form>,
     pub(crate) type_form: Option<Form>,

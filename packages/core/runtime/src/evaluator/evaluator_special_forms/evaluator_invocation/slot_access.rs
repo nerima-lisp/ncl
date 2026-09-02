@@ -21,7 +21,10 @@ impl Runtime {
             .instance_slot(slot_name)
             .ok_or_else(|| Self::invalid("slot is not defined for this class", span))?;
         if matches!(value, Value::Unbound) {
-            return Err(Self::invalid("slot is unbound", span));
+            return Err(RuntimeError::UnboundSlot {
+                name: slot_name.to_owned(),
+                span: Some(span),
+            });
         }
         Ok(value)
     }

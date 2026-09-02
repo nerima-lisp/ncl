@@ -26,6 +26,13 @@ pub enum RuntimeError {
         /// The source span, when available.
         span: Option<Span>,
     },
+    /// An attempt to read an unbound CLOS slot.
+    UnboundSlot {
+        /// The slot name.
+        name: String,
+        /// The source span, when available.
+        span: Option<Span>,
+    },
     /// An attempt to call a non-callable value.
     NotCallable {
         /// A display representation of the value.

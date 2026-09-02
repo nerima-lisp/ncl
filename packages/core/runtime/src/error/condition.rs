@@ -9,6 +9,7 @@ impl RuntimeError {
             Self::Read(_) => Cow::Borrowed("READER-ERROR"),
             Self::Compile(_) => Cow::Borrowed("COMPILER-ERROR"),
             Self::UnboundVariable { .. } => Cow::Borrowed("UNBOUND-VARIABLE"),
+            Self::UnboundSlot { .. } => Cow::Borrowed("UNBOUND-SLOT"),
             Self::NotCallable { .. } | Self::Type { .. } => Cow::Borrowed("TYPE-ERROR"),
             Self::Arity { .. } => Cow::Borrowed("PROGRAM-ERROR"),
             Self::InvalidForm { .. } => Cow::Borrowed("SIMPLE-ERROR"),
@@ -80,6 +81,7 @@ impl RuntimeError {
                                             | "COMPILER-ERROR"
                                             | "FILE-ERROR"
                                             | "UNBOUND-VARIABLE"
+                                            | "UNBOUND-SLOT"
                                     )
                             })
                     }

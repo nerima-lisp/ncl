@@ -41,6 +41,14 @@ impl Value {
                 None,
                 Vec::new(),
             ),
+            RuntimeError::UnboundSlot { name, .. } => (
+                "UNBOUND-SLOT".to_owned(),
+                vec!["UNBOUND-SLOT".to_owned()],
+                vec![("NAME".to_owned(), Self::symbol(name))],
+                error.to_string(),
+                None,
+                Vec::new(),
+            ),
             _ => (
                 error.condition_type_name().into_owned(),
                 vec![error.condition_type_name().into_owned().into()],

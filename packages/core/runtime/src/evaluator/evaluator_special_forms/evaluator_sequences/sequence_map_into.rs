@@ -11,37 +11,23 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        let (result_kind, mut result) = match destination {
-            Value::Nil => ("NIL", Vec::new()),
-            Value::List(items) => ("LIST", items.as_ref().clone()),
-            Value::Vector(items) => ("VECTOR", items.borrow().clone()),
-            Value::String(value) => (
-                "STRING",
-                value.chars().map(Value::Character).collect::<Vec<_>>(),
-            ),
-            value => {
-                return Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                });
-            }
+        let result_kind = match destination {
+            Value::Nil => "NIL",
+            Value::List(_) => "LIST",
+            Value::Vector(_) => "VECTOR",
+            Value::String(_) => "STRING",
+            value => return Err(RuntimeError::Type { expected: "SEQUENCE".to_string(), actual: value.type_name().to_string(), span: Some(span) }),
         };
+        let mut result = destination.sequence_items().unwrap_or_default();
         let function =
             Value::Function(self.resolve_function_designator(function, span, environment)?);
         let sequences = sequences
             .iter()
-            .map(|value| match value {
-                Value::Nil => Ok(Vec::new()),
-                Value::List(items) => Ok(items.as_ref().clone()),
-                Value::Vector(items) => Ok(items.borrow().clone()),
-                Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
-                value => Err(RuntimeError::Type {
-                    expected: "SEQUENCE".to_string(),
-                    actual: value.type_name().to_string(),
-                    span: Some(span),
-                }),
-            })
+            .map(|value| value.sequence_items().ok_or_else(|| RuntimeError::Type {
+                expected: "SEQUENCE".to_string(),
+                actual: value.type_name().to_string(),
+                span: Some(span),
+            }))
             .collect::<Result<Vec<_>, _>>()?;
         let length = sequences
             .iter()

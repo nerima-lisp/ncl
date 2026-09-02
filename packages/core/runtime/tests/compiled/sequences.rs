@@ -156,6 +156,20 @@ fn compiled_evaluates_sequence_reduce() {
 }
 
 #[test]
+fn compiled_sequence_operations_respect_vector_fill_pointers() {
+    assert_eq!(
+        evaluate("(reduce #'+ (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))")
+            .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate("(map-into (make-array 3 :initial-contents '(0 0 9) :fill-pointer 2) #'1+ '(1 2 3))")
+            .to_string(),
+        "#(2 3)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_sequence_quantifiers() {
     assert_eq!(evaluate("(every #'numberp '(1 2))").to_string(), "T");
     assert_eq!(evaluate("(every #'= '(1 2) #(1 2))").to_string(), "T");

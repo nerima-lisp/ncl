@@ -959,6 +959,20 @@ fn evaluates_map_into_over_sequences() {
 }
 
 #[test]
+fn sequence_operations_respect_vector_fill_pointers() {
+    assert_eq!(
+        evaluate("(reduce #'+ (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))")
+            .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate("(map-into (make-array 3 :initial-contents '(0 0 9) :fill-pointer 2) #'1+ '(1 2 3))")
+            .to_string(),
+        "#(2 3)"
+    );
+}
+
+#[test]
 fn rejects_invalid_map_into_inputs_and_propagates_errors() {
     assert!(matches!(
         Runtime::new().eval_source("(map-into (vector 0) #'+ 5)"),

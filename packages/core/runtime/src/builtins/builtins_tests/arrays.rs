@@ -45,6 +45,29 @@ fn make_array_rejects_invalid_keyword_pairs() {
 }
 
 #[test]
+fn make_array_validates_element_type_against_initial_contents() {
+    let array = make_array(&[
+        Value::Integer(2),
+        Value::keyword("element-type"),
+        Value::symbol("integer"),
+        Value::keyword("initial-contents"),
+        Value::list(vec![Value::Integer(1), Value::Integer(2)]),
+    ])
+    .expect("integer initial contents should satisfy integer element type");
+    assert_eq!(array.array_element_type().map(|value| value.to_string()), Some("INTEGER".to_string()));
+
+    let error = make_array(&[
+        Value::Integer(1),
+        Value::keyword("element-type"),
+        Value::symbol("integer"),
+        Value::keyword("initial-element"),
+        Value::symbol("not-an-integer"),
+    ])
+    .expect_err("non-integer initial element must be rejected");
+    assert!(matches!(error, RuntimeError::InvalidForm { message, .. } if message.contains("element type")));
+}
+
+#[test]
 fn make_array_tracks_vector_fill_pointer_and_adjustability() {
     let vector = make_array(&[
         Value::Integer(4),

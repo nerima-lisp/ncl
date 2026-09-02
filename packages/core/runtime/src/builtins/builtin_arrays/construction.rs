@@ -233,6 +233,16 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     } else {
         vec![initial_element.unwrap_or(Value::Nil); total_size]
     };
+    for element in &elements {
+        if !crate::builtins::typep_value(element, &element_type)? {
+            return Err(RuntimeError::InvalidForm {
+                message: format!(
+                    "make-array initial element does not satisfy element type {element_type}"
+                ),
+                span: None,
+            });
+        }
+    }
     if dimensions.len() == 1 {
         let vector = if let Some((storage, target_offset, _)) = displaced_storage {
             Value::Vector(std::rc::Rc::new(crate::value::VectorData {

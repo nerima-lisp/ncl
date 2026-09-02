@@ -349,6 +349,30 @@ fn compile_setf_uses_native_getf_for_symbol_places() {
 }
 
 #[test]
+fn compile_setf_keeps_evaluated_getf_places_on_the_alias_safe_fallback() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (getf (car cells) :key) value)");
+    state.compile_setf(function, Span::new(0, 1), &items).unwrap();
+    assert!(state.functions[function]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::Setf(_))));
+}
+
+#[test]
+fn compile_setf_keeps_evaluated_subseq_places_on_the_alias_safe_fallback() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (subseq (car cells) start end) replacement)");
+    state.compile_setf(function, Span::new(0, 1), &items).unwrap();
+    assert!(state.functions[function]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::Setf(_))));
+}
+
+#[test]
 fn compile_setf_uses_native_symbol_plist_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

@@ -677,6 +677,20 @@ fn compiled_evaluates_nested_array_pushnew_options() {
 }
 
 #[test]
+fn compiled_evaluates_nested_svref_and_row_major_pushnew_options() {
+    assert_eq!(
+        evaluate(
+            "(let ((xs (list (vector (list (list 1 :a))))))
+               (list (pushnew (list 2 :b) (svref (car xs) 0) :key #'car :test-not #'eql)
+                     (pushnew (list 2 :c) (row-major-aref (car xs) 0) :key #'car :test-not #'eql)
+                     xs))",
+        )
+        .to_string(),
+        "(((1 :A)) ((1 :A)) (#(((1 :A)))))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_pushnew_options_in_source_order() {
     assert_eq!(
         evaluate(

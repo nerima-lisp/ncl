@@ -920,6 +920,7 @@ fn rejects_malformed_setf_places_from_table_cases() {
         "(setf (char 1 0) #\\X)",
         "(setf (char \"a\" 0) 1)",
         "(setf (aref #(1) 2) 3)",
+        "(setf (aref (make-array 1 :element-type 'integer) 0) 'not-an-integer)",
         "(setf (getf '(a 1 b) 'c) 2)",
         "(setf 1 2)",
         "(setf (unknown-place) 1)",

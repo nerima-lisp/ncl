@@ -22,6 +22,13 @@ impl Runtime {
                     return Err(Self::arity("setf aref", "two", args.len()));
                 }
                 let index = Self::setf_index(indices[0].clone(), args[1].span)?;
+                if !current.array_element_type_accepts(&value)? {
+                    return Err(RuntimeError::Type {
+                        expected: current.array_element_type().map_or_else(|| "array element type".to_string(), |ty| ty.to_string()),
+                        actual: value.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
+                }
                 let Some(()) = current.set_vector_item(index, value.clone()) else {
                     return Err(Self::invalid("SETF index is out of bounds", args[1].span));
                 };
@@ -56,14 +63,17 @@ impl Runtime {
                         .checked_add(contribution)
                         .ok_or_else(|| Self::invalid("SETF index is too large", place_span))?;
                 }
+                if !current.array_element_type_accepts(&value)? {
+                    return Err(RuntimeError::Type {
+                        expected: current.array_element_type().map_or_else(|| "array element type".to_string(), |ty| ty.to_string()),
+                        actual: value.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
+                }
                 let Some(()) = current.set_array_item(offset, value) else {
                     return Err(Self::invalid("SETF index is out of bounds", place_span));
                 };
-                self.set_place(
-                    &args[0],
-                    current,
-                    environment,
-                )
+                self.set_place(&args[0], current, environment)
             }
             other => Err(RuntimeError::Type {
                 expected: "ARRAY or VECTOR".to_string(),

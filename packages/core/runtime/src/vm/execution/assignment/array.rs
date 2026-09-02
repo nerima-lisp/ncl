@@ -292,6 +292,13 @@ fn execute_aref(
             if rank != 1 {
                 return Err(invalid("setf aref requires one vector index", span));
             }
+            if !current.array_element_type_accepts(&value)? {
+                return Err(RuntimeError::Type {
+                    expected: current.array_element_type().map_or_else(|| "array element type".to_string(), |ty| ty.to_string()),
+                    actual: value.type_name().to_string(),
+                    span: Some(span),
+                });
+            }
             current
                 .set_vector_item(indices[0], value.clone())
                 .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
@@ -319,6 +326,13 @@ fn execute_aref(
                     span,
                 )?
             };
+            if !current.array_element_type_accepts(&value)? {
+                return Err(RuntimeError::Type {
+                    expected: current.array_element_type().map_or_else(|| "array element type".to_string(), |ty| ty.to_string()),
+                    actual: value.type_name().to_string(),
+                    span: Some(span),
+                });
+            }
             current
                 .set_array_item(offset, value.clone())
                 .ok_or_else(|| invalid("SETF index is out of bounds", span))?;

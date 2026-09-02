@@ -190,6 +190,13 @@ impl Value {
         }
     }
 
+    pub(crate) fn array_element_type_accepts(&self, value: &Self) -> Result<bool, crate::error::RuntimeError> {
+        let Some(element_type) = self.array_element_type() else {
+            return Ok(true);
+        };
+        crate::builtins::typep_value(value, &element_type)
+    }
+
     pub(crate) fn set_array_element_type(&self, element_type: Self) -> Option<()> {
         match self {
             Self::Vector(items) => {

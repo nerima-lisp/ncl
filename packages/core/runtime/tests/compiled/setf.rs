@@ -1,5 +1,8 @@
 #[test]
 fn compiled_evaluates_setf_places() {
+    assert!(ncl_runtime::Runtime::new()
+        .eval_compiled_source("(setf (aref (make-array 1 :element-type 'integer) 0) 'not-an-integer)")
+        .is_err());
     assert_eq!(
         evaluate("(let ((target 'compiled-plist-evaluated)) (setf (symbol-plist (if t target 'other)) '(:key 42)) (symbol-plist target))").to_string(),
         "(:KEY 42)"

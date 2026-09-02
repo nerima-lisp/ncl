@@ -31,8 +31,8 @@ fn compiled_returns_condition_message() {
 fn compiled_define_condition_registers_condition_readers() {
     let result = Runtime::new()
         .eval_compiled_source(
-            "(define-condition sample-condition (condition) ((datum :reader sample-datum)))
-             (sample-datum (make-condition 'sample-condition :datum 42))",
+            "(define-condition sample-condition (condition) ((payload :initarg :payload :reader sample-payload)))
+             (sample-payload (make-condition 'sample-condition :payload 42))",
         )
         .expect("compiled DEFINE-CONDITION failed");
     assert_eq!(result.last().expect("no result").to_string(), "42");

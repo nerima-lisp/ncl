@@ -8,6 +8,12 @@ pub use ncl_syntax::normalize_name;
 use crate::Value;
 use crate::value::{ClassDefinition, StructureDefinition};
 
+#[derive(Clone, Debug)]
+pub(crate) struct ConditionDefinition {
+    pub(crate) parents: Vec<String>,
+    pub(crate) initargs: Vec<(String, String)>,
+}
+
 mod control_targets;
 mod definitions;
 mod functions;
@@ -35,6 +41,7 @@ struct Frame {
     setf_expanders: HashMap<Rc<str>, Value>,
     structures: HashMap<Rc<str>, StructureDefinition>,
     classes: HashMap<Rc<str>, Rc<ClassDefinition>>,
+    conditions: HashMap<Rc<str>, ConditionDefinition>,
     symbol_properties: Vec<(Value, Value)>,
     block_targets: HashMap<Rc<str>, u64>,
     tag_targets: HashMap<Rc<str>, u64>,
@@ -56,6 +63,7 @@ impl Environment {
             setf_expanders: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
+            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),
@@ -77,6 +85,7 @@ impl Environment {
             setf_expanders: HashMap::new(),
             structures: HashMap::new(),
             classes: HashMap::new(),
+            conditions: HashMap::new(),
             symbol_properties: Vec::new(),
             block_targets: HashMap::new(),
             tag_targets: HashMap::new(),

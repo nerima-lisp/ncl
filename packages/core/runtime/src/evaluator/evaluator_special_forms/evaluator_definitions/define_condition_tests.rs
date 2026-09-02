@@ -6,8 +6,8 @@ mod tests {
     fn define_condition_registers_condition_readers() {
         let values = Runtime::new()
             .eval_source(
-                "(define-condition sample-condition (condition) ((datum :reader sample-datum)))
-                 (sample-datum (make-condition 'sample-condition :datum 42))",
+                "(define-condition sample-condition (condition) ((payload :initarg :payload :reader sample-payload)))
+                 (sample-payload (make-condition 'sample-condition :payload 42))",
             )
             .unwrap_or_else(|error| panic!("define-condition should register a reader: {error}"));
         assert_eq!(values.last().map(ToString::to_string).as_deref(), Some("42"));
@@ -19,5 +19,17 @@ mod tests {
             .eval_source("(define-condition orphan-condition (missing) ())")
             .expect_err("unknown parent must be rejected");
         assert!(matches!(error, RuntimeError::InvalidForm { message, .. } if message == "unknown define-condition parent"));
+    }
+
+    #[test]
+    fn define_condition_supports_custom_parent_type() {
+        let values = Runtime::new()
+            .eval_source(
+                "(define-condition base-condition (condition) ())
+                 (define-condition child-condition (base-condition) ((payload :initarg :payload :reader child-payload)))
+                 (child-payload (make-condition 'child-condition :payload 7))",
+            )
+            .expect("custom condition inheritance should work");
+        assert_eq!(values.last().map(ToString::to_string).as_deref(), Some("7"));
     }
 }

@@ -1,9 +1,50 @@
 use ncl_syntax::Span;
 
 use crate::error::{ConditionName, SignaledError, normalize_condition_name};
-use crate::{ReturnValue, Runtime, RuntimeError, Value, builtins};
+use crate::{Environment, ReturnValue, Runtime, RuntimeError, Value, builtins};
 
 impl Runtime {
+    pub(crate) fn make_condition_in(
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() {
+            return Self::make_condition(arguments, span);
+        }
+        let actual_type = Self::name_designator_from_value(&arguments[0], span)?;
+        let Some(definition) = environment.lookup_condition(&actual_type) else {
+            return Self::make_condition(arguments, span);
+        };
+        let initargs = &arguments[1..];
+        if !initargs.len().is_multiple_of(2) {
+            return Err(Self::invalid("make-condition initargs must be keyword/value pairs", span));
+        }
+        let mut slots = Vec::new();
+        for pair in initargs.as_chunks::<2>().0 {
+            let initarg = Self::name_designator_from_value(&pair[0], span)?;
+            let Some((_, slot_name)) = definition.initargs.iter().find(|(name, _)| name == &initarg) else {
+                return Err(Self::invalid(&format!("unknown make-condition initarg :{initarg}"), span));
+            };
+            slots.push((slot_name.clone(), pair[1].clone()));
+        }
+        let mut type_names = vec![actual_type.clone()];
+        for parent in definition.parents {
+            type_names.push(parent.clone());
+            if let Some(parent_definition) = environment.lookup_condition(&parent) {
+                type_names.extend(parent_definition.parents);
+            }
+        }
+        Ok(Value::condition_from_parts_with_types(
+            actual_type,
+            type_names,
+            slots,
+            String::new(),
+            None,
+            Vec::new(),
+        ))
+    }
+
     pub(crate) fn condition_format_control(value: &Value) -> Option<String> {
         match value {
             Value::String(control) => Some(control.to_string()),

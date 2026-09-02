@@ -14,13 +14,18 @@ impl Runtime {
             "define-condition name must be a symbol",
         )?);
         let parents = Self::list_form_items(&items[2], "define-condition parent list")?;
+        let mut parent_names = Vec::new();
         for parent in parents {
             let parent = Self::definition_name_from_form(parent, "define-condition parent")?;
-            if !matches!(parent.as_str(), "CONDITION" | "SERIOUS-CONDITION" | "WARNING" | "ERROR") {
+            if !matches!(parent.as_str(), "CONDITION" | "SERIOUS-CONDITION" | "WARNING" | "ERROR")
+                && environment.lookup_condition(&parent).is_none()
+            {
                 return Err(Self::invalid("unknown define-condition parent", items[2].span));
             }
+            parent_names.push(parent);
         }
         let slots = Self::list_form_items(&items[3], "define-condition slot list")?;
+        let mut initargs = Vec::new();
         for slot in slots {
             let (slot_name, options) = match &slot.kind {
                 FormKind::Atom(_) => (slot, &[][..]),
@@ -43,7 +48,11 @@ impl Runtime {
                             environment.define_function(&accessor, Value::condition_writer(name.clone(), slot_name.clone()));
                         }
                     }
-                    "INITARG" | "INITFORM" | "TYPE" | "DOCUMENTATION" => {}
+                    "INITARG" => {
+                        let initarg = Self::definition_name_from_form(&pair[1], "condition initarg")?;
+                        initargs.push((initarg, slot_name.clone()));
+                    }
+                    "INITFORM" | "TYPE" | "DOCUMENTATION" => {}
                     _ => return Err(Self::invalid("unsupported define-condition slot option", pair[0].span)),
                 }
             }
@@ -58,6 +67,10 @@ impl Runtime {
                 return Err(Self::invalid("define-condition :documentation needs one string", option.span));
             }
         }
+        environment.define_condition(name.clone(), crate::environment::ConditionDefinition {
+            parents: parent_names,
+            initargs,
+        });
         Ok(Value::symbol(name))
     }
 }

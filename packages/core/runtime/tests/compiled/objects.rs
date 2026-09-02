@@ -193,6 +193,20 @@ fn compiled_evaluates_clos_default_initargs() {
 }
 
 #[test]
+fn compiled_evaluates_clos_multiple_initargs() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass aliases-class ()
+                   ((value :initarg :value :initarg :alternate)))
+                 (slot-value (make-instance 'aliases-class :alternate 42) 'value))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "42");
+}
+
+#[test]
 fn compiled_evaluates_clos_setf_and_generic_methods() {
     let values = Runtime::new()
         .eval_compiled_source(

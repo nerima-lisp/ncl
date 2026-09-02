@@ -1,4 +1,4 @@
-use super::{Environment, Runtime, RuntimeError, Span, Value, quoted_form_value};
+use super::{quoted_form_value, Environment, Runtime, RuntimeError, Span, Value};
 
 impl Runtime {
     pub(crate) fn set_instance_slot_checked(
@@ -71,7 +71,7 @@ impl Runtime {
             if !class
                 .slots
                 .iter()
-                .any(|slot| slot.initarg.as_deref() == Some(initarg.as_str()))
+                .any(|slot| slot.initargs.iter().any(|name| name == initarg))
             {
                 return Err(Self::invalid("unknown make-instance initarg", span));
             }
@@ -79,7 +79,7 @@ impl Runtime {
 
         let mut slots = Vec::with_capacity(class.slots.len());
         for slot in &class.slots {
-            let initarg_value = slot.initarg.as_ref().and_then(|initarg| {
+            let initarg_value = slot.initargs.iter().find_map(|initarg| {
                 initargs
                     .iter()
                     .rev()
@@ -116,7 +116,7 @@ impl Runtime {
             let Some(index) = class
                 .slots
                 .iter()
-                .position(|slot| slot.initarg.as_deref() == Some(initarg.as_str()))
+                .position(|slot| slot.initargs.iter().any(|name| name == &initarg))
             else {
                 return Err(Self::invalid("unknown make-instance initarg", span));
             };

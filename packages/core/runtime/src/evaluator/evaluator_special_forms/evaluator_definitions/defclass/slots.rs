@@ -1,6 +1,6 @@
 use super::{
-    ClassSlot, Form, FormKind, Rc, RefCell, Runtime, RuntimeError, Value, is_nil_form,
-    unqualified_name,
+    is_nil_form, unqualified_name, ClassSlot, Form, FormKind, Rc, RefCell, Runtime, RuntimeError,
+    Value,
 };
 
 pub(super) struct DefclassSlotRegistration {
@@ -29,7 +29,7 @@ impl Runtime {
             slot_name_form,
             "defclass slot must be a symbol",
         )?);
-        let mut initarg = None;
+        let mut initargs = Vec::new();
         let mut init_form = None;
         let mut type_form = None;
         let mut class_value = None;
@@ -45,9 +45,12 @@ impl Runtime {
             let option_name = Self::definition_name_from_form(&option[0], "defclass slot option")?;
             match option_name.as_str() {
                 "INITARG" => {
-                    initarg = (!is_nil_form(&option[1]))
-                        .then(|| Self::definition_name_from_form(&option[1], "defclass initarg"))
-                        .transpose()?;
+                    if !is_nil_form(&option[1]) {
+                        initargs.push(Self::definition_name_from_form(
+                            &option[1],
+                            "defclass initarg",
+                        )?);
+                    }
                 }
                 "INITFORM" => init_form = Some(option[1].clone()),
                 "ALLOCATION" => {
@@ -87,7 +90,7 @@ impl Runtime {
         Ok(DefclassSlotRegistration {
             slot: ClassSlot {
                 name: slot_name,
-                initarg,
+                initargs,
                 init_form,
                 type_form,
                 class_value,

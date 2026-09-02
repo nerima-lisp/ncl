@@ -48,4 +48,15 @@ mod tests {
             });
         assert_eq!(values[0].to_string(), "EXPLICIT-INSTANCE-CLASS");
     }
+
+    #[test]
+    fn defclass_accepts_multiple_initargs_for_one_slot() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass aliases-class () ((value :initarg :value :initarg :alternate)))
+                 (slot-value (make-instance 'aliases-class :alternate 42) 'value)",
+            )
+            .unwrap_or_else(|error| panic!("a slot should accept each declared initarg: {error}"));
+        assert_eq!(values[1].to_string(), "42");
+    }
 }

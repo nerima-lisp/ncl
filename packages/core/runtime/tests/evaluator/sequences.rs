@@ -1005,6 +1005,18 @@ fn simple_bit_vector_predicates_respect_array_metadata() {
 }
 
 #[test]
+fn simple_vector_typep_respects_array_metadata() {
+    assert_eq!(
+        evaluate("(list (typep #(1 2) 'simple-vector)\
+                       (typep (make-array 2 :adjustable t) 'simple-vector)\
+                       (typep (make-array 2 :fill-pointer 1) 'simple-vector)\
+                       (typep (make-array 2 :element-type 'character) 'simple-vector))")
+            .to_string(),
+        "(T NIL NIL NIL)"
+    );
+}
+
+#[test]
 fn rejects_invalid_map_into_inputs_and_propagates_errors() {
     assert!(matches!(
         Runtime::new().eval_source("(map-into (vector 0) #'+ 5)"),

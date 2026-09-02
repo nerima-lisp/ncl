@@ -85,7 +85,19 @@ pub(in crate::builtins::types::type_matching) fn simple_vector_type_matches(
     let Some(items) = value.vector_items() else {
         return Ok(false);
     };
-    Ok(expected_size.is_none_or(|size| size == items.len()))
+    Ok(is_simple_vector_value(value)
+        && expected_size.is_none_or(|size| size == items.len()))
+}
+
+pub(in crate::builtins::types::type_matching) fn is_simple_vector_value(value: &Value) -> bool {
+    matches!(value, Value::Vector(_))
+        && value.vector_adjustable() != Some(true)
+        && !value.array_has_fill_pointer().unwrap_or(false)
+        && !value.is_displaced()
+        && value
+            .array_element_type()
+            .and_then(|element_type| element_type.symbol_name().map(str::to_ascii_uppercase))
+            .is_some_and(|element_type| element_type == "T")
 }
 
 pub(in crate::builtins::types::type_matching) fn bit_vector_type_matches(

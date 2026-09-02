@@ -24,3 +24,8 @@ tests where the corresponding feature is supported. Passing the test suite
 does not establish conformance with other implementations or the full Common Lisp standard.
 Compatibility claims should be made only for behavior backed by executable
 tests.
+
+The native compiler surface also includes list traversal, list-tail, list
+construction, and mutation operations such as <code>NTHCDR</code>,
+<code>TAILP</code>, <code>LDIFF</code>, <code>RPLACA</code>, and
+<code>RPLACD</code>.

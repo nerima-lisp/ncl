@@ -29,7 +29,8 @@ change as implementation and conformance work reveal the next boundary.
 ## Compiler and execution
 
 - Move evaluator-backed compiler paths to native bytecode incrementally; the
-  current native surface includes multiple-value selection through
+  current native surface includes list traversal, list-tail, list construction,
+  and multiple-value selection through
   <code>nth-value</code> and <code>PUSH</code>/<code>POP</code> for simple symbol
   places, including simple-symbol <code>PUSHNEW</code> with literal
   <code>:TEST</code>, <code>:TEST-NOT</code>, and <code>:KEY</code> options.

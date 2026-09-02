@@ -55,6 +55,9 @@ pub(crate) fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !stream.is_input() {
         return Err(stream_state_error("peek-char", "an input stream"));
     }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("peek-char", "a character stream"));
+    }
     match peek_character(&mut stream, peek_type)? {
         Some(character) => Ok(Value::Character(character)),
         None if eof_error_p => Err(end_of_file_error("a character")),
@@ -75,6 +78,9 @@ pub(crate) fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !stream.is_input() {
         return Err(stream_state_error("unread-char", "an input stream"));
     }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("unread-char", "a character stream"));
+    }
     if !stream.unread_char(character) {
         return Err(stream_state_error(
             "unread-char",
@@ -93,6 +99,9 @@ pub(crate) fn listen(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !stream.is_input() {
         return Err(stream_state_error("listen", "an input stream"));
     }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("listen", "a character stream"));
+    }
     Ok(Value::boolean(stream.peek_char().is_some()))
 }
 
@@ -105,6 +114,9 @@ pub(crate) fn read_char_no_hang(arguments: &[Value]) -> Result<Value, RuntimeErr
     if !stream.is_input() {
         return Err(stream_state_error("read-char-no-hang", "an input stream"));
     }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("read-char-no-hang", "a character stream"));
+    }
     Ok(stream.read_char().map_or(Value::Nil, Value::Character))
 }
 
@@ -116,6 +128,9 @@ pub(crate) fn clear_input(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut stream = stream.borrow_mut();
     if !stream.is_input() {
         return Err(stream_state_error("clear-input", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("clear-input", "a character stream"));
     }
     while stream.read_char().is_some() {}
     Ok(Value::Nil)
@@ -138,6 +153,9 @@ pub(crate) fn read_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> 
     let mut stream = stream.borrow_mut();
     if !stream.is_input() {
         return Err(stream_state_error("read-sequence", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("read-sequence", "a character stream"));
     }
     let mut index = start;
     while index < end {
@@ -168,6 +186,9 @@ pub(crate) fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut stream = stream.borrow_mut();
     if !stream.is_input() {
         return Err(stream_state_error("read-line", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("read-line", "a character stream"));
     }
     match stream.read_line() {
         Some((line, eof)) => Ok(Value::values(vec![

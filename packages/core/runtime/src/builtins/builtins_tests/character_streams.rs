@@ -167,3 +167,18 @@ fn nonblocking_input_operations_consume_modeled_character_streams() -> Result<()
     assert!(matches!(read_char_no_hang(&[stream])?, Value::Nil));
     Ok(())
 }
+
+#[test]
+fn character_input_operations_reject_byte_streams() -> Result<(), RuntimeError> {
+    let stream = Value::file_byte_input_stream(vec![65]);
+    let sequence = Value::vector(vec![Value::Nil]);
+
+    assert!(peek_char(std::slice::from_ref(&stream)).is_err());
+    assert!(unread_char(&[Value::Character('a'), stream.clone()]).is_err());
+    assert!(listen(std::slice::from_ref(&stream)).is_err());
+    assert!(read_char_no_hang(std::slice::from_ref(&stream)).is_err());
+    assert!(clear_input(std::slice::from_ref(&stream)).is_err());
+    assert!(read_line(std::slice::from_ref(&stream)).is_err());
+    assert!(read_sequence(&[sequence, stream]).is_err());
+    Ok(())
+}

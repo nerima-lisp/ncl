@@ -18,6 +18,7 @@ pub fn execute_hash_table_instruction(
         "MAKE-HASH-TABLE" => crate::builtins::make_hash_table(&arguments),
         "CLRHASH" => crate::builtins::clrhash(&arguments),
         "HASH-TABLE-COUNT" => crate::builtins::hash_table_count(&arguments),
+        "HASH-TABLE-SIZE" => crate::builtins::hash_table_size(&arguments),
         "HASH-TABLE-TEST" => crate::builtins::hash_table_test_value(&arguments),
         "NCL-HASH-TABLE-KEYS" => crate::builtins::hash_table_keys(&arguments),
         "NCL-HASH-TABLE-VALUES" => crate::builtins::hash_table_values(&arguments),

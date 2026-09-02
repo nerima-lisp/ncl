@@ -1441,6 +1441,7 @@ fn emits_eval_and_mapcar_instructions() {
         ("REMHASH", "(remhash :a (make-hash-table))", 2),
         ("CLRHASH", "(clrhash (make-hash-table))", 1),
         ("HASH-TABLE-COUNT", "(hash-table-count (make-hash-table))", 1),
+        ("HASH-TABLE-SIZE", "(hash-table-size (make-hash-table))", 1),
         ("HASH-TABLE-TEST", "(hash-table-test (make-hash-table))", 1),
         ("NCL-HASH-TABLE-KEYS", "(ncl-hash-table-keys (make-hash-table))", 1),
         ("NCL-HASH-TABLE-VALUES", "(ncl-hash-table-values (make-hash-table))", 1),

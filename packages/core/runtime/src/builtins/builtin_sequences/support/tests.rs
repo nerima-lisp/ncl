@@ -17,6 +17,22 @@ fn replace_bounds_rejects_an_unknown_option() {
 }
 
 #[test]
+fn sequence_bounds_rejects_a_dangling_option() {
+    assert!(matches!(
+        sequence_bounds("test", 3, &[Value::keyword("start")]),
+        Err(RuntimeError::InvalidForm { .. })
+    ));
+}
+
+#[test]
+fn replace_bounds_rejects_a_dangling_option() {
+    assert!(matches!(
+        replace_bounds(3, 3, &[Value::keyword("start1")]),
+        Err(RuntimeError::InvalidForm { .. })
+    ));
+}
+
+#[test]
 fn sequence_elements_and_length_handle_nil_as_empty() {
     assert!(matches!(sequence_elements("test", &Value::Nil), Ok(items) if items.is_empty()));
     assert_eq!(sequence_length(&Value::Nil), Some(0));

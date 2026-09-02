@@ -6,6 +6,12 @@ pub fn sequence_bounds(
     length: usize,
     options: &[Value],
 ) -> Result<(usize, usize), RuntimeError> {
+    if !options.len().is_multiple_of(2) {
+        return Err(RuntimeError::InvalidForm {
+            message: format!("{function} options must be keyword/value pairs"),
+            span: None,
+        });
+    }
     let mut start = 0;
     let mut end = length;
     for pair in options.as_chunks::<2>().0 {
@@ -34,6 +40,12 @@ pub fn replace_bounds(
     second_length: usize,
     options: &[Value],
 ) -> Result<(usize, usize, usize, usize), RuntimeError> {
+    if !options.len().is_multiple_of(2) {
+        return Err(RuntimeError::InvalidForm {
+            message: "replace options must be keyword/value pairs".to_string(),
+            span: None,
+        });
+    }
     let mut start1 = 0;
     let mut end1 = first_length;
     let mut start2 = 0;

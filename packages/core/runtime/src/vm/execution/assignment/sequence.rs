@@ -344,6 +344,8 @@ pub(super) fn execute(
             program_counter,
             span,
         ),
+        Instruction::ShiftfDynamicMixed(places) => rotate_shift::execute_shiftf_dynamic_mixed(places, stack, environment, runtime, program_counter, span),
+        Instruction::RotatefDynamicMixed(places) => rotate_shift::execute_rotatef_dynamic_mixed(places, stack, environment, runtime, program_counter, span),
         _ => Ok(false),
     }
 }

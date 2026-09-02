@@ -5,4 +5,6 @@ pub enum RotateShiftPlace {
     Symbol(String, bool),
     /// List accessors, root variable name, and its escaping mode.
     NestedList(Vec<String>, String, bool),
+    /// A dynamically indexed NTH place and its root variable.
+    DynamicNth(Vec<String>, String, bool),
 }

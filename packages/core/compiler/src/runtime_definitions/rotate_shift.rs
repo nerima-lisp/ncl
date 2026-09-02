@@ -77,6 +77,43 @@ impl CompileState {
                 return Ok(Some(()));
             }
         }
+        let mixed_dynamic = place_forms
+            .iter()
+            .map(|place| {
+                if let Some((index, target, accessors, name, escaped)) = crate::dynamic_nth_list_place(place) {
+                    Ok((crate::RotateShiftPlace::DynamicNth(accessors, name, escaped), Some((index, target))))
+                } else if let Ok((name, escaped)) = Self::symbol_name_info(place, "symbol place") {
+                    Ok((crate::RotateShiftPlace::Symbol(name, escaped), None))
+                } else {
+                    crate::generalized_list_place(place)
+                        .map(|(accessors, name, escaped)| (crate::RotateShiftPlace::NestedList(accessors, name, escaped), None))
+                        .ok_or(())
+                }
+            })
+            .collect::<Result<Vec<_>, _>>();
+        if let Ok(mixed_dynamic) = mixed_dynamic {
+            if mixed_dynamic.iter().any(|(_, operands)| operands.is_some()) {
+                for (place, operands) in &mixed_dynamic {
+                    if let Some((index, target)) = operands {
+                        self.compile_expression(function, index)?;
+                        self.compile_expression(function, target)?;
+                    } else {
+                        let (name, escaped) = match place {
+                            crate::RotateShiftPlace::Symbol(name, escaped) => (name, *escaped),
+                            crate::RotateShiftPlace::NestedList(_, name, escaped) => (name, *escaped),
+                            crate::RotateShiftPlace::DynamicNth(_, _, _) => unreachable!(),
+                        };
+                        self.emit(function, if escaped { Instruction::LoadExact(name.clone()) } else { Instruction::Load(name.clone()) }, place_forms[0].span)?;
+                    }
+                }
+                if operator == "SHIFTF" {
+                    self.compile_expression(function, &items[items.len() - 1])?;
+                }
+                let places = mixed_dynamic.into_iter().map(|(place, _)| place).collect();
+                self.emit(function, if operator == "ROTATEF" { Instruction::RotatefDynamicMixed(places) } else { Instruction::ShiftfDynamicMixed(places) }, items[0].span)?;
+                return Ok(Some(()));
+            }
+        }
         let places = place_forms
             .iter()
             .map(|place| Self::symbol_name_info(place, "symbol place"))

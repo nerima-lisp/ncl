@@ -387,6 +387,18 @@ fn compiled_evaluates_native_dynamic_nth_rotate_and_shift() {
 }
 
 #[test]
+fn compiled_evaluates_native_dynamic_nth_mixed_rotate_and_shift() {
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2)) (ys (list 10 20)) (i 0)) (rotatef (nth i xs) (car ys)) (list xs ys))").to_string(),
+        "((10 2) (1 20))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2)) (ys (list 10 20)) (i 0)) (list (shiftf (car ys) (nth i xs) 99) xs ys))").to_string(),
+        "(10 (99 2) (1 20))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_nested_rotatef_and_shiftf() {
     assert_eq!(
         evaluate(

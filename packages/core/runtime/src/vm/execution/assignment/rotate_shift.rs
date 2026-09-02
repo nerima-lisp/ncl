@@ -314,6 +314,7 @@ pub(super) fn execute_rotatef_mixed(
                     span,
                 )?
             }
+            ncl_compiler::RotateShiftPlace::DynamicNth(_, _, _) => unreachable!(),
         });
     }
     for (index, (place, root)) in places.iter().zip(roots).enumerate() {
@@ -341,11 +342,80 @@ pub(super) fn execute_rotatef_mixed(
                     runtime.set_or_define_in(name, updated, environment, span)?
                 }
             }
+            ncl_compiler::RotateShiftPlace::DynamicNth(_, _, _) => unreachable!(),
         }
     }
     stack.push(Value::Nil);
     *program_counter += 1;
     Ok(true)
+}
+
+pub(super) fn execute_rotatef_dynamic_mixed(
+    places: &[ncl_compiler::RotateShiftPlace], stack: &mut Vec<Value>, environment: &Environment,
+    runtime: &Runtime, program_counter: &mut usize, span: Span,
+) -> Result<bool, RuntimeError> {
+    let count = places.iter().map(|place| if matches!(place, ncl_compiler::RotateShiftPlace::DynamicNth(_, _, _)) { 2 } else { 1 }).sum::<usize>();
+    if stack.len() < count { return Err(invalid("rotatef has too few values on the stack", span)); }
+    let values = stack.split_off(stack.len() - count);
+    let mut cursor = 0;
+    let mut roots = Vec::with_capacity(places.len());
+    let mut old = Vec::with_capacity(places.len());
+    let mut indices = Vec::with_capacity(places.len());
+    for place in places {
+        let (index, root) = match place {
+            ncl_compiler::RotateShiftPlace::DynamicNth(_, _, _) => {
+                let index = crate::builtins::index_argument("ROTATEF NTH", &values[cursor].primary_value())?;
+                cursor += 1; let root = values[cursor].clone(); cursor += 1; (Some(index), root)
+            }
+            _ => { let root = values[cursor].clone(); cursor += 1; (None, root) }
+        };
+        let target = match place {
+            ncl_compiler::RotateShiftPlace::Symbol(_, _) => root.clone(),
+            ncl_compiler::RotateShiftPlace::NestedList(accessors, _, _) | ncl_compiler::RotateShiftPlace::DynamicNth(accessors, _, _) => {
+                let elements = root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: root.type_name().into(), span: Some(span) })?;
+                if let Some(index) = index {
+                    let list = if accessors.is_empty() { Value::list(elements.clone()) } else { super::list::nested::read(elements.clone(), accessors, span)? };
+                    list.list_items().and_then(|items| items.get(index).cloned()).ok_or_else(|| crate::builtins::out_of_bounds("ROTATEF NTH", index))?
+                } else { super::list::nested::read(elements, accessors, span)? }
+            }
+        };
+        roots.push(root); old.push(target); indices.push(index);
+    }
+    for (index, (place, root)) in places.iter().zip(roots).enumerate() {
+        let value = old[(index + old.len() - 1) % old.len()].clone().primary_value();
+        match place {
+            ncl_compiler::RotateShiftPlace::Symbol(name, escaped) => if *escaped { runtime.set_or_define_exact_in(name, value, environment, span)? } else { runtime.set_or_define_in(name, value, environment, span)? },
+            ncl_compiler::RotateShiftPlace::NestedList(accessors, name, escaped) => {
+                let updated = Value::list(super::list::nested::update(root.list_items().unwrap(), accessors, &value, span)?);
+                if *escaped { runtime.set_or_define_exact_in(name, updated, environment, span)? } else { runtime.set_or_define_in(name, updated, environment, span)? }
+            }
+            ncl_compiler::RotateShiftPlace::DynamicNth(accessors, name, escaped) => {
+                let updated = Value::list(super::list::nested::update_dynamic(root.list_items().unwrap(), accessors, indices[index].unwrap(), &value, span)?);
+                if *escaped { runtime.set_or_define_exact_in(name, updated, environment, span)? } else { runtime.set_or_define_in(name, updated, environment, span)? }
+            }
+        }
+    }
+    stack.push(Value::Nil); *program_counter += 1; Ok(true)
+}
+
+pub(super) fn execute_shiftf_dynamic_mixed(
+    places: &[ncl_compiler::RotateShiftPlace], stack: &mut Vec<Value>, environment: &Environment,
+    runtime: &Runtime, program_counter: &mut usize, span: Span,
+) -> Result<bool, RuntimeError> {
+    let count = places.iter().map(|place| if matches!(place, ncl_compiler::RotateShiftPlace::DynamicNth(_, _, _)) { 2 } else { 1 }).sum::<usize>() + 1;
+    if stack.len() < count { return Err(invalid("shiftf has too few values on the stack", span)); }
+    let values = stack.split_off(stack.len() - count);
+    let mut cursor = 0; let mut roots = Vec::with_capacity(places.len()); let mut old = Vec::with_capacity(places.len()); let mut indices = Vec::with_capacity(places.len());
+    for place in places {
+        let (index, root) = match place { ncl_compiler::RotateShiftPlace::DynamicNth(_, _, _) => { let i = crate::builtins::index_argument("SHIFTF NTH", &values[cursor].primary_value())?; cursor += 1; let r = values[cursor].clone(); cursor += 1; (Some(i), r) }, _ => { let r = values[cursor].clone(); cursor += 1; (None, r) } };
+        let target = match place { ncl_compiler::RotateShiftPlace::Symbol(_, _) => root.clone(), ncl_compiler::RotateShiftPlace::NestedList(a, _, _) | ncl_compiler::RotateShiftPlace::DynamicNth(a, _, _) => { let e = root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: root.type_name().into(), span: Some(span) })?; if let Some(i) = index { let l = if a.is_empty() { Value::list(e.clone()) } else { super::list::nested::read(e.clone(), a, span)? }; l.list_items().and_then(|x| x.get(i).cloned()).ok_or_else(|| crate::builtins::out_of_bounds("SHIFTF NTH", i))? } else { super::list::nested::read(e, a, span)? } } };
+        roots.push(root); old.push(target); indices.push(index);
+    }
+    for (i, (place, root)) in places.iter().zip(roots).enumerate() {
+        let value = old.get(i + 1).cloned().unwrap_or_else(|| values.last().unwrap().clone()).primary_value();
+        match place { ncl_compiler::RotateShiftPlace::Symbol(n, e) => if *e { runtime.set_or_define_exact_in(n, value, environment, span)? } else { runtime.set_or_define_in(n, value, environment, span)? }, ncl_compiler::RotateShiftPlace::NestedList(a, n, e) => { let u = Value::list(super::list::nested::update(root.list_items().unwrap(), a, &value, span)?); if *e { runtime.set_or_define_exact_in(n, u, environment, span)? } else { runtime.set_or_define_in(n, u, environment, span)? } }, ncl_compiler::RotateShiftPlace::DynamicNth(a, n, e) => { let u = Value::list(super::list::nested::update_dynamic(root.list_items().unwrap(), a, indices[i].unwrap(), &value, span)?); if *e { runtime.set_or_define_exact_in(n, u, environment, span)? } else { runtime.set_or_define_in(n, u, environment, span)? } } }
+    }
+    stack.push(old[0].clone()); *program_counter += 1; Ok(true)
 }
 
 pub(super) fn execute_shiftf_mixed(
@@ -369,6 +439,7 @@ pub(super) fn execute_shiftf_mixed(
             ncl_compiler::RotateShiftPlace::NestedList(accessors, _, _) => {
                 super::list::nested::read(root.list_items().unwrap(), accessors, span)
             }
+            ncl_compiler::RotateShiftPlace::DynamicNth(_, _, _) => unreachable!(),
         })
         .collect::<Result<Vec<_>, _>>()?;
     for (index, (place, root)) in places.iter().zip(roots).enumerate() {
@@ -394,6 +465,7 @@ pub(super) fn execute_shiftf_mixed(
                     runtime.set_or_define_in(name, updated, environment, span)?
                 }
             }
+            ncl_compiler::RotateShiftPlace::DynamicNth(_, _, _) => unreachable!(),
         }
     }
     stack.push(old[0].clone());

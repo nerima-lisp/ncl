@@ -502,6 +502,17 @@ fn compile_runtime_definition_uses_native_dynamic_nth_rotate_and_shift() {
 }
 
 #[test]
+fn compile_runtime_definition_uses_native_dynamic_nth_mixed_rotate_and_shift() {
+    let mut state = CompileState::default();
+    for source in ["(rotatef (nth index xs) (car ys))", "(shiftf (car ys) (nth index xs) 9)"] {
+        let function = state.reserve_function(None, Vec::new());
+        let items = parse_items(source);
+        state.compile_runtime_definition(function, Span::new(0, 1), &items).expect("mixed dynamic NTH rotate/shift should compile");
+        assert!(state.functions[function].instructions.iter().any(|instruction| matches!(instruction, Instruction::RotatefDynamicMixed(places) | Instruction::ShiftfDynamicMixed(places) if places.len() == 2)));
+    }
+}
+
+#[test]
 fn compile_runtime_definition_uses_native_pushnew_options_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

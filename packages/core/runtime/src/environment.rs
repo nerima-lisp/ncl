@@ -18,6 +18,7 @@ pub(crate) struct ConditionDefinition {
 #[derive(Clone, Debug)]
 pub(crate) struct TypeAliasDefinition {
     pub(crate) parameters: Vec<Rc<str>>,
+    pub(crate) optional_parameters: Vec<(Rc<str>, Value)>,
     pub(crate) designator: Value,
 }
 

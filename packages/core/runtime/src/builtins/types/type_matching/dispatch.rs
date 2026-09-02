@@ -52,10 +52,10 @@ fn resolve_type_designator(
     let Some(alias) = environment.lookup_type_alias_definition(&name) else {
         return Ok(designator.clone());
     };
-    if !alias.parameters.is_empty() {
+    if !alias.parameters.is_empty() || !alias.optional_parameters.is_empty() {
         return Err(invalid_type_spec(
             function,
-            format!("type alias {name} requires {} arguments", alias.parameters.len()),
+            format!("type alias {name} requires arguments"),
         ));
     }
     if !active_aliases.insert(name.to_string()) {
@@ -76,14 +76,20 @@ fn resolve_compound_type_designator(
         return Ok(Value::list(items.to_vec()));
     };
     if let Some(alias) = environment.lookup_type_alias_definition(operator) {
-        if alias.parameters.len() != items.len().saturating_sub(1) {
-            return Err(invalid_type_spec(function, format!("type alias {operator} expects {} arguments", alias.parameters.len())));
+        let argument_count = items.len().saturating_sub(1);
+        if argument_count < alias.parameters.len() || argument_count > alias.parameters.len() + alias.optional_parameters.len() {
+            return Err(invalid_type_spec(function, format!("type alias {operator} expects {} to {} arguments", alias.parameters.len(), alias.parameters.len() + alias.optional_parameters.len())));
         }
         if !active_aliases.insert(operator.to_string()) {
             return Err(invalid_type_spec(function, "circular type alias"));
         }
-        let arguments = items.iter().skip(1).cloned().collect::<Vec<_>>();
-        let substituted = substitute_type_parameters(&alias.designator, &alias.parameters, &arguments);
+        let mut arguments = items.iter().skip(1).cloned().collect::<Vec<_>>();
+        for (_, default) in alias.optional_parameters.iter().skip(arguments.len().saturating_sub(alias.parameters.len())) {
+            arguments.push(default.clone());
+        }
+        let mut names = alias.parameters.clone();
+        names.extend(alias.optional_parameters.iter().map(|(name, _)| name.clone()));
+        let substituted = substitute_type_parameters(&alias.designator, &names, &arguments);
         let resolved = resolve_type_designator(function, &substituted, environment, active_aliases);
         active_aliases.remove(operator);
         return resolved;

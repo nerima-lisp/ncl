@@ -153,7 +153,7 @@ fn input_and_io_file_options_are_table_driven() {
     }
     assert!(open_input_file(&missing, "UNKNOWN", false).is_err());
 
-    for (option, succeeds) in [
+    for (index, (option, succeeds)) in [
         ("NIL", true),
         ("ERROR", false),
         ("APPEND", true),
@@ -162,9 +162,26 @@ fn input_and_io_file_options_are_table_driven() {
         ("RENAME-AND-DELETE", true),
         ("OVERWRITE", true),
         ("SUPERSEDE", true),
-    ] {
-        let result = open_io_file(&existing, "CREATE", option, false);
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let path = existing.with_extension(format!("case-{index}"));
+        assert!(fs::write(&path, "content").is_ok());
+        let result = open_io_file(&path, "CREATE", option, false);
         assert_eq!(result.is_ok(), succeeds, "existing io option={option}");
+        if let Ok(stream) = result {
+            let _ = close_stream(&[stream]);
+        }
+        let _ = fs::remove_file(&path);
+        let backup = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(format!(
+                "{}.ncl-rename-0",
+                path.file_name().unwrap().to_string_lossy()
+            ));
+        let _ = fs::remove_file(backup);
     }
     assert!(open_io_file(&existing, "CREATE", "UNKNOWN", false).is_err());
     assert!(open_io_file(&missing, "UNKNOWN", "APPEND", false).is_err());

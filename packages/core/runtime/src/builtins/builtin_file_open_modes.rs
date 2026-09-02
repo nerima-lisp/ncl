@@ -260,11 +260,13 @@ pub(super) fn open_io_file(
                 }
             }
         };
-        return Ok(Value::file_byte_io_stream(
-            output_path,
-            bytes,
-            if_exists == "APPEND",
-        ));
+        let stream = Value::file_byte_io_stream(output_path, bytes, if_exists == "APPEND");
+        if let Some(backup) = rename_existing_file(path, if_exists)? {
+            if if_exists == "RENAME-AND-DELETE" {
+                stream.delete_stream_file_on_close(backup);
+            }
+        }
+        return Ok(stream);
     }
     let mut append = false;
     let source = if path.exists() {
@@ -318,5 +320,26 @@ pub(super) fn open_io_file(
             }
         }
     };
-    Ok(Value::file_io_stream(output_path, &source, append))
+    let stream = Value::file_io_stream(output_path, &source, append);
+    if let Some(backup) = rename_existing_file(path, if_exists)? {
+        if if_exists == "RENAME-AND-DELETE" {
+            stream.delete_stream_file_on_close(backup);
+        }
+    }
+    Ok(stream)
+}
+
+fn rename_existing_file(
+    path: &Path,
+    if_exists: &str,
+) -> Result<Option<std::path::PathBuf>, RuntimeError> {
+    if !path.exists() || !matches!(if_exists, "RENAME" | "RENAME-AND-DELETE") {
+        return Ok(None);
+    }
+    let backup = unique_rename_path(path)?;
+    std::fs::rename(path, &backup).map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: format!("rename {}: {error}", path.display()),
+    })?;
+    Ok(Some(backup))
 }

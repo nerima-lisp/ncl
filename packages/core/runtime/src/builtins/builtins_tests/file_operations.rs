@@ -463,3 +463,34 @@ fn open_rename_and_delete_abort_preserves_backup() -> Result<(), RuntimeError> {
     std::fs::remove_file(backup).unwrap();
     Ok(())
 }
+
+#[test]
+fn open_io_rename_and_delete_preserves_contents_until_close() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-open-io-rename-delete-{suffix}"));
+    std::fs::write(&root, "old content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let stream = open_file(&[
+        Value::string(root.to_string_lossy().to_string()),
+        Value::keyword("direction"),
+        Value::keyword("io"),
+        Value::keyword("if-exists"),
+        Value::keyword("rename-and-delete"),
+    ])?;
+    write_string(&[Value::string("new content"), stream.clone()])?;
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read_to_string(&root).unwrap(), "new content");
+    assert!(
+        !std::fs::read_dir(root.parent().unwrap())
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|entry| entry
+                .path()
+                .to_string_lossy()
+                .starts_with(&format!("{}.ncl-rename-", root.display())))
+    );
+    std::fs::remove_file(root).unwrap();
+    Ok(())
+}

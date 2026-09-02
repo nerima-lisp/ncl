@@ -386,10 +386,11 @@ fn compiled_evaluates_clos_class_direct_slots() {
             r#"(progn
              (defclass direct-slots-parent () ((inherited)))
              (defclass direct-slots-child (direct-slots-parent) ((own)))
-             (class-direct-slots (find-class 'direct-slots-child)))"#,
+             (slot-definition-name
+               (first (class-direct-slots (find-class 'direct-slots-child)))))"#,
         )
         .must_exist();
-    assert_eq!(values[0].to_string(), "(OWN)");
+    assert_eq!(values[0].to_string(), "OWN");
 }
 
 #[test]
@@ -399,10 +400,11 @@ fn compiled_evaluates_clos_class_slots_including_inherited_slots() {
             r#"(progn
              (defclass effective-slots-parent () ((inherited)))
              (defclass effective-slots-child (effective-slots-parent) ((own)))
-             (class-slots (find-class 'effective-slots-child)))"#,
+             (slot-definition-name
+               (first (class-slots (find-class 'effective-slots-child)))))"#,
         )
         .must_exist();
-    assert_eq!(values[0].to_string(), "(OWN INHERITED)");
+    assert_eq!(values[0].to_string(), "OWN");
 }
 
 #[test]

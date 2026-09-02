@@ -43,6 +43,9 @@ impl Runtime {
         if let Some(result) = Self::apply_slot_primitive(name, arguments, span) {
             return result;
         }
+        if let Some(result) = Self::apply_slot_definition_primitive(name, arguments, span) {
+            return result;
+        }
         if let Some(result) = self.apply_restart_primitive(name, arguments, environment, span) {
             return result;
         }

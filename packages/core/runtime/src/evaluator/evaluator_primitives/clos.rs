@@ -579,9 +579,15 @@ impl Runtime {
                     };
                     Ok(Value::list(
                         class
-                            .direct_slots
+                            .slots
                             .iter()
-                            .map(|name| Value::symbol(name.clone()))
+                            .filter(|slot| {
+                                class
+                                    .direct_slots
+                                    .iter()
+                                    .any(|name| name.eq_ignore_ascii_case(&slot.name))
+                            })
+                            .map(Self::slot_definition_value)
                             .collect(),
                     ))
                 }
@@ -600,7 +606,7 @@ impl Runtime {
                         class
                             .slots
                             .iter()
-                            .map(|slot| Value::symbol(Rc::<str>::from(slot.name.clone())))
+                            .map(Self::slot_definition_value)
                             .collect(),
                     ))
                 }

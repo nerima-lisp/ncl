@@ -43,6 +43,7 @@ pub fn execute_slot_operation_instruction(
         .map(|value| value.primary_value())
         .collect::<Vec<_>>();
     let value = Runtime::apply_slot_primitive(operation, &arguments, span)
+        .or_else(|| Runtime::apply_slot_definition_primitive(operation, &arguments, span))
         .unwrap_or_else(|| Err(invalid("unknown slot operation", span)))?;
     stack.push(value);
     Ok(())

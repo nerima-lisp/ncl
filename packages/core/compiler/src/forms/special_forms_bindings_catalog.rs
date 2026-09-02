@@ -190,6 +190,8 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
                 | "SLOT-EXISTS-P"
                 | "SLOT-BOUNDP"
                 | "SLOT-MAKUNBOUND"
+                | "SLOT-DEFINITION-NAME"
+                | "SLOT-DEFINITION-DOCUMENTATION"
                 | "ERROR"
                 | "SIGNAL"
                 | "WARN"

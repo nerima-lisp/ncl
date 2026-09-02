@@ -70,4 +70,16 @@ mod tests {
                 if message == "defclass slot documentation must be a string"
         ));
     }
+
+    #[test]
+    fn slot_definition_accessors_return_declared_metadata() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass documented-slot () ((value :documentation \"slot doc\")))
+                 (slot-definition-documentation
+                   (first (class-direct-slots (find-class 'documented-slot))))",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "\"slot doc\"");
+    }
 }

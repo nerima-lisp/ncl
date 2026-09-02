@@ -60,8 +60,25 @@ impl CompileState {
         items: &[Form],
         operation: &str,
     ) -> Result<(), CompileError> {
-        if items.len() != 3 {
-            return Err(Self::arity_error(items, operation, "two", span));
+        let expected_arguments = if matches!(
+            operation,
+            "SLOT-DEFINITION-NAME" | "SLOT-DEFINITION-DOCUMENTATION"
+        ) {
+            1
+        } else {
+            2
+        };
+        if items.len() != expected_arguments + 1 {
+            return Err(Self::arity_error(
+                items,
+                operation,
+                if expected_arguments == 1 {
+                    "one"
+                } else {
+                    "two"
+                },
+                span,
+            ));
         }
         for item in &items[1..] {
             self.compile_expression(function, item)?;
@@ -70,7 +87,7 @@ impl CompileState {
             function,
             Instruction::SlotOperation {
                 operation: operation.to_string(),
-                argument_count: 2,
+                argument_count: expected_arguments,
             },
             span,
         )?;

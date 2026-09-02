@@ -126,7 +126,14 @@ mod tests {
             direct_slots: vec!["X".into()],
             direct_default_initargs: Vec::new(),
             precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
-            slots: Vec::new(),
+            slots: vec![ClassSlot {
+                name: "X".to_owned(),
+                documentation: None,
+                initargs: Vec::new(),
+                init_form: None,
+                type_form: None,
+                class_value: None,
+            }],
             default_initargs: Vec::new(),
         });
         environment.define_class("POINT", Rc::clone(&class));
@@ -151,7 +158,24 @@ mod tests {
             direct_slots: vec!["X".into(), "Y".into()],
             direct_default_initargs: Vec::new(),
             precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
-            slots: Vec::new(),
+            slots: vec![
+                ClassSlot {
+                    name: "X".to_owned(),
+                    documentation: None,
+                    initargs: Vec::new(),
+                    init_form: None,
+                    type_form: None,
+                    class_value: None,
+                },
+                ClassSlot {
+                    name: "Y".to_owned(),
+                    documentation: None,
+                    initargs: Vec::new(),
+                    init_form: None,
+                    type_form: None,
+                    class_value: None,
+                },
+            ],
             default_initargs: Vec::new(),
         });
         let result = Runtime::apply_class_introspection_primitive(
@@ -162,7 +186,11 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(result.to_string(), "(X Y)");
+        let slots = result
+            .list_items()
+            .expect("class-direct-slots returns a list");
+        assert_eq!(slots[0].instance_slot("NAME").unwrap().to_string(), "X");
+        assert_eq!(slots[1].instance_slot("NAME").unwrap().to_string(), "Y");
     }
 
     #[test]
@@ -203,6 +231,8 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(result.to_string(), "(X Y)");
+        let slots = result.list_items().expect("class-slots returns a list");
+        assert_eq!(slots[0].instance_slot("NAME").unwrap().to_string(), "X");
+        assert_eq!(slots[1].instance_slot("NAME").unwrap().to_string(), "Y");
     }
 }

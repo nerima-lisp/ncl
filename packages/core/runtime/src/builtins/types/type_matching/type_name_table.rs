@@ -1,6 +1,7 @@
 use crate::builtins::builtin_array_helpers::dimensions_for_array;
 use crate::builtins::sequence_length;
 use crate::builtins::types::type_matching::cons_vector_specs::{is_bit_value, is_bit_vector_value, is_simple_bit_vector_value, is_simple_vector_value};
+use crate::builtins::types::type_matching::array_specs::is_simple_array_value;
 use crate::{RuntimeError, Value};
 
 pub(in crate::builtins::types::type_matching) fn type_matches(
@@ -55,7 +56,8 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
         "SIMPLE-VECTOR" => is_simple_vector_value(value),
         "BIT-VECTOR" => is_bit_vector_value(value),
         "SIMPLE-BIT-VECTOR" => is_simple_bit_vector_value(value),
-        "ARRAY" | "SIMPLE-ARRAY" => dimensions_for_array(value).is_some(),
+        "ARRAY" => dimensions_for_array(value).is_some(),
+        "SIMPLE-ARRAY" => is_simple_array_value(value),
         "HASH-TABLE" => matches!(value, Value::HashTable { .. }),
         "CONDITION" => matches!(value, Value::Condition(_)),
         "RESTART" => matches!(value, Value::Restart(_)),

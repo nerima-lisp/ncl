@@ -214,6 +214,19 @@ fn compiled_simple_vector_typep_respects_array_metadata() {
 }
 
 #[test]
+fn compiled_simple_array_typep_respects_array_metadata() {
+    assert_eq!(
+        evaluate("(list (typep (make-array 2) 'simple-array)\
+                       (typep (make-array 2 :adjustable t) 'simple-array)\
+                       (typep (make-array 2 :fill-pointer 1) 'simple-array)\
+                       (typep (make-array 2 :displaced-to (make-array 3)) 'simple-array)\
+                       (typep (make-array 2 :adjustable t) '(simple-array * 2)))")
+            .to_string(),
+        "(T NIL NIL NIL NIL)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_sequence_quantifiers() {
     assert_eq!(evaluate("(every #'numberp '(1 2))").to_string(), "T");
     assert_eq!(evaluate("(every #'= '(1 2) #(1 2))").to_string(), "T");

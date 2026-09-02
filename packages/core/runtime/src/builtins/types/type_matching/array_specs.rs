@@ -15,6 +15,9 @@ pub(in crate::builtins::types::type_matching) fn array_type_matches(
     let Some(actual_dimensions) = dimensions_for_array(value) else {
         return Ok(false);
     };
+    if operator == "SIMPLE-ARRAY" && !is_simple_array_value(value) {
+        return Ok(false);
+    }
     if let Some(expected_dimensions) = arguments.get(1)
         && !array_dimensions_match(function, expected_dimensions, &actual_dimensions)?
     {
@@ -31,6 +34,13 @@ pub(in crate::builtins::types::type_matching) fn array_type_matches(
         }
     }
     Ok(true)
+}
+
+pub(in crate::builtins::types::type_matching) fn is_simple_array_value(value: &Value) -> bool {
+    dimensions_for_array(value).is_some()
+        && !value.array_adjustable().unwrap_or(false)
+        && !value.array_has_fill_pointer().unwrap_or(false)
+        && !value.is_displaced()
 }
 
 fn array_dimensions_match(

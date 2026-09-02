@@ -1,6 +1,42 @@
 #[allow(clippy::wildcard_imports)]
 use super::super::*;
 
+pub(super) fn execute_rotatef_nth_dynamic(
+    accessors: &[String], name: &str, escaped: bool, stack: &mut Vec<Value>,
+    environment: &Environment, runtime: &Runtime, program_counter: &mut usize, span: Span,
+) -> Result<bool, RuntimeError> {
+    let root = stack.pop().ok_or_else(|| invalid("rotatef NTH has no target", span))?;
+    let index = stack.pop().ok_or_else(|| invalid("rotatef NTH has no index", span))?;
+    let index = crate::builtins::index_argument("rotatef NTH", &index.primary_value())?;
+    let elements = root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: root.type_name().into(), span: Some(span) })?;
+    let old = if accessors.is_empty() {
+        elements.get(index).cloned().ok_or_else(|| crate::builtins::out_of_bounds("rotatef NTH", index))?
+    } else {
+        super::list::nested::read(elements.clone(), accessors, span)?
+            .list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: "not a list".into(), span: Some(span) })?
+            .get(index).cloned().ok_or_else(|| crate::builtins::out_of_bounds("rotatef NTH", index))?
+    };
+    let updated = Value::list(super::list::nested::update_dynamic(elements, accessors, index, &old, span)?);
+    if escaped { runtime.set_or_define_exact_in(name, updated, environment, span)?; } else { runtime.set_or_define_in(name, updated, environment, span)?; }
+    stack.push(Value::Nil); *program_counter += 1; Ok(true)
+}
+
+pub(super) fn execute_shiftf_nth_dynamic(
+    accessors: &[String], name: &str, escaped: bool, stack: &mut Vec<Value>,
+    environment: &Environment, runtime: &Runtime, program_counter: &mut usize, span: Span,
+) -> Result<bool, RuntimeError> {
+    let new_value = stack.pop().ok_or_else(|| invalid("shiftf NTH has no value", span))?;
+    let root = stack.pop().ok_or_else(|| invalid("shiftf NTH has no target", span))?;
+    let index = stack.pop().ok_or_else(|| invalid("shiftf NTH has no index", span))?;
+    let index = crate::builtins::index_argument("shiftf NTH", &index.primary_value())?;
+    let elements = root.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".into(), actual: root.type_name().into(), span: Some(span) })?;
+    let target = if accessors.is_empty() { Value::list(elements.clone()) } else { super::list::nested::read(elements.clone(), accessors, span)? };
+    let old = target.list_items().and_then(|items| items.get(index).cloned()).ok_or_else(|| crate::builtins::out_of_bounds("shiftf NTH", index))?;
+    let updated = Value::list(super::list::nested::update_dynamic(elements, accessors, index, &new_value.primary_value(), span)?);
+    if escaped { runtime.set_or_define_exact_in(name, updated, environment, span)?; } else { runtime.set_or_define_in(name, updated, environment, span)?; }
+    stack.push(old); *program_counter += 1; Ok(true)
+}
+
 pub(super) fn execute_rotatef(
     runtime: &Runtime,
     places: &[(String, bool)],

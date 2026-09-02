@@ -30,6 +30,26 @@ impl CompileState {
         } else {
             &items[1..items.len() - 1]
         };
+        if place_forms.len() == 1 {
+            if let Some((index, target, accessors, name, escaped)) =
+                crate::dynamic_nth_list_place(&place_forms[0])
+            {
+                self.compile_expression(function, index)?;
+                self.compile_expression(function, target)?;
+                let instruction = if operator == "ROTATEF" {
+                    Instruction::RotatefNthDynamic { accessors, name, escaped }
+                } else {
+                    self.compile_expression(function, &items[items.len() - 1])?;
+                    Instruction::ShiftfNthDynamic { accessors, name, escaped }
+                };
+                self.emit(
+                    function,
+                    instruction,
+                    items[0].span,
+                )?;
+                return Ok(Some(()));
+            }
+        }
         let places = place_forms
             .iter()
             .map(|place| Self::symbol_name_info(place, "symbol place"))

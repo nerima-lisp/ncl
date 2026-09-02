@@ -470,6 +470,20 @@ fn compile_runtime_definition_uses_native_single_place_rotatef() {
 }
 
 #[test]
+fn compile_runtime_definition_uses_native_dynamic_nth_rotate_and_shift() {
+    let mut state = CompileState::default();
+    for source in ["(rotatef (nth index xs))", "(shiftf (nth index xs) 9)"] {
+        let function = state.reserve_function(None, Vec::new());
+        let items = parse_items(source);
+        state.compile_runtime_definition(function, Span::new(0, 1), &items).expect("dynamic NTH rotate/shift should compile");
+        assert!(state.functions[function].instructions.iter().any(|instruction| matches!(
+            instruction,
+            Instruction::RotatefNthDynamic { .. } | Instruction::ShiftfNthDynamic { .. }
+        )));
+    }
+}
+
+#[test]
 fn compile_runtime_definition_uses_native_pushnew_options_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

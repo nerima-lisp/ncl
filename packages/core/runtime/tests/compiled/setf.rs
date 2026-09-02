@@ -323,6 +323,26 @@ fn compiled_evaluates_native_single_place_rotatef() {
 }
 
 #[test]
+fn compiled_evaluates_native_dynamic_nth_rotate_and_shift() {
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2)) (index 1)) (list (rotatef (nth index xs)) xs))").to_string(),
+        "(NIL (1 2))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2)) (index 1)) (list (shiftf (nth index xs) 9) xs))").to_string(),
+        "(2 (1 9))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 1 2))) (index 1)) (list (rotatef (nth index (car xs))) xs))").to_string(),
+        "(NIL ((1 2)))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 1 2))) (index 1)) (list (shiftf (nth index (car xs)) 9) xs))").to_string(),
+        "(2 ((1 9)))"
+    );
+}
+
+#[test]
 fn compiled_evaluates_native_nested_rotatef_and_shiftf() {
     assert_eq!(
         evaluate(

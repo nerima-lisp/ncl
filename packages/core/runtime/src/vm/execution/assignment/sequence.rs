@@ -300,6 +300,12 @@ pub(super) fn execute(
         Instruction::ShiftfSymbols(places) => {
             rotate_shift::execute_shiftf(runtime, places, stack, environment, program_counter, span)
         }
+        Instruction::RotatefNthDynamic { accessors, name, escaped } => rotate_shift::execute_rotatef_nth_dynamic(
+            accessors, name, *escaped, stack, environment, runtime, program_counter, span,
+        ),
+        Instruction::ShiftfNthDynamic { accessors, name, escaped } => rotate_shift::execute_shiftf_nth_dynamic(
+            accessors, name, *escaped, stack, environment, runtime, program_counter, span,
+        ),
         Instruction::RotatefNestedList(places) => rotate_shift::execute_rotatef_nested(
             places,
             stack,

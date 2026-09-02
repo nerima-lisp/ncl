@@ -306,6 +306,22 @@ pub enum Instruction {
     },
     #[doc = "Rotate values among symbol places."] RotatefSymbols(Vec<(String, bool)>),
     #[doc = "Shift values through symbol places and return the first old value."] ShiftfSymbols(Vec<(String, bool)>),
+    #[doc = "Rotate a value through one dynamically indexed NTH list place."] RotatefNthDynamic {
+        /// Nested CAR/CDR accessors from the root list to the target list.
+        accessors: Vec<String>,
+        /// Root variable receiving the updated list.
+        name: String,
+        /// Whether the root variable name is package-qualified.
+        escaped: bool,
+    },
+    #[doc = "Shift a value through one dynamically indexed NTH list place."] ShiftfNthDynamic {
+        /// Nested CAR/CDR accessors from the root list to the target list.
+        accessors: Vec<String>,
+        /// Root variable receiving the updated list.
+        name: String,
+        /// Whether the root variable name is package-qualified.
+        escaped: bool,
+    },
     #[doc = "Rotate values among nested CAR/CDR list places."] RotatefNestedList(Vec<(Vec<String>, String, bool)>),
     #[doc = "Shift values through nested CAR/CDR list places."] ShiftfNestedList(Vec<(Vec<String>, String, bool)>),
     #[doc = "Rotate values among symbol and nested CAR/CDR list places."] RotatefMixed(Vec<RotateShiftPlace>),

@@ -142,6 +142,7 @@ impl Runtime {
     pub(crate) fn reinitialize_instance(
         &self,
         arguments: &[Value],
+        environment: &Environment,
         span: Span,
     ) -> Result<Value, RuntimeError> {
         if arguments.is_empty() {
@@ -166,22 +167,20 @@ impl Runtime {
         };
         for pair in arguments[1..].as_chunks::<2>().0 {
             let initarg = Self::name_designator_from_value(&pair[0], span)?;
-            let Some(slot) = class
+            if !class
                 .slots
                 .iter()
-                .find(|slot| slot.initargs.iter().any(|name| name == &initarg))
-            else {
+                .any(|slot| slot.initargs.iter().any(|name| name == &initarg))
+            {
                 return Err(Self::invalid("unknown reinitialize-instance initarg", span));
-            };
-            self.set_instance_slot_checked(
-                instance,
-                &class.name,
-                &slot.name,
-                pair[1].clone(),
-                span,
-            )?;
+            }
         }
-        Ok(instance.clone())
+        let mut shared = vec![instance.clone(), Value::Nil];
+        shared.extend_from_slice(&arguments[1..]);
+        let function = environment
+            .lookup_function("SHARED-INITIALIZE")
+            .unwrap_or_else(|| Value::primitive("SHARED-INITIALIZE"));
+        self.apply_in(&function, &shared, span, environment)
     }
 
     pub(crate) fn initialize_instance(
@@ -204,6 +203,7 @@ impl Runtime {
     pub(crate) fn shared_initialize(
         &self,
         arguments: &[Value],
+        environment: &Environment,
         span: Span,
     ) -> Result<Value, RuntimeError> {
         if arguments.len() < 2 {
@@ -213,8 +213,31 @@ impl Runtime {
                 arguments.len(),
             ));
         }
-        let mut initargs = vec![arguments[0].clone()];
-        initargs.extend(arguments[2..].iter().cloned());
-        self.reinitialize_instance(&initargs, span)
+        let instance = &arguments[0];
+        let Some(class) = instance.instance_class_definition() else {
+            return Err(Self::invalid(
+                "shared-initialize requires an instance",
+                span,
+            ));
+        };
+        for pair in arguments[2..].as_chunks::<2>().0 {
+            let initarg = Self::name_designator_from_value(&pair[0], span)?;
+            let Some(slot) = class
+                .slots
+                .iter()
+                .find(|slot| slot.initargs.iter().any(|name| name == &initarg))
+            else {
+                return Err(Self::invalid("unknown shared-initialize initarg", span));
+            };
+            self.set_instance_slot_checked(
+                instance,
+                &class.name,
+                &slot.name,
+                pair[1].clone(),
+                span,
+            )?;
+        }
+        let _ = environment;
+        Ok(instance.clone())
     }
 }

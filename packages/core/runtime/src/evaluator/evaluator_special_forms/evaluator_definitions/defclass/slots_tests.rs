@@ -240,6 +240,25 @@ mod tests {
     }
 
     #[test]
+    fn reinitialize_instance_dispatches_shared_initialize_methods() {
+        let values = Runtime::new()
+            .eval_source(
+                "(progn
+               (defclass reinit-shared-class () ((value :initarg :value)))
+               (defmethod shared-initialize ((object reinit-shared-class) slot-names &rest initargs)
+                 (declare (ignore slot-names initargs))
+                 (call-next-method)
+                 (setf (slot-value object 'value) 88)
+                 object)
+               (let ((object (make-instance 'reinit-shared-class :value 41)))
+                 (reinitialize-instance object :value 42)
+                 (slot-value object 'value)))",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "88");
+    }
+
+    #[test]
     fn defclass_accessor_is_setfable() {
         let values = Runtime::new()
             .eval_source(

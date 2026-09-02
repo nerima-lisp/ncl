@@ -407,6 +407,20 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                             span: None,
                         });
                     }
+                    let (storage, target_offset, _) = target
+                        .array_storage()
+                        .ok_or_else(|| crate::RuntimeError::InvalidForm {
+                            message: "adjust-array requires vector storage".to_string(),
+                            span: None,
+                        })?;
+                    let offset = target_offset + offset;
+                    let mut storage = storage.borrow_mut();
+                    for (slot, value) in storage[offset..offset + total_size]
+                        .iter_mut()
+                        .zip(elements)
+                    {
+                        *slot = value;
+                    }
                     items.borrow_mut().resize(total_size, Value::Nil);
                 } else {
                     *items.borrow_mut() = elements;

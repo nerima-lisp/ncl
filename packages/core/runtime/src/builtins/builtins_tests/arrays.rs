@@ -269,6 +269,31 @@ fn adjust_array_keeps_adjustable_displacement_in_place() {
 }
 
 #[test]
+fn adjust_array_writes_displaced_initial_contents_to_the_target() -> Result<(), RuntimeError> {
+    let base = make_array(&[Value::Integer(5), Value::keyword("initial-element"), Value::Integer(0)])?;
+    let displaced = make_array(&[
+        Value::Integer(3),
+        Value::keyword("displaced-to"),
+        base.clone(),
+        Value::keyword("displaced-index-offset"),
+        Value::Integer(1),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])?;
+
+    adjust_array(&[
+        displaced.clone(),
+        Value::Integer(3),
+        Value::keyword("initial-contents"),
+        Value::list(vec![Value::Integer(7), Value::Integer(8), Value::Integer(9)]),
+    ])?;
+
+    assert_eq!(aref(&[base, Value::Integer(1)])?.to_string(), "7");
+    assert_eq!(aref(&[displaced, Value::Integer(2)])?.to_string(), "9");
+    Ok(())
+}
+
+#[test]
 fn vector_push_uses_and_extends_fill_pointer() {
     let vector = make_array(&[
         Value::Integer(3),

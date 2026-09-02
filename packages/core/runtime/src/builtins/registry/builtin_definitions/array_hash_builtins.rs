@@ -33,6 +33,7 @@ pub(super) const ARRAY_HASH_BUILTINS: &[BuiltinDefinition] = &[
     ("clrhash", clrhash as _),
     ("hash-table-p", hash_table_p as _),
     ("hash-table-count", hash_table_count as _),
+    ("hash-table-size", hash_table_size as _),
     ("ncl-hash-table-keys", hash_table_keys as _),
     ("ncl-hash-table-values", hash_table_values as _),
     ("hash-table-test", hash_table_test_value as _),

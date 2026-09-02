@@ -236,6 +236,7 @@ impl CompileState {
                 self.compile_package_mutation(function, span, items, name)
             }
             "GETHASH" | "REMHASH" | "MAKE-HASH-TABLE" | "CLRHASH" | "HASH-TABLE-COUNT"
+            | "HASH-TABLE-SIZE"
             | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS" | "NCL-HASH-TABLE-VALUES" => {
                 self.compile_hash_table(function, span, items, name)
             }

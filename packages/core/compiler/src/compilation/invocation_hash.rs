@@ -15,6 +15,7 @@ impl CompileState {
             "MAKE-HASH-TABLE" => ((items.len() - 1).is_multiple_of(2), "keyword/value pairs"),
             "CLRHASH"
             | "HASH-TABLE-COUNT"
+            | "HASH-TABLE-SIZE"
             | "HASH-TABLE-TEST"
             | "NCL-HASH-TABLE-KEYS"
             | "NCL-HASH-TABLE-VALUES" => (items.len() == 2, "one"),

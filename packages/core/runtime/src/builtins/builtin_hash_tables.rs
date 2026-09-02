@@ -3,7 +3,8 @@ mod construction;
 mod designators;
 
 pub use accessors::{
-    clrhash, gethash, hash_table_count, hash_table_keys, hash_table_p, hash_table_test_value,
+    clrhash, gethash, hash_table_count, hash_table_keys, hash_table_p, hash_table_size,
+    hash_table_test_value,
     hash_table_values, remhash,
 };
 pub use construction::make_hash_table;

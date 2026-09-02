@@ -16,6 +16,7 @@ fn hash_table_options_and_operations_cover_invalid_designators() {
     assert!(remhash(&[Value::Nil, Value::Integer(1)]).is_err());
     assert!(clrhash(&[Value::Integer(1)]).is_err());
     assert!(hash_table_count(&[Value::Integer(1)]).is_err());
+    assert!(hash_table_size(&[Value::Integer(1)]).is_err());
     assert!(hash_table_test_value(&[Value::Integer(1)]).is_err());
     assert!(hash_table_option_name("test", &Value::Integer(1)).is_err());
     assert!(hash_table_test_name("test", &Value::Integer(1)).is_err());
@@ -76,6 +77,11 @@ fn hash_table_operations_cover_successful_table_cases() -> Result<(), RuntimeErr
     assert_eq!(
         hash_table_count(std::slice::from_ref(&table))?.to_string(),
         "1"
+    );
+    assert!(
+        hash_table_size(std::slice::from_ref(&table))?
+            .as_integer()
+            .is_some_and(|size| size >= 1)
     );
     assert_eq!(
         hash_table_test_value(std::slice::from_ref(&table))?.to_string(),

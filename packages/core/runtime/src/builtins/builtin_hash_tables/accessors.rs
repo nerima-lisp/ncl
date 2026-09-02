@@ -76,6 +76,15 @@ pub fn hash_table_count(arguments: &[Value]) -> Result<Value, RuntimeError> {
     integer_from_usize("hash-table-count", entries.borrow().len())
 }
 
+pub fn hash_table_size(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "hash-table-size", 1)?;
+    let table = &arguments[0];
+    let Some(entries) = table.hash_table_entries() else {
+        return Err(type_error("hash-table-size", "hash-table", table));
+    };
+    integer_from_usize("hash-table-size", entries.borrow().capacity())
+}
+
 pub fn hash_table_keys(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "ncl-hash-table-keys", 1)?;
     let table = &arguments[0];

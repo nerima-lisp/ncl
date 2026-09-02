@@ -267,6 +267,20 @@ impl Value {
         }
     }
 
+    pub(crate) fn hash_table_rehash_size(&self) -> Option<f64> {
+        match self {
+            Self::HashTable { rehash_size, .. } => Some(*rehash_size),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn hash_table_rehash_threshold(&self) -> Option<f64> {
+        match self {
+            Self::HashTable { rehash_threshold, .. } => Some(*rehash_threshold),
+            _ => None,
+        }
+    }
+
     /// Returns the symbol-like name represented by this value, if any.
     #[must_use]
     pub fn symbol_name(&self) -> Option<&str> {

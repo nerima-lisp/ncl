@@ -702,6 +702,19 @@ fn compiled_evaluates_hash_table_access() {
 }
 
 #[test]
+fn compiled_evaluates_hash_table_rehash_options() {
+    assert_eq!(
+        evaluate(
+            "(let ((table (make-hash-table :rehash-size 2 :rehash-threshold 0.5)))
+               (list (hash-table-rehash-size table)
+                     (hash-table-rehash-threshold table)))"
+        )
+        .to_string(),
+        "(2.0 0.5)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_symbol_property_access() {
     assert_eq!(
         evaluate("(let ((symbol 'item)) (putprop symbol 7 :value) (list (get symbol :value) (symbol-plist symbol) (remprop symbol :value) (get symbol :value 42)))").to_string(),

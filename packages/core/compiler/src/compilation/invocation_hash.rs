@@ -18,6 +18,8 @@ impl CompileState {
             | "HASH-TABLE-COUNT"
             | "HASH-TABLE-SIZE"
             | "HASH-TABLE-TEST"
+            | "HASH-TABLE-REHASH-SIZE"
+            | "HASH-TABLE-REHASH-THRESHOLD"
             | "NCL-HASH-TABLE-KEYS"
             | "NCL-HASH-TABLE-VALUES" => (items.len() == 2, "one"),
             _ => (false, "valid arguments"),

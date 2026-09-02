@@ -50,6 +50,20 @@ fn make_hash_table_size_sets_initial_capacity() -> Result<(), RuntimeError> {
 }
 
 #[test]
+fn hash_table_rehash_options_are_exposed() -> Result<(), RuntimeError> {
+    let default = make_hash_table(&[])?;
+    assert_eq!(hash_table_rehash_size(&[default.clone()])?.to_string(), "1.5");
+    assert_eq!(hash_table_rehash_threshold(&[default])?.to_string(), "0.75");
+    let table = make_hash_table(&[
+        Value::keyword("rehash-size"), Value::Integer(2),
+        Value::keyword("rehash-threshold"), Value::Float(0.5),
+    ])?;
+    assert_eq!(hash_table_rehash_size(&[table.clone()])?.to_string(), "2.0");
+    assert_eq!(hash_table_rehash_threshold(&[table])?.to_string(), "0.5");
+    Ok(())
+}
+
+#[test]
 fn hash_table_operations_cover_successful_table_cases() -> Result<(), RuntimeError> {
     let table = make_hash_table(&[])?;
     assert!(matches!(table, Value::HashTable { .. }));

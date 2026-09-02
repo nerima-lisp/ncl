@@ -13,6 +13,8 @@ pub fn make_hash_table(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
     let mut test = "EQL".to_string();
     let mut size = 0;
+    let mut rehash_size = 1.5;
+    let mut rehash_threshold = 0.75;
     for pair in arguments.as_chunks::<2>().0 {
         let name = hash_table_option_name("make-hash-table", &pair[0])?;
         match name.as_str() {
@@ -22,7 +24,8 @@ pub fn make_hash_table(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
             "REHASH-SIZE" => {
                 let value = number_argument("make-hash-table", &pair[1])?;
-                if value.as_float() <= 0.0 {
+                rehash_size = value.as_float();
+                if rehash_size <= 0.0 {
                     return Err(RuntimeError::InvalidForm {
                         message: "make-hash-table :rehash-size must be positive".to_string(),
                         span: None,
@@ -31,6 +34,7 @@ pub fn make_hash_table(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
             "REHASH-THRESHOLD" => {
                 let value = number_argument("make-hash-table", &pair[1])?.as_float();
+                rehash_threshold = value;
                 if !(0.0..=1.0).contains(&value) {
                     return Err(RuntimeError::InvalidForm {
                         message: "make-hash-table :rehash-threshold must be between 0 and 1"
@@ -56,5 +60,5 @@ pub fn make_hash_table(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
         }
     }
-    Ok(Value::hash_table_with_capacity(test, size))
+    Ok(Value::hash_table_with_options(test, size, rehash_size, rehash_threshold))
 }

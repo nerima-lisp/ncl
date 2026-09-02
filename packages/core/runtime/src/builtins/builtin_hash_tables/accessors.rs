@@ -138,3 +138,21 @@ pub fn hash_table_test_value(arguments: &[Value]) -> Result<Value, RuntimeError>
     };
     Ok(Value::symbol(test))
 }
+
+pub fn hash_table_rehash_size(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "hash-table-rehash-size", 1)?;
+    let table = &arguments[0];
+    table
+        .hash_table_rehash_size()
+        .map(Value::Float)
+        .ok_or_else(|| type_error("hash-table-rehash-size", "hash-table", table))
+}
+
+pub fn hash_table_rehash_threshold(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "hash-table-rehash-threshold", 1)?;
+    let table = &arguments[0];
+    table
+        .hash_table_rehash_threshold()
+        .map(Value::Float)
+        .ok_or_else(|| type_error("hash-table-rehash-threshold", "hash-table", table))
+}

@@ -37,6 +37,8 @@ pub fn execute_hash_table_instruction(
         "HASH-TABLE-COUNT" => crate::builtins::hash_table_count(&arguments),
         "HASH-TABLE-SIZE" => crate::builtins::hash_table_size(&arguments),
         "HASH-TABLE-TEST" => crate::builtins::hash_table_test_value(&arguments),
+        "HASH-TABLE-REHASH-SIZE" => crate::builtins::hash_table_rehash_size(&arguments),
+        "HASH-TABLE-REHASH-THRESHOLD" => crate::builtins::hash_table_rehash_threshold(&arguments),
         "NCL-HASH-TABLE-KEYS" => crate::builtins::hash_table_keys(&arguments),
         "NCL-HASH-TABLE-VALUES" => crate::builtins::hash_table_values(&arguments),
         _ => Err(invalid("unknown hash-table operation", span)),

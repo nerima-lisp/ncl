@@ -150,12 +150,19 @@ impl Value {
 
     #[cfg(test)]
     pub(crate) fn hash_table(test: impl AsRef<str>) -> Self {
-        Self::hash_table_with_capacity(test, 0)
+        Self::hash_table_with_options(test, 0, 1.5, 0.75)
     }
 
-    pub(crate) fn hash_table_with_capacity(test: impl AsRef<str>, capacity: usize) -> Self {
+    pub(crate) fn hash_table_with_options(
+        test: impl AsRef<str>,
+        capacity: usize,
+        rehash_size: f64,
+        rehash_threshold: f64,
+    ) -> Self {
         Self::HashTable {
             test: Rc::from(test.as_ref()),
+            rehash_size,
+            rehash_threshold,
             entries: Rc::new(RefCell::new(Vec::with_capacity(capacity))),
         }
     }

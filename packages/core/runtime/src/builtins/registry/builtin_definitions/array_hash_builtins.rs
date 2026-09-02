@@ -37,5 +37,7 @@ pub(super) const ARRAY_HASH_BUILTINS: &[BuiltinDefinition] = &[
     ("ncl-hash-table-keys", hash_table_keys as _),
     ("ncl-hash-table-values", hash_table_values as _),
     ("hash-table-test", hash_table_test_value as _),
+    ("hash-table-rehash-size", hash_table_rehash_size as _),
+    ("hash-table-rehash-threshold", hash_table_rehash_threshold as _),
     ("__ncl-hash-table-iterator-next", hash_table_iterator_next as _),
 ];

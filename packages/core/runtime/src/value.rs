@@ -148,6 +148,10 @@ pub enum Value {
     HashTable {
         /// Equality predicate used by the table.
         test: Rc<str>,
+        /// Capacity growth factor used by the table implementation.
+        rehash_size: f64,
+        /// Load factor at which the table implementation may grow.
+        rehash_threshold: f64,
         /// Mutable key/value entries.
         entries: Rc<RefCell<Vec<(Self, Self)>>>,
     },

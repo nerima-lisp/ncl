@@ -40,6 +40,7 @@ mod builtin_hash_tables;
 pub use builtin_hash_tables::{
     clrhash, gethash, hash_table_count, hash_table_key_equal, hash_table_keys, hash_table_p,
     hash_table_size, hash_table_test_value, hash_table_values, hash_table_iterator_next,
+    hash_table_rehash_size, hash_table_rehash_threshold,
     make_hash_table, remhash,
 };
 

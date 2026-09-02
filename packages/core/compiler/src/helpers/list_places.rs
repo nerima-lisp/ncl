@@ -76,3 +76,17 @@ pub(crate) fn generalized_list_place(form: &Form) -> Option<(Vec<String>, String
         Some((vec![accessor], name, escaped))
     }
 }
+
+pub(crate) fn dynamic_nth_list_place(form: &Form) -> Option<(&Form, &Form, Vec<String>, String, bool)> {
+    let FormKind::List(items) = &form.kind else { return None };
+    if items.len() != 3 || CompileState::symbol_name_info(&items[0], "list accessor").ok()?.0 != "NTH" { return None; }
+    let mut accessors = Vec::new();
+    let mut target = &items[2];
+    while let Some((accessor, next_target)) = list_accessor_target(target) {
+        accessors.push(accessor);
+        target = next_target;
+    }
+    let (name, escaped) = CompileState::symbol_name_info(target, "list place target").ok()?;
+    accessors.reverse();
+    Some((&items[1], target, accessors, name, escaped))
+}

@@ -7,6 +7,13 @@ pub(super) fn compile_list_setf(
     place: &Form,
     value_form: &Form,
 ) -> Result<bool, CompileError> {
+    if let Some((index_form, target, accessors, name, escaped)) = crate::helpers::dynamic_nth_list_place(place) {
+        state.compile_expression(function, index_form)?;
+        state.compile_expression(function, target)?;
+        state.compile_expression(function, value_form)?;
+        state.emit(function, Instruction::SetfNestedNthDynamic { accessors, name, escaped }, place.span)?;
+        return Ok(true);
+    }
     let mut accessors = Vec::new();
     let mut target = place;
     while let Some((accessor, next_target)) = crate::helpers::list_accessor_target(target) {

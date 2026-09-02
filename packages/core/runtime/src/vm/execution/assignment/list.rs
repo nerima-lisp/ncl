@@ -98,6 +98,28 @@ pub(super) fn execute_nested(
     Ok(true)
 }
 
+pub(super) fn execute_nested_nth_dynamic(
+    runtime: &Runtime,
+    accessors: &[String],
+    name: &str,
+    escaped: bool,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let value = stack.pop().ok_or_else(|| invalid("setf nth has no value on the stack", span))?.primary_value();
+    let current = stack.pop().ok_or_else(|| invalid("setf nth has no target on the stack", span))?.primary_value();
+    let index = stack.pop().ok_or_else(|| invalid("setf nth has no index on the stack", span))?.primary_value();
+    let index = crate::builtins::index_argument("setf nth", &index)?;
+    let elements = current.list_items().ok_or_else(|| RuntimeError::Type { expected: "LIST".to_string(), actual: current.type_name().to_string(), span: Some(span) })?;
+    let updated = Value::list(nested::update_dynamic(elements, accessors, index, &value, span)?);
+    if escaped { runtime.set_or_define_exact_in(name, updated, environment, span)?; } else { runtime.set_or_define_in(name, updated, environment, span)?; }
+    stack.push(value);
+    *program_counter += 1;
+    Ok(true)
+}
+
 pub(crate) fn execute_parallel(
     runtime: &Runtime,
     places: &[(Vec<String>, String, bool)],

@@ -110,6 +110,9 @@ pub(super) fn execute_set_instruction(
             program_counter,
             span,
         ),
+        Instruction::SetfNestedNthDynamic { accessors, name, escaped } => list::execute_nested_nth_dynamic(
+            runtime, accessors, name, *escaped, stack, environment, program_counter, span,
+        ),
         Instruction::ListPlaceMutation {
             operator,
             accessor,

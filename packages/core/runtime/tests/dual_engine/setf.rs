@@ -276,3 +276,14 @@ fn evaluates_setf_symbol_cells_with_expression_values(#[case] eval_fn: EvalFn) {
         "(3 7)",
     );
 }
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_setf_dynamic_nth_in_a_nested_list_place(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(let ((xs (list (list 1 2) (list 3 4)))) (list (setf (nth 1 (car xs)) 9) xs))").to_string(),
+        "(9 ((1 9) (3 4)))",
+    );
+}

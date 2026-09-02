@@ -56,6 +56,14 @@ pub enum Instruction {
         /// Whether the symbol name is escaped.
         escaped: bool,
     },
+    #[doc = "Update a dynamically indexed element through a fixed nested list place."] SetfNestedNthDynamic {
+        /// Accessors from the symbol outward to the list being indexed.
+        accessors: Vec<String>,
+        /// The symbol holding the outer list.
+        name: String,
+        /// Whether the symbol name is escaped.
+        escaped: bool,
+    },
     #[doc = "Update an indexed element of a list-valued symbol through NTH."] SetfNth {
         /// Zero-based list index.
         index: usize,

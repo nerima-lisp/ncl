@@ -104,6 +104,26 @@ pub(crate) fn update(
     Ok(elements)
 }
 
+pub(crate) fn update_dynamic(
+    elements: Vec<Value>,
+    accessors: &[String],
+    index: usize,
+    value: &Value,
+    span: Span,
+) -> Result<Vec<Value>, RuntimeError> {
+    let target = read(elements.clone(), accessors, span)?;
+    let mut target_elements = target.list_items().ok_or_else(|| RuntimeError::Type {
+        expected: "LIST".to_string(),
+        actual: target.type_name().to_string(),
+        span: Some(span),
+    })?;
+    let slot = target_elements
+        .get_mut(index)
+        .ok_or_else(|| crate::builtins::out_of_bounds("setf nth", index))?;
+    *slot = value.clone();
+    update(elements, accessors, &Value::list(target_elements), span)
+}
+
 fn expand_accessors(accessors: &[String]) -> Vec<String> {
     accessors
         .iter()

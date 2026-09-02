@@ -107,6 +107,24 @@ fn evaluates_find_method_by_qualifiers_and_specializers() {
 }
 
 #[test]
+fn evaluates_add_and_remove_method() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn
+             (defgeneric source (x))
+             (defmethod source ((x integer)) :source)
+             (defgeneric target (x))
+             (let ((method (find-method #'source nil '(integer))))
+               (add-method #'target method)
+               (let ((result (target 3)))
+                 (remove-method #'target method)
+                 (list result (length (generic-function-methods #'target))))))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(:SOURCE 0)");
+}
+
+#[test]
 fn evaluates_generic_methods_with_builtin_class_specializers() {
     let values = Runtime::new()
         .eval_source(

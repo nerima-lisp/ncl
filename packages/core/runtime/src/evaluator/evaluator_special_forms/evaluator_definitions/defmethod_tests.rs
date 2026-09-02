@@ -20,6 +20,33 @@ mod tests {
     }
 
     #[test]
+    fn defgeneric_accepts_string_documentation() {
+        Runtime::new()
+            .eval_source(r#"(defgeneric documented-generic (x) (:documentation "docs"))"#)
+            .unwrap_or_else(|error| panic!("valid defgeneric documentation should work: {error}"));
+    }
+
+    #[test]
+    fn defgeneric_rejects_an_unsupported_option() {
+        let error = eval_err("(defgeneric unsupported-generic (x) (:method-combination and))");
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "unsupported defgeneric option"
+        ));
+    }
+
+    #[test]
+    fn defgeneric_rejects_malformed_documentation() {
+        let error = eval_err("(defgeneric malformed-documentation (x) (:documentation 1))");
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "defgeneric :documentation needs one string"
+        ));
+    }
+
+    #[test]
     fn defmethod_rejects_too_few_arguments() {
         let error = eval_err("(defmethod foo)");
         assert!(matches!(

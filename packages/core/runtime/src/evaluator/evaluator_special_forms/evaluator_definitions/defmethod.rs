@@ -20,6 +20,32 @@ impl Runtime {
         let name = Self::variable_name(&items[1], "defgeneric name must be a symbol")?;
         let name = unqualified_name(&name);
         let _ = Self::parameters(&items[2])?;
+        for option in items.iter().skip(3) {
+            let option_items = Self::list_form_items(option, "defgeneric option")?;
+            if option_items.is_empty() {
+                return Err(Self::invalid(
+                    "defgeneric option must be a non-empty list",
+                    option.span,
+                ));
+            }
+            let option_name =
+                Self::definition_name_from_form(&option_items[0], "defgeneric option name")?;
+            match option_name.as_str() {
+                "DOCUMENTATION"
+                    if option_items.len() != 2
+                        || !matches!(option_items[1].kind, FormKind::String(_)) =>
+                {
+                    return Err(Self::invalid(
+                        "defgeneric :documentation needs one string",
+                        option.span,
+                    ));
+                }
+                "DOCUMENTATION" => {}
+                _ => {
+                    return Err(Self::invalid("unsupported defgeneric option", option.span));
+                }
+            }
+        }
         environment.define_function(&name, Value::generic(name.clone()));
         Ok(Value::symbol(name))
     }

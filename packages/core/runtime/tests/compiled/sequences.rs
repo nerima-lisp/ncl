@@ -135,6 +135,10 @@ fn compiled_evaluates_sequence_search_operations() {
         evaluate("(find 2 '(1 2 3) :from-end t :key #'identity)").to_string(),
         "2"
     );
+    assert_eq!(
+        evaluate("(position 2 '((1) (2) (3)) :test-not #'/= :key #'car)").to_string(),
+        "1"
+    );
     assert_eq!(evaluate("(funcall #'position 2 '(1 2 3))").to_string(), "1");
 }
 
@@ -315,6 +319,10 @@ fn compiled_evaluates_list_membership_and_association_searches() {
     assert_eq!(
         evaluate("(member 2 '(1 2 3) :test #'eql)").to_string(),
         "(2 3)"
+    );
+    assert_eq!(
+        evaluate("(member 2 '((1) (2) (3)) :test-not #'/= :key #'car)").to_string(),
+        "((2) (3))"
     );
     assert_eq!(
         evaluate("(adjoin 4 '(1 2 3) :test #'eql)").to_string(),

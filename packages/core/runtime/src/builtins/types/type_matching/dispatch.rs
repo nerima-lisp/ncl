@@ -12,6 +12,7 @@ use crate::builtins::types::type_matching::spec_utils::{
 };
 use crate::builtins::types::type_matching::type_name_table::type_matches;
 use crate::{Environment, RuntimeError, Value};
+use std::collections::HashSet;
 
 pub(in crate::builtins::types) fn type_matches_designator_in(
     function: &str,
@@ -19,12 +20,72 @@ pub(in crate::builtins::types) fn type_matches_designator_in(
     type_designator: &Value,
     environment: &Environment,
 ) -> Result<bool, RuntimeError> {
-    if let Ok(name) = type_designator_name(function, type_designator)
-        && let Some(alias) = environment.lookup_type_alias(&name)
-    {
-        return type_matches_designator(function, value, &alias);
+    let resolved = resolve_type_designator(function, type_designator, environment, &mut HashSet::new())?;
+    type_matches_designator(function, value, &resolved)
+}
+
+fn resolve_type_designator(
+    function: &str,
+    designator: &Value,
+    environment: &Environment,
+    active_aliases: &mut HashSet<String>,
+) -> Result<Value, RuntimeError> {
+    let Ok(name) = type_designator_name(function, designator) else {
+        return match designator {
+            Value::List(items) => resolve_compound_type_designator(
+                function,
+                items.as_ref(),
+                environment,
+                active_aliases,
+            ),
+            _ => Ok(designator.clone()),
+        };
+    };
+    let Some(alias) = environment.lookup_type_alias(&name) else {
+        return Ok(designator.clone());
+    };
+    if !active_aliases.insert(name.to_string()) {
+        return Err(invalid_type_spec(function, "circular type alias"));
     }
-    type_matches_designator(function, value, type_designator)
+    let resolved = resolve_type_designator(function, &alias, environment, active_aliases);
+    active_aliases.remove(name.as_str());
+    resolved
+}
+
+fn resolve_compound_type_designator(
+    function: &str,
+    items: &[Value],
+    environment: &Environment,
+    active_aliases: &mut HashSet<String>,
+) -> Result<Value, RuntimeError> {
+    let Some(operator) = items.first().and_then(Value::symbol_name) else {
+        return Ok(Value::list(items.to_vec()));
+    };
+    let type_positions = match operator {
+        "OR" | "AND" | "NOT" | "CONS" => true,
+        "VECTOR" | "ARRAY" | "SIMPLE-ARRAY" => true,
+        _ => false,
+    };
+    if !type_positions {
+        return Ok(Value::list(items.to_vec()));
+    }
+    let mut resolved = items.to_vec();
+    for (index, argument) in items.iter().enumerate().skip(1) {
+        let is_type_position = match operator {
+            "OR" | "AND" | "NOT" | "CONS" => true,
+            "VECTOR" | "ARRAY" | "SIMPLE-ARRAY" => index == 1,
+            _ => false,
+        };
+        if is_type_position {
+            resolved[index] = resolve_type_designator(
+                function,
+                argument,
+                environment,
+                active_aliases,
+            )?;
+        }
+    }
+    Ok(Value::list(resolved))
 }
 
 pub(in crate::builtins::types) fn type_matches_designator(

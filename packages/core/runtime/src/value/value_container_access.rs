@@ -83,6 +83,40 @@ impl Value {
         }
     }
 
+    pub(crate) fn array_displacement(&self) -> Option<Option<(Self, usize)>> {
+        match self {
+            Self::Vector(items) => {
+                let metadata = items.metadata.borrow();
+                Some(metadata.displaced_to.as_ref().map(|storage| {
+                    (Self::Vector(std::rc::Rc::new(crate::value::VectorData {
+                        elements: storage.clone(),
+                        metadata: std::cell::RefCell::new(crate::value::ArrayMetadata {
+                            adjustable: false,
+                            fill_pointer: None,
+                            displaced_to: None,
+                            displaced_index_offset: 0,
+                        }),
+                    })), metadata.displaced_index_offset)
+                }))
+            }
+            Self::Array { metadata, .. } => {
+                let metadata = metadata.borrow();
+                Some(metadata.displaced_to.as_ref().map(|storage| {
+                    (Self::Vector(std::rc::Rc::new(crate::value::VectorData {
+                        elements: storage.clone(),
+                        metadata: std::cell::RefCell::new(crate::value::ArrayMetadata {
+                            adjustable: false,
+                            fill_pointer: None,
+                            displaced_to: None,
+                            displaced_index_offset: 0,
+                        }),
+                    })), metadata.displaced_index_offset)
+                }))
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn vector_fill_pointer(&self) -> Option<Option<usize>> {
         match self {
             Self::Vector(items) => Some(items.metadata.borrow().fill_pointer),
@@ -158,6 +192,7 @@ impl Value {
 
     pub(crate) fn array_adjustable(&self) -> Option<bool> {
         match self {
+            Self::Vector(items) => Some(items.metadata.borrow().adjustable),
             Self::Array { metadata, .. } => Some(metadata.borrow().adjustable),
             _ => None,
         }

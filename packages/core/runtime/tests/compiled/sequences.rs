@@ -622,3 +622,17 @@ fn compiled_evaluates_array_has_fill_pointer_p() {
         "(T NIL NIL)"
     );
 }
+
+#[test]
+fn compiled_evaluates_array_metadata_predicates() {
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array 2 :adjustable t)))\
+               (list (adjustable-array-p array)\
+                     (adjustable-array-p (make-array 2))\
+                     (array-displacement (make-array 2))))",
+        )
+        .to_string(),
+        "(T NIL NIL)",
+    );
+}

@@ -90,6 +90,26 @@ fn array_has_fill_pointer_p_distinguishes_vectors_and_arrays() {
 }
 
 #[test]
+fn array_metadata_reports_adjustability_and_displacement() {
+    let base = make_array(&[Value::Integer(4)]).expect("make-array should construct a vector");
+    let displaced = make_array(&[
+        Value::Integer(2),
+        Value::keyword("displaced-to"),
+        base.clone(),
+        Value::keyword("displaced-index-offset"),
+        Value::Integer(1),
+    ])
+    .expect("make-array should construct a displaced vector");
+
+    assert!(adjustable_array_p(&[base.clone()]).unwrap().equal_value(&Value::Boolean(false)));
+    assert!(array_displacement(&[base])
+        .unwrap()
+        .equal_value(&Value::values(vec![Value::Nil, Value::Integer(0)])));
+    let displacement = array_displacement(&[displaced]).expect("displacement should be reported");
+    assert!(displacement.to_string().contains("1"));
+}
+
+#[test]
 fn adjust_array_resizes_adjustable_vector_in_place() {
     let vector = make_array(&[
         Value::Integer(2),

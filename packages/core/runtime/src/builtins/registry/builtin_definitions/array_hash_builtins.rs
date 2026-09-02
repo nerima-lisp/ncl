@@ -18,6 +18,8 @@ pub(super) const ARRAY_HASH_BUILTINS: &[BuiltinDefinition] = &[
     ("array-row-major-index", array_row_major_index as _),
     ("array-in-bounds-p", array_in_bounds_p as _),
     ("array-element-type", array_element_type as _),
+    ("adjustable-array-p", adjustable_array_p as _),
+    ("array-displacement", array_displacement as _),
     ("array-has-fill-pointer-p", array_has_fill_pointer_p as _),
     ("simple-array-p", simple_array_p as _),
     ("arrayp", arrayp as _),

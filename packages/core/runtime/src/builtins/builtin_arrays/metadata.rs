@@ -19,6 +19,25 @@ pub fn array_has_fill_pointer_p(arguments: &[Value]) -> Result<Value, RuntimeErr
     Ok(Value::boolean(has_fill_pointer))
 }
 
+pub fn adjustable_array_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "adjustable-array-p", 1)?;
+    let adjustable = arguments[0]
+        .array_adjustable()
+        .ok_or_else(|| type_error("adjustable-array-p", "array", &arguments[0]))?;
+    Ok(Value::boolean(adjustable))
+}
+
+pub fn array_displacement(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "array-displacement", 1)?;
+    let displacement = arguments[0]
+        .array_displacement()
+        .ok_or_else(|| type_error("array-displacement", "array", &arguments[0]))?;
+    Ok(match displacement {
+        Some((array, offset)) => Value::values(vec![array, Value::Integer(offset as i64)]),
+        None => Value::values(vec![Value::Nil, Value::Integer(0)]),
+    })
+}
+
 pub fn simple_array_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-array-p", 1)?;
     Ok(Value::boolean(

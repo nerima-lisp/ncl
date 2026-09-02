@@ -253,7 +253,7 @@ impl CompileState {
             "ARRAY-ROW-MAJOR-INDEX" | "ARRAY-IN-BOUNDS-P" => {
                 self.compile_array_element(function, span, items, name, false)
             }
-            "ARRAY-ELEMENT-TYPE" | "ARRAY-HAS-FILL-POINTER-P" | "ARRAY-RANK" | "ARRAY-DIMENSIONS" | "ARRAY-TOTAL-SIZE" => {
+            "ARRAY-ELEMENT-TYPE" | "ARRAY-HAS-FILL-POINTER-P" | "ADJUSTABLE-ARRAY-P" | "ARRAY-DISPLACEMENT" | "ARRAY-RANK" | "ARRAY-DIMENSIONS" | "ARRAY-TOTAL-SIZE" => {
                 self.compile_array_metadata(function, span, items, name, 1)
             }
             "ARRAY-DIMENSION" => self.compile_array_metadata(function, span, items, name, 2),

@@ -65,4 +65,18 @@ mod tests {
             });
         assert_eq!(values[0].to_string(), "OBJECT-ROOTED-CLASS");
     }
+
+    #[test]
+    fn defclass_uses_c3_linearization_for_diamond_inheritance() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass cpl-a () ())
+                 (defclass cpl-b (cpl-a) ())
+                 (defclass cpl-c (cpl-a) ())
+                 (defclass cpl-d (cpl-b cpl-c) ())
+                 (mapcar #'class-name (class-precedence-list (find-class 'cpl-d)))",
+            )
+            .unwrap_or_else(|error| panic!("diamond inheritance should compute a CPL: {error}"));
+        assert_eq!(values.last().unwrap().to_string(), "(CPL-D CPL-B CPL-C CPL-A STANDARD-OBJECT)");
+    }
 }

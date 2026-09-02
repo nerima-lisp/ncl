@@ -442,4 +442,20 @@ mod tests {
         assert!(matches!(items[0], Value::Integer(11)));
         assert!(matches!(items[1], Value::Integer(22)));
     }
+
+    #[test]
+    fn change_class_rejects_invalid_initarg_before_mutating_instance() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_source(
+                "(defclass old-point () ())
+                 (defclass new-point () ((x :initarg :x)))
+                 (let ((point (make-instance 'old-point)))
+                   (handler-case
+                       (progn (change-class point 'new-point 42 1) :unexpected)
+                     (error () (class-name (class-of point)))))",
+            )
+            .expect("change-class invalid initarg is handled");
+        assert_eq!(values.last().unwrap().to_string(), "OLD-POINT");
+    }
 }

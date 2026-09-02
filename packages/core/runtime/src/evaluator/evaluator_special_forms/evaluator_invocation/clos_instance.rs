@@ -41,6 +41,17 @@ impl Runtime {
         let class = environment
             .lookup_class(&class_name)
             .ok_or_else(|| Self::invalid("unknown class", span))?;
+        let initargs = arguments[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| {
+                Ok((
+                    Self::name_designator_from_value(&pair[0], span)?.to_string(),
+                    pair[1].clone(),
+                ))
+            })
+            .collect::<Result<Vec<_>, RuntimeError>>()?;
         let old_instance = arguments[0]
             .instance_snapshot()
             .ok_or_else(|| Self::invalid("change-class requires an instance", span))?;
@@ -50,7 +61,6 @@ impl Runtime {
         let old_class = old_instance
             .instance_class_definition()
             .ok_or_else(|| Self::invalid("change-class requires an instance", span))?;
-        let initargs = arguments[2..].as_chunks::<2>().0;
         for slot in &class.slots {
             if old_class
                 .slots
@@ -59,17 +69,15 @@ impl Runtime {
             {
                 continue;
             }
-            if let Some(pair) = initargs.iter().find(|pair| {
-                slot.initargs.iter().any(|name| {
-                    Self::name_designator_from_value(&pair[0], span)
-                        .is_ok_and(|initarg| initarg == *name)
-                })
-            }) {
+            if let Some((_, value)) = initargs
+                .iter()
+                .find(|(initarg, _)| slot.initargs.iter().any(|name| name == initarg))
+            {
                 self.set_instance_slot_checked(
                     &arguments[0],
                     &class.name,
                     &slot.name,
-                    pair[1].clone(),
+                    value.clone(),
                     span,
                 )?;
             } else if let Some(function) = &slot.init_function {
@@ -84,7 +92,10 @@ impl Runtime {
             }
         }
         let mut update_arguments = vec![old_instance, arguments[0].clone()];
-        update_arguments.extend_from_slice(&arguments[2..]);
+        for (initarg, value) in initargs {
+            update_arguments.push(Value::keyword(initarg));
+            update_arguments.push(value);
+        }
         self.apply_in(
             &Value::symbol("update-instance-for-different-class"),
             &update_arguments,

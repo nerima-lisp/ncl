@@ -96,6 +96,19 @@ mod tests {
     }
 
     #[test]
+    fn compiled_setf_using_class_slot_updates_the_instance() {
+        let values = Runtime::new()
+            .eval_compiled_source(
+                "(defclass point () ((value :initarg :value)))
+                 (let ((point (make-instance 'point :value 1)))
+                   (setf (slot-value-using-class (find-class 'point) point 'value) 9)
+                   (slot-value point 'value))",
+            )
+            .expect("compiled using-class SETF succeeds");
+        assert!(matches!(values.last(), Some(Value::Integer(9))));
+    }
+
+    #[test]
     fn class_of_a_non_instance_value_synthesizes_a_class_definition() {
         let environment = Environment::new();
         let result = Runtime::apply_class_introspection_primitive(

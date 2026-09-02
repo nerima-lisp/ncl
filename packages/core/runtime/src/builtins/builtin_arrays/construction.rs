@@ -211,6 +211,7 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut initial_element = None;
     let mut initial_contents = None;
     let mut fill_pointer = None;
+    let mut adjustable = None;
     for pair in arguments[2..].as_chunks::<2>().0 {
         let name = array_option_name("adjust-array", &pair[0])?;
         match name.as_str() {
@@ -220,6 +221,7 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 message: "adjust-array cannot combine :initial-element and :initial-contents".to_string(), span: None,
             }),
             "FILL-POINTER" => fill_pointer = Some(index_argument("adjust-array", &pair[1])?),
+            "ADJUSTABLE" => adjustable = Some(pair[1].is_truthy()),
             _ => return Err(crate::RuntimeError::InvalidForm {
                 message: format!("adjust-array does not support keyword :{name}"), span: None,
             }),
@@ -248,7 +250,11 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 });
             }
         }
-        if arguments[0].vector_adjustable() == Some(true) && !arguments[0].is_displaced() {
+        let adjustable_value = adjustable.unwrap_or(arguments[0].vector_adjustable().unwrap_or(false));
+        if arguments[0].vector_adjustable() == Some(true)
+            && adjustable != Some(false)
+            && !arguments[0].is_displaced()
+        {
             let fill_pointer = fill_pointer.or_else(|| arguments[0].vector_fill_pointer().flatten());
             if let Value::Vector(items) = &arguments[0] {
                 *items.borrow_mut() = elements;
@@ -262,7 +268,7 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 .array_element_type()
                 .unwrap_or_else(|| Value::symbol("T")),
         );
-        vector.set_vector_adjustable(arguments[0].vector_adjustable().unwrap_or(false));
+        vector.set_vector_adjustable(adjustable_value);
         vector.set_vector_fill_pointer(fill_pointer.or_else(|| arguments[0].vector_fill_pointer().flatten()).map(|value| value.min(total_size)));
         Ok(vector)
     } else {
@@ -272,7 +278,7 @@ pub fn adjust_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 .array_element_type()
                 .unwrap_or_else(|| Value::symbol("T")),
         );
-        array.set_array_adjustable(arguments[0].array_adjustable().unwrap_or(false));
+        array.set_array_adjustable(adjustable.unwrap_or(arguments[0].array_adjustable().unwrap_or(false)));
         if fill_pointer.is_some() {
             return Err(crate::RuntimeError::InvalidForm {
                 message: "adjust-array fill pointer requires a vector".to_string(),

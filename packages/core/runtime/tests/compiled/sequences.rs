@@ -595,6 +595,18 @@ fn compiled_evaluates_adjust_array() {
 }
 
 #[test]
+fn compiled_evaluates_adjust_array_adjustable_option() {
+    assert_eq!(
+        evaluate(
+            "(list (adjustable-array-p (adjust-array (make-array 2) 3 :adjustable t))\
+                   (adjustable-array-p (adjust-array (make-array 2 :adjustable t) 3 :adjustable nil)))",
+        )
+        .to_string(),
+        "(T NIL)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_vector_push_operations() {
     assert_eq!(
         evaluate(

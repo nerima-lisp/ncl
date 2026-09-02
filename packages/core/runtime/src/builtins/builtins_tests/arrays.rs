@@ -163,6 +163,35 @@ fn adjust_array_updates_vector_fill_pointer() {
 }
 
 #[test]
+fn adjust_array_updates_adjustable_metadata() {
+    let vector = make_array(&[Value::Integer(2)]).expect("make-array should construct a vector");
+    let adjusted = adjust_array(&[
+        vector,
+        Value::Integer(3),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])
+    .expect("adjust-array should accept :adjustable");
+
+    assert!(adjustable_array_p(&[adjusted]).unwrap().is_truthy());
+
+    let adjustable = make_array(&[
+        Value::Integer(2),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])
+    .expect("make-array should construct an adjustable vector");
+    let adjusted = adjust_array(&[
+        adjustable,
+        Value::Integer(3),
+        Value::keyword("adjustable"),
+        Value::Nil,
+    ])
+    .expect("adjust-array should update :adjustable");
+    assert!(!adjustable_array_p(&[adjusted]).unwrap().is_truthy());
+}
+
+#[test]
 fn vector_push_uses_and_extends_fill_pointer() {
     let vector = make_array(&[
         Value::Integer(3),

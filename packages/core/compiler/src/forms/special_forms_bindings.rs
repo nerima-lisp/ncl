@@ -96,9 +96,12 @@ impl CompileState {
             | "METHOD-FUNCTION" => self.compile_class_introspection(function, span, items, name),
             "FINALIZE-INHERITANCE" => self.compile_class_introspection(function, span, items, name),
             "SLOT-VALUE"
+            | "SLOT-VALUE-USING-CLASS"
             | "SLOT-EXISTS-P"
             | "SLOT-BOUNDP"
+            | "SLOT-BOUNDP-USING-CLASS"
             | "SLOT-MAKUNBOUND"
+            | "SLOT-MAKUNBOUND-USING-CLASS"
             | "SLOT-DEFINITION-NAME"
             | "SLOT-DEFINITION-DOCUMENTATION"
             | "SLOT-DEFINITION-INITARGS"

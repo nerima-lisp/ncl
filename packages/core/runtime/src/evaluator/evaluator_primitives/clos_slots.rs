@@ -145,25 +145,60 @@ impl Runtime {
     ) -> Option<Result<Value, RuntimeError>> {
         if !matches!(
             name,
-            "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND"
+            "SLOT-VALUE"
+                | "SLOT-EXISTS-P"
+                | "SLOT-BOUNDP"
+                | "SLOT-MAKUNBOUND"
+                | "SLOT-VALUE-USING-CLASS"
+                | "SLOT-BOUNDP-USING-CLASS"
+                | "SLOT-MAKUNBOUND-USING-CLASS"
         ) {
             return None;
         }
         let result = (|| -> Result<Value, RuntimeError> {
-            if arguments.len() != 2 {
-                return Err(Self::arity("slot operation", "two", arguments.len()));
+            let using_class = name.ends_with("-USING-CLASS");
+            if arguments.len() != if using_class { 3 } else { 2 } {
+                return Err(Self::arity(
+                    "slot operation",
+                    if using_class { "three" } else { "two" },
+                    arguments.len(),
+                ));
             }
-            let slot_name = Self::slot_name_from_value(&arguments[1], span)?;
-            if !matches!(arguments[0], Value::Instance(_)) {
+            let (object, slot_argument, expected_class) = if using_class {
+                let Some(expected_class) = arguments[0].class_definition() else {
+                    return Err(RuntimeError::Type {
+                        expected: "CLASS".to_owned(),
+                        actual: arguments[0].type_name().to_owned(),
+                        span: Some(span),
+                    });
+                };
+                (&arguments[1], &arguments[2], Some(expected_class))
+            } else {
+                (&arguments[0], &arguments[1], None)
+            };
+            let slot_name = Self::slot_name_from_value(slot_argument, span)?;
+            if !matches!(object, Value::Instance(_)) {
                 return Err(RuntimeError::Type {
                     expected: "STANDARD-OBJECT".to_owned(),
                     actual: arguments[0].type_name().to_string(),
                     span: Some(span),
                 });
             }
+            if let Some(expected_class) = expected_class {
+                let actual_class = object
+                    .instance_class_definition()
+                    .ok_or_else(|| Self::invalid("object has no class definition", span))?;
+                if !actual_class
+                    .precedence
+                    .iter()
+                    .any(|name| name.as_ref() == expected_class.name)
+                {
+                    return Err(Self::invalid("class is not a superclass of object", span));
+                }
+            }
             match name {
-                "SLOT-VALUE" => {
-                    let value = arguments[0]
+                "SLOT-VALUE" | "SLOT-VALUE-USING-CLASS" => {
+                    let value = object
                         .instance_slot(&slot_name)
                         .ok_or_else(|| Self::invalid("slot is not defined for this class", span))?;
                     if matches!(value, Value::Unbound) {
@@ -171,28 +206,24 @@ impl Runtime {
                     }
                     Ok(value)
                 }
-                "SLOT-EXISTS-P" => Ok(Value::boolean(
-                    arguments[0].instance_slot_exists(&slot_name),
+                "SLOT-EXISTS-P" => Ok(Value::boolean(object.instance_slot_exists(&slot_name))),
+                "SLOT-BOUNDP" | "SLOT-BOUNDP-USING-CLASS" => Ok(Value::boolean(
+                    object.instance_slot_is_bound(&slot_name).unwrap_or(false),
                 )),
-                "SLOT-BOUNDP" => Ok(Value::boolean(
-                    arguments[0]
-                        .instance_slot_is_bound(&slot_name)
-                        .unwrap_or(false),
-                )),
-                "SLOT-MAKUNBOUND" => {
-                    let Some(class) = arguments[0].instance_class_definition() else {
+                "SLOT-MAKUNBOUND" | "SLOT-MAKUNBOUND-USING-CLASS" => {
+                    let Some(class) = object.instance_class_definition() else {
                         return Err(RuntimeError::Type {
                             expected: "STANDARD-OBJECT".to_owned(),
                             actual: arguments[0].type_name().to_string(),
                             span: Some(span),
                         });
                     };
-                    if !arguments[0].instance_slot_exists(&slot_name)
-                        || !arguments[0].set_instance_slot(&class.name, &slot_name, Value::Unbound)
+                    if !object.instance_slot_exists(&slot_name)
+                        || !object.set_instance_slot(&class.name, &slot_name, Value::Unbound)
                     {
                         return Err(Self::invalid("slot is not defined for this class", span));
                     }
-                    Ok(arguments[0].clone())
+                    Ok(object.clone())
                 }
                 _ => unreachable!("slot primitive name was prevalidated"),
             }

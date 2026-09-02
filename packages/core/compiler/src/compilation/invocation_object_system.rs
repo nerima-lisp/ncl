@@ -62,6 +62,11 @@ impl CompileState {
     ) -> Result<(), CompileError> {
         let expected_arguments = if matches!(
             operation,
+            "SLOT-VALUE-USING-CLASS" | "SLOT-BOUNDP-USING-CLASS" | "SLOT-MAKUNBOUND-USING-CLASS"
+        ) {
+            3
+        } else if matches!(
+            operation,
             "SLOT-DEFINITION-NAME"
                 | "SLOT-DEFINITION-DOCUMENTATION"
                 | "SLOT-DEFINITION-INITARGS"

@@ -56,6 +56,46 @@ mod tests {
     }
 
     #[test]
+    fn using_class_slot_primitives_operate_on_an_instance() {
+        let class = empty_class("POINT");
+        let instance =
+            Value::instance(class.clone(), vec![("value".to_owned(), Value::Integer(7))]);
+        let class_value = Value::Class(class);
+        let value = Runtime::apply_slot_primitive(
+            "SLOT-VALUE-USING-CLASS",
+            &[
+                class_value.clone(),
+                instance.clone(),
+                Value::symbol("value"),
+            ],
+            SPAN,
+        )
+        .expect("using-class primitive is recognized")
+        .expect("slot value succeeds");
+        assert!(matches!(value, Value::Integer(7)));
+        let bound = Runtime::apply_slot_primitive(
+            "SLOT-BOUNDP-USING-CLASS",
+            &[
+                class_value.clone(),
+                instance.clone(),
+                Value::symbol("value"),
+            ],
+            SPAN,
+        )
+        .expect("using-class primitive is recognized")
+        .expect("slot boundp succeeds");
+        assert!(matches!(bound, Value::Boolean(true)));
+        Runtime::apply_slot_primitive(
+            "SLOT-MAKUNBOUND-USING-CLASS",
+            &[class_value, instance.clone(), Value::symbol("value")],
+            SPAN,
+        )
+        .expect("using-class primitive is recognized")
+        .expect("slot makunbound succeeds");
+        assert!(!instance.instance_slot_is_bound("value").unwrap_or(false));
+    }
+
+    #[test]
     fn class_of_a_non_instance_value_synthesizes_a_class_definition() {
         let environment = Environment::new();
         let result = Runtime::apply_class_introspection_primitive(

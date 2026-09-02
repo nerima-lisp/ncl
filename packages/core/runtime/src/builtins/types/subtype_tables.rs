@@ -123,12 +123,13 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
         "STRING" | "BASE-STRING" => {
             matches!(
                 supertype_name,
-                "STRING" | "BASE-STRING" | "SEQUENCE" | "ATOM"
+                "STRING" | "BASE-STRING" | "VECTOR" | "ARRAY" | "SEQUENCE" | "ATOM"
             )
         }
         "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => matches!(
             supertype_name,
-            "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" | "SEQUENCE" | "ATOM"
+            "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING"
+                | "VECTOR" | "ARRAY" | "SIMPLE-ARRAY" | "SEQUENCE" | "ATOM"
         ),
         "KEYWORD" => matches!(supertype_name, "SYMBOL" | "ATOM"),
         "CONS" => matches!(supertype_name, "LIST" | "SEQUENCE"),

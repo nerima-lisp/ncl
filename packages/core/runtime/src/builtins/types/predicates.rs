@@ -60,7 +60,12 @@ pub fn symbol_package_value(arguments: &[Value]) -> Result<Value, RuntimeError> 
 
 pub fn vectorp(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "vectorp", 1)?;
-    Ok(Value::boolean(matches!(&arguments[0], Value::Vector(_))))
+    Ok(Value::boolean(
+        matches!(
+            &arguments[0],
+            Value::Vector(_) | Value::String(_) | Value::MutableString(_)
+        ),
+    ))
 }
 
 pub fn simple_vector_p(arguments: &[Value]) -> Result<Value, RuntimeError> {

@@ -1214,8 +1214,8 @@ fn evaluates_sequence_operations_and_type_predicates(#[case] eval_fn: EvalFn) {
             "(A (B C) B #\\b (B C) \"bc\" (B C) (B 2) 2 3)"
         );
     assert_eq!(
-            evaluate("(list (typep 1 'integer) (typep \"abc\" 'sequence) (characterp #\\a) (keywordp :x) (vectorp #(1 2)) (bit-vector-p #(0 1 1)) (simple-bit-vector-p #(0 1 1)) (bit-vector-p #(0 2)) (endp nil) (endp '(1)))").to_string(),
-            "(T T T T T T T NIL T NIL)"
+            evaluate("(list (typep 1 'integer) (typep \"abc\" 'sequence) (typep \"abc\" 'vector) (typep \"abc\" 'array) (characterp #\\a) (keywordp :x) (vectorp #(1 2)) (vectorp \"abc\") (simple-vector-p \"abc\") (bit-vector-p #(0 1 1)) (simple-bit-vector-p #(0 1 1)) (bit-vector-p #(0 2)) (endp nil) (endp '(1)))").to_string(),
+            "(T T T T T T T T NIL T T NIL T NIL)"
         );
 }
 

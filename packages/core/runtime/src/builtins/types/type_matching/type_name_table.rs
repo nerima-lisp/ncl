@@ -52,12 +52,21 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
         "CONS" => matches!(value, Value::List(_) | Value::MutableCons(_) | Value::DottedList { .. }),
         "LIST" => matches!(value, Value::Nil | Value::Boolean(false) | Value::List(_) | Value::MutableCons(_)),
         "ATOM" => !matches!(value, Value::List(_) | Value::MutableCons(_) | Value::DottedList { .. }),
-        "VECTOR" => matches!(value, Value::Vector(_)),
+        "VECTOR" => matches!(
+            value,
+            Value::Vector(_) | Value::String(_) | Value::MutableString(_)
+        ),
         "SIMPLE-VECTOR" => is_simple_vector_value(value),
         "BIT-VECTOR" => is_bit_vector_value(value),
         "SIMPLE-BIT-VECTOR" => is_simple_bit_vector_value(value),
-        "ARRAY" => dimensions_for_array(value).is_some(),
-        "SIMPLE-ARRAY" => is_simple_array_value(value),
+        "ARRAY" => {
+            dimensions_for_array(value).is_some()
+                || matches!(value, Value::String(_) | Value::MutableString(_))
+        }
+        "SIMPLE-ARRAY" => {
+            is_simple_array_value(value)
+                || matches!(value, Value::String(_) | Value::MutableString(_))
+        }
         "HASH-TABLE" => matches!(value, Value::HashTable { .. }),
         "CONDITION" => matches!(value, Value::Condition(_)),
         "RESTART" => matches!(value, Value::Restart(_)),

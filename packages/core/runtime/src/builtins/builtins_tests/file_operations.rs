@@ -359,3 +359,40 @@ fn open_overwrite_writes_from_the_start_of_existing_file() -> Result<(), Runtime
     std::fs::remove_file(root).unwrap();
     Ok(())
 }
+
+#[test]
+fn open_rename_moves_existing_file_before_creating_output() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-open-rename-{suffix}"));
+    std::fs::write(&root, "old content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let stream = open_file(&[
+        Value::string(root.to_string_lossy().to_string()),
+        Value::keyword("direction"),
+        Value::keyword("output"),
+        Value::keyword("if-exists"),
+        Value::keyword("rename"),
+    ])?;
+    write_string(&[Value::string("new content"), stream.clone()])?;
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read_to_string(&root).unwrap(), "new content");
+    let backup = std::fs::read_dir(root.parent().unwrap())
+        .map_err(|error| RuntimeError::Io {
+            kind: error.kind(),
+            message: error.to_string(),
+        })?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|candidate| {
+            candidate
+                .to_string_lossy()
+                .starts_with(&format!("{}.ncl-rename-", root.display()))
+        })
+        .expect("rename should leave a backup file");
+    assert_eq!(std::fs::read_to_string(&backup).unwrap(), "old content");
+    std::fs::remove_file(root).unwrap();
+    std::fs::remove_file(backup).unwrap();
+    Ok(())
+}

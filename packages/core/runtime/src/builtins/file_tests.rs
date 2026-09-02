@@ -62,9 +62,27 @@ fn output_file_options_are_table_driven() {
         ("OVERWRITE", true),
         ("SUPERSEDE", true),
     ];
-    for (option, succeeds) in existing_cases {
-        let result = open_output_file(&existing, "CREATE", option, false);
+    for (index, (option, succeeds)) in existing_cases.into_iter().enumerate() {
+        let path = existing.with_extension(format!("case-{index}"));
+        if let Err(error) = fs::write(&path, "old") {
+            panic!("failed to create test case file: {error}");
+        }
+        let result = open_output_file(&path, "CREATE", option, false);
         assert_eq!(result.is_ok(), succeeds, "if-exists={option}");
+        if let Ok(stream) = result {
+            if !matches!(stream, Value::Nil) {
+                let _ = close_stream(&[stream]);
+            }
+        }
+        let backup = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(format!(
+                "{}.ncl-rename-0",
+                path.file_name().unwrap().to_string_lossy()
+            ));
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(backup);
     }
     for (index, (option, succeeds)) in [("CREATE", true), ("NIL", true), ("ERROR", false)]
         .into_iter()

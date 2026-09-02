@@ -53,7 +53,17 @@ pub(super) fn open_output_file(
     if_exists: &str,
     byte: bool,
 ) -> Result<Value, RuntimeError> {
-    if path.exists() {
+    let renamed = if path.exists() && if_exists == "RENAME" {
+        let backup = unique_rename_path(path)?;
+        std::fs::rename(path, &backup).map_err(|error| RuntimeError::Io {
+            kind: error.kind(),
+            message: format!("rename {}: {error}", path.display()),
+        })?;
+        true
+    } else {
+        false
+    };
+    if path.exists() && !renamed {
         match if_exists {
             "NIL" => return Ok(Value::Nil),
             "ERROR" => {
@@ -126,6 +136,27 @@ pub(super) fn open_output_file(
     } else {
         Ok(Value::file_output_stream(path.to_path_buf(), String::new()))
     }
+}
+
+fn unique_rename_path(path: &Path) -> Result<std::path::PathBuf, RuntimeError> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path.file_name().ok_or_else(|| RuntimeError::InvalidForm {
+        message: format!("open cannot rename path {}", path.display()),
+        span: None,
+    })?;
+    for index in 0..1000 {
+        let candidate = parent.join(format!("{}.ncl-rename-{index}", name.to_string_lossy()));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err(RuntimeError::Io {
+        kind: std::io::ErrorKind::AlreadyExists,
+        message: format!(
+            "could not find a unique rename target for {}",
+            path.display()
+        ),
+    })
 }
 
 pub(super) fn open_io_file(

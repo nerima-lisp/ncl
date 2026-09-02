@@ -113,9 +113,11 @@ impl Runtime {
         } else {
             current.to_string()
         };
-        self.packages
-            .borrow_mut()
-            .ensure_symbol(&package_name, &normalized);
+        let mut packages = self.packages.borrow_mut();
+        if let Some(imported) = packages.imported_symbol_for(&package_name, &normalized) {
+            return Ok(imported);
+        }
+        packages.ensure_symbol(&package_name, &normalized);
         Ok(package::canonical_symbol_name(&package_name, &normalized))
     }
 
@@ -147,5 +149,40 @@ mod tests {
             }
             other => panic!("expected an invalid package-qualified symbol error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn resolve_atom_preserves_imported_symbol_identity() {
+        let runtime = Runtime::new();
+        {
+            let mut packages = runtime.packages.borrow_mut();
+            packages
+                .define_package(
+                    "IDENTITY-SOURCE",
+                    Vec::new(),
+                    Vec::new(),
+                    ["SHARED".to_string()].into_iter().collect(),
+                    None,
+                    std::collections::HashMap::new(),
+                )
+                .expect("source package should be defined");
+            packages
+                .define_package(
+                    "IDENTITY-TARGET",
+                    Vec::new(),
+                    Vec::new(),
+                    std::collections::HashSet::new(),
+                    None,
+                    std::collections::HashMap::new(),
+                )
+                .expect("target package should be defined");
+            packages.import_symbol("IDENTITY-SOURCE", "SHARED", "IDENTITY-TARGET", false);
+        }
+        assert_eq!(
+            runtime
+                .resolve_atom("shared", "IDENTITY-TARGET", SPAN)
+                .expect("imported symbol should resolve"),
+            "IDENTITY-SOURCE::SHARED"
+        );
     }
 }

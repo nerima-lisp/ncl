@@ -169,6 +169,23 @@ mod tests {
     }
 
     #[test]
+    fn explicit_initialize_instance_generic_keeps_the_standard_method() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass explicit-generic-class () ((value :initarg :value)))
+                 (defgeneric initialize-instance (object &rest initargs))
+                 (defmethod initialize-instance ((object explicit-generic-class) &rest initargs)
+                   (declare (ignore initargs))
+                   (call-next-method)
+                   (setf (slot-value object 'value) 99)
+                   object)
+                 (slot-value (make-instance 'explicit-generic-class :value 41) 'value)",
+            )
+            .unwrap_or_else(|error| panic!("explicit initialize-instance generic failed: {error}"));
+        assert_eq!(values.last().unwrap().to_string(), "99");
+    }
+
+    #[test]
     fn defclass_accessor_is_setfable() {
         let values = Runtime::new()
             .eval_source(

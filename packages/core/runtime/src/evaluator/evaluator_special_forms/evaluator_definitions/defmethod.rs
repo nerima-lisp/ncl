@@ -7,6 +7,29 @@ use crate::value::{MethodCombination, MethodDefinition, MethodSpecializer};
 use parameters::DefmethodParameters;
 
 impl Runtime {
+    fn ensure_initialize_instance_default(generic: &Value) {
+        let Value::Function(function) = generic else {
+            return;
+        };
+        let crate::Function::Generic { methods, .. } = function.as_ref() else {
+            return;
+        };
+        let has_default = methods.borrow().iter().any(|method| {
+            matches!(
+                &method.function,
+                Value::Function(function)
+                    if matches!(function.as_ref(), crate::Function::Primitive { name: "INITIALIZE-INSTANCE" })
+            )
+        });
+        if !has_default {
+            methods.borrow_mut().push(MethodDefinition {
+                qualifiers: Vec::new(),
+                specializers: vec![MethodSpecializer::Class("T".into())],
+                function: Value::primitive("INITIALIZE-INSTANCE"),
+            });
+        }
+    }
+
     pub(crate) fn special_defgeneric(
         items: &[Form],
         environment: &Environment,
@@ -85,15 +108,16 @@ impl Runtime {
                 }
             }
         }
-        environment.define_function(
-            &name,
-            Value::generic_with_lambda_list(
-                name.clone(),
-                items[2].clone(),
-                method_combination,
-                documentation,
-            ),
+        let generic = Value::generic_with_lambda_list(
+            name.clone(),
+            items[2].clone(),
+            method_combination,
+            documentation,
         );
+        if name == "INITIALIZE-INSTANCE" {
+            Self::ensure_initialize_instance_default(&generic);
+        }
+        environment.define_function(&name, generic);
         Ok(Value::symbol(name))
     }
 
@@ -187,6 +211,9 @@ impl Runtime {
                 items[1].span,
             ));
         };
+        if name == "INITIALIZE-INSTANCE" {
+            Self::ensure_initialize_instance_default(&Value::Function(generic.clone()));
+        }
         let closure = Value::closure_with_keywords(
             crate::ClosureOptions {
                 parameters: required,

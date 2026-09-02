@@ -71,7 +71,17 @@ pub fn vector_push_extend(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 span: None,
             });
         }
-        let extension = arguments.get(2).map(|value| index_argument("vector-push-extend", value)).transpose()?.unwrap_or(1).max(1);
+        let extension = arguments
+            .get(2)
+            .map(|value| index_argument("vector-push-extend", value))
+            .transpose()?
+            .unwrap_or(1);
+        if extension == 0 {
+            return Err(RuntimeError::InvalidForm {
+                message: "vector-push-extend extension must be positive".to_string(),
+                span: None,
+            });
+        }
         if let Value::Vector(items) = vector {
             length = length.checked_add(extension).ok_or_else(|| crate::RuntimeError::InvalidForm { message: "vector-push-extend length overflow".to_string(), span: None })?;
             items.borrow_mut().resize(length, Value::Nil);

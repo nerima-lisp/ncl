@@ -234,6 +234,24 @@ fn vector_push_uses_and_extends_fill_pointer() {
 }
 
 #[test]
+fn vector_push_extend_rejects_zero_extension() {
+    let vector = make_array(&[
+        Value::Integer(1),
+        Value::keyword("fill-pointer"),
+        Value::Integer(1),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])
+    .unwrap();
+    assert!(vector_push_extend(&[
+        Value::Integer(7),
+        vector,
+        Value::Integer(0),
+    ])
+    .is_err());
+}
+
+#[test]
 fn vector_pop_decrements_fill_pointer() {
     let vector = make_array(&[
         Value::Integer(2),

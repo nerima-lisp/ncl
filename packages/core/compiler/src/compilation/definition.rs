@@ -12,9 +12,16 @@ impl CompileState {
         let argument = &items[1];
         if matches!(argument.kind, FormKind::Atom(_)) {
             let (name, escaped) = Self::symbol_name_info(argument, "function name")?;
+            let local_name = Self::local_function_key(&name, escaped);
             self.emit(
                 function,
-                if escaped {
+                if self.has_local_function(&local_name) {
+                    if escaped {
+                        Instruction::FunctionLoadExact(name)
+                    } else {
+                        Instruction::FunctionLoad(name)
+                    }
+                } else if escaped {
                     Instruction::FunctionLoadExact(name)
                 } else {
                     Instruction::FunctionLoad(name)

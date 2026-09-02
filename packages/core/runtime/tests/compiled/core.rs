@@ -165,6 +165,14 @@ fn compiled_flet_uses_a_separate_function_namespace() {
 }
 
 #[test]
+fn compiled_function_quote_uses_the_local_function_binding() {
+    assert_eq!(
+        evaluate("(flet ((car (x) 42)) (funcall #'car '(1)))").to_string(),
+        "42",
+    );
+}
+
+#[test]
 fn compiled_labels_supports_mutual_recursion() {
     assert_eq!(
         evaluate(

@@ -23,6 +23,50 @@ fn compile_function_compiles_a_non_symbol_argument_as_an_expression() {
 }
 
 #[test]
+fn compile_function_resolves_a_local_function_name() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    state
+        .local_function_scopes
+        .push(HashSet::from([CompileState::local_function_key(
+            "CAR", false,
+        )]));
+    let span = Span::new(0, 1);
+    let items = vec![Form::atom("FUNCTION", span), Form::atom("car", span)];
+
+    state
+        .compile_function(function, span, &items)
+        .expect("local function name should compile");
+
+    assert_eq!(
+        state.functions[function].instructions,
+        vec![Instruction::FunctionLoad("CAR".to_string())]
+    );
+}
+
+#[test]
+fn compile_function_preserves_exact_resolution_for_an_escaped_local_name() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    state
+        .local_function_scopes
+        .push(HashSet::from([CompileState::local_function_key(
+            "Mixed", true,
+        )]));
+    let span = Span::new(0, 1);
+    let items = vec![Form::atom("FUNCTION", span), Form::atom("|Mixed|", span)];
+
+    state
+        .compile_function(function, span, &items)
+        .expect("escaped local function name should compile");
+
+    assert_eq!(
+        state.functions[function].instructions,
+        vec![Instruction::FunctionLoadExact("Mixed".to_string())]
+    );
+}
+
+#[test]
 fn compile_defun_defines_an_escaped_name_with_exact_instructions() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

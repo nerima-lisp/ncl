@@ -66,6 +66,15 @@ fn make_array_tracks_vector_fill_pointer_and_adjustability() {
         Err(RuntimeError::InvalidForm { message, .. })
             if message.contains("fill pointer requires a vector")
     ));
+    assert!(matches!(
+        make_array(&[
+            Value::Integer(2),
+            Value::keyword("fill-pointer"),
+            Value::Integer(3),
+        ]),
+        Err(RuntimeError::InvalidForm { message, .. })
+            if message.contains("fill pointer exceeds vector length")
+    ));
 }
 
 #[test]

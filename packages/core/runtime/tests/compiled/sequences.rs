@@ -860,6 +860,15 @@ fn compiled_setf_fill_pointer_accepts_an_evaluated_vector() {
 }
 
 #[test]
+fn compiled_rejects_make_array_fill_pointer_beyond_vector_length() {
+    assert!(matches!(
+        Runtime::new().eval_compiled_source("(make-array 2 :fill-pointer 3)"),
+        Err(ncl_runtime::RuntimeError::InvalidForm { message, .. })
+            if message.contains("fill pointer exceeds vector length")
+    ));
+}
+
+#[test]
 fn compiled_setf_aref_accepts_an_evaluated_vector() {
     assert_eq!(
         evaluate("(setf (aref (make-array 1) 0) 7)").to_string(),

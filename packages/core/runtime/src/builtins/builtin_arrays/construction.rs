@@ -191,6 +191,12 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
             span: None,
         });
     }
+    if fill_pointer.is_some_and(|pointer| pointer > total_size) {
+        return Err(crate::RuntimeError::InvalidForm {
+            message: "make-array fill pointer exceeds vector length".to_string(),
+            span: None,
+        });
+    }
     if displaced_to.is_some() && (initial_element.is_some() || initial_contents.is_some()) {
         return Err(crate::RuntimeError::InvalidForm {
             message: "make-array cannot combine displacement with initial contents".to_string(),

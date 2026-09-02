@@ -1040,6 +1040,15 @@ fn evaluates_fill_pointer_true() {
 }
 
 #[test]
+fn rejects_make_array_fill_pointer_beyond_vector_length() {
+    assert!(matches!(
+        Runtime::new().eval_source("(make-array 2 :fill-pointer 3)"),
+        Err(ncl_runtime::RuntimeError::InvalidForm { message, .. })
+            if message.contains("fill pointer exceeds vector length")
+    ));
+}
+
+#[test]
 fn rejects_invalid_map_into_inputs_and_propagates_errors() {
     assert!(matches!(
         Runtime::new().eval_source("(map-into (vector 0) #'+ 5)"),

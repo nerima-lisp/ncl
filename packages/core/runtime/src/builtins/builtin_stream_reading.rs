@@ -25,6 +25,9 @@ pub(crate) fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !stream.is_input() {
         return Err(stream_state_error("read-char", "an input stream"));
     }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("read-char", "a character stream"));
+    }
     match stream.read_char() {
         Some(character) => Ok(Value::Character(character)),
         None if eof_error_p => Err(end_of_file_error("a character")),

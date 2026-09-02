@@ -1,4 +1,5 @@
 mod construction;
+mod bytes;
 mod cursor;
 mod line_ops;
 mod metadata;

@@ -5,6 +5,7 @@ impl Stream {
     pub(crate) fn element_type_name(&self) -> &'static str {
         match self.element_type {
             super::super::value_stream::StreamElementType::Character => "CHARACTER",
+            super::super::value_stream::StreamElementType::UnsignedByte8 => "UNSIGNED-BYTE",
         }
     }
 

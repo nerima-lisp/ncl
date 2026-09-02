@@ -96,6 +96,39 @@ fn file_operations_cover_lifecycle_and_open_directions() -> Result<(), RuntimeEr
 }
 
 #[test]
+fn byte_file_streams_read_write_and_append_raw_bytes() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-byte-stream-{suffix}"));
+    std::fs::write(&root, [1_u8, 2_u8]).map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let path = Value::string(root.to_string_lossy().to_string());
+    let byte_type = Value::list(vec![Value::symbol("UNSIGNED-BYTE"), Value::Integer(8)]);
+
+    let input = open_file(&[path.clone(), Value::keyword("element-type"), byte_type.clone()])?;
+    assert_eq!(stream_element_type(std::slice::from_ref(&input))?.to_string(), "(UNSIGNED-BYTE 8)");
+    assert!(matches!(read_byte(std::slice::from_ref(&input))?, Value::Integer(1)));
+    assert!(matches!(read_byte(std::slice::from_ref(&input))?, Value::Integer(2)));
+    assert!(matches!(read_byte(&[input.clone(), Value::Integer(9)])?, Value::Integer(9)));
+    close_stream(&[input])?;
+
+    let output = open_file(&[
+        path.clone(), Value::keyword("direction"), Value::keyword("output"),
+        Value::keyword("if-exists"), Value::keyword("append"),
+        Value::keyword("element-type"), byte_type,
+    ])?;
+    assert!(matches!(write_byte(&[Value::Integer(3), output.clone()])?, Value::Integer(3)));
+    close_stream(&[output])?;
+    let bytes = std::fs::read(&root).map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    assert_eq!(bytes, vec![1, 2, 3]);
+    Ok(())
+}
+
+#[test]
 fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeError> {
     let suffix = nanosecond_suffix()?;
     let missing_path = std::env::temp_dir().join(format!("ncl-open-options-{suffix}-missing"));

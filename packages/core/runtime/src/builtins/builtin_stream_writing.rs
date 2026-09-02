@@ -20,6 +20,9 @@ pub(super) fn write_destination(
             }
         }
         Some(Value::Stream(stream)) => {
+            if stream.borrow().element_type_name() != "CHARACTER" {
+                return Err(stream_state_error(function, "a character stream"));
+            }
             if stream.borrow_mut().write(text) {
                 Ok(())
             } else {

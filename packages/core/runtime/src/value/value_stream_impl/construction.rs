@@ -21,6 +21,7 @@ impl Stream {
             },
             closed: false,
             element_type: StreamElementType::Character,
+            byte_data: None,
         }
     }
 
@@ -34,6 +35,7 @@ impl Stream {
             },
             closed: false,
             element_type: StreamElementType::Character,
+            byte_data: None,
         }
     }
 
@@ -55,6 +57,7 @@ impl Stream {
             },
             closed: false,
             element_type: StreamElementType::Character,
+            byte_data: None,
         }
     }
 
@@ -68,6 +71,7 @@ impl Stream {
             },
             closed: false,
             element_type: StreamElementType::Character,
+            byte_data: None,
         }
     }
 
@@ -82,6 +86,7 @@ impl Stream {
             },
             closed: false,
             element_type: StreamElementType::Character,
+            byte_data: None,
         }
     }
 
@@ -96,6 +101,7 @@ impl Stream {
             },
             closed: false,
             element_type: StreamElementType::Character,
+            byte_data: None,
         }
     }
 }

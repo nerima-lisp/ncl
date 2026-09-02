@@ -97,7 +97,13 @@ impl Stream {
             return Ok(());
         }
         if !abort {
-            if let StreamKind::Output {
+            if let Some(super::super::value_stream::ByteStreamData::Io { bytes, file_path, .. }) = &self.byte_data {
+                std::fs::write(file_path.as_ref(), bytes)?;
+            }
+            if let Some(super::super::value_stream::ByteStreamData::Output { bytes, file_path }) = &self.byte_data {
+                std::fs::write(file_path.as_ref(), bytes)?;
+            }
+            if self.byte_data.is_none() && let StreamKind::Output {
                 buffer,
                 file_path: Some(path),
                 ..
@@ -105,7 +111,7 @@ impl Stream {
             {
                 std::fs::write(path.as_ref(), buffer.as_bytes())?;
             }
-            if let StreamKind::Io {
+            if self.byte_data.is_none() && let StreamKind::Io {
                 characters,
                 file_path,
                 ..

@@ -17,6 +17,7 @@ pub(crate) fn open_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let mut direction = "INPUT".to_string();
     let mut if_does_not_exist = None;
     let mut if_exists = None;
+    let mut byte = false;
     for pair in arguments[1..].as_chunks::<2>().0 {
         let keyword = stream_keyword_name("open", &pair[0])?;
         match keyword.as_str() {
@@ -30,6 +31,9 @@ pub(crate) fn open_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 if_exists = Some(stream_keyword_name("open :if-exists", &pair[1])?);
             }
             "ELEMENT-TYPE" => {
+                if let Some(items) = pair[1].list_items() {
+                    if items.len() == 2 && items[0].symbol_name() == Some("UNSIGNED-BYTE") && matches!(&items[1], Value::Integer(8)) { byte = true; continue; }
+                }
                 let element_type = pair[1].symbol_name().ok_or_else(|| RuntimeError::InvalidForm {
                     message: "open :element-type currently supports only CHARACTER".to_string(),
                     span: None,
@@ -60,8 +64,8 @@ pub(crate) fn open_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
     });
     let if_exists = if_exists.unwrap_or_else(|| "NEW-VERSION".to_string());
     match direction.as_str() {
-        "INPUT" => open_input_file(&path, &if_does_not_exist),
-        "OUTPUT" => open_output_file(&path, &if_does_not_exist, &if_exists),
+        "INPUT" => open_input_file(&path, &if_does_not_exist, byte),
+        "OUTPUT" => open_output_file(&path, &if_does_not_exist, &if_exists, byte),
         "PROBE" => {
             if path.exists() {
                 Ok(Value::file_input_stream(""))
@@ -69,7 +73,7 @@ pub(crate) fn open_file(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 Ok(Value::Nil)
             }
         }
-        "IO" => open_io_file(&path, &if_does_not_exist, &if_exists),
+        "IO" => open_io_file(&path, &if_does_not_exist, &if_exists, byte),
         _ => Err(RuntimeError::InvalidForm {
             message: format!("open received unknown direction :{direction}"),
             span: None,

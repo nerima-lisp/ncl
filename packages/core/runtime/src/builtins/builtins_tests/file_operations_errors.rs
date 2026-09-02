@@ -94,37 +94,37 @@ fn open_input_file_reports_write_error_when_parent_directory_is_missing() {
     let path = std::env::temp_dir()
         .join(format!("ncl-missing-parent-{}", nonce()))
         .join("input.txt");
-    assert!(open_input_file(&path, "CREATE").is_err());
+    assert!(open_input_file(&path, "CREATE", false).is_err());
 }
 
 #[test]
 fn open_input_file_reports_read_error_for_directory_path() {
     let directory = std::env::temp_dir();
-    assert!(open_input_file(&directory, "ERROR").is_err());
+    assert!(open_input_file(&directory, "ERROR", false).is_err());
 }
 
 #[test]
 fn open_output_file_reports_append_read_error_for_directory_path() {
     let directory = std::env::temp_dir();
-    assert!(open_output_file(&directory, "CREATE", "APPEND").is_err());
+    assert!(open_output_file(&directory, "CREATE", "APPEND", false).is_err());
 }
 
 #[test]
 fn open_io_file_reports_read_errors_for_directory_path() {
     let directory = std::env::temp_dir();
-    assert!(open_io_file(&directory, "CREATE", "APPEND").is_err());
-    assert!(open_io_file(&directory, "CREATE", "OVERWRITE").is_err());
+    assert!(open_io_file(&directory, "CREATE", "APPEND", false).is_err());
+    assert!(open_io_file(&directory, "CREATE", "OVERWRITE", false).is_err());
 }
 
 #[test]
 fn open_io_file_covers_missing_path_if_does_not_exist_arms() {
     let create_path = scratch_path("io-missing-create");
-    let created = open_io_file(&create_path, "CREATE", "APPEND")
+    let created = open_io_file(&create_path, "CREATE", "APPEND", false)
         .unwrap_or_else(|error| panic!("expected create to succeed: {error}"));
     assert!(matches!(created, Value::Stream(_)));
 
     let nil_path = scratch_path("io-missing-nil");
-    let nil_result = open_io_file(&nil_path, "NIL", "APPEND")
+    let nil_result = open_io_file(&nil_path, "NIL", "APPEND", false)
         .unwrap_or_else(|error| panic!("expected nil to succeed: {error}"));
     assert!(matches!(nil_result, Value::Nil));
 

@@ -29,6 +29,18 @@ impl Value {
         Self::Stream(Rc::new(RefCell::new(Stream::file_input(source))))
     }
 
+    pub(crate) fn file_byte_input_stream(source: Vec<u8>) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::file_byte_input(source))))
+    }
+
+    pub(crate) fn file_byte_output_stream(path: PathBuf, initial: Vec<u8>) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::file_byte_output(path, initial))))
+    }
+
+    pub(crate) fn file_byte_io_stream(path: PathBuf, initial: Vec<u8>, append: bool) -> Self {
+        Self::Stream(Rc::new(RefCell::new(Stream::file_byte_io(path, initial, append))))
+    }
+
     pub(crate) fn file_output_stream(path: PathBuf, initial: String) -> Self {
         Self::Stream(Rc::new(RefCell::new(Stream::file_output(path, initial))))
     }

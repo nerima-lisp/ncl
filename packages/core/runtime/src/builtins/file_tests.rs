@@ -63,7 +63,7 @@ fn output_file_options_are_table_driven() {
         ("SUPERSEDE", true),
     ];
     for (option, succeeds) in existing_cases {
-        let result = open_output_file(&existing, "CREATE", option);
+        let result = open_output_file(&existing, "CREATE", option, false);
         assert_eq!(result.is_ok(), succeeds, "if-exists={option}");
     }
     for (index, (option, succeeds)) in [("CREATE", true), ("NIL", true), ("ERROR", false)]
@@ -71,12 +71,12 @@ fn output_file_options_are_table_driven() {
         .enumerate()
     {
         let path = missing.with_extension(format!("case-{index}"));
-        let result = open_output_file(&path, option, "NEW-VERSION");
+        let result = open_output_file(&path, option, "NEW-VERSION", false);
         assert_eq!(result.is_ok(), succeeds, "if-does-not-exist={option}");
         let _ = fs::remove_file(path);
     }
-    assert!(open_output_file(&existing, "CREATE", "UNKNOWN").is_err());
-    assert!(open_output_file(&missing, "UNKNOWN", "NEW-VERSION").is_err());
+    assert!(open_output_file(&existing, "CREATE", "UNKNOWN", false).is_err());
+    assert!(open_output_file(&missing, "UNKNOWN", "NEW-VERSION", false).is_err());
 
     let _ = fs::remove_file(existing);
     let _ = fs::remove_file(missing);
@@ -89,7 +89,7 @@ fn input_and_io_file_options_are_table_driven() {
     assert!(fs::write(&existing, "content").is_ok());
 
     for (option, succeeds) in [("NIL", true), ("ERROR", true)] {
-        let result = open_input_file(&existing, option);
+        let result = open_input_file(&existing, option, false);
         assert_eq!(result.is_ok(), succeeds, "existing input option={option}");
     }
     for (index, (option, succeeds)) in [("NIL", true), ("CREATE", true), ("ERROR", false)]
@@ -97,11 +97,11 @@ fn input_and_io_file_options_are_table_driven() {
         .enumerate()
     {
         let path = missing.with_extension(format!("case-{index}"));
-        let result = open_input_file(&path, option);
+        let result = open_input_file(&path, option, false);
         assert_eq!(result.is_ok(), succeeds, "missing input option={option}");
         let _ = fs::remove_file(path);
     }
-    assert!(open_input_file(&missing, "UNKNOWN").is_err());
+    assert!(open_input_file(&missing, "UNKNOWN", false).is_err());
 
     for (option, succeeds) in [
         ("NIL", true),
@@ -113,11 +113,11 @@ fn input_and_io_file_options_are_table_driven() {
         ("OVERWRITE", true),
         ("SUPERSEDE", true),
     ] {
-        let result = open_io_file(&existing, "CREATE", option);
+        let result = open_io_file(&existing, "CREATE", option, false);
         assert_eq!(result.is_ok(), succeeds, "existing io option={option}");
     }
-    assert!(open_io_file(&existing, "CREATE", "UNKNOWN").is_err());
-    assert!(open_io_file(&missing, "UNKNOWN", "APPEND").is_err());
+    assert!(open_io_file(&existing, "CREATE", "UNKNOWN", false).is_err());
+    assert!(open_io_file(&missing, "UNKNOWN", "APPEND", false).is_err());
 
     let _ = fs::remove_file(existing);
     let _ = fs::remove_file(missing);

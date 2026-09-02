@@ -8,11 +8,20 @@ pub struct Stream {
     pub(super) kind: StreamKind,
     pub(super) closed: bool,
     pub(super) element_type: StreamElementType,
+    pub(super) byte_data: Option<ByteStreamData>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum StreamElementType {
+pub(crate) enum StreamElementType {
     Character,
+    UnsignedByte8,
+}
+
+#[derive(Debug)]
+pub(super) enum ByteStreamData {
+    Input { bytes: Rc<Vec<u8>>, position: usize },
+    Io { bytes: Vec<u8>, position: usize, file_path: Rc<PathBuf> },
+    Output { bytes: Vec<u8>, file_path: Rc<PathBuf> },
 }
 
 #[derive(Debug)]

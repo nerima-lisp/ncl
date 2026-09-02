@@ -12,7 +12,8 @@ pub(crate) fn read_byte(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if stream.borrow().element_type_name() != "UNSIGNED-BYTE" {
         return Err(stream_state_error("read-byte", "an unsigned-byte stream"));
     }
-    Err(stream_state_error("read-byte", "a byte stream implementation"))
+    let mut stream = stream.borrow_mut();
+    Ok(stream.read_byte().map_or_else(|| arguments.get(1).cloned().unwrap_or(Value::Nil), |byte| Value::Integer(byte as i64)))
 }
 
 pub(crate) fn write_byte(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -28,5 +29,8 @@ pub(crate) fn write_byte(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if stream.borrow().element_type_name() != "UNSIGNED-BYTE" {
         return Err(stream_state_error("write-byte", "an unsigned-byte stream"));
     }
-    Err(stream_state_error("write-byte", "a byte stream implementation"))
+    if !stream.borrow_mut().write_byte(byte as u8) {
+        return Err(stream_state_error("write-byte", "a byte stream implementation"));
+    }
+    Ok(arguments[0].clone())
 }

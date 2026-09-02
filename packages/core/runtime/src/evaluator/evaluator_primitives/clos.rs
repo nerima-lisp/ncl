@@ -587,7 +587,7 @@ impl Runtime {
                                     .iter()
                                     .any(|name| name.eq_ignore_ascii_case(&slot.name))
                             })
-                            .map(Self::slot_definition_value)
+                            .map(|slot| Self::slot_definition_value(slot, environment))
                             .collect(),
                     ))
                 }
@@ -606,7 +606,7 @@ impl Runtime {
                         class
                             .slots
                             .iter()
-                            .map(Self::slot_definition_value)
+                            .map(|slot| Self::slot_definition_value(slot, environment))
                             .collect(),
                     ))
                 }

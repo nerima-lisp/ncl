@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(crate) fn slot_definition_value(slot: &ClassSlot) -> Value {
+    pub(crate) fn slot_definition_value(slot: &ClassSlot, environment: &Environment) -> Value {
         let class = Rc::new(ClassDefinition {
             name: "STANDARD-DIRECT-SLOT-DEFINITION".to_owned(),
             documentation: None,
@@ -73,6 +73,12 @@ impl Runtime {
                         .expect("slot initform is always quoteable"),
                 ),
                 (
+                    "INITFUNCTION".to_owned(),
+                    slot.init_form.as_ref().map_or(Value::Nil, |form| {
+                        Value::closure(Vec::new(), vec![form.clone()], environment.clone())
+                    }),
+                ),
+                (
                     "TYPE".to_owned(),
                     slot.type_form
                         .as_ref()
@@ -95,6 +101,7 @@ impl Runtime {
                 | "SLOT-DEFINITION-INITARGS"
                 | "SLOT-DEFINITION-ALLOCATION"
                 | "SLOT-DEFINITION-INITFORM"
+                | "SLOT-DEFINITION-INITFUNCTION"
                 | "SLOT-DEFINITION-TYPE"
                 | "SLOT-DEFINITION-READERS"
                 | "SLOT-DEFINITION-WRITERS"
@@ -122,6 +129,7 @@ impl Runtime {
                 "SLOT-DEFINITION-INITARGS" => "INITARGS",
                 "SLOT-DEFINITION-ALLOCATION" => "ALLOCATION",
                 "SLOT-DEFINITION-INITFORM" => "INITFORM",
+                "SLOT-DEFINITION-INITFUNCTION" => "INITFUNCTION",
                 "SLOT-DEFINITION-TYPE" => "TYPE",
                 "SLOT-DEFINITION-READERS" => "READERS",
                 _ => "WRITERS",

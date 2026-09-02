@@ -104,6 +104,7 @@ impl CompileState {
             | "SLOT-DEFINITION-INITARGS"
             | "SLOT-DEFINITION-ALLOCATION"
             | "SLOT-DEFINITION-INITFORM"
+            | "SLOT-DEFINITION-INITFUNCTION"
             | "SLOT-DEFINITION-TYPE"
             | "SLOT-DEFINITION-READERS"
             | "SLOT-DEFINITION-WRITERS" => {

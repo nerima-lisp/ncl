@@ -195,6 +195,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
                 | "SLOT-DEFINITION-INITARGS"
                 | "SLOT-DEFINITION-ALLOCATION"
                 | "SLOT-DEFINITION-INITFORM"
+                | "SLOT-DEFINITION-INITFUNCTION"
                 | "SLOT-DEFINITION-TYPE"
                 | "SLOT-DEFINITION-READERS"
                 | "SLOT-DEFINITION-WRITERS"

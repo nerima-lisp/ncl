@@ -89,6 +89,9 @@ mod tests {
                      (second (class-direct-slots (find-class 'documented-slot))))
                    (slot-definition-initform
                      (first (class-direct-slots (find-class 'documented-slot))))
+                   (functionp
+                     (slot-definition-initfunction
+                       (first (class-direct-slots (find-class 'documented-slot)))))
                    (slot-definition-type
                      (first (class-direct-slots (find-class 'documented-slot))))
                    (slot-definition-readers
@@ -99,7 +102,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             values.last().unwrap().to_string(),
-            "(\"slot doc\" (:VALUE) :CLASS 42 INTEGER (VALUE-READER) (VALUE-WRITER))"
+            "(\"slot doc\" (:VALUE) :CLASS 42 T INTEGER (VALUE-READER) (VALUE-WRITER))"
         );
     }
 

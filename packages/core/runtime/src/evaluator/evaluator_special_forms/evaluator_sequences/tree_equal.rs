@@ -9,6 +9,13 @@ impl Runtime {
             Value::List(items) => {
                 Value::list(items.iter().map(|item| self.copy_tree(item)).collect())
             }
+            Value::MutableCons(cell) => {
+                let (car, cdr) = {
+                    let cell = cell.borrow();
+                    (cell.0.clone(), cell.1.clone())
+                };
+                Value::cons_cell(self.copy_tree(&car), self.copy_tree(&cdr))
+            }
             Value::DottedList { items, tail } => Value::dotted_list(
                 items.iter().map(|item| self.copy_tree(item)).collect(),
                 self.copy_tree(tail),

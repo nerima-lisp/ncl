@@ -114,6 +114,13 @@ pub fn copy_tree(arguments: &[Value]) -> Result<Value, RuntimeError> {
 fn copy_tree_value(value: &Value) -> Value {
     match value {
         Value::List(items) => Value::list(items.iter().map(copy_tree_value).collect()),
+        Value::MutableCons(cell) => {
+            let (car, cdr) = {
+                let cell = cell.borrow();
+                (cell.0.clone(), cell.1.clone())
+            };
+            Value::cons_cell(copy_tree_value(&car), copy_tree_value(&cdr))
+        }
         Value::DottedList { items, tail } => Value::dotted_list(
             items.iter().map(copy_tree_value).collect(),
             copy_tree_value(tail),

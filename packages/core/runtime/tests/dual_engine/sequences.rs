@@ -72,12 +72,19 @@ fn evaluates_forms_and_maps_functions_over_lists(#[case] eval_fn: EvalFn) {
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_sequence_quantifiers_consistently(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
-    assert_eq!(evaluate("(every (lambda (x y) (and (numberp x) (numberp y))) '(1 2) #(3 4 5))").to_string(), "T");
+    assert_eq!(
+        evaluate("(every (lambda (x y) (and (numberp x) (numberp y))) '(1 2) #(3 4 5))")
+            .to_string(),
+        "T"
+    );
     assert_eq!(evaluate("(some #'identity '(nil 2 3))").to_string(), "2");
     assert_eq!(evaluate("(notany #'evenp '(1 3 5))").to_string(), "T");
     assert_eq!(evaluate("(notevery #'evenp '(2 4 5))").to_string(), "T");
     assert_eq!(evaluate("(every 'numberp '(1 2))").to_string(), "T");
-    assert_eq!(evaluate("(some (lambda (x y) (and x y)) '(1 2) '(nil))").to_string(), "NIL");
+    assert_eq!(
+        evaluate("(some (lambda (x y) (and x y)) '(1 2) '(nil))").to_string(),
+        "NIL"
+    );
 }
 
 #[rstest]
@@ -294,6 +301,10 @@ fn evaluates_copy_tree(#[case] eval_fn: EvalFn) {
     assert_eq!(evaluate("(copy-tree '(1 (2 3)))").to_string(), "(1 (2 3))");
     assert_eq!(evaluate("(copy-tree '(1 2 . 3))").to_string(), "(1 2 . 3)");
     assert_eq!(evaluate("(copy-tree 42)").to_string(), "42");
+    assert_eq!(
+        evaluate("(let* ((tree (cons 1 (cons 2 nil))) (copy (copy-tree tree))) (rplaca tree 9) (list (car tree) (car copy) (car (cdr copy))))").to_string(),
+        "(9 1 2)"
+    );
 }
 
 #[rstest]

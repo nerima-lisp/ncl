@@ -166,6 +166,31 @@ fn byte_streams_support_sequence_io() -> Result<(), RuntimeError> {
 }
 
 #[test]
+fn byte_io_streams_share_a_file_cursor_for_read_and_write() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-byte-io-{suffix}"));
+    std::fs::write(&root, [1_u8, 2_u8, 3_u8]).map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let path = Value::string(root.to_string_lossy().to_string());
+    let byte_type = Value::list(vec![Value::symbol("UNSIGNED-BYTE"), Value::Integer(8)]);
+    let stream = open_file(&[
+        path,
+        Value::keyword("direction"),
+        Value::keyword("io"),
+        Value::keyword("element-type"),
+        byte_type,
+    ])?;
+    assert!(matches!(read_byte(std::slice::from_ref(&stream))?, Value::Integer(1)));
+    assert!(matches!(write_byte(&[Value::Integer(9), stream.clone()])?, Value::Integer(9)));
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read(&root).unwrap(), vec![1, 9, 3]);
+    std::fs::remove_file(root).unwrap();
+    Ok(())
+}
+
+#[test]
 fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeError> {
     let suffix = nanosecond_suffix()?;
     let missing_path = std::env::temp_dir().join(format!("ncl-open-options-{suffix}-missing"));

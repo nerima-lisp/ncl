@@ -35,13 +35,18 @@ impl Stream {
 
     pub(crate) fn write_byte(&mut self, byte: u8) -> bool {
         let Some(data) = self.byte_data.as_mut() else { return false };
-        let (bytes, position) = match data {
-            ByteStreamData::Output { bytes, .. } => (bytes, None),
-            ByteStreamData::Io { bytes, position, .. } => (bytes, Some(position)),
+        match data {
+            ByteStreamData::Output { bytes, .. } => bytes.push(byte),
+            ByteStreamData::Io { bytes, position, .. } => {
+                if *position < bytes.len() {
+                    bytes[*position] = byte;
+                } else {
+                    bytes.push(byte);
+                }
+                *position += 1;
+            }
             ByteStreamData::Input { .. } => return false,
-        };
-        bytes.push(byte);
-        if let Some(position) = position { *position = bytes.len(); }
+        }
         true
     }
 }

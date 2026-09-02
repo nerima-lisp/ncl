@@ -754,10 +754,13 @@ fn compiled_evaluates_class_direct_superclasses() {
             r#"(progn
                  (defclass parent () ())
                  (defclass child (parent) ())
-                 (mapcar #'class-name
-                         (class-direct-superclasses (find-class 'child))))"#,
+                 (list
+                   (mapcar #'class-name
+                           (class-direct-superclasses (find-class 'parent)))
+                   (mapcar #'class-name
+                           (class-direct-superclasses (find-class 'child)))))"#,
         )
         .must_exist();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].to_string(), "(PARENT)");
+    assert_eq!(values[0].to_string(), "((STANDARD-OBJECT) (PARENT))");
 }

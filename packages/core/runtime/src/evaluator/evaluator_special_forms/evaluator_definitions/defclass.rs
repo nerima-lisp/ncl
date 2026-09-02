@@ -29,6 +29,9 @@ impl Runtime {
                 direct_superclasses.push(name);
             }
         }
+        if direct_superclasses.is_empty() && !class_name.eq_ignore_ascii_case("STANDARD-OBJECT") {
+            direct_superclasses.push("STANDARD-OBJECT".to_owned());
+        }
 
         let slot_forms = Self::list_form_items(&items[3], "defclass slot list")?;
         let mut slots: Vec<ClassSlot> = Vec::new();

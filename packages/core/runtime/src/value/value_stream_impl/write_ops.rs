@@ -9,11 +9,30 @@ impl Stream {
         match &mut self.kind {
             StreamKind::Output {
                 buffer,
+                position,
                 destination,
                 at_line_start,
                 ..
             } => {
-                buffer.push_str(text);
+                for character in text.chars() {
+                    let byte_position = buffer
+                        .char_indices()
+                        .nth(*position)
+                        .map_or(buffer.len(), |(byte_position, _)| byte_position);
+                    if *position < buffer.chars().count() {
+                        let next_byte_position = buffer
+                            .char_indices()
+                            .nth(*position + 1)
+                            .map_or(buffer.len(), |(next_byte_position, _)| next_byte_position);
+                        buffer.replace_range(
+                            byte_position..next_byte_position,
+                            &character.to_string(),
+                        );
+                    } else {
+                        buffer.push(character);
+                    }
+                    *position += 1;
+                }
                 if let Some(destination) = destination {
                     destination.borrow_mut().push_str(text);
                 }
@@ -68,8 +87,14 @@ impl Stream {
             return false;
         }
         match &mut self.kind {
-            StreamKind::Output { buffer, destination, .. } => {
+            StreamKind::Output {
+                buffer,
+                position,
+                destination,
+                ..
+            } => {
                 buffer.clear();
+                *position = 0;
                 if let Some(destination) = destination {
                     destination.borrow_mut().clear();
                 }
@@ -97,25 +122,35 @@ impl Stream {
             return Ok(());
         }
         if !abort {
-            if let Some(super::super::value_stream::ByteStreamData::Io { bytes, file_path, .. }) = &self.byte_data {
+            if let Some(super::super::value_stream::ByteStreamData::Io {
+                bytes, file_path, ..
+            }) = &self.byte_data
+            {
                 std::fs::write(file_path.as_ref(), bytes)?;
             }
-            if let Some(super::super::value_stream::ByteStreamData::Output { bytes, file_path, .. }) = &self.byte_data {
-                std::fs::write(file_path.as_ref(), bytes)?;
-            }
-            if self.byte_data.is_none() && let StreamKind::Output {
-                buffer,
-                file_path: Some(path),
+            if let Some(super::super::value_stream::ByteStreamData::Output {
+                bytes,
+                file_path,
                 ..
-            } = &self.kind
+            }) = &self.byte_data
+            {
+                std::fs::write(file_path.as_ref(), bytes)?;
+            }
+            if self.byte_data.is_none()
+                && let StreamKind::Output {
+                    buffer,
+                    file_path: Some(path),
+                    ..
+                } = &self.kind
             {
                 std::fs::write(path.as_ref(), buffer.as_bytes())?;
             }
-            if self.byte_data.is_none() && let StreamKind::Io {
-                characters,
-                file_path,
-                ..
-            } = &self.kind
+            if self.byte_data.is_none()
+                && let StreamKind::Io {
+                    characters,
+                    file_path,
+                    ..
+                } = &self.kind
             {
                 let source: String = characters.iter().collect();
                 std::fs::write(file_path.as_ref(), source.as_bytes())?;

@@ -1,6 +1,6 @@
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// A character stream used by the standard I/O primitives.
 #[derive(Debug)]
@@ -19,9 +19,20 @@ pub(crate) enum StreamElementType {
 
 #[derive(Debug)]
 pub(super) enum ByteStreamData {
-    Input { bytes: Rc<Vec<u8>>, position: usize },
-    Io { bytes: Vec<u8>, position: usize, file_path: Rc<PathBuf> },
-    Output { bytes: Vec<u8>, position: usize, file_path: Rc<PathBuf> },
+    Input {
+        bytes: Rc<Vec<u8>>,
+        position: usize,
+    },
+    Io {
+        bytes: Vec<u8>,
+        position: usize,
+        file_path: Rc<PathBuf>,
+    },
+    Output {
+        bytes: Vec<u8>,
+        position: usize,
+        file_path: Rc<PathBuf>,
+    },
 }
 
 #[derive(Debug)]
@@ -41,6 +52,7 @@ pub(super) enum StreamKind {
     },
     Output {
         buffer: String,
+        position: usize,
         destination: Option<Rc<RefCell<String>>>,
         at_line_start: bool,
         file_path: Option<Rc<PathBuf>>,

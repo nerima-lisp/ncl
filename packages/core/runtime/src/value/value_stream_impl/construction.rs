@@ -5,8 +5,14 @@ use crate::Stream;
 use crate::value::value_stream::{StreamElementType, StreamKind};
 
 impl Stream {
-    pub(in crate::value) fn attach_destination(&mut self, destination: Rc<std::cell::RefCell<String>>) {
-        if let StreamKind::Output { destination: slot, .. } = &mut self.kind {
+    pub(in crate::value) fn attach_destination(
+        &mut self,
+        destination: Rc<std::cell::RefCell<String>>,
+    ) {
+        if let StreamKind::Output {
+            destination: slot, ..
+        } = &mut self.kind
+        {
             *slot = Some(destination);
         }
     }
@@ -65,6 +71,7 @@ impl Stream {
         Self {
             kind: StreamKind::Output {
                 buffer: String::new(),
+                position: 0,
                 destination: None,
                 at_line_start: true,
                 file_path: None,
@@ -76,10 +83,21 @@ impl Stream {
     }
 
     pub(in crate::value) fn file_output(path: PathBuf, initial: String) -> Self {
-        let at_line_start = initial.ends_with('\n');
+        let position = initial.chars().count();
+        Self::file_output_at(path, initial, position)
+    }
+
+    pub(in crate::value) fn file_output_at(
+        path: PathBuf,
+        initial: String,
+        position: usize,
+    ) -> Self {
+        let at_line_start =
+            position == 0 || initial.chars().nth(position.saturating_sub(1)) == Some('\n');
         Self {
             kind: StreamKind::Output {
                 buffer: initial,
+                position,
                 destination: None,
                 at_line_start,
                 file_path: Some(Rc::new(path)),
@@ -95,6 +113,7 @@ impl Stream {
         Self {
             kind: StreamKind::Output {
                 buffer: String::new(),
+                position: 0,
                 destination: Some(destination),
                 at_line_start,
                 file_path: None,

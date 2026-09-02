@@ -76,7 +76,21 @@ pub(super) fn open_output_file(
                 })?;
                 return Ok(Value::file_output_stream(path.to_path_buf(), source));
             }
-            "NEW-VERSION" | "RENAME" | "RENAME-AND-DELETE" | "OVERWRITE" | "SUPERSEDE" => {}
+            "OVERWRITE" => {
+                if byte {
+                    let bytes = std::fs::read(path).map_err(|error| RuntimeError::Io {
+                        kind: error.kind(),
+                        message: format!("open {}: {error}", path.display()),
+                    })?;
+                    return Ok(Value::file_byte_output_stream(path.to_path_buf(), bytes));
+                }
+                let source = std::fs::read_to_string(path).map_err(|error| RuntimeError::Io {
+                    kind: error.kind(),
+                    message: format!("open {}: {error}", path.display()),
+                })?;
+                return Ok(Value::file_output_stream_at(path.to_path_buf(), source, 0));
+            }
+            "NEW-VERSION" | "RENAME" | "RENAME-AND-DELETE" | "SUPERSEDE" => {}
             _ => {
                 return Err(RuntimeError::InvalidForm {
                     message: format!("open received unknown :if-exists value :{if_exists}"),

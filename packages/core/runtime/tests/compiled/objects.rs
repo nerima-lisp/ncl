@@ -1082,3 +1082,15 @@ fn compiled_evaluates_class_documentation() {
         .must_exist();
     assert_eq!(values[0].to_string(), "\"compiled class docs\"");
 }
+
+#[test]
+fn compiled_accepts_empty_default_initargs() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass compiled-empty-default-initargs () () (:default-initargs))
+                 t)"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "T");
+}

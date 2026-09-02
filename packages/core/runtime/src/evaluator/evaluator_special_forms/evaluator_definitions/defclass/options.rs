@@ -31,7 +31,7 @@ impl Runtime {
                 ));
             }
             "DEFAULT-INITARGS" => {
-                if option_items.len() < 3 || !(option_items.len() - 1).is_multiple_of(2) {
+                if !(option_items.len() - 1).is_multiple_of(2) {
                     return Err(Self::invalid(
                         "defclass :default-initargs requires initarg and form pairs",
                         option.span,

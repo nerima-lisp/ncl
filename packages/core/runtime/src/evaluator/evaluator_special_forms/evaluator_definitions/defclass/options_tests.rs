@@ -86,4 +86,12 @@ mod tests {
             .unwrap_or_else(|error| panic!("diamond inheritance should compute a CPL: {error}"));
         assert_eq!(values.last().unwrap().to_string(), "(CPL-D CPL-B CPL-C CPL-A STANDARD-OBJECT)");
     }
+
+    #[test]
+    fn defclass_accepts_empty_default_initargs() {
+        let values = Runtime::new()
+            .eval_source("(defclass empty-default-initargs () () (:default-initargs))")
+            .unwrap_or_else(|error| panic!("empty :default-initargs should be accepted: {error}"));
+        assert_eq!(values[0].to_string(), "EMPTY-DEFAULT-INITARGS");
+    }
 }

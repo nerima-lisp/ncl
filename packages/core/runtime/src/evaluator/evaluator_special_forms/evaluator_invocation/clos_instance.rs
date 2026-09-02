@@ -1,4 +1,4 @@
-use super::{quoted_form_value, Environment, Runtime, RuntimeError, Span, Value};
+use super::{Environment, Runtime, RuntimeError, Span, Value, quoted_form_value};
 
 impl Runtime {
     pub(crate) fn set_instance_slot_checked(
@@ -112,11 +112,12 @@ impl Runtime {
             slots.push((slot.name.clone(), value));
         }
         let instance = Value::instance(class.clone(), slots);
-        for (initarg, value) in initargs {
+        let mut initialize_arguments = vec![instance.clone()];
+        for (initarg, value) in &initargs {
             let Some(index) = class
                 .slots
                 .iter()
-                .position(|slot| slot.initargs.iter().any(|name| name == &initarg))
+                .position(|slot| slot.initargs.iter().any(|name| name == initarg))
             else {
                 return Err(Self::invalid("unknown make-instance initarg", span));
             };
@@ -124,11 +125,18 @@ impl Runtime {
                 &instance,
                 &class.name,
                 &class.slots[index].name,
-                value,
+                value.clone(),
                 span,
             )?;
+            initialize_arguments.push(Value::keyword(initarg.clone()));
+            initialize_arguments.push(value.clone());
         }
-        Ok(instance)
+        self.apply_in(
+            &Value::symbol("initialize-instance"),
+            &initialize_arguments,
+            span,
+            environment,
+        )
     }
 
     pub(crate) fn reinitialize_instance(

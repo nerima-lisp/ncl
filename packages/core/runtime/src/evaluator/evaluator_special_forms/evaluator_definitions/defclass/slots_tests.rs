@@ -139,6 +139,21 @@ mod tests {
     }
 
     #[test]
+    fn make_instance_invokes_initialize_instance_methods() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass initialized-class () ((value :initarg :value)))
+                 (defmethod initialize-instance ((object initialized-class) &rest initargs)
+                   (declare (ignore initargs))
+                   (setf (slot-value object 'value) 99)
+                   object)
+                 (slot-value (make-instance 'initialized-class :value 41) 'value)",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "99");
+    }
+
+    #[test]
     fn defclass_accessor_is_setfable() {
         let values = Runtime::new()
             .eval_source(

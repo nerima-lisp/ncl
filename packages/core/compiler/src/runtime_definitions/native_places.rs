@@ -85,36 +85,9 @@ impl CompileState {
             if !(items.len() - 3).is_multiple_of(2) {
                 return Ok(None);
             }
-            let mut test_not = false;
-            let mut has_test = false;
-            let mut has_key = false;
-            let mut key_before_test = false;
-            for pair in items[3..].chunks_exact(2) {
-                let FormKind::Atom(keyword) = &pair[0].kind else {
-                    return Ok(None);
-                };
-                let keyword = keyword.to_ascii_uppercase();
-                if !keyword.starts_with(':') {
-                    return Ok(None);
-                }
-                match keyword.as_str() {
-                    ":TEST" if !has_test && !test_not => has_test = true,
-                    ":TEST-NOT" if !has_test && !test_not => test_not = true,
-                    ":KEY" if !has_key => {
-                        key_before_test = !has_test && !test_not;
-                        has_key = true;
-                    }
-                    _ => return Ok(None),
-                }
-                self.compile_expression(function, &pair[1])?;
-            }
-            if !has_test && !test_not {
-                self.emit(
-                    function,
-                    Instruction::Quote(Form::atom("EQL", items[0].span)),
-                    items[0].span,
-                )?;
-            }
+            let Some(options) = self.compile_pushnew_options(function, items[0].span, &items[3..])? else {
+                return Ok(None);
+            };
             self.compile_expression(function, &items[1])?;
             if generalized.is_some() {
                 let FormKind::List(place_items) = &items[2].kind else {
@@ -133,18 +106,18 @@ impl CompileState {
                             accessors,
                             name,
                             escaped,
-                            test_not,
-                            has_key,
-                            key_before_test,
+                            test_not: options.test_not,
+                            has_key: options.has_key,
+                            key_before_test: options.key_before_test,
                         }
                     } else {
                         Instruction::ListPlacePushNewOptions {
                             accessor: accessors[0].clone(),
                             name,
                             escaped,
-                            test_not,
-                            has_key,
-                            key_before_test,
+                            test_not: options.test_not,
+                            has_key: options.has_key,
+                            key_before_test: options.key_before_test,
                         }
                     }
                 } else {
@@ -152,9 +125,9 @@ impl CompileState {
                     Instruction::PushNewListOptions {
                         name,
                         escaped,
-                        test_not,
-                        has_key,
-                        key_before_test,
+                        test_not: options.test_not,
+                        has_key: options.has_key,
+                        key_before_test: options.key_before_test,
                     }
                 },
                 items[0].span,

@@ -78,25 +78,27 @@ impl CompileState {
         if !matches!(operator.as_str(), "AREF" | "SVREF" | "ROW-MAJOR-AREF") {
             return Ok(false);
         }
-        let Some((name, escaped)) = Self::symbol_name_info(&items[1], "setf aref target").ok()
-        else {
-            return Ok(false);
-        };
         self.compile_expression(function, &items[1])?;
         for index_form in &items[2..] {
             self.compile_expression(function, index_form)?;
         }
         self.compile_expression(function, value_form)?;
-        self.emit(
-            function,
+        let instruction = if let Some((name, escaped)) =
+            Self::symbol_name_info(&items[1], "setf aref target").ok()
+        {
             Instruction::SetfArefDynamic {
                 rank: items.len() - 2,
                 operator,
                 name,
                 escaped,
-            },
-            place.span,
-        )?;
+            }
+        } else {
+            Instruction::SetfArefValue {
+                rank: items.len() - 2,
+                operator,
+            }
+        };
+        self.emit(function, instruction, place.span)?;
         emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
         Ok(true)
     }

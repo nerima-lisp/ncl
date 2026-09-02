@@ -158,6 +158,22 @@ fn compile_setf_uses_native_aref_for_a_symbol_place() {
 }
 
 #[test]
+fn compile_setf_uses_native_aref_for_an_evaluated_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (aref (make-array 1) 0) 7)");
+
+    state.compile_setf(function, Span::new(0, 1), &items).unwrap();
+
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::SetfArefValue {
+            rank: 1,
+            operator: "AREF".to_string(),
+        }));
+}
+
+#[test]
 fn compile_setf_uses_native_array_accessors_for_symbol_places() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

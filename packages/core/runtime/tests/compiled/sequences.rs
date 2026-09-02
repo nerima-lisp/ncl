@@ -860,6 +860,14 @@ fn compiled_setf_fill_pointer_accepts_an_evaluated_vector() {
 }
 
 #[test]
+fn compiled_setf_aref_accepts_an_evaluated_vector() {
+    assert_eq!(
+        evaluate("(setf (aref (make-array 1) 0) 7)").to_string(),
+        "7"
+    );
+}
+
+#[test]
 fn compiled_evaluates_vector_pop() {
     assert_eq!(
         evaluate(

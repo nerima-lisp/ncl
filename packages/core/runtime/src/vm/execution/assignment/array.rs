@@ -32,6 +32,9 @@ pub(super) fn execute(
             program_counter,
             span,
         ),
+        Instruction::SetfArefValue { rank, operator } => {
+            execute_aref_value(*rank, operator, stack, program_counter, span)
+        }
         Instruction::SetfBitDynamic {
             rank,
             name,
@@ -874,6 +877,77 @@ fn execute_aref(
         program_counter,
         span,
     )
+}
+
+fn execute_aref_value(
+    rank: usize,
+    operator: &str,
+    stack: &mut Vec<Value>,
+    program_counter: &mut usize,
+    span: Span,
+) -> Result<bool, RuntimeError> {
+    let value = stack
+        .pop()
+        .ok_or_else(|| invalid("setf aref has no value on the stack", span))?
+        .primary_value();
+    if stack.len() < rank.saturating_add(1) {
+        return Err(invalid("setf aref has an incomplete stack", span));
+    }
+    let indices = stack.split_off(stack.len() - rank);
+    let current = stack
+        .pop()
+        .ok_or_else(|| invalid("setf aref has no target on the stack", span))?
+        .primary_value();
+    let indices = indices
+        .iter()
+        .map(|index| crate::builtins::index_argument("setf array accessor", index))
+        .collect::<Result<Vec<_>, _>>()?;
+    match &current {
+        Value::Vector(_) | Value::MutableString(_) => {
+            if rank != 1 {
+                return Err(invalid("setf aref requires one vector index", span));
+            }
+            current
+                .set_vector_item(indices[0], value.clone())
+                .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
+        }
+        Value::Array { dimensions, .. } => {
+            if operator == "SVREF" {
+                return Err(RuntimeError::Type {
+                    expected: "SIMPLE-VECTOR".to_string(),
+                    actual: "ARRAY".to_string(),
+                    span: Some(span),
+                });
+            }
+            let offset = if operator == "ROW-MAJOR-AREF" {
+                if rank != 1 {
+                    return Err(invalid("setf row-major-aref requires one index", span));
+                }
+                indices[0]
+            } else {
+                array_offset(
+                    dimensions,
+                    rank,
+                    &indices,
+                    "setf aref has the wrong number of indices",
+                    span,
+                )?
+            };
+            current
+                .set_array_item(offset, value.clone())
+                .ok_or_else(|| invalid("SETF index is out of bounds", span))?;
+        }
+        other => {
+            return Err(RuntimeError::Type {
+                expected: "ARRAY or VECTOR".to_string(),
+                actual: other.type_name().to_string(),
+                span: Some(span),
+            });
+        }
+    }
+    stack.push(value);
+    *program_counter += 1;
+    Ok(true)
 }
 
 fn execute_bit(

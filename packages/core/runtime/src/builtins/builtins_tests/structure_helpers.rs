@@ -59,7 +59,8 @@ fn data_helpers_cover_successful_table_cases() -> Result<(), RuntimeError> {
                 metadata: Rc::new(RefCell::new(crate::value::ArrayMetadata {
                     adjustable: false,
                 fill_pointer: None,
-                displaced_to: None,
+                    displaced_to: None,
+                    displaced_to_value: None,
                 displaced_index_offset: 0,
                 })),
             },

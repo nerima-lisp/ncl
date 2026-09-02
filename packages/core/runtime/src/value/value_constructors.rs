@@ -124,6 +124,7 @@ impl Value {
                 adjustable: false,
                 fill_pointer: None,
                 displaced_to: None,
+                displaced_to_value: None,
                 displaced_index_offset: 0,
             }),
         }))
@@ -139,6 +140,7 @@ impl Value {
                 adjustable: false,
                 fill_pointer: None,
                 displaced_to: None,
+                displaced_to_value: None,
                 displaced_index_offset: 0,
             })),
         }

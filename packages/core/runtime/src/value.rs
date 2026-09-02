@@ -57,6 +57,7 @@ pub struct ArrayMetadata {
     pub adjustable: bool,
     pub fill_pointer: Option<usize>,
     pub displaced_to: Option<Rc<RefCell<Vec<Value>>>>,
+    pub displaced_to_value: Option<Value>,
     pub displaced_index_offset: usize,
 }
 

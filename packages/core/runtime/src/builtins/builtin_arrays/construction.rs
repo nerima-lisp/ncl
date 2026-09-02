@@ -173,7 +173,7 @@ pub fn make_array(arguments: &[Value]) -> Result<Value, RuntimeError> {
     };
     if dimensions.len() == 1 {
         let vector = if let Some((storage, target_offset, _)) = displaced_storage {
-            Value::Vector(std::rc::Rc::new(crate::value::VectorData { elements: std::rc::Rc::new(std::cell::RefCell::new(elements)), metadata: std::cell::RefCell::new(crate::value::ArrayMetadata { adjustable, fill_pointer: None, displaced_to: Some(storage), displaced_index_offset: target_offset + displaced_index_offset }) }))
+            Value::Vector(std::rc::Rc::new(crate::value::VectorData { elements: std::rc::Rc::new(std::cell::RefCell::new(elements)), metadata: std::cell::RefCell::new(crate::value::ArrayMetadata { adjustable, fill_pointer: None, displaced_to: Some(storage), displaced_to_value: displaced_to.clone(), displaced_index_offset: target_offset + displaced_index_offset }) }))
         } else { Value::vector(elements) };
         vector.set_vector_adjustable(adjustable);
         if let Some(fill_pointer) = fill_pointer {

@@ -102,11 +102,11 @@ fn array_metadata_reports_adjustability_and_displacement() {
     .expect("make-array should construct a displaced vector");
 
     assert!(adjustable_array_p(&[base.clone()]).unwrap().equal_value(&Value::Boolean(false)));
-    assert!(array_displacement(&[base])
+    assert!(array_displacement(&[base.clone()])
         .unwrap()
         .equal_value(&Value::values(vec![Value::Nil, Value::Integer(0)])));
     let displacement = array_displacement(&[displaced]).expect("displacement should be reported");
-    assert!(displacement.to_string().contains("1"));
+    assert!(displacement.equal_value(&Value::values(vec![base, Value::Integer(1)])));
 }
 
 #[test]

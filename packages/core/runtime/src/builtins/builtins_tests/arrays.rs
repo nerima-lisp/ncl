@@ -1,5 +1,5 @@
-use crate::RuntimeError;
 use crate::builtins::*;
+use crate::RuntimeError;
 
 mod dimensions;
 
@@ -76,13 +76,20 @@ fn array_has_fill_pointer_p_distinguishes_vectors_and_arrays() {
         Value::Integer(1),
     ])
     .expect("make-array should construct a vector");
-    let simple_vector = make_array(&[Value::Integer(2)]).expect("make-array should construct a vector");
+    let simple_vector =
+        make_array(&[Value::Integer(2)]).expect("make-array should construct a vector");
     let array = make_array(&[Value::list(vec![Value::Integer(1), Value::Integer(2)])])
         .expect("make-array should construct an array");
 
-    assert!(array_has_fill_pointer_p(&[vector]).unwrap().equal_value(&Value::Boolean(true)));
-    assert!(array_has_fill_pointer_p(&[simple_vector]).unwrap().equal_value(&Value::Boolean(false)));
-    assert!(array_has_fill_pointer_p(&[array]).unwrap().equal_value(&Value::Boolean(false)));
+    assert!(array_has_fill_pointer_p(&[vector])
+        .unwrap()
+        .equal_value(&Value::Boolean(true)));
+    assert!(array_has_fill_pointer_p(&[simple_vector])
+        .unwrap()
+        .equal_value(&Value::Boolean(false)));
+    assert!(array_has_fill_pointer_p(&[array])
+        .unwrap()
+        .equal_value(&Value::Boolean(false)));
     assert!(matches!(
         array_has_fill_pointer_p(&[Value::Integer(1)]),
         Err(RuntimeError::Type { expected, .. }) if expected.contains("array")
@@ -101,7 +108,9 @@ fn array_metadata_reports_adjustability_and_displacement() {
     ])
     .expect("make-array should construct a displaced vector");
 
-    assert!(adjustable_array_p(&[base.clone()]).unwrap().equal_value(&Value::Boolean(false)));
+    assert!(adjustable_array_p(&[base.clone()])
+        .unwrap()
+        .equal_value(&Value::Boolean(false)));
     assert!(array_displacement(&[base.clone()])
         .unwrap()
         .equal_value(&Value::values(vec![Value::Nil, Value::Integer(0)])));
@@ -196,7 +205,12 @@ fn adjust_array_preserves_displacement_aliasing() {
     let base = make_array(&[
         Value::Integer(4),
         Value::keyword("initial-contents"),
-        Value::list(vec![Value::Integer(1), Value::Integer(2), Value::Integer(3), Value::Integer(4)]),
+        Value::list(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+            Value::Integer(3),
+            Value::Integer(4),
+        ]),
     ])
     .expect("make-array should construct a base vector");
     let displaced = adjust_array(&[
@@ -212,9 +226,46 @@ fn adjust_array_preserves_displacement_aliasing() {
     assert!(array_displacement(&[displaced.clone()])
         .unwrap()
         .equal_value(&Value::values(vec![base.clone(), Value::Integer(1)])));
-    assert!(aref(&[displaced.clone(), Value::Integer(0)]).unwrap().equal_value(&Value::Integer(2)));
+    assert!(aref(&[displaced.clone(), Value::Integer(0)])
+        .unwrap()
+        .equal_value(&Value::Integer(2)));
     displaced.set_vector_item(0, Value::Integer(9));
-    assert!(aref(&[base, Value::Integer(1)]).unwrap().equal_value(&Value::Integer(9)));
+    assert!(aref(&[base, Value::Integer(1)])
+        .unwrap()
+        .equal_value(&Value::Integer(9)));
+}
+
+#[test]
+fn adjust_array_keeps_adjustable_displacement_in_place() {
+    let base = Value::vector(vec![
+        Value::Integer(1),
+        Value::Integer(2),
+        Value::Integer(3),
+        Value::Integer(4),
+    ]);
+    let displaced = adjust_array(&[
+        make_array(&[
+            Value::Integer(2),
+            Value::keyword("adjustable"),
+            Value::Boolean(true),
+            Value::keyword("displaced-to"),
+            base.clone(),
+            Value::keyword("displaced-index-offset"),
+            Value::Integer(1),
+        ])
+        .unwrap(),
+        Value::Integer(3),
+    ])
+    .unwrap();
+
+    assert!(array_displacement(&[displaced.clone()])
+        .unwrap()
+        .equal_value(&Value::values(vec![base.clone(), Value::Integer(1)])));
+    assert_eq!(displaced.vector_items().unwrap().len(), 3);
+    displaced.set_vector_item(2, Value::Integer(9));
+    assert!(aref(&[base, Value::Integer(3)])
+        .unwrap()
+        .equal_value(&Value::Integer(9)));
 }
 
 #[test]
@@ -227,9 +278,15 @@ fn vector_push_uses_and_extends_fill_pointer() {
         Value::Boolean(true),
     ])
     .unwrap();
-    assert!(vector_push(&[Value::Integer(7), vector.clone()]).unwrap().equal_value(&Value::Integer(0)));
-    assert!(fill_pointer(&[vector.clone()]).unwrap().equal_value(&Value::Integer(1)));
-    assert!(vector_push_extend(&[Value::Integer(8), vector.clone()]).unwrap().equal_value(&Value::Integer(1)));
+    assert!(vector_push(&[Value::Integer(7), vector.clone()])
+        .unwrap()
+        .equal_value(&Value::Integer(0)));
+    assert!(fill_pointer(&[vector.clone()])
+        .unwrap()
+        .equal_value(&Value::Integer(1)));
+    assert!(vector_push_extend(&[Value::Integer(8), vector.clone()])
+        .unwrap()
+        .equal_value(&Value::Integer(1)));
     assert!(vector.vector_items().unwrap()[1].equal_value(&Value::Integer(8)));
 }
 
@@ -243,12 +300,7 @@ fn vector_push_extend_rejects_zero_extension() {
         Value::Boolean(true),
     ])
     .unwrap();
-    assert!(vector_push_extend(&[
-        Value::Integer(7),
-        vector,
-        Value::Integer(0),
-    ])
-    .is_err());
+    assert!(vector_push_extend(&[Value::Integer(7), vector, Value::Integer(0),]).is_err());
 }
 
 #[test]
@@ -261,18 +313,30 @@ fn vector_pop_decrements_fill_pointer() {
         Value::Integer(2),
     ])
     .unwrap();
-    assert!(vector_pop(&[vector.clone()]).unwrap().equal_value(&Value::Integer(4)));
-    assert!(fill_pointer(&[vector]).unwrap().equal_value(&Value::Integer(1)));
+    assert!(vector_pop(&[vector.clone()])
+        .unwrap()
+        .equal_value(&Value::Integer(4)));
+    assert!(fill_pointer(&[vector])
+        .unwrap()
+        .equal_value(&Value::Integer(1)));
 }
 
 #[test]
 fn make_array_displaces_vector_storage() {
-    let target = Value::vector(vec![Value::Integer(1), Value::Integer(2), Value::Integer(3), Value::Integer(4)]);
+    let target = Value::vector(vec![
+        Value::Integer(1),
+        Value::Integer(2),
+        Value::Integer(3),
+        Value::Integer(4),
+    ]);
     let displaced = make_array(&[
         Value::Integer(2),
-        Value::keyword("displaced-to"), target.clone(),
-        Value::keyword("displaced-index-offset"), Value::Integer(1),
-    ]).unwrap();
+        Value::keyword("displaced-to"),
+        target.clone(),
+        Value::keyword("displaced-index-offset"),
+        Value::Integer(1),
+    ])
+    .unwrap();
     let items = displaced.vector_items().unwrap();
     assert!(items[0].equal_value(&Value::Integer(2)) && items[1].equal_value(&Value::Integer(3)));
     displaced.set_vector_item(0, Value::Integer(9));

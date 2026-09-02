@@ -160,23 +160,8 @@ fn execute_nested_array_mutation(
         list.insert(0, value.expect("PUSH value"));
         list[0].clone()
     };
-    let updated_target = match &target {
-        Value::Vector(_) => {
-            target.set_vector_item(offset, Value::list(list));
-            target.clone()
-        }
-        Value::Array { .. } => {
-            target.set_array_item(offset, Value::list(list));
-            target.clone()
-        }
-        _ => {
-            return Err(RuntimeError::Type {
-                expected: "ARRAY or VECTOR".to_string(),
-                actual: target.type_name().to_string(),
-                span: Some(span),
-            });
-        }
-    };
+    set_array_mutation_item(&target, offset, Value::list(list), span)?;
+    let updated_target = target.clone();
     let updated_base = Value::list(crate::vm::execution::assignment::list::nested::update(
         elements,
         accessors,
@@ -525,15 +510,7 @@ fn execute_array_mutation(
         elements[0].clone()
     };
     let updated = Value::list(elements);
-    match &target {
-        Value::Vector(_) => {
-            target.set_vector_item(offset, updated);
-        }
-        Value::Array { .. } => {
-            target.set_array_item(offset, updated);
-        }
-        _ => unreachable!(),
-    }
+    set_array_mutation_item(&target, offset, updated, span)?;
     store_array_value(
         runtime,
         name,
@@ -597,8 +574,20 @@ fn set_array_mutation_item(
     span: Span,
 ) -> Result<(), RuntimeError> {
     let updated = match target {
-        Value::Vector(_) => target.set_vector_item(offset, value),
-        Value::Array { .. } => target.set_array_item(offset, value),
+        Value::Vector(_) | Value::Array { .. } => {
+            if !target.array_element_type_accepts(&value)? {
+                return Err(RuntimeError::Type {
+                    expected: "array element type".to_string(),
+                    actual: value.type_name().to_string(),
+                    span: Some(span),
+                });
+            }
+            match target {
+                Value::Vector(_) => target.set_vector_item(offset, value),
+                Value::Array { .. } => target.set_array_item(offset, value),
+                _ => unreachable!(),
+            }
+        }
         _ => None,
     };
     updated

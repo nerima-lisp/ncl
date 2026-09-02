@@ -76,13 +76,14 @@ impl Runtime {
         match lookup_name.as_str() {
             "LDB" => {
                 if args.len() != 2 {
-                    return Err(Self::invalid("LDB SETF place needs a byte specifier and place", place.span));
+                    return Err(Self::invalid(
+                        "LDB SETF place needs a byte specifier and place",
+                        place.span,
+                    ));
                 }
                 let byte_spec = self.eval_in(&args[0], environment)?;
                 let old_value = self.eval_in(&args[1], environment)?;
-                let updated = crate::builtins::dpb(
-                    &[value, byte_spec, old_value],
-                )?;
+                let updated = crate::builtins::dpb(&[value, byte_spec, old_value])?;
                 self.set_place(&args[1], updated, environment)
             }
             "MASK-FIELD" => {
@@ -98,8 +99,45 @@ impl Runtime {
                 self.set_place(&args[1], updated, environment)
             }
             "SLOT-VALUE" => self.set_slot_value_place(args, value, environment, place.span),
-            "CAR" | "FIRST" | "CDR" | "REST" | "NTH" | "SECOND" | "THIRD" | "FOURTH"
-            | "FIFTH" | "SIXTH" | "SEVENTH" | "EIGHTH" | "NINTH" | "TENTH" => self
+            "SLOT-VALUE-USING-CLASS" => {
+                if args.len() != 3 {
+                    return Err(Self::arity(
+                        "setf slot-value-using-class",
+                        "three",
+                        args.len(),
+                    ));
+                }
+                let class = self.eval_in(&args[0], environment)?;
+                let object = self.eval_in(&args[1], environment)?;
+                let slot = self.eval_in(&args[2], environment)?;
+                let expected = class.class_definition().ok_or_else(|| RuntimeError::Type {
+                    expected: "CLASS".to_owned(),
+                    actual: class.type_name().to_owned(),
+                    span: Some(place.span),
+                })?;
+                let actual =
+                    object
+                        .instance_class_definition()
+                        .ok_or_else(|| RuntimeError::Type {
+                            expected: "STANDARD-OBJECT".to_owned(),
+                            actual: object.type_name().to_owned(),
+                            span: Some(place.span),
+                        })?;
+                if !actual
+                    .precedence
+                    .iter()
+                    .any(|name| name.as_ref() == expected.name)
+                {
+                    return Err(Self::invalid(
+                        "class is not a superclass of object",
+                        place.span,
+                    ));
+                }
+                let slot_name = Self::slot_name_from_value(&slot, place.span)?;
+                self.set_instance_slot_checked(&object, &actual.name, &slot_name, value, place.span)
+            }
+            "CAR" | "FIRST" | "CDR" | "REST" | "NTH" | "SECOND" | "THIRD" | "FOURTH" | "FIFTH"
+            | "SIXTH" | "SEVENTH" | "EIGHTH" | "NINTH" | "TENTH" => self
                 .set_list_place(lookup_name.as_str(), args, value, environment, place.span)
                 .map(|_| ()),
             "ELT" | "CHAR" | "SCHAR" => {

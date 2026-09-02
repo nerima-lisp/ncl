@@ -3,7 +3,7 @@ use ncl_syntax::{Form, FormKind};
 use crate::environment::names_equal;
 use crate::evaluator::evaluator_literals::resolved_symbol;
 use crate::evaluator::helpers::atom_name;
-use crate::evaluator::{MAX_MACRO_EXPANSIONS, MacroBindingContext, ModifyMacroContext};
+use crate::evaluator::{MacroBindingContext, ModifyMacroContext, MAX_MACRO_EXPANSIONS};
 use crate::{Environment, Runtime, RuntimeError, Value};
 
 impl Runtime {
@@ -75,6 +75,9 @@ impl Runtime {
                 if names_equal(&resolved_name, "DO-ALL-SYMBOLS") {
                     return Self::expand_builtin_all_symbol_iteration(form).map(Some);
                 }
+                if names_equal(&resolved_name, "WITH-HASH-TABLE-ITERATOR") {
+                    return self.expand_builtin_hash_table_iterator(form).map(Some);
+                }
                 if names_equal(&resolved_name, "LOOP-FINISH") {
                     return Ok(Some(Form::list(
                         vec![
@@ -128,6 +131,82 @@ impl Runtime {
             _ => return Ok(None),
         };
         Ok(Some(expansion))
+    }
+}
+
+impl Runtime {
+    fn expand_builtin_hash_table_iterator(&self, form: &Form) -> Result<Form, RuntimeError> {
+        let FormKind::List(items) = &form.kind else {
+            return Ok(form.clone());
+        };
+        if items.len() < 3 {
+            return Err(Self::arity(
+                "with-hash-table-iterator",
+                "at least two",
+                items.len().saturating_sub(1),
+            ));
+        }
+        let FormKind::List(binding) = &items[1].kind else {
+            return Err(Self::invalid(
+                "with-hash-table-iterator binding must be a list",
+                items[1].span,
+            ));
+        };
+        if binding.len() != 2 || atom_name(&binding[0]).is_none() {
+            return Err(Self::invalid(
+                "with-hash-table-iterator binding must be (name hash-table-form)",
+                items[1].span,
+            ));
+        }
+        let table = Self::symbol_macro_temporary(&binding[1], 0, form.span);
+        let index = Self::symbol_macro_temporary(&binding[1], 1, form.span);
+        let next = Form::list(
+            vec![
+                Form::atom("__NCL-HASH-TABLE-ITERATOR-NEXT", form.span),
+                table.clone(),
+                index.clone(),
+            ],
+            form.span,
+        );
+        let call = Form::list(
+            vec![
+                Form::atom("MULTIPLE-VALUE-PROG1", form.span),
+                next,
+                Form::list(
+                    vec![Form::atom("INCF", form.span), index.clone()],
+                    form.span,
+                ),
+            ],
+            form.span,
+        );
+        let macrolet = Form::list(
+            std::iter::once(Form::atom("MACROLET", form.span))
+                .chain(std::iter::once(Form::list(
+                    vec![Form::list(
+                        vec![
+                            binding[0].clone(),
+                            Form::list(vec![], form.span),
+                            Form::list(vec![Form::atom("QUOTE", form.span), call], form.span),
+                        ],
+                        form.span,
+                    )],
+                    form.span,
+                )))
+                .chain(items[2..].iter().cloned())
+                .collect(),
+            form.span,
+        );
+        let bindings = Form::list(
+            vec![
+                Form::list(vec![table, binding[1].clone()], form.span),
+                Form::list(vec![index, Form::atom("0", form.span)], form.span),
+            ],
+            items[1].span,
+        );
+        Ok(Form::list(
+            vec![Form::atom("LET", form.span), bindings, macrolet],
+            form.span,
+        ))
     }
 }
 

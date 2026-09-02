@@ -17,6 +17,24 @@ fn maphash_calls_function_for_each_entry_and_returns_nil() {
 }
 
 #[test]
+fn with_hash_table_iterator_returns_key_value_pairs_and_stops() {
+    let result = evaluate(
+        "(let ((table (make-hash-table)))
+           (setf (gethash 'a table) 1)
+           (setf (gethash 'b table) 2)
+           (with-hash-table-iterator (next table)
+             (list
+               (multiple-value-call #'list (next))
+               (multiple-value-call #'list (next))
+               (multiple-value-call #'list (next)))))",
+    );
+    assert!(matches!(
+        result.to_string().as_str(),
+        "((T A 1) (T B 2) (NIL NIL NIL))" | "((T B 2) (T A 1) (NIL NIL NIL))"
+    ));
+}
+
+#[test]
 fn rejects_invalid_map_result_types_and_string_results() {
     for result_type in ["'hash-table", "'integer"] {
         assert!(matches!(
@@ -110,16 +128,12 @@ fn rejects_invalid_sequence_pair_search_options() {
         Runtime::new().eval_source("(search '(1) '(1) :key 5)"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(search '(1) '(1) :key (lambda (x) (error \"boom\")))")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(search '(1) '(1) :test (lambda (a b) (error \"boom\")))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(search '(1) '(1) :key (lambda (x) (error \"boom\")))")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(search '(1) '(1) :test (lambda (a b) (error \"boom\")))")
+        .is_err());
 }
 
 #[test]
@@ -136,16 +150,12 @@ fn rejects_invalid_sequence_search_inputs_and_propagates_errors() {
         Runtime::new().eval_source("(find 1 '(1 2) :key 5)"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(find 1 '(1 2) :key (lambda (x) (error \"boom\")))")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(find 1 '(1 2) :test (lambda (a b) (error \"boom\")))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(find 1 '(1 2) :key (lambda (x) (error \"boom\")))")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(find 1 '(1 2) :test (lambda (a b) (error \"boom\")))")
+        .is_err());
     assert!(matches!(
         Runtime::new().eval_source("(find 1 '(1 2) :test #'eql :test-not #'eql)"),
         Err(ncl_runtime::RuntimeError::InvalidForm { .. })
@@ -183,16 +193,12 @@ fn rejects_invalid_sequence_sort_inputs_and_propagates_errors() {
         Runtime::new().eval_source("(sort '(1) #'< :key 5)"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(sort '(1) #'< :key (lambda (x) (error \"boom\")))")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(sort '(1 2) (lambda (a b) (error \"boom\")))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(sort '(1) #'< :key (lambda (x) (error \"boom\")))")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(sort '(1 2) (lambda (a b) (error \"boom\")))")
+        .is_err());
 }
 
 #[test]
@@ -238,16 +244,12 @@ fn rejects_invalid_sequence_merge_inputs_and_propagates_errors() {
         Runtime::new().eval_source("(merge 'list '(1) '(2) #'< :key 5)"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(merge 'list '(1) '(2) #'< :key (lambda (x) (error \"boom\")))")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(merge 'list '(1) '(2) (lambda (a b) (error \"boom\")))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(merge 'list '(1) '(2) #'< :key (lambda (x) (error \"boom\")))")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(merge 'list '(1) '(2) (lambda (a b) (error \"boom\")))")
+        .is_err());
     assert!(matches!(
         Runtime::new().eval_source("(merge 'list '(1) '(2) #'< :key)"),
         Err(ncl_runtime::RuntimeError::InvalidForm { .. })
@@ -282,11 +284,9 @@ fn rejects_invalid_sequence_quantifier_inputs_and_propagates_errors() {
         Runtime::new().eval_source("(every 5 '(1))"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(every (lambda (x) (error \"boom\")) '(1))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(every (lambda (x) (error \"boom\")) '(1))")
+        .is_err());
 }
 
 #[test]
@@ -299,11 +299,9 @@ fn rejects_invalid_map_and_reduce_inputs_and_propagates_errors() {
         Runtime::new().eval_source("(map 'list #'identity 5)"),
         Err(ncl_runtime::RuntimeError::Type { expected, .. }) if expected == "SEQUENCE"
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(map 'list (lambda (x) (error \"boom\")) '(1))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(map 'list (lambda (x) (error \"boom\")) '(1))")
+        .is_err());
     assert!(matches!(
         Runtime::new().eval_source("(reduce 5 '(1 2))"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
@@ -316,16 +314,12 @@ fn rejects_invalid_map_and_reduce_inputs_and_propagates_errors() {
         Runtime::new().eval_source("(reduce #'+ '(1 2) :key 5)"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(reduce #'+ '(1 2) :key (lambda (x) (error \"boom\")))")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(reduce (lambda (a b) (error \"boom\")) '(1 2))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(reduce #'+ '(1 2) :key (lambda (x) (error \"boom\")))")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(reduce (lambda (a b) (error \"boom\")) '(1 2))")
+        .is_err());
 }
 
 #[test]
@@ -396,16 +390,12 @@ fn rejects_invalid_list_membership_inputs_and_propagates_errors() {
         Runtime::new().eval_source("(member 1 '(1 2) :key 5)"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(member 1 '(1 2) :key (lambda (x) (error \"boom\")))")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(member-if (lambda (x) (error \"boom\")) '(1 2))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(member 1 '(1 2) :key (lambda (x) (error \"boom\")))")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(member-if (lambda (x) (error \"boom\")) '(1 2))")
+        .is_err());
 }
 
 #[test]
@@ -446,16 +436,12 @@ fn propagates_errors_from_association_search_callbacks() {
         Runtime::new().eval_source("(assoc 'a '((a . 1)) :test 5)"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(assoc-if (lambda (x) (error \"boom\")) '((a . 1)))")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(assoc 'a '((a . 1)) :test (lambda (x y) (error \"boom\")))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(assoc-if (lambda (x) (error \"boom\")) '((a . 1)))")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(assoc 'a '((a . 1)) :test (lambda (x y) (error \"boom\")))")
+        .is_err());
 }
 
 #[test]
@@ -468,11 +454,9 @@ fn rejects_invalid_association_search_inputs() {
         Runtime::new().eval_source("(assoc 'a '(1 2))"),
         Err(ncl_runtime::RuntimeError::Type { expected, .. }) if expected == "ASSOCIATION LIST ENTRY"
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(assoc 'a '((a . 1)) :test)")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(assoc 'a '((a . 1)) :test)")
+        .is_err());
     assert!(matches!(
         Runtime::new().eval_source("(assoc 'a '((a . 1)) 5 t)"),
         Err(ncl_runtime::RuntimeError::InvalidForm { .. })
@@ -569,16 +553,12 @@ fn rejects_invalid_sequence_removal_options() {
         Runtime::new().eval_source("(remove 2 '(1 2 3) :start 2 :end 1)"),
         Err(ncl_runtime::RuntimeError::InvalidForm { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(remove 2 '(1 2 3) :key (lambda (x) (error \"boom\")))")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(remove-if (lambda (x) (error \"boom\")) '(1 2))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(remove 2 '(1 2 3) :key (lambda (x) (error \"boom\")))")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(remove-if (lambda (x) (error \"boom\")) '(1 2))")
+        .is_err());
 }
 
 #[test]
@@ -652,11 +632,9 @@ fn rejects_invalid_sequence_substitution_inputs() {
         Runtime::new().eval_source("(substitute 9 2 5)"),
         Err(ncl_runtime::RuntimeError::Type { expected, .. }) if expected == "SEQUENCE"
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(substitute-if 0 (lambda (x) (error \"boom\")) '(1 2))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(substitute-if 0 (lambda (x) (error \"boom\")) '(1 2))")
+        .is_err());
 }
 
 #[test]
@@ -741,16 +719,12 @@ fn rejects_invalid_list_set_operation_options() {
         Runtime::new().eval_source("(union '(1) '(2) :key 5)"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(union '(1) '(2) :key (lambda (x) (error \"boom\")))")
-            .is_err()
-    );
-    assert!(
-        Runtime::new()
-            .eval_source("(union '(1) '(2) :test (lambda (a b) (error \"boom\")))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(union '(1) '(2) :key (lambda (x) (error \"boom\")))")
+        .is_err());
+    assert!(Runtime::new()
+        .eval_source("(union '(1) '(2) :test (lambda (a b) (error \"boom\")))")
+        .is_err());
 }
 
 #[test]
@@ -982,8 +956,10 @@ fn sequence_operations_respect_vector_fill_pointers() {
         "3"
     );
     assert_eq!(
-        evaluate("(map-into (make-array 3 :initial-contents '(0 0 9) :fill-pointer 2) #'1+ '(1 2 3))")
-            .to_string(),
+        evaluate(
+            "(map-into (make-array 3 :initial-contents '(0 0 9) :fill-pointer 2) #'1+ '(1 2 3))"
+        )
+        .to_string(),
         "#(2 3)"
     );
     assert_eq!(
@@ -1002,8 +978,7 @@ fn sequence_operations_respect_vector_fill_pointers() {
         "2"
     );
     assert_eq!(
-        evaluate("(reverse (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))")
-            .to_string(),
+        evaluate("(reverse (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))").to_string(),
         "#(2 1)"
     );
 }
@@ -1011,11 +986,13 @@ fn sequence_operations_respect_vector_fill_pointers() {
 #[test]
 fn simple_bit_vector_predicates_respect_array_metadata() {
     assert_eq!(
-        evaluate("(list (simple-bit-vector-p #(0 1))\
+        evaluate(
+            "(list (simple-bit-vector-p #(0 1))\
                        (simple-bit-vector-p (make-array 2 :element-type 'bit :adjustable t))\
                        (simple-bit-vector-p (make-array 2 :element-type 'bit :fill-pointer 1))\
-                       (typep (make-array 2 :element-type 'bit :adjustable t) 'simple-bit-vector))")
-            .to_string(),
+                       (typep (make-array 2 :element-type 'bit :adjustable t) 'simple-bit-vector))"
+        )
+        .to_string(),
         "(T NIL NIL NIL)"
     );
 }
@@ -1023,11 +1000,13 @@ fn simple_bit_vector_predicates_respect_array_metadata() {
 #[test]
 fn simple_vector_typep_respects_array_metadata() {
     assert_eq!(
-        evaluate("(list (typep #(1 2) 'simple-vector)\
+        evaluate(
+            "(list (typep #(1 2) 'simple-vector)\
                        (typep (make-array 2 :adjustable t) 'simple-vector)\
                        (typep (make-array 2 :fill-pointer 1) 'simple-vector)\
-                       (typep (make-array 2 :element-type 'character) 'simple-vector))")
-            .to_string(),
+                       (typep (make-array 2 :element-type 'character) 'simple-vector))"
+        )
+        .to_string(),
         "(T NIL NIL NIL)"
     );
 }
@@ -1035,12 +1014,14 @@ fn simple_vector_typep_respects_array_metadata() {
 #[test]
 fn simple_array_typep_respects_array_metadata() {
     assert_eq!(
-        evaluate("(list (typep (make-array 2) 'simple-array)\
+        evaluate(
+            "(list (typep (make-array 2) 'simple-array)\
                        (typep (make-array 2 :adjustable t) 'simple-array)\
                        (typep (make-array 2 :fill-pointer 1) 'simple-array)\
                        (typep (make-array 2 :displaced-to (make-array 3)) 'simple-array)\
-                       (typep (make-array 2 :adjustable t) '(simple-array * 2)))")
-            .to_string(),
+                       (typep (make-array 2 :adjustable t) '(simple-array * 2)))"
+        )
+        .to_string(),
         "(T NIL NIL NIL NIL)"
     );
 }
@@ -1072,9 +1053,7 @@ fn rejects_invalid_map_into_inputs_and_propagates_errors() {
         Runtime::new().eval_source("(map-into (vector 0) 5 '(1))"),
         Err(ncl_runtime::RuntimeError::NotCallable { .. })
     ));
-    assert!(
-        Runtime::new()
-            .eval_source("(map-into (vector 0) (lambda () (error \"boom\")) '(1))")
-            .is_err()
-    );
+    assert!(Runtime::new()
+        .eval_source("(map-into (vector 0) (lambda () (error \"boom\")) '(1))")
+        .is_err());
 }

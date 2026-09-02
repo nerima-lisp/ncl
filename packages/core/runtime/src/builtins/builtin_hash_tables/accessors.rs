@@ -3,6 +3,21 @@ use crate::builtins::builtin_helpers::{arity, exact, type_error};
 use crate::builtins::integer_from_usize;
 use crate::{RuntimeError, Value};
 
+pub fn hash_table_iterator_next(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "__ncl-hash-table-iterator-next", 2)?;
+    let table = &arguments[0];
+    let Value::Integer(index) = arguments[1] else {
+        return Err(type_error("__ncl-hash-table-iterator-next", "integer", &arguments[1]));
+    };
+    let Some(entries) = table.hash_table_entries() else {
+        return Err(type_error("__ncl-hash-table-iterator-next", "hash-table", table));
+    };
+    let Some((key, value)) = index.try_into().ok().and_then(|index: usize| entries.borrow().get(index).cloned()) else {
+        return Ok(Value::values(vec![Value::Nil, Value::Nil, Value::Nil]));
+    };
+    Ok(Value::values(vec![Value::boolean(true), key, value]))
+}
+
 pub fn gethash(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() != 2 && arguments.len() != 3 {
         return Err(arity("gethash", "two or three", arguments.len()));

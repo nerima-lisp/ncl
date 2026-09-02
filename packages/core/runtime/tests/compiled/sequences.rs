@@ -28,10 +28,22 @@ fn compiled_evaluates_list_access_operations() {
     assert_eq!(evaluate("(list-length nil)").to_string(), "0");
     assert_eq!(evaluate("(list-length '(a b c))").to_string(), "3");
     assert_eq!(evaluate("(second '(a b c))").to_string(), "B");
-    assert_eq!(evaluate("(tenth '(1 2 3 4 5 6 7 8 9 10))").to_string(), "10");
-    assert_eq!(evaluate("(make-list 3 :initial-element 7)").to_string(), "(7 7 7)");
-    assert_eq!(evaluate("(acons 'a 1 '((b . 2)))").to_string(), "((A . 1) (B . 2))");
-    assert_eq!(evaluate("(pairlis '(a) '(1) '((b . 2)))").to_string(), "((A . 1) (B . 2))");
+    assert_eq!(
+        evaluate("(tenth '(1 2 3 4 5 6 7 8 9 10))").to_string(),
+        "10"
+    );
+    assert_eq!(
+        evaluate("(make-list 3 :initial-element 7)").to_string(),
+        "(7 7 7)"
+    );
+    assert_eq!(
+        evaluate("(acons 'a 1 '((b . 2)))").to_string(),
+        "((A . 1) (B . 2))"
+    );
+    assert_eq!(
+        evaluate("(pairlis '(a) '(1) '((b . 2)))").to_string(),
+        "((A . 1) (B . 2))"
+    );
     assert_eq!(evaluate("(getf '(:a 1) :a)").to_string(), "1");
     assert_eq!(evaluate("(getf '(:a 1) :b 42)").to_string(), "42");
     assert_eq!(
@@ -69,10 +81,19 @@ fn compiled_evaluates_type_predicates() {
     assert_eq!(evaluate("(array-rank \"abc\")").to_string(), "1");
     assert_eq!(evaluate("(array-dimensions \"abc\")").to_string(), "(3)");
     assert_eq!(evaluate("(array-total-size \"abc\")").to_string(), "3");
-    assert_eq!(evaluate("(array-element-type \"abc\")").to_string(), "CHARACTER");
-    assert_eq!(evaluate("(array-has-fill-pointer-p \"abc\")").to_string(), "NIL");
+    assert_eq!(
+        evaluate("(array-element-type \"abc\")").to_string(),
+        "CHARACTER"
+    );
+    assert_eq!(
+        evaluate("(array-has-fill-pointer-p \"abc\")").to_string(),
+        "NIL"
+    );
     assert_eq!(evaluate("(adjustable-array-p \"abc\")").to_string(), "NIL");
-    assert_eq!(evaluate("(multiple-value-list (array-displacement \"abc\"))").to_string(), "(NIL 0)");
+    assert_eq!(
+        evaluate("(multiple-value-list (array-displacement \"abc\"))").to_string(),
+        "(NIL 0)"
+    );
     assert_eq!(evaluate("(simple-array-p \"abc\")").to_string(), "T");
     assert_eq!(evaluate("(simple-array-p #(1 2))").to_string(), "T");
     assert_eq!(
@@ -86,7 +107,10 @@ fn compiled_evaluates_type_predicates() {
         .to_string(),
         "NIL"
     );
-    assert_eq!(evaluate("(hash-table-p (make-hash-table))").to_string(), "T");
+    assert_eq!(
+        evaluate("(hash-table-p (make-hash-table))").to_string(),
+        "T"
+    );
     assert_eq!(evaluate("(alpha-char-p #\\A)").to_string(), "T");
     assert_eq!(evaluate("(alphanumericp #\\7)").to_string(), "T");
     assert_eq!(evaluate("(graphic-char-p #\\A)").to_string(), "T");
@@ -102,9 +126,15 @@ fn compiled_evaluates_sequence_search_operations() {
     assert_eq!(evaluate("(position 2 '(1 2 3))").to_string(), "1");
     assert_eq!(evaluate("(count 2 '(1 2 2 3))").to_string(), "2");
     assert_eq!(evaluate("(find-if #'evenp '(1 3 4))").to_string(), "4");
-    assert_eq!(evaluate("(position-if-not #'evenp '(2 4 5))").to_string(), "2");
+    assert_eq!(
+        evaluate("(position-if-not #'evenp '(2 4 5))").to_string(),
+        "2"
+    );
     assert_eq!(evaluate("(count-if #'evenp '(1 2 4 5))").to_string(), "2");
-    assert_eq!(evaluate("(find 2 '(1 2 3) :from-end t :key #'identity)").to_string(), "2");
+    assert_eq!(
+        evaluate("(find 2 '(1 2 3) :from-end t :key #'identity)").to_string(),
+        "2"
+    );
     assert_eq!(evaluate("(funcall #'position 2 '(1 2 3))").to_string(), "1");
 }
 
@@ -158,10 +188,7 @@ fn compiled_evaluates_sequence_reduce() {
         evaluate("(reduce #'+ #(1 2 3) :initial-value 10)").to_string(),
         "16"
     );
-    assert_eq!(
-        evaluate("(reduce #'+ '(1 2 3) :key #'1+)").to_string(),
-        "9"
-    );
+    assert_eq!(evaluate("(reduce #'+ '(1 2 3) :key #'1+)").to_string(), "9");
 }
 
 #[test]
@@ -172,8 +199,10 @@ fn compiled_sequence_operations_respect_vector_fill_pointers() {
         "3"
     );
     assert_eq!(
-        evaluate("(map-into (make-array 3 :initial-contents '(0 0 9) :fill-pointer 2) #'1+ '(1 2 3))")
-            .to_string(),
+        evaluate(
+            "(map-into (make-array 3 :initial-contents '(0 0 9) :fill-pointer 2) #'1+ '(1 2 3))"
+        )
+        .to_string(),
         "#(2 3)"
     );
     assert_eq!(
@@ -192,8 +221,7 @@ fn compiled_sequence_operations_respect_vector_fill_pointers() {
         "2"
     );
     assert_eq!(
-        evaluate("(reverse (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))")
-            .to_string(),
+        evaluate("(reverse (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))").to_string(),
         "#(2 1)"
     );
 }
@@ -201,11 +229,13 @@ fn compiled_sequence_operations_respect_vector_fill_pointers() {
 #[test]
 fn compiled_simple_bit_vector_predicates_respect_array_metadata() {
     assert_eq!(
-        evaluate("(list (simple-bit-vector-p #(0 1))\
+        evaluate(
+            "(list (simple-bit-vector-p #(0 1))\
                        (simple-bit-vector-p (make-array 2 :element-type 'bit :adjustable t))\
                        (simple-bit-vector-p (make-array 2 :element-type 'bit :fill-pointer 1))\
-                       (typep (make-array 2 :element-type 'bit :adjustable t) 'simple-bit-vector))")
-            .to_string(),
+                       (typep (make-array 2 :element-type 'bit :adjustable t) 'simple-bit-vector))"
+        )
+        .to_string(),
         "(T NIL NIL NIL)"
     );
 }
@@ -213,11 +243,13 @@ fn compiled_simple_bit_vector_predicates_respect_array_metadata() {
 #[test]
 fn compiled_simple_vector_typep_respects_array_metadata() {
     assert_eq!(
-        evaluate("(list (typep #(1 2) 'simple-vector)\
+        evaluate(
+            "(list (typep #(1 2) 'simple-vector)\
                        (typep (make-array 2 :adjustable t) 'simple-vector)\
                        (typep (make-array 2 :fill-pointer 1) 'simple-vector)\
-                       (typep (make-array 2 :element-type 'character) 'simple-vector))")
-            .to_string(),
+                       (typep (make-array 2 :element-type 'character) 'simple-vector))"
+        )
+        .to_string(),
         "(T NIL NIL NIL)"
     );
 }
@@ -225,12 +257,14 @@ fn compiled_simple_vector_typep_respects_array_metadata() {
 #[test]
 fn compiled_simple_array_typep_respects_array_metadata() {
     assert_eq!(
-        evaluate("(list (typep (make-array 2) 'simple-array)\
+        evaluate(
+            "(list (typep (make-array 2) 'simple-array)\
                        (typep (make-array 2 :adjustable t) 'simple-array)\
                        (typep (make-array 2 :fill-pointer 1) 'simple-array)\
                        (typep (make-array 2 :displaced-to (make-array 3)) 'simple-array)\
-                       (typep (make-array 2 :adjustable t) '(simple-array * 2)))")
-            .to_string(),
+                       (typep (make-array 2 :adjustable t) '(simple-array * 2)))"
+        )
+        .to_string(),
         "(T NIL NIL NIL NIL)"
     );
 }
@@ -249,6 +283,21 @@ fn compiled_evaluates_sequence_quantifiers() {
         evaluate("(funcall #'some #'identity '(nil 3))").to_string(),
         "3"
     );
+    assert!(matches!(
+        evaluate(
+            "(let ((table (make-hash-table)))
+               (setf (gethash 'a table) 1)
+               (setf (gethash 'b table) 2)
+               (with-hash-table-iterator (next table)
+                 (list
+                   (multiple-value-call #'list (next))
+                   (multiple-value-call #'list (next))
+                   (multiple-value-call #'list (next)))))"
+        )
+        .to_string()
+        .as_str(),
+        "((T A 1) (T B 2) (NIL NIL NIL))" | "((T B 2) (T A 1) (NIL NIL NIL))"
+    ));
 }
 
 #[test]
@@ -263,8 +312,14 @@ fn compiled_evaluates_list_membership_and_association_searches() {
         "(5 6)"
     );
     assert_eq!(evaluate("(adjoin 4 '(1 2 3))").to_string(), "(4 1 2 3)");
-    assert_eq!(evaluate("(member 2 '(1 2 3) :test #'eql)").to_string(), "(2 3)");
-    assert_eq!(evaluate("(adjoin 4 '(1 2 3) :test #'eql)").to_string(), "(4 1 2 3)");
+    assert_eq!(
+        evaluate("(member 2 '(1 2 3) :test #'eql)").to_string(),
+        "(2 3)"
+    );
+    assert_eq!(
+        evaluate("(adjoin 4 '(1 2 3) :test #'eql)").to_string(),
+        "(4 1 2 3)"
+    );
     assert_eq!(
         evaluate("(assoc 'b '((a . 1) (b . 2)))").to_string(),
         "(B . 2)"
@@ -273,8 +328,14 @@ fn compiled_evaluates_list_membership_and_association_searches() {
         evaluate("(assoc-if (lambda (key) (eq key 'b)) '((a . 1) (b . 2)))").to_string(),
         "(B . 2)"
     );
-    assert_eq!(evaluate("(assoc 'b '((a . 1) (b . 2)) :test #'eq)").to_string(), "(B . 2)");
-    assert_eq!(evaluate("(rassoc 2 '((a . 1) (b . 2)) :test #'eql)").to_string(), "(B . 2)");
+    assert_eq!(
+        evaluate("(assoc 'b '((a . 1) (b . 2)) :test #'eq)").to_string(),
+        "(B . 2)"
+    );
+    assert_eq!(
+        evaluate("(rassoc 2 '((a . 1) (b . 2)) :test #'eql)").to_string(),
+        "(B . 2)"
+    );
     assert_eq!(
         evaluate("(rassoc-if #'evenp '((a . 1) (b . 2)))").to_string(),
         "(B . 2)"
@@ -354,7 +415,10 @@ fn compiled_evaluates_sequence_substitutions() {
 #[test]
 fn compiled_evaluates_tree_and_sequence_unary_operations() {
     assert_eq!(evaluate("(tree-equal '(1 (2)) '(1 (2)))").to_string(), "T");
-    assert_eq!(evaluate("(tree-equal '(1 (2)) '(1 (3)))").to_string(), "NIL");
+    assert_eq!(
+        evaluate("(tree-equal '(1 (2)) '(1 (3)))").to_string(),
+        "NIL"
+    );
     assert_eq!(evaluate("(length '(1 2 3))").to_string(), "3");
     assert_eq!(evaluate("(length #(1 2))").to_string(), "2");
     assert_eq!(evaluate("(length \"abc\")").to_string(), "3");
@@ -586,18 +650,28 @@ use super::*;
 
 #[test]
 fn compiled_evaluates_character_string_access() {
-    assert_eq!(evaluate("(list (char \"abc\" 1) (schar \"λx\" 0))").to_string(), "(#\\b #\\λ)");
+    assert_eq!(
+        evaluate("(list (char \"abc\" 1) (schar \"λx\" 0))").to_string(),
+        "(#\\b #\\λ)"
+    );
 }
 
 #[test]
 fn compiled_evaluates_hash_table_access() {
     assert_eq!(evaluate("(let ((table (make-hash-table :test #'equal))) (setf (gethash \"a\" table) 7) (gethash \"a\" table))").to_string(), "7");
-    assert_eq!(evaluate("(multiple-value-call #'list (gethash :missing (make-hash-table) 42))").to_string(), "(42 NIL)");
+    assert_eq!(
+        evaluate("(multiple-value-call #'list (gethash :missing (make-hash-table) 42))")
+            .to_string(),
+        "(42 NIL)"
+    );
     assert_eq!(evaluate("(multiple-value-call #'list (let ((table (make-hash-table))) (setf (gethash :a table) 7) (gethash :a table)))").to_string(), "(7 T)");
     assert_eq!(evaluate("(let ((table (make-hash-table))) (setf (gethash :a table) 7) (list (remhash :a table) (multiple-value-call #'list (gethash :a table 42))))").to_string(), "(T (42 NIL))");
     assert_eq!(evaluate("(let ((table (make-hash-table :test #'equal))) (setf (gethash \"a\" table) 7) (list (hash-table-count table) (hash-table-test table) (ncl-hash-table-keys table) (ncl-hash-table-values table)))").to_string(), "(1 EQUAL (\"a\") (7))");
     assert_eq!(evaluate("(let ((table (make-hash-table))) (setf (gethash :a table) 7) (clrhash table) (hash-table-count table))").to_string(), "0");
-    assert_eq!(evaluate("(hash-table-size (make-hash-table :size 16))").to_string(), "16");
+    assert_eq!(
+        evaluate("(hash-table-size (make-hash-table :size 16))").to_string(),
+        "16"
+    );
     assert_eq!(
         evaluate(
             "(let ((table (make-hash-table)))
@@ -634,18 +708,31 @@ fn compiled_evaluates_symbol_value_operations() {
 #[test]
 fn compiled_evaluates_symbol_binding_operations() {
     assert_eq!(evaluate("(let ((symbol 'item)) (set symbol 9) (list (symbol-value symbol) (makunbound symbol) (boundp symbol)))").to_string(), "(9 ITEM NIL)");
-    assert_eq!(evaluate("(let ((symbol (gensym))) (fmakunbound symbol) (fboundp symbol))").to_string(), "NIL");
+    assert_eq!(
+        evaluate("(let ((symbol (gensym))) (fmakunbound symbol) (fboundp symbol))").to_string(),
+        "NIL"
+    );
 }
 
 #[test]
 fn compiled_evaluates_symbol_function_operations() {
-    assert_eq!(evaluate("(list (fboundp 'list) (special-operator-p 'if) (compiled-function-p #'list))").to_string(), "(T T NIL)");
-    assert_eq!(evaluate("(let ((symbol 'list)) (functionp (symbol-function symbol)))").to_string(), "T");
+    assert_eq!(
+        evaluate("(list (fboundp 'list) (special-operator-p 'if) (compiled-function-p #'list))")
+            .to_string(),
+        "(T T NIL)"
+    );
+    assert_eq!(
+        evaluate("(let ((symbol 'list)) (functionp (symbol-function symbol)))").to_string(),
+        "T"
+    );
 }
 
 #[test]
 fn compiled_evaluates_symbol_creation_operations() {
-    assert_eq!(evaluate("(list (symbolp (make-symbol \"foo\")) (symbolp (gensym \"G\")))").to_string(), "(T T)");
+    assert_eq!(
+        evaluate("(list (symbolp (make-symbol \"foo\")) (symbolp (gensym \"G\")))").to_string(),
+        "(T T)"
+    );
 }
 
 #[test]
@@ -672,7 +759,8 @@ fn compiled_evaluates_package_mutation_operations() {
 #[test]
 fn compiled_evaluates_package_listing_operations() {
     assert_eq!(
-        evaluate("(list (documentation (find-package :ncl-user) t) (listp (list-all-packages)))").to_string(),
+        evaluate("(list (documentation (find-package :ncl-user) t) (listp (list-all-packages)))")
+            .to_string(),
         "(NIL T)"
     );
 }

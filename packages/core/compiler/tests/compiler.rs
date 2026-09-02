@@ -764,6 +764,22 @@ fn validates_prog1_and_prog2_arity_with_source_spans() {
 }
 
 #[test]
+fn reports_putprop_arity_in_terms_of_arguments() {
+    let form = read("(putprop symbol value)").expect("test source should parse")[0].clone();
+    let error = Compiler::compile_forms(std::slice::from_ref(&form))
+        .expect_err("PUTPROP without a property should fail");
+
+    assert_eq!(
+        error.kind,
+        CompileErrorKind::Arity {
+            operator: "PUTPROP".to_string(),
+            expected: "three".to_string(),
+            actual: 2,
+        }
+    );
+}
+
+#[test]
 fn rejects_non_symbol_bindings_without_panicking() {
     let form = Form::list(
         vec![

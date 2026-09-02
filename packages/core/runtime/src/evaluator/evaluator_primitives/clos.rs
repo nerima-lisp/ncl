@@ -70,7 +70,15 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Option<Result<Value, RuntimeError>> {
-        if !matches!(name, "SUBTYPEP" | "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME" | "CLASS-PRECEDENCE-LIST") {
+        if !matches!(
+            name,
+            "SUBTYPEP"
+                | "CLASS-OF"
+                | "FIND-CLASS"
+                | "CLASS-NAME"
+                | "CLASS-PRECEDENCE-LIST"
+                | "CLASS-DIRECT-SUPERCLASSES"
+        ) {
             return None;
         }
         Some((|| -> Result<Value, RuntimeError> {
@@ -91,6 +99,7 @@ impl Runtime {
                         let n = arguments[0].type_name().to_owned();
                         Rc::new(ClassDefinition {
                             name: n.clone(),
+                            direct_superclasses: vec!["STANDARD-OBJECT".into()],
                             precedence: vec![n.into(), "STANDARD-OBJECT".into()],
                             slots: Vec::new(),
                             default_initargs: Vec::new(),
@@ -139,6 +148,35 @@ impl Runtime {
                         environment.lookup_class(name).unwrap_or_else(|| {
                             Rc::new(ClassDefinition {
                                 name: name.to_string(),
+                                direct_superclasses: Vec::new(),
+                                precedence: vec![name.clone()],
+                                slots: Vec::new(),
+                                default_initargs: Vec::new(),
+                            })
+                        })
+                    });
+                    Ok(Value::list(classes.map(Value::class_object).collect()))
+                }
+                "CLASS-DIRECT-SUPERCLASSES" => {
+                    if arguments.len() != 1 {
+                        return Err(Self::arity(
+                            "class-direct-superclasses",
+                            "one",
+                            arguments.len(),
+                        ));
+                    }
+                    let Value::Class(class) = &arguments[0] else {
+                        return Err(RuntimeError::Type {
+                            expected: "CLASS".into(),
+                            actual: arguments[0].type_name().into(),
+                            span: Some(span),
+                        });
+                    };
+                    let classes = class.direct_superclasses.iter().map(|name| {
+                        environment.lookup_class(name).unwrap_or_else(|| {
+                            Rc::new(ClassDefinition {
+                                name: name.to_string(),
+                                direct_superclasses: Vec::new(),
                                 precedence: vec![name.clone()],
                                 slots: Vec::new(),
                                 default_initargs: Vec::new(),

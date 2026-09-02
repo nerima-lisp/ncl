@@ -17,9 +17,7 @@ impl CompileState {
             return Some(self.compile_list_unary(function, span, items, name));
         }
         Some(match name {
-            "EQ" | "EQL" | "EQUAL" | "EQUALP" => {
-                self.compile_equality(function, span, items, name)
-            }
+            "EQ" | "EQL" | "EQUAL" | "EQUALP" => self.compile_equality(function, span, items, name),
             "AND" => self.compile_and(function, span, items),
             "OR" => self.compile_or(function, span, items),
             "WHEN" => self.compile_when(function, span, items, true),
@@ -60,7 +58,12 @@ impl CompileState {
             "MAKE-SYMBOL" | "GENSYM" | "INTERN" | "FIND-SYMBOL" => {
                 self.compile_symbol_creation(function, span, items, name)
             }
-            "SUBTYPEP" | "CLASS-OF" | "FIND-CLASS" | "CLASS-NAME" | "CLASS-PRECEDENCE-LIST" => {
+            "SUBTYPEP"
+            | "CLASS-OF"
+            | "FIND-CLASS"
+            | "CLASS-NAME"
+            | "CLASS-PRECEDENCE-LIST"
+            | "CLASS-DIRECT-SUPERCLASSES" => {
                 self.compile_class_introspection(function, span, items, name)
             }
             "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-BOUNDP" | "SLOT-MAKUNBOUND" => {
@@ -86,16 +89,15 @@ impl CompileState {
             | "FIND-IF-NOT" | "POSITION-IF-NOT" | "COUNT-IF-NOT" => {
                 self.compile_sequence_search(function, span, items, name)
             }
-            "SEARCH" | "MISMATCH" => {
-                self.compile_sequence_pair_search(function, span, items, name)
-            }
+            "SEARCH" | "MISMATCH" => self.compile_sequence_pair_search(function, span, items, name),
             "MEMBER" | "MEMBER-IF" | "MEMBER-IF-NOT" | "ADJOIN" => {
                 self.compile_list_membership(function, span, items, name)
             }
-            "ASSOC" | "ASSOC-IF" | "ASSOC-IF-NOT" | "RASSOC" | "RASSOC-IF"
-            | "RASSOC-IF-NOT" => self.compile_association_search(function, span, items, name),
-            "REMOVE" | "REMOVE-IF" | "REMOVE-IF-NOT" | "DELETE" | "DELETE-IF"
-            | "DELETE-IF-NOT" | "REMOVE-DUPLICATES" | "DELETE-DUPLICATES" => {
+            "ASSOC" | "ASSOC-IF" | "ASSOC-IF-NOT" | "RASSOC" | "RASSOC-IF" | "RASSOC-IF-NOT" => {
+                self.compile_association_search(function, span, items, name)
+            }
+            "REMOVE" | "REMOVE-IF" | "REMOVE-IF-NOT" | "DELETE" | "DELETE-IF" | "DELETE-IF-NOT"
+            | "REMOVE-DUPLICATES" | "DELETE-DUPLICATES" => {
                 self.compile_sequence_removal(function, span, items, name)
             }
             "SUBSTITUTE" | "SUBSTITUTE-IF" | "SUBSTITUTE-IF-NOT" | "NSUBSTITUTE"
@@ -110,19 +112,19 @@ impl CompileState {
             | "SEVENTH" | "EIGHTH" | "NINTH" | "TENTH" => {
                 self.compile_list_unary(function, span, items, name)
             }
-            "CHARACTER" | "CHAR-CODE" | "CHAR-INT" | "CODE-CHAR" | "INT-CHAR"
-            | "CHAR-UPCASE" | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR" => {
+            "CHARACTER" | "CHAR-CODE" | "CHAR-INT" | "CODE-CHAR" | "INT-CHAR" | "CHAR-UPCASE"
+            | "CHAR-DOWNCASE" | "CHAR-NAME" | "NAME-CHAR" => {
                 self.compile_character_unary(function, span, items, name)
             }
-            "SYMBOL-NAME" | "SYMBOL-PACKAGE" => self.compile_symbol_unary(function, span, items, name),
-            "IDENTITY" | "TYPE-OF" => self.compile_value_unary(function, span, items, name),
-            "1+" | "1-" | "ABS" | "SIGNUM" | "ZEROP" | "PLUSP" | "MINUSP" | "EVENP"
-            | "ODDP" | "LOGNOT" | "LOGCOUNT" | "INTEGER-LENGTH" | "ISQRT" | "SQRT" | "SIN" | "COS"
-            | "CIS" | "TAN" | "EXP" | "ASIN" | "ACOS" | "SINH" | "COSH" | "TANH"
-            | "REALPART" | "IMAGPART" | "CONJUGATE" | "PHASE" | "RATIONAL" | "RATIONALIZE"
-            | "NUMERATOR" | "DENOMINATOR" => {
-                self.compile_numeric_unary(function, span, items, name)
+            "SYMBOL-NAME" | "SYMBOL-PACKAGE" => {
+                self.compile_symbol_unary(function, span, items, name)
             }
+            "IDENTITY" | "TYPE-OF" => self.compile_value_unary(function, span, items, name),
+            "1+" | "1-" | "ABS" | "SIGNUM" | "ZEROP" | "PLUSP" | "MINUSP" | "EVENP" | "ODDP"
+            | "LOGNOT" | "LOGCOUNT" | "INTEGER-LENGTH" | "ISQRT" | "SQRT" | "SIN" | "COS"
+            | "CIS" | "TAN" | "EXP" | "ASIN" | "ACOS" | "SINH" | "COSH" | "TANH" | "REALPART"
+            | "IMAGPART" | "CONJUGATE" | "PHASE" | "RATIONAL" | "RATIONALIZE" | "NUMERATOR"
+            | "DENOMINATOR" => self.compile_numeric_unary(function, span, items, name),
             "RANDOM" => self.compile_numeric_random(function, span, items),
             "FLOOR" | "CEILING" | "TRUNCATE" | "ROUND" => {
                 self.compile_numeric_rounding(function, span, items, name)
@@ -133,8 +135,8 @@ impl CompileState {
             "MIN" | "MAX" | "GCD" | "LCM" | "LOGAND" | "LOGIOR" | "LOGXOR" => {
                 self.compile_numeric_fold(function, span, items, name)
             }
-            "MOD" | "REM" | "ASH" | "LOGTEST" | "LOGANDC1" | "LOGANDC2"
-            | "LOGEQV" | "LOGNAND" | "LOGNOR" | "LOGORC1" | "LOGORC2" | "EXPT" => {
+            "MOD" | "REM" | "ASH" | "LOGTEST" | "LOGANDC1" | "LOGANDC2" | "LOGEQV" | "LOGNAND"
+            | "LOGNOR" | "LOGORC1" | "LOGORC2" | "EXPT" => {
                 self.compile_numeric_binary(function, span, items, name)
             }
             "LOGBITP" => self.compile_numeric_binary(function, span, items, name),
@@ -142,40 +144,94 @@ impl CompileState {
             "BYTE" | "LDB" | "MASK-FIELD" | "DPB" | "DEPOSIT-FIELD" => {
                 self.compile_numeric_bitfield(function, span, items, name)
             }
-            "FLOAT" | "FLOAT-SIGN" | "FLOAT-DIGITS" | "FLOAT-PRECISION" | "FLOAT-RADIX"
-            | "SCALE-FLOAT" | "DECODE-FLOAT" | "INTEGER-DECODE-FLOAT" | "LOG" | "ATAN" | "COMPLEX" => {
-                self.compile_numeric_float(function, span, items, name)
-            }
+            "FLOAT"
+            | "FLOAT-SIGN"
+            | "FLOAT-DIGITS"
+            | "FLOAT-PRECISION"
+            | "FLOAT-RADIX"
+            | "SCALE-FLOAT"
+            | "DECODE-FLOAT"
+            | "INTEGER-DECODE-FLOAT"
+            | "LOG"
+            | "ATAN"
+            | "COMPLEX" => self.compile_numeric_float(function, span, items, name),
             "PARSE-INTEGER" => self.compile_integer_operation(function, span, items, name),
             "OPEN" => self.compile_file_operation(function, span, items, name),
             "PROBE-FILE" | "DELETE-FILE" | "RENAME-FILE" | "FILE-WRITE-DATE" | "TRUENAME" => {
                 self.compile_file_metadata_operation(function, span, items, name)
             }
-            "LAST" | "BUTLAST" | "NBUTLAST" => {
-                self.compile_list_tail(function, span, items, name)
-            }
+            "LAST" | "BUTLAST" | "NBUTLAST" => self.compile_list_tail(function, span, items, name),
             "CONS" | "NTH" | "NTHCDR" | "RPLACA" | "RPLACD" | "TAILP" | "LDIFF" => {
                 self.compile_list_binary(function, span, items, name)
             }
             "FILL-POINTER" | "VECTOR-PUSH" | "VECTOR-PUSH-EXTEND" | "VECTOR-POP" => {
                 self.compile_vector_operation(function, span, items, name)
             }
-            "TERPRI" | "FRESH-LINE" | "FORCE-OUTPUT" | "FINISH-OUTPUT" | "CLEAR-OUTPUT" | "WRITE-CHAR" | "WRITE-STRING" | "WRITE-LINE" | "WRITE-SEQUENCE" | "READ-SEQUENCE" | "LISTEN" | "READ-CHAR-NO-HANG" | "CLEAR-INPUT"
-            | "PRINC" | "PRIN1" | "PRINT" | "WRITE"
-            | "GET-OUTPUT-STREAM-STRING" | "READ-CHAR" | "READ-LINE" | "PEEK-CHAR"
-            | "UNREAD-CHAR" | "FILE-POSITION" | "FILE-LENGTH" | "CLOSE" | "MAKE-STRING-INPUT-STREAM"
-            | "STREAM-ELEMENT-TYPE" | "STREAM-EXTERNAL-FORMAT"
-            | "MAKE-STRING-OUTPUT-STREAM" | "WRITE-TO-STRING" | "READ-FROM-STRING"
-            | "READ" | "READ-PRESERVING-WHITESPACE" | "READ-BYTE" | "WRITE-BYTE" => {
-                self.compile_stream_operation(function, span, items, name)
-            }
-            "ATOM" | "CONSP" | "LISTP" | "NUMBERP" | "COMPLEXP" | "INTEGERP"
-            | "FLOATP" | "RATIONALP" | "STRINGP" | "SIMPLE-STRING-P" | "CHARACTERP"
-            | "SYMBOLP" | "PACKAGEP" | "KEYWORDP" | "VECTORP" | "FUNCTIONP"
-            | "SIMPLE-VECTOR-P" | "BIT-VECTOR-P" | "SIMPLE-BIT-VECTOR-P" | "ARRAYP"
-            | "SIMPLE-ARRAY-P" | "HASH-TABLE-P" | "RANDOM-STATE-P" | "STREAMP" | "INPUT-STREAM-P"
-            | "NOT" | "NULL"
-            | "OUTPUT-STREAM-P" | "OPEN-STREAM-P" | "DIGIT-CHAR-P" => {
+            "TERPRI"
+            | "FRESH-LINE"
+            | "FORCE-OUTPUT"
+            | "FINISH-OUTPUT"
+            | "CLEAR-OUTPUT"
+            | "WRITE-CHAR"
+            | "WRITE-STRING"
+            | "WRITE-LINE"
+            | "WRITE-SEQUENCE"
+            | "READ-SEQUENCE"
+            | "LISTEN"
+            | "READ-CHAR-NO-HANG"
+            | "CLEAR-INPUT"
+            | "PRINC"
+            | "PRIN1"
+            | "PRINT"
+            | "WRITE"
+            | "GET-OUTPUT-STREAM-STRING"
+            | "READ-CHAR"
+            | "READ-LINE"
+            | "PEEK-CHAR"
+            | "UNREAD-CHAR"
+            | "FILE-POSITION"
+            | "FILE-LENGTH"
+            | "CLOSE"
+            | "MAKE-STRING-INPUT-STREAM"
+            | "STREAM-ELEMENT-TYPE"
+            | "STREAM-EXTERNAL-FORMAT"
+            | "MAKE-STRING-OUTPUT-STREAM"
+            | "WRITE-TO-STRING"
+            | "READ-FROM-STRING"
+            | "READ"
+            | "READ-PRESERVING-WHITESPACE"
+            | "READ-BYTE"
+            | "WRITE-BYTE" => self.compile_stream_operation(function, span, items, name),
+            "ATOM"
+            | "CONSP"
+            | "LISTP"
+            | "NUMBERP"
+            | "COMPLEXP"
+            | "INTEGERP"
+            | "FLOATP"
+            | "RATIONALP"
+            | "STRINGP"
+            | "SIMPLE-STRING-P"
+            | "CHARACTERP"
+            | "SYMBOLP"
+            | "PACKAGEP"
+            | "KEYWORDP"
+            | "VECTORP"
+            | "FUNCTIONP"
+            | "SIMPLE-VECTOR-P"
+            | "BIT-VECTOR-P"
+            | "SIMPLE-BIT-VECTOR-P"
+            | "ARRAYP"
+            | "SIMPLE-ARRAY-P"
+            | "HASH-TABLE-P"
+            | "RANDOM-STATE-P"
+            | "STREAMP"
+            | "INPUT-STREAM-P"
+            | "NOT"
+            | "NULL"
+            | "OUTPUT-STREAM-P"
+            | "OPEN-STREAM-P"
+            | "DIGIT-CHAR-P" => {
                 if name == "DIGIT-CHAR-P" {
                     self.compile_character_digit_predicate(function, span, items)
                 } else {
@@ -197,8 +253,8 @@ impl CompileState {
             "MAKE-SEQUENCE" | "COERCE" => {
                 self.compile_sequence_conversion(function, span, items, name)
             }
-            "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE"
-            | "NSTRING-UPCASE" | "NSTRING-DOWNCASE" | "NSTRING-CAPITALIZE" => {
+            "STRING-UPCASE" | "STRING-DOWNCASE" | "STRING-CAPITALIZE" | "NSTRING-UPCASE"
+            | "NSTRING-DOWNCASE" | "NSTRING-CAPITALIZE" => {
                 self.compile_string_case(function, span, items, name)
             }
             "STRING=" | "STRING-EQUAL" | "STRING<" | "STRING>" | "STRING<=" | "STRING>=" => {
@@ -224,28 +280,40 @@ impl CompileState {
             "SET" | "MAKUNBOUND" | "FMAKUNBOUND" => {
                 self.compile_symbol_binding(function, span, items, name)
             }
-            "FBOUNDP" | "MACRO-FUNCTION" | "SPECIAL-OPERATOR-P" | "COMPILED-FUNCTION-P"
-            | "FDEFINITION" | "SYMBOL-FUNCTION" => {
-                self.compile_symbol_function(function, span, items, name)
-            }
-            "FIND-ALL-SYMBOLS" | "FIND-PACKAGE" | "PACKAGE-NAME" | "PACKAGE-USE-LIST" | "PACKAGE-NICKNAMES"
-            | "PACKAGE-SHADOWING-SYMBOLS" | "PACKAGE-USED-BY-LIST" => {
+            "FBOUNDP"
+            | "MACRO-FUNCTION"
+            | "SPECIAL-OPERATOR-P"
+            | "COMPILED-FUNCTION-P"
+            | "FDEFINITION"
+            | "SYMBOL-FUNCTION" => self.compile_symbol_function(function, span, items, name),
+            "FIND-ALL-SYMBOLS"
+            | "FIND-PACKAGE"
+            | "PACKAGE-NAME"
+            | "PACKAGE-USE-LIST"
+            | "PACKAGE-NICKNAMES"
+            | "PACKAGE-SHADOWING-SYMBOLS"
+            | "PACKAGE-USED-BY-LIST" => {
                 self.compile_package_introspection(function, span, items, name)
             }
-            "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT"
-            | "IMPORT" | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN" => {
+            "USE-PACKAGE" | "UNUSE-PACKAGE" | "EXPORT" | "UNEXPORT" | "IMPORT"
+            | "SHADOWING-IMPORT" | "SHADOW" | "UNINTERN" => {
                 self.compile_package_mutation(function, span, items, name)
             }
-            "MAPHASH" | "GETHASH" | "REMHASH" | "MAKE-HASH-TABLE" | "CLRHASH" | "HASH-TABLE-COUNT"
+            "MAPHASH"
+            | "GETHASH"
+            | "REMHASH"
+            | "MAKE-HASH-TABLE"
+            | "CLRHASH"
+            | "HASH-TABLE-COUNT"
             | "HASH-TABLE-SIZE"
-            | "HASH-TABLE-TEST" | "NCL-HASH-TABLE-KEYS" | "NCL-HASH-TABLE-VALUES" => {
-                self.compile_hash_table(function, span, items, name)
-            }
+            | "HASH-TABLE-TEST"
+            | "NCL-HASH-TABLE-KEYS"
+            | "NCL-HASH-TABLE-VALUES" => self.compile_hash_table(function, span, items, name),
             "MAKE-ARRAY" => self.compile_array_construction(function, span, items),
             "ADJUST-ARRAY" => self.compile_array_adjustment(function, span, items),
             "MAKE-LIST" => self.compile_list_construction_with_options(function, span, items),
-            "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>"
-            | "CHAR<=" | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
+            "CHAR=" | "CHAR/=" | "CHAR-EQUAL" | "CHAR-NOT-EQUAL" | "CHAR<" | "CHAR>" | "CHAR<="
+            | "CHAR>=" | "CHAR-LESSP" | "CHAR-GREATERP" | "CHAR-NOT-LESSP"
             | "CHAR-NOT-GREATERP" => self.compile_character_comparison(function, span, items, name),
             "CHAR" | "SCHAR" => self.compile_character_element(function, span, items, name),
             "AREF" | "BIT" => self.compile_array_element(function, span, items, name, false),
@@ -255,9 +323,13 @@ impl CompileState {
             "ARRAY-ROW-MAJOR-INDEX" | "ARRAY-IN-BOUNDS-P" => {
                 self.compile_array_element(function, span, items, name, false)
             }
-            "ARRAY-ELEMENT-TYPE" | "ARRAY-HAS-FILL-POINTER-P" | "ADJUSTABLE-ARRAY-P" | "ARRAY-DISPLACEMENT" | "ARRAY-RANK" | "ARRAY-DIMENSIONS" | "ARRAY-TOTAL-SIZE" => {
-                self.compile_array_metadata(function, span, items, name, 1)
-            }
+            "ARRAY-ELEMENT-TYPE"
+            | "ARRAY-HAS-FILL-POINTER-P"
+            | "ADJUSTABLE-ARRAY-P"
+            | "ARRAY-DISPLACEMENT"
+            | "ARRAY-RANK"
+            | "ARRAY-DIMENSIONS"
+            | "ARRAY-TOTAL-SIZE" => self.compile_array_metadata(function, span, items, name, 1),
             "ARRAY-DIMENSION" => self.compile_array_metadata(function, span, items, name, 2),
             "UNION" | "NUNION" | "INTERSECTION" | "NINTERSECTION" | "SET-DIFFERENCE"
             | "NSET-DIFFERENCE" | "SET-EXCLUSIVE-OR" | "NSET-EXCLUSIVE-OR" | "SUBSETP" => {

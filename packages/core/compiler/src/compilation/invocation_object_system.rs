@@ -11,7 +11,9 @@ impl CompileState {
     ) -> Result<(), CompileError> {
         let (valid_arity, expected) = match operation {
             "SUBTYPEP" => (items.len() == 3, "two"),
-            "CLASS-OF" | "CLASS-NAME" | "CLASS-PRECEDENCE-LIST" => (items.len() == 2, "one"),
+            "CLASS-OF" | "CLASS-NAME" | "CLASS-PRECEDENCE-LIST" | "CLASS-DIRECT-SUPERCLASSES" => {
+                (items.len() == 2, "one")
+            }
             "FIND-CLASS" => ((2..=3).contains(&items.len()), "one or two"),
             _ => (false, "valid arguments"),
         };

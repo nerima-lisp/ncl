@@ -81,6 +81,7 @@ mod tests {
     fn type_name_covers_every_value_variant() {
         let class_definition = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
+            direct_superclasses: Vec::new(),
             precedence: Vec::new(),
             slots: Vec::new(),
             default_initargs: Vec::new(),

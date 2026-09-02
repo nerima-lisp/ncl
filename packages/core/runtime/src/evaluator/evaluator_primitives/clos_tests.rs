@@ -7,6 +7,7 @@ mod tests {
     fn empty_class(name: &str) -> Rc<ClassDefinition> {
         Rc::new(ClassDefinition {
             name: name.to_string(),
+            direct_superclasses: Vec::new(),
             precedence: vec![
                 name.to_string().into(),
                 "STANDARD-OBJECT".to_string().into(),
@@ -82,5 +83,27 @@ mod tests {
             result,
             Err(RuntimeError::Type { expected, .. }) if expected == "CLASS"
         ));
+    }
+
+    #[test]
+    fn class_direct_superclasses_returns_class_objects() {
+        let environment = Environment::new();
+        let class = Rc::new(ClassDefinition {
+            name: "POINT".to_owned(),
+            direct_superclasses: vec!["STANDARD-OBJECT".into()],
+            precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
+            slots: Vec::new(),
+            default_initargs: Vec::new(),
+        });
+        environment.define_class("POINT", Rc::clone(&class));
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-DIRECT-SUPERCLASSES",
+            &[Value::class_object(class)],
+            &environment,
+            SPAN,
+        )
+        .unwrap_or_else(|| panic!("CLASS-DIRECT-SUPERCLASSES is recognized"))
+        .unwrap_or_else(|error| panic!("class introspection succeeds: {error}"));
+        assert!(matches!(result, Value::List(_)));
     }
 }

@@ -63,6 +63,7 @@ impl Runtime {
 
         let definition = Rc::new(ClassDefinition {
             name: class_name.clone(),
+            direct_superclasses: direct_superclasses.into_iter().map(Into::into).collect(),
             precedence,
             slots,
             default_initargs,

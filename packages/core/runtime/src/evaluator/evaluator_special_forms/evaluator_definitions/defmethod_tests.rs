@@ -66,6 +66,22 @@ mod tests {
     }
 
     #[test]
+    fn builtin_list_and_append_method_combinations_combine_all_values() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric collect-values (x) (:method-combination list))\
+                 (defmethod collect-values ((x t)) 1)\
+                 (defmethod collect-values ((x t)) 2)\
+                 (defgeneric append-values (x) (:method-combination append))\
+                 (defmethod append-values ((x t)) (list 1))\
+                 (defmethod append-values ((x t)) (list 2 3))\
+                 (list (collect-values 1) (append-values 1))",
+            )
+            .unwrap_or_else(|error| panic!("list/append method combinations failed: {error}"));
+        assert_eq!(values.last().expect("generic result").to_string(), "((1 2) (1 2 3))");
+    }
+
+    #[test]
     fn builtin_method_combinations_preserve_values_and_short_circuit() {
         let values = Runtime::new()
             .eval_source(

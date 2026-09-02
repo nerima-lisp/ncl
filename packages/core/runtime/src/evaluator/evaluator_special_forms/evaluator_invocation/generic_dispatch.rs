@@ -96,6 +96,19 @@ impl Runtime {
                 }
                 return Ok(result);
             }
+            if matches!(method_combination, MethodCombination::List | MethodCombination::Append) {
+                let values = primary
+                    .iter()
+                    .map(|method| self.invoke_method(method, arguments, None, span, environment))
+                    .collect::<Result<Vec<_>, _>>()?;
+                return match method_combination {
+                    MethodCombination::List => Ok(Value::list(values)),
+                    MethodCombination::Append => {
+                        crate::builtins::append_lists("append", &values)
+                    }
+                    _ => unreachable!("method combination was checked above"),
+                };
+            }
             let is_and = method_combination == MethodCombination::And;
             for method in primary {
                 let value = self.invoke_method(&method, arguments, None, span, environment)?;

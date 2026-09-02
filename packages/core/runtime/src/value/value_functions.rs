@@ -15,6 +15,8 @@ pub enum MethodCombination {
     And,
     Or,
     Progn,
+    List,
+    Append,
 }
 
 /// Function pointer used by a registered runtime primitive.

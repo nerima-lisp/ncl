@@ -12,12 +12,18 @@ fn compiled_evaluates_builtin_method_combinations() {
                  (defgeneric sequence (x) (:method-combination progn))
                  (defmethod sequence ((x t)) 1)
                  (defmethod sequence ((x t)) 2)
+                 (defgeneric collect-values (x) (:method-combination list))
+                 (defmethod collect-values ((x t)) 1)
+                 (defmethod collect-values ((x t)) 2)
+                 (defgeneric append-values (x) (:method-combination append))
+                 (defmethod append-values ((x t)) (list 1))
+                 (defmethod append-values ((x t)) (list 2 3))
                  (list (all-true 1) (any-true 1) (ncl-user::any-true 1)
-                       (sequence 1)))",
+                       (sequence 1) (collect-values 1) (append-values 1)))",
         )
         .must_exist();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].to_string(), "(NIL T T 2)");
+    assert_eq!(values[0].to_string(), "(NIL T T 2 (1 2) (1 2 3))");
 }
 
 #[test]

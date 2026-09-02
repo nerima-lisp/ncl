@@ -110,7 +110,7 @@ fn byte_file_streams_read_write_and_append_raw_bytes() -> Result<(), RuntimeErro
     assert_eq!(stream_element_type(std::slice::from_ref(&input))?.to_string(), "(UNSIGNED-BYTE 8)");
     assert!(matches!(read_byte(std::slice::from_ref(&input))?, Value::Integer(1)));
     assert!(matches!(read_byte(std::slice::from_ref(&input))?, Value::Integer(2)));
-    assert!(matches!(read_byte(&[input.clone(), Value::Integer(9)])?, Value::Integer(9)));
+    assert!(matches!(read_byte(&[input.clone(), Value::Integer(9), Value::Nil])?, Value::Integer(9)));
     close_stream(&[input])?;
 
     let output = open_file(&[

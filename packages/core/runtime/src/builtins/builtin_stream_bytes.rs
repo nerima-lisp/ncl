@@ -2,8 +2,8 @@ use super::{arity, exact, input_stream_reference, integer_argument, stream_refer
 use crate::{RuntimeError, Value};
 
 pub(crate) fn read_byte(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    if arguments.len() > 4 {
-        return Err(arity("read-byte", "0 to 4", arguments.len()));
+    if !(1..=4).contains(&arguments.len()) {
+        return Err(arity("read-byte", "1 to 4", arguments.len()));
     }
     let stream = input_stream_reference("read-byte", arguments.first())?;
     if !stream.borrow().is_input() {
@@ -13,7 +13,16 @@ pub(crate) fn read_byte(arguments: &[Value]) -> Result<Value, RuntimeError> {
         return Err(stream_state_error("read-byte", "an unsigned-byte stream"));
     }
     let mut stream = stream.borrow_mut();
-    Ok(stream.read_byte().map_or_else(|| arguments.get(1).cloned().unwrap_or(Value::Nil), |byte| Value::Integer(byte as i64)))
+    let eof_value = arguments.get(1).cloned().unwrap_or(Value::Nil);
+    let eof_error_p = arguments.get(2).is_none_or(Value::is_truthy);
+    match stream.read_byte() {
+        Some(byte) => Ok(Value::Integer(byte as i64)),
+        None if eof_error_p => Err(RuntimeError::Io {
+            kind: std::io::ErrorKind::UnexpectedEof,
+            message: "read-byte reached end of file".to_string(),
+        }),
+        None => Ok(eof_value),
+    }
 }
 
 pub(crate) fn write_byte(arguments: &[Value]) -> Result<Value, RuntimeError> {

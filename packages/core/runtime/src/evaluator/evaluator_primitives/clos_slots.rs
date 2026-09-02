@@ -30,6 +30,23 @@ impl Runtime {
                         .as_ref()
                         .map_or(Value::Nil, |value| Value::string(value.clone())),
                 ),
+                (
+                    "INITARGS".to_owned(),
+                    Value::list(
+                        slot.initargs
+                            .iter()
+                            .map(|name| Value::keyword(name.clone()))
+                            .collect(),
+                    ),
+                ),
+                (
+                    "ALLOCATION".to_owned(),
+                    Value::keyword(if slot.class_value.is_some() {
+                        "CLASS"
+                    } else {
+                        "INSTANCE"
+                    }),
+                ),
             ],
         )
     }
@@ -41,7 +58,10 @@ impl Runtime {
     ) -> Option<Result<Value, RuntimeError>> {
         if !matches!(
             name,
-            "SLOT-DEFINITION-NAME" | "SLOT-DEFINITION-DOCUMENTATION"
+            "SLOT-DEFINITION-NAME"
+                | "SLOT-DEFINITION-DOCUMENTATION"
+                | "SLOT-DEFINITION-INITARGS"
+                | "SLOT-DEFINITION-ALLOCATION"
         ) {
             return None;
         }
@@ -60,10 +80,11 @@ impl Runtime {
                     span: Some(span),
                 });
             }
-            let slot_name = if name == "SLOT-DEFINITION-NAME" {
-                "NAME"
-            } else {
-                "DOCUMENTATION"
+            let slot_name = match name {
+                "SLOT-DEFINITION-NAME" => "NAME",
+                "SLOT-DEFINITION-DOCUMENTATION" => "DOCUMENTATION",
+                "SLOT-DEFINITION-INITARGS" => "INITARGS",
+                _ => "ALLOCATION",
             };
             arguments[0]
                 .instance_slot(slot_name)

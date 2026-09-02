@@ -100,7 +100,9 @@ impl CompileState {
             | "SLOT-BOUNDP"
             | "SLOT-MAKUNBOUND"
             | "SLOT-DEFINITION-NAME"
-            | "SLOT-DEFINITION-DOCUMENTATION" => {
+            | "SLOT-DEFINITION-DOCUMENTATION"
+            | "SLOT-DEFINITION-INITARGS"
+            | "SLOT-DEFINITION-ALLOCATION" => {
                 self.compile_slot_operation(function, span, items, name)
             }
             "ERROR" | "SIGNAL" | "WARN" | "CERROR" | "MAKE-CONDITION" => {

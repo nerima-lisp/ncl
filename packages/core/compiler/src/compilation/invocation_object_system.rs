@@ -62,7 +62,10 @@ impl CompileState {
     ) -> Result<(), CompileError> {
         let expected_arguments = if matches!(
             operation,
-            "SLOT-DEFINITION-NAME" | "SLOT-DEFINITION-DOCUMENTATION"
+            "SLOT-DEFINITION-NAME"
+                | "SLOT-DEFINITION-DOCUMENTATION"
+                | "SLOT-DEFINITION-INITARGS"
+                | "SLOT-DEFINITION-ALLOCATION"
         ) {
             1
         } else {

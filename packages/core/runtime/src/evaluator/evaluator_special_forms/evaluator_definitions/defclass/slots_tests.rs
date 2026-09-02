@@ -75,11 +75,21 @@ mod tests {
     fn slot_definition_accessors_return_declared_metadata() {
         let values = Runtime::new()
             .eval_source(
-                "(defclass documented-slot () ((value :documentation \"slot doc\")))
-                 (slot-definition-documentation
-                   (first (class-direct-slots (find-class 'documented-slot))))",
+                "(defclass documented-slot ()
+                   ((value :documentation \"slot doc\" :initarg :value)
+                    (class-value :allocation :class)))
+                 (list
+                   (slot-definition-documentation
+                     (first (class-direct-slots (find-class 'documented-slot))))
+                   (slot-definition-initargs
+                     (first (class-direct-slots (find-class 'documented-slot))))
+                   (slot-definition-allocation
+                     (second (class-direct-slots (find-class 'documented-slot)))) )",
             )
             .unwrap();
-        assert_eq!(values.last().unwrap().to_string(), "\"slot doc\"");
+        assert_eq!(
+            values.last().unwrap().to_string(),
+            "(\"slot doc\" (:VALUE) :CLASS)"
+        );
     }
 }

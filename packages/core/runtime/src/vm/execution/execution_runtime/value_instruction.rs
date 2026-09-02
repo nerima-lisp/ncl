@@ -3,47 +3,40 @@ use ncl_syntax::{FormKind, Span};
 
 use super::mutation_instruction;
 use super::value_instruction_definitions::execute_definition_instruction;
+use super::value_instruction_objects::execute as execute_object_instruction;
 use crate::vm::execution::application::{
-    execute_apply_instruction, execute_array_adjustment_instruction,
-    execute_array_construction_instruction, execute_array_element_instruction,
-    execute_array_metadata_instruction, execute_association_search_instruction,
-    execute_call_instruction, execute_character_comparison_instruction,
-    execute_character_digit_instruction, execute_character_digit_predicate_instruction,
-    execute_character_element_instruction, execute_character_predicate_instruction,
-    execute_character_unary_instruction, execute_class_introspection_instruction,
-    execute_condition_operation_instruction, execute_equality_instruction,
-    execute_evaluation_operation_instruction, execute_file_metadata_operation_instruction,
-    execute_file_operation_instruction, execute_hash_table_instruction,
-    execute_integer_operation_instruction, execute_list_append_instruction,
-    execute_list_binary_instruction, execute_list_construction_instruction,
-    execute_list_construction_with_options_instruction, execute_list_mapping_instruction,
+    execute_apply_instruction, execute_association_search_instruction, execute_call_instruction,
+    execute_character_predicate_instruction, execute_character_unary_instruction,
+    execute_class_introspection_instruction, execute_condition_operation_instruction,
+    execute_equality_instruction, execute_evaluation_operation_instruction,
+    execute_file_metadata_operation_instruction, execute_file_operation_instruction,
+    execute_hash_table_instruction, execute_integer_operation_instruction,
+    execute_list_append_instruction, execute_list_binary_instruction,
+    execute_list_construction_instruction, execute_list_mapping_instruction,
     execute_list_membership_instruction, execute_list_set_instruction,
     execute_list_tail_instruction, execute_list_unary_instruction,
-    execute_method_operation_instruction, execute_multiple_value_call_instruction,
-    execute_numeric_binary_instruction, execute_numeric_bitfield_instruction,
-    execute_numeric_boole_instruction, execute_numeric_comparison_instruction,
-    execute_numeric_float_instruction, execute_numeric_fold_instruction,
-    execute_numeric_random_instruction, execute_numeric_rounding_instruction,
-    execute_numeric_unary_instruction, execute_package_introspection_instruction,
-    execute_package_listing_instruction, execute_package_mutation_instruction,
-    execute_property_list_instruction, execute_restart_operation_instruction,
-    execute_sequence_concatenate_instruction, execute_sequence_conversion_instruction,
-    execute_sequence_element_instruction, execute_sequence_length_instruction,
-    execute_sequence_map_into_instruction, execute_sequence_mapping_instruction,
-    execute_sequence_merge_instruction, execute_sequence_mutation_instruction,
-    execute_sequence_pair_search_instruction, execute_sequence_quantifier_instruction,
-    execute_sequence_reduce_instruction, execute_sequence_removal_instruction,
-    execute_sequence_search_instruction, execute_sequence_sort_instruction,
-    execute_sequence_subseq_instruction, execute_sequence_substitution_instruction,
-    execute_sequence_unary_instruction, execute_slot_operation_instruction,
-    execute_stream_operation_instruction, execute_string_case_instruction,
-    execute_string_comparison_instruction, execute_string_construction_instruction,
-    execute_string_trim_instruction, execute_symbol_binding_instruction,
-    execute_symbol_creation_instruction, execute_symbol_function_instruction,
-    execute_symbol_unary_instruction, execute_symbol_value_instruction,
-    execute_tree_equal_instruction, execute_type_predicate_instruction, execute_typep_instruction,
-    execute_value_unary_instruction, execute_vector_construction_instruction,
-    execute_vector_operation_instruction,
+    execute_method_operation_instruction, execute_numeric_binary_instruction,
+    execute_numeric_bitfield_instruction, execute_numeric_boole_instruction,
+    execute_numeric_comparison_instruction, execute_numeric_float_instruction,
+    execute_numeric_fold_instruction, execute_numeric_random_instruction,
+    execute_numeric_rounding_instruction, execute_numeric_unary_instruction,
+    execute_package_introspection_instruction, execute_package_listing_instruction,
+    execute_package_mutation_instruction, execute_property_list_instruction,
+    execute_restart_operation_instruction, execute_sequence_concatenate_instruction,
+    execute_sequence_conversion_instruction, execute_sequence_element_instruction,
+    execute_sequence_length_instruction, execute_sequence_map_into_instruction,
+    execute_sequence_mapping_instruction, execute_sequence_merge_instruction,
+    execute_sequence_mutation_instruction, execute_sequence_pair_search_instruction,
+    execute_sequence_quantifier_instruction, execute_sequence_reduce_instruction,
+    execute_sequence_removal_instruction, execute_sequence_search_instruction,
+    execute_sequence_sort_instruction, execute_sequence_subseq_instruction,
+    execute_sequence_substitution_instruction, execute_sequence_unary_instruction,
+    execute_slot_operation_instruction, execute_stream_operation_instruction,
+    execute_symbol_binding_instruction, execute_symbol_creation_instruction,
+    execute_symbol_function_instruction, execute_symbol_unary_instruction,
+    execute_symbol_value_instruction, execute_tree_equal_instruction,
+    execute_type_predicate_instruction, execute_typep_instruction, execute_value_unary_instruction,
+    execute_vector_construction_instruction, execute_vector_operation_instruction,
 };
 use crate::vm::primitives::pop_value;
 use crate::{Environment, Runtime, RuntimeError, Value};
@@ -63,6 +56,10 @@ pub(super) fn execute_value_instruction(
             }
             handled
         });
+    }
+    if execute_object_instruction(runtime, instruction, stack, environment, span)?.is_some() {
+        *program_counter += 1;
+        return Ok(true);
     }
     match instruction {
         Instruction::RuntimeMutation(form) => {
@@ -567,69 +564,6 @@ pub(super) fn execute_value_instruction(
                 environment,
                 operation,
                 *argument_count,
-                span,
-            )?;
-        }
-        Instruction::ArrayConstruction { argument_count } => {
-            execute_array_construction_instruction(stack, *argument_count, span)?;
-        }
-        Instruction::ArrayAdjustment { argument_count } => {
-            execute_array_adjustment_instruction(stack, *argument_count, span)?;
-        }
-        Instruction::ListConstructionWithOptions { argument_count } => {
-            execute_list_construction_with_options_instruction(stack, *argument_count, span)?;
-        }
-        Instruction::StringCase {
-            operation,
-            argument_count,
-        } => {
-            execute_string_case_instruction(stack, operation, *argument_count, span)?;
-        }
-        Instruction::StringComparison { operation } => {
-            execute_string_comparison_instruction(stack, operation, span)?;
-        }
-        Instruction::StringTrim { operation } => {
-            execute_string_trim_instruction(stack, operation, span)?;
-        }
-        Instruction::StringConstruction {
-            operation,
-            argument_count,
-        } => {
-            execute_string_construction_instruction(stack, operation, *argument_count, span)?;
-        }
-        Instruction::CharacterComparison {
-            operation,
-            argument_count,
-        } => {
-            execute_character_comparison_instruction(stack, operation, *argument_count, span)?;
-        }
-        Instruction::CharacterElement { operation } => {
-            execute_character_element_instruction(stack, operation, span)?;
-        }
-        Instruction::CharacterDigitPredicate { argument_count } => {
-            execute_character_digit_predicate_instruction(stack, *argument_count, span)?;
-        }
-        Instruction::CharacterDigit { argument_count } => {
-            execute_character_digit_instruction(stack, *argument_count, span)?;
-        }
-        Instruction::ArrayElement {
-            operation,
-            argument_count,
-        } => {
-            execute_array_element_instruction(stack, operation, *argument_count, span)?;
-        }
-        Instruction::ArrayMetadata {
-            operation,
-            argument_count,
-        } => {
-            execute_array_metadata_instruction(stack, operation, *argument_count, span)?;
-        }
-        Instruction::MultipleValueCall(value_form_count) => {
-            execute_multiple_value_call_instruction(
-                runtime,
-                *value_form_count,
-                stack,
-                environment,
                 span,
             )?;
         }

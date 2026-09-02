@@ -65,6 +65,17 @@ fn compile_setf_uses_native_list_instruction_for_an_evaluated_target() {
 }
 
 #[test]
+fn compile_setf_uses_native_fixed_list_instruction_for_an_evaluated_target() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (second (list 1 2)) 9)");
+    state.compile_setf(function, Span::new(0, 1), &items).unwrap();
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::SetfListValue("SECOND".to_string())));
+}
+
+#[test]
 fn compile_setf_uses_native_fill_pointer_for_a_symbol_place() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

@@ -29,6 +29,18 @@ fn evaluates_setf_on_an_evaluated_simple_list_place(#[case] eval_fn: EvalFn) {
     );
 }
 
+#[test]
+fn evaluates_setf_on_an_evaluated_fixed_list_place() {
+    assert_eq!(
+        evaluate_with(
+            Runtime::eval_compiled_source as EvalFn,
+            "(setf (second (list 1 2)) 9)"
+        )
+        .to_string(),
+        "9"
+    );
+}
+
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]

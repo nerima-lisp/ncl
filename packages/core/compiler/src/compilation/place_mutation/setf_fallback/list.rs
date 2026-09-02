@@ -71,7 +71,22 @@ pub(super) fn compile_list_setf(
                 if let Ok((operator, _)) =
                     CompileState::symbol_name_info(&items[0], "setf place operator")
                 {
-                    if matches!(operator.as_str(), "CAR" | "FIRST" | "CDR" | "REST") {
+                    if matches!(
+                        operator.as_str(),
+                        "CAR"
+                            | "FIRST"
+                            | "CDR"
+                            | "REST"
+                            | "SECOND"
+                            | "THIRD"
+                            | "FOURTH"
+                            | "FIFTH"
+                            | "SIXTH"
+                            | "SEVENTH"
+                            | "EIGHTH"
+                            | "NINTH"
+                            | "TENTH"
+                    ) {
                         state.compile_expression(function, &items[1])?;
                         state.compile_expression(function, value_form)?;
                         state.emit(function, Instruction::SetfListValue(operator), place.span)?;

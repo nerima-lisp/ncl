@@ -95,6 +95,12 @@ pub(super) fn execute_value(
             })?;
             replacement.insert(0, elements[0].clone());
         }
+        accessor if fixed_accessor_index(accessor).is_some() => {
+            let index = fixed_accessor_index(accessor).expect("checked fixed accessor");
+            if elements.get(index).is_none() {
+                return Err(invalid("list accessor index is out of bounds", span));
+            }
+        }
         _ => return Err(invalid("unsupported native list SETF operator", span)),
     }
     stack.push(value);

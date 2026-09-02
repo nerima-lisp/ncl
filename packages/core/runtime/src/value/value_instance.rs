@@ -8,6 +8,13 @@ impl Value {
         Self::Class(definition)
     }
 
+    pub(crate) fn class_definition(&self) -> Option<Rc<ClassDefinition>> {
+        match self {
+            Self::Class(definition) => Some(definition.clone()),
+            _ => None,
+        }
+    }
+
     pub(crate) fn instance(definition: Rc<ClassDefinition>, slots: Vec<(String, Self)>) -> Self {
         Self::Instance(Instance {
             class: definition,

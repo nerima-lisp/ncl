@@ -1,6 +1,46 @@
 use super::{Environment, Runtime, RuntimeError, Span, Value, quoted_form_value};
 
 impl Runtime {
+    pub(crate) fn allocate_instance(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() != 1 {
+            return Err(Self::arity("allocate-instance", "one", arguments.len()));
+        }
+        let Some(class) = arguments[0].class_definition() else {
+            return Err(Self::invalid("allocate-instance requires a class", span));
+        };
+        let mut slots = Vec::with_capacity(class.slots.len());
+        for slot in &class.slots {
+            let value = if let Some(class_value) = &slot.class_value {
+                let current = class_value.borrow().clone();
+                if matches!(current, Value::Unbound) {
+                    let value = slot
+                        .init_function
+                        .as_ref()
+                        .map(|function| self.apply_in(function, &[], span, environment))
+                        .transpose()?
+                        .unwrap_or(Value::Unbound);
+                    *class_value.borrow_mut() = value.clone();
+                    value
+                } else {
+                    current
+                }
+            } else {
+                slot.init_function
+                    .as_ref()
+                    .map(|function| self.apply_in(function, &[], span, environment))
+                    .transpose()?
+                    .unwrap_or(Value::Unbound)
+            };
+            slots.push((slot.name.clone(), value));
+        }
+        Ok(Value::instance(class, slots))
+    }
+
     pub(crate) fn set_instance_slot_checked(
         &self,
         instance: &Value,
@@ -77,41 +117,8 @@ impl Runtime {
             }
         }
 
-        let mut slots = Vec::with_capacity(class.slots.len());
-        for slot in &class.slots {
-            let initarg_value = slot.initargs.iter().find_map(|initarg| {
-                initargs
-                    .iter()
-                    .rev()
-                    .find(|(name, _)| name == initarg)
-                    .map(|(_, value)| value.clone())
-            });
-            let value = if let Some(initarg_value) = initarg_value {
-                initarg_value
-            } else if let Some(class_value) = &slot.class_value {
-                let current = class_value.borrow().clone();
-                if matches!(current, Value::Unbound) {
-                    let value = slot
-                        .init_function
-                        .as_ref()
-                        .map(|function| self.apply_in(function, &[], span, environment))
-                        .transpose()?
-                        .unwrap_or(Value::Unbound);
-                    *class_value.borrow_mut() = value.clone();
-                    value
-                } else {
-                    current
-                }
-            } else {
-                slot.init_function
-                    .as_ref()
-                    .map(|function| self.apply_in(function, &[], span, environment))
-                    .transpose()?
-                    .unwrap_or(Value::Unbound)
-            };
-            slots.push((slot.name.clone(), value));
-        }
-        let instance = Value::instance(class.clone(), slots);
+        let instance =
+            self.allocate_instance(&[Value::class_object(class.clone())], environment, span)?;
         let mut initialize_arguments = vec![instance.clone()];
         for (initarg, value) in &initargs {
             let Some(index) = class

@@ -119,6 +119,7 @@ impl CompileState {
             }
             "MAKE-INSTANCE"
             | "INITIALIZE-INSTANCE"
+            | "ALLOCATE-INSTANCE"
             | "SHARED-INITIALIZE"
             | "REINITIALIZE-INSTANCE" => {
                 self.compile_evaluation_operation(function, span, items, name)

@@ -12,6 +12,7 @@ impl CompileState {
         let valid = match operation {
             "MAKE-INSTANCE"
             | "INITIALIZE-INSTANCE"
+            | "ALLOCATE-INSTANCE"
             | "SHARED-INITIALIZE"
             | "REINITIALIZE-INSTANCE" => items.len() >= 2,
             "COMPILE" => (2..=3).contains(&items.len()),
@@ -24,6 +25,7 @@ impl CompileState {
             let expected = match operation {
                 "MAKE-INSTANCE"
                 | "INITIALIZE-INSTANCE"
+                | "ALLOCATE-INSTANCE"
                 | "SHARED-INITIALIZE"
                 | "REINITIALIZE-INSTANCE" => "at least one",
                 "COMPILE" => "one or two",

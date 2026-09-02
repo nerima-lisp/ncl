@@ -117,6 +117,7 @@ pub(in crate::builtins::registry) const PRIMITIVE_NAMES: &[&str] = &[
     "MAKUNBOUND",
     "FMAKUNBOUND",
     "MAKE-INSTANCE",
+    "ALLOCATE-INSTANCE",
     "INITIALIZE-INSTANCE",
     "SHARED-INITIALIZE",
     "REINITIALIZE-INSTANCE",

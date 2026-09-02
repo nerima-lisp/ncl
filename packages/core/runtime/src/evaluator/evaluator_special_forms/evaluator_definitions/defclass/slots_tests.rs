@@ -259,6 +259,20 @@ mod tests {
     }
 
     #[test]
+    fn allocate_instance_creates_an_instance_with_slot_defaults() {
+        let values = Runtime::new()
+            .eval_source(
+                "(progn
+                   (defclass allocated-class () ((value :initform 41)))
+                   (let ((object (allocate-instance (find-class 'allocated-class))))
+                     (list (typep object 'allocated-class)
+                           (slot-value object 'value))))",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "(T 41)");
+    }
+
+    #[test]
     fn defclass_accessor_is_setfable() {
         let values = Runtime::new()
             .eval_source(

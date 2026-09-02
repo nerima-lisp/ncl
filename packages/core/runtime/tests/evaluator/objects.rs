@@ -4,7 +4,7 @@ use super::*;
 fn evaluates_basic_clos_instances_and_accessors() {
     let values = Runtime::new()
         .eval_source(
-            r"(progn
+            r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x)
                     (y :initarg :y :accessor point-y)))
@@ -39,7 +39,7 @@ fn rejects_invalid_make_instance_arguments() {
 fn evaluates_setf_slot_value() {
     let values = Runtime::new()
         .eval_source(
-            r"(progn
+            r#"(progn
                  (defclass setf-point ()
                    ((x :initarg :x)))
                  (let ((point (make-instance 'setf-point :x 2)))
@@ -271,10 +271,25 @@ fn rejects_setting_an_undefined_clos_slot() {
 }
 
 #[test]
+fn enforces_clos_slot_types_on_initialization_and_writes() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass typed-point () ((x :initarg :x :type integer)))
+                 (let ((point (make-instance 'typed-point :x 1)))
+                   (list (slot-value point 'x)
+                         (not (ignore-errors (setf (slot-value point 'x) "bad")))
+                         (not (ignore-errors (make-instance 'typed-point :x "bad"))))))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(1 T T)");
+}
+
+#[test]
 fn evaluates_clos_method_combination() {
     let values = Runtime::new()
         .eval_source(
-            r"(progn
+             r#"(progn
                  (defclass point () ((x :initarg :x)))
                  (let ((events nil))
                    (defgeneric point-value (object))

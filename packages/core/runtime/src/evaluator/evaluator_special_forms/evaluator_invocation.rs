@@ -76,9 +76,14 @@ impl Runtime {
                 name,
                 method_combination,
                 methods,
-            } => {
-                self.apply_generic(name, *method_combination, methods, arguments, span, environment)
-            }
+            } => self.apply_generic(
+                name,
+                *method_combination,
+                methods,
+                arguments,
+                span,
+                environment,
+            ),
             crate::Function::SlotReader {
                 class_name,
                 slot_name,
@@ -86,7 +91,7 @@ impl Runtime {
             crate::Function::SlotWriter {
                 class_name,
                 slot_name,
-            } => Self::apply_slot_writer(class_name, slot_name, arguments, span),
+            } => self.apply_slot_writer(class_name, slot_name, arguments, span),
             crate::Function::ConditionReader {
                 condition_name,
                 slot_name,

@@ -2,7 +2,7 @@
 use super::super::super::*;
 
 pub(super) fn execute(
-    _runtime: &Runtime,
+    runtime: &Runtime,
     instruction: &Instruction,
     stack: &mut Vec<Value>,
     _environment: &Environment,
@@ -31,9 +31,13 @@ pub(super) fn execute(
                     span: Some(span),
                 });
             };
-            if !instance.set_instance_slot(&class.name, &slot_name, value.clone()) {
-                return Err(invalid("slot is not defined for this class", span));
-            }
+            runtime.set_instance_slot_checked(
+                &instance,
+                &class.name,
+                &slot_name,
+                value.clone(),
+                span,
+            )?;
             stack.push(value);
             *program_counter += 1;
             Ok(true)

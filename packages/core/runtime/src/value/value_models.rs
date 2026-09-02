@@ -30,6 +30,7 @@ pub struct ClassSlot {
     pub(crate) name: String,
     pub(crate) initarg: Option<String>,
     pub(crate) init_form: Option<Form>,
+    pub(crate) type_form: Option<Form>,
     pub(crate) class_value: Option<Rc<RefCell<Value>>>,
 }
 

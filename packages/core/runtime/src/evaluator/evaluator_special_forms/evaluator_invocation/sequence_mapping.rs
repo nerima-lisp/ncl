@@ -7,11 +7,7 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         if items.len() != 3 {
-            return Err(Self::arity(
-                "maphash",
-                "two",
-                items.len().saturating_sub(1),
-            ));
+            return Err(Self::arity("maphash", "two", items.len().saturating_sub(1)));
         }
         let function = self.eval_in(&items[1], environment)?;
         let table = self.eval_in(&items[2], environment)?;
@@ -81,7 +77,9 @@ impl Runtime {
         }
 
         let supports_setf_place = self.supports_setf_place(destination_form, environment);
-        let expansion = match supports_setf_place.then(|| self.get_setf_expansion(destination_form, environment)) {
+        let expansion = match supports_setf_place
+            .then(|| self.get_setf_expansion(destination_form, environment))
+        {
             Some(Ok(expansion)) => expansion,
             Some(Err(error)) => return Err(error),
             None => {

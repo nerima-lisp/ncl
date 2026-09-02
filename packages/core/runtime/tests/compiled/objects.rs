@@ -2,7 +2,7 @@
 fn compiled_evaluates_builtin_method_combinations() {
     let values = Runtime::new()
         .eval_compiled_source(
-            r"(progn
+            r#"(progn
                  (defgeneric all-true (x) (:method-combination and))
                  (defmethod all-true ((x t)) t)
                  (defmethod all-true ((x t)) nil)
@@ -44,7 +44,7 @@ fn compiled_evaluates_builtin_method_combinations() {
 fn compiled_evaluates_native_make_instance_operation() {
     let values = Runtime::new()
         .eval_compiled_source(
-            r"(progn
+            r#"(progn
                  (defclass native-make-instance-target ()
                    ((value :initarg :value)))
                  (slot-value
@@ -283,6 +283,21 @@ fn compiled_evaluates_clos_unbound_slots() {
         .must_exist();
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(T NIL T (T 9) NIL)");
+}
+
+#[test]
+fn compiled_enforces_clos_slot_types_on_initialization_and_writes() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass typed-point () ((x :initarg :x :type integer)))
+                 (let ((point (make-instance 'typed-point :x 1)))
+                   (list (slot-value point 'x)
+                         (not (ignore-errors (setf (slot-value point 'x) "bad")))
+                         (not (ignore-errors (make-instance 'typed-point :x "bad"))))))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(1 T T)");
 }
 
 #[test]
@@ -591,10 +606,8 @@ fn compiled_evaluates_native_sequence_mutations() {
 #[test]
 fn compiled_evaluates_native_concatenate() {
     assert_eq!(
-        evaluate(
-            "(list (concatenate 'list '(a b) #(c d)) (concatenate 'string \"ab\" \"cd\"))",
-        )
-        .to_string(),
+        evaluate("(list (concatenate 'list '(a b) #(c d)) (concatenate 'string \"ab\" \"cd\"))",)
+            .to_string(),
         "((A B C D) \"abcd\")",
     );
 }
@@ -614,7 +627,8 @@ fn compiled_evaluates_native_sequence_conversions() {
 #[test]
 fn compiled_evaluates_native_string_case() {
     assert_eq!(
-        evaluate("(list (string-upcase \"ab c\") (nstring-downcase \"AB C\" :start 1))").to_string(),
+        evaluate("(list (string-upcase \"ab c\") (nstring-downcase \"AB C\" :start 1))")
+            .to_string(),
         "(\"AB C\" \"Ab c\")",
     );
 }
@@ -688,7 +702,10 @@ fn compiled_evaluates_native_character_name_operations() {
 
 #[test]
 fn compiled_evaluates_native_digit_character_predicate() {
-    assert_eq!(evaluate("(list (digit-char-p #\\5) (digit-char-p #\\G))").to_string(), "(5 NIL)");
+    assert_eq!(
+        evaluate("(list (digit-char-p #\\5) (digit-char-p #\\G))").to_string(),
+        "(5 NIL)"
+    );
 }
 
 #[test]

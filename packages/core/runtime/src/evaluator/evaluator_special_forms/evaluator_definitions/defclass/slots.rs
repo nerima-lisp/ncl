@@ -31,6 +31,7 @@ impl Runtime {
         )?);
         let mut initarg = None;
         let mut init_form = None;
+        let mut type_form = None;
         let mut class_value = None;
         let mut readers = Vec::new();
         let mut writers = Vec::new();
@@ -73,7 +74,8 @@ impl Runtime {
                         Self::variable_name(&option[1], "defclass writer must be a symbol")?;
                     writers.push((unqualified_name(&writer_name), slot_name.clone()));
                 }
-                "TYPE" | "DOCUMENTATION" => {}
+                "TYPE" => type_form = Some(option[1].clone()),
+                "DOCUMENTATION" => {}
                 _ => {
                     return Err(Self::invalid(
                         "unsupported defclass slot option",
@@ -87,6 +89,7 @@ impl Runtime {
                 name: slot_name,
                 initarg,
                 init_form,
+                type_form,
                 class_value,
             },
             readers,

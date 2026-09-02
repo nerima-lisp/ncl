@@ -1,6 +1,5 @@
 use super::{
-    Environment, MethodContinuation, MethodDefinition, RefCell, Runtime,
-    RuntimeError, Span, Value,
+    Environment, MethodContinuation, MethodDefinition, RefCell, Runtime, RuntimeError, Span, Value,
 };
 use crate::value::MethodCombination;
 

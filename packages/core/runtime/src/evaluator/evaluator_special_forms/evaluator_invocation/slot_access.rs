@@ -27,6 +27,7 @@ impl Runtime {
     }
 
     pub(super) fn apply_slot_writer(
+        &self,
         class_name: &str,
         slot_name: &str,
         arguments: &[Value],
@@ -44,11 +45,8 @@ impl Runtime {
                 span: Some(span),
             });
         }
-        if object.set_instance_slot(class_name, slot_name, value.clone()) {
-            Ok(value)
-        } else {
-            Err(Self::invalid("slot is not defined for this class", span))
-        }
+        self.set_instance_slot_checked(object, class_name, slot_name, value.clone(), span)?;
+        Ok(value)
     }
 
     pub(super) fn apply_condition_reader(

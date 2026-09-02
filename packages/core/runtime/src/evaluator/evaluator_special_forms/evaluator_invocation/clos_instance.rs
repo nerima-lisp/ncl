@@ -1,6 +1,40 @@
-use super::{Environment, Runtime, RuntimeError, Span, Value};
+use super::{Environment, Runtime, RuntimeError, Span, Value, quoted_form_value};
 
 impl Runtime {
+    pub(crate) fn set_instance_slot_checked(
+        &self,
+        instance: &Value,
+        class_name: &str,
+        slot_name: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let Some(class) = instance.instance_class_definition() else {
+            return Err(Self::invalid("slot target is not an instance", span));
+        };
+        let Some(slot) = class
+            .slots
+            .iter()
+            .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+        else {
+            return Err(Self::invalid("slot is not defined for this class", span));
+        };
+        if let Some(type_form) = &slot.type_form {
+            let type_designator = quoted_form_value(type_form)?;
+            if !crate::builtins::typep_value(&value, &type_designator)? {
+                return Err(Self::invalid(
+                    "slot value does not satisfy declared type",
+                    span,
+                ));
+            }
+        }
+        if instance.set_instance_slot(class_name, slot_name, value) {
+            Ok(())
+        } else {
+            Err(Self::invalid("slot is not defined for this class", span))
+        }
+    }
+
     pub(crate) fn make_instance(
         &self,
         arguments: &[Value],
@@ -86,9 +120,13 @@ impl Runtime {
             else {
                 return Err(Self::invalid("unknown make-instance initarg", span));
             };
-            if !instance.set_instance_slot(&class.name, &class.slots[index].name, value) {
-                return Err(Self::invalid("unknown make-instance initarg", span));
-            }
+            self.set_instance_slot_checked(
+                &instance,
+                &class.name,
+                &class.slots[index].name,
+                value,
+                span,
+            )?;
         }
         Ok(instance)
     }

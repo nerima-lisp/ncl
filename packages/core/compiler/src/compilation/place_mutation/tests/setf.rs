@@ -77,6 +77,17 @@ fn compile_setf_uses_native_fill_pointer_for_a_symbol_place() {
 }
 
 #[test]
+fn compile_setf_uses_native_fill_pointer_for_an_evaluated_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (fill-pointer (make-array 2 :fill-pointer 0)) 1)");
+    state.compile_setf(function, Span::new(0, 1), &items).unwrap();
+    assert!(state.functions[function]
+        .instructions
+        .contains(&Instruction::SetfFillPointerValue));
+}
+
+#[test]
 fn compile_setf_uses_native_nth_for_a_constant_index_and_symbol_place() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

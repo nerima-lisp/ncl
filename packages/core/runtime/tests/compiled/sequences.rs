@@ -852,6 +852,14 @@ fn compiled_setf_fill_pointer_updates_vector_length() {
 }
 
 #[test]
+fn compiled_setf_fill_pointer_accepts_an_evaluated_vector() {
+    assert_eq!(
+        evaluate("(setf (fill-pointer (make-array 2 :fill-pointer 0)) 1)").to_string(),
+        "1"
+    );
+}
+
+#[test]
 fn compiled_evaluates_vector_pop() {
     assert_eq!(
         evaluate(

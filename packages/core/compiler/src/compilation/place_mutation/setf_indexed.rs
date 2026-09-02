@@ -10,10 +10,13 @@ impl CompileState {
         let FormKind::List(items) = &place.kind else { return Ok(false) };
         if items.len() != 2 || !Self::symbol_name_info(&items[0], "setf fill-pointer operator")
             .ok().is_some_and(|(name, _)| name == "FILL-POINTER") { return Ok(false); }
-        let Some((name, escaped)) = Self::symbol_name_info(&items[1], "setf fill-pointer target").ok() else { return Ok(false); };
         self.compile_expression(function, &items[1])?;
         self.compile_expression(function, value_form)?;
-        self.emit(function, Instruction::SetfFillPointerDynamic { name, escaped }, place.span)?;
+        if let Some((name, escaped)) = Self::symbol_name_info(&items[1], "setf fill-pointer target").ok() {
+            self.emit(function, Instruction::SetfFillPointerDynamic { name, escaped }, place.span)?;
+        } else {
+            self.emit(function, Instruction::SetfFillPointerValue, place.span)?;
+        }
         emit_pop_if_needed(self, function, index, pair_count, value_form.span)?;
         Ok(true)
     }

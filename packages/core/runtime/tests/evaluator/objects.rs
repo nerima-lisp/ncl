@@ -99,6 +99,19 @@ fn evaluates_generic_function_method_introspection() {
 }
 
 #[test]
+fn evaluates_generic_methods_with_builtin_class_specializers() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn (defgeneric classify (x))
+             (defmethod classify ((x number)) :number)
+             (defmethod classify ((x integer)) :integer)
+             (list (classify 3) (classify 1.5)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(:INTEGER :NUMBER)");
+}
+
+#[test]
 fn evaluates_finalize_inheritance() {
     let values = Runtime::new()
         .eval_source("(progn (defclass finalize-class () ()) (finalize-inheritance (find-class 'finalize-class)))")

@@ -16,7 +16,7 @@ pub fn type_designator_name(function: &str, value: &Value) -> Result<String, Run
     Ok(package::normalize_symbol_name(type_name))
 }
 
-pub(super) fn known_type_name(type_name: &str, environment: &Environment) -> bool {
+pub(crate) fn known_type_name(type_name: &str, environment: &Environment) -> bool {
     is_builtin_type_name(type_name)
         || environment.lookup_class(type_name).is_some()
         || environment.lookup_structure(type_name).is_some()

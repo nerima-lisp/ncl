@@ -4,7 +4,11 @@ use super::{
 use crate::value::MethodCombination;
 
 impl Runtime {
-    fn method_score(method: &MethodDefinition, arguments: &[Value]) -> Option<usize> {
+    fn method_score(
+        method: &MethodDefinition,
+        arguments: &[Value],
+        environment: &Environment,
+    ) -> Option<usize> {
         let required_count = method.specializers.len();
         if arguments.len() < required_count {
             return None;
@@ -34,12 +38,27 @@ impl Runtime {
                 score = score.saturating_add(1_000_000);
                 continue;
             }
-            let class = argument.instance_class_definition()?;
-            let position = class
-                .precedence
-                .iter()
-                .position(|name| name == specializer)?;
-            score = score.saturating_add(position);
+            if let Some(class) = argument.instance_class_definition() {
+                let position = class
+                    .precedence
+                    .iter()
+                    .position(|name| name == specializer)?;
+                score = score.saturating_add(position);
+            } else {
+                let type_designator = Value::symbol(specializer.clone());
+                if !crate::builtins::typep_value_in(argument, &type_designator, environment).ok()? {
+                    return None;
+                }
+                score = score.saturating_add(match specializer.as_ref() {
+                    "NIL" => 0,
+                    "BIT" | "FIXNUM" | "BIGNUM" | "INTEGER" => 100,
+                    "RATIO" | "RATIONAL" => 200,
+                    "FLOAT" | "SHORT-FLOAT" | "SINGLE-FLOAT" | "DOUBLE-FLOAT" | "LONG-FLOAT"
+                    | "REAL" => 300,
+                    "NUMBER" => 400,
+                    _ => 500_000,
+                });
+            }
         }
         Some(score)
     }
@@ -57,7 +76,8 @@ impl Runtime {
             .borrow()
             .iter()
             .filter_map(|method| {
-                Self::method_score(method, arguments).map(|score| (score, method.clone()))
+                Self::method_score(method, arguments, environment)
+                    .map(|score| (score, method.clone()))
             })
             .collect::<Vec<_>>();
         if applicable.is_empty() {

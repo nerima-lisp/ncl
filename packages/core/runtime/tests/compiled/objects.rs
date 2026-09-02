@@ -63,6 +63,19 @@ fn compiled_evaluates_generic_function_method_introspection() {
 }
 
 #[test]
+fn compiled_generic_methods_dispatch_on_builtin_class_specializers() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(progn (defgeneric classify (x))
+             (defmethod classify ((x number)) :number)
+             (defmethod classify ((x integer)) :integer)
+             (list (classify 3) (classify 1.5)))",
+        )
+        .unwrap_or_else(|error| panic!("builtin class specializers should dispatch: {error}"));
+    assert_eq!(values[0].to_string(), "(:INTEGER :NUMBER)");
+}
+
+#[test]
 fn compiled_evaluates_reinitialize_instance() {
     let values = Runtime::new()
         .eval_compiled_source(

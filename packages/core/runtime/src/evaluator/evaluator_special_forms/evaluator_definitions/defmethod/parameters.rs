@@ -1,4 +1,4 @@
-use super::{Environment, Form, FormKind, Runtime, RuntimeError, normalize_name, unqualified_name};
+use super::{normalize_name, unqualified_name, Environment, Form, FormKind, Runtime, RuntimeError};
 
 pub(super) struct DefmethodParameters {
     pub(super) required: Vec<String>,
@@ -43,11 +43,7 @@ impl Runtime {
                 None => "T".to_owned(),
                 Some(form) => Self::definition_name_from_form(form, "defmethod specializer")?,
             };
-            if specializer != "T"
-                && specializer != "OBJECT"
-                && specializer != "STANDARD-OBJECT"
-                && environment.lookup_class(&specializer).is_none()
-            {
+            if !crate::builtins::known_type_name(&specializer, environment) {
                 return Err(Self::invalid(
                     "unknown defmethod specializer",
                     parameter.span,

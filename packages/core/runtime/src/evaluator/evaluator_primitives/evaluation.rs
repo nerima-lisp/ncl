@@ -15,6 +15,7 @@ impl Runtime {
                 | "COMPILE"
                 | "LOAD"
                 | "MAKE-INSTANCE"
+                | "INITIALIZE-INSTANCE"
                 | "REINITIALIZE-INSTANCE"
                 | "PROVIDE"
                 | "REQUIRE"
@@ -30,6 +31,7 @@ impl Runtime {
             "COMPILE" => self.compile_function(arguments, environment, span),
             "LOAD" => self.load_file(arguments, span),
             "MAKE-INSTANCE" => self.make_instance(arguments, environment, span),
+            "INITIALIZE-INSTANCE" => self.initialize_instance(arguments, span),
             "REINITIALIZE-INSTANCE" => self.reinitialize_instance(arguments, span),
             "PROVIDE" => self.provide_feature(arguments, span),
             "REQUIRE" => self.require_feature(arguments, span),

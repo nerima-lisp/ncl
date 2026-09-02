@@ -41,6 +41,22 @@ fn evaluates_reinitialize_instance() {
 }
 
 #[test]
+fn evaluates_initialize_instance() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass initialize-point ()
+                   ((x :initarg :x :initform 1)))
+                 (let ((point (make-instance 'initialize-point)))
+                   (initialize-instance point :x 8)
+                   (slot-value point 'x)))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "8");
+}
+
+#[test]
 fn rejects_invalid_make_instance_arguments() {
     for source in [
         "(make-instance)",

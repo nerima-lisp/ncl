@@ -175,4 +175,12 @@ impl Runtime {
         }
         Ok(instance.clone())
     }
+
+    pub(crate) fn initialize_instance(
+        &self,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.reinitialize_instance(arguments, span)
+    }
 }

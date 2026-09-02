@@ -185,6 +185,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
                 | "CALL-NEXT-METHOD"
                 | "NEXT-METHOD-P"
                 | "MAKE-INSTANCE"
+                | "INITIALIZE-INSTANCE"
                 | "REINITIALIZE-INSTANCE"
                 | "COMPILE"
                 | "LOAD"

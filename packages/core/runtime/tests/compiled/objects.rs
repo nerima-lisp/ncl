@@ -61,6 +61,22 @@ fn compiled_evaluates_reinitialize_instance() {
 }
 
 #[test]
+fn compiled_evaluates_initialize_instance() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(progn
+                 (defclass compiled-initialize-point ()
+                   ((x :initarg :x :initform 1)))
+                 (let ((point (make-instance 'compiled-initialize-point)))
+                   (initialize-instance point :x 8)
+                   (slot-value point 'x)))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "8");
+}
+
+#[test]
 fn compiled_evaluates_native_make_instance_operation() {
     let values = Runtime::new()
         .eval_compiled_source(

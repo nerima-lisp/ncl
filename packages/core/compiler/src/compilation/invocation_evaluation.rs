@@ -10,7 +10,7 @@ impl CompileState {
         operation: &str,
     ) -> Result<(), CompileError> {
         let valid = match operation {
-            "MAKE-INSTANCE" | "REINITIALIZE-INSTANCE" => items.len() >= 2,
+            "MAKE-INSTANCE" | "INITIALIZE-INSTANCE" | "REINITIALIZE-INSTANCE" => items.len() >= 2,
             "COMPILE" => (2..=3).contains(&items.len()),
             "LOAD" => items.len() == 2,
             "PROVIDE" => items.len() == 2,
@@ -19,7 +19,7 @@ impl CompileState {
         };
         if !valid {
             let expected = match operation {
-                "MAKE-INSTANCE" | "REINITIALIZE-INSTANCE" => "at least one",
+                "MAKE-INSTANCE" | "INITIALIZE-INSTANCE" | "REINITIALIZE-INSTANCE" => "at least one",
                 "COMPILE" => "one or two",
                 "LOAD" => "one",
                 "PROVIDE" => "one",

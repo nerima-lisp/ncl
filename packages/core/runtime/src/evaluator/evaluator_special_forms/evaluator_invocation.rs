@@ -92,7 +92,7 @@ impl Runtime {
             crate::Function::SlotReader {
                 class_name,
                 slot_name,
-            } => Self::apply_slot_reader(class_name, slot_name, arguments, span),
+            } => self.apply_slot_reader(class_name, slot_name, arguments, span, environment),
             crate::Function::SlotWriter {
                 class_name,
                 slot_name,

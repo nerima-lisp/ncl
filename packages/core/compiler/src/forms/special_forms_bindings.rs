@@ -128,7 +128,8 @@ impl CompileState {
             | "CHANGE-CLASS"
             | "SHARED-INITIALIZE"
             | "REINITIALIZE-INSTANCE"
-            | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS" => {
+            | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS"
+            | "SLOT-MISSING" => {
                 self.compile_evaluation_operation(function, span, items, name)
             }
             "COMPILE" | "LOAD" | "PROVIDE" | "REQUIRE" => {

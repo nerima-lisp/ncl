@@ -1,6 +1,18 @@
 use super::{Environment, Runtime, RuntimeError, Span, Value, quoted_form_value};
 
 impl Runtime {
+    pub(crate) fn slot_missing(
+        &self,
+        arguments: &[Value],
+        _environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() != 4 {
+            return Err(Self::arity("slot-missing", "four", arguments.len()));
+        }
+        Err(Self::invalid("slot is not defined for this class", span))
+    }
+
     pub(crate) fn change_class(
         &self,
         arguments: &[Value],

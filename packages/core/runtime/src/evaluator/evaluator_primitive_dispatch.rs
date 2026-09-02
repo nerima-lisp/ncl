@@ -41,7 +41,36 @@ impl Runtime {
             return result;
         }
         if let Some(result) = Self::apply_slot_primitive(name, arguments, span) {
-            return result;
+            return match result {
+                Err(RuntimeError::InvalidForm { ref message, .. })
+                    if message == "slot is not defined for this class"
+                        && matches!(name, "SLOT-VALUE" | "SLOT-VALUE-USING-CLASS") =>
+                {
+                    let (object, slot_name) = if name.ends_with("-USING-CLASS") {
+                        (&arguments[1], &arguments[2])
+                    } else {
+                        (&arguments[0], &arguments[1])
+                    };
+                    let class = object
+                        .instance_class_definition()
+                        .ok_or_else(|| Self::invalid("object has no class definition", span))?;
+                    let function = environment
+                        .lookup_function("SLOT-MISSING")
+                        .unwrap_or_else(|| Value::primitive("SLOT-MISSING"));
+                    self.apply_in(
+                        &function,
+                        &[
+                            Value::class_object(class),
+                            object.clone(),
+                            slot_name.clone(),
+                            Value::symbol("SLOT-VALUE"),
+                        ],
+                        span,
+                        environment,
+                    )
+                }
+                other => other,
+            };
         }
         if let Some(result) = Self::apply_slot_definition_primitive(name, arguments, span) {
             return result;

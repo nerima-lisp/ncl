@@ -133,6 +133,21 @@ mod tests {
     }
 
     #[test]
+    fn slot_value_dispatches_missing_slots_to_slot_missing() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass missing-slot-object () ())
+                 (defmethod slot-missing ((class t) (object missing-slot-object)
+                                           (slot-name t) (operation t))
+                   (declare (ignore class object slot-name operation))
+                   42)
+                 (slot-value (make-instance 'missing-slot-object) 'absent)",
+            )
+            .expect("SLOT-MISSING method handles an undefined slot");
+        assert!(matches!(values.last(), Some(Value::Integer(42))));
+    }
+
+    #[test]
     fn class_of_a_non_instance_value_synthesizes_a_class_definition() {
         let environment = Environment::new();
         let result = Runtime::apply_class_introspection_primitive(

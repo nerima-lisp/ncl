@@ -222,6 +222,7 @@ pub(super) fn is_shadowable_primitive(name: &str) -> bool {
                 | "SHARED-INITIALIZE"
                 | "REINITIALIZE-INSTANCE"
                 | "UPDATE-INSTANCE-FOR-DIFFERENT-CLASS"
+                | "SLOT-MISSING"
                 | "COMPILE"
                 | "LOAD"
                 | "PROVIDE"

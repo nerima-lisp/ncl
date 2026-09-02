@@ -1,11 +1,13 @@
-use super::{Runtime, RuntimeError, Span, Value};
+use super::{Environment, Runtime, RuntimeError, Span, Value};
 
 impl Runtime {
     pub(super) fn apply_slot_reader(
+        &self,
         class_name: &str,
         slot_name: &str,
         arguments: &[Value],
         span: Span,
+        environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         if arguments.len() != 1 {
             return Err(Self::arity("slot reader", "one", arguments.len()));
@@ -17,9 +19,26 @@ impl Runtime {
                 span: Some(span),
             });
         }
-        let value = arguments[0]
-            .instance_slot(slot_name)
-            .ok_or_else(|| Self::invalid("slot is not defined for this class", span))?;
+        let Some(value) = arguments[0].instance_slot(slot_name) else {
+            let function = environment
+                .lookup_function("SLOT-MISSING")
+                .unwrap_or_else(|| Value::primitive("SLOT-MISSING"));
+            return self.apply_in(
+                &function,
+                &[
+                    Value::class_object(
+                        arguments[0]
+                            .instance_class_definition()
+                            .expect("validated instance has a class"),
+                    ),
+                    arguments[0].clone(),
+                    Value::symbol(slot_name),
+                    Value::symbol("SLOT-VALUE"),
+                ],
+                span,
+                environment,
+            );
+        };
         if matches!(value, Value::Unbound) {
             return Err(RuntimeError::UnboundSlot {
                 name: slot_name.to_owned(),

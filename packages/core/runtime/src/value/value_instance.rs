@@ -63,6 +63,14 @@ impl Value {
         let Self::Instance(instance) = self else {
             return false;
         };
+        if instance
+            .class
+            .slots
+            .iter()
+            .any(|slot| slot.name.eq_ignore_ascii_case(slot_name) && slot.class_value.is_some())
+        {
+            return true;
+        }
         instance
             .slots
             .borrow()

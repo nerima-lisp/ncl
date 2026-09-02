@@ -107,6 +107,43 @@ mod tests {
     }
 
     #[test]
+    fn class_slots_are_shared_and_initialized_once() {
+        let values = Runtime::new()
+            .eval_source(
+                "(progn
+                   (defparameter *class-slot-count* 0)
+                   (defclass shared-slot-class ()
+                     ((value :allocation :class
+                             :initform (progn (incf *class-slot-count*) 41)
+                             :initarg :value)))
+                   (let ((first (make-instance 'shared-slot-class))
+                         (second (make-instance 'shared-slot-class)))
+                     (list (slot-value first 'value)
+                           (slot-value second 'value)
+                           *class-slot-count*
+                           (progn (setf (slot-value first 'value) 99)
+                                  (slot-value second 'value)))))",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "(41 41 1 99)");
+    }
+
+    #[test]
+    fn unbound_class_slots_exist_but_are_not_bound() {
+        let values = Runtime::new()
+            .eval_source(
+                "(progn
+                   (defclass unbound-class-slot ()
+                     ((value :allocation :class)))
+                   (let ((object (make-instance 'unbound-class-slot)))
+                     (list (slot-exists-p object 'value)
+                           (slot-boundp object 'value))))",
+            )
+            .unwrap();
+        assert_eq!(values.last().unwrap().to_string(), "(T NIL)");
+    }
+
+    #[test]
     fn slot_definition_initfunction_captures_defclass_environment() {
         let values = Runtime::new()
             .eval_source(

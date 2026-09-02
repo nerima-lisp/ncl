@@ -52,6 +52,20 @@ fn compile_setf_uses_direct_assignment_for_symbol_places() {
 }
 
 #[test]
+fn compile_setf_keeps_non_symbol_list_places_on_the_explicit_fallback() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(setf (car (list 1)) 2)");
+
+    state.compile_setf(function, Span::new(0, 1), &items).unwrap();
+
+    assert!(state.functions[function]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::Setf(_))));
+}
+
+#[test]
 fn compile_setf_uses_native_fill_pointer_for_a_symbol_place() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

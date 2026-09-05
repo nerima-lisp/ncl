@@ -1,4 +1,4 @@
-use crate::{CompileError, CompileState, Form, FormKind, FunctionId, Span};
+use crate::{CompileError, CompileState, Form, FunctionId, Span};
 
 impl CompileState {
     pub(super) fn dispatch_logic_and_binding_forms(
@@ -24,26 +24,8 @@ impl CompileState {
             "PSETQ" => self.compile_psetq(function, span, items),
             "MULTIPLE-VALUE-SETQ" => self.compile_multiple_value_setq(function, span, items),
             "SETF" => self.compile_setf(function, span, items),
-            "INCF" => {
-                if matches!(
-                    items.get(1).map(|place| &place.kind),
-                    Some(FormKind::Atom(_))
-                ) {
-                    self.compile_modify_symbol(function, span, items, "INCF", "+")
-                } else {
-                    self.compile_runtime_definition(function, span, items)
-                }
-            }
-            "DECF" => {
-                if matches!(
-                    items.get(1).map(|place| &place.kind),
-                    Some(FormKind::Atom(_))
-                ) {
-                    self.compile_modify_symbol(function, span, items, "DECF", "-")
-                } else {
-                    self.compile_runtime_definition(function, span, items)
-                }
-            }
+            "INCF" => self.compile_modify_symbol(function, span, items, "INCF", "+"),
+            "DECF" => self.compile_modify_symbol(function, span, items, "DECF", "-"),
             "DEFVAR" => self.compile_defvar(function, span, items, false),
             "DEFPARAMETER" => self.compile_defvar(function, span, items, true),
             "DEFCONSTANT" => self.compile_runtime_definition(function, span, items),

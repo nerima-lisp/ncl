@@ -43,7 +43,17 @@ impl CompileState {
         let place = items
             .get(1)
             .ok_or_else(|| Self::internal_error(span, "missing modifying place"))?;
-        let (name, escaped) = Self::symbol_name_info(place, &format!("{operator} target"))?;
+        let symbol = match &place.kind {
+            FormKind::Atom(_) => Some(Self::symbol_name_info(
+                place,
+                &format!("{operator} target"),
+            )?),
+            FormKind::List(_) => None,
+            _ => {
+                let _ = Self::symbol_name_info(place, &format!("{operator} target"))?;
+                unreachable!("symbol_name_info accepted a non-atom place")
+            }
+        };
         self.emit(
             function,
             Instruction::FunctionLoad(arithmetic.to_string()),
@@ -56,15 +66,12 @@ impl CompileState {
             self.emit(function, Instruction::Constant(Constant::Integer(1)), span)?;
         }
         self.emit(function, Instruction::Call(2), span)?;
-        self.emit(
-            function,
-            if escaped {
-                Instruction::SetExact(name)
-            } else {
-                Instruction::Set(name)
-            },
-            place.span,
-        )?;
+        let instruction = match symbol {
+            Some((name, true)) => Instruction::SetExact(name),
+            Some((name, false)) => Instruction::Set(name),
+            None => Instruction::Setf(place.clone()),
+        };
+        self.emit(function, instruction, place.span)?;
         Ok(())
     }
 }

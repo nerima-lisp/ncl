@@ -124,6 +124,26 @@ fn compile_modify_symbol_uses_set_exact_for_an_escaped_place() {
 }
 
 #[test]
+fn compile_modify_symbol_uses_setf_for_a_generalized_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let span = Span::new(0, 1);
+    let items = parse_items("(incf (car xs) 2)");
+
+    state
+        .compile_modify_symbol(function, span, &items, "INCF", "+")
+        .unwrap_or_else(|error| panic!("a generalized place should compile: {error}"));
+
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::Setf(items[1].clone())),
+        "generalized INCF should use Setf, got {:?}",
+        state.functions[function].instructions
+    );
+}
+
+#[test]
 fn compile_modify_symbol_reports_an_internal_error_for_an_invalid_function_id() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());

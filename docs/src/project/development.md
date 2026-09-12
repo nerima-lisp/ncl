@@ -85,9 +85,9 @@ The workspace requires Rust 1.98.0 and pins Rust 1.98.0 in
 
 ~~~sh
 cargo fmt --all -- --check
-cargo check --workspace --all-targets --locked
-cargo test --workspace --all-targets --locked
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo check --locked --workspace --all-targets --all-features
+cargo test --locked --workspace --all-features --all-targets
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 ~~~
 
 Use `nix develop path:.` when the Rust tools are not installed locally or when
@@ -104,23 +104,23 @@ nix run path:.#rust-coverage -- --summary-only
 To inspect coverage against the configured CI minimum, include the threshold:
 
 ~~~sh
-nix run path:.#rust-coverage -- --summary-only --fail-under-lines 88.4
+nix run path:.#rust-coverage -- --summary-only --fail-under-regions 95.0
 ~~~
 
-CI enforces 88.4% line coverage. The displayed workspace `TOTAL` can differ
+CI enforces 95.0% region coverage. The displayed workspace `TOTAL` can differ
 from the value used by cargo-llvm-cov for the threshold check; verify both the
 reported summary and the command exit status.
 
 For a browsable report, use `--html --output-dir artifacts/rust-coverage` in
 place of `--summary-only`. The flake app supplies the pinned Rust and LLVM
-tools; CI remains the authoritative 88.4% line-coverage regression gate.
+tools; CI remains the authoritative 95.0% region-coverage regression gate.
 
 ## Documentation
 
 Build the site with strict MkDocs validation:
 
 ~~~sh
-mkdocs build --strict --config-file docs/mkdocs.yml
+nix develop --command mkdocs build --strict --config-file docs/mkdocs.yml
 ~~~
 
 The configuration reads from `docs/src` and writes the ignored `site/`
@@ -132,7 +132,7 @@ The repository-wide Nix check validates the flake outputs. Run the Rust and
 documentation gates explicitly as shown above:
 
 ~~~sh
-nix flake check --no-write-lock-file
+nix flake check --all-systems
 ~~~
 
 For focused iteration, run the individual commands above before invoking the

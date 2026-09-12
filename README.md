@@ -37,10 +37,10 @@ The project does not currently publish a package or prebuilt binary.
 ## Documentation
 
 The detailed documentation is in [docs/src/index.md](docs/src/index.md).
-Build it locally with MkDocs:
+Build it locally from the Nix development environment:
 
 ~~~sh
-mkdocs build --strict --config-file docs/mkdocs.yml
+nix develop --command mkdocs build --strict --config-file docs/mkdocs.yml
 ~~~
 
 ## Development
@@ -49,8 +49,11 @@ mkdocs build --strict --config-file docs/mkdocs.yml
 cargo check --locked --workspace --all-targets --all-features
 cargo test --locked --workspace --all-features --all-targets
 cargo build --locked --workspace --release
+cargo test --locked --workspace --all-features --all-targets --release
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --all-features --no-deps
+cargo audit
 ~~~
 
 If Rust is provided through Nix, enter the reproducible development shell:
@@ -70,12 +73,11 @@ nix fmt
 The intended release lint gate is:
 
 ~~~sh
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 ~~~
 
-The workspace currently passes this Clippy gate. The release profile enables
-thin LTO, one codegen unit, symbol stripping, and abort-on-panic for a compact
-production binary.
+The release profile enables thin LTO, one codegen unit, symbol stripping, and
+abort-on-panic for a compact production binary.
 
 Measure test coverage from the reproducible shell, which provides both
 `cargo-llvm-cov` and LLVM's profile merger:
@@ -85,11 +87,13 @@ llvm_path=$(nix eval --raw nixpkgs#llvmPackages_20.llvm.outPath)
 LLVM_COV="$llvm_path/bin/llvm-cov" \
 LLVM_PROFDATA="$llvm_path/bin/llvm-profdata" \
 cargo llvm-cov --locked \
-  --workspace --all-features --all-targets --summary-only --fail-under-lines 88.4
+  --workspace --all-features --all-targets \
+  --ignore-filename-regex 'src/cli/repl/interactive\.rs|packages/core/runtime/src/builtins/registry/builtin_definitions\.rs' \
+  --summary-only --fail-under-regions 95.0
 ~~~
 
-The project is pursuing 100% coverage. CI currently enforces a minimum of 88.4%
-line coverage as a regression gate while the remaining error and platform
+The project is pursuing 100% coverage. CI currently enforces a minimum of 95.0%
+region coverage as a regression gate while the remaining error and platform
 branches are covered incrementally.
 
 CI also publishes the generated `lcov.info` file as the `coverage-lcov` artifact

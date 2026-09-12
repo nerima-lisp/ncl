@@ -76,16 +76,21 @@ environment. Use `nix fmt` to format the workspace, then run the checks below:
 
 ~~~sh
 nix fmt
-cargo check --workspace --all-targets
-cargo test --workspace --all-targets
+cargo check --locked --workspace --all-targets --all-features
+cargo test --locked --workspace --all-features --all-targets
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --all-features --no-deps
 ~~~
 
-For the release gate, also run `cargo audit`, a locked release build, and the
-CLI smoke checks for interpreted and compiled evaluation.
+For the release gate, also run `cargo audit`, a locked release build and test,
+Rust documentation with warnings denied, and the CLI smoke checks for
+interpreted and compiled evaluation.
 
 Coverage is measured with LLVM instrumentation:
 
 ~~~sh
 LLVM_COV=llvm-cov LLVM_PROFDATA=llvm-profdata cargo llvm-cov \
-  --locked --workspace --all-features --all-targets --summary-only --fail-under-lines 88.4
+  --locked --workspace --all-features --all-targets \
+  --ignore-filename-regex 'src/cli/repl/interactive\.rs|packages/core/runtime/src/builtins/registry/builtin_definitions\.rs' \
+  --summary-only --fail-under-regions 95.0
 ~~~

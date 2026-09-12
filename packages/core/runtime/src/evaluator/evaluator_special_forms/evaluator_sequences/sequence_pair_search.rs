@@ -22,7 +22,8 @@ impl Runtime {
 
         let items1 = match sequence1 {
             Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+            Value::Cons(_) => sequence_items(sequence1, span)?,
+            Value::Vector(items) => items.visible_snapshot(),
             Value::String(value) => value.chars().map(Value::Character).collect(),
             value => {
                 return Err(RuntimeError::Type {
@@ -34,7 +35,8 @@ impl Runtime {
         };
         let items2 = match sequence2 {
             Value::Nil => Vec::new(),
-            Value::List(items) | Value::Vector(items) => items.as_ref().clone(),
+            Value::Cons(_) => sequence_items(sequence2, span)?,
+            Value::Vector(items) => items.visible_snapshot(),
             Value::String(value) => value.chars().map(Value::Character).collect(),
             value => {
                 return Err(RuntimeError::Type {

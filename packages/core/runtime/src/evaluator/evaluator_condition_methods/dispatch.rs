@@ -10,23 +10,18 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        let Some(binding) = self
-            .condition_handlers()
-            .into_iter()
-            .rev()
-            .find(|handler| error.matches_condition(&handler.condition))
-        else {
-            return Ok(());
-        };
-        if binding.catch {
-            return Err(error);
-        }
-        let Some(function) = binding.function else {
-            return Ok(());
-        };
-        let result = self
-            .suspend_condition_handler(&binding.condition)
-            .map_or_else(
+        let handlers = self.condition_handlers();
+        for (index, binding) in handlers.iter().enumerate() {
+            if !error.matches_condition(&binding.condition) {
+                continue;
+            }
+            if binding.catch {
+                return Err(error);
+            }
+            let Some(function) = binding.function.clone() else {
+                continue;
+            };
+            let result = self.suspend_condition_handler_at(index).map_or_else(
                 || {
                     self.apply_in(
                         &function,
@@ -46,7 +41,9 @@ impl Runtime {
                     result
                 },
             );
-        result.map(|_| ())
+            result.map(|_| ())?;
+        }
+        Ok(())
     }
 
     pub(crate) fn signal_condition_value(

@@ -16,7 +16,8 @@ pub fn character_designator(function: &str, value: &Value) -> Result<char, Runti
         | Value::UninternedSymbol(_)
         | Value::Keyword(_)
         | Value::SymbolExact(_)
-        | Value::KeywordExact(_) => {
+        | Value::KeywordExact(_)
+        | Value::InternedSymbol(_) => {
             let string = string_designator(function, value)?;
             let mut characters = string.chars();
             match (characters.next(), characters.next()) {
@@ -32,12 +33,13 @@ pub fn string_designator(function: &str, value: &Value) -> Result<String, Runtim
     match value {
         Value::Nil | Value::Boolean(false) => Ok("NIL".to_string()),
         Value::Boolean(true) => Ok("T".to_string()),
-        Value::String(value)
-        | Value::Symbol(value)
+        Value::String(value) => Ok(value.to_string()),
+        Value::Symbol(value)
         | Value::UninternedSymbol(value)
         | Value::Keyword(value)
         | Value::SymbolExact(value)
         | Value::KeywordExact(value) => Ok(value.to_string()),
+        Value::InternedSymbol(value) => Ok(value.name().to_string()),
         Value::Character(value) => Ok(value.to_string()),
         value => Err(type_error(function, "string designator", value)),
     }
@@ -60,6 +62,13 @@ mod tests {
             character_designator("test", &Value::string("ab")),
             Err(RuntimeError::Type { .. })
         ));
+    }
+
+    #[test]
+    fn mutable_strings_are_string_and_character_designators() {
+        let value = Value::mutable_string("x".to_string());
+        assert_eq!(ok_string(string_designator("test", &value)), "x");
+        assert_eq!(character_designator("test", &value), Ok('x'));
     }
 
     #[test]

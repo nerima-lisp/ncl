@@ -13,10 +13,67 @@ use sampling::{random_limit, state_reference};
 thread_local! {
     static DEFAULT_RANDOM_STATE: Rc<RefCell<RandomState>> =
         Rc::new(RefCell::new(RandomState::seeded()));
+    static ACTIVE_RANDOM_STATE: RefCell<Option<Rc<RefCell<RandomState>>>> = RefCell::new(None);
+    static DYNAMIC_RANDOM_STATES: RefCell<Vec<Value>> = RefCell::new(Vec::new());
+}
+
+pub(crate) fn set_dynamic_random_state(value: &Value) -> bool {
+    DYNAMIC_RANDOM_STATES.with(|states| {
+        let mut states = states.borrow_mut();
+        let Some(slot) = states.last_mut() else {
+            return false;
+        };
+        *slot = value.clone();
+        true
+    })
+}
+
+pub(crate) fn truncate_dynamic_random_states(depth: usize) {
+    DYNAMIC_RANDOM_STATES.with(|states| states.borrow_mut().truncate(depth));
+}
+
+pub(crate) fn bind_dynamic_random_state(value: &Value) {
+    DYNAMIC_RANDOM_STATES.with(|states| states.borrow_mut().push(value.clone()));
+}
+
+pub(crate) fn dynamic_random_state_depth() -> usize {
+    DYNAMIC_RANDOM_STATES.with(|states| states.borrow().len())
+}
+
+struct RandomStateContextGuard {
+    previous: Option<Rc<RefCell<RandomState>>>,
+}
+
+impl Drop for RandomStateContextGuard {
+    fn drop(&mut self) {
+        ACTIVE_RANDOM_STATE.with(|active| {
+            active.replace(self.previous.take());
+        });
+    }
+}
+
+pub(crate) fn with_random_state_context<T>(
+    state: Option<Rc<RefCell<RandomState>>>,
+    function: impl FnOnce() -> T,
+) -> T {
+    ACTIVE_RANDOM_STATE.with(|active| {
+        let previous = active.replace(state);
+        let _guard = RandomStateContextGuard { previous };
+        function()
+    })
+}
+
+fn with_current_random_state<T>(function: impl FnOnce(&Rc<RefCell<RandomState>>) -> T) -> T {
+    let active = ACTIVE_RANDOM_STATE.with(|state| state.borrow().clone());
+    if let Some(state) = active {
+        function(&state)
+    } else {
+        DEFAULT_RANDOM_STATE.with(function)
+    }
 }
 
 pub fn random(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    DEFAULT_RANDOM_STATE.with(|state| random_with_state(arguments, state))
+    with_current_random_state(|state| random_with_state(arguments, state))
 }
 
 pub fn random_with_state(
@@ -34,7 +91,7 @@ pub fn random_with_state(
 }
 
 pub fn make_random_state(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    DEFAULT_RANDOM_STATE.with(|state| make_random_state_with_state(arguments, state))
+    with_current_random_state(|state| make_random_state_with_state(arguments, state))
 }
 
 pub fn make_random_state_with_state(

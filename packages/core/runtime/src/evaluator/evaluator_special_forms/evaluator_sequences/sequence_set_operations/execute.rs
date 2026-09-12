@@ -1,6 +1,28 @@
 use crate::evaluator::evaluator_special_forms::evaluator_sequences::sequence_types::ListSetContext;
 use crate::{Runtime, RuntimeError, Value};
 
+fn destructive_list_result(target: &Value, result: &[Value]) -> Option<Value> {
+    let cells = target.list_cells()?;
+    if cells.is_empty() {
+        return None;
+    }
+    if result.is_empty() {
+        return Some(Value::Nil);
+    }
+
+    for (cell, item) in cells.iter().zip(result.iter()) {
+        cell.set_car(item.clone());
+    }
+    if result.len() < cells.len() {
+        cells[result.len() - 1].set_cdr(Value::Nil);
+    } else if result.len() > cells.len() {
+        cells[cells.len() - 1].set_cdr(Value::list(result[cells.len()..].to_vec()));
+    } else {
+        cells[cells.len() - 1].set_cdr(Value::Nil);
+    }
+    Some(Value::Cons(cells[0].clone()))
+}
+
 impl Runtime {
     pub(super) fn execute_list_set_operation(
         &self,
@@ -81,6 +103,21 @@ impl Runtime {
             _ => return Err(Self::invalid("unknown list set operation", context.span)),
         }
 
-        Ok(Value::list(result))
+        let value = if matches!(
+            context.operation,
+            "NUNION" | "NSET-DIFFERENCE" | "NSET-EXCLUSIVE-OR"
+        ) {
+            let target = if context.first_items.is_empty()
+                && matches!(context.operation, "NUNION" | "NSET-EXCLUSIVE-OR")
+            {
+                context.second
+            } else {
+                context.first
+            };
+            destructive_list_result(target, &result).unwrap_or_else(|| Value::list(result))
+        } else {
+            Value::list(result)
+        };
+        Ok(value)
     }
 }

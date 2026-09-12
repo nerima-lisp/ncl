@@ -10,6 +10,7 @@ pub fn hash_table_option_name(function: &str, value: &Value) -> Result<String, R
         | Value::UninternedSymbol(name)
         | Value::SymbolExact(name)
         | Value::KeywordExact(name) => Ok(normalize_name(name)),
+        Value::InternedSymbol(symbol) => Ok(normalize_name(symbol.name())),
         other => Err(type_error(function, "keyword", other)),
     }
 }
@@ -21,6 +22,7 @@ pub fn hash_table_test_name(function: &str, value: &Value) -> Result<String, Run
         | Value::UninternedSymbol(name)
         | Value::SymbolExact(name)
         | Value::KeywordExact(name) => normalize_name(name),
+        Value::InternedSymbol(symbol) => normalize_name(symbol.name()),
         Value::Function(function_value) => match function_value.as_ref() {
             Function::Builtin { name, .. } | Function::Primitive { name } => normalize_name(name),
             _ => {

@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_numeric_directive(
+pub(crate) fn format_numeric_directive(
     directive: char,
     arguments: &[Value],
     argument_index: &mut usize,
@@ -11,7 +11,7 @@ pub(super) fn format_numeric_directive(
 ) -> Result<String, RuntimeError> {
     if matches!(directive, 'D' | 'B' | 'O' | 'X') {
         let argument = format_argument("format integer directive", arguments, argument_index)?;
-        let integer = integer_argument("format", argument)?;
+        let integer = integer_value("format", argument)?;
         let radix = match directive {
             'D' => 10,
             'B' => 2,
@@ -20,7 +20,7 @@ pub(super) fn format_numeric_directive(
             _ => unreachable!("directive was matched against D|B|O|X above"),
         };
         return format_integer_directive(
-            integer,
+            &integer,
             radix,
             parameters,
             colon_modifier,
@@ -41,8 +41,8 @@ pub(super) fn format_numeric_directive(
     }
 }
 
-pub(super) fn format_integer_directive(
-    value: i64,
+pub(crate) fn format_integer_directive(
+    value: &ibig::IBig,
     radix: u32,
     parameters: &[FormatParameter],
     colon_modifier: bool,
@@ -59,12 +59,17 @@ pub(super) fn format_integer_directive(
         });
     }
 
-    let mut digits = format_unsigned_integer(value.unsigned_abs(), radix);
+    let magnitude = if value < &ibig::IBig::from(0) {
+        -value.clone()
+    } else {
+        value.clone()
+    };
+    let mut digits = format_unsigned_integer(&magnitude, radix);
     if colon_modifier {
         digits = format_grouped_digits(&digits, comma_character, comma_interval);
     }
     let mut formatted = String::new();
-    if value < 0 {
+    if value < &ibig::IBig::from(0) {
         formatted.push('-');
     } else if at_sign_modifier {
         formatted.push('+');

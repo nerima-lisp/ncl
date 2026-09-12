@@ -1,21 +1,17 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_english_number(value: i64, ordinal: bool) -> String {
-    if value < 0 {
-        if value == i64::MIN {
-            return format!(
-                "minus {}",
-                format_unsigned_integer(value.unsigned_abs(), 10)
-            );
-        }
-        return format!(
-            "minus {}",
-            format_english_number(value.wrapping_neg(), ordinal)
-        );
+pub(crate) fn format_english_number(value: &ibig::IBig, ordinal: bool) -> String {
+    let negative = value < &ibig::IBig::from(0);
+    let magnitude = if negative {
+        -value.clone()
+    } else {
+        value.clone()
+    };
+    if negative {
+        return format!("negative {}", format_english_number(&magnitude, ordinal));
     }
-    let magnitude = value.unsigned_abs();
-    if magnitude == 0 {
+    if magnitude == ibig::IBig::from(0) {
         return if ordinal {
             "zeroth".to_string()
         } else {
@@ -23,12 +19,14 @@ pub(super) fn format_english_number(value: i64, ordinal: bool) -> String {
         };
     }
     let mut chunks = Vec::new();
+    let group = ibig::IBig::from(1000);
     let mut remainder = magnitude;
-    while remainder != 0 {
-        chunks.push(remainder % 1000);
-        remainder /= 1000;
+    while remainder != ibig::IBig::from(0) {
+        let chunk = &remainder % &group;
+        chunks.push(u64::try_from(&chunk).unwrap_or_default());
+        remainder = &remainder / &group;
     }
-    if chunks.len() > ENGLISH_NUMBER_GROUPS.len() {
+    if chunks.len() > 6 {
         return format_integer_radix(value, 10);
     }
     let ordinal_group = if ordinal {
@@ -60,7 +58,60 @@ pub(super) fn format_english_number(value: i64, ordinal: bool) -> String {
     parts.join(" ")
 }
 
-pub(super) fn english_under_thousand(value: u64, ordinal: bool) -> String {
+pub(crate) fn format_english_number_value(value: &ibig::IBig, ordinal: bool) -> String {
+    if let Ok(value) = i64::try_from(value) {
+        return format_english_number(&ibig::IBig::from(value), ordinal);
+    }
+    let negative = value < &ibig::IBig::from(0);
+    let digits = value.to_string();
+    let magnitude = digits.strip_prefix('-').unwrap_or(&digits);
+    let first_width = magnitude.len() % 3;
+    let first_width = if first_width == 0 { 3 } else { first_width };
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < magnitude.len() {
+        let width = if start == 0 { first_width } else { 3 };
+        let chunk = magnitude[start..start + width].parse::<u64>().unwrap_or(0);
+        chunks.push(chunk);
+        start += width;
+    }
+    if chunks.len() > ENGLISH_NUMBER_GROUPS.len() {
+        return digits;
+    }
+    let mut parts = Vec::new();
+    let ordinal_group = if ordinal {
+        chunks.iter().rposition(|chunk| *chunk != 0)
+    } else {
+        None
+    };
+    for (index, chunk) in chunks.iter().enumerate() {
+        if *chunk == 0 {
+            continue;
+        }
+        let group_index = chunks.len() - index - 1;
+        let group_is_ordinal = ordinal_group == Some(index);
+        let mut part = english_under_thousand(*chunk, group_is_ordinal && group_index == 0);
+        if group_index != 0 {
+            part.push(' ');
+            part.push_str(ENGLISH_NUMBER_GROUPS[group_index]);
+            if group_is_ordinal {
+                part.push_str("th");
+            }
+        }
+        parts.push(part);
+    }
+    if parts.is_empty() {
+        return if ordinal { "zeroth" } else { "zero" }.to_string();
+    }
+    let result = parts.join(" ");
+    if negative {
+        format!("minus {result}")
+    } else {
+        result
+    }
+}
+
+pub(crate) fn english_under_thousand(value: u64, ordinal: bool) -> String {
     const CARDINALS: &[&str] = &[
         "zero",
         "one",

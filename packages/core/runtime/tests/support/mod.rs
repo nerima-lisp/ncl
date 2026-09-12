@@ -45,7 +45,7 @@ pub const MALFORMED_SPECIAL_FORMS: &[&str] = &[
 ];
 
 pub const MALFORMED_GENERALIZED_ASSIGNMENT_FORMS: &[&str] = &[
-    "(setf)",
+    "(setf value)",
     "(psetf value 1 value)",
     "(push 1 2)",
     "(pop 1)",
@@ -55,7 +55,6 @@ pub const MALFORMED_GENERALIZED_ASSIGNMENT_FORMS: &[&str] = &[
     "(setf (car) 2)",
     "(setf (cdr 1) '(2))",
     "(setf (cdr) '(2))",
-    "(setf (cdr (list 1)) 2)",
     "(setf (nth 0) 2)",
     "(setf (nth 0 1) 2)",
     "(setf (nth -1 (list 1)) 2)",

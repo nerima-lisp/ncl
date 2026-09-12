@@ -1,12 +1,53 @@
 use std::cmp::Ordering;
 
 use super::{
-    Number, RuntimeError, Value, arity, compare_number_values, exact, number_argument,
-    number_to_value, rational_number,
+    Number, RuntimeError, Value, arity, big_rational_number, compare_number_values, exact,
+    number_argument, number_to_value, rational_number,
 };
 
 pub fn numeric_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    compare_numbers("=", arguments, |ordering| ordering == Ordering::Equal)
+    if arguments.is_empty() {
+        return Err(arity("=", "at least one", 0));
+    }
+    for pair in arguments.windows(2) {
+        if !numeric_values_equal(&pair[0], &pair[1])? {
+            return Ok(Value::boolean(false));
+        }
+    }
+    Ok(Value::boolean(true))
+}
+
+fn numeric_values_equal(left: &Value, right: &Value) -> Result<bool, RuntimeError> {
+    let (left_real, left_imaginary) = numeric_parts("=", left)?;
+    let (right_real, right_imaginary) = numeric_parts("=", right)?;
+    Ok(
+        compare_number_values(&left_real, &right_real) == Ordering::Equal
+            && compare_number_values(&left_imaginary, &right_imaginary) == Ordering::Equal,
+    )
+}
+
+fn numeric_parts(function: &str, value: &Value) -> Result<(Number, Number), RuntimeError> {
+    match value {
+        Value::Complex(value) => Ok((
+            number_argument(function, value.real())?,
+            number_argument(function, value.imaginary())?,
+        )),
+        value => Ok((number_argument(function, value)?, Number::Integer(0))),
+    }
+}
+
+pub fn numeric_not_equal(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.is_empty() {
+        return Err(arity("/=", "at least one", 0));
+    }
+    for (index, left) in arguments.iter().enumerate() {
+        for right in arguments.iter().skip(index + 1) {
+            if numeric_values_equal(left, right)? {
+                return Ok(Value::boolean(false));
+            }
+        }
+    }
+    Ok(Value::boolean(true))
 }
 
 pub fn less_than(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -80,6 +121,11 @@ pub fn extreme(
 
 pub fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "abs", 1)?;
+    if let Value::Complex(value) = &arguments[0] {
+        let real = number_argument("abs", value.real())?.as_float();
+        let imaginary = number_argument("abs", value.imaginary())?.as_float();
+        return Ok(Value::Float(real.hypot(imaginary)));
+    }
     match number_argument("abs", &arguments[0])? {
         Number::Integer(value) => Ok(value.checked_abs().map_or_else(
             // i64::MIN is the one integer whose absolute value doesn't fit
@@ -90,8 +136,12 @@ pub fn absolute(arguments: &[Value]) -> Result<Value, RuntimeError> {
         )),
         Number::Big(value) => Ok(Value::big_integer(ibig::ops::Abs::abs(value))),
         Number::Rational(value) => number_to_value(rational_number(
-            i128::from(value.numerator()).abs(),
-            i128::from(value.denominator()),
+            value.numerator_i128().unwrap_or(0).abs(),
+            value.denominator_i128().unwrap_or(1),
+        )?),
+        Number::BigRational(value) => number_to_value(big_rational_number(
+            ibig::ops::Abs::abs(value.numerator()),
+            value.denominator().clone(),
         )?),
         Number::Float(value) => Ok(Value::Float(value.abs())),
     }
@@ -171,6 +221,12 @@ mod tests {
             Value::rational(-1, 2).unwrap_or_else(|error| panic!("valid rational: {error}"));
         assert_eq!(numeric_result(absolute(&[negative_half])), "1/2");
         assert_eq!(numeric_result(absolute(&[Value::Float(-2.5)])), "2.5");
+    }
+
+    #[test]
+    fn absolute_handles_complex_values() {
+        let value = Value::complex(Value::Integer(3), Value::Integer(4));
+        assert_eq!(numeric_result(absolute(&[value])), "5.0");
     }
 
     fn numeric_result(result: Result<Value, RuntimeError>) -> String {

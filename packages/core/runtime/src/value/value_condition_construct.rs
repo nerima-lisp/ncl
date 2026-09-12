@@ -7,39 +7,54 @@ use super::{ConditionData, RestartData, Value};
 
 impl Value {
     pub(crate) fn condition(error: &RuntimeError) -> Self {
-        let (actual_type, type_names, message, format_control, format_arguments) = match error {
-            RuntimeError::Signaled(error) => (
-                if error.warning {
-                    "SIMPLE-WARNING".to_owned()
-                } else {
-                    error.condition.clone()
-                },
-                if error.condition_types.is_empty() {
-                    vec![error.condition.clone()]
-                } else {
-                    error.condition_types.to_vec()
-                },
-                error.message.clone(),
-                error.format_control.clone(),
-                error
-                    .format_arguments
-                    .iter()
-                    .cloned()
-                    .map(ReturnValue::into_value)
-                    .collect(),
-            ),
-            _ => (
-                error.condition_type_name(),
-                vec![error.condition_type_name()],
-                error.to_string(),
-                None,
-                Vec::new(),
-            ),
-        };
+        let (actual_type, type_names, slots, message, format_control, format_arguments) =
+            match error {
+                RuntimeError::Signaled(error) => (
+                    if error.warning {
+                        "SIMPLE-WARNING".to_owned()
+                    } else {
+                        error.condition.to_string()
+                    },
+                    if error.condition_types.is_empty() {
+                        vec![error.condition.to_string()]
+                    } else {
+                        error
+                            .condition_types
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect()
+                    },
+                    Vec::new(),
+                    error.message.clone(),
+                    error.format_control.clone(),
+                    error
+                        .format_arguments
+                        .iter()
+                        .cloned()
+                        .map(ReturnValue::into_value)
+                        .collect(),
+                ),
+                RuntimeError::UnboundVariable { name, .. } => (
+                    error.condition_type_name(),
+                    vec![error.condition_type_name()],
+                    vec![("NAME".to_owned(), Self::symbol(name))],
+                    error.to_string(),
+                    None,
+                    Vec::new(),
+                ),
+                _ => (
+                    error.condition_type_name(),
+                    vec![error.condition_type_name()],
+                    Vec::new(),
+                    error.to_string(),
+                    None,
+                    Vec::new(),
+                ),
+            };
         Self::condition_from_parts_with_types(
             actual_type,
             type_names,
-            Vec::new(),
+            slots,
             message,
             format_control,
             format_arguments,
@@ -62,7 +77,24 @@ impl Value {
         )
     }
 
-    pub(super) fn condition_from_parts_with_types(
+    pub(crate) fn condition_from_parts_with_slots(
+        actual_type: String,
+        slots: Vec<(String, Self)>,
+        message: String,
+        format_control: Option<String>,
+        format_arguments: Vec<Self>,
+    ) -> Self {
+        Self::condition_from_parts_with_types(
+            actual_type.clone(),
+            vec![actual_type],
+            slots,
+            message,
+            format_control,
+            format_arguments,
+        )
+    }
+
+    pub(crate) fn condition_from_parts_with_types(
         actual_type: String,
         type_names: Vec<String>,
         slots: Vec<(String, Self)>,

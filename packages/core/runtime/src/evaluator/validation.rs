@@ -70,6 +70,9 @@ impl Runtime {
         let Ok(token) = parse_symbol_token(name) else {
             return Err(Self::invalid(context, form.span));
         };
+        if token.kind == SymbolTokenKind::Uninterned && !token.name.is_empty() {
+            return Ok(resolved_symbol(name));
+        }
         if token.kind != SymbolTokenKind::Symbol
             || token.name.is_empty()
             || (token.escaped && token.package.is_some())
@@ -141,6 +144,8 @@ mod tests {
             ("name", "NAME", false),
             ("|Name|", "Name", true),
             ("foo\\ bar", "FOO BAR", true),
+            ("#:temporary", "#:TEMPORARY", false),
+            ("#:|Temporary|", "#:Temporary", true),
         ];
         for (source, expected, escaped) in cases {
             assert_eq!(

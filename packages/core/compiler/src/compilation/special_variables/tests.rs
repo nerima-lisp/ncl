@@ -12,6 +12,25 @@ fn parse_items(source: &str) -> Vec<Form> {
 }
 
 #[test]
+fn compile_defconstant_uses_constant_instruction_for_an_escaped_name() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let items = parse_items("(defconstant |Mixed| 42 \"doc\")");
+
+    assert!(
+        state
+            .compile_defconstant(function, Span::new(0, 1), &items)
+            .is_ok()
+    );
+
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::DefineConstantExact("Mixed".to_string()))
+    );
+}
+
+#[test]
 fn compile_defvar_defparameter_uses_define_special_exact_for_an_escaped_name() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());
@@ -33,6 +52,27 @@ fn compile_defvar_defparameter_uses_define_special_exact_for_an_escaped_name() {
             }),
         "escaped DEFPARAMETER name should bind with DefineSpecialExact, got {:?}",
         state.functions[function].instructions
+    );
+}
+
+#[test]
+fn compile_defvar_registers_the_name_for_later_let_bindings() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let span = Span::new(0, 1);
+
+    state
+        .compile_defvar(function, span, &parse_items("(defvar *x* 1)"), false)
+        .unwrap_or_else(|error| panic!("defvar should compile: {error}"));
+
+    state
+        .compile_let(function, span, &parse_items("(let ((*x* 2)) *x*)"), false)
+        .unwrap_or_else(|error| panic!("later let should compile: {error}"));
+
+    assert!(
+        state.functions[function]
+            .instructions
+            .contains(&Instruction::DefineDynamicSpecial("*X*".to_string()))
     );
 }
 

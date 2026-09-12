@@ -2,6 +2,7 @@
 use super::*;
 
 pub(super) const SPECIAL_FORM_BUILTINS: &[BuiltinDefinition] = &[
+    ("cell-error-name", cell_error_name as _),
     (
         "simple-condition-format-control",
         simple_condition_format_control as _,

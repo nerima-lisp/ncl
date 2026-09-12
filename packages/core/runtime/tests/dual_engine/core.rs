@@ -26,6 +26,58 @@ fn declarations_are_accepted_in_function_bodies(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_lexical_macro_and_symbol_macro_bindings(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((cell (list 1)))
+               (macrolet ((twice (value) `(+ ,value ,value)))
+                 (symbol-macrolet ((item (car cell)))
+                   (list (twice 21)
+                         (progn (setq item 7) cell)))) )",
+        )
+        .to_string(),
+        "(42 (7))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_native_stable_list_places(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((cell (list (list 2))))
+                     (list (push 1 (car cell))
+                           (pushnew 1 (car cell))
+                           cell))"
+        )
+        .to_string(),
+        "((1 2) (1 2) ((1 2)))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_native_stable_list_modify_places(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((cell (list 2)))
+                     (list (incf (car cell) 3)
+                           (decf (car cell))
+                           cell))"
+        )
+        .to_string(),
+        "(5 4 (4))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_condition_restart_associations(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(

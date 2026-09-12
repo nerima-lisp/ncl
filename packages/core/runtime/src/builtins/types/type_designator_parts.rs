@@ -1,25 +1,26 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn compound_type_parts(value: &Value) -> Option<(String, &[Value])> {
-    let Value::List(items) = value else {
-        return None;
-    };
+pub(crate) fn compound_type_parts(value: &Value) -> Option<(String, Vec<Value>)> {
+    let items = value.list_items()?;
     let operator = type_designator_name("subtypep", items.first()?).ok()?;
-    Some((operator, &items[1..]))
+    Some((operator, items[1..].to_vec()))
 }
 
-pub(super) fn atomic_type_name(value: &Value) -> Option<String> {
-    if matches!(value, Value::List(_) | Value::DottedList { .. }) {
+pub(crate) fn atomic_type_name(value: &Value) -> Option<String> {
+    if matches!(value, Value::Cons(_)) {
         None
     } else {
         type_designator_name("subtypep", value).ok()
     }
 }
 
-pub(super) fn same_type_designator(left: &Value, right: &Value) -> bool {
+pub(crate) fn same_type_designator(left: &Value, right: &Value) -> bool {
     match (left, right) {
-        (Value::List(left), Value::List(right)) => {
+        (Value::Cons(_), Value::Cons(_)) => {
+            let (Some(left), Some(right)) = (left.list_items(), right.list_items()) else {
+                return false;
+            };
             if left.len() != right.len() {
                 return false;
             }
@@ -51,8 +52,7 @@ pub(super) fn same_type_designator(left: &Value, right: &Value) -> bool {
                     }
                 })
         }
-        (Value::List(_) | Value::DottedList { .. }, _)
-        | (_, Value::List(_) | Value::DottedList { .. }) => false,
+        (Value::Cons(_), _) | (_, Value::Cons(_)) => false,
         _ => match (
             type_designator_name("subtypep", left).ok(),
             type_designator_name("subtypep", right).ok(),

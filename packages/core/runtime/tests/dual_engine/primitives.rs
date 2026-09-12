@@ -1,4 +1,4 @@
-use ncl_runtime::Runtime;
+use ncl_runtime::{Runtime, RuntimeError};
 use rstest::rstest;
 
 use super::EvalFn;
@@ -30,6 +30,54 @@ fn evaluates_basic_format_directives(#[case] eval_fn: EvalFn) {
         evaluate(r#"(format nil "~?/~*" "~A ~D" '(foo 7) 99 100)"#).to_string(),
         r#""FOO 7/""#,
     );
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~A~*~A" "a" "b" "c")
+                         (format nil "~A~:*~A" "a" "b")
+                         (format nil "~A~@*~A" "a" "b")
+                         (format nil "~A~1@*~A" "a" "b" "c"))"#
+        )
+        .to_string(),
+        r#"("ac" "aa" "aa" "ab")"#,
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_bignum_format_integer_arguments(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~D" (ash 1 80))
+                       (format nil "~B" (ash 1 80))
+                       (format nil "~O" (ash 1 80))
+                       (format nil "~X" (ash 1 80))
+                       (format nil "~R" (ash 1 80))
+                       (format nil "~P" (ash 1 80))
+                       (format nil "~[zero~;one~:;other~]" (ash 1 80)))"#,
+        )
+        .to_string(),
+        r#"("1208925819614629174706176" "100000000000000000000000000000000000000000000000000000000000000000000000000000000" "400000000000000000000000000" "100000000000000000000" "one septillion two hundred eight sextillion nine hundred twenty-five quintillion eight hundred nineteen quadrillion six hundred fourteen trillion six hundred twenty-nine billion one hundred seventy-four million seven hundred six thousand one hundred seventy-six" "s" "other")"#,
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn rejects_out_of_range_roman_format_numbers(#[case] eval_fn: EvalFn) {
+    for source in [
+        r#"(format nil "~@R" 0)"#,
+        r#"(format nil "~@R" -1)"#,
+        r#"(format nil "~@R" 4000)"#,
+        r#"(format nil "~:@R" 5000)"#,
+    ] {
+        let error = eval_fn(&Runtime::new(), source).unwrap_err();
+        assert!(
+            matches!(&error, RuntimeError::InvalidForm { message, .. } if message.contains("Roman numeral")),
+            "unexpected error for {source}: {error}"
+        );
+    }
 }
 
 #[rstest]
@@ -100,6 +148,58 @@ fn evaluates_common_lisp_float_and_rational_conversion(#[case] eval_fn: EvalFn) 
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_float_attributes_and_decomposition(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (float-digits 0.0) (float-radix 1.5)
+                        (float-precision 0.0) (float-precision 1.5)
+                        (multiple-value-list (decode-float 1.5))
+                        (multiple-value-list (integer-decode-float -1.5))
+                        (multiple-value-list (integer-decode-float -0.0))
+                        (float-precision (scale-float 1.0 -1074))
+                        (float-sign -2.0 -0.0) (scale-float 1.5 -2))"
+        )
+        .to_string(),
+        "(53 2 0 53 (0.75 1 1.0) (6755399441055744 -52 -1) (0 0 -1) 0 -0.0 0.375)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_hash_table_metadata_and_options(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((table (make-hash-table :size 23 :rehash-size 2
+                                             :rehash-threshold 0.5
+                                             :weakness :key)))
+                (list (hash-table-test table)
+                      (hash-table-size table)
+                      (hash-table-rehash-size table)
+                      (hash-table-rehash-threshold table)
+                      (hash-table-weakness table)))",
+        )
+        .to_string(),
+        "(EQL 23 2 0.5 :KEY)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((table (make-hash-table)))
+                (list (hash-table-size table)
+                      (hash-table-rehash-size table)
+                      (hash-table-rehash-threshold table)
+                      (hash-table-weakness table)))",
+        )
+        .to_string(),
+        "(16 1.5 1.0 NIL)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_common_lisp_integer_arithmetic_and_bit_operations(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
@@ -115,6 +215,201 @@ fn evaluates_common_lisp_integer_arithmetic_and_bit_operations(#[case] eval_fn: 
         .to_string(),
         "(2 -2 -1 1 12 -2 3 5 4 -1 T NIL 3 3 4 3 -1 0 0)"
     );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_bignum_integer_operations(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (logand (ash 1 80) (1- (ash 1 81)))
+                        (logior (ash 1 80) 3)
+                        (logxor (ash 1 80) 3)
+                        (lognot (ash 1 80))
+                        (logtest (ash 1 80) (ash 1 80))
+                        (logcount (logior (ash 1 80) 3))
+                        (integer-length (ash 1 80))
+                        (ash 3 80)
+                        (mod (1+ (ash 1 80)) -3)
+                        (rem (1+ (ash 1 80)) 3))",
+        )
+        .to_string(),
+        "(1208925819614629174706176 1208925819614629174706179 1208925819614629174706179 -1208925819614629174706177 T 3 81 3626777458843887524118528 -1 2)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_bignum_integer_type_specifiers(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((value (ash 1 80)))
+                  (list (typep value '(integer * *))
+                        (typep value '(integer 604462909807314587353088 *))
+                        (typep value '(integer * 2417851639229258349412352))
+                        (typep value '(integer 1208925819614629174706176
+                                               1208925819614629174706176))
+                        (typep value '(integer 1208925819614629174706177 *))))"#,
+        )
+        .to_string(),
+        "(T T T T NIL)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_bignum_parity_predicates(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (evenp (ash 1 80)) (oddp (1+ (ash 1 80))) (oddp (ash 1 80)))").to_string(),
+        "(T T NIL)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_bignum_quotients(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list
+                        (multiple-value-bind (q r) (floor (1+ (ash 1 80)) 2) (list q r))
+                        (multiple-value-bind (q r) (ceiling (- (1+ (ash 1 80))) 2) (list q r))
+                        (multiple-value-bind (q r) (truncate (1+ (ash 1 80)) 2) (list q r))
+                        (multiple-value-bind (q r) (round (1+ (ash 1 80)) 2) (list q r)))",
+        )
+        .to_string(),
+        "((604462909807314587353088 1) (-604462909807314587353088 -1) (604462909807314587353088 1) (604462909807314587353088 1))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_bignum_ratios_and_preserves_exact_arithmetic(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((ratio (/ (expt 2 100) 3)))
+                (list ratio
+                      (* ratio 3)
+                      (+ ratio 1/3)
+                      (/ 1 (expt 2 100))
+                      (rationalp ratio)
+                      (typep ratio 'ratio)
+                      (signum (- ratio))
+                      (numerator ratio)
+                      (denominator ratio)))",
+        )
+        .to_string(),
+        "(1267650600228229401496703205376/3 1267650600228229401496703205376 1267650600228229401496703205377/3 1/1267650600228229401496703205376 T T -1 1267650600228229401496703205376 3)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_complex_numbers_and_type_predicates(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((value (complex 1 2)))
+                (list value
+                      (complex 1)
+                      (realpart value)
+                      (imagpart value)
+                      (conjugate value)
+                      (numberp value)
+                      (realp value)
+                      (complexp value)
+                      (eql value (complex 1 2))
+                      (equal value (complex 1 2))
+                      (equalp value (complex 1 2))
+                      (typep value 'complex)
+                      (typep value 'number)
+                      (typep value 'real)
+                      (imagpart 1.0)
+                      (complex 1 0)
+                      (+ (complex 1 2) (complex 3 4))
+                      (- (complex 1 2) 3)
+                      (- (complex 1 2))
+                      (* (complex 1 2) (complex 3 4))
+                      (/ (complex 1 2) (complex 3 4))
+                      (+ 2 (complex 1 3))
+                      (* 2 (complex 1 3))
+                      (/ 2 (complex 1 3))
+                      (complex (/ (expt 2 100) 3) 1/2)
+                      (+ (complex (/ (expt 2 100) 3) 1/2)
+                         (complex 1 1/2))))"#,
+        )
+        .to_string(),
+        r#"(#C(1 2) 1 1 2 #C(1 -2) T NIL T T T T T T NIL 0.0 1 #C(4 6) #C(-2 2) #C(-1 -2) #C(-5 10) #C(11/25 2/25) #C(3 3) #C(2 6) #C(1/5 -3/5) #C(1267650600228229401496703205376/3 1/2) #C(1267650600228229401496703205379/3 1))"#,
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_sharp_c_complex_literals(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list #C(1 2) #c(3 4) (realpart #C(5 6)) (imagpart #C(5 6)) (complexp #C(7 8)))")
+            .to_string(),
+        "(#C(1 2) #C(3 4) 5 6 T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_complex_absolute_values(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (abs #C(3 4)) (abs #C(-3 4)) (abs #C(3 0)))").to_string(),
+        "(5.0 5.0 3)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_complex_signum_values(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (signum #C(3 4)) (signum #C(-3 4)) (signum #C(3 0)))").to_string(),
+        "(#C(0.6 0.8) #C(-0.6 0.8) 1)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_phase_values(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (phase 0) (phase -0.0) (phase -1) (phase #C(3 4)) (phase #C(-3 4)))")
+            .to_string(),
+        "(0.0 3.141592653589793 3.141592653589793 0.9272952180016122 2.214297435588181)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn rejects_non_real_sharp_c_components(#[case] eval_fn: EvalFn) {
+    let error = eval_fn(&Runtime::new(), "#C(1 FOO)").unwrap_err();
+
+    assert!(matches!(
+        error,
+        ncl_runtime::RuntimeError::InvalidForm { message, .. }
+            if message == "complex literal components must be real numbers"
+    ));
 }
 
 #[rstest]
@@ -141,6 +436,17 @@ fn evaluates_common_lisp_quotients_gcd_and_rational_parts(#[case] eval_fn: EvalF
         )
         .to_string(),
         "((2 1) (-3 2) (-2 -1) (-2 -1) (2 1) (4 -1) (-3 2/3) (3 -2/3) (1 1.5) (2 0.5) 6 0 120 1 -3 4 7 1)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_bignum_gcd_and_lcm(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (gcd (ash 12 80) (ash 18 80)) (lcm (ash 2 80) (ash 3 80)))").to_string(),
+        "(7253554917687775048237056 7253554917687775048237056)"
     );
 }
 
@@ -178,6 +484,167 @@ fn evaluates_common_lisp_sqrt_across_exact_and_float_numbers(#[case] eval_fn: Ev
         )
         .to_string(),
         "(0 2 1/2 NIL T T 1125899906842624 T T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_complex_square_roots(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (sqrt -4) (sqrt #C(3 4)) (sqrt #C(3 -4)))").to_string(),
+        "(#C(0.0 2.0) #C(2.0 1.0) #C(2.0 -1.0))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_common_lisp_complex_expt(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (expt #C(2 3) 2) (expt #C(2 3) -1) (expt #C(3.0 0.0) 2.0))").to_string(),
+        "(#C(-5 12) #C(2/13 -3/13) #C(9.0 0.0))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_gentemp_with_exact_names_and_independent_counter(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(progn
+               (defpackage :gentemp-exact-package)
+               (multiple-value-bind (before-symbol before-status)
+                    (find-symbol \"foo0\" :gentemp-exact-package)
+                 (let* ((first (gentemp \"foo\" :gentemp-exact-package))
+                        (second (gentemp \"foo\" :gentemp-exact-package))
+                        (normal (intern \"FOO2\"))
+                        (third (gentemp \"foo\" :gentemp-exact-package))
+                        (found (find-symbol (symbol-name first)
+                                             :gentemp-exact-package))
+                        (removed (unintern first :gentemp-exact-package))
+                        (after (find-symbol \"foo0\" :gentemp-exact-package))
+                        (gensym (gensym \"G\")))
+                   (list (symbol-name first) (symbol-name second)
+                         (list before-symbol before-status)
+                         (symbol-name normal) (symbol-name third)
+                         (eq first found) removed (list after)
+                         (symbol-name gensym)))))",
+        )
+        .to_string(),
+        "(\"foo0\" \"foo1\" (NIL NIL) \"FOO2\" \"foo2\" T T (NIL) \"G0\")",
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_gentemp_in_keyword_package(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((generated (gentemp \"ncl-gentemp-keyword-\" :keyword)))
+               (list (keywordp generated)
+                     (eq generated
+                         (find-symbol (symbol-name generated) :keyword))
+                     (eq (symbol-package generated) (find-package :keyword))))"
+        )
+        .to_string(),
+        "(T T T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_package_nicknames(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(defpackage :package-nickname-query
+                (:nicknames :zeta-query :alpha-query))
+             (list (package-nicknames (find-package :package-nickname-query))
+                   (package-nicknames :alpha-query))",
+        )
+        .to_string(),
+        "((\"ZETA-QUERY\" \"ALPHA-QUERY\") (\"ZETA-QUERY\" \"ALPHA-QUERY\"))",
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_package_local_nicknames(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(defpackage :package-local-nickname-target)
+             (defpackage :package-local-nickname-consumer-a
+               (:local-nicknames (:z-target :package-local-nickname-target)
+                                 (:a-target :package-local-nickname-target)))
+             (defpackage :package-local-nickname-consumer-b
+               (:local-nicknames (:other-target :package-local-nickname-target)))
+             (list
+               (package-local-nicknames :package-local-nickname-consumer-a)
+               (package-local-nicknames \"PACKAGE-LOCAL-NICKNAME-CONSUMER-A\")
+               (package-local-nicknames (find-package :package-local-nickname-consumer-a))
+               (package-locally-nicknamed-by-list :package-local-nickname-target))",
+        )
+        .to_string(),
+        "(((\"A-TARGET\" . #<PACKAGE \"PACKAGE-LOCAL-NICKNAME-TARGET\">) \
+(\"Z-TARGET\" . #<PACKAGE \"PACKAGE-LOCAL-NICKNAME-TARGET\">)) \
+((\"A-TARGET\" . #<PACKAGE \"PACKAGE-LOCAL-NICKNAME-TARGET\">) \
+(\"Z-TARGET\" . #<PACKAGE \"PACKAGE-LOCAL-NICKNAME-TARGET\">)) \
+((\"A-TARGET\" . #<PACKAGE \"PACKAGE-LOCAL-NICKNAME-TARGET\">) \
+(\"Z-TARGET\" . #<PACKAGE \"PACKAGE-LOCAL-NICKNAME-TARGET\">)) \
+(#<PACKAGE \"PACKAGE-LOCAL-NICKNAME-CONSUMER-A\"> \
+#<PACKAGE \"PACKAGE-LOCAL-NICKNAME-CONSUMER-B\">))",
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_package_used_by_list(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(defpackage :package-used-by-query-target)
+             (defpackage :package-used-by-query-z)
+             (defpackage :package-used-by-query-a)
+             (use-package '(:package-used-by-query-target) :package-used-by-query-z)
+             (use-package '(:package-used-by-query-target) :package-used-by-query-a)
+             (list
+               (package-used-by-list (find-package :package-used-by-query-target))
+               (package-used-by-list \"PACKAGE-USED-BY-QUERY-TARGET\")
+               (package-used-by-list :package-used-by-query-target))",
+        )
+        .to_string(),
+        "((#<PACKAGE \"PACKAGE-USED-BY-QUERY-A\"> #<PACKAGE \"PACKAGE-USED-BY-QUERY-Z\">) \
+(#<PACKAGE \"PACKAGE-USED-BY-QUERY-A\"> #<PACKAGE \"PACKAGE-USED-BY-QUERY-Z\">) \
+(#<PACKAGE \"PACKAGE-USED-BY-QUERY-A\"> #<PACKAGE \"PACKAGE-USED-BY-QUERY-Z\">))",
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_package_shadowing_symbols(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(defpackage :package-shadowing-query
+                (:shadow :zeta-query :alpha-query))
+             (list (package-shadowing-symbols (find-package :package-shadowing-query))
+                   (package-shadowing-symbols :package-shadowing-query))",
+        )
+        .to_string(),
+        "((PACKAGE-SHADOWING-QUERY::ALPHA-QUERY PACKAGE-SHADOWING-QUERY::ZETA-QUERY) \
+(PACKAGE-SHADOWING-QUERY::ALPHA-QUERY PACKAGE-SHADOWING-QUERY::ZETA-QUERY))",
     );
 }
 
@@ -485,6 +952,17 @@ fn evaluates_format_tabulation_modifiers(#[case] eval_fn: EvalFn) {
         )
         .to_string(),
         r#"("x |" "x|" "x |" "x|" "x  |" "x|" "x   |" "x|")"#,
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_format_negative_english_numbers(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r#"(list (format nil "~R" -12) (format nil "~:R" -12))"#).to_string(),
+        r#"("negative twelve" "negative twelfth")"#,
     );
 }
 

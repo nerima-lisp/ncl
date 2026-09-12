@@ -1,6 +1,6 @@
 use crate::{
     Constant, SymbolTokenKind, normalize_name, parse_float_literal, parse_radix_integer_literal,
-    parse_symbol_token,
+    parse_radix_integer_literal_text, parse_symbol_token,
 };
 
 pub fn literal_constant(atom: &str) -> Option<Constant> {
@@ -23,6 +23,9 @@ pub fn literal_constant(atom: &str) -> Option<Constant> {
             if let Some(value) = parse_radix_integer_literal(&token.name) {
                 return Some(Constant::Integer(value));
             }
+            if let Some(value) = parse_radix_integer_literal_text(&token.name) {
+                return Some(Constant::BigInteger(value));
+            }
             if let Ok(value) = token.name.parse::<i64>() {
                 return Some(Constant::Integer(value));
             }
@@ -39,10 +42,46 @@ pub fn literal_constant(atom: &str) -> Option<Constant> {
                     })
                 };
             }
+            if let Some((numerator, denominator)) = big_rational_literal_parts(&token.name) {
+                return Some(Constant::BigRational {
+                    numerator,
+                    denominator,
+                });
+            }
             parse_float_literal(&token.name).map(Constant::Float)
         }
         _ => None,
     }
+}
+
+fn big_rational_literal_parts(name: &str) -> Option<(String, String)> {
+    let (numerator, denominator) = name.split_once('/')?;
+    if !decimal_integer(numerator) || !decimal_integer(denominator) || is_zero(denominator) {
+        return None;
+    }
+    denominator.strip_prefix('-').map_or_else(
+        || Some((numerator.to_owned(), denominator.to_owned())),
+        |denominator| Some((flip_sign(numerator), denominator.to_owned())),
+    )
+}
+
+fn decimal_integer(value: &str) -> bool {
+    let digits = value.strip_prefix(['+', '-']).unwrap_or(value);
+    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn is_zero(value: &str) -> bool {
+    value
+        .strip_prefix(['+', '-'])
+        .unwrap_or(value)
+        .bytes()
+        .all(|byte| byte == b'0')
+}
+
+fn flip_sign(value: &str) -> String {
+    value
+        .strip_prefix('-')
+        .map_or_else(|| format!("-{value}"), str::to_owned)
 }
 
 /// Recognizes a decimal integer literal that overflowed `i64` (already
@@ -61,7 +100,7 @@ fn big_integer_literal(name: &str) -> Option<String> {
     )
 }
 
-fn rational_literal_parts(name: &str) -> Option<(i64, i64)> {
+pub(super) fn rational_literal_parts(name: &str) -> Option<(i64, i64)> {
     let (numerator, denominator) = name.split_once('/')?;
     if numerator.is_empty()
         || denominator.is_empty()
@@ -103,70 +142,4 @@ const fn gcd(mut left: u128, mut right: u128) -> u128 {
         right = remainder;
     }
     left
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn literal_constants_are_parsed_from_a_table() {
-        let cases = [
-            ("nil", Constant::Nil),
-            ("#t", Constant::Boolean(true)),
-            (":ready", Constant::Keyword("READY".to_string())),
-            (
-                "1/2",
-                Constant::Rational {
-                    numerator: 1,
-                    denominator: 2,
-                },
-            ),
-            ("-6/3", Constant::Integer(-2)),
-            ("#xFF", Constant::Integer(255)),
-            ("#b1010", Constant::Integer(10)),
-            ("#o777", Constant::Integer(511)),
-            ("#3r120", Constant::Integer(15)),
-            ("1.25s0", Constant::Float(1.25)),
-        ];
-
-        for (source, expected) in cases {
-            assert_eq!(
-                literal_constant(source),
-                Some(expected),
-                "source={source:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn rational_literals_cover_invalid_and_reduced_forms() {
-        let cases = [
-            ("6/8", Some((3, 4))),
-            ("6/-8", Some((-3, 4))),
-            ("0/9", Some((0, 1))),
-            ("1/0", None),
-            ("1/2/3", None),
-            ("9223372036854775808/1", None),
-            ("6x/8", None),
-            ("6/8x", None),
-            ("1/9223372036854775808", None),
-            ("-170141183460469231731687303715884105728/1", None),
-            ("-170141183460469231731687303715884105728/-1", None),
-            ("1/-170141183460469231731687303715884105728", None),
-        ];
-
-        for (source, expected) in cases {
-            assert_eq!(
-                rational_literal_parts(source),
-                expected,
-                "source={source:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn literal_constant_rejects_a_token_that_fails_to_parse() {
-        assert_eq!(literal_constant(""), None);
-    }
 }

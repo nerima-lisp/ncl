@@ -11,22 +11,198 @@ use crate::builtins::types::type_matching::spec_utils::{
     invalid_type_spec, require_type_spec_arity,
 };
 use crate::builtins::types::type_matching::type_name_table::type_matches;
-use crate::{RuntimeError, Value};
+use crate::{Environment, RuntimeError, Value};
+use std::collections::HashSet;
+
+pub(in crate::builtins::types) fn type_matches_designator_in(
+    function: &str,
+    value: &Value,
+    type_designator: &Value,
+    environment: &Environment,
+) -> Result<bool, RuntimeError> {
+    let resolved =
+        resolve_type_designator(function, type_designator, environment, &mut HashSet::new())?;
+    type_matches_designator(function, value, &resolved)
+}
+
+pub(in crate::builtins::types) fn resolve_type_designator_in(
+    function: &str,
+    designator: &Value,
+    environment: &Environment,
+) -> Result<Value, RuntimeError> {
+    resolve_type_designator(function, designator, environment, &mut HashSet::new())
+}
+
+fn resolve_type_designator(
+    function: &str,
+    designator: &Value,
+    environment: &Environment,
+    active_aliases: &mut HashSet<String>,
+) -> Result<Value, RuntimeError> {
+    let Ok(name) = type_designator_name(function, designator) else {
+        return designator.list_items().map_or_else(
+            || Ok(designator.clone()),
+            |items| resolve_compound_type_designator(function, &items, environment, active_aliases),
+        );
+    };
+    let Some(alias) = environment.lookup_type_alias_definition(&name) else {
+        return Ok(designator.clone());
+    };
+    if !alias.parameters.is_empty()
+        || !alias.optional_parameters.is_empty()
+        || alias.rest_parameter.is_some()
+    {
+        return Err(invalid_type_spec(
+            function,
+            format!("type alias {name} requires arguments"),
+        ));
+    }
+    if !active_aliases.insert(name.to_string()) {
+        return Err(invalid_type_spec(function, "circular type alias"));
+    }
+    let resolved =
+        resolve_type_designator(function, &alias.designator, environment, active_aliases);
+    active_aliases.remove(name.as_str());
+    resolved
+}
+
+fn resolve_compound_type_designator(
+    function: &str,
+    items: &[Value],
+    environment: &Environment,
+    active_aliases: &mut HashSet<String>,
+) -> Result<Value, RuntimeError> {
+    let Some(operator) = items.first().and_then(Value::symbol_name) else {
+        return Ok(Value::list(items.to_vec()));
+    };
+    if let Some(alias) = environment.lookup_type_alias_definition(operator) {
+        let argument_count = items.len().saturating_sub(1);
+        if alias.rest_parameter.is_none()
+            && (argument_count < alias.parameters.len()
+                || argument_count > alias.parameters.len() + alias.optional_parameters.len())
+        {
+            return Err(invalid_type_spec(
+                function,
+                format!(
+                    "type alias {operator} expects {} to {} arguments",
+                    alias.parameters.len(),
+                    alias.parameters.len() + alias.optional_parameters.len()
+                ),
+            ));
+        }
+        if !active_aliases.insert(operator.to_string()) {
+            return Err(invalid_type_spec(function, "circular type alias"));
+        }
+        let mut arguments = items.iter().skip(1).cloned().collect::<Vec<_>>();
+        for (_, default) in alias
+            .optional_parameters
+            .iter()
+            .skip(arguments.len().saturating_sub(alias.parameters.len()))
+        {
+            arguments.push(default.clone());
+        }
+        let mut names = alias.parameters.clone();
+        names.extend(
+            alias
+                .optional_parameters
+                .iter()
+                .map(|(name, _)| name.clone()),
+        );
+        let rest_arguments = if alias.rest_parameter.is_some() {
+            let fixed = alias.parameters.len() + alias.optional_parameters.len();
+            Value::list(arguments.split_off(fixed.min(arguments.len())))
+        } else {
+            Value::Nil
+        };
+        let substituted = substitute_type_parameters(
+            &alias.designator,
+            &names,
+            &arguments,
+            alias.rest_parameter.as_deref(),
+            &rest_arguments,
+        );
+        let resolved = resolve_type_designator(function, &substituted, environment, active_aliases);
+        active_aliases.remove(operator);
+        return resolved;
+    }
+    let type_positions = match operator {
+        "OR" | "AND" | "NOT" | "CONS" => true,
+        "VECTOR" | "ARRAY" | "SIMPLE-ARRAY" => true,
+        _ => false,
+    };
+    if !type_positions {
+        return Ok(Value::list(items.to_vec()));
+    }
+    let mut resolved = items.to_vec();
+    for (index, argument) in items.iter().enumerate().skip(1) {
+        let is_type_position = match operator {
+            "OR" | "AND" | "NOT" | "CONS" => true,
+            "VECTOR" | "ARRAY" | "SIMPLE-ARRAY" => index == 1,
+            _ => false,
+        };
+        if is_type_position {
+            resolved[index] =
+                resolve_type_designator(function, argument, environment, active_aliases)?;
+        }
+    }
+    Ok(Value::list(resolved))
+}
+
+fn substitute_type_parameters(
+    value: &Value,
+    parameters: &[std::rc::Rc<str>],
+    arguments: &[Value],
+    rest_name: Option<&str>,
+    rest: &Value,
+) -> Value {
+    if rest_name.is_some_and(|name| value.symbol_name() == Some(name)) {
+        return rest.clone();
+    }
+    if let Some(name) = value.symbol_name() {
+        if let Some(index) = parameters
+            .iter()
+            .position(|parameter| parameter.as_ref() == name)
+        {
+            return arguments[index].clone();
+        }
+    }
+    match value {
+        Value::Cons(_) => {
+            let items = value.list_items().unwrap_or_default();
+            let mut result = Vec::new();
+            for item in &items {
+                if rest_name.is_some_and(|name| item.symbol_name() == Some(name)) {
+                    if let Some(rest_items) = rest.list_items() {
+                        result.extend(rest_items);
+                    }
+                } else {
+                    result.push(substitute_type_parameters(
+                        item, parameters, arguments, rest_name, rest,
+                    ));
+                }
+            }
+            Value::list(result)
+        }
+        _ => value.clone(),
+    }
+}
 
 pub(in crate::builtins::types) fn type_matches_designator(
     function: &str,
     value: &Value,
     type_designator: &Value,
 ) -> Result<bool, RuntimeError> {
-    match type_designator {
-        Value::List(items) => type_matches_compound(function, value, items.as_ref()),
-        Value::DottedList { .. } => Err(invalid_type_spec(
-            function,
-            "type designator must be a proper list",
-        )),
-        _ => {
-            let type_name = type_designator_name(function, type_designator)?;
-            type_matches(value, &type_name)
+    if let Value::Cons(_) = type_designator {
+        let items = type_designator
+            .list_items()
+            .ok_or_else(|| invalid_type_spec(function, "type designator must be a proper list"))?;
+        type_matches_compound(function, value, &items)
+    } else {
+        let type_name = type_designator_name(function, type_designator)?;
+        match type_name.as_str() {
+            "SIMPLE-VECTOR" => simple_vector_type_matches(function, value, &[]),
+            "SIMPLE-ARRAY" => array_type_matches(function, "SIMPLE-ARRAY", value, &[]),
+            _ => type_matches(value, &type_name),
         }
     }
 }

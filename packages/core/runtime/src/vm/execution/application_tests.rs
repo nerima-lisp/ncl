@@ -53,7 +53,7 @@ fn stack_operations_reject_invalid_shapes() {
     let runtime = Runtime::new();
     let environment = Environment::new();
     let span = Span::new(0, 1);
-    let cases: [(&str, StackOperation, &str); 3] = [
+    let cases: [(&str, StackOperation, &str); 2] = [
         (
             "call",
             execute_call_instruction,
@@ -63,11 +63,6 @@ fn stack_operations_reject_invalid_shapes() {
             "apply",
             execute_apply_instruction,
             "apply has too few stack values",
-        ),
-        (
-            "mapcar",
-            execute_mapcar_instruction,
-            "mapcar has too few stack values",
         ),
     ];
 
@@ -89,20 +84,12 @@ fn stack_operations_reject_invalid_sequence_shapes() {
     let runtime = Runtime::new();
     let environment = Environment::new();
     let span = Span::new(0, 1);
-    let cases: [(&str, StackOperation, Vec<Value>, &str); 2] = [
-        (
-            "apply",
-            execute_apply_instruction,
-            vec![Value::Nil, Value::Integer(1)],
-            "apply's final argument must be a proper list",
-        ),
-        (
-            "mapcar",
-            execute_mapcar_instruction,
-            vec![Value::Nil, Value::Integer(1)],
-            "mapcar arguments must be proper lists",
-        ),
-    ];
+    let cases: [(&str, StackOperation, Vec<Value>, &str); 1] = [(
+        "apply",
+        execute_apply_instruction,
+        vec![Value::Nil, Value::Integer(1)],
+        "apply's final argument must be a proper list",
+    )];
 
     for (name, operation, mut stack, expected) in cases {
         assert_invalid(
@@ -149,7 +136,8 @@ fn mapcar_instruction_applies_the_function_across_the_sequence() {
     ]);
     let mut stack = vec![function_value, sequence];
 
-    let result = execute_mapcar_instruction(&runtime, 1, &mut stack, &environment, span);
+    let result =
+        execute_list_mapping_instruction(&runtime, "MAPCAR", 1, &mut stack, &environment, span);
 
     assert!(result.is_ok());
     assert_eq!(stack.len(), 1);

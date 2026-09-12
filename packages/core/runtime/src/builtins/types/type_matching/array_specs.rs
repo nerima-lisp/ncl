@@ -15,6 +15,9 @@ pub(in crate::builtins::types::type_matching) fn array_type_matches(
     let Some(actual_dimensions) = dimensions_for_array(value) else {
         return Ok(false);
     };
+    if operator == "SIMPLE-ARRAY" && !is_simple_array_value(value) {
+        return Ok(false);
+    }
     if let Some(expected_dimensions) = arguments.get(1)
         && !array_dimensions_match(function, expected_dimensions, &actual_dimensions)?
     {
@@ -33,6 +36,13 @@ pub(in crate::builtins::types::type_matching) fn array_type_matches(
     Ok(true)
 }
 
+pub(in crate::builtins::types::type_matching) fn is_simple_array_value(value: &Value) -> bool {
+    dimensions_for_array(value).is_some()
+        && !value.array_adjustable().unwrap_or(false)
+        && !value.array_has_fill_pointer().unwrap_or(false)
+        && !value.is_displaced().unwrap_or(false)
+}
+
 fn array_dimensions_match(
     function: &str,
     expected: &Value,
@@ -48,8 +58,10 @@ fn array_dimensions_match(
                 .map_err(|_| invalid_type_spec(function, "array rank must be non-negative"))?;
             Ok(actual.len() == rank)
         }
-        Value::List(dimensions) => {
-            let dimensions = dimensions.as_ref();
+        Value::Cons(_) => {
+            let dimensions = expected.list_items().ok_or_else(|| {
+                invalid_type_spec(function, "array dimensions must be a proper list")
+            })?;
             if dimensions.len() != actual.len() {
                 return Ok(false);
             }

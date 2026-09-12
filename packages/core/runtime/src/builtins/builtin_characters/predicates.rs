@@ -24,7 +24,7 @@ pub fn standard_character_p(arguments: &[Value]) -> Result<Value, RuntimeError> 
     })
 }
 
-pub(super) fn character_predicate(
+pub(crate) fn character_predicate(
     function: &str,
     arguments: &[Value],
     predicate: impl Fn(char) -> bool,

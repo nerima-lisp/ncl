@@ -101,7 +101,7 @@ impl CompileState {
             self.functions[child].allow_other_keys = lambda_list.allow_other_keys;
             let auxiliary = self.compile_auxiliary_parameters(&lambda_list.auxiliary)?;
             self.functions[child].auxiliary = auxiliary;
-            self.compile_sequence(child, body)?;
+            self.compile_function_body(child, body)?;
             self.emit(child, Instruction::Return, span)?;
             self.emit(function, Instruction::MakeClosure(child), span)?;
         }

@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_radix_output(
+pub(crate) fn format_radix_output(
     output: &mut String,
     arguments: &[Value],
     argument_index: &mut usize,
@@ -10,9 +10,9 @@ pub(super) fn format_radix_output(
     at_sign_modifier: bool,
 ) -> Result<(), RuntimeError> {
     let argument = format_argument("~R", arguments, argument_index)?;
-    let integer = integer_argument("format", argument)?;
+    let integer = integer_value("format", argument)?;
     output.push_str(&format_radix_directive(
-        integer,
+        &integer,
         parameters,
         colon_modifier,
         at_sign_modifier,
@@ -20,7 +20,7 @@ pub(super) fn format_radix_output(
     Ok(())
 }
 
-pub(super) fn format_tab_output(
+pub(crate) fn format_tab_output(
     output: &mut String,
     parameters: &[FormatParameter],
     colon_modifier: bool,
@@ -56,7 +56,7 @@ pub(super) fn format_tab_output(
     Ok(())
 }
 
-pub(super) fn format_write_output(
+pub(crate) fn format_write_output(
     output: &mut String,
     arguments: &[Value],
     argument_index: &mut usize,

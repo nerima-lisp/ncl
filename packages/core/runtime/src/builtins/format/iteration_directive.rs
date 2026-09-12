@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_iteration_directive(
+pub(crate) fn format_iteration_directive(
     state: &mut FormatControlState<'_>,
     parameters: &[FormatParameter],
     colon_modifier: bool,
@@ -31,7 +31,7 @@ pub(super) fn format_iteration_directive(
     Ok(())
 }
 
-pub(super) fn format_iteration(
+pub(crate) fn format_iteration(
     body: &[char],
     arguments: &[Value],
     colon_modifier: bool,

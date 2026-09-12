@@ -1,5 +1,7 @@
-use super::super::{Number, RuntimeError, Value, number_to_value, rational_number};
+use super::super::{Number, RuntimeError, Value};
 use super::RoundingMode;
+
+use ibig::IBig;
 
 mod float_quotient;
 pub use float_quotient::float_quotient_and_remainder;
@@ -9,76 +11,99 @@ pub fn exact_quotient_and_remainder(
     divisor: &Number,
     mode: RoundingMode,
 ) -> Result<Value, RuntimeError> {
-    let Some((dividend_numerator, dividend_denominator)) = dividend.exact_parts() else {
+    let Some((dividend_numerator, dividend_denominator)) = exact_parts(dividend) else {
         return Err(RuntimeError::InvalidForm {
-            message: "exact quotient does not support a float or a bignum".to_string(),
+            message: "exact quotient does not support a float".to_string(),
             span: None,
         });
     };
-    let Some((divisor_numerator, divisor_denominator)) = divisor.exact_parts() else {
+    let Some((divisor_numerator, divisor_denominator)) = exact_parts(divisor) else {
         return Err(RuntimeError::InvalidForm {
-            message: "exact quotient does not support a float or a bignum".to_string(),
+            message: "exact quotient does not support a float".to_string(),
             span: None,
         });
     };
-    if divisor_numerator == 0 {
+    if divisor_numerator == IBig::from(0) {
         return Err(RuntimeError::DivisionByZero);
     }
 
-    let dividend_numerator = i128::from(dividend_numerator);
-    let dividend_denominator = i128::from(dividend_denominator);
-    let divisor_numerator = i128::from(divisor_numerator);
-    let divisor_denominator = i128::from(divisor_denominator);
-    let mut quotient_numerator = dividend_numerator * divisor_denominator;
-    let mut quotient_denominator = dividend_denominator * divisor_numerator;
-    if quotient_denominator < 0 {
+    let mut quotient_numerator = &dividend_numerator * &divisor_denominator;
+    let mut quotient_denominator = &dividend_denominator * &divisor_numerator;
+    if quotient_denominator < IBig::from(0) {
         quotient_numerator = -quotient_numerator;
         quotient_denominator = -quotient_denominator;
     }
-    let truncated = quotient_numerator / quotient_denominator;
-    let quotient =
-        adjust_exact_quotient(truncated, quotient_numerator, quotient_denominator, mode)?;
-    let quotient = i64::try_from(quotient).map_err(|_| RuntimeError::NumericOverflow)?;
-    let remainder = rational_number(
-        dividend_numerator * divisor_denominator
-            - i128::from(quotient) * divisor_numerator * dividend_denominator,
-        dividend_denominator * divisor_denominator,
+    let truncated = &quotient_numerator / &quotient_denominator;
+    let quotient = adjust_big_quotient(truncated, quotient_numerator, quotient_denominator, mode);
+    let remainder = exact_ratio_value(
+        &dividend_numerator * &divisor_denominator
+            - &quotient * &divisor_numerator * &dividend_denominator,
+        &dividend_denominator * &divisor_denominator,
     )?;
-    Ok(Value::values(vec![
-        Value::Integer(quotient),
-        number_to_value(remainder)?,
-    ]))
+    Ok(Value::values(vec![Value::big_integer(quotient), remainder]))
 }
 
-pub fn adjust_exact_quotient(
-    truncated: i128,
-    numerator: i128,
-    denominator: i128,
-    mode: RoundingMode,
-) -> Result<i128, RuntimeError> {
-    let remainder = numerator % denominator;
-    if remainder == 0 {
-        return Ok(truncated);
+fn exact_parts(value: &Number) -> Option<(IBig, IBig)> {
+    match value {
+        Number::Integer(value) => Some((IBig::from(*value), IBig::from(1))),
+        Number::Big(value) => Some((value.clone(), IBig::from(1))),
+        Number::Rational(value) => Some((value.numerator().clone(), value.denominator().clone())),
+        Number::BigRational(value) => {
+            Some((value.numerator().clone(), value.denominator().clone()))
+        }
+        Number::Float(_) => None,
     }
-    let direction = if numerator < 0 { -1 } else { 1 };
+}
+
+fn exact_ratio_value(mut numerator: IBig, mut denominator: IBig) -> Result<Value, RuntimeError> {
+    if denominator == IBig::from(0) {
+        return Err(RuntimeError::DivisionByZero);
+    }
+    if denominator < IBig::from(0) {
+        numerator = -numerator;
+        denominator = -denominator;
+    }
+    let divisor = numerator.gcd(&denominator);
+    numerator /= &divisor;
+    denominator /= &divisor;
+    if denominator == IBig::from(1) {
+        return Ok(Value::big_integer(numerator));
+    }
+    match (i128::try_from(&numerator), i128::try_from(&denominator)) {
+        (Ok(numerator), Ok(denominator)) => Value::rational(numerator, denominator),
+        _ => Value::big_rational(numerator, denominator),
+    }
+}
+
+fn adjust_big_quotient(
+    truncated: IBig,
+    numerator: IBig,
+    denominator: IBig,
+    mode: RoundingMode,
+) -> IBig {
+    let remainder = &numerator % &denominator;
+    if remainder == IBig::from(0) {
+        return truncated;
+    }
+    let direction = if numerator < IBig::from(0) {
+        -IBig::from(1)
+    } else {
+        IBig::from(1)
+    };
     match mode {
-        RoundingMode::Floor if direction < 0 => truncated
-            .checked_sub(1)
-            .ok_or(RuntimeError::NumericOverflow),
-        RoundingMode::Ceiling if direction > 0 => truncated
-            .checked_add(1)
-            .ok_or(RuntimeError::NumericOverflow),
+        RoundingMode::Floor if direction < IBig::from(0) => truncated - 1,
+        RoundingMode::Ceiling if direction > IBig::from(0) => truncated + 1,
         RoundingMode::Round => {
-            let distance = remainder.abs() * 2;
-            if distance > denominator || (distance == denominator && truncated % 2 != 0) {
-                truncated
-                    .checked_add(direction)
-                    .ok_or(RuntimeError::NumericOverflow)
+            let distance = ibig::ops::Abs::abs(&remainder) * 2;
+            if distance > denominator
+                || (distance == denominator && truncated.clone() % IBig::from(2) != IBig::from(0))
+            {
+                truncated + direction
             } else {
-                Ok(truncated)
+                truncated
             }
         }
-        _ => Ok(truncated),
+        _ => truncated,
     }
 }
 
@@ -114,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_quotient_rejects_non_exact_dividend_or_divisor() {
+    fn exact_quotient_rejects_float_dividend_or_divisor() {
         assert!(matches!(
             exact_quotient_and_remainder(
                 &Number::Float(1.0),
@@ -130,6 +155,20 @@ mod tests {
                 RoundingMode::Floor
             ),
             Err(RuntimeError::InvalidForm { .. })
+        ));
+    }
+
+    #[test]
+    fn exact_quotient_supports_bignum_dividends_and_quotients() {
+        let dividend = Number::Big((IBig::from(1) << 80) + 1);
+        let result =
+            exact_quotient_and_remainder(&dividend, &Number::Integer(2), RoundingMode::Floor);
+        assert!(matches!(
+            result,
+            Ok(Value::Values(ref values))
+                if values.len() == 2
+                    && values[0].to_string() == "604462909807314587353088"
+                    && matches!(values[1], Value::Integer(1))
         ));
     }
 
@@ -174,14 +213,5 @@ mod tests {
             RoundingMode::Floor,
         );
         assert!(matches!(result, Err(RuntimeError::NumericOverflow)));
-    }
-
-    #[test]
-    fn adjust_exact_quotient_returns_the_truncated_value_with_no_remainder() {
-        assert_eq!(
-            adjust_exact_quotient(2, 4, 2, RoundingMode::Round)
-                .unwrap_or_else(|error| panic!("unexpected error: {error}")),
-            2,
-        );
     }
 }

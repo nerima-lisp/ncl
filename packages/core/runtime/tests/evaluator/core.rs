@@ -112,7 +112,7 @@ fn evaluates_symbol_macrolet_with_lexical_shadowing_and_places() {
                        (progn (psetq item 6) cell))))",
         )
         .to_string(),
-        "(42 7 9 (5) (6))"
+        "(42 7 9 (6) (6))"
     );
 }
 
@@ -630,6 +630,18 @@ fn malformed_definition_special_forms_are_rejected() {
 }
 
 #[test]
+fn empty_macro_bodies_evaluate_to_nil() {
+    assert_eq!(
+        evaluate("(progn (defmacro empty-macro ()) (empty-macro))").to_string(),
+        "NIL"
+    );
+    assert_eq!(
+        evaluate("(macrolet ((empty-macro ())) (empty-macro))").to_string(),
+        "NIL"
+    );
+}
+
+#[test]
 fn definitions_are_visible_to_later_forms() {
     let values = Runtime::new()
         .eval_source("(define answer 41) (+ answer 1)")
@@ -649,7 +661,7 @@ fn errors_are_typed() {
 fn predicates_and_equality_match_lisp_basics() {
     assert_eq!(evaluate("(listp nil)").to_string(), "T");
     assert_eq!(evaluate("(listp '(a b))").to_string(), "T");
-    assert_eq!(evaluate("(listp '(a . b))").to_string(), "NIL");
+    assert_eq!(evaluate("(listp '(a . b))").to_string(), "T");
     assert_eq!(evaluate("(consp nil)").to_string(), "NIL");
     assert_eq!(evaluate("(eq nil (null 1))").to_string(), "T");
     assert_eq!(evaluate("(eq 'foo 'foo)").to_string(), "T");
@@ -832,14 +844,10 @@ fn arithmetic_promotes_overflow_to_a_bignum_and_comparisons_require_an_argument(
         "340282366920938463463374607431768211456"
     );
 
-    // A bignum-denominator ratio is still out of scope: this codebase's
-    // Rational only stores i64 numerator/denominator, so an uneven bignum
-    // division still reports NumericOverflow rather than a wrong answer.
-    let uneven_bignum_ratio = Runtime::new().eval_source("(/ (expt 2 100) 3)").must_fail();
-    assert!(matches!(
-        uneven_bignum_ratio,
-        ncl_runtime::RuntimeError::NumericOverflow
-    ));
+    assert_eq!(
+        evaluate("(/ (expt 2 100) 3)").to_string(),
+        "1267650600228229401496703205376/3"
+    );
 
     let comparison_error = Runtime::new().eval_source("(=)").must_fail();
     assert!(matches!(
@@ -1213,37 +1221,15 @@ fn min_max_handle_ties_and_a_single_argument() {
 }
 
 #[test]
-fn reworded_exact_arithmetic_error_messages_name_bignums_not_just_floats() {
-    // Regression: exact_binary's bignum branch and exact_quotient's
-    // exact_parts() branch used to describe the rejected operand only as
-    // "a non-exact number" / imply "a float", which was actively wrong
-    // once bignums became a possible exact operand that still can't be
-    // combined with a Rational or a Float here. Assert the new wording so
-    // a future edit can't silently revert to the old misleading text --
-    // matching only the error *variant* (as the pre-existing tests for
-    // these functions do) would not catch that regression.
-    let add_error = Runtime::new()
-        .eval_source("(+ (expt 2 100) 1/2)")
-        .must_fail();
-    assert!(
-        matches!(
-            &add_error,
-            ncl_runtime::RuntimeError::InvalidForm { message, .. }
-                if message == "exact arithmetic between a bignum and a float or rational is not supported"
-        ),
-        "unexpected error: {add_error:?}"
+fn exact_arithmetic_supports_bignums_and_ratios() {
+    assert_eq!(
+        evaluate("(+ (expt 2 100) 1/2)").to_string(),
+        "2535301200456458802993406410753/2"
     );
 
-    let floor_error = Runtime::new()
-        .eval_source("(floor (expt 2 100))")
-        .must_fail();
-    assert!(
-        matches!(
-            &floor_error,
-            ncl_runtime::RuntimeError::InvalidForm { message, .. }
-                if message == "exact quotient does not support a float or a bignum"
-        ),
-        "unexpected error: {floor_error:?}"
+    assert_eq!(
+        evaluate("(multiple-value-list (floor (expt 2 100)))").to_string(),
+        "(1267650600228229401496703205376 0)"
     );
 }
 
@@ -1346,7 +1332,11 @@ fn eval_reconstructs_supported_literal_form_shapes() {
         ("(eval '#(1 2))", "#(1 2)"),
         ("(eval (find-package \"COMMON-LISP-USER\"))", "NIL"),
         ("(eval :|foo|)", ":|foo|"),
-        ("(let ((|foo| 42)) (eval '|foo|))", "42"),
+        ("(progn (defparameter |foo| 42) (eval '|foo|))", "42"),
+        (
+            "(let ((|foo| 42)) (handler-case (eval '|foo|) (unbound-variable () :unbound)))",
+            ":UNBOUND",
+        ),
     ];
 
     for (source, expected) in cases {
@@ -1357,7 +1347,7 @@ fn eval_reconstructs_supported_literal_form_shapes() {
 }
 
 #[test]
-fn eval_reconstructs_uninterned_symbols_and_rejects_unformable_values() {
+fn eval_rejects_unbound_symbols_and_accepts_hash_tables() {
     let unbound = Runtime::new()
         .eval_source(r#"(eval (make-symbol "foo"))"#)
         .must_fail();
@@ -1366,14 +1356,10 @@ fn eval_reconstructs_uninterned_symbols_and_rejects_unformable_values() {
         ncl_runtime::RuntimeError::UnboundVariable { .. }
     ));
 
-    let unformable = Runtime::new()
-        .eval_source("(eval (make-hash-table))")
-        .must_fail();
-    assert!(matches!(
-        unformable,
-        ncl_runtime::RuntimeError::Type { expected, actual, .. }
-            if expected == "FORM" && actual == "HASH-TABLE"
-    ));
+    assert_eq!(
+        evaluate("(let ((x (make-hash-table))) (eq x (eval x)))").to_string(),
+        "T"
+    );
 }
 
 #[test]

@@ -1,12 +1,13 @@
 use std::rc::Rc;
 
-use ncl_compiler::{FunctionCode, FunctionId, Program};
+use ncl_compiler::{Constant, FunctionCode, FunctionId, Instruction, Program};
 use ncl_syntax::Span;
 
 use crate::{Environment, Runtime, RuntimeError, Value};
 
 use super::argument_binding::{
-    argument_layout, bind_auxiliary, bind_keywords, bind_optional, bind_required, bind_rest,
+    BindingContext, argument_layout, bind_auxiliary, bind_keywords, bind_optional, bind_required,
+    bind_rest, declare_special_if,
 };
 use super::execution::run_code_from;
 use super::primitives::invalid;
@@ -53,9 +54,23 @@ pub fn run(
         return Err(invalid("compiled function id is out of range", span));
     };
     let (optional_supplied_count, key_start) = argument_layout(function, arguments)?;
+    let special_names = leading_special_declaration_names(function);
 
     let local = environment.child();
     let _dynamic_guard = runtime.dynamic_guard();
+    let mut binding_context = BindingContext::new(&local, span, &special_names);
+    for (index, parameter) in function.parameters.iter().enumerate() {
+        declare_special_if(
+            &local,
+            parameter,
+            function
+                .required_escaped
+                .get(index)
+                .copied()
+                .unwrap_or(false),
+            &special_names,
+        );
+    }
     bind_required(runtime, function, arguments, &local);
     bind_optional(
         runtime,
@@ -63,15 +78,73 @@ pub fn run(
         function,
         arguments,
         optional_supplied_count,
-        &local,
-        span,
+        &mut binding_context,
     )?;
-    bind_rest(runtime, function, arguments, key_start, &local);
+    if let Some(rest) = &function.rest {
+        binding_context.local = binding_context.local.child();
+        declare_special_if(
+            &binding_context.local,
+            rest,
+            function.rest_escaped,
+            &special_names,
+        );
+    }
+    bind_rest(
+        runtime,
+        function,
+        arguments,
+        key_start,
+        &binding_context.local,
+    );
     bind_keywords(
-        runtime, program, function, arguments, key_start, &local, span,
+        runtime,
+        program,
+        function,
+        arguments,
+        key_start,
+        &mut binding_context,
     )?;
-    bind_auxiliary(runtime, program, function, &local, span)?;
-    run_code(runtime, program, function, local, span)
+    bind_auxiliary(runtime, program, function, &mut binding_context)?;
+    run_code(
+        runtime,
+        program,
+        function,
+        binding_context.local.child(),
+        span,
+    )
+}
+
+fn leading_special_declaration_names(function: &FunctionCode) -> Vec<(String, bool)> {
+    let mut names = Vec::new();
+    let mut index = 0;
+    while index < function.instructions.len() {
+        while let Some(instruction) = function.instructions.get(index) {
+            match instruction {
+                Instruction::DeclareSpecial(name) => {
+                    names.push((name.clone(), false));
+                    index += 1;
+                }
+                Instruction::DeclareSpecialExact(name) => {
+                    names.push((name.clone(), true));
+                    index += 1;
+                }
+                _ => break,
+            }
+        }
+        if !matches!(
+            function.instructions.get(index),
+            Some(Instruction::Constant(Constant::Nil))
+        ) {
+            break;
+        }
+        index += 1;
+        if matches!(function.instructions.get(index), Some(Instruction::Pop)) {
+            index += 1;
+        } else {
+            break;
+        }
+    }
+    names
 }
 
 pub(super) fn run_code(

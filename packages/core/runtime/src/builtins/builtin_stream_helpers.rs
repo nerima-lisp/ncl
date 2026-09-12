@@ -6,7 +6,7 @@ use ncl_syntax::{ReadError, ReadErrorKind, Span};
 use super::type_error;
 use crate::{RuntimeError, Stream, Value};
 
-pub(super) fn stream_reference<'a>(
+pub(crate) fn stream_reference<'a>(
     function: &str,
     value: &'a Value,
 ) -> Result<&'a Rc<RefCell<Stream>>, RuntimeError> {
@@ -16,37 +16,39 @@ pub(super) fn stream_reference<'a>(
     }
 }
 
-pub(super) fn input_stream_reference<'a>(
+pub(crate) fn input_stream_reference(
     function: &str,
-    value: Option<&'a Value>,
-) -> Result<&'a Rc<RefCell<Stream>>, RuntimeError> {
+    value: Option<&Value>,
+) -> Result<Rc<RefCell<Stream>>, RuntimeError> {
     match value {
-        Some(Value::Stream(stream)) => Ok(stream),
-        None | Some(Value::Nil | Value::Boolean(true)) => Err(RuntimeError::InvalidForm {
-            message: format!(
-                "{function} requires an explicit input stream; standard input is unavailable"
-            ),
-            span: None,
-        }),
+        Some(Value::Stream(stream)) => Ok(Rc::clone(stream)),
+        None | Some(Value::Nil | Value::Boolean(true)) => {
+            super::standard_input().ok_or_else(|| RuntimeError::InvalidForm {
+                message: format!(
+                    "{function} requires an input stream; standard input is unavailable"
+                ),
+                span: None,
+            })
+        }
         Some(value) => Err(type_error(function, "an input stream", value)),
     }
 }
 
-pub(super) fn stream_state_error(function: &str, expected: &str) -> RuntimeError {
+pub(crate) fn stream_state_error(function: &str, expected: &str) -> RuntimeError {
     RuntimeError::InvalidForm {
         message: format!("{function} requires {expected}"),
         span: None,
     }
 }
 
-pub(super) fn end_of_file_error(context: &'static str) -> RuntimeError {
+pub(crate) fn end_of_file_error(context: &'static str) -> RuntimeError {
     RuntimeError::Read(Box::new(ReadError::new(
         ReadErrorKind::UnexpectedEnd { context },
         Span::new(0, 0),
     )))
 }
 
-pub(super) fn peek_character(
+pub(crate) fn peek_character(
     stream: &mut Stream,
     peek_type: Option<&Value>,
 ) -> Result<Option<char>, RuntimeError> {

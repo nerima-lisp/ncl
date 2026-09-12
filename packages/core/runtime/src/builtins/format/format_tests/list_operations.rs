@@ -127,7 +127,10 @@ fn handles_cons_property_and_list_access_operations() {
     );
     assert!(append(&[Value::Integer(1), Value::Nil]).is_err());
     assert_value(nthcdr(&[Value::Integer(0), Value::Nil]), Value::Nil);
-    assert!(nthcdr(&[Value::Integer(0), Value::Integer(1)]).is_err());
+    assert_value(
+        nthcdr(&[Value::Integer(0), Value::Integer(1)]),
+        Value::Integer(1),
+    );
     assert_value(
         pairlis(&[
             Value::list(vec![Value::symbol("a")]),

@@ -1,7 +1,79 @@
 use crate::Value;
-use crate::environment::{Environment, intern_name};
+use crate::environment::{Environment, intern_exact_name, intern_name};
+
+pub enum VariableResolution {
+    Special,
+    Lexical(Option<Value>),
+}
 
 impl Environment {
+    pub(crate) fn declare_special(&self, name: impl AsRef<str>) {
+        self.0
+            .borrow_mut()
+            .special_names
+            .insert(intern_name(name.as_ref()));
+    }
+
+    pub(crate) fn declare_special_exact(&self, name: impl AsRef<str>) {
+        self.0
+            .borrow_mut()
+            .exact_special_names
+            .insert(name.as_ref().to_string());
+    }
+
+    pub(crate) fn has_local_special(&self, names: &[String]) -> bool {
+        let frame = self.0.borrow();
+        names
+            .iter()
+            .any(|name| frame.special_names.contains(&intern_name(name)))
+    }
+
+    pub(crate) fn has_local_special_exact(&self, name: &str) -> bool {
+        self.0.borrow().exact_special_names.contains(name)
+    }
+
+    pub(crate) fn resolve(&self, names: &[String]) -> VariableResolution {
+        let (special, value, parent) = {
+            let frame = self.0.borrow();
+            let special = names
+                .iter()
+                .any(|name| frame.special_names.contains(&intern_name(name)));
+            let value = names
+                .iter()
+                .find_map(|name| frame.values.get(&intern_name(name)).cloned());
+            (special, value, frame.parent.clone())
+        };
+        if special {
+            VariableResolution::Special
+        } else if value.is_some() {
+            VariableResolution::Lexical(value)
+        } else {
+            parent.map_or(VariableResolution::Lexical(None), |environment| {
+                environment.resolve(names)
+            })
+        }
+    }
+
+    pub(crate) fn resolve_exact(&self, name: &str) -> VariableResolution {
+        let (special, value, parent) = {
+            let frame = self.0.borrow();
+            (
+                frame.exact_special_names.contains(name),
+                frame.exact_values.get(name).cloned(),
+                frame.parent.clone(),
+            )
+        };
+        if special {
+            VariableResolution::Special
+        } else if value.is_some() {
+            VariableResolution::Lexical(value)
+        } else {
+            parent.map_or(VariableResolution::Lexical(None), |environment| {
+                environment.resolve_exact(name)
+            })
+        }
+    }
+
     /// Defines a case-insensitive variable binding.
     pub fn define(&self, name: impl AsRef<str>, value: Value) {
         let key = intern_name(name.as_ref());
@@ -12,26 +84,36 @@ impl Environment {
         self.0
             .borrow_mut()
             .exact_values
-            .insert(name.as_ref().to_string(), value);
+            .insert(intern_exact_name(name.as_ref()).to_string(), value);
     }
 
     /// Looks up a case-insensitive variable binding through the parent chain.
     #[must_use]
     pub fn lookup(&self, name: &str) -> Option<Value> {
-        let key = intern_name(name);
+        self.lookup_interned(&intern_name(name))
+    }
+
+    pub(crate) fn lookup_interned(&self, key: &std::rc::Rc<str>) -> Option<Value> {
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.values.get(&key).cloned(), frame.parent.clone())
+            (frame.values.get(key).cloned(), frame.parent.clone())
         };
-        value.or_else(|| parent.and_then(|environment| environment.lookup(name)))
+        value.or_else(|| parent.and_then(|environment| environment.lookup_interned(key)))
     }
 
     pub(crate) fn lookup_exact(&self, name: &str) -> Option<Value> {
+        self.lookup_exact_interned(&intern_exact_name(name))
+    }
+
+    pub(crate) fn lookup_exact_interned(&self, key: &std::rc::Rc<str>) -> Option<Value> {
         let (value, parent) = {
             let frame = self.0.borrow();
-            (frame.exact_values.get(name).cloned(), frame.parent.clone())
+            (
+                frame.exact_values.get(key.as_ref()).cloned(),
+                frame.parent.clone(),
+            )
         };
-        value.or_else(|| parent.and_then(|environment| environment.lookup_exact(name)))
+        value.or_else(|| parent.and_then(|environment| environment.lookup_exact_interned(key)))
     }
 
     /// Updates the nearest existing case-insensitive variable binding.
@@ -57,11 +139,12 @@ impl Environment {
     }
 
     pub(crate) fn set_exact(&self, name: &str, value: Value) -> bool {
-        if self.0.borrow().exact_values.contains_key(name) {
+        let key = intern_exact_name(name);
+        if self.0.borrow().exact_values.contains_key(key.as_ref()) {
             self.0
                 .borrow_mut()
                 .exact_values
-                .insert(name.to_string(), value);
+                .insert(key.to_string(), value);
             true
         } else {
             let parent = self.0.borrow().parent.clone();
@@ -70,10 +153,11 @@ impl Environment {
     }
 
     pub(crate) fn remove_exact(&self, name: &str) -> bool {
+        let key = intern_exact_name(name);
         let (removed, parent) = {
             let mut frame = self.0.borrow_mut();
             (
-                frame.exact_values.remove(name).is_some(),
+                frame.exact_values.remove(key.as_ref()).is_some(),
                 frame.parent.clone(),
             )
         };

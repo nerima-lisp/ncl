@@ -65,13 +65,56 @@ fn compiles_arithmetic_shaped_calls_and_normalizes_names() {
     assert_eq!(
         program.functions[0].instructions,
         vec![
-            Instruction::FunctionLoad("+".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(2)),
-            Instruction::Call(2),
+            Instruction::NumericFold {
+                operation: "+".to_string(),
+                argument_count: 2,
+            },
             Instruction::Return,
         ]
     );
+}
+
+#[test]
+fn lowers_equality_predicates_to_native_instructions() {
+    for operation in ["EQ", "EQL", "EQUAL", "EQUALP"] {
+        let program = compile(&format!("({operation} 1 1)"));
+        assert_eq!(
+            program.functions[0].instructions,
+            vec![
+                Instruction::Constant(Constant::Integer(1)),
+                Instruction::Constant(Constant::Integer(1)),
+                Instruction::Equality {
+                    operation: operation.to_string(),
+                },
+                Instruction::Return,
+            ],
+            "{operation}"
+        );
+    }
+}
+
+#[test]
+fn lowers_digit_char_to_a_native_instruction() {
+    for source in ["(digit-char 10)", "(digit-char 10 16)"] {
+        let program = compile(source);
+        assert!(
+            program.functions[0]
+                .instructions
+                .iter()
+                .any(|instruction| matches!(
+                    instruction,
+                    Instruction::CharacterDigit { argument_count: 1 }
+                        if source == "(digit-char 10)"
+                ) || matches!(
+                    instruction,
+                    Instruction::CharacterDigit { argument_count: 2 }
+                        if source == "(digit-char 10 16)"
+                )),
+            "{source}"
+        );
+    }
 }
 
 #[test]
@@ -231,10 +274,12 @@ fn compiles_lambda_as_a_closure_function() {
     assert_eq!(
         program.functions[1].instructions,
         vec![
-            Instruction::FunctionLoad("+".to_string()),
             Instruction::Load("X".to_string()),
             Instruction::Constant(Constant::Integer(1)),
-            Instruction::Call(2),
+            Instruction::NumericFold {
+                operation: "+".to_string(),
+                argument_count: 2,
+            },
             Instruction::Return,
         ]
     );
@@ -403,10 +448,12 @@ fn compiles_ignore_errors_into_a_catch_boundary() {
     assert_eq!(
         program.functions[1].instructions,
         vec![
-            Instruction::FunctionLoad("+".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(2)),
-            Instruction::Call(2),
+            Instruction::NumericFold {
+                operation: "+".to_string(),
+                argument_count: 2,
+            },
             Instruction::Return,
         ]
     );
@@ -491,14 +538,16 @@ fn preserves_parallel_and_sequential_let_initializer_rules() {
     assert_eq!(
         sequential.functions[0].instructions,
         vec![
-            Instruction::EnterScope,
             Instruction::Constant(Constant::Integer(1)),
+            Instruction::EnterScope,
             Instruction::Define("X".to_string()),
             Instruction::Pop,
             Instruction::Load("X".to_string()),
+            Instruction::EnterScope,
             Instruction::Define("Y".to_string()),
             Instruction::Pop,
             Instruction::Load("Y".to_string()),
+            Instruction::ExitScope,
             Instruction::ExitScope,
             Instruction::Return,
         ]
@@ -519,7 +568,11 @@ fn validates_let_binding_shapes_from_table_cases() {
     let cases = [
         ("missing bindings", "(let)", "at least one"),
         ("bindings are a list", "(let x 1)", "must be a list"),
-        ("each binding is a list", "(let (x) 1)", "must be a list"),
+        (
+            "binding name is a symbol",
+            "(let (1) 1)",
+            "must be a symbol",
+        ),
         (
             "binding has too many forms",
             "(let ((x 1 2)) 1)",
@@ -723,6 +776,22 @@ fn validates_prog1_and_prog2_arity_with_source_spans() {
 }
 
 #[test]
+fn reports_putprop_arity_in_terms_of_arguments() {
+    let form = read("(putprop symbol value)").expect("test source should parse")[0].clone();
+    let error = Compiler::compile_forms(std::slice::from_ref(&form))
+        .expect_err("PUTPROP without a property should fail");
+
+    assert_eq!(
+        error.kind,
+        CompileErrorKind::Arity {
+            operator: "PUTPROP".to_string(),
+            expected: "three".to_string(),
+            actual: 2,
+        }
+    );
+}
+
+#[test]
 fn rejects_non_symbol_bindings_without_panicking() {
     let form = Form::list(
         vec![
@@ -887,6 +956,27 @@ fn lowers_multiple_value_list_to_a_value_carrier_conversion() {
 }
 
 #[test]
+fn lowers_nth_value_to_a_native_value_selection() {
+    let program = compile("(nth-value 1 (values 10 20))");
+
+    assert_eq!(
+        program.functions[0].instructions,
+        vec![
+            Instruction::Constant(Constant::Integer(1)),
+            Instruction::Primary,
+            Instruction::CheckNthValueIndex(Span::new(11, 12)),
+            Instruction::Constant(Constant::Integer(10)),
+            Instruction::Primary,
+            Instruction::Constant(Constant::Integer(20)),
+            Instruction::Primary,
+            Instruction::Values(2),
+            Instruction::NthValue,
+            Instruction::Return,
+        ]
+    );
+}
+
+#[test]
 fn compiles_control_form_matrix() {
     let cases = [
         "(catch 'tag (throw 'tag 1))",
@@ -939,12 +1029,786 @@ fn emits_eval_and_mapcar_instructions() {
         ]
     ));
 
-    let mapcar = compile("(mapcar + '(1 2) '(10 20))");
+    for operation in ["MAPCAR", "MAPC", "MAPL", "MAPLIST", "MAPCAN", "MAPCON"] {
+        let source = format!("({operation} + '(1 2) '(10 20))");
+        let program = compile(&source);
+        assert!(
+            program.functions[0]
+                .instructions
+                .iter()
+                .any(|instruction| {
+                    matches!(instruction, Instruction::ListMapping { operation: emitted, sequence_count: 2 } if emitted == operation)
+                }),
+            "missing native instruction for {operation}"
+        );
+    }
+
+    for operation in ["EVERY", "SOME", "NOTANY", "NOTEVERY"] {
+        let source = format!("({operation} #'numberp '(1 2) '(3 4))");
+        let program = compile(&source);
+        assert!(
+            program.functions[0]
+                .instructions
+                .iter()
+                .any(|instruction| matches!(
+                    instruction,
+                    Instruction::SequenceQuantifier { operation: emitted, sequence_count: 2 }
+                        if emitted == operation
+                )),
+            "missing native instruction for {operation}"
+        );
+    }
+
+    let map = compile("(map 'list #'numberp '(1 2) '(3 4))");
+    assert!(map.functions[0].instructions.iter().any(|instruction| {
+        matches!(
+            instruction,
+            Instruction::SequenceMapping { sequence_count: 2 }
+        )
+    }));
+
+    let map_into = compile("(map-into result #'1+ '(1 2))");
     assert!(
-        mapcar.functions[0]
+        map_into.functions[0]
             .instructions
             .iter()
-            .any(|instruction| { matches!(instruction, Instruction::MapCar(2)) })
+            .any(|instruction| matches!(instruction, Instruction::EvalForm(_)))
+    );
+    let reduce = compile("(reduce #'+ '(1 2 3) :initial-value 10)");
+    assert!(reduce.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceReduce { option_count: 2 })
+    }));
+    let merge = compile("(merge 'list '(1 3) '(2 4) #'< :key #'identity)");
+    assert!(merge.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceMerge { option_count: 2 })
+    }));
+    let sort = compile("(stable-sort '(3 1 2) #'< :key #'identity)");
+    assert!(sort.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceSort { operation, option_count: 2 } if operation == "STABLE-SORT")
+    }));
+    for operation in ["FIND", "POSITION", "COUNT", "FIND-IF-NOT"] {
+        let source = if operation.ends_with("-IF-NOT") {
+            format!("({operation} #'null '(1 2) :key #'identity)")
+        } else {
+            format!("({operation} 2 '(1 2) :key #'identity)")
+        };
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequenceSearch { operation: emitted, option_count: 2, .. } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in ["SEARCH", "MISMATCH"] {
+        let program = compile(&format!("({operation} '(1 2) '(1 2) :test #'eql)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequencePairSearch { operation: emitted, option_count: 2 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in ["MEMBER", "MEMBER-IF", "MEMBER-IF-NOT", "ADJOIN"] {
+        let source = match operation {
+            "MEMBER" | "ADJOIN" => format!("({operation} 2 '(1 2) :test #'eql)"),
+            _ => format!("({operation} #'numberp '(1 2) :key #'identity)"),
+        };
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListMembership { operation: emitted, option_count: 2, .. } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in [
+        "ASSOC",
+        "ASSOC-IF",
+        "ASSOC-IF-NOT",
+        "RASSOC",
+        "RASSOC-IF",
+        "RASSOC-IF-NOT",
+    ] {
+        let source = if operation.ends_with("-IF") || operation.ends_with("-IF-NOT") {
+            format!("({operation} #'identity '((a . 1)) :key #'identity)")
+        } else {
+            format!("({operation} 'a '((a . 1)) :test #'eq)")
+        };
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::AssociationSearch { operation: emitted, option_count: 2, .. } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in [
+        "REMOVE",
+        "REMOVE-IF",
+        "REMOVE-IF-NOT",
+        "DELETE",
+        "DELETE-IF",
+        "DELETE-IF-NOT",
+        "REMOVE-DUPLICATES",
+        "DELETE-DUPLICATES",
+    ] {
+        let source = if operation.ends_with("DUPLICATES") {
+            format!("({operation} '(1 1 2) :test #'eql)")
+        } else if operation.ends_with("-IF") || operation.ends_with("-IF-NOT") {
+            format!("({operation} #'numberp '(1 2) :key #'identity)")
+        } else {
+            format!("({operation} 2 '(1 2) :test #'eql)")
+        };
+        let expected_option_count = 2;
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequenceRemoval { operation: emitted, option_count, .. } if emitted == operation && *option_count == expected_option_count)
+        }), "missing native instruction for {operation}");
+    }
+    let program = compile("(make-list 3 :initial-element 7)");
+    assert!(program.functions[0].instructions.iter().any(|instruction| {
+        matches!(
+            instruction,
+            Instruction::ListConstructionWithOptions { argument_count: 3 }
+        )
+    }));
+    for operation in [
+        "SUBSTITUTE",
+        "SUBSTITUTE-IF",
+        "SUBSTITUTE-IF-NOT",
+        "NSUBSTITUTE",
+        "NSUBSTITUTE-IF",
+        "NSUBSTITUTE-IF-NOT",
+    ] {
+        let source = if operation.ends_with("-IF") || operation.ends_with("-IF-NOT") {
+            format!("({operation} 9 #'numberp '(1 2) :key #'identity)")
+        } else {
+            format!("({operation} 9 2 '(1 2) :test #'eql)")
+        };
+        let program = compile(&source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequenceSubstitution { operation: emitted, option_count: 2, .. } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in ["COPY-TREE", "REVERSE", "NREVERSE"] {
+        let program = compile(&format!("({operation} '(1 (2 3)))"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequenceUnary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in [
+        "CAR",
+        "CDR",
+        "FIRST",
+        "REST",
+        "COPY-LIST",
+        "COPY-ALIST",
+        "ENDP",
+        "LIST-LENGTH",
+        "VALUES-LIST",
+        "SECOND",
+        "THIRD",
+        "FOURTH",
+        "FIFTH",
+        "SIXTH",
+        "SEVENTH",
+        "EIGHTH",
+        "NINTH",
+        "TENTH",
+    ] {
+        let program = compile(&format!("({operation} '(1 2))"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListUnary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in [
+        "CHARACTER",
+        "CHAR-CODE",
+        "CHAR-INT",
+        "CODE-CHAR",
+        "INT-CHAR",
+    ] {
+        let argument = if operation == "CHARACTER" {
+            "\"A\""
+        } else {
+            "nil"
+        };
+        let program = compile(&format!("({operation} {argument})"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::CharacterUnary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in ["CHAR", "SCHAR"] {
+        let program = compile(&format!("({operation} \"abc\" 1)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::CharacterElement { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for (operation, source, argument_count) in [
+        ("AREF", "(aref #(1 2) 1)", 2),
+        ("SVREF", "(svref #(1 2) 1)", 2),
+        ("BIT", "(bit #(0 1) 1)", 2),
+        ("ROW-MAJOR-AREF", "(row-major-aref #(1 2) 1)", 2),
+        (
+            "ARRAY-ROW-MAJOR-INDEX",
+            "(array-row-major-index #(1 2) 1)",
+            2,
+        ),
+        ("ARRAY-IN-BOUNDS-P", "(array-in-bounds-p #(1 2) 1)", 2),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ArrayElement { operation: emitted, argument_count: emitted_count } if emitted == operation && *emitted_count == argument_count)
+        }), "missing native instruction for {operation}");
+    }
+    let make_hash_table = compile("(make-hash-table :test #'equal)");
+    assert!(make_hash_table.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::HashTable { operation, argument_count: 2 } if operation == "MAKE-HASH-TABLE")
+    }));
+    for (operation, source, argument_count) in [
+        ("ARRAY-ELEMENT-TYPE", "(array-element-type #(1 2))", 1),
+        ("ARRAY-RANK", "(array-rank #(1 2))", 1),
+        ("ARRAY-DIMENSIONS", "(array-dimensions #(1 2))", 1),
+        ("ARRAY-DIMENSION", "(array-dimension #(1 2) 0)", 2),
+        ("ARRAY-TOTAL-SIZE", "(array-total-size #(1 2))", 1),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ArrayMetadata { operation: emitted, argument_count: emitted_count } if emitted == operation && *emitted_count == argument_count)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in [
+        "ATOM",
+        "CONSP",
+        "LISTP",
+        "NUMBERP",
+        "INTEGERP",
+        "STRINGP",
+        "CHARACTERP",
+        "SYMBOLP",
+        "VECTORP",
+        "FUNCTIONP",
+        "SIMPLE-VECTOR-P",
+        "BIT-VECTOR-P",
+        "SIMPLE-BIT-VECTOR-P",
+        "ARRAYP",
+        "SIMPLE-ARRAY-P",
+        "HASH-TABLE-P",
+        "RANDOM-STATE-P",
+        "STREAMP",
+        "INPUT-STREAM-P",
+        "OUTPUT-STREAM-P",
+        "OPEN-STREAM-P",
+    ] {
+        let program = compile(&format!("({operation} nil)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::TypePredicate { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    let typep = compile("(typep 1 'integer)");
+    assert!(
+        typep.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Typep))
+    );
+    for operation in [
+        "ALPHA-CHAR-P",
+        "ALPHANUMERICP",
+        "GRAPHIC-CHAR-P",
+        "STANDARD-CHAR-P",
+        "UPPER-CASE-P",
+        "LOWER-CASE-P",
+        "BOTH-CASE-P",
+    ] {
+        let program = compile(&format!("({operation} nil)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::CharacterPredicate { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in [
+        "1+", "1-", "ABS", "SIGNUM", "ZEROP", "PLUSP", "MINUSP", "EVENP", "ODDP",
+    ] {
+        let program = compile(&format!("({operation} 2)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericUnary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for (source, argument_count) in [("(random 10)", 1), ("(random 10 *random-state*)", 2)] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericRandom { argument_count: emitted } if *emitted == argument_count)
+        }), "missing native instruction for {source}");
+    }
+    for operation in ["=", "/=", "<", ">", "<=", ">="] {
+        let program = compile(&format!("({operation} 1 2)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericComparison { operation: emitted, argument_count: 2 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in ["MIN", "MAX", "GCD", "LCM"] {
+        let program = compile(&format!("({operation} 12 8 4)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericFold { operation: emitted, argument_count: 3 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in ["LOGAND", "LOGIOR", "LOGXOR"] {
+        let program = compile(&format!("({operation} 12 10 3)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericFold { operation: emitted, argument_count: 3 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    let program = compile("(lognot 12)");
+    assert!(program.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::NumericUnary { operation: emitted } if emitted == "LOGNOT")
+    }));
+    for operation in ["LOGCOUNT", "INTEGER-LENGTH"] {
+        let program = compile(&format!("({operation} 12)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericUnary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in [
+        "MOD", "REM", "ASH", "LOGTEST", "LOGANDC1", "LOGANDC2", "LOGEQV", "LOGNAND", "LOGNOR",
+        "LOGORC1", "LOGORC2", "LOGBITP",
+    ] {
+        let program = compile(&format!("({operation} 12 5)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericBinary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    let boole = compile("(boole 6 12 10)");
+    assert!(
+        boole.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::NumericBoole))
+    );
+    for operation in ["BYTE", "LDB", "MASK-FIELD"] {
+        let program = compile(&format!("({operation} '(4 4) 12)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericBitfield { operation: emitted, argument_count: 2 } if emitted == operation)
+        }));
+    }
+    for operation in ["DPB", "DEPOSIT-FIELD"] {
+        let program = compile(&format!("({operation} 2 '(4 4) 12)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericBitfield { operation: emitted, argument_count: 3 } if emitted == operation)
+        }));
+    }
+    for operation in [
+        "FLOAT-DIGITS",
+        "FLOAT-PRECISION",
+        "FLOAT-RADIX",
+        "DECODE-FLOAT",
+        "INTEGER-DECODE-FLOAT",
+    ] {
+        let program = compile(&format!("({operation} 1.0)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericFloat { operation: emitted, argument_count: 1 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for (operation, source) in [
+        ("FLOAT-SIGN", "(float-sign -2.5 -1.0)"),
+        ("SCALE-FLOAT", "(scale-float 1.5 2)"),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::NumericFloat { operation: emitted, argument_count: 2 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    let parse_integer = compile("(parse-integer \"ff\" :radix 16)");
+    assert!(parse_integer.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::IntegerOperation { operation, argument_count: 3 } if operation == "PARSE-INTEGER")
+    }));
+    let open = compile("(open \"sample.txt\" :direction :input)");
+    assert!(open.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::FileOperation { operation, argument_count: 3 } if operation == "OPEN")
+    }));
+    for (operation, source, argument_count) in [
+        ("PROBE-FILE", "(probe-file \"sample.txt\")", 1),
+        ("RENAME-FILE", "(rename-file \"a\" \"b\")", 2),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::FileMetadataOperation { operation: emitted, argument_count: count } if emitted == operation && *count == argument_count)
+        }));
+    }
+    for operation in ["LAST", "BUTLAST", "NBUTLAST"] {
+        let program = compile(&format!("({operation} '(1 2 3) 2)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListTail { operation: emitted, option_count: 1 } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    let nthcdr = compile("(nthcdr 2 '(1 2 3))");
+    assert!(nthcdr.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTHCDR")));
+    let nth = compile("(nth 1 '(1 2 3))");
+    assert!(nth.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTH")));
+    for operation in ["TAILP", "LDIFF"] {
+        let program = compile(&format!("({operation} '(2 3) '(1 2 3))"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListBinary { operation: emitted } if emitted == operation)
+        }), "missing native instruction for {operation}");
+    }
+    for (operation, source, argument_count) in [
+        ("ACONS", "(acons 'a 1 '((b . 2)))", 3),
+        ("PAIRLIS", "(pairlis '(a) '(1) '((b . 2)))", 3),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListAppend { operation: emitted, argument_count: emitted_count } if emitted == operation && *emitted_count == argument_count)
+        }), "missing native instruction for {operation}");
+    }
+    for operation in [
+        "CAR",
+        "CDR",
+        "FIRST",
+        "REST",
+        "COPY-LIST",
+        "COPY-ALIST",
+        "ENDP",
+    ] {
+        let program = compile(&format!(
+            "(flet (({operation} (value) :shadowed)) ({operation} nil))"
+        ));
+        assert!(!program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListUnary { operation: emitted } if emitted == operation)
+        }), "native instruction incorrectly bypasses local function {operation}");
+    }
+    for operation in ["CHAR", "SCHAR"] {
+        let program = compile(&format!(
+            "(flet (({operation} (string index) :shadowed)) ({operation} \"abc\" 1))"
+        ));
+        assert!(!program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::CharacterElement { operation: emitted } if emitted == operation)
+        }), "native instruction incorrectly bypasses local function {operation}");
+    }
+    for operation in [
+        "AREF",
+        "SVREF",
+        "BIT",
+        "ROW-MAJOR-AREF",
+        "ARRAY-ROW-MAJOR-INDEX",
+        "ARRAY-IN-BOUNDS-P",
+    ] {
+        let program = compile(&format!(
+            "(flet (({operation} (array index) :shadowed)) ({operation} #(1 2) 1))"
+        ));
+        assert!(!program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ArrayElement { operation: emitted, .. } if emitted == operation)
+        }), "native instruction incorrectly bypasses local function {operation}");
+    }
+    for operation in [
+        "ARRAY-ELEMENT-TYPE",
+        "ARRAY-RANK",
+        "ARRAY-DIMENSIONS",
+        "ARRAY-DIMENSION",
+        "ARRAY-TOTAL-SIZE",
+    ] {
+        let arguments = if operation == "ARRAY-DIMENSION" {
+            "#(1 2) 0"
+        } else {
+            "#(1 2)"
+        };
+        let program = compile(&format!(
+            "(flet (({operation} (array &optional index) :shadowed)) ({operation} {arguments}))"
+        ));
+        assert!(!program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ArrayMetadata { operation: emitted, .. } if emitted == operation)
+        }), "native instruction incorrectly bypasses local function {operation}");
+    }
+    for operation in [
+        "ATOM",
+        "CONSP",
+        "LISTP",
+        "NUMBERP",
+        "STRINGP",
+        "SYMBOLP",
+        "VECTORP",
+        "FUNCTIONP",
+        "OPEN-STREAM-P",
+    ] {
+        let program = compile(&format!(
+            "(flet (({operation} (value) :shadowed)) ({operation} nil))"
+        ));
+        assert!(!program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::TypePredicate { operation: emitted } if emitted == operation)
+        }), "native instruction incorrectly bypasses local function {operation}");
+    }
+    let shadowed_nthcdr = compile("(flet ((nthcdr (index list) :shadowed)) (nthcdr 1 nil))");
+    assert!(!shadowed_nthcdr.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTHCDR")));
+    let shadowed_nth = compile("(flet ((nth (index list) :shadowed)) (nth 1 nil))");
+    assert!(!shadowed_nth.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::ListBinary { operation } if operation == "NTH")));
+    let tree_equal = compile("(tree-equal '(1 (2)) '(1 (2)) :test #'equal)");
+    assert!(
+        tree_equal.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| {
+                matches!(instruction, Instruction::TreeEqual { option_count: 2 })
+            })
+    );
+    let length = compile("(length '(1 2 3))");
+    assert!(
+        length.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::SequenceLength))
+    );
+    let elt = compile("(elt '(a b) 1)");
+    assert!(
+        elt.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::SequenceElement))
+    );
+    let subseq = compile("(subseq '(a b c) 1 3)");
+    assert!(subseq.functions[0].instructions.iter().any(|instruction| {
+        matches!(
+            instruction,
+            Instruction::SequenceSubseq { argument_count: 3 }
+        )
+    }));
+    let shadowed_subseq = compile("(flet ((subseq (sequence start) :shadowed)) (subseq '(a b) 1))");
+    assert!(
+        !shadowed_subseq.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::SequenceSubseq { .. }) })
+    );
+    let vector = compile("(vector 1 2)");
+    assert!(vector.functions[0].instructions.iter().any(|instruction| {
+        matches!(
+            instruction,
+            Instruction::VectorConstruction { argument_count: 2 }
+        )
+    }));
+    let shadowed_vector = compile("(flet ((vector (first second) :shadowed)) (vector 1 2))");
+    assert!(
+        !shadowed_vector.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::VectorConstruction { .. }) })
+    );
+    let list = compile("(list 1 2)");
+    assert!(list.functions[0].instructions.iter().any(|instruction| {
+        matches!(
+            instruction,
+            Instruction::ListConstruction {
+                argument_count: 2,
+                dotted: false
+            }
+        )
+    }));
+    let list_star = compile("(list* 1 '(2 3))");
+    assert!(
+        list_star.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| {
+                matches!(
+                    instruction,
+                    Instruction::ListConstruction {
+                        argument_count: 2,
+                        dotted: true
+                    }
+                )
+            })
+    );
+    let shadowed_list = compile("(flet ((list (first) :shadowed)) (list 1))");
+    assert!(
+        !shadowed_list.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::ListConstruction { .. }) })
+    );
+    for (operation, argument_count) in [
+        ("APPEND", 2),
+        ("NCONC", 2),
+        ("REVAPPEND", 2),
+        ("NRECONC", 2),
+    ] {
+        let program = compile(&format!("({operation} '(1) '(2))"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListAppend { operation: emitted, argument_count: count } if emitted == operation && *count == argument_count)
+        }));
+    }
+    for (operation, source, argument_count) in [
+        ("GETF", "(getf '(:a 1) :a)", 2),
+        ("GET-PROPERTIES", "(get-properties '(:a 1) '(:a))", 2),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::PropertyList { operation: emitted, argument_count: count } if emitted == operation && *count == argument_count)
+        }));
+    }
+    let shadowed_append = compile("(flet ((append (first second) :shadowed)) (append '(1) '(2)))");
+    assert!(
+        !shadowed_append.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::ListAppend { .. }) })
+    );
+    for operation in ["GETF", "GET-PROPERTIES"] {
+        let source = if operation == "GETF" {
+            "(flet ((getf (plist indicator) :shadowed)) (getf nil :x))"
+        } else {
+            "(flet ((get-properties (plist indicators) :shadowed)) (get-properties nil nil))"
+        };
+        let program = compile(source);
+        assert!(
+            !program.functions[0]
+                .instructions
+                .iter()
+                .any(|instruction| { matches!(instruction, Instruction::PropertyList { .. }) })
+        );
+    }
+    for (operation, source, argument_count) in [
+        ("GETHASH", "(gethash :a (make-hash-table))", 2),
+        ("REMHASH", "(remhash :a (make-hash-table))", 2),
+        ("CLRHASH", "(clrhash (make-hash-table))", 1),
+        (
+            "HASH-TABLE-COUNT",
+            "(hash-table-count (make-hash-table))",
+            1,
+        ),
+        ("HASH-TABLE-SIZE", "(hash-table-size (make-hash-table))", 1),
+        ("HASH-TABLE-TEST", "(hash-table-test (make-hash-table))", 1),
+        (
+            "NCL-HASH-TABLE-KEYS",
+            "(ncl-hash-table-keys (make-hash-table))",
+            1,
+        ),
+        (
+            "NCL-HASH-TABLE-VALUES",
+            "(ncl-hash-table-values (make-hash-table))",
+            1,
+        ),
+    ] {
+        let program = compile(source);
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::HashTable { operation: emitted, argument_count: count } if emitted == operation && *count == argument_count)
+        }));
+    }
+    let make_array = compile("(make-array 2 :initial-element 7)");
+    assert!(
+        make_array.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| {
+                matches!(
+                    instruction,
+                    Instruction::ArrayConstruction { argument_count: 3 }
+                )
+            })
+    );
+    let shadowed_make_array =
+        compile("(flet ((make-array (dimensions &rest options) :shadowed)) (make-array 2))");
+    assert!(
+        !shadowed_make_array.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::ArrayConstruction { .. }) })
+    );
+    let copy_seq = compile("(copy-seq '(a b))");
+    assert!(copy_seq.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceUnary { operation } if operation == "COPY-SEQ")
+    }));
+    let shadowed_copy_seq = compile("(flet ((copy-seq (sequence) :shadowed)) (copy-seq '(a b)))");
+    assert!(!shadowed_copy_seq.functions[0].instructions.iter().any(|instruction| {
+        matches!(instruction, Instruction::SequenceUnary { operation } if operation == "COPY-SEQ")
+    }));
+    for operation in ["FILL", "REPLACE"] {
+        let program = compile(&format!("({operation} (vector 1 2) (vector 3 4))"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::SequenceMutation { operation: emitted, argument_count: 2 } if emitted == operation)
+        }));
+    }
+    let concatenate = compile("(concatenate 'list '(1 2) #(3 4))");
+    assert!(
+        concatenate.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| {
+                matches!(
+                    instruction,
+                    Instruction::SequenceConcatenate { argument_count: 3 }
+                )
+            })
+    );
+    let shadowed_concatenate =
+        compile("(flet ((concatenate (type first) :shadowed)) (concatenate 'list '(1)))");
+    assert!(
+        !shadowed_concatenate.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::SequenceConcatenate { .. }) })
+    );
+    let conversions =
+        compile("(list (make-sequence 'list 2 :initial-element 7) (coerce '(1 2) 'vector))");
+    assert_eq!(
+        conversions.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::SequenceConversion { .. }))
+            .count(),
+        2,
+    );
+    let string_comparisons = compile(
+        "(list (string= \"a\" \"a\") (string-equal \"A\" \"a\") (string< \"a\" \"b\") (string> \"b\" \"a\") (string<= \"a\" \"a\") (string>= \"b\" \"a\"))",
+    );
+    assert_eq!(
+        string_comparisons.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::StringComparison { .. }))
+            .count(),
+        6,
+    );
+    let character_comparisons = compile(
+        "(list (char= #\\a #\\a) (char/= #\\a #\\b #\\c) (char-equal #\\A #\\a) (char< #\\a #\\b) (char-not-greaterp #\\A #\\a))",
+    );
+    assert_eq!(
+        character_comparisons.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::CharacterComparison { .. }))
+            .count(),
+        5,
+    );
+    let string_cases =
+        compile("(list (string-upcase \"ab c\") (nstring-downcase \"AB C\" :start 1))");
+    assert_eq!(
+        string_cases.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::StringCase { .. }))
+            .count(),
+        2,
+    );
+    for operation in [
+        "UNION",
+        "NUNION",
+        "INTERSECTION",
+        "NINTERSECTION",
+        "SET-DIFFERENCE",
+        "NSET-DIFFERENCE",
+        "SET-EXCLUSIVE-OR",
+        "NSET-EXCLUSIVE-OR",
+        "SUBSETP",
+    ] {
+        let program = compile(&format!("({operation} '(1 2) '(2 3) :test #'eql)"));
+        assert!(program.functions[0].instructions.iter().any(|instruction| {
+            matches!(instruction, Instruction::ListSet { operation: emitted, option_count: 2 } if emitted == operation)
+        }));
+    }
+    let symbol_value = compile("(setf (symbol-value symbol) 1)");
+    assert!(
+        symbol_value.functions[0]
+            .instructions
+            .iter()
+            .any(|instruction| { matches!(instruction, Instruction::SetfPlaces { .. }) })
     );
 }
 
@@ -956,10 +1820,12 @@ fn lowers_dotimes_with_a_single_count_evaluation_and_result() {
         program.functions[0].instructions,
         vec![
             Instruction::EnterScope,
-            Instruction::FunctionLoad("+".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(1)),
-            Instruction::Call(2),
+            Instruction::NumericFold {
+                operation: "+".to_string(),
+                argument_count: 2,
+            },
             Instruction::Define("__NCL_DOTIMES_LIMIT_0".to_string()),
             Instruction::Pop,
             Instruction::Constant(Constant::Integer(0)),
@@ -969,11 +1835,13 @@ fn lowers_dotimes_with_a_single_count_evaluation_and_result() {
             Instruction::Load("I".to_string()),
             Instruction::Load("__NCL_DOTIMES_LIMIT_0".to_string()),
             Instruction::Call(2),
-            Instruction::JumpIfFalse(27),
-            Instruction::FunctionLoad("+".to_string()),
+            Instruction::JumpIfFalse(25),
             Instruction::Load("I".to_string()),
             Instruction::Constant(Constant::Integer(1)),
-            Instruction::Call(2),
+            Instruction::NumericFold {
+                operation: "+".to_string(),
+                argument_count: 2,
+            },
             Instruction::Pop,
             Instruction::FunctionLoad("+".to_string()),
             Instruction::Load("I".to_string()),
@@ -981,11 +1849,13 @@ fn lowers_dotimes_with_a_single_count_evaluation_and_result() {
             Instruction::Call(2),
             Instruction::Set("I".to_string()),
             Instruction::Pop,
-            Instruction::Jump(10),
-            Instruction::FunctionLoad("+".to_string()),
+            Instruction::Jump(9),
             Instruction::Load("I".to_string()),
             Instruction::Constant(Constant::Integer(10)),
-            Instruction::Call(2),
+            Instruction::NumericFold {
+                operation: "+".to_string(),
+                argument_count: 2,
+            },
             Instruction::ExitScope,
             Instruction::Return,
         ]
@@ -1035,10 +1905,12 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
         program.functions[0].instructions,
         vec![
             Instruction::EnterScope,
-            Instruction::FunctionLoad("LIST".to_string()),
             Instruction::Constant(Constant::Integer(1)),
             Instruction::Constant(Constant::Integer(2)),
-            Instruction::Call(2),
+            Instruction::ListConstruction {
+                argument_count: 2,
+                dotted: false,
+            },
             Instruction::Define("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Pop,
             Instruction::Constant(Constant::Nil),
@@ -1047,24 +1919,26 @@ fn lowers_dolist_with_endp_car_cdr_and_multiple_elements() {
             Instruction::FunctionLoad("ENDP".to_string()),
             Instruction::Load("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Call(1),
-            Instruction::JumpIfFalse(15),
-            Instruction::Jump(31),
+            Instruction::JumpIfFalse(14),
+            Instruction::Jump(29),
             Instruction::FunctionLoad("CAR".to_string()),
             Instruction::Load("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Call(1),
             Instruction::Set("ITEM".to_string()),
             Instruction::Pop,
-            Instruction::FunctionLoad("+".to_string()),
             Instruction::Load("ITEM".to_string()),
             Instruction::Constant(Constant::Integer(1)),
-            Instruction::Call(2),
+            Instruction::NumericFold {
+                operation: "+".to_string(),
+                argument_count: 2,
+            },
             Instruction::Pop,
             Instruction::FunctionLoad("CDR".to_string()),
             Instruction::Load("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Call(1),
             Instruction::Set("__NCL_DOLIST_TAIL_0".to_string()),
             Instruction::Pop,
-            Instruction::Jump(10),
+            Instruction::Jump(9),
             Instruction::Constant(Constant::Nil),
             Instruction::Set("ITEM".to_string()),
             Instruction::Pop,
@@ -1475,7 +2349,7 @@ fn lowers_dynamic_condition_restart_and_catch_forms() {
          (catch 'tag (throw 'tag 42))
          (with-simple-restart (abort \"abort\") nil)
          (with-condition-restarts nil nil nil)
-         (with-open-file (stream \"/tmp/ncl-compiler-test\") stream)
+         (with-open-file ((stream \"/tmp/ncl-compiler-test\")) stream)
          (restart-case (invoke-restart 'abort) (abort () nil))
          (progv '(name) '(value) name)",
     );
@@ -1642,4 +2516,67 @@ fn lowers_return_from_without_a_value_to_nil() {
             Instruction::Return,
         ]
     );
+}
+
+#[test]
+fn lowers_native_string_trimming() {
+    let program = compile(
+        "(list (string-trim \" \" \" hi \") (string-left-trim \" \" \" hi \") (string-right-trim \" \" \" hi \"))",
+    );
+    assert_eq!(
+        program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::StringTrim { .. }))
+            .count(),
+        3
+    );
+}
+
+#[test]
+fn lowers_native_string_construction() {
+    let program = compile("(list (string 'foo) (make-string 2) (make-string 3 #\\x))");
+    assert_eq!(
+        program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::StringConstruction { .. }))
+            .count(),
+        3
+    );
+}
+
+#[test]
+fn lowers_native_character_case_operations() {
+    let program = compile("(list (char-upcase #\\a) (char-downcase #\\Z))");
+    assert_eq!(
+        program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::CharacterUnary { .. }))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn lowers_native_character_name_operations() {
+    let program = compile("(list (char-name #\\Newline) (name-char \"space\"))");
+    assert_eq!(
+        program.functions[0]
+            .instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::CharacterUnary { .. }))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn lowers_native_digit_character_predicate() {
+    let program = compile("(digit-char-p #\\5)");
+    assert!(program.functions[0]
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::CharacterDigitPredicate { argument_count } if *argument_count == 1)));
 }

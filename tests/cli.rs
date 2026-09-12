@@ -11,6 +11,7 @@ const PROCESS_TIMEOUT: Duration = Duration::from_secs(10);
 fn run(arguments: &[&str]) -> Output {
     let child = Command::new(env!("CARGO_BIN_EXE_ncl"))
         .args(arguments)
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

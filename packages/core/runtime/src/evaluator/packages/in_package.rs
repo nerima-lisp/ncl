@@ -24,7 +24,10 @@ impl Runtime {
         }
         let canonical_name = packages.canonical_package_name(&name);
         packages.set_current(&canonical_name);
-        Ok(Value::package(&canonical_name))
+        packages
+            .package_object_for(&canonical_name)
+            .map(Value::package_object)
+            .ok_or_else(|| Self::package_error("unknown package", items[1].span))
     }
 }
 

@@ -12,6 +12,23 @@ fn parse_items(source: &str) -> Vec<Form> {
 }
 
 #[test]
+fn compile_empty_setf_emits_nil() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let span = Span::new(0, 1);
+    let items = parse_items("(setf)");
+
+    state
+        .compile_setf(function, span, &items)
+        .unwrap_or_else(|error| panic!("empty SETF should compile: {error}"));
+
+    assert_eq!(
+        state.functions[function].instructions,
+        [Instruction::Constant(Constant::Nil)]
+    );
+}
+
+#[test]
 fn compile_setf_propagates_a_malformed_value_form_error() {
     let mut state = CompileState::default();
     let function = state.reserve_function(None, Vec::new());
@@ -28,6 +45,47 @@ fn compile_setf_propagates_a_malformed_value_form_error() {
     match error.kind {
         CompileErrorKind::Arity { operator, .. } => assert_eq!(operator, "FUNCTION"),
         other => panic!("expected the nested FUNCTION arity error to propagate, got {other:?}"),
+    }
+}
+
+#[test]
+fn compile_modify_symbol_evaluates_delta_before_reading_the_place() {
+    for (operator, arithmetic) in [("INCF", "+"), ("DECF", "-")] {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let items = parse_items(&format!("({operator} x (setq x 5))"));
+
+        state
+            .compile_modify_symbol(function, span, &items, operator, arithmetic)
+            .unwrap_or_else(|error| panic!("{operator} should compile: {error}"));
+
+        let instructions = &state.functions[function].instructions;
+        let temporary = instructions
+            .iter()
+            .find_map(|instruction| match instruction {
+                Instruction::Define(name) => Some(name.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{operator} must save the delta: {instructions:?}"));
+        assert_ne!(temporary, "X");
+        assert_eq!(
+            instructions,
+            &[
+                Instruction::EnterScope,
+                Instruction::Constant(Constant::Integer(5)),
+                Instruction::Set("X".to_string()),
+                Instruction::Define(temporary.clone()),
+                Instruction::Pop,
+                Instruction::FunctionLoad(arithmetic.to_string()),
+                Instruction::Load("X".to_string()),
+                Instruction::Load(temporary),
+                Instruction::Call(2),
+                Instruction::Set("X".to_string()),
+                Instruction::ExitScope,
+            ],
+            "{operator} must evaluate the delta once before reading the place"
+        );
     }
 }
 
@@ -120,6 +178,34 @@ fn compile_modify_symbol_uses_set_exact_for_an_escaped_place() {
             .contains(&Instruction::SetExact("Mixed".to_string())),
         "escaped INCF place should bind with SetExact, got {:?}",
         state.functions[function].instructions
+    );
+}
+
+#[test]
+fn compile_modify_symbol_uses_modify_place_for_a_generalized_place() {
+    let mut state = CompileState::default();
+    let function = state.reserve_function(None, Vec::new());
+    let span = Span::new(0, 1);
+    let items = parse_items("(incf (car xs) 2)");
+
+    state
+        .compile_modify_symbol(function, span, &items, "INCF", "+")
+        .unwrap_or_else(|error| panic!("a generalized place should compile: {error}"));
+
+    assert_eq!(
+        state.functions[function].instructions,
+        [Instruction::ModifyPlace {
+            invocation: Form::list(items, span),
+            delta: function + 1,
+            arithmetic: "+".to_string(),
+        }]
+    );
+    assert_eq!(
+        state.functions[function + 1].instructions,
+        [
+            Instruction::Constant(Constant::Integer(2)),
+            Instruction::Return
+        ]
     );
 }
 

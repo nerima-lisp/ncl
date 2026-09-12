@@ -1,5 +1,6 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use ncl_syntax::FormKind;
 
 pub(super) struct ControlInstructionContext<'a> {
     pub(super) runtime: &'a Runtime,
@@ -15,6 +16,63 @@ pub(super) fn execute_control_instruction(
     context: &mut ControlInstructionContext<'_>,
 ) -> Result<bool, RuntimeError> {
     match instruction {
+        Instruction::SetfPlaces { invocation, values } => {
+            let FormKind::List(items) = &invocation.kind else {
+                return Err(invalid("invalid SETF invocation", context.span));
+            };
+            if items.len().is_multiple_of(2) || items.len() / 2 != values.len() {
+                return Err(invalid("invalid SETF value functions", context.span));
+            }
+            let value = context.runtime.execute_sequential_assignment(
+                items,
+                context.environment,
+                |index| {
+                    let code = context
+                        .program
+                        .functions
+                        .get(values[index])
+                        .ok_or_else(|| invalid("invalid SETF value function", context.span))?;
+                    crate::vm::entry::run_code(
+                        context.runtime,
+                        context.program,
+                        code,
+                        context.environment.clone(),
+                        context.span,
+                    )
+                },
+            )?;
+            context.stack.push(value);
+            *context.program_counter += 1;
+            Ok(true)
+        }
+        Instruction::ModifyPlace {
+            invocation,
+            delta,
+            arithmetic,
+        } => {
+            let code = context
+                .program
+                .functions
+                .get(*delta)
+                .ok_or_else(|| invalid("invalid modifying delta function", context.span))?;
+            let value = context.runtime.execute_compiled_modify_place(
+                invocation,
+                arithmetic,
+                context.environment,
+                || {
+                    crate::vm::entry::run_code(
+                        context.runtime,
+                        context.program,
+                        code,
+                        context.environment.clone(),
+                        context.span,
+                    )
+                },
+            )?;
+            context.stack.push(value);
+            *context.program_counter += 1;
+            Ok(true)
+        }
         Instruction::HandlerCase { .. }
         | Instruction::HandlerBind { .. }
         | Instruction::RestartBind { .. }
@@ -61,6 +119,26 @@ pub(super) fn execute_scope_control_instruction(
             context.runtime,
             context.program,
             (*symbols, *values, *body),
+            context.stack,
+            context.environment,
+            context.span,
+        )?,
+        Instruction::StandardStreamBind {
+            input,
+            stream,
+            variable,
+            index,
+            destination,
+            body,
+        } => execute_standard_stream_bind_instruction(
+            context.runtime,
+            context.program,
+            *input,
+            *stream,
+            variable,
+            index.as_deref(),
+            destination.as_deref(),
+            *body,
             context.stack,
             context.environment,
             context.span,

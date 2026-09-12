@@ -79,6 +79,8 @@ impl Runtime {
 
         self.execute_list_set_operation(&ListSetContext {
             operation,
+            first,
+            second,
             first_items: &first_items,
             second_items: &second_items,
             first_keys: &first_keys,

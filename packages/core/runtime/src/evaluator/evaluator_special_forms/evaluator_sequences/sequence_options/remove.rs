@@ -1,6 +1,8 @@
 #![allow(clippy::wildcard_imports)]
 use super::super::*;
 
+use super::search::parse_sequence_index_with_context;
+
 pub fn parse_sequence_remove_options(
     options: &[Value],
     is_predicate: bool,
@@ -22,28 +24,10 @@ pub fn parse_sequence_remove_options(
         end: None,
         count: None,
     };
-    let index_argument = |option: &str, value: &Value| -> Result<usize, RuntimeError> {
-        let Value::Integer(index) = value else {
-            return Err(RuntimeError::Type {
-                expected: "INTEGER".to_string(),
-                actual: value.type_name().to_string(),
-                span: Some(span),
-            });
-        };
-        if *index < 0 {
-            return Err(Runtime::invalid(
-                &format!("sequence removal {option} must be non-negative"),
-                span,
-            ));
-        }
-        usize::try_from(*index).map_err(|_| {
-            Runtime::invalid(&format!("sequence removal {option} is out of range"), span)
-        })
-    };
-
     for pair in options.as_chunks::<2>().0 {
         let keyword_name = match &pair[0] {
             Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
+            Value::InternedSymbol(symbol) if symbol.keyword() => normalize_name(symbol.name()),
             _ => {
                 return Err(Runtime::invalid(
                     "sequence removal keyword argument name must be a keyword",
@@ -72,17 +56,30 @@ pub fn parse_sequence_remove_options(
                 parsed.test_not = Some(pair[1].clone());
             }
             "KEY" => parsed.key = Some(pair[1].clone()),
-            "START" => parsed.start = index_argument(":start", &pair[1])?,
+            "START" => {
+                parsed.start =
+                    parse_sequence_index_with_context("sequence removal", ":start", &pair[1], span)?
+            }
             "END" => {
                 parsed.end = match &pair[1] {
                     Value::Nil => None,
-                    value => Some(index_argument(":end", value)?),
+                    value => Some(parse_sequence_index_with_context(
+                        "sequence removal",
+                        ":end",
+                        value,
+                        span,
+                    )?),
                 };
             }
             "COUNT" if !removes_duplicates => {
                 parsed.count = match &pair[1] {
                     Value::Nil => None,
-                    value => Some(index_argument(":count", value)?),
+                    value => Some(parse_sequence_index_with_context(
+                        "sequence removal",
+                        ":count",
+                        value,
+                        span,
+                    )?),
                 };
             }
             _ => {

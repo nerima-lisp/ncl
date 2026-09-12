@@ -14,6 +14,8 @@ mod conditionals;
 mod control;
 mod control_flow;
 mod control_primitives;
+#[cfg(test)]
+mod control_primitives_tests;
 mod definitions;
 mod evaluator_definitions;
 mod evaluator_function_calls;

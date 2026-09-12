@@ -1,8 +1,11 @@
 mod expression;
 mod if_the_handlers;
 mod list_dispatch;
+mod load_time_value;
+mod native_invocation_dispatch;
 mod prog_handlers;
 mod quote_handlers;
 mod sequencing_handlers;
 mod special_forms_bindings;
+mod special_forms_bindings_catalog;
 mod special_forms_core;

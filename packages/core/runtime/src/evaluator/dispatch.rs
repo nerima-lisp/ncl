@@ -17,6 +17,10 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         match &form.kind {
+            FormKind::CircularReference => Err(Self::circular_form_error(form)),
+            FormKind::Literal(_) | FormKind::Vector(_) | FormKind::Complex { .. } => {
+                self.runtime_quoted_value(form)
+            }
             FormKind::Atom(atom) => {
                 if let Some(expanded) = Self::expand_symbol_macro_form(form, environment)? {
                     return self.eval_values_in(&expanded, environment);
@@ -25,16 +29,10 @@ impl Runtime {
             }
             FormKind::String(value) => Ok(Value::string(value.clone())),
             FormKind::Character(value) => Ok(Value::Character(*value)),
-            FormKind::Vector(items) => Ok(Value::vector(
-                items
-                    .iter()
-                    .map(Self::quoted_value)
-                    .collect::<Result<Vec<_>, _>>()?,
-            )),
             FormKind::DottedList { .. } => {
                 Err(Self::invalid("cannot evaluate a dotted list", form.span))
             }
-            FormKind::List(items) => self.eval_list_values(items, form.span, environment),
+            FormKind::List(_) => self.eval_list_values(form, environment),
         }
     }
 
@@ -61,12 +59,10 @@ impl Runtime {
 
     fn eval_list_values(
         &self,
-        items: &[Form],
-        span: Span,
+        form: &Form,
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        let form = Form::list(items.to_vec(), span);
-        let expanded = self.expand_macros(form, environment)?;
+        let expanded = self.expand_macros(form.clone(), environment)?;
         self.eval_expanded_values(&expanded, environment)
     }
 

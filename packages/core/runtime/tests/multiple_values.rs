@@ -49,6 +49,13 @@ fn values_returns_the_primary_value_in_a_single_value_context() {
 }
 
 #[test]
+fn nth_value_selects_values_in_interpreted_and_compiled_execution() {
+    assert_interpreted_and_compiled("(nth-value 0 (values 1 2 3))", "1");
+    assert_interpreted_and_compiled("(nth-value 2 (values 1 2 3))", "3");
+    assert_interpreted_and_compiled("(nth-value 3 (values 1 2 3))", "NIL");
+}
+
+#[test]
 fn multiple_value_list_and_values_list_round_trip_value_sequences() {
     assert_interpreted_and_compiled(
         "(list

@@ -8,6 +8,7 @@ pub(super) const SEQUENCE_BUILTINS: &[BuiltinDefinition] = &[
     ("fill", fill as _),
     ("replace", replace as _),
     ("copy-seq", copy_seq as _),
+    ("reverse", reverse as _),
     ("concatenate", concatenate as _),
     ("coerce", coerce as _),
 ];

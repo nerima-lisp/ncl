@@ -1,15 +1,15 @@
-use super::{RuntimeError, Value, arity, character_argument, integer_argument};
+use super::{RuntimeError, Value, arity, character_argument, integer_value};
 
 pub fn digit_character(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("digit-char", "1 or 2", arguments.len()));
     }
-    let weight = integer_argument("digit-char", &arguments[0])?;
+    let weight = integer_value("digit-char", &arguments[0])?;
     let radix = radix_argument("digit-char", arguments, 1)?;
-    if weight < 0 || weight >= i64::from(radix) {
+    if weight < ibig::IBig::from(0) || weight >= ibig::IBig::from(radix) {
         return Ok(Value::Nil);
     }
-    let Some(digit) = u32::try_from(weight).ok() else {
+    let Some(digit) = u32::try_from(&weight).ok() else {
         return Ok(Value::Nil);
     };
     let character = if digit < 10 {
@@ -47,16 +47,16 @@ pub fn digit_character_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
 fn radix_argument(function: &str, arguments: &[Value], index: usize) -> Result<u32, RuntimeError> {
     let radix = arguments
         .get(index)
-        .map(|value| integer_argument(function, value))
+        .map(|value| integer_value(function, value))
         .transpose()?
-        .unwrap_or(10);
-    if !(2..=36).contains(&radix) {
+        .unwrap_or_else(|| ibig::IBig::from(10));
+    if radix < ibig::IBig::from(2) || radix > ibig::IBig::from(36) {
         return Err(RuntimeError::InvalidForm {
             message: format!("{function} radix must be between 2 and 36"),
             span: None,
         });
     }
-    u32::try_from(radix).map_err(|_| RuntimeError::InvalidForm {
+    u32::try_from(&radix).map_err(|_| RuntimeError::InvalidForm {
         message: format!("{function} radix must be between 2 and 36"),
         span: None,
     })
@@ -101,5 +101,26 @@ mod tests {
             assert_eq!(ok_string(actual), expected.to_string());
         }
         assert!(digit_character(&[]).is_err());
+    }
+
+    #[test]
+    fn accepts_bignum_weights_and_radices() {
+        let weight = Value::big_integer(ibig::IBig::from(15));
+        let radix = Value::big_integer(ibig::IBig::from(16));
+        assert_eq!(ok_string(digit_character(&[weight, radix])), "#\\F");
+        assert_eq!(
+            ok_string(digit_character(&[
+                Value::Integer(1),
+                Value::big_integer(ibig::IBig::from(16)),
+            ])),
+            "#\\1"
+        );
+        assert!(
+            digit_character(&[
+                Value::Integer(1),
+                Value::big_integer(ibig::IBig::from(1) << 80),
+            ])
+            .is_err()
+        );
     }
 }

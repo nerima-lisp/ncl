@@ -1,4 +1,4 @@
-pub(super) fn general_float_decimal_exponent(value: f64) -> i64 {
+pub(crate) fn general_float_decimal_exponent(value: f64) -> i64 {
     if value == 0.0 {
         return 1;
     }
@@ -8,7 +8,7 @@ pub(super) fn general_float_decimal_exponent(value: f64) -> i64 {
         .map_or(1, |exponent| exponent.saturating_add(1))
 }
 
-pub(super) fn general_float_default_fractional_digits(value: f64, exponent: i64) -> usize {
+pub(crate) fn general_float_default_fractional_digits(value: f64, exponent: i64) -> usize {
     let decimal = value.abs().to_string();
     let mantissa = decimal
         .split_once('e')

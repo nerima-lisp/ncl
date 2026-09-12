@@ -145,7 +145,7 @@ mod tests {
             ("ARITHMETIC-ERROR", "SERIOUS-CONDITION", true),
             ("TYPE-ERROR", "ERROR", true),
             ("UNBOUND-VARIABLE", "SERIOUS-CONDITION", true),
-            ("CONTROL-ERROR", "ERROR", false),
+            ("CONTROL-ERROR", "ERROR", true),
             ("UNKNOWN-TYPE", "ERROR", false),
         ] {
             assert_eq!(condition(actual_type).condition_is_type(expected), matches);

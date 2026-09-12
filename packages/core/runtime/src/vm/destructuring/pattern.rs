@@ -61,25 +61,5 @@ pub(in crate::vm) fn destructure_value(
 }
 
 pub(in crate::vm) fn destructure_dotted_parts(value: &Value) -> Option<(Vec<Value>, Value)> {
-    match value {
-        Value::Nil => Some((Vec::new(), Value::Nil)),
-        Value::List(values) => Some((values.as_ref().clone(), Value::Nil)),
-        Value::DottedList { items, tail } => {
-            let mut values = items.as_ref().clone();
-            match tail.as_ref() {
-                Value::Nil => Some((values, Value::Nil)),
-                Value::List(more) => {
-                    values.extend(more.iter().cloned());
-                    Some((values, Value::Nil))
-                }
-                Value::DottedList { .. } => {
-                    let (more, dotted_tail) = destructure_dotted_parts(tail)?;
-                    values.extend(more);
-                    Some((values, dotted_tail))
-                }
-                other => Some((values, other.clone())),
-            }
-        }
-        _ => None,
-    }
+    value.list_parts()
 }

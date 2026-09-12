@@ -1,6 +1,4 @@
-use super::{
-    RuntimeError, Value, character_argument, character_designator, exact, integer_argument,
-};
+use super::{RuntimeError, Value, character_argument, character_designator, exact, integer_value};
 
 pub fn character_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "character", 1)?;
@@ -35,8 +33,8 @@ pub fn int_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 fn code_char_value(function: &str, value: &Value) -> Result<Value, RuntimeError> {
-    let code = integer_argument(function, value)?;
-    Ok(u32::try_from(code)
+    let code = integer_value(function, value)?;
+    Ok(u32::try_from(&code)
         .ok()
         .and_then(char::from_u32)
         .map_or(Value::Nil, Value::Character))
@@ -77,5 +75,16 @@ mod tests {
             assert_eq!(ok_string(actual), expected.to_string());
         }
         assert!(character_value(&[Value::Integer(1)]).is_err());
+    }
+
+    #[test]
+    fn accepts_bignum_character_codes() {
+        let smile = Value::big_integer(ibig::IBig::from(0x1f600));
+        assert_eq!(ok_string(code_char(std::slice::from_ref(&smile))), "#\\😀");
+        assert_eq!(ok_string(int_char(std::slice::from_ref(&smile))), "#\\😀");
+        assert_eq!(
+            ok_string(code_char(&[Value::big_integer(ibig::IBig::from(1) << 80)])),
+            "NIL"
+        );
     }
 }

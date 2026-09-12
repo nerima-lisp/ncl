@@ -1,16 +1,38 @@
+use super::complex::{complex_divide, complex_multiply};
+
 use super::{
-    Number, RuntimeError, Value, exact, exceeds_exact_bignum_digit_cap, number_argument,
-    number_from_big, number_to_value, rational_number,
+    Number, RuntimeError, Value, big_rational_number, exact, exceeds_exact_bignum_digit_cap,
+    number_argument, number_to_value, rational_number,
 };
+use crate::builtins::numbers::big_integer_argument;
 
 pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "expt", 2)?;
+    if let Value::Complex(value) = &arguments[0] {
+        if let Some(exponent) = exact_integer_exponent(&arguments[1])? {
+            return complex_integer_power(arguments[0].clone(), exponent);
+        }
+        let (real, imaginary) = complex_parts("expt", value.real(), value.imaginary())?;
+        let (exponent_real, exponent_imaginary) = complex_value_parts("expt", &arguments[1])?;
+        return complex_power(real, imaginary, exponent_real, exponent_imaginary);
+    }
+    if matches!(arguments[1], Value::Complex(_)) {
+        let base = number_argument("expt", &arguments[0])?.as_float();
+        let (exponent_real, exponent_imaginary) = complex_value_parts("expt", &arguments[1])?;
+        return complex_power(base, 0.0, exponent_real, exponent_imaginary);
+    }
+
     let base = number_argument("expt", &arguments[0])?;
     let exponent = number_argument("expt", &arguments[1])?;
 
+    if base.as_float() < 0.0 && !is_integral_number(&exponent) {
+        return complex_power(base.as_float(), 0.0, exponent.as_float(), 0.0);
+    }
+
     if !base.is_float()
-        && let Some((exponent_numerator, exponent_denominator)) = exponent.exact_parts()
-        && exponent_denominator == 1
+        && let Some((exponent_numerator, exponent_denominator)) = exponent.exact_big_parts()
+        && exponent_denominator == ibig::IBig::from(1)
+        && let Ok(exponent_numerator) = i64::try_from(exponent_numerator)
     {
         return number_to_value(exact_power(base, exponent_numerator)?);
     }
@@ -18,28 +40,122 @@ pub fn exponentiate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Float(base.as_float().powf(exponent.as_float())))
 }
 
+fn exact_integer_exponent(value: &Value) -> Result<Option<i64>, RuntimeError> {
+    if matches!(value, Value::Complex(_)) {
+        return Ok(None);
+    }
+    let exponent = number_argument("expt", value)?;
+    if exponent.is_float() {
+        return Ok(None);
+    }
+    Ok(exponent
+        .exact_big_parts()
+        .and_then(|(numerator, denominator)| {
+            (denominator == ibig::IBig::from(1))
+                .then(|| i64::try_from(numerator).ok())
+                .flatten()
+        }))
+}
+
+fn is_integral_number(number: &Number) -> bool {
+    if let Some((_, denominator)) = number.exact_big_parts() {
+        return denominator == ibig::IBig::from(1);
+    }
+    let value = number.as_float();
+    value.is_finite() && value.fract() == 0.0
+}
+
+fn complex_parts(
+    function: &str,
+    real: &Value,
+    imaginary: &Value,
+) -> Result<(f64, f64), RuntimeError> {
+    Ok((
+        number_argument(function, real)?.as_float(),
+        number_argument(function, imaginary)?.as_float(),
+    ))
+}
+
+fn complex_value_parts(function: &str, value: &Value) -> Result<(f64, f64), RuntimeError> {
+    match value {
+        Value::Complex(value) => complex_parts(function, value.real(), value.imaginary()),
+        value => Ok((number_argument(function, value)?.as_float(), 0.0)),
+    }
+}
+
+fn complex_integer_power(base: Value, exponent: i64) -> Result<Value, RuntimeError> {
+    if exponent == 0 {
+        return Ok(Value::Integer(1));
+    }
+
+    let negative = exponent < 0;
+    let mut exponent = exponent.unsigned_abs();
+    let mut factor = base;
+    let mut result = Value::Integer(1);
+    while exponent != 0 {
+        if exponent & 1 == 1 {
+            result = complex_multiply(&[result, factor.clone()])?;
+        }
+        exponent >>= 1;
+        if exponent != 0 {
+            factor = complex_multiply(&[factor.clone(), factor.clone()])?;
+        }
+    }
+
+    if negative {
+        complex_divide(&[Value::Integer(1), result])
+    } else {
+        Ok(result)
+    }
+}
+
+fn complex_power(
+    real: f64,
+    imaginary: f64,
+    exponent_real: f64,
+    exponent_imaginary: f64,
+) -> Result<Value, RuntimeError> {
+    if exponent_real == 0.0 && exponent_imaginary == 0.0 {
+        return Ok(Value::Integer(1));
+    }
+
+    let magnitude = real.hypot(imaginary);
+    if magnitude == 0.0 {
+        if exponent_real > 0.0 && exponent_imaginary == 0.0 {
+            return Ok(Value::complex(Value::Float(0.0), Value::Float(0.0)));
+        }
+        return Err(RuntimeError::DivisionByZero);
+    }
+    if imaginary == 0.0 && exponent_imaginary == 0.0 && real >= 0.0 {
+        return Ok(Value::complex(
+            Value::Float(real.powf(exponent_real)),
+            Value::Float(0.0),
+        ));
+    }
+
+    let angle = imaginary.atan2(real);
+    let log_magnitude = magnitude.ln();
+    let logarithm_real = exponent_real * log_magnitude - exponent_imaginary * angle;
+    let logarithm_imaginary = exponent_real * angle + exponent_imaginary * log_magnitude;
+    let magnitude = logarithm_real.exp();
+    Ok(Value::complex(
+        Value::Float(magnitude * logarithm_imaginary.cos()),
+        Value::Float(magnitude * logarithm_imaginary.sin()),
+    ))
+}
+
 pub(in crate::builtins) fn exact_power(
     base: Number,
     exponent: i64,
 ) -> Result<Number, RuntimeError> {
-    if let Number::Big(base) = base {
-        if exponent < 0 {
-            // A negative exponent on a bignum base would need a
-            // bignum-denominator ratio, which this codebase's Rational
-            // (i64 numerator/denominator) cannot represent.
-            return Err(RuntimeError::NumericOverflow);
-        }
-        return Ok(number_from_big(ibig_power(base, exponent.unsigned_abs())?));
-    }
-
     let (mut numerator, mut denominator) =
-        base.exact_parts()
+        base.exact_big_parts()
             .ok_or_else(|| RuntimeError::InvalidForm {
                 message: "exact power requires an exact base".to_owned(),
                 span: None,
             })?;
     let negative_exponent = exponent < 0;
-    if negative_exponent && numerator == 0 {
+    if negative_exponent && numerator == ibig::IBig::from(0) {
         return Err(RuntimeError::DivisionByZero);
     }
     if negative_exponent {
@@ -47,19 +163,9 @@ pub(in crate::builtins) fn exact_power(
     }
 
     let magnitude = exponent.unsigned_abs();
-    if denominator == 1 {
-        return match checked_power(i128::from(numerator), magnitude) {
-            Ok(value) => rational_number(value, 1),
-            Err(RuntimeError::NumericOverflow) => Ok(number_from_big(ibig_power(
-                ibig::IBig::from(numerator),
-                magnitude,
-            )?)),
-            Err(error) => Err(error),
-        };
-    }
-    rational_number(
-        checked_power(i128::from(numerator), magnitude)?,
-        checked_power(i128::from(denominator), magnitude)?,
+    big_rational_number(
+        ibig_power(numerator, magnitude)?,
+        ibig_power(denominator, magnitude)?,
     )
 }
 
@@ -115,6 +221,12 @@ pub fn checked_power(base: i128, mut exponent: u64) -> Result<i128, RuntimeError
 )]
 pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "sqrt", 1)?;
+    if let Value::Complex(value) = &arguments[0] {
+        let real = number_argument("sqrt", value.real())?.as_float();
+        let imaginary = number_argument("sqrt", value.imaginary())?.as_float();
+        return Ok(complex_square_root(real, imaginary));
+    }
+
     match number_argument("sqrt", &arguments[0])? {
         Number::Integer(value) if value >= 0 => {
             let value = u128::try_from(value).map_err(|_| RuntimeError::NumericOverflow)?;
@@ -127,7 +239,7 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 Ok(Value::Float((value as f64).sqrt()))
             }
         }
-        Number::Rational(value) if value.numerator() >= 0 => {
+        Number::Rational(value) if value.numerator() >= &ibig::IBig::from(0) => {
             let numerator =
                 u128::try_from(value.numerator()).map_err(|_| RuntimeError::NumericOverflow)?;
             let denominator =
@@ -144,7 +256,7 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 .and_then(number_to_value)
             } else {
                 Ok(Value::Float(
-                    (value.numerator() as f64 / value.denominator() as f64).sqrt(),
+                    (value.numerator_f64() / value.denominator_f64()).sqrt(),
                 ))
             }
         }
@@ -169,10 +281,40 @@ pub fn square_root(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 Ok(Value::Float(Number::Big(value).as_float().sqrt()))
             }
         }
-        Number::Integer(_) | Number::Rational(_) | Number::Float(_) | Number::Big(_) => {
-            Err(negative_real_error("sqrt"))
-        }
+        Number::Integer(value) => Ok(negative_real_square_root(value as f64)),
+        Number::Rational(value) => Ok(negative_real_square_root(
+            value.numerator_f64() / value.denominator_f64(),
+        )),
+        Number::Float(value) => Ok(negative_real_square_root(value)),
+        Number::Big(value) => Ok(negative_real_square_root(Number::Big(value).as_float())),
+        Number::BigRational(value) => Ok(negative_real_square_root(
+            Number::BigRational(value).as_float(),
+        )),
     }
+}
+
+pub fn integer_square_root_builtin(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "isqrt", 1)?;
+    let value = big_integer_argument("isqrt", &arguments[0])?;
+    if value < ibig::IBig::from(0) {
+        return Err(super::type_error(
+            "isqrt",
+            "a non-negative integer",
+            &arguments[0],
+        ));
+    }
+    Ok(Value::big_integer(ibig_square_root(&value)))
+}
+
+fn complex_square_root(real: f64, imaginary: f64) -> Value {
+    let magnitude = real.hypot(imaginary);
+    let real_part = ((magnitude + real) / 2.0).sqrt();
+    let imaginary_part = ((magnitude - real) / 2.0).sqrt().copysign(imaginary);
+    Value::complex(Value::Float(real_part), Value::Float(imaginary_part))
+}
+
+fn negative_real_square_root(value: f64) -> Value {
+    Value::complex(Value::Float(0.0), Value::Float((-value).sqrt()))
 }
 
 /// Computes `floor(sqrt(value))` for a non-negative arbitrary-precision

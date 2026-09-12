@@ -1,10 +1,11 @@
+use super::temporary::SetfTemporaryContext;
 use super::{
     Environment, Form, FormKind, MacroBindingContext, Runtime, RuntimeError, SetfExpansion, Value,
     atom_name, unqualified_name,
 };
 
 impl Runtime {
-    pub(super) fn custom_setf_expansion(
+    pub(in crate::evaluator) fn custom_setf_expansion(
         &self,
         place: &Form,
         items: &[Form],
@@ -14,6 +15,9 @@ impl Runtime {
             return Ok(None);
         };
         let lookup_name = unqualified_name(operator);
+        if lookup_name == "%SETF-PREPARED-EXPANSION" {
+            return Self::parse_prepared_setf_expansion(&items[1..], place.span).map(Some);
+        }
         let Some(function) = environment.lookup_setf_expander(&lookup_name) else {
             return Ok(None);
         };
@@ -50,12 +54,26 @@ impl Runtime {
         place: &Form,
         environment: &Environment,
     ) -> Result<SetfExpansion, RuntimeError> {
+        self.get_setf_expansion_with_context(
+            place,
+            environment,
+            &mut SetfTemporaryContext::default(),
+        )
+    }
+
+    pub(super) fn get_setf_expansion_with_context(
+        &self,
+        place: &Form,
+        environment: &Environment,
+        context: &mut SetfTemporaryContext,
+    ) -> Result<SetfExpansion, RuntimeError> {
+        context.reserve_form(place, environment);
         if let Some(expanded) = Self::expand_symbol_macro_form(place, environment)? {
-            return self.get_setf_expansion(&expanded, environment);
+            return self.get_setf_expansion_with_context(&expanded, environment, context);
         }
         if atom_name(place).is_some() {
             Self::variable_name_info(place, "SETF place must be a symbol")?;
-            let store = self.fresh_setf_temporary(place.span);
+            let store = self.fresh_setf_temporary(place.span, environment, context);
             let store_form = Form::list(
                 vec![Form::atom("SETQ", place.span), place.clone(), store.clone()],
                 place.span,
@@ -63,7 +81,7 @@ impl Runtime {
             return Ok(SetfExpansion {
                 temporaries: Vec::new(),
                 values: Vec::new(),
-                store,
+                stores: vec![store],
                 store_form,
                 access_form: place.clone(),
             });
@@ -72,26 +90,34 @@ impl Runtime {
         let FormKind::List(items) = &place.kind else {
             return Err(Self::invalid("unsupported SETF place", place.span));
         };
-        let Some(_operator) = items.first().and_then(atom_name) else {
+        let Some(operator) = items.first().and_then(atom_name) else {
             return Err(Self::invalid("unsupported SETF place", place.span));
         };
         if let Some(expansion) = self.custom_setf_expansion(place, items, environment)? {
+            context.reserve_expansion(&expansion, environment);
             return Ok(expansion);
+        }
+        let expanded = self.expand_macros(place.clone(), environment)?;
+        if expanded != *place {
+            return self.parallel_setf_expansion(&expanded, environment, context);
+        }
+        if unqualified_name(operator) == "VALUES" {
+            return self.values_setf_expansion(place, &items[1..], environment, context);
         }
 
         let temporaries = items[1..]
             .iter()
-            .map(|_| self.fresh_setf_temporary(place.span))
+            .map(|_| self.fresh_setf_temporary(place.span, environment, context))
             .collect::<Vec<_>>();
         let values = items[1..].to_vec();
-        let store = self.fresh_setf_temporary(place.span);
+        let store = self.fresh_setf_temporary(place.span, environment, context);
         let mut access_items = Vec::with_capacity(items.len());
         access_items.push(items[0].clone());
         access_items.extend(temporaries.iter().cloned());
         let access_form = Form::list(access_items, place.span);
         let store_form = Form::list(
             vec![
-                Form::atom("SETF", place.span),
+                Form::atom("%SETF-INTRINSIC-STORE", place.span),
                 access_form.clone(),
                 store.clone(),
             ],
@@ -100,7 +126,7 @@ impl Runtime {
         Ok(SetfExpansion {
             temporaries,
             values,
-            store,
+            stores: vec![store],
             store_form,
             access_form,
         })

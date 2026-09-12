@@ -87,7 +87,7 @@ impl Runtime {
                 }
                 if let Some((name, _)) = arguments[0].symbol_reference() {
                     return Some(self.invoke_restart_named(
-                        name,
+                        &name,
                         &arguments[1..],
                         environment,
                         span,
@@ -95,7 +95,16 @@ impl Runtime {
                 }
                 let binding = match self.restart_binding_for_designator(&arguments[0], span) {
                     Ok(Some(binding)) => binding,
-                    Ok(None) => return Some(Err(Self::invalid("restart is not active", span))),
+                    Ok(None) => {
+                        let name = arguments[0]
+                            .restart_name()
+                            .expect("restart designator was validated as a restart");
+                        return Some(Err(Self::restart_invocation_error(
+                            name,
+                            &arguments[1..],
+                            span,
+                        )));
+                    }
                     Err(error) => return Some(Err(error)),
                 };
                 self.invoke_restart_binding(binding, &arguments[1..], environment, span)

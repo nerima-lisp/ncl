@@ -1,6 +1,67 @@
-use super::{Environment, Form, Runtime, RuntimeError, Span, Value};
+use super::{Environment, Form, FormKind, Runtime, RuntimeError, Span, Value};
 
 impl Runtime {
+    pub(crate) fn set_gethash_place_value(
+        table: &Value,
+        key: &Value,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let Some(test) = table.hash_table_test() else {
+            return Err(RuntimeError::Type {
+                expected: "HASH-TABLE".to_string(),
+                actual: table.type_name().to_string(),
+                span: Some(span),
+            });
+        };
+        let Some(entries) = table.hash_table_entries() else {
+            return Err(RuntimeError::Type {
+                expected: "HASH-TABLE".to_string(),
+                actual: table.type_name().to_string(),
+                span: Some(span),
+            });
+        };
+        let mut entries = entries.borrow_mut();
+        if let Some((_, slot)) = entries
+            .iter_mut()
+            .find(|(stored_key, _)| crate::builtins::hash_table_key_equal(test, stored_key, key))
+        {
+            *slot = value;
+        } else {
+            entries.push((key.clone(), value));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn set_getf_place_value(
+        &self,
+        place: &Form,
+        current: &Value,
+        indicator: &Value,
+        value: Value,
+        environment: &Environment,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let Some(mut properties) = current.list_items() else {
+            return Err(RuntimeError::Type {
+                expected: "LIST".to_string(),
+                actual: current.type_name().to_string(),
+                span: Some(span),
+            });
+        };
+        Self::replace_setf_property(&mut properties, indicator.clone(), value, "GETF", span)?;
+        let FormKind::List(items) = &place.kind else {
+            return Err(Self::invalid("unsupported SETF GETF place", span));
+        };
+        self.set_place(
+            items
+                .get(1)
+                .ok_or_else(|| Self::invalid("SETF GETF place is missing a plist", span))?,
+            Value::list(properties),
+            environment,
+        )
+    }
+
     pub(super) fn set_property_place(
         &self,
         operator: &str,
@@ -9,6 +70,33 @@ impl Runtime {
         environment: &Environment,
     ) -> Result<(), RuntimeError> {
         match operator {
+            "SYMBOL-PLIST" => {
+                if args.len() != 1 {
+                    return Err(Self::arity("setf symbol-plist", "one", args.len()));
+                }
+                let symbol = self.eval_in(&args[0], environment)?;
+                if symbol.symbol_reference().is_none() {
+                    return Err(Self::invalid(
+                        "setf symbol-plist target must be a symbol",
+                        args[0].span,
+                    ));
+                }
+                let Some(properties) = value.list_items() else {
+                    return Err(RuntimeError::Type {
+                        expected: "LIST".to_string(),
+                        actual: value.type_name().to_string(),
+                        span: Some(args[0].span),
+                    });
+                };
+                if !properties.len().is_multiple_of(2) {
+                    return Err(Self::invalid(
+                        "SYMBOL-PLIST needs an even property list",
+                        args[0].span,
+                    ));
+                }
+                environment.set_symbol_plist(&symbol, value);
+                Ok(())
+            }
             "GET" => {
                 if args.len() != 2 {
                     return Err(Self::arity("setf get", "two", args.len()));
@@ -40,42 +128,33 @@ impl Runtime {
                 Ok(())
             }
             "GETHASH" => {
-                if args.len() != 2 {
-                    return Err(Self::arity("setf gethash", "two", args.len()));
+                if !(args.len() == 2 || args.len() == 3) {
+                    return Err(Self::arity("setf gethash", "two or three", args.len()));
                 }
                 let key = self.eval_in(&args[0], environment)?;
                 let table = self.eval_in(&args[1], environment)?;
-                let Some(test) = table.hash_table_test() else {
-                    return Err(RuntimeError::Type {
-                        expected: "HASH-TABLE".to_string(),
-                        actual: table.type_name().to_string(),
-                        span: Some(args[1].span),
-                    });
-                };
-                let test = test.to_string();
-                let Some(entries) = table.hash_table_entries() else {
-                    return Err(RuntimeError::Type {
-                        expected: "HASH-TABLE".to_string(),
-                        actual: table.type_name().to_string(),
-                        span: Some(args[1].span),
-                    });
-                };
-                let mut entries = entries.borrow_mut();
-                if let Some((_, slot)) = entries.iter_mut().find(|(stored_key, _)| {
-                    crate::builtins::hash_table_key_equal(&test, stored_key, &key)
-                }) {
-                    *slot = value;
-                } else {
-                    entries.push((key, value));
+                if let Some(default) = args.get(2) {
+                    self.eval_in(default, environment)?;
                 }
+                if table.hash_table_test().is_none() {
+                    return Err(RuntimeError::Type {
+                        expected: "HASH-TABLE".to_string(),
+                        actual: table.type_name().to_string(),
+                        span: Some(args[1].span),
+                    });
+                }
+                let _ = crate::builtins::set_hash_table_entry(&table, key, value);
                 Ok(())
             }
             "GETF" => {
-                if args.len() != 2 {
-                    return Err(Self::arity("setf getf", "two", args.len()));
+                if !(args.len() == 2 || args.len() == 3) {
+                    return Err(Self::arity("setf getf", "two or three", args.len()));
                 }
                 let current = self.eval_in(&args[0], environment)?;
                 let indicator = self.eval_in(&args[1], environment)?;
+                if let Some(default) = args.get(2) {
+                    self.eval_in(default, environment)?;
+                }
                 let Some(mut properties) = current.list_items() else {
                     return Err(RuntimeError::Type {
                         expected: "LIST".to_string(),

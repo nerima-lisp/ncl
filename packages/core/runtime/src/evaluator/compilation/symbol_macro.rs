@@ -8,6 +8,20 @@ impl Runtime {
         }
 
         let (name, escaped) = resolved_symbol(atom);
+        let special = if escaped {
+            matches!(
+                environment.resolve_exact(&name),
+                crate::environment::VariableResolution::Special
+            )
+        } else {
+            matches!(
+                environment.resolve(std::slice::from_ref(&name)),
+                crate::environment::VariableResolution::Special
+            )
+        };
+        if special {
+            return None;
+        }
         if escaped {
             environment.lookup_symbol_macro_exact(&name)
         } else {

@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn subtype_relation(
+pub(crate) fn subtype_relation(
     subtype: &Value,
     supertype: &Value,
     environment: &Environment,
@@ -14,7 +14,7 @@ pub(super) fn subtype_relation(
         match operator.as_str() {
             "OR" => {
                 let mut unknown = false;
-                for argument in arguments {
+                for argument in &arguments {
                     match subtype_relation(argument, supertype, environment)? {
                         Some(true) => {}
                         Some(false) => return Ok(Some(false)),
@@ -24,7 +24,7 @@ pub(super) fn subtype_relation(
                 return Ok(if unknown { None } else { Some(true) });
             }
             "AND" => {
-                for argument in arguments {
+                for argument in &arguments {
                     if subtype_relation(argument, supertype, environment)? == Some(true) {
                         return Ok(Some(true));
                     }
@@ -33,7 +33,7 @@ pub(super) fn subtype_relation(
             }
             "MEMBER" | "EQL" => {
                 let candidates = if operator == "MEMBER" {
-                    arguments
+                    &arguments[..]
                 } else {
                     &arguments[..1]
                 };
@@ -51,7 +51,7 @@ pub(super) fn subtype_relation(
                 if let Some((super_operator, super_arguments)) = compound_type_parts(supertype)
                     && super_operator == "INTEGER"
                 {
-                    return Ok(Some(integer_spec_is_subtype(arguments, super_arguments)?));
+                    return Ok(Some(integer_spec_is_subtype(&arguments, &super_arguments)?));
                 }
                 if let Some(super_name) = atomic_type_name(supertype) {
                     return Ok(Some(compound_subtype_named(&operator, &super_name)));
@@ -71,7 +71,7 @@ pub(super) fn subtype_relation(
         match operator.as_str() {
             "OR" => {
                 let mut unknown = false;
-                for argument in arguments {
+                for argument in &arguments {
                     match subtype_relation(subtype, argument, environment)? {
                         Some(true) => return Ok(Some(true)),
                         Some(false) => {}
@@ -82,7 +82,7 @@ pub(super) fn subtype_relation(
             }
             "AND" => {
                 let mut unknown = false;
-                for argument in arguments {
+                for argument in &arguments {
                     match subtype_relation(subtype, argument, environment)? {
                         Some(false) => return Ok(Some(false)),
                         Some(true) => {}
@@ -93,7 +93,7 @@ pub(super) fn subtype_relation(
             }
             "INTEGER" => {
                 if let Some(subtype_name) = atomic_type_name(subtype) {
-                    return Ok(Some(named_integer_is_subtype(&subtype_name, arguments)?));
+                    return Ok(Some(named_integer_is_subtype(&subtype_name, &arguments)?));
                 }
             }
             _ => {}

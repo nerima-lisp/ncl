@@ -28,11 +28,24 @@ fn renders_named_control_characters_from_table_cases() {
 }
 
 #[test]
-fn falls_back_to_decimal_for_roman_numerals_above_the_new_style_range() {
-    assert_eq!(render("~@R", vec![Value::Integer(4000)]), "4000");
+fn renders_new_and_old_style_roman_numerals() {
+    assert_eq!(render("~@R", vec![Value::Integer(3999)]), "MMMCMXCIX");
+    assert_eq!(
+        render("~:@R", vec![Value::Integer(3999)]),
+        "MMMDCCCCLXXXXVIIII"
+    );
+    assert_eq!(
+        render("~:@R", vec![Value::Integer(4999)]),
+        "MMMMDCCCCLXXXXVIIII"
+    );
 }
 
 #[test]
-fn prefixes_negative_roman_numerals_with_a_minus_sign() {
-    assert_eq!(render("~@R", vec![Value::Integer(-5)]), "-V");
+fn rejects_roman_numerals_outside_the_supported_ranges() {
+    for (control, value) in [("~@R", 0), ("~@R", -5), ("~@R", 4000), ("~:@R", 5000)] {
+        assert!(
+            crate::builtins::format::format_control(control, &[Value::Integer(value)]).is_err(),
+            "invalid Roman numeral should fail: {control} {value}"
+        );
+    }
 }

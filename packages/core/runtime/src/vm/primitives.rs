@@ -1,9 +1,14 @@
 use ncl_compiler::{Constant, FunctionCode};
 use ncl_syntax::Span;
 
-use crate::{RuntimeError, Value};
+use crate::package::KEYWORD_PACKAGE;
+use crate::{Runtime, RuntimeError, Value};
 
-pub(super) fn constant_value(constant: &Constant, span: Span) -> Result<Value, RuntimeError> {
+pub(super) fn constant_value(
+    runtime: &Runtime,
+    constant: &Constant,
+    span: Span,
+) -> Result<Value, RuntimeError> {
     match constant {
         Constant::Nil => Ok(Value::Nil),
         Constant::Boolean(value) => Ok(Value::boolean(*value)),
@@ -26,13 +31,34 @@ pub(super) fn constant_value(constant: &Constant, span: Span) -> Result<Value, R
                 span: Some(span),
             }
         }),
+        Constant::BigRational {
+            numerator,
+            denominator,
+        } => {
+            let numerator = numerator.parse().map_err(|_| RuntimeError::InvalidForm {
+                message: "compiled rational numerator is invalid".to_owned(),
+                span: Some(span),
+            })?;
+            let denominator = denominator.parse().map_err(|_| RuntimeError::InvalidForm {
+                message: "compiled rational denominator is invalid".to_owned(),
+                span: Some(span),
+            })?;
+            Value::big_rational(numerator, denominator).map_err(|_| RuntimeError::InvalidForm {
+                message: "compiled rational constant is invalid".to_owned(),
+                span: Some(span),
+            })
+        }
         Constant::Float(value) => Ok(Value::Float(*value)),
         Constant::String(value) => Ok(Value::string(value.clone())),
         Constant::Character(value) => Ok(Value::Character(*value)),
         Constant::Symbol(value) => Ok(Value::symbol(value)),
         Constant::SymbolExact(value) => Ok(Value::symbol_exact(value)),
-        Constant::Keyword(value) => Ok(Value::keyword(value)),
-        Constant::KeywordExact(value) => Ok(Value::keyword_exact(value)),
+        Constant::Keyword(value) => Ok(runtime
+            .literal_symbol_value(KEYWORD_PACKAGE, value, false)
+            .unwrap_or_else(|| Value::keyword(value))),
+        Constant::KeywordExact(value) => Ok(runtime
+            .literal_symbol_value(KEYWORD_PACKAGE, value, true)
+            .unwrap_or_else(|| Value::keyword_exact(value))),
     }
 }
 
@@ -71,8 +97,25 @@ mod tests {
     #[test]
     fn constant_value_converts_an_escaped_symbol_constant() {
         let span = Span::new(0, 1);
-        let value = constant_value(&Constant::SymbolExact("Odd-Case".to_string()), span)
-            .unwrap_or_else(|error| panic!("an escaped symbol constant must convert: {error}"));
+        let runtime = Runtime::new();
+        let value = constant_value(
+            &runtime,
+            &Constant::SymbolExact("Odd-Case".to_string()),
+            span,
+        )
+        .unwrap_or_else(|error| panic!("an escaped symbol constant must convert: {error}"));
         assert!(matches!(value, Value::SymbolExact(name) if name.as_ref() == "Odd-Case"));
+    }
+
+    #[test]
+    fn constant_value_converts_keyword_constants_to_stable_symbols() {
+        let span = Span::new(0, 1);
+        let runtime = Runtime::new();
+        let value = constant_value(&runtime, &Constant::Keyword("READY".to_string()), span)
+            .unwrap_or_else(|error| panic!("a keyword constant must convert: {error}"));
+        assert!(matches!(
+            value,
+            Value::InternedSymbol(symbol) if symbol.keyword() && symbol.name() == "READY"
+        ));
     }
 }

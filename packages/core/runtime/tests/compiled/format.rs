@@ -6,6 +6,7 @@ fn compiled_format_accepts_boundary_directives_from_table() {
     let cases = [
         (r#"(format nil "~~")"#, "~"),
         (r#"(format nil "~~~%")"#, r"~\n"),
+        (r#"(format nil "~2%")"#, r"\n\n"),
         (r#"(format nil "~A" nil)"#, "NIL"),
         (r#"(format nil "~S" nil)"#, "NIL"),
         (r#"(format nil "~R" 0)"#, "zero"),
@@ -21,6 +22,14 @@ fn compiled_format_accepts_boundary_directives_from_table() {
             "{source}"
         );
     }
+}
+
+#[test]
+fn compiled_format_renders_arbitrary_precision_english_integers() {
+    assert_eq!(
+        evaluate(r#"(format nil "~R/~R" (expt 10 30) (- (expt 10 30)))"#).to_string(),
+        "\"one nonillion/minus one nonillion\""
+    );
 }
 
 #[test]

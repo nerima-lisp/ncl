@@ -11,8 +11,8 @@ pub(super) fn execute_load_instruction(
 ) -> Result<bool, RuntimeError> {
     let value =
         match instruction {
-            Instruction::Constant(constant) => constant_value(constant, span)?,
-            Instruction::Quote(form) => Runtime::quoted_value(form)?,
+            Instruction::Constant(constant) => constant_value(runtime, constant, span)?,
+            Instruction::Quote(form) => runtime.runtime_quoted_value(form)?,
             Instruction::QuasiQuote(form) => runtime.quasiquote_value(form, environment)?,
             Instruction::Load(name) => runtime.lookup_in(name, environment).ok_or_else(|| {
                 RuntimeError::UnboundVariable {
@@ -60,6 +60,15 @@ pub(super) fn execute_definition_instruction(
     span: Span,
 ) -> Result<bool, RuntimeError> {
     match instruction {
+        Instruction::DeclareSpecial(name) | Instruction::DeclareSpecialExact(name) => {
+            if matches!(instruction, Instruction::DeclareSpecial(_)) {
+                environment.declare_special(name);
+            } else {
+                environment.declare_special_exact(name);
+            }
+            *program_counter += 1;
+            Ok(true)
+        }
         Instruction::Define(name) | Instruction::DefineExact(name) => {
             let value = stack
                 .last()
@@ -111,6 +120,54 @@ pub(super) fn execute_definition_instruction(
             *stack
                 .last_mut()
                 .ok_or_else(|| invalid("define-special has no value on the stack", span))? = value;
+            *program_counter += 1;
+            Ok(true)
+        }
+        Instruction::DefineDynamicSpecial(name) | Instruction::DefineDynamicSpecialExact(name) => {
+            let value = stack
+                .last()
+                .cloned()
+                .ok_or_else(|| invalid("define-dynamic-special has no value on the stack", span))?
+                .primary_value();
+            let exact = matches!(instruction, Instruction::DefineDynamicSpecialExact(_));
+            if if exact {
+                runtime.is_constant_exact_in(name)
+            } else {
+                runtime.is_constant_in(name)
+            } {
+                return Err(Runtime::constant_modification_error(name, span));
+            }
+            runtime.define_dynamic(name, exact, value.clone());
+            if name.eq_ignore_ascii_case("*RANDOM-STATE*") {
+                crate::builtins::bind_dynamic_random_state(&value);
+            }
+            *stack.last_mut().ok_or_else(|| {
+                invalid("define-dynamic-special has no value on the stack", span)
+            })? = value;
+            *program_counter += 1;
+            Ok(true)
+        }
+        Instruction::DefineConstant(name) | Instruction::DefineConstantExact(name) => {
+            let value = stack
+                .last()
+                .cloned()
+                .ok_or_else(|| invalid("define-constant has no value on the stack", span))?;
+            let exact = matches!(instruction, Instruction::DefineConstantExact(_));
+            if if exact {
+                runtime.is_constant_exact_in(name)
+            } else {
+                runtime.is_constant_in(name)
+            } {
+                return Err(Runtime::constant_modification_error(name, span));
+            }
+            let value = if exact {
+                runtime.define_constant_value_exact(name, value)
+            } else {
+                runtime.define_constant_value(name, value)
+            };
+            *stack
+                .last_mut()
+                .ok_or_else(|| invalid("define-constant has no value on the stack", span))? = value;
             *program_counter += 1;
             Ok(true)
         }

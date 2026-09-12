@@ -54,13 +54,13 @@ impl Runtime {
                     ));
                 }
                 builder.saw_documentation = true;
-                let FormKind::String(value) = &option_items[1].kind else {
+                let Some(value) = Self::form_string(&option_items[1]) else {
                     return Err(Self::invalid(
                         "defpackage :documentation needs a string",
                         option_items[1].span,
                     ));
                 };
-                builder.documentation = Some(value.clone());
+                builder.documentation = Some(value.to_owned());
             }
             "SIZE" => {
                 if builder.saw_size || option_items.len() != 2 {

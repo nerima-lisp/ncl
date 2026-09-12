@@ -6,16 +6,40 @@ use crate::{RuntimeError, Value};
 
 pub fn array_element_type(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "array-element-type", 1)?;
-    dimensions_for_array(&arguments[0])
+    let elements = arguments[0]
+        .array_storage()
         .ok_or_else(|| type_error("array-element-type", "array", &arguments[0]))?;
-    Ok(Value::symbol("T"))
+    Ok(elements.element_type())
 }
 
 pub fn simple_array_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "simple-array-p", 1)?;
-    Ok(Value::boolean(
-        dimensions_for_array(&arguments[0]).is_some(),
-    ))
+    let simple = dimensions_for_array(&arguments[0]).is_some_and(|_| {
+        arguments[0].array_storage().is_some_and(|elements| {
+            !elements.has_fill_pointer() && !elements.is_adjustable() && !elements.is_displaced()
+        })
+    });
+    Ok(Value::boolean(simple))
+}
+
+pub fn adjustable_array_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "adjustable-array-p", 1)?;
+    let elements = arguments[0]
+        .array_storage()
+        .ok_or_else(|| type_error("adjustable-array-p", "array", &arguments[0]))?;
+    Ok(Value::boolean(elements.is_adjustable()))
+}
+
+pub fn array_displacement(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    exact(arguments, "array-displacement", 1)?;
+    let elements = arguments[0]
+        .array_storage()
+        .ok_or_else(|| type_error("array-displacement", "array", &arguments[0]))?;
+    let (source, offset) = elements.displacement().unwrap_or((Value::Nil, 0));
+    Ok(Value::values(vec![
+        source,
+        integer_from_usize("array-displacement", offset)?,
+    ]))
 }
 
 pub fn arrayp(arguments: &[Value]) -> Result<Value, RuntimeError> {

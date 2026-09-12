@@ -103,14 +103,18 @@ impl Runtime {
                     Ok(Value::boolean(true))
                 }
                 "UNINTERN" => {
-                    let symbols = Self::symbol_names_from_value(&arguments[0], span)?;
+                    let symbols = self.symbol_references_from_value(&arguments[0], span)?;
                     let mut removed = false;
                     let mut local_names = Vec::new();
                     {
                         let mut state = self.packages.borrow_mut();
-                        for symbol in symbols {
+                        for (symbol, exact) in symbols {
                             let local_name = package::canonical_symbol_name(&target, &symbol);
-                            removed |= state.unintern_symbol(&target, &symbol);
+                            removed |= if exact {
+                                state.unintern_exact_symbol(&target, &symbol)
+                            } else {
+                                state.unintern_symbol(&target, &symbol)
+                            };
                             local_names.push(local_name);
                         }
                     }

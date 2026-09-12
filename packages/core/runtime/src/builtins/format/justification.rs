@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn format_justification_pieces(
+pub(crate) fn format_justification_pieces(
     clauses: &[&[char]],
     arguments: &[Value],
     colon_iteration_last: bool,

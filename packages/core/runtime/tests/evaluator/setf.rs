@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn evaluates_push_and_pop_compound_places_once() {
+    assert_eq!(
+        evaluate(
+            "(let ((cells (list (list (list 1)))) (calls 0))
+               (push 2 (car (nth (progn (setq calls (+ calls 1)) 0) cells)))
+               (list calls (pop (car (nth (progn (setq calls (+ calls 1)) 0) cells))) calls cells))",
+        )
+        .to_string(),
+        "(1 2 2 (((1))))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 2) (list 3)))) (push 1 (nth 0 xs)) xs)").to_string(),
+        "((1 2) (3))"
+    );
+}
+
+#[test]
+fn evaluates_pushnew_compound_places_once_with_options() {
+    assert_eq!(
+        evaluate(
+            "(let ((cells (list (list (list 1)))) (calls 0))
+                (pushnew 2 (car (nth (progn (setq calls (+ calls 1)) 0) cells)) :test #'eql)
+                (pushnew 2 (car (nth (progn (setq calls (+ calls 1)) 0) cells)) :test #'eql)
+                (list calls (car (nth 0 cells)) cells))",
+        )
+        .to_string(),
+        "(2 (2 1) (((2 1))))"
+    );
+}
+
+#[test]
 fn evaluates_setf_places() {
     assert_eq!(
         evaluate("(let ((xs (list 1 2 3))) (setf (car xs) 9 (nth 2 xs) 7) xs)").to_string(),
@@ -140,6 +171,10 @@ fn evaluates_setf_aliases_and_sequence_places_from_shared_cases() {
                 "(7 2 3)",
             ),
             (
+                "(let ((xs (list 1 2 3 4 5 6 7 8 9 10))) (setf (second xs) 8 (third xs) 9 (fourth xs) 10 (tenth xs) 11) xs)",
+                "(1 8 9 10 5 6 7 8 9 11)",
+            ),
+            (
                 "(let ((xs (list 1 2 3))) (setf (elt xs 1) 8) xs)",
                 "(1 8 3)",
             ),
@@ -255,8 +290,6 @@ fn rejects_malformed_define_setf_expansions_from_table_cases() {
         "(values 1 nil '(a) nil nil)",
         "(values nil 1 '(a) nil nil)",
         "(values nil nil 1 nil nil)",
-        "(values nil nil nil nil nil)",
-        "(values nil nil '(a b) nil nil)",
         "(values '(a) nil '(b) nil nil)",
         "(values nil nil '(a) nil)",
         "(values nil nil '(a) nil nil 1)",
@@ -269,6 +302,21 @@ fn rejects_malformed_define_setf_expansions_from_table_cases() {
                  (error () :error)))"
         );
         assert_eq!(evaluate(&form).to_string(), ":ERROR", "{expansion}");
+    }
+}
+
+#[test]
+fn accepts_zero_and_multiple_store_setf_expansions() {
+    for (expansion, expected) in [
+        ("(values nil nil nil nil nil)", "(NIL NIL NIL NIL NIL)"),
+        ("(values nil nil '(a b) nil nil)", "(NIL NIL (A B) NIL NIL)"),
+    ] {
+        let form = format!(
+            "(progn
+               (define-setf-expander valid-place () {expansion})
+               (multiple-value-list (get-setf-expansion '(valid-place))))"
+        );
+        assert_eq!(evaluate(&form).to_string(), expected, "{expansion}");
     }
 }
 
@@ -414,9 +462,12 @@ fn interns_and_finds_package_symbols() {
 
     assert_eq!(
         values[1].to_string(),
-        "(T :INTERNAL :INTERNAL \"FOO\" SYMBOLS)"
+        "(T :INTERNAL :INTERNAL \"FOO\" #<PACKAGE \"SYMBOLS\">)"
     );
-    assert_eq!(values[2].to_string(), "(:FOO :EXTERNAL \"FOO\" KEYWORD)");
+    assert_eq!(
+        values[2].to_string(),
+        "(:FOO :EXTERNAL \"FOO\" #<PACKAGE \"KEYWORD\">)"
+    );
     assert_eq!(values[3].to_string(), "(NIL NIL)");
 }
 
@@ -745,17 +796,27 @@ fn file_streams_round_trip_through_with_open_file() {
     let pathname = format!("{:?}", path.to_string_lossy().to_string());
     let source = format!(
         r#"(progn
-               (with-open-file (stream {pathname}
+               (with-open-file ((stream {pathname}
                                 :direction :output
-                                :if-exists :supersede)
+                                :if-exists :supersede))
                  (write-string "hello" stream))
-               (with-open-file (stream {pathname})
+               (with-open-file ((stream {pathname}))
                  (char= (read-char stream) #\h)))"#,
     );
 
     assert_eq!(evaluate(&source).to_string(), "T");
     assert_eq!(std::fs::read_to_string(&path).must_exist(), "hello");
     let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn string_streams_are_closed_through_with_open_stream() {
+    let source = r#"(let ((stream (make-string-output-stream)))
+                       (with-open-stream ((owned stream))
+                         (write-string "hello" owned))
+                       (get-output-stream-string stream))"#;
+
+    assert_eq!(evaluate(source).to_string(), r#""hello""#);
 }
 
 #[test]
@@ -774,18 +835,22 @@ fn file_stream_options_cover_probe_append_and_abort() {
     let _ = std::fs::remove_file(&missing_path);
     let source = format!(
         r#"(progn
-               (with-open-file (stream {pathname}
+               (with-open-file ((stream {pathname}
                                 :direction :output
-                                :if-exists :supersede)
+                                :if-exists :supersede))
                  (write-string "a" stream))
-               (with-open-file (stream {pathname}
+               (with-open-file ((stream {pathname}
                                 :direction :output
-                                :if-exists :append)
+                                :if-exists :append))
                  (write-string "b" stream))
                (let ((existing (open {pathname} :direction :probe))
                      (missing (open {missing_pathname} :direction :probe)))
-                 (prog1 (list (streamp existing) (null missing))
-                   (close existing)))
+                 (and (equal (list (streamp existing)
+                                   (input-stream-p existing)
+                                   (output-stream-p existing)
+                                   (null missing))
+                             '(t nil nil t))
+                      (close existing)))
                (let ((stream (open {missing_pathname}
                                    :direction :output
                                    :if-does-not-exist :create)))
@@ -827,7 +892,7 @@ fn file_io_stream_reads_writes_and_appends() {
                          (write-string "!" append-stream)
                          (close append-stream))
                        t)
-                     (with-open-file (input {pathname})
+                     (with-open-file ((input {pathname}))
                        (string= (read-line input) "aZc!"))))"#,
     );
 
@@ -886,13 +951,13 @@ fn evaluates_rational_literals_and_exact_arithmetic() {
 #[test]
 fn rejects_malformed_setf_places_from_table_cases() {
     let cases = [
-        "(setf)",
+        "(setf value)",
         "(setf (car) 1)",
         "(setf (car 1) 2)",
         "(setf (cdr nil) 1)",
-        "(setf (cdr '(1)) 2)",
+        "(setf (cdr 1) 2)",
         "(setf (car nil) 1)",
-        "(setf (first '(1)) 2)",
+        "(setf (first nil) 2)",
         "(setf (nth 0 1) 2)",
         "(setf (nth -1 (list 1)) 2)",
         "(setf (nth 4 (list 1)) 2)",
@@ -906,6 +971,7 @@ fn rejects_malformed_setf_places_from_table_cases() {
         "(setf (char 1 0) #\\X)",
         "(setf (char \"a\" 0) 1)",
         "(setf (aref #(1) 2) 3)",
+        "(setf (aref (make-array 1 :element-type 'integer) 0) 'not-an-integer)",
         "(setf (getf '(a 1 b) 'c) 2)",
         "(setf 1 2)",
         "(setf (unknown-place) 1)",
@@ -1002,7 +1068,7 @@ fn evaluates_row_major_aref_setf_on_a_vector() {
 fn evaluates_rotatef_and_shiftf_generalized_places() {
     assert_eq!(
         evaluate("(let ((a 1) (b 2) (c 3)) (list (rotatef a b c) a b c))").to_string(),
-        "(NIL 3 1 2)"
+        "(NIL 2 3 1)"
     );
     assert_eq!(
         evaluate("(let ((xs (list 1 2))) (list (shiftf (car xs) (car (cdr xs)) 9) xs))")

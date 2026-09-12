@@ -10,7 +10,7 @@ mod signaled;
 
 pub use condition::normalize_condition_name;
 pub use control::{ReturnValue, ThrowTag};
-pub use signaled::SignaledError;
+pub use signaled::{ConditionName, SignaledError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// An error produced while reading, compiling, or evaluating NCL code.
@@ -22,6 +22,13 @@ pub enum RuntimeError {
     /// A reference to an unbound variable.
     UnboundVariable {
         /// The variable name.
+        name: String,
+        /// The source span, when available.
+        span: Option<Span>,
+    },
+    /// An attempt to read an unbound CLOS slot.
+    UnboundSlot {
+        /// The slot name.
         name: String,
         /// The source span, when available.
         span: Option<Span>,

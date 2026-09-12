@@ -1,11 +1,11 @@
 //! Compiler data structures and bytecode generation for NCL forms.
 
-pub(crate) use ncl_syntax::normalize_name;
 use ncl_syntax::{
     Form, FormKind, LambdaListAuxiliaryParameter, LambdaListErrorKind, LambdaListKeywordParameter,
     LambdaListOptionalParameter, OrdinaryLambdaList, Span, SymbolTokenKind, parse_float_literal,
     parse_ordinary_lambda_list, parse_radix_integer_literal, parse_symbol_token,
 };
+pub(crate) use ncl_syntax::{normalize_name, parse_radix_integer_literal_text};
 use std::collections::HashSet;
 
 mod compiler_error;
@@ -33,7 +33,7 @@ pub use destructure_types::{
 };
 
 mod instruction;
-pub use instruction::Instruction;
+pub use instruction::{Instruction, PsetfPlace, PushnewOption, RotateShiftPlace};
 
 mod function_code;
 pub use function_code::{FunctionCode, Program};

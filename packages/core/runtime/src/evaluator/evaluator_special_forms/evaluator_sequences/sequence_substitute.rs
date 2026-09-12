@@ -3,6 +3,27 @@
 use super::*;
 
 impl Runtime {
+    pub(crate) fn apply_sequence_substitute_values(
+        &self,
+        operation: &str,
+        new_item: &Value,
+        old_or_predicate: &Value,
+        sequence: &Value,
+        options: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.apply_sequence_substitute(SequenceSubstituteContext {
+            operation,
+            new_item,
+            old_or_predicate,
+            sequence,
+            options,
+            environment,
+            span,
+        })
+    }
+
     pub(crate) fn apply_sequence_substitute(
         &self,
         context: SequenceSubstituteContext<'_>,
@@ -97,6 +118,16 @@ impl Runtime {
             parsed_options.from_end,
             items.len(),
         );
+        if operation.starts_with('N')
+            && let Value::Vector(elements) = sequence
+        {
+            for (index, replace) in replace.iter().enumerate() {
+                if *replace {
+                    elements.set(index, new_item.clone());
+                }
+            }
+            return Ok(sequence.clone());
+        }
         super::sequence_substitution::result(kind, items, &replace, new_item, span)
     }
 }

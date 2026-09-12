@@ -1,6 +1,6 @@
 use super::{
     RuntimeError, Value, arity, character_argument, character_designator, exact, index_argument,
-    integer_argument, out_of_bounds, string_designator, type_error,
+    integer_value, out_of_bounds, string_designator, type_error,
 };
 
 mod access;

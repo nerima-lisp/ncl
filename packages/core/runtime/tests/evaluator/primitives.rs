@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn evaluates_remf_with_a_generalized_place() {
+    assert_eq!(
+        evaluate(
+            "(let ((plist (list :a 1 :b 2)))
+               (list (multiple-value-list (remf plist :a)) plist))",
+        )
+        .to_string(),
+        "(((:B 2) T) (:B 2))"
+    );
+}
+
+#[test]
 fn evaluates_function_namespace_introspection() {
     assert_eq!(
         evaluate(
@@ -166,6 +178,23 @@ fn evaluates_load_file() {
 }
 
 #[test]
+fn evaluates_provide_and_require_features() {
+    assert_eq!(
+        evaluate(
+            "(progn (provide :evaluator-feature) (list (require :evaluator-feature)
+                                                   (member :evaluator-feature *features*)))"
+        )
+        .to_string(),
+        "(T (:EVALUATOR-FEATURE))"
+    );
+    assert!(
+        Runtime::new()
+            .eval_source("(require :missing-evaluator-feature)")
+            .is_err()
+    );
+}
+
+#[test]
 fn evaluates_symbol_function_and_setf() {
     assert_eq!(
         evaluate(
@@ -236,7 +265,10 @@ fn evaluates_format_directives_from_table_cases() {
             r#""-12/1010/10/FF""#,
         ),
         (r#"(format nil "~C/~~/~%end" #\!)"#, r#""!/~/\nend""#),
+        (r#"(format nil "~2%")"#, r#""\n\n""#),
         (r#"(format nil "line~&next")"#, r#""line\nnext""#),
+        (r#"(format nil "~2@*~A" 'zero 'one 'two)"#, r#""TWO""#),
+        (r#"(format nil "~@*~A" 'zero)"#, r#""ZERO""#),
     ];
 
     assert_value_cases(evaluate, &cases);
@@ -331,6 +363,23 @@ fn evaluates_format_indentation_directive() {
     ] {
         assert!(Runtime::new().eval_source(source).is_err(), "{source}");
     }
+}
+
+#[test]
+fn evaluates_format_conditional_tab_directive() {
+    assert_eq!(
+        evaluate(r#"(list (format nil "abc~5:T") (format nil "abcde~5:T"))"#).to_string(),
+        r#"("abc" "abcde")"#,
+    );
+}
+
+#[test]
+fn evaluates_standard_list_position_accessors() {
+    assert_eq!(
+        evaluate("(list (second '(a b c)) (third '(a b c)) (fourth '(a b c)) (tenth '(a b c)))")
+            .to_string(),
+        "(B C NIL NIL)"
+    );
 }
 
 #[test]
@@ -457,7 +506,7 @@ fn evaluates_type_predicates_and_structural_equality() {
                 (equalp #(1 2) #(1 3)))",
         )
         .to_string(),
-        "(T NIL T NIL T NIL T NIL T NIL T NIL T T T T T NIL T T NIL T NIL T NIL T T T NIL)"
+        "(T NIL T NIL T NIL T T T NIL T NIL T T T T T NIL T T NIL T NIL T NIL T T T NIL)"
     );
 }
 
@@ -573,9 +622,53 @@ fn evaluates_symbol_package_boundaries() {
                      (symbol-package uninterned)))"
         )
         .to_string(),
-        "(NCL-USER KEYWORD COMMON-LISP NIL)"
+        "(#<PACKAGE \"NCL-USER\"> #<PACKAGE \"KEYWORD\"> #<PACKAGE \"COMMON-LISP\"> NIL)"
     );
     assert!(Runtime::new().eval_source("(symbol-package 1)").is_err());
+}
+
+#[test]
+fn evaluates_make_package_with_options() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"created-package\"
+                                  :nicknames (list \"created-nickname\")
+                                  :use nil)))
+               (list (package-name package)
+                     (package-name (find-package :created-nickname))))"
+        )
+        .to_string(),
+        "(\"CREATED-PACKAGE\" \"CREATED-PACKAGE\")"
+    );
+}
+
+#[test]
+fn evaluates_delete_package_and_removes_nicknames_and_uses() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"deletable-package\" :nicknames (list \"deletable-nickname\"))))
+               (list (delete-package package)
+                     (find-package :deletable-package)
+                     (find-package :deletable-nickname)))"
+        )
+        .to_string(),
+        "(T NIL NIL)"
+    );
+}
+
+#[test]
+fn evaluates_rename_package_and_updates_nickname() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"rename-source\" :nicknames (list \"rename-old\"))))
+               (list (rename-package package \"rename-target\" (list \"rename-new\"))
+                     (package-name (find-package :rename-target))
+                     (package-name (find-package :rename-new))
+                     (find-package :rename-old)))"
+        )
+        .to_string(),
+        "(#<PACKAGE \"RENAME-TARGET\"> \"RENAME-TARGET\" \"RENAME-TARGET\" NIL)"
+    );
 }
 
 #[test]

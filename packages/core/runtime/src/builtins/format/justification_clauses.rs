@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_justification_clauses(body: &[char]) -> Result<Vec<&[char]>, RuntimeError> {
+pub(crate) fn format_justification_clauses(body: &[char]) -> Result<Vec<&[char]>, RuntimeError> {
     let mut clauses = Vec::new();
     let mut clause_start = 0;
     let mut stack = Vec::new();

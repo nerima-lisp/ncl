@@ -80,6 +80,34 @@ fn shadowing_replaces_an_imported_symbol_and_clears_its_import_record() {
 }
 
 #[test]
+fn package_shadowing_symbols_are_sorted_and_removed_by_unintern() {
+    let mut state = PackageState::new();
+    state
+        .define_package(
+            "shadowing-query",
+            Vec::new(),
+            Vec::new(),
+            std::collections::HashSet::new(),
+            None,
+            std::collections::HashMap::new(),
+        )
+        .unwrap_or_else(|error| panic!("define_package should succeed: {error}"));
+    state.shadow_symbol("shadowing-query", "zeta");
+    state.shadow_symbol("shadowing-query", "alpha");
+
+    assert_eq!(
+        state.package_shadowing_symbols_for("shadowing-query"),
+        ["SHADOWING-QUERY::ALPHA", "SHADOWING-QUERY::ZETA"]
+    );
+
+    assert!(state.unintern_symbol("shadowing-query", "alpha"));
+    assert_eq!(
+        state.package_shadowing_symbols_for("shadowing-query"),
+        ["SHADOWING-QUERY::ZETA"]
+    );
+}
+
+#[test]
 fn unintern_removes_from_every_symbol_table_it_could_be_in() {
     let mut state = PackageState::new();
 

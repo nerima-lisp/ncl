@@ -1,4 +1,4 @@
-use crate::builtins::{array_option_name, index_argument, integer_argument};
+use crate::builtins::{array_option_name, index_argument, integer_value};
 use crate::{RuntimeError, Value};
 
 #[derive(Debug, Copy, Clone)]
@@ -10,7 +10,7 @@ pub(super) struct ParseIntegerOptions {
 }
 
 impl ParseIntegerOptions {
-    pub(super) fn from_arguments(
+    pub(crate) fn from_arguments(
         arguments: &[Value],
         character_count: usize,
     ) -> Result<Self, RuntimeError> {
@@ -25,8 +25,8 @@ impl ParseIntegerOptions {
                 "START" => options.start = index_argument("parse-integer", &pair[1])?,
                 "END" => options.end = index_argument("parse-integer", &pair[1])?,
                 "RADIX" => {
-                    let radix = integer_argument("parse-integer", &pair[1])?;
-                    options.radix = u32::try_from(radix).map_err(|_| invalid_radix(radix))?;
+                    let radix = integer_value("parse-integer", &pair[1])?;
+                    options.radix = u32::try_from(&radix).map_err(|_| invalid_radix(&radix))?;
                 }
                 "JUNK-ALLOWED" => options.junk_allowed = pair[1].is_truthy(),
                 option => {
@@ -44,13 +44,13 @@ impl ParseIntegerOptions {
             });
         }
         if !(2..=36).contains(&options.radix) {
-            return Err(invalid_radix(i64::from(options.radix)));
+            return Err(invalid_radix(&ibig::IBig::from(options.radix)));
         }
         Ok(options)
     }
 }
 
-fn invalid_radix(radix: i64) -> RuntimeError {
+fn invalid_radix(radix: &ibig::IBig) -> RuntimeError {
     RuntimeError::InvalidForm {
         message: format!("parse-integer radix must be between 2 and 36, got {radix}"),
         span: None,

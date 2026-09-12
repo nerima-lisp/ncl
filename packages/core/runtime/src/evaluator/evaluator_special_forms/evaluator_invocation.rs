@@ -39,6 +39,7 @@ struct ClosureKeywordApplicationContext<'a> {
     allow_other_keys: bool,
     local: &'a Environment,
     span: Span,
+    special_names: &'a [(String, bool)],
 }
 
 impl Runtime {
@@ -51,21 +52,83 @@ impl Runtime {
     ) -> Result<Value, RuntimeError> {
         let function = self.resolve_function_designator(function, span, environment)?;
         match function.as_ref() {
-            crate::Function::Builtin { function, .. } => function(arguments),
+            crate::Function::Builtin { name, function } => {
+                let random_state = self
+                    .lookup_in("*random-state*", environment)
+                    .and_then(|value| value.random_state_reference());
+                let standard_input =
+                    self.lookup_in("*standard-input*", environment)
+                        .and_then(|value| match value {
+                            Value::Stream(stream) => Some(stream),
+                            _ => None,
+                        });
+                let standard_output = self.lookup_in("*standard-output*", environment).and_then(
+                    |value| match value {
+                        Value::Stream(stream) => Some(stream),
+                        _ => None,
+                    },
+                );
+                crate::builtins::with_random_state_context(random_state, || {
+                    crate::builtins::with_stream_context(standard_input, standard_output, || {
+                        match *name {
+                            "typep" => {
+                                if arguments.len() != 2 {
+                                    return Err(Self::arity("typep", "two", arguments.len()));
+                                }
+                                crate::builtins::typep_value_in(
+                                    &arguments[0],
+                                    &arguments[1],
+                                    environment,
+                                )
+                                .map(Value::boolean)
+                            }
+                            "read-from-string" => {
+                                crate::builtins::read_from_string_in(self, arguments)
+                            }
+                            "read" => crate::builtins::read_in(self, arguments),
+                            "read-preserving-whitespace" => {
+                                crate::builtins::read_preserving_whitespace_in(self, arguments)
+                            }
+                            _ => function(arguments),
+                        }
+                    })
+                })
+            }
+            crate::Function::Complement { function } => self
+                .apply_in(function, arguments, span, environment)
+                .map(|value| Value::boolean(!value.primary_value().is_truthy())),
+            crate::Function::Constantly { value } => Ok(value.clone()),
             crate::Function::Primitive { name } => {
                 self.apply_primitive(name, arguments, environment, span)
             }
-            crate::Function::Generic { name, methods } => {
-                self.apply_generic(name, methods, arguments, span, environment)
-            }
+            crate::Function::Generic {
+                name,
+                methods,
+                method_combination,
+                ..
+            } => self.apply_generic(
+                name,
+                method_combination.clone(),
+                methods,
+                arguments,
+                span,
+                environment,
+            ),
             crate::Function::SlotReader {
                 class_name,
                 slot_name,
-            } => Self::apply_slot_reader(class_name, slot_name, arguments, span),
+            } => self.apply_slot_reader(class_name, slot_name, arguments, span, environment),
             crate::Function::SlotWriter {
                 class_name,
                 slot_name,
-            } => Self::apply_slot_writer(class_name, slot_name, arguments, span),
+            } => self.apply_slot_writer(class_name, slot_name, arguments, span),
+            crate::Function::SlotSetfWriter {
+                class_name,
+                slot_name,
+            } => self.apply_slot_writer(class_name, slot_name, arguments, span),
+            crate::Function::Method { definition } => {
+                self.invoke_method(definition, arguments, None, span, environment)
+            }
             crate::Function::ConditionReader {
                 condition_name,
                 slot_name,
@@ -128,6 +191,21 @@ impl Runtime {
                 arguments,
                 span,
             }),
+            crate::Function::HashTableIterator { entries, index } => {
+                if !arguments.is_empty() {
+                    return Err(Self::arity("hash-table-iterator", "zero", arguments.len()));
+                }
+                let next = index.get();
+                let Some((key, value)) = entries.get(next) else {
+                    return Ok(Value::values(vec![Value::Nil, Value::Nil, Value::Nil]));
+                };
+                index.set(next.saturating_add(1));
+                Ok(Value::values(vec![
+                    Value::boolean(true),
+                    key.clone(),
+                    value.clone(),
+                ]))
+            }
             crate::Function::Macro { .. } | crate::Function::ModifyMacro { .. } => {
                 Err(RuntimeError::NotCallable {
                     value: Value::Function(function.clone()).to_string(),

@@ -1,5 +1,6 @@
 use ncl_syntax::{Form, FormKind};
 
+use crate::evaluator::helpers::is_nil_form;
 use crate::{Environment, Runtime, RuntimeError, Value};
 
 impl Runtime {
@@ -15,11 +16,15 @@ impl Runtime {
                 items.len().saturating_sub(1),
             ));
         }
-        let FormKind::List(variable_forms) = &items[1].kind else {
-            return Err(Self::invalid(
-                "multiple-value-bind variables must be a list",
-                items[1].span,
-            ));
+        let variable_forms: &[Form] = match &items[1].kind {
+            FormKind::List(forms) => forms,
+            _ if is_nil_form(&items[1]) => &[],
+            _ => {
+                return Err(Self::invalid(
+                    "multiple-value-bind variables must be a list",
+                    items[1].span,
+                ));
+            }
         };
         let variables = variable_forms
             .iter()

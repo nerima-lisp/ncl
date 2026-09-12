@@ -11,33 +11,41 @@ impl Runtime {
         if !matches!(name, "DOCUMENTATION" | "LIST-ALL-PACKAGES") {
             return None;
         }
-        let result = match name {
-            "DOCUMENTATION" => match arguments.len() {
-                2 => match &arguments[0] {
-                    Value::Package(package) => Ok(self
-                        .packages
-                        .borrow()
-                        .package_documentation(package)
-                        .map_or(Value::Nil, |documentation| {
-                            Value::string(documentation.as_str())
-                        })),
-                    other => Err(RuntimeError::Type {
-                        expected: "PACKAGE".to_string(),
-                        actual: other.type_name().to_string(),
-                        span: Some(span),
-                    }),
+        let result = (|| -> Result<Value, RuntimeError> {
+            match name {
+                "DOCUMENTATION" => match arguments.len() {
+                    2 => {
+                        let package = self.package_name_from_value(&arguments[0], span)?;
+                        Ok(self
+                            .packages
+                            .borrow()
+                            .package_documentation(&package)
+                            .map_or(Value::Nil, |documentation| {
+                                Value::string(documentation.as_str())
+                            }))
+                    }
+                    _ => Err(Self::arity("documentation", "two", arguments.len())),
                 },
-                _ => Err(Self::arity("documentation", "two", arguments.len())),
-            },
-            "LIST-ALL-PACKAGES" => match arguments {
-                [] => {
-                    let names = self.packages.borrow().all_package_names();
-                    Ok(Value::list(names.into_iter().map(Value::package).collect()))
-                }
-                _ => Err(Self::arity("list-all-packages", "zero", arguments.len())),
-            },
-            _ => unreachable!("package listing primitive name was prevalidated"),
-        };
+                "LIST-ALL-PACKAGES" => match arguments {
+                    [] => {
+                        let packages = self.packages.borrow();
+                        let names = packages.all_package_names();
+                        Ok(Value::list(
+                            names
+                                .into_iter()
+                                .filter_map(|name| {
+                                    packages
+                                        .package_object_for(&name)
+                                        .map(Value::package_object)
+                                })
+                                .collect(),
+                        ))
+                    }
+                    _ => Err(Self::arity("list-all-packages", "zero", arguments.len())),
+                },
+                _ => unreachable!("package listing primitive name was prevalidated"),
+            }
+        })();
         Some(result)
     }
 

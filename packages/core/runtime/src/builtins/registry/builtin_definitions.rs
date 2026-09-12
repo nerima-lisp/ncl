@@ -11,6 +11,7 @@ mod predicate_builtins;
 mod primitive_names;
 mod sequence_builtins;
 mod special_form_builtins;
+mod time_builtins;
 
 pub(super) type BuiltinDefinition = (&'static str, fn(&[Value]) -> Result<Value, RuntimeError>);
 
@@ -21,6 +22,7 @@ const TOTAL_BUILTIN_DEFINITIONS: usize = numeric_builtins::NUMERIC_BUILTINS.len(
     + char_string_builtins::CHAR_STRING_BUILTINS.len()
     + predicate_builtins::PREDICATE_BUILTINS.len()
     + special_form_builtins::SPECIAL_FORM_BUILTINS.len()
+    + time_builtins::TIME_BUILTINS.len()
     + io_builtins::IO_BUILTINS.len();
 
 // Invoked exactly once, in BUILTIN_DEFINITIONS's const initializer below, so
@@ -81,6 +83,13 @@ const fn combine_builtin_definitions() -> [BuiltinDefinition; TOTAL_BUILTIN_DEFI
         i += 1;
     }
     offset += special_form_builtins::SPECIAL_FORM_BUILTINS.len();
+
+    let mut i = 0;
+    while i < time_builtins::TIME_BUILTINS.len() {
+        result[offset + i] = time_builtins::TIME_BUILTINS[i];
+        i += 1;
+    }
+    offset += time_builtins::TIME_BUILTINS.len();
 
     let mut i = 0;
     while i < io_builtins::IO_BUILTINS.len() {

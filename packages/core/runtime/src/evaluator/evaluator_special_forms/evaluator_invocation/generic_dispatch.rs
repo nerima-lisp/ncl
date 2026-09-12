@@ -1,9 +1,14 @@
 use super::{
     Environment, MethodContinuation, MethodDefinition, RefCell, Runtime, RuntimeError, Span, Value,
 };
+use crate::value::{MethodCombination, MethodSpecializer};
 
 impl Runtime {
-    fn method_score(method: &MethodDefinition, arguments: &[Value]) -> Option<usize> {
+    fn method_score(
+        method: &MethodDefinition,
+        arguments: &[Value],
+        environment: &Environment,
+    ) -> Option<Vec<usize>> {
         let required_count = method.specializers.len();
         if arguments.len() < required_count {
             return None;
@@ -23,22 +28,47 @@ impl Runtime {
         {
             return None;
         }
-        let mut score = 0usize;
+        let mut score = Vec::with_capacity(required_count);
         for (specializer, argument) in method
             .specializers
             .iter()
             .zip(arguments.iter().take(required_count))
         {
-            if specializer == "T" || specializer == "OBJECT" {
-                score = score.saturating_add(1_000_000);
+            if let MethodSpecializer::Eql(expected) = specializer {
+                if !crate::builtins::eql_value(expected, argument) {
+                    return None;
+                }
+                score.push(0);
                 continue;
             }
-            let class = argument.instance_class_definition()?;
-            let position = class
-                .precedence
-                .iter()
-                .position(|name| name == specializer)?;
-            score = score.saturating_add(position);
+            let MethodSpecializer::Class(specializer) = specializer else {
+                unreachable!()
+            };
+            if specializer.as_ref() == "T" || specializer.as_ref() == "OBJECT" {
+                score.push(1_000_000);
+                continue;
+            }
+            if let Some(class) = argument.instance_class_definition() {
+                let position = class
+                    .precedence
+                    .iter()
+                    .position(|name| name == specializer)?;
+                score.push(position.saturating_add(1));
+            } else {
+                let type_designator = Value::symbol(specializer.clone());
+                if !crate::builtins::typep_value_in(argument, &type_designator, environment).ok()? {
+                    return None;
+                }
+                score.push(match specializer.as_ref() {
+                    "NIL" => 1,
+                    "BIT" | "FIXNUM" | "BIGNUM" | "INTEGER" => 100,
+                    "RATIO" | "RATIONAL" => 200,
+                    "FLOAT" | "SHORT-FLOAT" | "SINGLE-FLOAT" | "DOUBLE-FLOAT" | "LONG-FLOAT"
+                    | "REAL" => 300,
+                    "NUMBER" => 400,
+                    _ => 500_000,
+                });
+            }
         }
         Some(score)
     }
@@ -46,6 +76,7 @@ impl Runtime {
     pub(super) fn apply_generic(
         &self,
         name: &str,
+        method_combination: MethodCombination,
         methods: &RefCell<Vec<MethodDefinition>>,
         arguments: &[Value],
         span: Span,
@@ -55,7 +86,8 @@ impl Runtime {
             .borrow()
             .iter()
             .filter_map(|method| {
-                Self::method_score(method, arguments).map(|score| (score, method.clone()))
+                Self::method_score(method, arguments, environment)
+                    .map(|score| (score, method.clone()))
             })
             .collect::<Vec<_>>();
         if applicable.is_empty() {
@@ -64,7 +96,7 @@ impl Runtime {
                 span,
             ));
         }
-        applicable.sort_by_key(|(score, _)| *score);
+        applicable.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         let mut around = Vec::new();
         let mut before = Vec::new();
@@ -79,6 +111,56 @@ impl Runtime {
             }
         }
         after.reverse();
+        if method_combination != MethodCombination::Standard {
+            if !around.is_empty() || !before.is_empty() || !after.is_empty() {
+                return Err(Self::invalid(
+                    "auxiliary methods are not supported with this method combination",
+                    span,
+                ));
+            }
+            if method_combination == MethodCombination::Progn {
+                let mut result = Value::Nil;
+                for method in primary {
+                    result = self.invoke_method(&method, arguments, None, span, environment)?;
+                }
+                return Ok(result);
+            }
+            if matches!(
+                method_combination,
+                MethodCombination::List
+                    | MethodCombination::Append
+                    | MethodCombination::Nconc
+                    | MethodCombination::Plus
+                    | MethodCombination::Max
+                    | MethodCombination::Min
+            ) {
+                let values = primary
+                    .iter()
+                    .map(|method| self.invoke_method(method, arguments, None, span, environment))
+                    .collect::<Result<Vec<_>, _>>()?;
+                return match method_combination {
+                    MethodCombination::List => Ok(Value::list(values)),
+                    MethodCombination::Append => crate::builtins::append_lists("append", &values),
+                    MethodCombination::Nconc => crate::builtins::nconc(&values),
+                    MethodCombination::Plus => crate::builtins::add(&values),
+                    MethodCombination::Max => crate::builtins::maximum(&values),
+                    MethodCombination::Min => crate::builtins::minimum(&values),
+                    _ => unreachable!("method combination was checked above"),
+                };
+            }
+            let is_and = method_combination == MethodCombination::And;
+            for method in primary {
+                let value = self.invoke_method(&method, arguments, None, span, environment)?;
+                if (is_and && !value.is_truthy()) || (!is_and && value.is_truthy()) {
+                    return Ok(value);
+                }
+            }
+            return Ok(if is_and {
+                Value::boolean(true)
+            } else {
+                Value::Nil
+            });
+        }
         let core = MethodContinuation::Core {
             before,
             primary,

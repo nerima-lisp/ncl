@@ -7,6 +7,632 @@ use super::support::evaluate_with;
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_with_compilation_unit_body(#[case] eval_fn: EvalFn) {
+    let result = evaluate_with(eval_fn, "(with-compilation-unit () (list :done (+ 1 2)))");
+    assert_eq!(result.to_string(), "(:DONE 3)");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_basic_loop_iteration(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop
+                   (incf value)
+                   (when (= value 3) (return value))))"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_package_symbol_iteration(#[case] eval_fn: EvalFn) {
+    let result = evaluate_with(
+        eval_fn,
+        r#"(progn
+             (defpackage :symbol-iteration-test (:use) (:export :EXTERNAL))
+             (intern "INTERNAL" :symbol-iteration-test)
+             (let ((internal nil) (external nil))
+               (do-symbols (symbol :symbol-iteration-test)
+                 (when (string= (symbol-name symbol) "INTERNAL") (setf internal t)))
+               (do-external-symbols (symbol :symbol-iteration-test)
+                 (when (string= (symbol-name symbol) "EXTERNAL") (setf external t)))
+               (list internal external)))"#,
+    );
+    assert_eq!(result.to_string(), "(T T)");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_all_symbol_iteration(#[case] eval_fn: EvalFn) {
+    let result = evaluate_with(
+        eval_fn,
+        r#"(progn
+             (intern "ALL-SYMBOLS-MARK" :ncl-user)
+             (let ((found nil))
+             (do-all-symbols (symbol)
+               (when (string= (symbol-name symbol) "ALL-SYMBOLS-MARK") (setf found t)))
+             found))"#,
+    );
+    assert_eq!(result.to_string(), "T");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_named_loop_and_loop_finish(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(loop named done
+                 repeat 5
+                 do (when (= 3 3) (return-from done :finished)))"
+        )
+        .to_string(),
+        ":FINISHED"
+    );
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop repeat 5
+                       do (incf value)
+                          (when (= value 3) (loop-finish)))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_do_body(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop do
+                   (incf value)
+                   (when (= value 3) (return value))))"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_initially_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop initially (incf value)
+                       repeat 2 do (incf value))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_return_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop repeat 5 do (incf value) return value))"
+        )
+        .to_string(),
+        "1"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_hash_table_iteration(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(let ((table (make-hash-table)))
+                 (setf (gethash :first table) 1
+                       (gethash :second table) 2)
+                 (loop for key being the hash-keys of table collect key))"#
+        )
+        .to_string(),
+        "(:FIRST :SECOND)"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(let ((table (make-hash-table)))
+                 (setf (gethash :first table) 1
+                       (gethash :second table) 2)
+                 (loop for value being the hash-values of table sum value))"#
+        )
+        .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(let ((table (make-hash-table)))
+                 (setf (gethash :first table) 1
+                       (gethash :second table) 2)
+                 (loop for key being the hash-keys of table
+                       using (hash-value value)
+                       sum value))"#
+        )
+        .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            r#"(let ((table (make-hash-table)))
+                 (setf (gethash :first table) 1
+                       (gethash :second table) 2)
+                 (loop for value being the hash-values of table
+                       using (hash-key key)
+                       collect key))"#
+        )
+        .to_string(),
+        "(:FIRST :SECOND)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_condition_clauses(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop while (< value 3) do (incf value))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop until (= value 3) (incf value))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate("(loop for value in (list 1 2 3) thereis (= value 2))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(loop for value in (list 1 2 3) always (< value 4))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(loop for value in (list 1 2 3) never (= value 4))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(loop for value in (list 1 2 3) when (evenp value) collect value)").to_string(),
+        "(2)"
+    );
+    assert_eq!(
+        evaluate("(loop for value in (list 1 2 3) unless (evenp value) collect value)").to_string(),
+        "(1 3)"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) thereis (= value 2))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) always (< value 4))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) never (= value 4))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) when (evenp value) collect value)").to_string(),
+        "(2)"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) unless (evenp value) collect value)").to_string(),
+        "(1 3)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_across_collection_and_aggregation(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) collect (* value 2))").to_string(),
+        "(2 4 6)"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #(1 2 3) sum value)").to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate("(loop for value across #((1) (2) (3)) append value)").to_string(),
+        "(1 2 3)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_repeat_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop repeat (+ 1 2) do (incf value))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop repeat 3 do (incf value) finally (+ value 10)))"
+        )
+        .to_string(),
+        "13"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_finally_after_for_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((total 0))
+                 (loop for value in (list 1 2 3)
+                       do (incf total value)
+                       finally total))"
+        )
+        .to_string(),
+        "6"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_with_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r"(loop with value = 2 and other = 3 do (+ value other))").to_string(),
+        "5"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_collect_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop repeat 3 collect (incf value)))"
+        )
+        .to_string(),
+        "(1 2 3)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_nconc_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2 3) nconc (list value (* value 10)))").to_string(),
+        "(1 10 2 20 3 30)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2) nconc (list value) into result)").to_string(),
+        "(1 2)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_for_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 collect value)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 when (evenp value) collect value)").to_string(),
+        "(2)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 unless (evenp value) collect value)").to_string(),
+        "(1 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 collect value when (evenp value))").to_string(),
+        "(2)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 collect value unless (evenp value))").to_string(),
+        "(1 3)"
+    );
+    assert_eq!(
+        evaluate(
+            r"(let ((total 0))
+                 (loop for value from 1 to 3 do (incf total value))
+                 total)"
+        )
+        .to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2 3) sum value)").to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 3 1 2) maximize value into result)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 3 1 2) minimize value)").to_string(),
+        "1"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2 3) count (evenp value))").to_string(),
+        "1"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2 3) count (evenp value) into total)").to_string(),
+        "1"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_for_then_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) repeat 3 collect value)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(
+            r"(loop for value = 1 then (+ value 1) repeat 3 when (evenp value) collect value)"
+        )
+        .to_string(),
+        "(2)",
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) while (< value 4) collect value)")
+            .to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) until (> value 3) collect value)")
+            .to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) repeat 3 thereis (= value 2))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) while (< value 4) always (< value 4))")
+            .to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) until (> value 3) never (= value 4))")
+            .to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) repeat 3 sum value)").to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) while (< value 4) count value)")
+            .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) repeat 3 maximize value)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = 1 then (+ value 1) repeat 3 minimize value)").to_string(),
+        "1"
+    );
+    assert_eq!(
+        evaluate(
+            r"(loop for value = (list 1) then (list (+ (car value) 1)) repeat 3 append value)"
+        )
+        .to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value = (list 1) then (list (+ (car value) 1)) repeat 3 nconc value into result)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for tail on (list 1 2 3) collect (car tail))").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(
+            r"(loop for tail on (list 1 2 3 4) by (lambda (value) (cdr (cdr value))) collect (car tail))"
+        )
+        .to_string(),
+        "(1 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value across #(1 2 3) collect value)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value across #(1 3 2) sum value)").to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value across #(1 3 2) maximize value into result)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value across #(1 2 3) count (evenp value))").to_string(),
+        "1"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list (list 1 2) (list 3)) append value)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value in (list (list 1 2) (list 3)) append value into result)")
+            .to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value across #((1 2) (3)) append value into result)").to_string(),
+        "(1 2 3)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_for_in_clause(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r"(loop for value in (list 1 2 3) collect value)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(
+            r"(let ((total 0))
+                 (loop for value in (list 1 2 3) do (incf total value))
+                 total)"
+        )
+        .to_string(),
+        "6"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn expands_loop_for_numeric_limit_clauses(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(r"(loop for value from 1 below 4 collect value)").to_string(),
+        "(1 2 3)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 3 downto 1 collect value)").to_string(),
+        "(3 2 1)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 3 above 1 collect value)").to_string(),
+        "(3 2)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 6 by 2 collect value)").to_string(),
+        "(1 3 5)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 6 downto 1 by 2 collect value)").to_string(),
+        "(6 4 2)"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 sum value)").to_string(),
+        "6"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 sum (* value 2) into total)").to_string(),
+        "12"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 count (evenp value))").to_string(),
+        "1"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 thereis (= value 2))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 always (< value 4))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 never (= value 4))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 maximize value)").to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(r"(loop for value from 1 to 3 minimize value into total)").to_string(),
+        "1"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn supports_named_loop_and_loop_finish(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop named done
+                   (incf value)
+                   (when (= value 3) (return-from done value))))"
+        )
+        .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            r"(let ((value 0))
+                 (loop
+                   (incf value)
+                   (when (= value 3) (loop-finish)))
+                 value)"
+        )
+        .to_string(),
+        "3"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn captures_an_active_tagbody_target_in_a_closure(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     let source = r"
@@ -211,5 +837,30 @@ fn tagbody_returns_nil_and_does_not_evaluate_labels(#[case] eval_fn: EvalFn) {
     assert_eq!(
         evaluate("(list (tagbody start done) 42)").to_string(),
         "(NIL 42)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn multiple_value_binding_and_prog1_preserve_all_values(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(multiple-value-bind (first second)
+                 (values 20 22)
+               (list first second))",
+        )
+        .to_string(),
+        "(20 22)"
+    );
+    assert_eq!(
+        evaluate(
+            "(nth-value 1 (multiple-value-prog1
+                 (values 1 2)
+               (values 3 4)))",
+        )
+        .to_string(),
+        "2"
     );
 }

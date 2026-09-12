@@ -1,6 +1,19 @@
 use crate::RuntimeError;
 use crate::builtins::*;
 
+mod writing;
+
+#[test]
+fn byte_builtins_reject_character_streams_without_falling_back_to_text_io()
+-> Result<(), RuntimeError> {
+    let input = make_string_input_stream(&[Value::string("a")])?;
+    assert!(read_byte(std::slice::from_ref(&input)).is_err());
+
+    let output = make_string_output_stream(&[])?;
+    assert!(write_byte(&[Value::Integer(65), output]).is_err());
+    Ok(())
+}
+
 #[test]
 fn character_stream_builtins_cover_peek_unread_and_output_boundaries() -> Result<(), RuntimeError> {
     let input = make_string_input_stream(&[Value::string("  ab")])?;
@@ -77,6 +90,38 @@ fn character_stream_builtins_cover_eof_states_and_stream_types() -> Result<(), R
 }
 
 #[test]
+fn writing_builtins_support_string_ranges_and_keyword_only_streams() -> Result<(), RuntimeError> {
+    let output = make_string_output_stream(&[])?;
+    assert!(matches!(
+        write_string(&[
+            Value::string("a😀bc"),
+            output.clone(),
+            Value::keyword("start"),
+            Value::Integer(1),
+            Value::keyword("end"),
+            Value::Integer(3),
+        ])?,
+        Value::String(_)
+    ));
+    assert!(matches!(
+        write_line(&[
+            Value::string("abcdef"),
+            output.clone(),
+            Value::keyword("start"),
+            Value::Integer(2),
+            Value::keyword("end"),
+            Value::Integer(4),
+        ])?,
+        Value::String(_)
+    ));
+    assert!(matches!(
+        get_output_stream_string(&[output])?,
+        Value::String(text) if text.as_ref() == "😀bcd\n"
+    ));
+    Ok(())
+}
+
+#[test]
 fn reading_builtins_reject_bad_arity_and_stream_arguments() -> Result<(), RuntimeError> {
     let five_nils = [Value::Nil, Value::Nil, Value::Nil, Value::Nil, Value::Nil];
     assert!(
@@ -146,27 +191,53 @@ fn reading_builtins_reject_bad_arity_and_stream_arguments() -> Result<(), Runtim
 }
 
 #[test]
-fn writing_builtins_reject_bad_arity_and_argument_types() -> Result<(), RuntimeError> {
-    assert!(write_char(&[Value::Character('a'), Value::Nil, Value::Nil]).is_err());
-    assert!(write_string(&[Value::string("a"), Value::Nil, Value::Nil]).is_err());
-    assert!(terpri(&[Value::Nil, Value::Nil]).is_err());
-    assert!(fresh_line(&[Value::Nil, Value::Nil]).is_err());
-    assert!(write_line(&[Value::string("a"), Value::Nil, Value::Nil]).is_err());
+fn nonblocking_input_operations_consume_modeled_character_streams() -> Result<(), RuntimeError> {
+    let stream = make_string_input_stream(&[Value::string("ab")])?;
+    assert!(matches!(
+        listen(std::slice::from_ref(&stream))?,
+        Value::Boolean(true)
+    ));
+    assert!(matches!(
+        read_char_no_hang(std::slice::from_ref(&stream))?,
+        Value::Character('a')
+    ));
+    assert!(matches!(
+        clear_input(std::slice::from_ref(&stream))?,
+        Value::Nil
+    ));
+    assert!(matches!(listen(std::slice::from_ref(&stream))?, Value::Nil));
+    assert!(matches!(read_char_no_hang(&[stream])?, Value::Nil));
+    Ok(())
+}
 
-    assert!(write_char(&[Value::Integer(1)]).is_err());
-    assert!(write_string(&[Value::Integer(1)]).is_err());
-    assert!(write_line(&[Value::Integer(1)]).is_err());
+#[test]
+fn character_input_operations_reject_byte_streams() -> Result<(), RuntimeError> {
+    let stream = Value::binary_input_stream(vec![65]);
+    let sequence = Value::vector(vec![Value::Nil]);
 
-    let input = make_string_input_stream(&[Value::string("z")])?;
-    assert!(
-        write_char(&[Value::Character('z'), input.clone()]).is_err(),
-        "write-char rejects an input-only stream destination"
-    );
-    assert!(
-        write_string(&[Value::string("z"), input]).is_err(),
-        "write-string rejects an input-only stream destination"
-    );
+    assert!(peek_char(std::slice::from_ref(&stream)).is_err());
+    assert!(unread_char(&[Value::Character('a'), stream.clone()]).is_err());
+    assert!(listen(std::slice::from_ref(&stream)).is_err());
+    assert!(read_char_no_hang(std::slice::from_ref(&stream)).is_err());
+    assert!(clear_input(std::slice::from_ref(&stream)).is_err());
+    assert!(read_line(std::slice::from_ref(&stream)).is_err());
+    assert!(matches!(
+        read_sequence(&[sequence.clone(), stream])?,
+        Value::Integer(1)
+    ));
+    assert!(matches!(
+        sequence.vector_items().unwrap()[0],
+        Value::Integer(65)
+    ));
+    Ok(())
+}
 
-    assert!(matches!(fresh_line(&[])?, Value::Boolean(true)));
+#[test]
+fn character_output_operations_reject_byte_streams() -> Result<(), RuntimeError> {
+    let path = std::env::temp_dir().join("ncl-byte-character-api-test");
+    let stream = Value::binary_output_stream(path, Vec::new(), 0);
+
+    assert!(fresh_line(std::slice::from_ref(&stream)).is_err());
+    assert!(get_output_stream_string(&[stream]).is_err());
     Ok(())
 }

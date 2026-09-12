@@ -88,6 +88,16 @@ mod tests {
     }
 
     #[test]
+    fn compiled_macrolet_expands_before_bytecode_execution() {
+        let values = Runtime::new()
+            .eval_compiled_source("(macrolet ((twice (value) (+ value value))) (twice 21))")
+            .unwrap_or_else(|error| panic!("a compiled MACROLET evaluates: {error}"));
+
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].to_string(), "42");
+    }
+
+    #[test]
     fn symbol_macrolet_passes_a_non_list_form_through_unchanged() {
         let runtime = Runtime::new();
         let environment = Environment::new();
@@ -157,5 +167,25 @@ mod tests {
             .prepare_compiled_symbol_macrolet(&form, &environment)
             .unwrap_or_else(|error| panic!("an escaped symbol macro name compiles: {error}"));
         assert_eq!(result.to_string(), "(PROGN 42)");
+    }
+
+    #[test]
+    fn compiled_symbol_macrolet_expands_before_bytecode_execution() {
+        let values = Runtime::new()
+            .eval_compiled_source("(symbol-macrolet ((answer (+ 40 2))) answer)")
+            .unwrap_or_else(|error| panic!("a compiled SYMBOL-MACROLET evaluates: {error}"));
+
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].to_string(), "42");
+    }
+
+    #[test]
+    fn compiled_setf_nth_mutates_a_list_place() {
+        let values = Runtime::new()
+            .eval_compiled_source("(let ((items (list 1 2))) (setf (nth 1 items) 42) items)")
+            .unwrap_or_else(|error| panic!("a compiled SETF NTH evaluates: {error}"));
+
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].to_string(), "(1 42)");
     }
 }

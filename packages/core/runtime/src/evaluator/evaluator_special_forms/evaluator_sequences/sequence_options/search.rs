@@ -22,6 +22,7 @@ pub fn parse_sequence_search_options(
     for pair in options.as_chunks::<2>().0 {
         let keyword_name = match &pair[0] {
             Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
+            Value::InternedSymbol(symbol) if symbol.keyword() => normalize_name(symbol.name()),
             _ => {
                 return Err(Runtime::invalid(
                     "sequence search keyword argument name must be a keyword",
@@ -73,21 +74,35 @@ pub fn parse_sequence_index(
     value: &Value,
     span: Span,
 ) -> Result<usize, RuntimeError> {
-    let Value::Integer(index) = value else {
-        return Err(RuntimeError::Type {
-            expected: "INTEGER".to_string(),
-            actual: value.type_name().to_string(),
-            span: Some(span),
-        });
+    parse_sequence_index_with_context("reduce", option, value, span)
+}
+
+pub fn parse_sequence_index_with_context(
+    context: &str,
+    option: &str,
+    value: &Value,
+    span: Span,
+) -> Result<usize, RuntimeError> {
+    let index: Result<usize, ()> = match value {
+        Value::Integer(index) => {
+            if *index < 0 {
+                return Err(Runtime::invalid(
+                    &format!("{context} {option} must be non-negative"),
+                    span,
+                ));
+            }
+            usize::try_from(*index).map_err(|_| ())
+        }
+        Value::BigInteger(index) => usize::try_from(index.as_ref()).map_err(|_| ()),
+        _ => {
+            return Err(RuntimeError::Type {
+                expected: "INTEGER".to_string(),
+                actual: value.type_name().to_string(),
+                span: Some(span),
+            });
+        }
     };
-    if *index < 0 {
-        return Err(Runtime::invalid(
-            &format!("reduce {option} must be non-negative"),
-            span,
-        ));
-    }
-    usize::try_from(*index)
-        .map_err(|_| Runtime::invalid(&format!("reduce {option} is out of range"), span))
+    index.map_err(|_| Runtime::invalid(&format!("{context} {option} is out of range"), span))
 }
 
 #[cfg(test)]
@@ -132,5 +147,14 @@ mod tests {
         );
         assert!(parse_sequence_index(":start", &Value::Integer(-1), SPAN).is_err());
         assert!(parse_sequence_index(":start", &Value::Nil, SPAN).is_err());
+    }
+
+    #[test]
+    fn parse_sequence_index_accepts_bignums_that_fit_usize() {
+        let index = Value::big_integer(ibig::IBig::from(1) << 40);
+        assert_eq!(
+            parse_sequence_index(":start", &index, SPAN),
+            Ok(1_usize << 40)
+        );
     }
 }

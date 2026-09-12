@@ -10,16 +10,18 @@ pub fn type_designator_name(function: &str, value: &Value) -> Result<String, Run
         | Value::Keyword(name)
         | Value::SymbolExact(name)
         | Value::KeywordExact(name) => name.as_ref(),
+        Value::InternedSymbol(symbol) => symbol.name(),
         value => return Err(type_error(function, "type designator", value)),
     };
     let type_name = type_name.rsplit("::").next().unwrap_or(type_name);
     Ok(package::normalize_symbol_name(type_name))
 }
 
-pub(super) fn known_type_name(type_name: &str, environment: &Environment) -> bool {
+pub(crate) fn known_type_name(type_name: &str, environment: &Environment) -> bool {
     is_builtin_type_name(type_name)
         || environment.lookup_class(type_name).is_some()
         || environment.lookup_structure(type_name).is_some()
+        || environment.lookup_condition(type_name).is_some()
 }
 
 fn is_builtin_type_name(type_name: &str) -> bool {
@@ -31,6 +33,7 @@ fn is_builtin_type_name(type_name: &str) -> bool {
             | "BOOLEAN"
             | "NUMBER"
             | "REAL"
+            | "COMPLEX"
             | "RATIONAL"
             | "RATIO"
             | "INTEGER"
@@ -38,6 +41,10 @@ fn is_builtin_type_name(type_name: &str) -> bool {
             | "BIGNUM"
             | "BIT"
             | "FLOAT"
+            | "SHORT-FLOAT"
+            | "SINGLE-FLOAT"
+            | "DOUBLE-FLOAT"
+            | "LONG-FLOAT"
             | "CHARACTER"
             | "BASE-CHAR"
             | "STANDARD-CHAR"
@@ -71,5 +78,28 @@ fn is_builtin_type_name(type_name: &str) -> bool {
             | "VALUES"
             | "CLASS"
             | "STANDARD-OBJECT"
+            | "ERROR"
+            | "SERIOUS-CONDITION"
+            | "WARNING"
+            | "SIMPLE-CONDITION"
+            | "SIMPLE-ERROR"
+            | "SIMPLE-WARNING"
+            | "ARITHMETIC-ERROR"
+            | "DIVISION-BY-ZERO"
+            | "TYPE-ERROR"
+            | "PROGRAM-ERROR"
+            | "PACKAGE-ERROR"
+            | "READER-ERROR"
+            | "COMPILER-ERROR"
+            | "FILE-ERROR"
+            | "UNBOUND-VARIABLE"
+            | "UNDEFINED-FUNCTION"
+            | "UNBOUND-SLOT"
+            | "CELL-ERROR"
+            | "STREAM-ERROR"
+            | "END-OF-FILE"
+            | "STORAGE-CONDITION"
+            | "PARSE-ERROR"
+            | "CONTROL-ERROR"
     )
 }

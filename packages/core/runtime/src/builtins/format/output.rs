@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_grouped_digits(digits: &str, separator: char, interval: usize) -> String {
+pub(crate) fn format_grouped_digits(digits: &str, separator: char, interval: usize) -> String {
     if digits.is_empty() || interval == 0 {
         return digits.to_string();
     }
@@ -16,7 +16,7 @@ pub(super) fn format_grouped_digits(digits: &str, separator: char, interval: usi
     grouped
 }
 
-pub(super) fn format_character_directive(
+pub(crate) fn format_character_directive(
     character: char,
     colon_modifier: bool,
     at_sign_modifier: bool,
@@ -47,8 +47,8 @@ pub(super) fn format_character_directive(
     }
 }
 
-pub(super) fn format_radix_directive(
-    value: i64,
+pub(crate) fn format_radix_directive(
+    value: &ibig::IBig,
     parameters: &[FormatParameter],
     colon_modifier: bool,
     at_sign_modifier: bool,
@@ -82,51 +82,65 @@ pub(super) fn format_radix_directive(
         return format_integer_directive(value, radix, &parameters[1..], false, at_sign_modifier);
     }
     if at_sign_modifier {
-        Ok(format_roman_number(value, colon_modifier))
+        format_roman_number(value, colon_modifier)
     } else {
-        Ok(format_english_number(value, colon_modifier))
+        Ok(format_english_number_value(value, colon_modifier))
     }
 }
 
-pub(super) fn format_roman_number(value: i64, old_style: bool) -> String {
-    if value == 0 {
-        return "N".to_string();
+pub(crate) fn format_roman_number(
+    value: &ibig::IBig,
+    old_style: bool,
+) -> Result<String, RuntimeError> {
+    let maximum = if old_style { 4999 } else { 3999 };
+    if value < &ibig::IBig::from(1) || value > &ibig::IBig::from(maximum) {
+        let style = if old_style { "old-style " } else { "" };
+        return Err(RuntimeError::InvalidForm {
+            message: format!("format {style}Roman numeral value must be between 1 and {maximum}"),
+            span: None,
+        });
     }
-    let negative = value < 0;
-    let magnitude = value.unsigned_abs();
-    if !old_style && magnitude > 3999 {
-        return format_integer_radix(value, 10);
-    }
-    let numerals = [
-        (1000_u64, "M"),
-        (900, "CM"),
-        (500, "D"),
-        (400, "CD"),
-        (100, "C"),
-        (90, "XC"),
-        (50, "L"),
-        (40, "XL"),
-        (10, "X"),
-        (9, "IX"),
-        (5, "V"),
-        (4, "IV"),
-        (1, "I"),
-    ];
-    let mut remainder = magnitude;
+
+    let numerals: &[(u32, &str)] = if old_style {
+        &[
+            (1000_u32, "M"),
+            (500, "D"),
+            (100, "C"),
+            (50, "L"),
+            (10, "X"),
+            (5, "V"),
+            (1, "I"),
+        ]
+    } else {
+        &[
+            (1000_u32, "M"),
+            (900, "CM"),
+            (500, "D"),
+            (400, "CD"),
+            (100, "C"),
+            (90, "XC"),
+            (50, "L"),
+            (40, "XL"),
+            (10, "X"),
+            (9, "IX"),
+            (5, "V"),
+            (4, "IV"),
+            (1, "I"),
+        ]
+    };
+    let mut remainder = value.clone();
     let mut result = String::new();
-    if negative {
-        result.push('-');
-    }
     for (unit, numeral) in numerals {
+        let unit = ibig::IBig::from(*unit);
         while remainder >= unit {
             result.push_str(numeral);
-            remainder -= unit;
+            remainder -= &unit;
         }
     }
-    result
+    Ok(result)
 }
 
-pub(super) fn format_argument<'a>(
+pub(crate) fn format_argument<'a>(
     directive: &str,
     arguments: &'a [Value],
     argument_index: &mut usize,

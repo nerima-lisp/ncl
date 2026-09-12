@@ -1,6 +1,8 @@
 //! Dispatch-macro (`#...`) parsing: booleans, characters, uninterned symbols, radix integers.
 
-use crate::{Form, ReadError, ReadErrorKind, Reader, Span, SymbolTokenKind, parse_symbol_token};
+use crate::{
+    Form, FormKind, ReadError, ReadErrorKind, Reader, Span, SymbolTokenKind, parse_symbol_token,
+};
 
 impl Reader<'_> {
     pub(super) fn parse_dispatch(&mut self) -> Result<Option<Form>, ReadError> {
@@ -34,6 +36,7 @@ impl Reader<'_> {
             }
             '\\' => self.parse_character(start).map(Some),
             ':' => self.parse_uninterned_symbol(start).map(Some),
+            'c' | 'C' => self.parse_complex(start).map(Some),
             't' | 'T' => {
                 self.position += 1;
                 self.ensure_dispatch_boundary(start)?;
@@ -84,6 +87,36 @@ impl Reader<'_> {
         Ok(Form::atom(
             &self.source[start..self.position],
             Span::new(start, self.position),
+        ))
+    }
+
+    fn parse_complex(&mut self, start: usize) -> Result<Form, ReadError> {
+        self.position += 1;
+        if self.peek_char() != Some('(') {
+            let end = self.peek_char().map_or(self.position, |character| {
+                self.position + character.len_utf8()
+            });
+            return Err(Self::error(
+                ReadErrorKind::InvalidDispatch,
+                Span::new(start, end),
+            ));
+        }
+
+        let sequence = self.parse_sequence(false, start)?;
+        let Form { kind, span, .. } = sequence;
+        let FormKind::List(mut items) = kind else {
+            return Err(Self::error(ReadErrorKind::InvalidDispatch, span));
+        };
+        if items.len() != 2 {
+            return Err(Self::error(ReadErrorKind::InvalidDispatch, span));
+        }
+
+        Ok(Form::new(
+            FormKind::Complex {
+                real: Box::new(items.remove(0)),
+                imaginary: Box::new(items.remove(0)),
+            },
+            span,
         ))
     }
 

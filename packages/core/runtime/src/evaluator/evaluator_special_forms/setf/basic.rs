@@ -6,16 +6,28 @@ impl Runtime {
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        if items.len() < 3 || items.len().is_multiple_of(2) {
+        if items.len().is_multiple_of(2) {
             return Err(Self::invalid("setf needs place/value pairs", items[0].span));
         }
-        let mut result = Value::Nil;
-        for pair in items[1..].as_chunks::<2>().0 {
-            let value = self.eval_in(&pair[1], environment)?;
-            self.set_place(&pair[0], value.clone(), environment)?;
-            result = value;
+        self.execute_sequential_assignment(items, environment, |index| {
+            self.eval_values_in(&items[2 + index * 2], environment)
+        })
+    }
+
+    pub(crate) fn special_setf_intrinsic_store(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() != 3 {
+            return Err(Self::invalid(
+                "intrinsic SETF store needs a place and value",
+                items[0].span,
+            ));
         }
-        Ok(result)
+        let value = self.eval_in(&items[2], environment)?.primary_value();
+        self.set_place(&items[1], value.clone(), environment)?;
+        Ok(value)
     }
 
     pub(crate) fn special_psetf(
@@ -23,24 +35,13 @@ impl Runtime {
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        if items.len() < 3 || items.len().is_multiple_of(2) {
+        if items.len().is_multiple_of(2) {
             return Err(Self::invalid(
                 "psetf needs place/value pairs",
                 items[0].span,
             ));
         }
 
-        let mut assignments = Vec::with_capacity((items.len() - 1) / 2);
-        for pair in items[1..].as_chunks::<2>().0 {
-            let value = self.eval_in(&pair[1], environment)?;
-            assignments.push((pair[0].clone(), value));
-        }
-
-        let mut result = Value::Nil;
-        for (place, value) in assignments {
-            self.set_place(&place, value.clone(), environment)?;
-            result = value;
-        }
-        Ok(result)
+        self.execute_parallel_assignment(items, environment)
     }
 }

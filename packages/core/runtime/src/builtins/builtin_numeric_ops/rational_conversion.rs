@@ -1,4 +1,6 @@
-use super::{Number, RuntimeError, Value, arity, exact, number_argument, type_error};
+use super::{
+    Number, RuntimeError, Value, arity, exact, number_argument, number_to_value, type_error,
+};
 
 pub fn float_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() || arguments.len() > 2 {
@@ -19,9 +21,10 @@ pub fn rational(arguments: &[Value]) -> Result<Value, RuntimeError> {
         Number::Integer(value) => Ok(Value::Integer(value)),
         Number::Big(value) => Ok(Value::big_integer(value)),
         Number::Rational(value) => Value::rational(
-            i128::from(value.numerator()),
-            i128::from(value.denominator()),
+            value.numerator_i128().unwrap_or(0),
+            value.denominator_i128().unwrap_or(1),
         ),
+        Number::BigRational(value) => number_to_value(Number::BigRational(value)),
         Number::Float(value) => rational_from_float(value),
     }
 }

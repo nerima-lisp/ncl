@@ -31,7 +31,7 @@ use exponential::*;
 mod entry;
 mod float_helpers;
 pub use entry::format_control;
-pub(super) use entry::format_value;
+pub(crate) use entry::format_value;
 
 mod boundaries;
 #[allow(clippy::wildcard_imports)]

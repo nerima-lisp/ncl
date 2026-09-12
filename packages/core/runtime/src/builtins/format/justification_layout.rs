@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_justification_directive(
+pub(crate) fn format_justification_directive(
     state: &mut FormatControlState<'_>,
     parameters: &[FormatParameter],
     colon_modifier: bool,
@@ -30,7 +30,7 @@ pub(super) fn format_justification_directive(
     Ok(())
 }
 
-pub(super) fn format_justification(
+pub(crate) fn format_justification(
     clauses: &[&[char]],
     arguments: &[Value],
     parameters: &[FormatParameter],

@@ -21,6 +21,8 @@ mod macro_lambda_lists;
 mod objects;
 #[path = "evaluator/primitives.rs"]
 mod primitives;
+#[path = "evaluator/random.rs"]
+mod random;
 #[path = "evaluator/sequence_validation.rs"]
 mod sequence_validation;
 #[path = "evaluator/sequences.rs"]

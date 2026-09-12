@@ -2,6 +2,31 @@
 use crate::*;
 
 impl CompileState {
+    pub(crate) fn compile_nth_value(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        Self::require_arity(items, "NTH-VALUE", "two", 2, span)?;
+        let [_, index, producer] = items else {
+            return Err(Self::internal_error(
+                span,
+                "missing NTH-VALUE operands after arity check",
+            ));
+        };
+        self.compile_expression(function, index)?;
+        self.emit(function, Instruction::Primary, index.span)?;
+        self.emit(
+            function,
+            Instruction::CheckNthValueIndex(index.span),
+            index.span,
+        )?;
+        self.compile_expression(function, producer)?;
+        self.emit(function, Instruction::NthValue, index.span)?;
+        Ok(())
+    }
+
     pub(crate) fn compile_values(
         &mut self,
         function: FunctionId,
@@ -42,6 +67,47 @@ impl CompileState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nth_value_compiles_validation_before_the_producer_without_eval() {
+        let mut state = CompileState::default();
+        let function = state.reserve_function(None, Vec::new());
+        let span = Span::new(0, 1);
+        let form = Form::list(
+            vec![
+                Form::atom("NTH-VALUE", span),
+                Form::atom("0", span),
+                Form::list(vec![Form::atom("VALUES", span)], span),
+            ],
+            span,
+        );
+        state
+            .compile_expression(function, &form)
+            .unwrap_or_else(|error| panic!("NTH-VALUE should compile: {error}"));
+        assert_eq!(
+            state.functions[function].instructions,
+            vec![
+                Instruction::Constant(Constant::Integer(0)),
+                Instruction::Primary,
+                Instruction::CheckNthValueIndex(span),
+                Instruction::Values(0),
+                Instruction::NthValue,
+            ]
+        );
+    }
+
+    #[test]
+    fn nth_value_rejects_wrong_arity_without_emitting_code() {
+        for count in [0, 1, 3] {
+            let mut state = CompileState::default();
+            let function = state.reserve_function(None, Vec::new());
+            let span = Span::new(0, 1);
+            let mut items = vec![Form::atom("NTH-VALUE", span)];
+            items.extend((0..count).map(|_| Form::atom("0", span)));
+            assert!(state.compile_nth_value(function, span, &items).is_err());
+            assert!(state.functions[function].instructions.is_empty());
+        }
+    }
 
     #[test]
     fn compile_values_propagates_an_argument_error() {

@@ -1,10 +1,11 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::BigRational;
 
 mod conversions;
 pub(super) use conversions::{
-    exceeds_exact_bignum_digit_cap, integer_argument, number, number_argument, number_from_big,
-    number_to_value, rational_number,
+    big_rational_number, exceeds_exact_bignum_digit_cap, integer_argument, integer_value, number,
+    number_argument, number_from_big, number_to_value, rational_number,
 };
 
 mod arithmetic;
@@ -24,6 +25,7 @@ pub(super) enum Number {
     /// would otherwise report `1` for a bignum-typed zero.
     Big(ibig::IBig),
     Rational(Rational),
+    BigRational(BigRational),
     Float(f64),
 }
 
@@ -32,11 +34,26 @@ impl Number {
         clippy::cast_precision_loss,
         reason = "Common Lisp coercion to single precision semantics uses f64"
     )]
-    pub(super) fn as_float(&self) -> f64 {
+    pub(crate) fn as_float(&self) -> f64 {
         match self {
             Self::Integer(value) => *value as f64,
             Self::Big(value) => value.to_string().parse().unwrap_or(f64::INFINITY),
-            Self::Rational(value) => value.numerator() as f64 / value.denominator() as f64,
+            Self::Rational(value) => value.numerator_f64() / value.denominator_f64(),
+            Self::BigRational(value) => {
+                let numerator = value.numerator().to_string().parse::<f64>().unwrap_or(
+                    if value.numerator() < &ibig::IBig::from(0) {
+                        f64::NEG_INFINITY
+                    } else {
+                        f64::INFINITY
+                    },
+                );
+                let denominator = value
+                    .denominator()
+                    .to_string()
+                    .parse::<f64>()
+                    .unwrap_or(f64::INFINITY);
+                numerator / denominator
+            }
             Self::Float(value) => *value,
         }
     }
@@ -45,11 +62,26 @@ impl Number {
         matches!(self, Self::Float(_))
     }
 
-    pub(super) const fn exact_parts(&self) -> Option<(i64, i64)> {
+    pub(super) fn exact_parts(&self) -> Option<(i64, i64)> {
         match self {
             Self::Integer(value) => Some((*value, 1)),
-            Self::Rational(value) => Some((value.numerator(), value.denominator())),
-            Self::Big(_) | Self::Float(_) => None,
+            Self::Rational(value) => Some((
+                value.numerator_i128()?.try_into().ok()?,
+                value.denominator_i128()?.try_into().ok()?,
+            )),
+            Self::Big(_) | Self::BigRational(_) | Self::Float(_) => None,
+        }
+    }
+
+    pub(crate) fn exact_big_parts(&self) -> Option<(ibig::IBig, ibig::IBig)> {
+        match self {
+            Self::Integer(value) => Some((ibig::IBig::from(*value), ibig::IBig::from(1))),
+            Self::Big(value) => Some((value.clone(), ibig::IBig::from(1))),
+            Self::Rational(value) => Some((value.numerator().clone(), value.denominator().clone())),
+            Self::BigRational(value) => {
+                Some((value.numerator().clone(), value.denominator().clone()))
+            }
+            Self::Float(_) => None,
         }
     }
 }
@@ -60,5 +92,18 @@ impl Value {
             Self::Integer(value) => Some(*value),
             _ => None,
         }
+    }
+}
+
+pub(crate) fn big_integer_argument(
+    function: &str,
+    value: &Value,
+) -> Result<ibig::IBig, RuntimeError> {
+    match value {
+        Value::Integer(value) => Ok(ibig::IBig::from(*value)),
+        Value::BigInteger(value) => Ok(value.as_ref().clone()),
+        value => Err(crate::builtins::builtin_helpers::type_error(
+            function, "integer", value,
+        )),
     }
 }

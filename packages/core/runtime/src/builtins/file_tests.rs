@@ -62,9 +62,35 @@ fn output_file_options_are_table_driven() {
         ("OVERWRITE", true),
         ("SUPERSEDE", true),
     ];
-    for (option, succeeds) in existing_cases {
-        let result = open_output_file(&existing, "CREATE", option);
+    for (index, (option, succeeds)) in existing_cases.into_iter().enumerate() {
+        let path = existing.with_extension(format!("case-{index}"));
+        if let Err(error) = fs::write(&path, "old") {
+            panic!("failed to create test case file: {error}");
+        }
+        let result = open_output_file(&path, "CREATE", option);
         assert_eq!(result.is_ok(), succeeds, "if-exists={option}");
+        if let Ok(stream) = result {
+            if !matches!(stream, Value::Nil) {
+                let _ = close_stream(&[stream]);
+            }
+        }
+        let backup = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(format!(
+                "{}.ncl-rename-0",
+                path.file_name().unwrap().to_string_lossy()
+            ));
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(backup);
+        let version = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(format!(
+                "{}.ncl-version-0",
+                path.file_name().unwrap().to_string_lossy()
+            ));
+        let _ = fs::remove_file(version);
     }
     for (index, (option, succeeds)) in [("CREATE", true), ("NIL", true), ("ERROR", false)]
         .into_iter()
@@ -80,6 +106,30 @@ fn output_file_options_are_table_driven() {
 
     let _ = fs::remove_file(existing);
     let _ = fs::remove_file(missing);
+}
+
+#[test]
+fn open_new_version_preserves_existing_output_file() {
+    let path = temporary_path("open-new-version");
+    let version = path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!(
+            "{}.ncl-version-0",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+    assert!(fs::write(&path, "old").is_ok());
+
+    let stream = open_output_file(&path, "CREATE", "NEW-VERSION")
+        .unwrap_or_else(|error| panic!("new-version open failed: {error}"));
+    write_string(&[Value::string("new"), stream.clone()])
+        .unwrap_or_else(|error| panic!("new-version write failed: {error}"));
+    close_stream(&[stream]).unwrap_or_else(|error| panic!("new-version close failed: {error}"));
+
+    assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+    assert_eq!(fs::read_to_string(&version).unwrap(), "new");
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_file(version);
 }
 
 #[test]
@@ -103,7 +153,7 @@ fn input_and_io_file_options_are_table_driven() {
     }
     assert!(open_input_file(&missing, "UNKNOWN").is_err());
 
-    for (option, succeeds) in [
+    for (index, (option, succeeds)) in [
         ("NIL", true),
         ("ERROR", false),
         ("APPEND", true),
@@ -112,13 +162,54 @@ fn input_and_io_file_options_are_table_driven() {
         ("RENAME-AND-DELETE", true),
         ("OVERWRITE", true),
         ("SUPERSEDE", true),
-    ] {
-        let result = open_io_file(&existing, "CREATE", option);
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let path = existing.with_extension(format!("case-{index}"));
+        assert!(fs::write(&path, "content").is_ok());
+        let result = open_io_file(&path, "CREATE", option);
         assert_eq!(result.is_ok(), succeeds, "existing io option={option}");
+        if let Ok(stream) = result {
+            let _ = close_stream(&[stream]);
+        }
+        let _ = fs::remove_file(&path);
+        let backup = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(format!(
+                "{}.ncl-rename-0",
+                path.file_name().unwrap().to_string_lossy()
+            ));
+        let _ = fs::remove_file(backup);
     }
     assert!(open_io_file(&existing, "CREATE", "UNKNOWN").is_err());
     assert!(open_io_file(&missing, "UNKNOWN", "APPEND").is_err());
 
     let _ = fs::remove_file(existing);
     let _ = fs::remove_file(missing);
+}
+
+#[test]
+fn open_new_version_preserves_existing_io_file() {
+    let path = temporary_path("open-io-new-version");
+    let version = path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!(
+            "{}.ncl-version-0",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+    assert!(fs::write(&path, "old").is_ok());
+
+    let stream = open_io_file(&path, "CREATE", "NEW-VERSION")
+        .unwrap_or_else(|error| panic!("new-version io open failed: {error}"));
+    write_string(&[Value::string("new"), stream.clone()])
+        .unwrap_or_else(|error| panic!("new-version io write failed: {error}"));
+    close_stream(&[stream]).unwrap_or_else(|error| panic!("new-version io close failed: {error}"));
+
+    assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+    assert_eq!(fs::read_to_string(&version).unwrap(), "new");
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_file(version);
 }

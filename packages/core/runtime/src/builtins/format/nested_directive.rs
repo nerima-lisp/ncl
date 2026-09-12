@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_nested_or_escape_directive(
+pub(crate) fn format_nested_or_escape_directive(
     directive: char,
     state: &mut FormatControlState<'_>,
     parameters: &[FormatParameter],
@@ -53,7 +53,7 @@ pub(super) fn format_nested_or_escape_directive(
     Ok(None)
 }
 
-pub(super) fn format_escape_upward(
+pub(crate) fn format_escape_upward(
     parameters: &[FormatParameter],
     arguments: &[Value],
     argument_index: usize,

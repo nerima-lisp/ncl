@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_dollar_float_directive(
+pub(crate) fn format_dollar_float_directive(
     value: f64,
     parameters: &[FormatParameter],
     colon_modifier: bool,

@@ -70,6 +70,26 @@ fn evaluates_forms_and_maps_functions_over_lists(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_sequence_quantifiers_consistently(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(every (lambda (x y) (and (numberp x) (numberp y))) '(1 2) #(3 4 5))")
+            .to_string(),
+        "T"
+    );
+    assert_eq!(evaluate("(some #'identity '(nil 2 3))").to_string(), "2");
+    assert_eq!(evaluate("(notany #'evenp '(1 3 5))").to_string(), "T");
+    assert_eq!(evaluate("(notevery #'evenp '(2 4 5))").to_string(), "T");
+    assert_eq!(evaluate("(every 'numberp '(1 2))").to_string(), "T");
+    assert_eq!(
+        evaluate("(some (lambda (x y) (and x y)) '(1 2) '(nil))").to_string(),
+        "NIL"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_map_over_sequence_types(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
@@ -137,14 +157,17 @@ fn evaluates_reduce_over_sequences(#[case] eval_fn: EvalFn) {
 fn evaluates_sequence_fill_replace_and_concatenate(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
-        evaluate("(fill 0 '(1 2 3 4) :start 1 :end 3)").to_string(),
+        evaluate("(fill (list 1 2 3 4) 0 :start 1 :end 3)").to_string(),
         "(1 0 0 4)"
     );
     assert_eq!(
-        evaluate("(fill #\\x \"abcd\" :start 1)").to_string(),
+        evaluate("(fill (copy-seq \"abcd\") #\\x :start 1)").to_string(),
         "\"axxx\""
     );
-    assert_eq!(evaluate("(fill 9 #(1 2 3) :end 2)").to_string(), "#(9 9 3)");
+    assert_eq!(
+        evaluate("(fill (vector 1 2 3) 9 :end 2)").to_string(),
+        "#(9 9 3)"
+    );
     assert_eq!(
         evaluate("(replace '(9 9 9) '(1 2 3 4) :start1 1 :end1 3 :start2 0 :end2 2)").to_string(),
         "(9 1 2)"
@@ -163,7 +186,7 @@ fn evaluates_sequence_fill_replace_and_concatenate(#[case] eval_fn: EvalFn) {
         "\"abcd\""
     );
     assert_eq!(
-        evaluate("(funcall #'fill 0 '(1 2) :start 1)").to_string(),
+        evaluate("(funcall #'fill (list 1 2) 0 :start 1)").to_string(),
         "(1 0)"
     );
 }
@@ -218,6 +241,131 @@ fn evaluates_sequence_search_and_mismatch(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_tree_equal_with_custom_tests(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (tree-equal '(1 (2 3)) '(1 (2 3)))
+                        (tree-equal '(1 (2 3)) '(1 (2 4)))
+                        (tree-equal 1 2 :test-not #'=)
+                        (tree-equal '(a b) '(A B) :test #'string=)
+                        (funcall #'tree-equal '(1 . 2) '(1 . 2)))",
+        )
+        .to_string(),
+        "(T NIL T T T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_ldiff_by_copying_until_a_tail(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let* ((items (list 1 2 3))
+                    (tail (cdr items)))
+               (list (ldiff items tail)
+                     (eq (ldiff items tail) items)
+                     (ldiff items nil)
+                     (ldiff (cons 1 (cons 2 3)) 3)
+                     (ldiff (cons 1 (cons 2 3)) 99)
+                     (funcall #'ldiff items tail)))",
+        )
+        .to_string(),
+        "((1) NIL (1 2 3) (1 2) (1 2 . 3) (1))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_tree_substitution_variants(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let* ((items (list 1 (list 2 3)))
+                    (destructive (list 1 2 3)))
+               (list (subst 9 2 items)
+                     (eq (subst 9 2 items) items)
+                     (sublis (list (cons 2 9) (cons 3 8)) items)
+                     (subst-if 7 (lambda (value)
+                                   (and (numberp value) (evenp value)))
+                               items)
+                     (subst-if-not 6 (lambda (value)
+                                       (or (not (numberp value))
+                                           (evenp value)))
+                                   items)
+                     (subst 9 2 '(1 2 3)
+                            :test-not (lambda (wanted candidate)
+                                        (and (numberp wanted)
+                                             (numberp candidate)
+                                             (= wanted candidate))))
+                     (subst :new 2 '(:a :b 2)
+                            :key (lambda (value)
+                                   (if (and (keywordp value) (eq value :b))
+                                       2
+                                       value)))
+                     (eq (nsubst 9 2 destructive) destructive)
+                     destructive
+                     (nsublis (list (cons 1 4)) (list 1 2 3))
+                     (funcall #'subst 5 3 '(1 2 3))))",
+        )
+        .to_string(),
+        "((1 (9 3)) NIL (1 (9 8)) (1 (7 3)) (6 (2 6)) 9 (:A :NEW :NEW) T (1 9 3) (4 2 3) (1 2 5))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_destructive_list_set_operations(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((items (list 1 2 2))
+                    (other (list 2 3 3)))
+               (list (eq (nunion items other) items)
+                     items
+                     other))",
+        )
+        .to_string(),
+        "(T (1 2 3) (2 3 3))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((items (list 1 2 2 3)))
+               (list (eq (nset-difference items '(2)) items)
+                     items))",
+        )
+        .to_string(),
+        "(T (1 3))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((items (list 1 2 2 3))
+                    (other (list 2 4)))
+               (list (eq (nset-exclusive-or items other) items)
+                     items
+                     other))",
+        )
+        .to_string(),
+        "(T (1 3 4) (2 4))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((other (list 2 3)))
+               (list (eq (nunion nil other) other)
+                     other))",
+        )
+        .to_string(),
+        "(T (2 3))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_sequence_searches(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(evaluate("(find 2 '(1 2 3))").to_string(), "2");
@@ -244,4 +392,121 @@ fn evaluates_sequence_searches(#[case] eval_fn: EvalFn) {
     );
     assert_eq!(evaluate("(count 2 '(1 2 3 2) :key #'1+)").to_string(), "1");
     assert_eq!(evaluate("(find 9 '(1 2 3))").to_string(), "NIL");
+    assert_eq!(evaluate("(find-if #'evenp '(1 3 4 6))").to_string(), "4");
+    assert_eq!(
+        evaluate("(position-if-not #'evenp '(2 4 5 6))").to_string(),
+        "2"
+    );
+    assert_eq!(evaluate("(count-if #'evenp '(1 2 4 5 6))").to_string(), "3");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_tree_equal(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(evaluate("(tree-equal 1 1)").to_string(), "T");
+    assert_eq!(evaluate("(tree-equal '(1) '(1))").to_string(), "T");
+    assert_eq!(
+        evaluate("(tree-equal '(1 (2 3)) '(1 (2 3)))").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(tree-equal '(1 (2 3)) '(1 (2 4)))").to_string(),
+        "NIL"
+    );
+    assert_eq!(
+        evaluate("(tree-equal '(1 2) '(3 4) :test-not #'eql)").to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(tree-equal '(1 2) '(-1 -2) :test #'= :key #'abs)").to_string(),
+        "T"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_alist_substitution(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(sublis '((a . 1) (b . 2)) '(a (b c)))").to_string(),
+        "(1 (2 C))"
+    );
+    assert_eq!(
+        evaluate("(nsublis '((a . 1)) (cons 'a '(b)))").to_string(),
+        "(1 B)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_copy_tree(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(evaluate("(copy-tree '(1 (2 3)))").to_string(), "(1 (2 3))");
+    assert_eq!(evaluate("(copy-tree '(1 2 . 3))").to_string(), "(1 2 . 3)");
+    assert_eq!(evaluate("(copy-tree 42)").to_string(), "42");
+    assert_eq!(
+        evaluate("(let* ((tree (cons 1 (cons 2 nil))) (copy (copy-tree tree))) (rplaca tree 9) (list (car tree) (car copy) (car (cdr copy))))").to_string(),
+        "(9 1 2)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_tailp_and_ldiff(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(let* ((tail (cons 2 nil)) (tree (cons 1 tail))) (list (tailp tail tree) (tailp tree tail) (ldiff tree tail)))").to_string(),
+        "(T NIL (1))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_tree_substitution(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(list (subst 'x 'a '(a (b a) . a)) (nsubst 'x 'a '(a b)))").to_string(),
+        "((X (B X) . X) (X B))"
+    );
+    assert_eq!(
+        evaluate("(let* ((tail (cons 'a nil)) (tree (cons tail tail))) (nsubst 'x 'a tree) (list (car (car tree)) (car (cdr tree))))").to_string(),
+        "(X X)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_reverse(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(evaluate("(reverse '(1 2 3))").to_string(), "(3 2 1)");
+    assert_eq!(evaluate("(reverse #(1 2 3))").to_string(), "#(3 2 1)");
+    assert_eq!(evaluate("(nreverse #(1 2 3))").to_string(), "#(3 2 1)");
+    assert_eq!(evaluate("(reverse \"abc\")").to_string(), "\"cba\"");
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_tailp_by_cons_identity(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let* ((items (list 1 2 3))
+                    (tail (cdr items)))
+               (list (tailp tail items)
+                     (tailp (copy-list tail) items)
+                     (tailp nil items)
+                     (tailp 3 (cons 1 (cons 2 3)))
+                     (funcall #'tailp tail items)))",
+        )
+        .to_string(),
+        "(T NIL T T T)"
+    );
 }

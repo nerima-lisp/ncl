@@ -74,10 +74,14 @@ mod tests {
         let result = runtime
             .apply_restart_primitive("INVOKE-RESTART", &arguments, &environment, SPAN)
             .unwrap_or_else(|| panic!("INVOKE-RESTART is a recognized restart primitive"));
+        let Err(error) = result else {
+            panic!("invoking an inactive restart must signal control-error");
+        };
         assert!(matches!(
-            result,
-            Err(RuntimeError::InvalidForm { message, .. }) if message == "restart is not active"
+            &error,
+            RuntimeError::InvokeRestart { name, .. } if name == "MY-RESTART"
         ));
+        assert_eq!(error.condition_type_name(), "CONTROL-ERROR");
     }
 
     #[test]

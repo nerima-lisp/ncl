@@ -1,5 +1,51 @@
+#[allow(clippy::too_many_lines)]
 #[test]
 fn compiled_evaluates_setf_places() {
+    assert_eq!(
+        evaluate(
+            "(let ((plist (list :key (list 2)))) (push 1 (getf plist :key)) (getf plist :key))"
+        )
+        .to_string(),
+        "(1 2)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((plist (list :key (list 1)))) (pushnew 1 (getf plist :key)) (getf plist :key))"
+        )
+        .to_string(),
+        "(1)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((cells (list (list (list 1)))) (calls 0))
+               (pushnew 2 (car (nth (progn (setq calls (+ calls 1)) 0) cells)) :test #'eql)
+               (pushnew 2 (car (nth (progn (setq calls (+ calls 1)) 0) cells)) :test #'eql)
+               (list calls (car (nth 0 cells)) cells))",
+        )
+        .to_string(),
+        "(2 (2 1) (((2 1))))"
+    );
+    assert_eq!(
+        evaluate("(let ((cell (list (list 1)))) (pushnew 2 (car cell) :test #'eql :key #'identity) (car cell))").to_string(),
+        "(2 1)"
+    );
+    assert_eq!(
+        evaluate("(let ((values #(1 2 3))) (setf (aref values 1) 9) values)").to_string(),
+        "#(1 9 3)"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list 1 2 3))) (setf (nth 1 xs) 9) xs)").to_string(),
+        "(1 9 3)"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 1 2) (list 3 4)))) (list (pop (nth 0 xs)) xs))")
+            .to_string(),
+        "(1 ((2) (3 4)))"
+    );
+    assert_eq!(
+        evaluate("(let ((xs (list (list 2) (list 3)))) (push 1 (nth 0 xs)) xs)").to_string(),
+        "((1 2) (3))"
+    );
     assert_eq!(
         evaluate("(let ((xs (list 1 2 3))) (setf (car xs) 9 (nth 2 xs) 7) xs)").to_string(),
         "(9 2 7)"
@@ -30,6 +76,10 @@ fn compiled_evaluates_setf_places() {
         "9"
     );
     assert_eq!(
+        evaluate("(let ((values #(1 2 3))) (setf (row-major-aref values 1) 8) values)").to_string(),
+        "#(1 8 3)"
+    );
+    assert_eq!(
         evaluate(
             "(let ((array (make-array '(2 3) :initial-element 0)))
                (setf (aref array 1 0) 9)
@@ -41,6 +91,18 @@ fn compiled_evaluates_setf_places() {
     assert_eq!(
         evaluate("(let ((bits #(0 1 0))) (setf (bit bits 1) 0) (bit bits 1))").to_string(),
         "0"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((table (make-hash-table))) (setf (gethash :key table) 42) (gethash :key table))"
+        )
+        .to_string(),
+        "42"
+    );
+    assert_eq!(
+        evaluate("(let ((plist (list :key 1))) (setf (getf plist :key) 42) (getf plist :key))")
+            .to_string(),
+        "42"
     );
     assert_eq!(
         evaluate("(let ((xs (list (list 1 2)))) (setf (car (nth 0 xs)) 9) xs)").to_string(),
@@ -78,6 +140,10 @@ fn compiled_evaluates_setf_places() {
         "(1 9 3 4)"
     );
     assert_eq!(
+        evaluate("(let ((xs #(1 2 3))) (setf (subseq xs 1) '(8 9)) xs)").to_string(),
+        "#(1 8 9)"
+    );
+    assert_eq!(
         evaluate("(let ((plist (list :a 1))) (setf (getf plist :a) 2) plist)").to_string(),
         "(:A 2)"
     );
@@ -91,6 +157,55 @@ fn compiled_evaluates_setf_places() {
         )
         .to_string(),
         "(7 7)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_parallel_setf_place_operations() {
+    assert_eq!(
+        evaluate(
+            "(let ((first 1) (second 2))
+               (psetf first second second first)
+               (list first second))",
+        )
+        .to_string(),
+        "(2 1)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((values (list 1 2 3)))
+               (shiftf (nth 0 values) (nth 1 values) 9)
+               values)",
+        )
+        .to_string(),
+        "(2 9 3)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((values (list 1 2 3)))
+               (rotatef (nth 0 values) (nth 1 values) (nth 2 values))
+               values)",
+        )
+        .to_string(),
+        "(2 3 1)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((left (list (list 1))) (right (list (list 2))))
+               (psetf (car left) (list 3)
+                      (car right) (list 4))
+               (list left right))",
+        )
+        .to_string(),
+        "(((3)) ((4)))"
+    );
+}
+
+#[test]
+fn compiled_evaluates_subseq_setf_replacement_edge_cases() {
+    assert_eq!(
+        evaluate(r#"(let ((xs (list 1 2 3))) (setf (subseq xs 0 1) "a") xs)"#).to_string(),
+        "(#\\a 2 3)"
     );
 }
 
@@ -235,6 +350,21 @@ fn compiled_evaluates_define_symbol_macro_and_generalized_places() {
         )
         .to_string(),
         "(1 7 (7))"
+    );
+}
+
+#[test]
+fn compiled_evaluates_multidimensional_bit_setf() {
+    assert_eq!(
+        evaluate(
+            "(let ((bits (make-array '(2 2) :initial-element 0))
+                   (vector-bits #(0 1)))
+               (setf (bit bits 1 0) 1)
+               (setf (bit vector-bits 0) 1)
+               (list (bit bits 1 0) (bit vector-bits 0)))",
+        )
+        .to_string(),
+        "(1 1)"
     );
 }
 

@@ -12,10 +12,10 @@ fn as_big_ratio(value: &Number) -> Option<(IBig, IBig)> {
     match value {
         Number::Integer(value) => Some((IBig::from(*value), IBig::from(1))),
         Number::Big(value) => Some((value.clone(), IBig::from(1))),
-        Number::Rational(value) => Some((
-            IBig::from(value.numerator()),
-            IBig::from(value.denominator()),
-        )),
+        Number::Rational(value) => Some((value.numerator().clone(), value.denominator().clone())),
+        Number::BigRational(value) => {
+            Some((value.numerator().clone(), value.denominator().clone()))
+        }
         Number::Float(_) => None,
     }
 }
@@ -32,7 +32,9 @@ pub(in crate::builtins) fn compare_number_values(left: &Number, right: &Number) 
         // directly rather than padding each into a ratio and cloning.
         return left.cmp(right);
     }
-    if matches!(left, Number::Big(_)) || matches!(right, Number::Big(_)) {
+    if matches!(left, Number::Big(_) | Number::BigRational(_))
+        || matches!(right, Number::Big(_) | Number::BigRational(_))
+    {
         let (Some((left_numerator, left_denominator)), Some((right_numerator, right_denominator))) =
             (as_big_ratio(left), as_big_ratio(right))
         else {

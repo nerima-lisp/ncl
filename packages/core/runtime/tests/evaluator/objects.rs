@@ -4,7 +4,7 @@ use super::*;
 fn evaluates_basic_clos_instances_and_accessors() {
     let values = Runtime::new()
         .eval_source(
-            r"(progn
+            r#"(progn
                  (defclass point ()
                    ((x :initarg :x :accessor point-x)
                     (y :initarg :y :accessor point-y)))
@@ -16,11 +16,199 @@ fn evaluates_basic_clos_instances_and_accessors() {
                          (slot-boundp point 'y)
                          (typep point 'point)
                          (class-name (class-of point))
-                         (class-name (find-class 'point)))))",
+                         (class-name (find-class 'point)))))"#,
         )
         .must_exist();
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(2 2 3 T T T POINT POINT)");
+}
+
+#[test]
+fn evaluates_reinitialize_instance() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass reinit-point ()
+                   ((x :initarg :x :initform 1)
+                    (y :initarg :y :initform 2)))
+                 (let ((point (make-instance 'reinit-point :x 10 :y 20)))
+                   (reinitialize-instance point :x 30)
+                   (list (slot-value point 'x) (slot-value point 'y))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "(30 20)");
+}
+
+#[test]
+fn evaluates_initialize_instance() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass initialize-point ()
+                   ((x :initarg :x :initform 1)))
+                 (let ((point (make-instance 'initialize-point)))
+                   (initialize-instance point :x 8)
+                   (slot-value point 'x)))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "8");
+}
+
+#[test]
+fn evaluates_class_default_initargs() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass default-initarg-point ()
+                   ((x :initarg :x))
+                   (:default-initargs :x 42))
+                 (class-default-initargs (find-class 'default-initarg-point)))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), "((X . 42))");
+}
+
+#[test]
+fn evaluates_class_finalized_p() {
+    let values = Runtime::new()
+        .eval_source("(progn (defclass finalized-class () ()) (class-finalized-p (find-class 'finalized-class)))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "T");
+}
+
+#[test]
+fn evaluates_generic_function_lambda_list() {
+    let values = Runtime::new()
+        .eval_source("(progn (defgeneric lambda-list-generic (object &optional prefix &key suffix)) (generic-function-lambda-list #'lambda-list-generic))")
+        .must_exist();
+    assert_eq!(
+        values[0].to_string(),
+        "(OBJECT &OPTIONAL PREFIX &KEY SUFFIX)"
+    );
+}
+
+#[test]
+fn evaluates_generic_function_method_introspection() {
+    let values = Runtime::new()
+        .eval_source("(progn (defgeneric method-introspection (x)) (defmethod method-introspection ((x t)) (+ x 1)) (let ((method (car (generic-function-methods #'method-introspection)))) (list (length (generic-function-methods #'method-introspection)) (method-qualifiers method) (method-specializers method) (funcall (method-function method) 3))))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(1 NIL (T) 4)");
+}
+
+#[test]
+fn evaluates_find_method_by_qualifiers_and_specializers() {
+    let values = Runtime::new()
+        .eval_source("(progn (defgeneric locate (x)) (defmethod locate :before ((x integer)) :before) (defmethod locate ((x integer)) :primary) (list (method-qualifiers (find-method #'locate nil '(integer))) (method-qualifiers (find-method #'locate '(:before) '(integer))) (find-method #'locate nil '(number))))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(NIL (BEFORE) NIL)");
+}
+
+#[test]
+fn evaluates_add_and_remove_method() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn
+             (defgeneric source (x))
+             (defmethod source ((x integer)) :source)
+             (defgeneric target (x))
+             (let ((method (find-method #'source nil '(integer))))
+               (add-method #'target method)
+               (let ((result (target 3)))
+                 (remove-method #'target method)
+                 (list result (length (generic-function-methods #'target))))))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(:SOURCE 0)");
+}
+
+#[test]
+fn evaluates_generic_methods_with_builtin_class_specializers() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn (defgeneric classify (x))
+             (defmethod classify ((x number)) :number)
+             (defmethod classify ((x integer)) :integer)
+             (list (classify 3) (classify 1.5)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(:INTEGER :NUMBER)");
+}
+
+#[test]
+fn evaluates_generic_methods_with_eql_specializers() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn (defgeneric select (x))
+             (defmethod select ((x t)) :class)
+             (defmethod select ((x (eql 'target))) :eql)
+             (list (select 'target) (select 'other)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(:EQL :CLASS)");
+}
+
+#[test]
+fn eql_specializer_precedes_matching_class_specializer() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn (defgeneric choose-specializer (x))
+             (defmethod choose-specializer ((x integer)) :class)
+             (defmethod choose-specializer ((x (eql 3))) :eql)
+             (list (choose-specializer 3) (choose-specializer 4)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(:EQL :CLASS)");
+}
+
+#[test]
+fn evaluates_finalize_inheritance() {
+    let values = Runtime::new()
+        .eval_source("(progn (defclass finalize-class () ()) (finalize-inheritance (find-class 'finalize-class)))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "#<CLASS FINALIZE-CLASS>");
+}
+
+#[test]
+fn evaluates_generic_function_name() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn (defgeneric named-generic (x)) (generic-function-name #'named-generic))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "NAMED-GENERIC");
+}
+
+#[test]
+fn evaluates_generic_function_method_combination() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn (defgeneric combined-generic (x) (:method-combination and)) (generic-function-method-combination #'combined-generic))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "AND");
+}
+
+#[test]
+fn evaluates_class_direct_default_initargs() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass direct-default-initarg-parent () () (:default-initargs :parent 1))
+                 (defclass direct-default-initarg-child (direct-default-initarg-parent) ()
+                   (:default-initargs :child 2))
+                 (list
+                   (class-direct-default-initargs (find-class 'direct-default-initarg-child))
+                   (class-default-initargs (find-class 'direct-default-initarg-child))))"#,
+        )
+        .must_exist();
+    assert_eq!(values.len(), 1);
+    assert_eq!(
+        values[0].to_string(),
+        "(((CHILD . 2)) ((CHILD . 2) (PARENT . 1)))"
+    );
 }
 
 #[test]
@@ -39,12 +227,12 @@ fn rejects_invalid_make_instance_arguments() {
 fn evaluates_setf_slot_value() {
     let values = Runtime::new()
         .eval_source(
-            r"(progn
+            r#"(progn
                  (defclass setf-point ()
                    ((x :initarg :x)))
                  (let ((point (make-instance 'setf-point :x 2)))
                    (setf (slot-value point 'x) 9)
-                   (slot-value point 'x)))",
+                   (slot-value point 'x)))"#,
         )
         .must_exist();
     assert_eq!(values.len(), 1);
@@ -99,6 +287,22 @@ fn evaluates_clos_slot_initialization_options() {
         .must_exist();
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].to_string(), "(7 9 NIL T)");
+}
+
+#[test]
+fn make_instance_does_not_evaluate_initform_when_initarg_is_supplied() {
+    let values = Runtime::new()
+        .eval_source(
+            r"(progn
+                 (defparameter *initform-evaluations* 0)
+                 (defclass initform-suppressed ()
+                   ((value :initarg :value
+                           :initform (progn (incf *initform-evaluations*) 7))))
+                 (let ((object (make-instance 'initform-suppressed :value 42)))
+                   (list (slot-value object 'value) *initform-evaluations*)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(42 0)");
 }
 
 #[test]
@@ -271,10 +475,25 @@ fn rejects_setting_an_undefined_clos_slot() {
 }
 
 #[test]
+fn enforces_clos_slot_types_on_initialization_and_writes() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass typed-point () ((x :initarg :x :type integer)))
+                 (let ((point (make-instance 'typed-point :x 1)))
+                   (list (slot-value point 'x)
+                         (not (ignore-errors (setf (slot-value point 'x) "bad")))
+                         (not (ignore-errors (make-instance 'typed-point :x "bad"))))))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(1 T T)");
+}
+
+#[test]
 fn evaluates_clos_method_combination() {
     let values = Runtime::new()
         .eval_source(
-            r"(progn
+            r#"(progn
                  (defclass point () ((x :initarg :x)))
                  (let ((events nil))
                    (defgeneric point-value (object))
@@ -294,7 +513,7 @@ fn evaluates_clos_method_combination() {
                        (setf events (cons :around-after events))
                        (list :around value)))
                    (let ((point (make-instance 'point :x 7)))
-                     (list (point-value point) (reverse events)))))",
+                     (list (point-value point) (reverse events)))))"#,
         )
         .must_exist();
     assert_eq!(values.len(), 1);
@@ -550,6 +769,10 @@ fn rejects_malformed_structure_and_class_definitions() {
             r"(defclass record () () (:documentation 1))",
         ),
         (
+            "unsupported defclass option",
+            r"(defclass record () () (:metaclass custom))",
+        ),
+        (
             "defclass slot options require values",
             r"(defclass record () ((value :initarg)))",
         ),
@@ -706,6 +929,20 @@ fn rejects_invalid_slot_reader_and_writer_accessor_calls() {
 }
 
 #[test]
+fn evaluates_setf_writer_slot_option() {
+    let values = Runtime::new()
+        .eval_source(
+            "(progn
+               (defclass setf-writer-point () ((x :writer (setf setf-writer-x))))
+               (let ((object (make-instance 'setf-writer-point)))
+                 (setf (setf-writer-x object) 17)
+                 (slot-value object 'x)))",
+        )
+        .unwrap();
+    assert_eq!(values.last().unwrap().to_string(), "17");
+}
+
+#[test]
 fn rejects_structure_predicate_accessor_and_copier_arity_errors() {
     for source in [
         "(progn (defstruct arity-person name) (arity-person-p))",
@@ -805,4 +1042,90 @@ fn evaluates_generic_function_with_multiple_around_methods_chaining_call_next_me
         values[0].to_string(),
         "(:PRIMARY (:AROUND-POINT :AROUND-T :PRIMARY))"
     );
+}
+
+#[test]
+fn evaluates_clos_class_direct_slots() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+             (defclass direct-slots-parent () ((inherited)))
+             (defclass direct-slots-child (direct-slots-parent) ((own)))
+             (slot-definition-name
+               (first (class-direct-slots (find-class 'direct-slots-child)))))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "OWN");
+}
+
+#[test]
+fn evaluates_clos_class_slots_including_inherited_slots() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+             (defclass effective-slots-parent () ((inherited)))
+             (defclass effective-slots-child (effective-slots-parent) ((own)))
+             (slot-definition-name
+               (first (class-slots (find-class 'effective-slots-child)))))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "OWN");
+}
+
+#[test]
+fn evaluates_ensure_generic_function() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (let ((generic (ensure-generic-function 'ensured-generic
+                                  :lambda-list '(x)
+                                  :method-combination 'list)))
+                   (defmethod ensured-generic ((x integer)) :ok)
+                   (list (eq generic #'ensured-generic)
+                         (generic-function-name generic)
+                         (generic-function-method-combination generic)
+                         (ensured-generic 3))))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(T ENSURED-GENERIC LIST (:OK))");
+}
+
+#[test]
+fn evaluates_generic_function_documentation() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defgeneric documented-generic (x) (:documentation "generic docs"))
+                 (generic-function-documentation #'documented-generic))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "\"generic docs\"");
+}
+
+#[test]
+fn evaluates_ensure_generic_function_documentation_without_lambda_list() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (ensure-generic-function 'undocumented-lambda-list-generic
+                   :documentation "ensured docs")
+                 (generic-function-documentation
+                   #'undocumented-lambda-list-generic))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "\"ensured docs\"");
+}
+
+#[test]
+fn evaluates_class_documentation() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(progn
+                 (defclass documented-class () () (:documentation "class docs"))
+                 (defclass undocumented-class () ())
+                 (list (class-documentation (find-class 'documented-class))
+                       (class-documentation (find-class 'undocumented-class))))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(\"class docs\" NIL)");
 }

@@ -44,3 +44,11 @@ fn split_symbol_distinguishes_internal_and_external_qualifiers() {
         "the first double colon wins over a later single colon"
     );
 }
+
+#[test]
+fn split_symbol_rejects_empty_qualified_names() {
+    assert_eq!(split_symbol(""), None);
+    assert_eq!(split_symbol(":name"), None);
+    assert_eq!(split_symbol("pkg:"), None);
+    assert_eq!(split_symbol("pkg::"), None);
+}

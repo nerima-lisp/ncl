@@ -1,15 +1,37 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
+use crate::environment::intern_name;
+use crate::environment::renaming::{
+    rename_qualified_name, rename_rc_map, rename_rc_set, rename_string_map, rename_string_set,
+};
+
 impl Runtime {
+    pub(crate) fn rename_package_prefix(&self, old_name: &str, new_name: &str) {
+        self.global.rename_package_prefix(old_name, new_name);
+        let mut dynamic = self.dynamic.borrow_mut();
+        rename_rc_map(&mut dynamic.globals, old_name, new_name);
+        rename_string_map(&mut dynamic.exact_globals, old_name, new_name);
+        rename_rc_set(&mut dynamic.special_names, old_name, new_name);
+        rename_string_set(&mut dynamic.exact_special_names, old_name, new_name);
+        rename_string_set(&mut dynamic.constants, old_name, new_name);
+        rename_string_set(&mut dynamic.exact_constants, old_name, new_name);
+        for (name, _) in &mut dynamic.bindings {
+            *name = rename_qualified_name(name, old_name, new_name).into();
+        }
+        for (name, _) in &mut dynamic.exact_bindings {
+            *name = rename_qualified_name(name, old_name, new_name);
+        }
+    }
+
     pub(crate) fn define_special_value(&self, name: &str, value: Value, force: bool) -> Value {
         let name = normalize_name(name);
         let mut dynamic = self.dynamic.borrow_mut();
-        dynamic.special_names.insert(name.clone());
-        if !force && let Some(existing) = dynamic.globals.get(&name) {
+        dynamic.special_names.insert(intern_name(&name));
+        if !force && let Some(existing) = dynamic.globals.get(name.as_str()) {
             return existing.clone();
         }
-        dynamic.globals.insert(name, value.clone());
+        dynamic.globals.insert(intern_name(&name), value.clone());
         value
     }
 
@@ -33,9 +55,9 @@ impl Runtime {
     pub(crate) fn define_constant_value(&self, name: &str, value: Value) -> Value {
         let name = normalize_name(name);
         let mut dynamic = self.dynamic.borrow_mut();
-        dynamic.special_names.insert(name.clone());
+        dynamic.special_names.insert(intern_name(&name));
         dynamic.constants.insert(name.clone());
-        dynamic.globals.insert(name, value.clone());
+        dynamic.globals.insert(intern_name(&name), value.clone());
         value
     }
 
@@ -51,9 +73,22 @@ impl Runtime {
 
     pub(crate) fn lookup_special(&self, name: &str) -> Option<Value> {
         let candidates = self.dynamic_candidates(name);
-        candidates
+        let dynamic = self.dynamic.borrow();
+        dynamic
+            .bindings
             .iter()
-            .find_map(|candidate| self.dynamic.borrow().globals.get(candidate).cloned())
+            .rev()
+            .find(|(binding, _)| {
+                candidates
+                    .iter()
+                    .any(|candidate| candidate == binding.as_ref())
+            })
+            .map(|(_, value)| value.clone())
+            .or_else(|| {
+                candidates
+                    .iter()
+                    .find_map(|candidate| dynamic.globals.get(&intern_name(candidate)).cloned())
+            })
     }
 
     pub(crate) fn lookup_special_exact(&self, name: &str) -> Option<Value> {
@@ -75,12 +110,15 @@ impl Runtime {
             Value::Nil
             | Value::Boolean(_)
             | Value::Integer(_)
+            | Value::BigInteger(_)
             | Value::Rational(_)
+            | Value::BigRational(_)
             | Value::Float(_)
             | Value::String(_)
             | Value::Character(_)
             | Value::Keyword(_)
             | Value::KeywordExact(_) => true,
+            Value::InternedSymbol(symbol) if symbol.keyword() => true,
             Value::Symbol(name) => {
                 name.eq_ignore_ascii_case("T")
                     || name.eq_ignore_ascii_case("NIL")
@@ -90,6 +128,18 @@ impl Runtime {
                 name.eq_ignore_ascii_case("T")
                     || name.eq_ignore_ascii_case("NIL")
                     || self.is_constant_exact_in(name)
+            }
+            Value::InternedSymbol(symbol) => {
+                let name = symbol.reference();
+                if symbol.exact() {
+                    name.eq_ignore_ascii_case("T")
+                        || name.eq_ignore_ascii_case("NIL")
+                        || self.is_constant_exact_in(&name)
+                } else {
+                    name.eq_ignore_ascii_case("T")
+                        || name.eq_ignore_ascii_case("NIL")
+                        || self.is_constant_in(&name)
+                }
             }
             _ => false,
         }
@@ -106,13 +156,13 @@ impl Runtime {
         let candidates = self.dynamic_candidates(name);
         let mut dynamic = self.dynamic.borrow_mut();
         for candidate in candidates {
-            dynamic.globals.remove(&candidate);
+            dynamic.globals.remove(&intern_name(&candidate));
         }
     }
 
     pub(super) fn remove_global_symbol(&self, name: &str) {
         let mut dynamic = self.dynamic.borrow_mut();
-        dynamic.globals.remove(name);
+        dynamic.globals.remove(&intern_name(name));
         dynamic.special_names.remove(name);
         dynamic.constants.remove(name);
         drop(dynamic);

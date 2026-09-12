@@ -1,33 +1,18 @@
 use ncl_syntax::{Form, Span};
 
 use crate::evaluator::ModifyMacroContext;
-use crate::evaluator::evaluator_state::SetfExpansion;
 use crate::evaluator::helpers::is_operator_form;
 use crate::value::{MacroLambdaList, MacroPattern};
 use crate::{Environment, Runtime, RuntimeError};
 
 impl Runtime {
-    fn build_modify_macro_call(
+    fn modify_macro_arguments(
         &self,
-        function: &Form,
         lambda_list: &MacroLambdaList,
         local: &Environment,
-        expansion: &SetfExpansion,
         form_span: Span,
-    ) -> Result<Form, RuntimeError> {
-        let function_designator = if is_operator_form(function, "FUNCTION") {
-            function.clone()
-        } else {
-            Form::list(
-                vec![Form::atom("FUNCTION", function.span), function.clone()],
-                function.span,
-            )
-        };
-        let mut call_items = vec![
-            Form::atom("FUNCALL", form_span),
-            function_designator,
-            expansion.access_form.clone(),
-        ];
+    ) -> Result<Vec<Form>, RuntimeError> {
+        let mut call_items = Vec::new();
         for pattern in lambda_list.required.iter().skip(1) {
             let MacroPattern::Name(name) = pattern else {
                 return Err(Self::invalid(
@@ -86,7 +71,7 @@ impl Runtime {
                 call_items.push(Self::form_from_value(&value, form_span)?);
             }
         }
-        Ok(Form::list(call_items, form_span))
+        Ok(call_items)
     }
 
     pub(super) fn invoke_modify_macro(
@@ -111,39 +96,15 @@ impl Runtime {
             )
         })?;
         let place = Self::form_from_value(&place_value, form.span)?;
-        let expansion = self.get_modify_macro_setf_expansion(&place, environment)?;
-
-        let call =
-            self.build_modify_macro_call(function, lambda_list, &local, &expansion, form.span)?;
-        let store_binding = Form::list(vec![expansion.store.clone(), call], form.span);
-        let update = Form::list(
-            vec![
-                Form::atom("LET", form.span),
-                Form::list(vec![store_binding], form.span),
-                Form::list(
-                    vec![
-                        Form::atom("PROGN", form.span),
-                        expansion.store_form.clone(),
-                        expansion.store.clone(),
-                    ],
-                    form.span,
-                ),
-            ],
-            form.span,
-        );
-        let temporary_bindings = expansion
-            .temporaries
-            .iter()
-            .zip(expansion.values.iter())
-            .map(|(temporary, value)| Form::list(vec![temporary.clone(), value.clone()], form.span))
-            .collect();
-        Ok(Form::list(
-            vec![
-                Form::atom("LET*", form.span),
-                Form::list(temporary_bindings, form.span),
-                update,
-            ],
-            form.span,
-        ))
+        let arguments = self.modify_macro_arguments(lambda_list, &local, form.span)?;
+        let function_designator = if is_operator_form(function, "FUNCTION") {
+            function.clone()
+        } else {
+            Form::list(
+                vec![Form::atom("FUNCTION", function.span), function.clone()],
+                function.span,
+            )
+        };
+        self.expand_modify_macro_place(form, &place, &function_designator, &arguments, environment)
     }
 }

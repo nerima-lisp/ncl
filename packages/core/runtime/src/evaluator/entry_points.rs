@@ -28,7 +28,7 @@ impl Runtime {
     /// Returns a [`RuntimeError`] when resolving, compiling, or evaluating the form fails.
     pub fn eval_compiled(&self, form: &Form) -> Result<Value, RuntimeError> {
         let resolved = self.resolve_form(form)?;
-        let expanded = self.prepare_compiled_form(&resolved, &self.global)?;
+        let expanded = self.prepare_compiled_top_level_form(&resolved, &self.global)?;
         let program = Rc::new(Compiler::compile_form(&expanded)?);
         crate::vm::run_entry(self, &program, 0, &self.global, expanded.span)
             .map(|value| value.primary_value())

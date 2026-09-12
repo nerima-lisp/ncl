@@ -9,28 +9,51 @@ use crate::builtins::format::output::{
 
 #[test]
 fn formats_numeric_helpers_at_boundary_values() {
-    assert_eq!(format_integer_radix(0, 10), "0");
-    assert_eq!(format_integer_radix(-42, 16), "-2A");
-    assert_eq!(format_integer_radix(i64::MIN, 10), "-9223372036854775808");
-    assert_eq!(format_unsigned_integer(255, 2), "11111111");
+    assert_eq!(format_integer_radix(&ibig::IBig::from(0), 10), "0");
+    assert_eq!(format_integer_radix(&ibig::IBig::from(-42), 16), "-2A");
+    assert_eq!(
+        format_integer_radix(&ibig::IBig::from(i64::MIN), 10),
+        "-9223372036854775808"
+    );
+    assert_eq!(
+        format_unsigned_integer(&ibig::IBig::from(255), 2),
+        "11111111"
+    );
     assert_eq!(format_grouped_digits("1234567", ',', 3), "1,234,567");
     assert_eq!(format_grouped_digits("1234", ',', 0), "1234");
-    assert_eq!(format_english_number(0, false), "zero");
-    assert_eq!(format_english_number(0, true), "zeroth");
-    assert_eq!(format_english_number(-42, false), "minus forty-two");
+    assert_eq!(format_english_number(&ibig::IBig::from(0), false), "zero");
+    assert_eq!(format_english_number(&ibig::IBig::from(0), true), "zeroth");
     assert_eq!(
-        format_english_number(i64::MIN, false),
-        "minus 9223372036854775808"
+        format_english_number(&ibig::IBig::from(-42), false),
+        "negative forty-two"
     );
     assert_eq!(
-        format_english_number(i64::MAX, false),
-        format_integer_radix(i64::MAX, 10)
+        format_english_number(&ibig::IBig::from(i64::MIN), false),
+        "negative 9223372036854775808"
     );
-    assert_eq!(format_english_number(21, false), "twenty-one");
-    assert_eq!(format_english_number(42, true), "forty-second");
-    assert_eq!(format_roman_number(4, false), "IV");
-    assert_eq!(format_roman_number(4, true), "IV");
-    assert_eq!(format_roman_number(0, false), "N");
+    let maximum = ibig::IBig::from(i64::MAX);
+    assert_eq!(
+        format_english_number(&maximum, false),
+        format_integer_radix(&maximum, 10)
+    );
+    assert_eq!(
+        format_english_number(&ibig::IBig::from(21), false),
+        "twenty-one"
+    );
+    assert_eq!(
+        format_english_number(&ibig::IBig::from(42), true),
+        "forty-second"
+    );
+    assert_eq!(
+        format_roman_number(&ibig::IBig::from(4), false).unwrap_or_else(|error| panic!("{error}")),
+        "IV"
+    );
+    assert_eq!(
+        format_roman_number(&ibig::IBig::from(4), true).unwrap_or_else(|error| panic!("{error}")),
+        "IIII"
+    );
+    assert!(format_roman_number(&ibig::IBig::from(0), false).is_err());
+    assert!(format_roman_number(&ibig::IBig::from(5000), true).is_err());
 }
 
 #[test]
@@ -50,7 +73,8 @@ fn formats_english_numbers_from_table_cases() {
     ];
 
     for (value, ordinal, expected) in cases {
-        assert_eq!(format_english_number(value, ordinal), expected, "{value}");
+        let value = ibig::IBig::from(value);
+        assert_eq!(format_english_number(&value, ordinal), expected, "{value}");
     }
 }
 
@@ -63,17 +87,22 @@ fn formats_character_and_radix_helper_variants() {
     assert_eq!(format_grouped_digits("", ',', 3), "");
     assert_eq!(format_grouped_digits("1234", ',', 3), "1,234");
     assert_eq!(
-        format_radix_directive(42, &[FormatParameter::Number(16)], false, false,)
-            .unwrap_or_else(|error| panic!("hexadecimal radix should format: {error}")),
+        format_radix_directive(
+            &ibig::IBig::from(42),
+            &[FormatParameter::Number(16)],
+            false,
+            false,
+        )
+        .unwrap_or_else(|error| panic!("hexadecimal radix should format: {error}")),
         "2A"
     );
     assert_eq!(
-        format_radix_directive(4, &[], true, true)
+        format_radix_directive(&ibig::IBig::from(4), &[], true, true)
             .unwrap_or_else(|error| panic!("roman number should format: {error}")),
-        "IV"
+        "IIII"
     );
     assert_eq!(
-        format_radix_directive(42, &[], false, false)
+        format_radix_directive(&ibig::IBig::from(42), &[], false, false)
             .unwrap_or_else(|error| panic!("english number should format: {error}")),
         "forty-two"
     );
@@ -87,7 +116,7 @@ fn rejects_invalid_radix_parameters_and_missing_format_arguments() {
         FormatParameter::Number(37),
         FormatParameter::Character('x'),
     ] {
-        assert!(format_radix_directive(1, &[parameter], false, false).is_err());
+        assert!(format_radix_directive(&ibig::IBig::from(1), &[parameter], false, false).is_err());
     }
 
     let mut argument_index = 0;

@@ -33,6 +33,14 @@ impl CompileState {
         form: &Form,
     ) -> Result<(), CompileError> {
         match &form.kind {
+            FormKind::CircularReference => {
+                return Err(CompileError::new(
+                    CompileErrorKind::UnsupportedForm {
+                        message: "circular forms cannot be evaluated".to_string(),
+                    },
+                    form.span,
+                ));
+            }
             FormKind::Atom(atom) => {
                 if let Some(constant) = literal_constant(atom) {
                     self.emit(function, Instruction::Constant(constant), form.span)?;
@@ -61,7 +69,7 @@ impl CompileState {
                     form.span,
                 )?;
             }
-            FormKind::Vector(_) => {
+            FormKind::Vector(_) | FormKind::Literal(_) | FormKind::Complex { .. } => {
                 self.emit(function, Instruction::Quote(form.clone()), form.span)?;
             }
             FormKind::DottedList { .. } => {

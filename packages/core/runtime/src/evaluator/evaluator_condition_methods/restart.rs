@@ -5,7 +5,7 @@ use crate::evaluator::RestartBinding;
 use crate::{Environment, ReturnValue, Runtime, RuntimeError, Value};
 
 impl Runtime {
-    pub(super) fn restart_invocation_error(
+    pub(crate) fn restart_invocation_error(
         name: &str,
         arguments: &[Value],
         span: Span,
@@ -29,7 +29,7 @@ impl Runtime {
         span: Span,
     ) -> Result<Option<RestartBinding>, RuntimeError> {
         if let Some((name, _)) = designator.symbol_reference() {
-            let normalized = normalize_name(name);
+            let normalized = normalize_name(&name);
             return Ok(bindings
                 .iter()
                 .rev()

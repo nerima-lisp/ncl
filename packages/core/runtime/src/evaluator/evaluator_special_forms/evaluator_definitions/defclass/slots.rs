@@ -7,6 +7,7 @@ pub(super) struct DefclassSlotRegistration {
     pub(super) slot: ClassSlot,
     pub(super) readers: Vec<(String, String)>,
     pub(super) writers: Vec<(String, String)>,
+    pub(super) setf_writers: Vec<(String, String)>,
 }
 
 impl Runtime {
@@ -29,11 +30,14 @@ impl Runtime {
             slot_name_form,
             "defclass slot must be a symbol",
         )?);
-        let mut initarg = None;
+        let mut initargs = Vec::new();
+        let mut documentation = None;
         let mut init_form = None;
+        let mut type_form = None;
         let mut class_value = None;
         let mut readers = Vec::new();
         let mut writers = Vec::new();
+        let mut setf_writers = Vec::new();
         if !options.len().is_multiple_of(2) {
             return Err(Self::invalid(
                 "defclass slot options require a value",
@@ -44,28 +48,83 @@ impl Runtime {
             let option_name = Self::definition_name_from_form(&option[0], "defclass slot option")?;
             match option_name.as_str() {
                 "INITARG" => {
-                    initarg = (!is_nil_form(&option[1]))
-                        .then(|| Self::definition_name_from_form(&option[1], "defclass initarg"))
-                        .transpose()?;
+                    if !is_nil_form(&option[1]) {
+                        initargs.push(Self::definition_name_from_form(
+                            &option[1],
+                            "defclass initarg",
+                        )?);
+                    }
                 }
                 "INITFORM" => init_form = Some(option[1].clone()),
                 "ALLOCATION" => {
                     let allocation =
                         Self::definition_name_from_form(&option[1], "defclass allocation")?;
-                    class_value =
-                        (allocation == "CLASS").then(|| Rc::new(RefCell::new(Value::Unbound)));
+                    match allocation.as_str() {
+                        "INSTANCE" => class_value = None,
+                        "CLASS" => class_value = Some(Rc::new(RefCell::new(Value::Unbound))),
+                        _ => {
+                            return Err(Self::invalid(
+                                "defclass allocation must be :instance or :class",
+                                option[1].span,
+                            ));
+                        }
+                    }
                 }
                 "ACCESSOR" | "READER" => {
                     let accessor_name =
                         Self::variable_name(&option[1], "defclass accessor must be a symbol")?;
                     readers.push((unqualified_name(&accessor_name), slot_name.clone()));
+                    if option_name == "ACCESSOR" {
+                        setf_writers.push((unqualified_name(&accessor_name), slot_name.clone()));
+                    }
                 }
                 "WRITER" => {
-                    let writer_name =
-                        Self::variable_name(&option[1], "defclass writer must be a symbol")?;
-                    writers.push((unqualified_name(&writer_name), slot_name.clone()));
+                    let writer_name = match &option[1].kind {
+                        FormKind::Atom(_) => Self::variable_name(
+                            &option[1],
+                            "defclass writer must be a symbol or (setf symbol)",
+                        )?,
+                        FormKind::List(items) if items.len() == 2 => {
+                            let operator = Self::definition_name_from_form(
+                                &items[0],
+                                "defclass writer operator",
+                            )?;
+                            if operator != "SETF" {
+                                return Err(Self::invalid(
+                                    "defclass writer list must start with setf",
+                                    option[1].span,
+                                ));
+                            }
+                            Self::variable_name(
+                                &items[1],
+                                "defclass writer must be a symbol or (setf symbol)",
+                            )?
+                        }
+                        _ => {
+                            return Err(Self::invalid(
+                                "defclass writer must be a symbol or (setf symbol)",
+                                option[1].span,
+                            ));
+                        }
+                    };
+                    let writer_name = unqualified_name(&writer_name);
+                    if matches!(&option[1].kind, FormKind::List(_)) {
+                        readers.push((writer_name.clone(), slot_name.clone()));
+                        setf_writers.push((writer_name.clone(), slot_name.clone()));
+                    } else {
+                        writers.push((writer_name, slot_name.clone()));
+                    }
                 }
-                "TYPE" | "DOCUMENTATION" => {}
+                "TYPE" => type_form = Some(option[1].clone()),
+                "DOCUMENTATION" => {
+                    let FormKind::String(value) = &option[1].kind else {
+                        return Err(Self::invalid(
+                            "defclass slot documentation must be a string",
+                            option[1].span,
+                        ));
+                    };
+                    documentation = Some(value.clone());
+                }
                 _ => {
                     return Err(Self::invalid(
                         "unsupported defclass slot option",
@@ -77,12 +136,18 @@ impl Runtime {
         Ok(DefclassSlotRegistration {
             slot: ClassSlot {
                 name: slot_name,
-                initarg,
+                documentation,
+                initargs,
+                readers: readers.iter().map(|(name, _)| name.clone()).collect(),
+                writers: writers.iter().map(|(name, _)| name.clone()).collect(),
                 init_form,
+                type_form,
+                init_function: None,
                 class_value,
             },
             readers,
             writers,
+            setf_writers,
         })
     }
 }

@@ -68,7 +68,7 @@ fn runtime_error_display_includes_spans_and_variant_messages() {
 fn runtime_error_display_covers_control_and_signaled_variants() {
     let span = Some(Span::new(3, 6));
     let signaled = RuntimeError::Signaled(Box::new(SignaledError {
-        condition: "SIMPLE-ERROR".to_owned(),
+        condition: "SIMPLE-ERROR".to_owned().into(),
         condition_types: Box::default(),
         message: "failed".to_owned(),
         format_control: None,

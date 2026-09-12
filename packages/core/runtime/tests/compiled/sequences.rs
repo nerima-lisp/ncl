@@ -227,7 +227,10 @@ fn compiled_evaluates_list_construction_and_partitioning() {
     assert_eq!(evaluate("(butlast '(1 2 3) 0)").to_string(), "(1 2 3)");
     assert_eq!(evaluate("(nbutlast '(1 2 3) 2)").to_string(), "(1)");
     assert_eq!(evaluate("(nreverse '(1 2 3))").to_string(), "(3 2 1)");
-    assert_eq!(evaluate("(nconc '(1 2) '(3 4))").to_string(), "(1 2 3 4)");
+    assert_eq!(
+        evaluate("(nconc (list 1 2) (list 3 4))").to_string(),
+        "(1 2 3 4)"
+    );
     assert_eq!(
         evaluate("(revappend '(1 2) '(3 4))").to_string(),
         "(2 1 3 4)"

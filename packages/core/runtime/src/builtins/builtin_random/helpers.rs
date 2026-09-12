@@ -1,6 +1,6 @@
 use crate::{RuntimeError, Value};
 
-pub(super) fn exact(
+pub(crate) fn exact(
     arguments: &[Value],
     function: &str,
     expected: usize,
@@ -12,7 +12,7 @@ pub(super) fn exact(
     }
 }
 
-pub(super) fn arity(function: &str, expected: impl Into<String>, actual: usize) -> RuntimeError {
+pub(crate) fn arity(function: &str, expected: impl Into<String>, actual: usize) -> RuntimeError {
     RuntimeError::Arity {
         function: function.to_string(),
         expected: expected.into(),
@@ -20,7 +20,7 @@ pub(super) fn arity(function: &str, expected: impl Into<String>, actual: usize) 
     }
 }
 
-pub(super) fn type_error(function: &str, expected: &str, value: &Value) -> RuntimeError {
+pub(crate) fn type_error(function: &str, expected: &str, value: &Value) -> RuntimeError {
     RuntimeError::Type {
         expected: format!("{function} requires {expected}"),
         actual: value.type_name().to_string(),

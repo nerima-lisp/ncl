@@ -28,7 +28,7 @@ impl Runtime {
         }
         let value = self.eval_in(&items[1], environment)?;
         let form = Self::form_from_value(&value, items[1].span)?;
-        self.eval_values_in(&form, environment)
+        self.eval_values_in(&form, &self.global)
     }
 
     pub(crate) fn special_apply(
@@ -78,9 +78,9 @@ impl Runtime {
             });
         };
         let resolved = if exact {
-            self.lookup_function_exact_in(name, environment)
+            self.lookup_function_exact_in(&name, environment)
         } else {
-            self.lookup_function_in(name, environment)
+            self.lookup_function_in(&name, environment)
         };
         match resolved {
             Some(Value::Function(function)) => Ok(function),
@@ -92,7 +92,7 @@ impl Runtime {
                 name: if exact {
                     name.to_string()
                 } else {
-                    normalize_name(name)
+                    normalize_name(&name)
                 },
                 span: Some(span),
             }),

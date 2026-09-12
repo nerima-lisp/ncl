@@ -4,9 +4,20 @@ use std::rc::Rc;
 use ncl_compiler::{FunctionId, Program};
 use ncl_syntax::{Form, LambdaListAuxiliaryParameter, LambdaListOptionalParameter};
 
-use super::{Builtin, ClosureOptions, Environment, Function, MacroLambdaList, Value};
+use super::{
+    Builtin, ClosureOptions, Environment, Function, MacroLambdaList, MethodCombination,
+    MethodDefinition, Value,
+};
 
 impl Value {
+    pub(crate) fn complement(function: Self) -> Self {
+        Self::Function(Rc::new(Function::Complement { function }))
+    }
+
+    pub(crate) fn constantly(value: Self) -> Self {
+        Self::Function(Rc::new(Function::Constantly { value }))
+    }
+
     /// Creates a callable value backed by a runtime builtin.
     pub fn builtin(name: &'static str, function: Builtin) -> Self {
         Self::Function(Rc::new(Function::Builtin { name, function }))
@@ -17,10 +28,40 @@ impl Value {
     }
 
     pub(crate) fn generic(name: impl Into<String>) -> Self {
+        Self::generic_with_combination(name, MethodCombination::Standard, None)
+    }
+
+    pub(crate) fn generic_with_combination(
+        name: impl Into<String>,
+        method_combination: MethodCombination,
+        documentation: Option<String>,
+    ) -> Self {
         Self::Function(Rc::new(Function::Generic {
             name: name.into(),
+            lambda_list: None,
+            documentation,
+            method_combination,
             methods: Rc::new(RefCell::new(Vec::new())),
         }))
+    }
+
+    pub(crate) fn generic_with_lambda_list(
+        name: impl Into<String>,
+        lambda_list: Form,
+        method_combination: MethodCombination,
+        documentation: Option<String>,
+    ) -> Self {
+        Self::Function(Rc::new(Function::Generic {
+            name: name.into(),
+            lambda_list: Some(lambda_list),
+            documentation,
+            method_combination,
+            methods: Rc::new(RefCell::new(Vec::new())),
+        }))
+    }
+
+    pub(crate) fn method(definition: MethodDefinition) -> Self {
+        Self::Function(Rc::new(Function::Method { definition }))
     }
 
     pub(crate) fn slot_reader(class_name: impl Into<String>, slot_name: impl Into<String>) -> Self {
@@ -33,6 +74,36 @@ impl Value {
     pub(crate) fn slot_writer(class_name: impl Into<String>, slot_name: impl Into<String>) -> Self {
         Self::Function(Rc::new(Function::SlotWriter {
             class_name: class_name.into(),
+            slot_name: slot_name.into(),
+        }))
+    }
+
+    pub(crate) fn slot_setf_writer(
+        class_name: impl Into<String>,
+        slot_name: impl Into<String>,
+    ) -> Self {
+        Self::Function(Rc::new(Function::SlotSetfWriter {
+            class_name: class_name.into(),
+            slot_name: slot_name.into(),
+        }))
+    }
+
+    pub(crate) fn condition_reader(
+        condition_name: impl Into<String>,
+        slot_name: impl Into<String>,
+    ) -> Self {
+        Self::Function(Rc::new(Function::ConditionReader {
+            condition_name: condition_name.into(),
+            slot_name: slot_name.into(),
+        }))
+    }
+
+    pub(crate) fn condition_writer(
+        condition_name: impl Into<String>,
+        slot_name: impl Into<String>,
+    ) -> Self {
+        Self::Function(Rc::new(Function::ConditionWriter {
+            condition_name: condition_name.into(),
             slot_name: slot_name.into(),
         }))
     }

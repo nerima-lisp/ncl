@@ -1,9 +1,8 @@
-use std::rc::Rc;
-
-use crate::Function;
 use crate::RuntimeError;
 use crate::builtins::builtin_hash_tables::{hash_table_option_name, hash_table_test_name};
 use crate::builtins::*;
+
+mod designators;
 
 #[test]
 fn hash_table_options_and_operations_cover_invalid_designators() {
@@ -17,6 +16,7 @@ fn hash_table_options_and_operations_cover_invalid_designators() {
     assert!(remhash(&[Value::Nil, Value::Integer(1)]).is_err());
     assert!(clrhash(&[Value::Integer(1)]).is_err());
     assert!(hash_table_count(&[Value::Integer(1)]).is_err());
+    assert!(hash_table_size(&[Value::Integer(1)]).is_err());
     assert!(hash_table_test_value(&[Value::Integer(1)]).is_err());
     assert!(hash_table_option_name("test", &Value::Integer(1)).is_err());
     assert!(hash_table_test_name("test", &Value::Integer(1)).is_err());
@@ -39,6 +39,32 @@ fn hash_table_options_accept_valid_keyword_values() -> Result<(), RuntimeError> 
             Value::HashTable { .. }
         ));
     }
+    Ok(())
+}
+
+#[test]
+fn make_hash_table_size_sets_initial_capacity() -> Result<(), RuntimeError> {
+    let table = make_hash_table(&[Value::keyword("size"), Value::Integer(16)])?;
+    assert!(hash_table_size(std::slice::from_ref(&table))?.as_integer() >= Some(16));
+    Ok(())
+}
+
+#[test]
+fn hash_table_rehash_options_are_exposed() -> Result<(), RuntimeError> {
+    let default = make_hash_table(&[])?;
+    assert_eq!(
+        hash_table_rehash_size(&[default.clone()])?.to_string(),
+        "1.5"
+    );
+    assert_eq!(hash_table_rehash_threshold(&[default])?.to_string(), "1.0");
+    let table = make_hash_table(&[
+        Value::keyword("rehash-size"),
+        Value::Integer(2),
+        Value::keyword("rehash-threshold"),
+        Value::Float(0.5),
+    ])?;
+    assert_eq!(hash_table_rehash_size(&[table.clone()])?.to_string(), "2");
+    assert_eq!(hash_table_rehash_threshold(&[table])?.to_string(), "0.5");
     Ok(())
 }
 
@@ -78,6 +104,11 @@ fn hash_table_operations_cover_successful_table_cases() -> Result<(), RuntimeErr
         hash_table_count(std::slice::from_ref(&table))?.to_string(),
         "1"
     );
+    assert!(
+        hash_table_size(std::slice::from_ref(&table))?
+            .as_integer()
+            .is_some_and(|size| size >= 1)
+    );
     assert_eq!(
         hash_table_test_value(std::slice::from_ref(&table))?.to_string(),
         "EQL"
@@ -94,90 +125,4 @@ fn hash_table_operations_cover_successful_table_cases() -> Result<(), RuntimeErr
     ));
     assert!(matches!(clrhash(&[table])?, Value::HashTable { .. }));
     Ok(())
-}
-
-#[test]
-fn hash_table_designators_and_key_tests_cover_supported_variants() -> Result<(), RuntimeError> {
-    for test in ["EQ", "EQL", "EQUAL", "EQUALP"] {
-        let table = make_hash_table(&[Value::keyword("test"), Value::keyword(test)])?;
-        assert_eq!(
-            hash_table_test_value(std::slice::from_ref(&table))?.to_string(),
-            test
-        );
-        assert!(matches!(
-            gethash(&[Value::string("key"), table])?.primary_value(),
-            Value::Nil
-        ));
-    }
-
-    let builtin = Value::builtin("eql", make_hash_table);
-    assert_eq!(hash_table_test_name("test", &builtin)?, "EQL");
-    let primitive = Value::primitive("equalp");
-    assert_eq!(hash_table_test_name("test", &primitive)?, "EQUALP");
-
-    let equal_cases = [
-        ("EQ", Value::Integer(1), Value::Integer(1), true),
-        ("EQUAL", Value::string("x"), Value::string("x"), true),
-        ("EQUALP", Value::string("x"), Value::string("X"), true),
-        ("EQL", Value::Integer(1), Value::Integer(2), false),
-    ];
-    for (test, left, right, expected) in equal_cases {
-        assert_eq!(
-            hash_table_key_equal(test, &left, &right),
-            expected,
-            "{test}"
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn hash_table_option_name_accepts_every_symbol_designator_variant() -> Result<(), RuntimeError> {
-    assert_eq!(
-        hash_table_option_name("test", &Value::symbol("size"))?,
-        "SIZE"
-    );
-    assert_eq!(
-        hash_table_option_name("test", &Value::uninterned_symbol("size"))?,
-        "SIZE"
-    );
-    assert_eq!(
-        hash_table_option_name("test", &Value::symbol_exact("size"))?,
-        "SIZE"
-    );
-    assert_eq!(
-        hash_table_option_name("test", &Value::keyword_exact("size"))?,
-        "SIZE"
-    );
-    Ok(())
-}
-
-#[test]
-fn hash_table_test_name_accepts_every_symbol_designator_variant() -> Result<(), RuntimeError> {
-    assert_eq!(hash_table_test_name("test", &Value::symbol("eql"))?, "EQL");
-    assert_eq!(
-        hash_table_test_name("test", &Value::uninterned_symbol("eql"))?,
-        "EQL"
-    );
-    assert_eq!(
-        hash_table_test_name("test", &Value::symbol_exact("eql"))?,
-        "EQL"
-    );
-    assert_eq!(
-        hash_table_test_name("test", &Value::keyword_exact("eql"))?,
-        "EQL"
-    );
-    Ok(())
-}
-
-#[test]
-fn hash_table_test_name_rejects_an_unnamed_function() {
-    let unnamed_function = Value::Function(Rc::new(Function::StructurePredicate {
-        name: "some-structure".to_string(),
-    }));
-    let error = hash_table_test_name("test", &unnamed_function).map_or_else(
-        |error| error,
-        |value| panic!("a structure predicate has no test name, got {value:?}"),
-    );
-    assert!(matches!(error, RuntimeError::Type { .. }), "{error:?}");
 }

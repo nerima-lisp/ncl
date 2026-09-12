@@ -201,6 +201,48 @@ fn compiled_evaluates_format_indentation_directive() {
 }
 
 #[test]
+fn compiled_evaluates_format_radix_tab_and_write_directives() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~R/~:R/~16R" 42 42 255)
+                       (format nil "abc~5,2:T")
+                       (format nil "~W" '(a b)))"#,
+        )
+        .to_string(),
+        r#"("forty-two/forty-second/FF" "abc" "(A B)")"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_absolute_argument_pointer_directive() {
+    assert_eq!(
+        evaluate(
+            r#"(list (format nil "~2@*~A" 'zero 'one 'two)
+                       (format nil "~@*~A" 'zero))"#
+        )
+        .to_string(),
+        r#"("TWO" "ZERO")"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_format_conditional_tab_directive() {
+    assert_eq!(
+        evaluate(r#"(list (format nil "abc~5:T") (format nil "abcde~5:T"))"#).to_string(),
+        r#"("abc" "abcde")"#,
+    );
+}
+
+#[test]
+fn compiled_evaluates_standard_list_position_accessors() {
+    assert_eq!(
+        evaluate("(list (second '(a b c)) (third '(a b c)) (fourth '(a b c)) (tenth '(a b c)))")
+            .to_string(),
+        "(B C NIL NIL)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_atomic_type_and_equality_predicates() {
     assert_eq!(
         evaluate(
@@ -225,7 +267,7 @@ fn compiled_evaluates_atomic_type_and_equality_predicates() {
                 (equalp #(1 2) #(1 3)))",
         )
         .to_string(),
-        "(T NIL T NIL T NIL T NIL T NIL T NIL T T T T T NIL T T NIL T NIL T NIL T T T NIL)",
+        "(T NIL T NIL T NIL T T T NIL T NIL T T T T T NIL T T NIL T NIL T NIL T T T NIL)",
     );
 }
 
@@ -291,7 +333,7 @@ fn compiled_covers_type_predicate_boundaries() {
                 (typep #(1 2) '(array integer (2))))",
         )
         .to_string(),
-        "(:ERROR :ERROR \"TEMPORARY\" NIL KEYWORD COMMON-LISP :ERROR :ERROR NIL :ERROR NIL T NIL NIL T T)"
+        "(:ERROR :ERROR \"TEMPORARY\" NIL #<PACKAGE \"KEYWORD\"> #<PACKAGE \"COMMON-LISP\"> :ERROR :ERROR NIL :ERROR NIL T NIL NIL T T)"
     );
 }
 
@@ -302,12 +344,16 @@ fn compiled_evaluates_subtypep() {
             r"(progn
                  (defclass subtypep-parent () ())
                  (defclass subtypep-child (subtypep-parent) ())
+                 (define-condition subtypep-condition-parent (condition) ())
+                 (define-condition subtypep-condition-child (subtypep-condition-parent) ())
                  (defstruct subtypep-record value)
                  (list
                    (multiple-value-list (subtypep 'integer 'number))
                    (multiple-value-list (subtypep '(integer 0 5) '(integer -1 10)))
                    (multiple-value-list (subtypep '(integer 0 10) '(integer 1 5)))
                    (multiple-value-list (subtypep 'subtypep-child 'subtypep-parent))
+                   (multiple-value-list (subtypep 'subtypep-condition-child 'subtypep-condition-parent))
+                   (multiple-value-list (subtypep 'subtypep-condition-child 'condition))
                    (multiple-value-list (subtypep 'subtypep-record 'structure))
                    (multiple-value-list (subtypep 'string 'sequence))))",
         )
@@ -315,7 +361,117 @@ fn compiled_evaluates_subtypep() {
     assert_eq!(values.len(), 1);
     assert_eq!(
         values[0].to_string(),
-        "((T T) (T T) (NIL T) (T T) (T T) (T T))"
+        "((T T) (T T) (NIL T) (T T) (T T) (T T) (T T) (T T))"
     );
 }
+#[test]
+fn compiled_evaluates_character_stream_output_operations() {
+    assert_eq!(
+        evaluate(
+            r"(let ((stream (make-string-output-stream)))
+                 (list (write-char #\A stream)
+                       (terpri stream)
+                       (fresh-line stream)
+                       (get-output-stream-string stream)))",
+        )
+        .to_string(),
+        "(#\\A NIL NIL \"A\\n\")"
+    );
+}
+
+#[test]
+fn compiled_evaluates_string_stream_output_operations() {
+    assert_eq!(
+        evaluate(
+            r#"(let ((stream (make-string-output-stream)))
+                 (list (write-string "ab" stream)
+                       (write-line "cd" stream)
+                       (get-output-stream-string stream)))"#,
+        )
+        .to_string(),
+        r#"("ab" "cd" "abcd\n")"#
+    );
+}
+
+#[test]
+fn compiled_evaluates_sequence_stream_output_operations() {
+    assert_eq!(
+        evaluate(
+            r#"(let ((stream (make-string-output-stream)))
+                 (list (write-sequence '(#\A #\B #\C) stream :start 1)
+                       (get-output-stream-string stream)))"#,
+        )
+        .to_string(),
+        r#"((#\A #\B #\C) "BC")"#
+    );
+}
+
 use super::*;
+
+#[test]
+fn evaluates_make_package_with_options() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"created-package\"
+                                  :nicknames (list \"created-nickname\")
+                                  :use nil)))
+               (list (package-name package)
+                     (package-name (find-package :created-nickname))))"
+        )
+        .to_string(),
+        "(\"CREATED-PACKAGE\" \"CREATED-PACKAGE\")"
+    );
+}
+
+#[test]
+fn evaluates_delete_package_and_removes_nicknames_and_uses() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"compiled-deletable-package\" :nicknames (list \"compiled-deletable-nickname\"))))
+               (list (delete-package package)
+                     (find-package :compiled-deletable-package)
+                     (find-package :compiled-deletable-nickname)))"
+        )
+        .to_string(),
+        "(T NIL NIL)"
+    );
+}
+
+#[test]
+fn evaluates_rename_package_and_updates_nickname() {
+    assert_eq!(
+        evaluate(
+            "(let ((package (make-package \"compiled-rename-source\")))
+               (list (rename-package package \"compiled-rename-target\" (list \"compiled-rename-new\"))
+                     (package-name (find-package :compiled-rename-target))
+                     (package-name (find-package :compiled-rename-new))))"
+        )
+        .to_string(),
+        "(#<PACKAGE \"COMPILED-RENAME-TARGET\"> \"COMPILED-RENAME-TARGET\" \"COMPILED-RENAME-TARGET\")"
+    );
+}
+
+#[test]
+fn evaluates_provide_and_require_features() {
+    assert_eq!(
+        evaluate(
+            "(progn (provide :compiled-feature) (list (require :compiled-feature)
+                                                   (member :compiled-feature *features*)))"
+        )
+        .to_string(),
+        "(T (:COMPILED-FEATURE))"
+    );
+    assert!(
+        Runtime::new()
+            .eval_source("(require :missing-compiled-feature)")
+            .is_err()
+    );
+}
+
+#[test]
+fn evaluates_class_precedence_list() {
+    assert_eq!(
+        evaluate("(progn (defclass point () ()) (mapcar #'class-name (class-precedence-list (find-class 'point))))").to_string(),
+        "(POINT STANDARD-OBJECT)"
+    );
+}

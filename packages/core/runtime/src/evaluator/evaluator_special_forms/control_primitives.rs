@@ -2,14 +2,15 @@
 use super::*;
 
 impl Runtime {
-    pub(crate) fn special_quote(items: &[Form], span: Span) -> Result<Value, RuntimeError> {
+    pub(crate) fn special_quote(&self, items: &[Form], span: Span) -> Result<Value, RuntimeError> {
         if items.len() != 2 {
             return Err(Self::arity("quote", "one", items.len().saturating_sub(1)));
         }
-        Self::quoted_value(&items[1]).map_err(|error| match error {
-            RuntimeError::InvalidForm { .. } => Self::invalid("invalid quoted form", span),
-            error => error,
-        })
+        self.runtime_quoted_value(&items[1])
+            .map_err(|error| match error {
+                RuntimeError::InvalidForm { .. } => Self::invalid("invalid quoted form", span),
+                error => error,
+            })
     }
 
     pub(crate) fn special_the(
@@ -20,16 +21,12 @@ impl Runtime {
         if items.len() != 3 {
             return Err(Self::arity("the", "two", items.len().saturating_sub(1)));
         }
-        let type_designator = quoted_form_value(&items[1])?;
+        let type_designator = self.runtime_quoted_value(&items[1])?;
         let value = self.eval_in(&items[2], environment)?;
         builtins::the_check(&[value, type_designator])
     }
 
-    pub(crate) fn special_load_time_value(
-        &self,
-        items: &[Form],
-        environment: &Environment,
-    ) -> Result<Value, RuntimeError> {
+    pub(crate) fn special_load_time_value(&self, items: &[Form]) -> Result<Value, RuntimeError> {
         if !(2..=3).contains(&items.len()) {
             return Err(Self::arity(
                 "load-time-value",
@@ -37,11 +34,27 @@ impl Runtime {
                 items.len().saturating_sub(1),
             ));
         }
-        let value = self.eval_values_in(&items[1], environment)?;
-        if let Some(read_only_p) = items.get(2) {
-            let _ = self.eval_in(read_only_p, environment)?;
+        if let Some(read_only_p) = items.get(2)
+            && !matches!(
+                Self::quoted_value(read_only_p)?,
+                Value::Nil | Value::Boolean(_)
+            )
+            && !atom_name(read_only_p).is_some_and(|atom| {
+                parse_symbol_token(atom).is_ok_and(|token| {
+                    token.kind == SymbolTokenKind::Symbol
+                        && matches!(token.name.as_str(), "T" | "NIL")
+                        && token.package.as_deref().is_none_or(|name| {
+                            package::normalize_package_name(name) == package::COMMON_LISP_PACKAGE
+                        })
+                })
+            })
+        {
+            return Err(Self::invalid(
+                "load-time-value read-only-p must be a literal boolean",
+                read_only_p.span,
+            ));
         }
-        Ok(value)
+        self.eval_in(&items[1], &self.global)
     }
 
     pub(crate) fn special_nth_value(
@@ -87,7 +100,12 @@ impl Runtime {
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        self.eval_sequence_values(items.get(1..).unwrap_or(&[]), environment)
+        let forms = items.get(1..).unwrap_or(&[]);
+        let special_names = Self::special_declaration_names(forms)?;
+        let local = environment.child();
+        Self::declare_special_names(&local, &special_names);
+        let _dynamic_guard = self.dynamic_guard();
+        self.eval_sequence_values(forms, &local)
     }
 
     pub(crate) fn special_eval_when(
@@ -107,6 +125,21 @@ impl Runtime {
         } else {
             Ok(Value::Nil)
         }
+    }
+
+    pub(crate) fn special_with_compilation_unit(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Value, RuntimeError> {
+        if items.len() < 2 {
+            return Err(Self::arity(
+                "with-compilation-unit",
+                "at least one",
+                items.len().saturating_sub(1),
+            ));
+        }
+        self.eval_sequence_values(items.get(2..).unwrap_or(&[]), environment)
     }
 
     pub(crate) fn eval_when_executes(form: &Form) -> Result<bool, RuntimeError> {
@@ -177,10 +210,11 @@ mod tests {
     }
 
     #[test]
-    fn load_time_value_propagates_errors_from_its_forms() {
-        for source in ["(load-time-value (car 5))", "(load-time-value 1 (car 5))"] {
-            assert!(Runtime::new().eval_source(source).is_err(), "{source}");
-        }
+    fn load_time_value_propagates_body_errors() {
+        assert!(matches!(
+            Runtime::new().eval_source("(load-time-value (car 5))"),
+            Err(RuntimeError::Type { .. })
+        ));
     }
 
     #[test]

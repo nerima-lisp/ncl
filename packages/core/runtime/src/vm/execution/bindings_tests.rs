@@ -87,6 +87,27 @@ fn define_special_exact_rejects_forced_redefinition_of_a_constant() {
 }
 
 #[test]
+fn define_constant_rejects_redefinition() {
+    let runtime = Runtime::new();
+    let environment = Environment::new();
+    runtime.define_constant_value("LIMIT", Value::Integer(1));
+    let mut stack = vec![Value::Integer(2)];
+    let mut program_counter = 0;
+
+    let result = execute_definition_instruction(
+        &runtime,
+        &Instruction::DefineConstant("LIMIT".to_string()),
+        &mut stack,
+        &environment,
+        &mut program_counter,
+        Span::new(0, 1),
+    );
+
+    assert!(matches!(result, Err(RuntimeError::InvalidForm { .. })));
+    assert_eq!(program_counter, 0);
+}
+
+#[test]
 fn define_values_exact_binds_the_full_multiple_values_container() {
     let runtime = Runtime::new();
     let environment = Environment::new();

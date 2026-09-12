@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::Value;
 use crate::builtins::types::subtype_entry::typep_value;
 use crate::builtins::types::type_matching::dispatch::type_matches_designator;
@@ -13,14 +11,14 @@ fn typep_rejects_a_bare_non_symbol_atom_as_a_type_designator() {
 }
 
 #[test]
-fn type_matches_designator_rejects_malformed_compound_lists_directly() {
-    let empty_list = Value::List(Rc::new(Vec::new()));
+fn type_matches_designator_accepts_nil_and_rejects_malformed_lists() {
+    let empty_list = Value::Nil;
     assert!(
-        type_matches_designator("typep", &Value::Nil, &empty_list).is_err(),
-        "a compound designator with no operator is invalid"
+        type_matches_designator("typep", &Value::Nil, &empty_list).is_ok(),
+        "NIL is an atomic type designator, not an empty compound"
     );
 
-    let numeric_operator = Value::List(Rc::new(vec![Value::Integer(1)]));
+    let numeric_operator = Value::list(vec![Value::Integer(1)]);
     assert!(
         type_matches_designator("typep", &Value::Nil, &numeric_operator).is_err(),
         "a compound designator whose operator is not a symbol is invalid"

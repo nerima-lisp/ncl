@@ -45,11 +45,13 @@ mod tests {
         assert!(list.equal_value(&equivalent_list));
 
         let vector = Value::vector(vec![Value::Integer(1)]);
-        assert!(vector.equal_value(&Value::vector(vec![Value::Integer(1)])));
+        assert!(vector.equal_value(&vector.clone()));
+        assert!(!vector.equal_value(&Value::vector(vec![Value::Integer(1)])));
         let array = Value::array(vec![1], vec![Value::Integer(1)]);
         assert!(array.eq_value(&array));
         assert!(!array.eq_value(&Value::array(vec![1], vec![Value::Integer(1)])));
-        assert!(array.equal_value(&Value::array(vec![1], vec![Value::Integer(1)])));
+        assert!(array.equal_value(&array.clone()));
+        assert!(!array.equal_value(&Value::array(vec![1], vec![Value::Integer(1)])));
         let values = Value::values(vec![Value::Integer(1)]);
         assert!(values.eq_value(&values));
         assert!(values.equal_value(&Value::values(vec![Value::Integer(1)])));

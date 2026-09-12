@@ -5,15 +5,27 @@ mod bitwise_ops;
 #[allow(clippy::wildcard_imports)]
 pub use bitwise_ops::*;
 
+mod bitfield;
+#[allow(clippy::wildcard_imports)]
+pub use bitfield::*;
+
 mod arithmetic;
 #[allow(clippy::wildcard_imports)]
 pub use arithmetic::*;
+#[cfg(test)]
+mod arithmetic_tests;
+
+mod complex;
+#[allow(clippy::wildcard_imports)]
+pub use complex::*;
 
 mod power;
 #[allow(clippy::wildcard_imports)]
 pub use power::*;
 
 mod comparison;
+#[cfg(test)]
+mod comparison_tests;
 #[allow(clippy::wildcard_imports)]
 pub use comparison::*;
 
@@ -34,5 +46,15 @@ mod rationalize;
 pub use rationalize::*;
 
 mod integer_ops;
+#[cfg(test)]
+mod integer_ops_tests;
 #[allow(clippy::wildcard_imports)]
 pub use integer_ops::*;
+
+mod float_ops;
+#[allow(clippy::wildcard_imports)]
+pub use float_ops::*;
+
+mod transcendental;
+#[allow(clippy::wildcard_imports)]
+pub use transcendental::*;

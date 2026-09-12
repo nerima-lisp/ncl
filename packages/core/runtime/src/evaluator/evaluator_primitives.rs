@@ -2,6 +2,7 @@
 use super::*;
 
 mod clos;
+mod clos_slots;
 mod clos_tests;
 mod condition_warnings;
 mod condition_warnings_tests;
@@ -9,8 +10,12 @@ mod conditions;
 mod conditions_tests;
 mod evaluation;
 mod evaluation_tests;
+mod hash_tables;
+mod list_topology;
+mod packages_creation;
 mod packages_introspection;
 mod packages_introspection_tests;
+mod packages_lifecycle;
 mod packages_mutation;
 mod packages_mutation_tests;
 mod plist;
@@ -30,3 +35,5 @@ mod symbol_functions;
 mod symbol_functions_tests;
 mod symbol_values;
 mod symbol_values_tests;
+mod tree;
+mod tree_substitution;

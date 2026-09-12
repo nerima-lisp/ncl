@@ -30,19 +30,33 @@ impl Span {
 }
 
 /// A parsed Lisp form and its source location.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Form {
     /// The parsed syntax node.
     pub kind: FormKind,
     /// The node's source location.
     pub span: Span,
+    /// Quotation returns this object instead of reconstructing `kind`.
+    /// Clear it when rewriting syntax to represent a different object.
+    /// Equality compares `kind` and `span`, ignoring this annotation.
+    pub original_value: Option<crate::OpaqueLiteral>,
+}
+
+impl PartialEq for Form {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.span == other.span
+    }
 }
 
 impl Form {
     /// Creates a form with the supplied kind and location.
     #[must_use]
     pub const fn new(kind: FormKind, span: Span) -> Self {
-        Self { kind, span }
+        Self {
+            kind,
+            span,
+            original_value: None,
+        }
     }
 
     /// Creates an atom form.
@@ -70,9 +84,13 @@ impl Form {
     }
 }
 
-/// The syntactic variants accepted by the reader.
+/// Reader syntax and retained literals introduced during compilation.
 #[derive(Clone, Debug, PartialEq)]
 pub enum FormKind {
+    /// A projection containing a cycle; quotation recovers its annotated object.
+    CircularReference,
+    /// A retained runtime literal, not constructible by the reader.
+    Literal(crate::OpaqueLiteral),
     /// An unparsed atom token.
     Atom(String),
     /// A string literal.
@@ -90,11 +108,50 @@ pub enum FormKind {
     },
     /// A vector literal.
     Vector(Vec<Form>),
+    /// A complex number literal with real and imaginary components.
+    Complex {
+        /// The real component.
+        real: Box<Form>,
+        /// The imaginary component.
+        imaginary: Box<Form>,
+    },
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Form, FormKind, Span};
+
+    #[test]
+    fn annotation_clone_preserves_original_allocation() {
+        let original = crate::OpaqueLiteral::new(String::from("original"));
+        let mut form = Form::atom("x", Span::new(0, 1));
+        form.original_value = Some(original.clone());
+        let cloned = form.clone();
+        assert_eq!(form.original_value, cloned.original_value);
+        assert_eq!(cloned.original_value, Some(original));
+    }
+
+    #[test]
+    fn annotation_is_absent_on_new_and_rebuilt_forms() {
+        let mut form = Form::new(FormKind::Atom("x".into()), Span::new(0, 1));
+        assert!(form.original_value.is_none());
+        form.original_value = Some(crate::OpaqueLiteral::new(1_i64));
+        let rebuilt = Form::new(form.kind.clone(), form.span);
+        assert!(rebuilt.original_value.is_none());
+    }
+
+    #[test]
+    fn annotation_does_not_affect_structural_equality() {
+        let mut left = Form::atom("x", Span::new(0, 1));
+        let mut right = left.clone();
+        left.original_value = Some(crate::OpaqueLiteral::new(1_i64));
+        right.original_value = Some(crate::OpaqueLiteral::new(2_i64));
+        assert_ne!(left.original_value, right.original_value);
+        assert_eq!(left, right);
+        assert_eq!(left, Form::atom("x", left.span));
+        assert_ne!(left, Form::atom("y", left.span));
+        assert_ne!(left, Form::atom("x", Span::new(1, 2)));
+    }
 
     #[test]
     fn span_and_form_constructors_preserve_data() {
@@ -133,6 +190,13 @@ mod tests {
                     Form::new(FormKind::String("y".into()), span),
                 ]),
                 "#(x \"y\")",
+            ),
+            (
+                FormKind::Complex {
+                    real: Box::new(Form::atom("1", span)),
+                    imaginary: Box::new(Form::atom("2", span)),
+                },
+                "#C(1 2)",
             ),
         ];
         for (kind, expected) in cases {

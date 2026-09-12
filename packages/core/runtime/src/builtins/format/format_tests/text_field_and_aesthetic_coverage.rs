@@ -41,5 +41,5 @@ fn renders_dotted_lists_with_multiple_leading_items_and_an_empty_prefix() {
     let empty_prefix = Value::dotted_list(vec![], Value::Integer(5));
     let actual = format_control("~A", &[empty_prefix])
         .unwrap_or_else(|error| panic!("empty-prefix dotted list should format: {error}"));
-    assert_eq!(actual, "(. 5)");
+    assert_eq!(actual, "5");
 }

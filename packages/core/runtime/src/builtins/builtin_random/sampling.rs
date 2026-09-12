@@ -1,11 +1,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use ibig::ops::UnsignedAbs;
+
 use super::helpers::type_error;
 use crate::value::RandomState;
 use crate::{RuntimeError, Value};
 
-pub(super) fn random_limit(
+pub(crate) fn random_limit(
     limit: &Value,
     state: &Rc<RefCell<RandomState>>,
 ) -> Result<Value, RuntimeError> {
@@ -13,6 +15,9 @@ pub(super) fn random_limit(
         Value::Integer(limit) if *limit > 0 => {
             let value = bounded_u64(state, limit.cast_unsigned());
             Ok(Value::Integer(value.cast_signed()))
+        }
+        Value::BigInteger(limit) if limit.as_ref() > &ibig::IBig::from(0) => {
+            Ok(Value::big_integer(bounded_big_integer(state, limit)))
         }
         Value::Float(limit) if limit.is_finite() && *limit > 0.0 => {
             let sample = state.borrow_mut().next_u64();
@@ -41,7 +46,29 @@ fn bounded_u64(state: &Rc<RefCell<RandomState>>, bound: u64) -> u64 {
     }
 }
 
-pub(super) fn state_reference(
+fn bounded_big_integer(state: &Rc<RefCell<RandomState>>, bound: &ibig::IBig) -> ibig::IBig {
+    let bits = bound.unsigned_abs().bit_len();
+    loop {
+        let mut sample = ibig::IBig::from(0);
+        let mut remaining = bits;
+        while remaining > 0 {
+            let chunk = remaining.min(64);
+            let word = state.borrow_mut().next_u64();
+            let mask = if chunk == 64 {
+                u64::MAX
+            } else {
+                (1_u64 << chunk) - 1
+            };
+            sample = (sample << chunk) | ibig::IBig::from(word & mask);
+            remaining -= chunk;
+        }
+        if sample < *bound {
+            return sample;
+        }
+    }
+}
+
+pub(crate) fn state_reference(
     function: &str,
     value: &Value,
 ) -> Result<Rc<RefCell<RandomState>>, RuntimeError> {

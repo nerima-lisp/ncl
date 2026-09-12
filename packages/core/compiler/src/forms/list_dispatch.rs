@@ -26,6 +26,9 @@ impl CompileState {
             {
                 return result;
             }
+            if let Some(result) = self.dispatch_native_invocation(name, function, span, items) {
+                return result;
+            }
             if let Some(result) = self.dispatch_logic_and_binding_forms(name, function, span, items)
             {
                 return result;
@@ -148,5 +151,26 @@ mod tests {
             error.kind,
             CompileErrorKind::UnsupportedForm { .. }
         ));
+    }
+
+    #[test]
+    fn compile_list_routes_package_forms_to_runtime_evaluation() {
+        let span = Span::new(0, 2);
+
+        for operator in ["DEFPACKAGE", "IN-PACKAGE"] {
+            let mut state = CompileState::default();
+            let function = state.reserve_function(None, Vec::new());
+            let items = vec![Form::atom(operator, span), Form::atom("NCL-TEST", span)];
+
+            state
+                .compile_list(function, span, &items)
+                .unwrap_or_else(|error| panic!("{operator} uses runtime evaluation: {error}"));
+
+            assert_eq!(
+                state.functions[function].instructions,
+                vec![Instruction::EvalForm(Form::list(items, span))],
+                "{operator} must not compile as a normal function call"
+            );
+        }
     }
 }

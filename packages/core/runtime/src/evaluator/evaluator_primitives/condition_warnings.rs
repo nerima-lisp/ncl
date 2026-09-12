@@ -1,6 +1,8 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
+use crate::evaluator::evaluator_state::RestartBinding;
+
 impl Runtime {
     pub(super) fn primitive_warn(
         &self,
@@ -18,11 +20,24 @@ impl Runtime {
                     span,
                 ));
             }
-            self.signal_condition_value(&arguments[0], true, environment, span)?;
-            return Ok(Value::Nil);
+            let guard =
+                self.restart_guard(vec![RestartBinding::new("MUFFLE-WARNING".to_owned(), None)]);
+            let result = self.signal_condition_value(&arguments[0], true, environment, span);
+            drop(guard);
+            return match result {
+                Ok(()) => Ok(Value::Nil),
+                Err(RuntimeError::InvokeRestart { name, .. })
+                    if normalize_name(&name) == "MUFFLE-WARNING" =>
+                {
+                    Ok(Value::Nil)
+                }
+                Err(error) => Err(error),
+            };
         }
         let format_arguments = &arguments[1..];
-        self.signal_condition(
+        let guard =
+            self.restart_guard(vec![RestartBinding::new("MUFFLE-WARNING".to_owned(), None)]);
+        let result = self.signal_condition(
             "SIMPLE-WARNING",
             Self::condition_message(&arguments[0], format_arguments, span)?,
             Self::condition_format_control(&arguments[0]),
@@ -30,8 +45,17 @@ impl Runtime {
             true,
             environment,
             span,
-        )?;
-        Ok(Value::Nil)
+        );
+        drop(guard);
+        match result {
+            Ok(()) => Ok(Value::Nil),
+            Err(RuntimeError::InvokeRestart { name, .. })
+                if normalize_name(&name) == "MUFFLE-WARNING" =>
+            {
+                Ok(Value::Nil)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub(super) fn primitive_cerror(
@@ -54,6 +78,7 @@ impl Runtime {
         }
         let format_control = Self::condition_format_control(&arguments[1]);
         let message = Self::condition_message(&arguments[1], format_arguments, span)?;
+        let guard = self.restart_guard(vec![RestartBinding::new("CONTINUE".to_owned(), None)]);
         let result = if condition_object {
             self.dispatch_condition(
                 Self::condition_error(&arguments[1], false, span)?,
@@ -72,10 +97,11 @@ impl Runtime {
                 span,
             )
         };
+        drop(guard);
         match result {
             Ok(()) => {}
             Err(RuntimeError::InvokeRestart { name, .. })
-                if normalize_name(&name) == "CONTINUE" =>
+                if crate::environment::names_equal(&name, "CONTINUE") =>
             {
                 return Ok(Value::Nil);
             }
@@ -84,7 +110,7 @@ impl Runtime {
         if self
             .restart_bindings()
             .iter()
-            .any(|binding| normalize_name(&binding.name) == "CONTINUE")
+            .any(|binding| crate::environment::names_equal(&binding.name, "CONTINUE"))
         {
             self.invoke_restart_named("CONTINUE", &[], environment, span)
         } else {

@@ -21,7 +21,12 @@ impl Runtime {
             .iter()
             .map(|value| match value {
                 Value::Nil => Ok(Vec::new()),
-                Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
+                Value::Cons(_) => value.list_items().ok_or_else(|| RuntimeError::Type {
+                    expected: "proper sequence".to_string(),
+                    actual: value.type_name().to_string(),
+                    span: Some(span),
+                }),
+                Value::Vector(items) => Ok(items.visible_snapshot()),
                 Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
                 value => Err(RuntimeError::Type {
                     expected: "SEQUENCE".to_string(),

@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_choice_directive(
+pub(crate) fn format_choice_directive(
     state: &mut FormatControlState<'_>,
     parameters: &[FormatParameter],
     colon_modifier: bool,
@@ -53,14 +53,14 @@ pub(super) fn format_choice_directive(
             parameters.first().copied(),
             Some(FormatParameter::Number(_) | FormatParameter::Character(_))
         ) {
-            format_parameter_number(parameters, 0, 0)?
+            ibig::IBig::from(format_parameter_number(parameters, 0, 0)?)
         } else {
-            integer_argument(
+            integer_value(
                 "format choice",
                 format_argument("~[", state.arguments, state.argument_index)?,
             )?
         };
-        usize::try_from(index).ok()
+        usize::try_from(&index).ok()
     };
     let clause = selected_index
         .and_then(|index| {

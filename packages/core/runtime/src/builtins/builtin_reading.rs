@@ -3,8 +3,23 @@ use ncl_syntax::{ReadError, ReadErrorKind, Reader, Span};
 use super::{
     RuntimeError, Value, arity, quoted_form_value, stream_bound, stream_state_error, type_error,
 };
+use crate::Runtime;
 
-pub(super) fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    read_from_string_with_runtime(arguments, None)
+}
+
+pub(crate) fn read_from_string_in(
+    runtime: &Runtime,
+    arguments: &[Value],
+) -> Result<Value, RuntimeError> {
+    read_from_string_with_runtime(arguments, Some(runtime))
+}
+
+fn read_from_string_with_runtime(
+    arguments: &[Value],
+    runtime: Option<&Runtime>,
+) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("read-from-string", "at least 1", arguments.len()));
     }
@@ -28,6 +43,7 @@ pub(super) fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeErro
     for pair in keyword_arguments.as_chunks::<2>().0 {
         let name = match &pair[0] {
             Value::Keyword(name) | Value::KeywordExact(name) => name.as_ref(),
+            Value::InternedSymbol(symbol) if symbol.keyword() => symbol.name(),
             value => return Err(type_error("read-from-string", "a keyword", value)),
         };
         if name.eq_ignore_ascii_case("START") {
@@ -56,7 +72,10 @@ pub(super) fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeErro
         .collect::<String>();
     let mut reader = Reader::new(&window);
     let (value, byte_position) = if let Some(form) = reader.read_form()? {
-        let value = quoted_form_value(&form)?;
+        let value = match runtime {
+            Some(runtime) => runtime.runtime_quoted_value(&form)?,
+            None => quoted_form_value(&form)?,
+        };
         let byte_position = if preserving_whitespace {
             form.span.end
         } else {
@@ -82,18 +101,30 @@ pub(super) fn read_from_string(arguments: &[Value]) -> Result<Value, RuntimeErro
     Ok(Value::values(vec![value, Value::Integer(position)]))
 }
 
-pub(super) fn read(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    read_stream_form("read", arguments, false)
+pub(crate) fn read(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    read_stream_form("read", arguments, false, None)
 }
 
-pub(super) fn read_preserving_whitespace(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    read_stream_form("read-preserving-whitespace", arguments, true)
+pub(crate) fn read_in(runtime: &Runtime, arguments: &[Value]) -> Result<Value, RuntimeError> {
+    read_stream_form("read", arguments, false, Some(runtime))
+}
+
+pub(crate) fn read_preserving_whitespace(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    read_stream_form("read-preserving-whitespace", arguments, true, None)
+}
+
+pub(crate) fn read_preserving_whitespace_in(
+    runtime: &Runtime,
+    arguments: &[Value],
+) -> Result<Value, RuntimeError> {
+    read_stream_form("read-preserving-whitespace", arguments, true, Some(runtime))
 }
 
 fn read_stream_form(
     function: &str,
     arguments: &[Value],
     preserving_whitespace: bool,
+    runtime: Option<&Runtime>,
 ) -> Result<Value, RuntimeError> {
     if arguments.len() > 4 {
         return Err(arity(function, "0 to 4", arguments.len()));
@@ -136,7 +167,10 @@ fn read_stream_form(
         }
         return Ok(eof_value);
     };
-    let value = quoted_form_value(&form)?;
+    let value = match runtime {
+        Some(runtime) => runtime.runtime_quoted_value(&form)?,
+        None => quoted_form_value(&form)?,
+    };
     let byte_position = if preserving_whitespace {
         form.span.end
     } else {

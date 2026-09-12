@@ -29,10 +29,14 @@ change as implementation and conformance work reveal the next boundary.
 ## Compiler and execution
 
 - Move evaluator-backed compiler paths to native bytecode incrementally; the
-  current native surface includes multiple-value selection through
-  <code>nth-value</code> and <code>PUSH</code>/<code>POP</code>/<code>PUSHNEW</code>
-  for simple symbol places, while generalized-place and remaining fallback
-  paths stay explicit in compatibility tests.
+  current native surface includes list traversal, list-tail, list construction,
+  and multiple-value selection through <code>nth-value</code>. It also covers
+  <code>PUSH</code>/<code>POP</code>/<code>PUSHNEW</code> for the tested symbol,
+  list, property, and dynamic <code>NTH</code> places, plus <code>INCF</code> and
+  <code>DECF</code> symbol places. The tested sequence keyword-arity paths and
+  array fill-pointer mutation paths remain native as well. Generalized-place
+  forms outside this native subset, non-literal function-designator options,
+  and remaining fallback paths stay explicit in compatibility tests.
 - Define and test a behavior matrix for interpreted execution, compiled
   execution, and compile-only artifact generation, including compile-time
   macro/package effects and runtime non-execution.

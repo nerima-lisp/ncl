@@ -7,6 +7,8 @@ use crate::{Environment, Runtime, RuntimeError};
 
 use super::run_entry;
 
+mod modify_place;
+
 fn function(instructions: Vec<Instruction>) -> FunctionCode {
     FunctionCode {
         name: Some("test-function".to_string()),

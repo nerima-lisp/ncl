@@ -2,6 +2,7 @@ use super::{
     arity, array_option_name, character_argument, exact, index_argument, rebuild_sequence,
     sequence_elements, string_designator, type_designator_name, type_error,
 };
+use crate::builtins::typep_value;
 use crate::{RuntimeError, Value};
 
 pub fn copy_seq(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -14,12 +15,12 @@ pub fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() {
         return Err(arity("concatenate", "at least one", 0));
     }
-    let result_type = type_designator_name("concatenate", &arguments[0])?;
+    let result_type = sequence_result_type("concatenate", &arguments[0])?;
     let mut items = Vec::new();
     for sequence in &arguments[1..] {
         items.extend(sequence_elements("concatenate", sequence)?);
     }
-    match result_type.as_str() {
+    let result = match result_type.as_str() {
         "LIST" => Ok(Value::list(items)),
         "VECTOR" => Ok(Value::vector(items)),
         "STRING" | "SIMPLE-STRING" => {
@@ -42,7 +43,8 @@ pub fn concatenate(arguments: &[Value]) -> Result<Value, RuntimeError> {
             ),
             span: None,
         }),
-    }
+    }?;
+    validate_compound_result("concatenate", result, &arguments[0])
 }
 
 pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -53,7 +55,7 @@ pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
             arguments.len(),
         ));
     }
-    let result_type = type_designator_name("make-sequence", &arguments[0])?;
+    let result_type = sequence_result_type("make-sequence", &arguments[0])?;
     let size = index_argument("make-sequence", &arguments[1])?;
     let mut initial_element = Value::Nil;
     for pair in arguments[2..].as_chunks::<2>().0 {
@@ -67,7 +69,7 @@ pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
             }
         }
     }
-    match result_type.as_str() {
+    let result = match result_type.as_str() {
         "LIST" => Ok(Value::list(vec![initial_element; size])),
         "VECTOR" | "SIMPLE-VECTOR" => Ok(Value::vector(vec![initial_element; size])),
         "STRING" | "SIMPLE-STRING" => {
@@ -82,13 +84,19 @@ pub fn make_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
             ),
             span: None,
         }),
-    }
+    }?;
+    validate_compound_result("make-sequence", result, &arguments[0])
 }
 
 pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "coerce", 2)?;
-    let result_type = type_designator_name("coerce", &arguments[1])?;
-    match result_type.as_str() {
+    let result_type = sequence_result_type("coerce", &arguments[1])?;
+    let result = match result_type.as_str() {
+        "FLOAT" | "SHORT-FLOAT" | "SINGLE-FLOAT" | "DOUBLE-FLOAT" | "LONG-FLOAT" => {
+            crate::builtins::float_value(&[arguments[0].clone()])
+        }
+        "RATIONAL" | "RATIO" => crate::builtins::rational(&[arguments[0].clone()]),
+        "COMPLEX" => crate::builtins::complex(&[arguments[0].clone()]),
         "LIST" => Ok(Value::list(sequence_elements("coerce", &arguments[0])?)),
         "VECTOR" | "SIMPLE-VECTOR" => {
             Ok(Value::vector(sequence_elements("coerce", &arguments[0])?))
@@ -103,6 +111,7 @@ pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
                 | Value::Keyword(_)
                 | Value::SymbolExact(_)
                 | Value::KeywordExact(_)
+                | Value::InternedSymbol(_)
                 | Value::Character(_) => string_designator("coerce", &arguments[0])?,
                 value => sequence_elements("coerce", value)?
                     .into_iter()
@@ -112,7 +121,7 @@ pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
             Ok(Value::string(result))
         }
         "SEQUENCE" => match &arguments[0] {
-            Value::Nil | Value::List(_) | Value::Vector(_) | Value::String(_) => {
+            Value::Nil | Value::Cons(_) | Value::Vector(_) | Value::String(_) => {
                 Ok(arguments[0].clone())
             }
             value => Err(type_error("coerce", "a sequence", value)),
@@ -125,54 +134,36 @@ pub fn coerce(arguments: &[Value]) -> Result<Value, RuntimeError> {
             message: format!("coerce does not support result type {result_type}"),
             span: None,
         }),
+    }?;
+    validate_compound_result("coerce", result, &arguments[1])
+}
+
+fn validate_compound_result(
+    function: &str,
+    result: Value,
+    type_designator: &Value,
+) -> Result<Value, RuntimeError> {
+    if type_designator.list_items().is_some() && !typep_value(&result, type_designator)? {
+        return Err(type_error(
+            function,
+            "a value matching the result type",
+            &result,
+        ));
+    }
+    Ok(result)
+}
+
+fn sequence_result_type(function: &str, value: &Value) -> Result<String, RuntimeError> {
+    match value {
+        value if value.list_items().is_some() => value
+            .list_items()
+            .and_then(|items| items.first().cloned())
+            .as_ref()
+            .map(|operator| type_designator_name(function, operator))
+            .unwrap_or_else(|| type_designator_name(function, value)),
+        _ => type_designator_name(function, value),
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn concatenate_rejects_non_character_items_for_a_string_result() {
-        assert!(matches!(
-            concatenate(&[
-                Value::keyword("string"),
-                Value::vector(vec![Value::Integer(1)]),
-            ]),
-            Err(RuntimeError::Type { .. })
-        ));
-    }
-
-    #[test]
-    fn make_sequence_reports_arity_and_unknown_option_errors() {
-        assert!(matches!(
-            make_sequence(&[Value::keyword("list")]),
-            Err(RuntimeError::Arity { .. })
-        ));
-        assert!(matches!(
-            make_sequence(&[
-                Value::keyword("list"),
-                Value::Integer(2),
-                Value::keyword("bogus"),
-                Value::Nil,
-            ]),
-            Err(RuntimeError::InvalidForm { .. })
-        ));
-    }
-
-    #[test]
-    fn coerce_validates_sequence_and_character_result_types() {
-        assert!(matches!(
-            coerce(&[Value::Integer(1), Value::keyword("sequence")]),
-            Err(RuntimeError::Type { .. })
-        ));
-        assert!(matches!(
-            coerce(&[Value::Integer(1), Value::keyword("character")]),
-            Err(RuntimeError::Type { .. })
-        ));
-        assert!(matches!(
-            coerce(&[Value::Integer(1), Value::keyword("bogus")]),
-            Err(RuntimeError::InvalidForm { .. })
-        ));
-    }
-}
+mod tests;

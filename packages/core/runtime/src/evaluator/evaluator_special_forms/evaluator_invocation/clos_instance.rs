@@ -1,6 +1,162 @@
-use super::{Environment, Runtime, RuntimeError, Span, Value};
+use super::{Environment, Runtime, RuntimeError, Span, Value, quoted_form_value};
 
 impl Runtime {
+    pub(crate) fn slot_missing(
+        &self,
+        arguments: &[Value],
+        _environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() != 4 {
+            return Err(Self::arity("slot-missing", "four", arguments.len()));
+        }
+        Err(Self::invalid("slot is not defined for this class", span))
+    }
+
+    pub(crate) fn slot_unbound(
+        &self,
+        arguments: &[Value],
+        _environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() != 3 {
+            return Err(Self::arity("slot-unbound", "three", arguments.len()));
+        }
+        Err(RuntimeError::UnboundSlot {
+            name: Self::name_designator_from_value(&arguments[2], span)?.to_string(),
+            span: Some(span),
+        })
+    }
+
+    pub(crate) fn change_class(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() < 2 || !(arguments.len() - 2).is_multiple_of(2) {
+            return Err(Self::arity("change-class", "at least two", arguments.len()));
+        }
+        let class_name = Self::name_designator_from_value(&arguments[1], span)?;
+        let class = environment
+            .lookup_class(&class_name)
+            .ok_or_else(|| Self::invalid("unknown class", span))?;
+        let initargs = arguments[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| {
+                Ok((
+                    Self::name_designator_from_value(&pair[0], span)?.to_string(),
+                    pair[1].clone(),
+                ))
+            })
+            .collect::<Result<Vec<_>, RuntimeError>>()?;
+        let old_instance = arguments[0]
+            .instance_snapshot()
+            .ok_or_else(|| Self::invalid("change-class requires an instance", span))?;
+        if !arguments[0].change_instance_class(class.clone()) {
+            return Err(Self::invalid("change-class requires an instance", span));
+        }
+        let old_class = old_instance
+            .instance_class_definition()
+            .ok_or_else(|| Self::invalid("change-class requires an instance", span))?;
+        for slot in &class.slots {
+            if old_class
+                .slots
+                .iter()
+                .any(|old_slot| old_slot.name.eq_ignore_ascii_case(&slot.name))
+            {
+                continue;
+            }
+            if let Some((_, value)) = initargs
+                .iter()
+                .find(|(initarg, _)| slot.initargs.iter().any(|name| name == initarg))
+            {
+                self.set_instance_slot_checked(
+                    &arguments[0],
+                    &class.name,
+                    &slot.name,
+                    value.clone(),
+                    span,
+                )?;
+            } else if let Some(function) = &slot.init_function {
+                let value = self.apply_in(function, &[], span, environment)?;
+                self.set_instance_slot_checked(
+                    &arguments[0],
+                    &class.name,
+                    &slot.name,
+                    value,
+                    span,
+                )?;
+            }
+        }
+        let mut update_arguments = vec![old_instance, arguments[0].clone()];
+        for (initarg, value) in initargs {
+            update_arguments.push(Value::keyword(initarg));
+            update_arguments.push(value);
+        }
+        self.apply_in(
+            &Value::symbol("update-instance-for-different-class"),
+            &update_arguments,
+            span,
+            environment,
+        )
+    }
+
+    pub(crate) fn allocate_instance(
+        &self,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() != 1 {
+            return Err(Self::arity("allocate-instance", "one", arguments.len()));
+        }
+        let Some(class) = arguments[0].class_definition() else {
+            return Err(Self::invalid("allocate-instance requires a class", span));
+        };
+        let slots = class
+            .slots
+            .iter()
+            .map(|slot| (slot.name.clone(), Value::Unbound))
+            .collect();
+        Ok(Value::instance(class, slots))
+    }
+
+    pub(crate) fn set_instance_slot_checked(
+        &self,
+        instance: &Value,
+        class_name: &str,
+        slot_name: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let Some(class) = instance.instance_class_definition() else {
+            return Err(Self::invalid("slot target is not an instance", span));
+        };
+        let Some(slot) = class
+            .slots
+            .iter()
+            .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
+        else {
+            return Err(Self::invalid("slot is not defined for this class", span));
+        };
+        if let Some(type_form) = &slot.type_form {
+            let type_designator = quoted_form_value(type_form)?;
+            if !crate::builtins::typep_value(&value, &type_designator)? {
+                return Err(Self::invalid(
+                    "slot value does not satisfy declared type",
+                    span,
+                ));
+            }
+        }
+        if instance.set_instance_slot(class_name, slot_name, value) {
+            Ok(())
+        } else {
+            Err(Self::invalid("slot is not defined for this class", span))
+        }
+    }
+
     pub(crate) fn make_instance(
         &self,
         arguments: &[Value],
@@ -37,59 +193,175 @@ impl Runtime {
             if !class
                 .slots
                 .iter()
-                .any(|slot| slot.initarg.as_deref() == Some(initarg.as_str()))
+                .any(|slot| slot.initargs.iter().any(|name| name == initarg))
             {
                 return Err(Self::invalid("unknown make-instance initarg", span));
             }
         }
 
-        let mut slots = Vec::with_capacity(class.slots.len());
+        let instance = self.allocate_instance(&[Value::class_object(class.clone())], span)?;
         for slot in &class.slots {
-            let initarg_value = slot.initarg.as_ref().and_then(|initarg| {
-                initargs
-                    .iter()
-                    .rev()
-                    .find(|(name, _)| name == initarg)
-                    .map(|(_, value)| value.clone())
-            });
-            let value = if let Some(initarg_value) = initarg_value {
-                initarg_value
-            } else if let Some(class_value) = &slot.class_value {
-                let current = class_value.borrow().clone();
-                if matches!(current, Value::Unbound) {
-                    let value = slot
-                        .init_form
-                        .as_ref()
-                        .map(|form| self.eval_in(form, environment))
-                        .transpose()?
-                        .unwrap_or(Value::Unbound);
-                    *class_value.borrow_mut() = value.clone();
-                    value
-                } else {
-                    current
-                }
-            } else {
-                slot.init_form
-                    .as_ref()
-                    .map(|form| self.eval_in(form, environment))
-                    .transpose()?
-                    .unwrap_or(Value::Unbound)
+            if initargs
+                .iter()
+                .any(|(initarg, _)| slot.initargs.iter().any(|name| name == initarg))
+            {
+                continue;
+            }
+            if slot
+                .class_value
+                .as_ref()
+                .is_some_and(|value| !matches!(*value.borrow(), Value::Unbound))
+            {
+                continue;
+            }
+            let Some(function) = &slot.init_function else {
+                continue;
             };
-            slots.push((slot.name.clone(), value));
+            let value = self.apply_in(function, &[], span, environment)?;
+            self.set_instance_slot_checked(&instance, &class.name, &slot.name, value, span)?;
         }
-        let instance = Value::instance(class.clone(), slots);
-        for (initarg, value) in initargs {
+        let mut initialize_arguments = vec![instance.clone()];
+        for (initarg, value) in &initargs {
             let Some(index) = class
                 .slots
                 .iter()
-                .position(|slot| slot.initarg.as_deref() == Some(initarg.as_str()))
+                .position(|slot| slot.initargs.iter().any(|name| name == initarg))
             else {
                 return Err(Self::invalid("unknown make-instance initarg", span));
             };
-            if !instance.set_instance_slot(&class.name, &class.slots[index].name, value) {
-                return Err(Self::invalid("unknown make-instance initarg", span));
+            self.set_instance_slot_checked(
+                &instance,
+                &class.name,
+                &class.slots[index].name,
+                value.clone(),
+                span,
+            )?;
+            initialize_arguments.push(Value::keyword(initarg.clone()));
+            initialize_arguments.push(value.clone());
+        }
+        self.apply_in(
+            &Value::symbol("initialize-instance"),
+            &initialize_arguments,
+            span,
+            environment,
+        )
+    }
+
+    pub(crate) fn reinitialize_instance(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() {
+            return Err(Self::arity(
+                "reinitialize-instance",
+                "at least one",
+                arguments.len(),
+            ));
+        }
+        if !(arguments.len() - 1).is_multiple_of(2) {
+            return Err(Self::invalid(
+                "reinitialize-instance initargs require pairs",
+                span,
+            ));
+        }
+        let instance = &arguments[0];
+        let Some(class) = instance.instance_class_definition() else {
+            return Err(Self::invalid(
+                "reinitialize-instance requires an instance",
+                span,
+            ));
+        };
+        for pair in arguments[1..].as_chunks::<2>().0 {
+            let initarg = Self::name_designator_from_value(&pair[0], span)?;
+            if !class
+                .slots
+                .iter()
+                .any(|slot| slot.initargs.iter().any(|name| name == &initarg))
+            {
+                return Err(Self::invalid("unknown reinitialize-instance initarg", span));
             }
         }
-        Ok(instance)
+        let mut shared = vec![instance.clone(), Value::Nil];
+        shared.extend_from_slice(&arguments[1..]);
+        let function = environment
+            .lookup_function("SHARED-INITIALIZE")
+            .unwrap_or_else(|| Value::primitive("SHARED-INITIALIZE"));
+        self.apply_in(&function, &shared, span, environment)
+    }
+
+    pub(crate) fn initialize_instance(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.is_empty() {
+            return Err(Self::arity("initialize-instance", "at least one", 0));
+        }
+        let mut shared = vec![arguments[0].clone(), Value::symbol("T")];
+        shared.extend_from_slice(&arguments[1..]);
+        let function = environment
+            .lookup_function("SHARED-INITIALIZE")
+            .unwrap_or_else(|| Value::primitive("SHARED-INITIALIZE"));
+        self.apply_in(&function, &shared, span, environment)
+    }
+
+    pub(crate) fn shared_initialize(
+        &self,
+        arguments: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() < 2 {
+            return Err(Self::arity(
+                "shared-initialize",
+                "at least two",
+                arguments.len(),
+            ));
+        }
+        let instance = &arguments[0];
+        let Some(class) = instance.instance_class_definition() else {
+            return Err(Self::invalid(
+                "shared-initialize requires an instance",
+                span,
+            ));
+        };
+        for pair in arguments[2..].as_chunks::<2>().0 {
+            let initarg = Self::name_designator_from_value(&pair[0], span)?;
+            let Some(slot) = class
+                .slots
+                .iter()
+                .find(|slot| slot.initargs.iter().any(|name| name == &initarg))
+            else {
+                return Err(Self::invalid("unknown shared-initialize initarg", span));
+            };
+            self.set_instance_slot_checked(
+                instance,
+                &class.name,
+                &slot.name,
+                pair[1].clone(),
+                span,
+            )?;
+        }
+        let _ = environment;
+        Ok(instance.clone())
+    }
+
+    pub(crate) fn update_instance_for_different_class(
+        &self,
+        arguments: &[Value],
+        _environment: &Environment,
+        _span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if arguments.len() < 2 || !(arguments.len() - 2).is_multiple_of(2) {
+            return Err(Self::arity(
+                "update-instance-for-different-class",
+                "at least two",
+                arguments.len(),
+            ));
+        }
+        Ok(arguments[1].clone())
     }
 }

@@ -49,10 +49,9 @@ pub(in crate::vm) fn destructure_specification(
                     .min(optional_count);
                 (0..available)
                     .take_while(|index| {
-                        !matches!(
-                            arguments[required_count + *index],
-                            Value::Keyword(_) | Value::KeywordExact(_)
-                        )
+                        let argument = &arguments[required_count + *index];
+                        !matches!(argument, Value::Keyword(_) | Value::KeywordExact(_))
+                            && !matches!(argument, Value::InternedSymbol(symbol) if symbol.keyword())
                     })
                     .count()
             } else {

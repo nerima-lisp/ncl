@@ -5,6 +5,7 @@ mod destructuring;
 mod do_bindings;
 mod do_loop;
 mod function_bindings;
+mod hash_table_iterator;
 mod iteration;
 mod let_form;
 mod macro_bindings;

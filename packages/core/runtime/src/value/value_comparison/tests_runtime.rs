@@ -35,14 +35,22 @@ mod tests {
         );
         let class = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
-            precedence: vec!["POINT".to_owned()],
+            documentation: None,
+            direct_superclasses: Vec::new(),
+            direct_slots: Vec::new(),
+            direct_default_initargs: Vec::new(),
+            precedence: vec!["POINT".to_owned().into()],
             slots: Vec::new(),
             default_initargs: Vec::new(),
         });
         let same_class = Value::class_object(Rc::clone(&class));
         let equivalent_class = Value::class_object(Rc::new(ClassDefinition {
             name: "point".to_owned(),
-            precedence: vec!["point".to_owned()],
+            documentation: None,
+            direct_superclasses: Vec::new(),
+            direct_slots: Vec::new(),
+            direct_default_initargs: Vec::new(),
+            precedence: vec!["point".to_owned().into()],
             slots: Vec::new(),
             default_initargs: Vec::new(),
         }));

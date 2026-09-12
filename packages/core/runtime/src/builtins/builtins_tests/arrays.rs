@@ -113,6 +113,52 @@ fn make_array_rejects_invalid_keyword_pairs() {
 }
 
 #[test]
+fn adjustable_array_p_reports_array_storage_metadata() -> Result<(), RuntimeError> {
+    let ordinary = make_array(&[Value::Integer(2)])?;
+    let adjustable = make_array(&[
+        Value::Integer(2),
+        Value::keyword("adjustable"),
+        Value::Boolean(true),
+    ])?;
+
+    assert!(matches!(adjustable_array_p(&[ordinary])?, Value::Nil));
+    assert!(matches!(
+        adjustable_array_p(&[adjustable])?,
+        Value::Boolean(true)
+    ));
+    assert!(adjustable_array_p(&[Value::Integer(1)]).is_err());
+    Ok(())
+}
+
+#[test]
+fn array_displacement_preserves_source_identity_and_offset() -> Result<(), RuntimeError> {
+    let source = Value::vector(vec![
+        Value::Integer(1),
+        Value::Integer(2),
+        Value::Integer(3),
+    ]);
+    let view = make_array(&[
+        Value::Integer(2),
+        Value::keyword("displaced-to"),
+        source.clone(),
+        Value::keyword("displaced-index-offset"),
+        Value::Integer(1),
+    ])?;
+
+    let Value::Values(values) = array_displacement(&[view])? else {
+        panic!("array-displacement must return two values");
+    };
+    assert!(values[0].eq_value(&source));
+    assert!(matches!(values[1], Value::Integer(1)));
+
+    let Value::Values(values) = array_displacement(&[source])? else {
+        panic!("array-displacement must return two values");
+    };
+    assert!(matches!(values.as_slice(), [Value::Nil, Value::Integer(0)]));
+    Ok(())
+}
+
+#[test]
 fn array_coordinate_index_reports_overflow_in_stride_and_contribution() {
     let stride_overflow = array_coordinate_index(
         "test",

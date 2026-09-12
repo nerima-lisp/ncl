@@ -3,7 +3,7 @@ use super::*;
 
 const MAX_FORMAT_FIELD_WIDTH: usize = 1_000_000;
 
-pub(super) fn format_fixed_float_directive(
+pub(crate) fn format_fixed_float_directive(
     value: f64,
     parameters: &[FormatParameter],
     colon_modifier: bool,

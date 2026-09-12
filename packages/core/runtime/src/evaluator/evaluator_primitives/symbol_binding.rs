@@ -10,14 +10,14 @@ impl Runtime {
         if arguments.len() != 2 {
             return Err(Self::arity("set", "two", arguments.len()));
         }
-        let Some((name, exact)) = arguments[0].symbol_reference() else {
+        let Some((name, exact)) = arguments[0].variable_reference() else {
             return Err(Self::invalid("set first argument must be a symbol", span));
         };
-        self.ensure_symbol_writable(name, exact, span)?;
+        self.ensure_symbol_writable(&name, exact, span)?;
         Ok(if exact {
-            self.set_symbol_value_exact(name, arguments[1].clone())
+            self.set_symbol_value_exact(&name, arguments[1].clone())
         } else {
-            self.set_symbol_value(name, arguments[1].clone())
+            self.set_symbol_value(&name, arguments[1].clone())
         })
     }
 
@@ -34,23 +34,23 @@ impl Runtime {
                 arguments.len(),
             ));
         }
-        let Some((symbol_name, exact)) = arguments[0].symbol_reference() else {
+        let Some((symbol_name, exact)) = arguments[0].variable_reference() else {
             return Err(Self::invalid(
                 "unbound operation argument must be a symbol",
                 span,
             ));
         };
         if name == "MAKUNBOUND" {
-            self.ensure_symbol_writable(symbol_name, exact, span)?;
+            self.ensure_symbol_writable(&symbol_name, exact, span)?;
             if exact {
-                self.makunbound_exact_symbol(symbol_name);
+                self.makunbound_exact_symbol(&symbol_name);
             } else {
-                self.makunbound_symbol(symbol_name);
+                self.makunbound_symbol(&symbol_name);
             }
         } else if exact {
-            self.fmakunbound_exact_symbol(symbol_name);
+            self.fmakunbound_exact_symbol(&symbol_name);
         } else {
-            self.fmakunbound_symbol(symbol_name);
+            self.fmakunbound_symbol(&symbol_name);
         }
         Ok(arguments[0].clone())
     }

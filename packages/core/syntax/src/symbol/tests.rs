@@ -58,6 +58,17 @@ fn parses_symbol_namespaces_and_escaping() {
 }
 
 #[test]
+fn accepts_empty_escaped_symbol_names() {
+    let token = parse_symbol_token("||").expect("empty escaped symbol should be valid");
+
+    assert_eq!(token.kind, SymbolTokenKind::Symbol);
+    assert_eq!(token.package, None);
+    assert_eq!(token.name, "");
+    assert!(!token.external);
+    assert!(token.escaped);
+}
+
+#[test]
 fn rejects_invalid_symbol_tokens() {
     let cases = [
         ("", SymbolTokenError::EmptyName),

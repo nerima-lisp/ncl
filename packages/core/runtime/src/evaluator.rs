@@ -14,7 +14,7 @@ use crate::builtins;
 use crate::environment::normalize_name;
 use crate::package::{self, PackageState};
 use crate::value::{
-    ClassDefinition, ClassSlot, MacroLambdaList, MacroPattern, MethodDefinition,
+    ClassDefinition, ClassSlot, MacroLambdaList, MacroPattern, MethodDefinition, RandomState,
     StructureDefinition, StructureSlot,
 };
 use crate::{Environment, RuntimeError, Value};
@@ -66,6 +66,8 @@ pub struct Runtime {
     dynamic: Rc<RefCell<DynamicState>>,
     next_block_target: Cell<u64>,
     gensym_counter: Cell<u64>,
+    gentemp_counter: Cell<u64>,
+    compilation_reserved_names: RefCell<HashSet<String>>,
     method_context: RefCell<Vec<MethodContext>>,
 }
 
@@ -75,14 +77,24 @@ impl Runtime {
     pub fn new() -> Self {
         let global = Environment::new();
         builtins::install(&global);
-        Self {
+        let dynamic = Rc::new(RefCell::new(DynamicState::default()));
+        let runtime = Self {
             global,
             packages: Rc::new(RefCell::new(PackageState::new())),
-            dynamic: Rc::new(RefCell::new(DynamicState::default())),
+            dynamic,
             next_block_target: Cell::new(1),
             gensym_counter: Cell::new(0),
+            gentemp_counter: Cell::new(0),
+            compilation_reserved_names: RefCell::new(HashSet::new()),
             method_context: RefCell::new(Vec::new()),
-        }
+        };
+        runtime.define_special_value(
+            "*random-state*",
+            Value::random_state(RandomState::seeded()),
+            true,
+        );
+        runtime.define_special_value("*features*", Value::list(Vec::new()), true);
+        runtime
     }
 
     /// Returns a clone of the global environment handle.

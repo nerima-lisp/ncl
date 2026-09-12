@@ -13,6 +13,9 @@ impl fmt::Display for Value {
             Self::Rational(value) => {
                 write!(formatter, "{}/{}", value.numerator(), value.denominator())
             }
+            Self::BigRational(value) => {
+                write!(formatter, "{}/{}", value.numerator(), value.denominator())
+            }
             Self::Float(value) => {
                 if value.fract() == 0.0 {
                     write!(formatter, "{value:.1}")
@@ -20,6 +23,7 @@ impl fmt::Display for Value {
                     value.fmt(formatter)
                 }
             }
+            Self::Complex(value) => write!(formatter, "#C({} {})", value.real(), value.imaginary()),
             Self::String(value) => write!(formatter, "{value:?}"),
             Self::Character(value) => match value {
                 ' ' => formatter.write_str("#\\SPACE"),
@@ -31,31 +35,33 @@ impl fmt::Display for Value {
             Self::Stream(stream) => write!(formatter, "#<{}>", stream.borrow().kind_name()),
             Self::RandomState(_) => formatter.write_str("#<RANDOM-STATE>"),
             Self::Package(value) => write!(formatter, "#<PACKAGE \"{value}\">"),
+            Self::PackageObject(value) => match value.name() {
+                Some(name) => write!(formatter, "#<PACKAGE \"{name}\">"),
+                None => formatter.write_str("#<PACKAGE (deleted)>"),
+            },
             Self::Environment(_) => formatter.write_str("#<ENVIRONMENT>"),
             Self::Symbol(value) => formatter.write_str(value),
             Self::SymbolExact(value) => write_escaped_symbol(formatter, value),
+            Self::InternedSymbol(value) if value.exact() && value.keyword() => {
+                formatter.write_char(':')?;
+                write_escaped_symbol(formatter, value.name())
+            }
+            Self::InternedSymbol(value) => formatter.write_str(&value.reference()),
             Self::UninternedSymbol(value) => write!(formatter, "#:{value}"),
             Self::Keyword(value) => write!(formatter, ":{value}"),
             Self::KeywordExact(value) => {
                 formatter.write_char(':')?;
                 write_escaped_symbol(formatter, value)
             }
-            Self::List(values) => {
-                formatter.write_str("(")?;
-                write_sequence(formatter, values)?;
-                formatter.write_str(")")
-            }
-            Self::DottedList { items, tail } => {
-                formatter.write_str("(")?;
-                write_sequence(formatter, items)?;
-                if !items.is_empty() {
-                    formatter.write_str(" ")?;
-                }
-                write!(formatter, ". {tail})")
-            }
+            Self::Cons(cell) => formatter.write_str(&cell.printed_with(ToString::to_string)),
             Self::Vector(values) => {
+                let Some(_guard) =
+                    super::PrintGuard::enter(crate::value::PrintKind::Vector, values.identity())
+                else {
+                    return formatter.write_str("#<CIRCULAR>");
+                };
                 formatter.write_str("#(")?;
-                write_sequence(formatter, values)?;
+                write_sequence(formatter, &values.visible_snapshot())?;
                 formatter.write_str(")")
             }
             Self::Array { dimensions, .. } => write!(formatter, "#<ARRAY {dimensions:?}>"),
@@ -71,14 +77,23 @@ impl fmt::Display for Value {
             Self::Condition(condition) => write!(formatter, "#<CONDITION {}>", condition.message),
             Self::Restart(restart) => write!(formatter, "#<RESTART {}>", restart.name),
             Self::Structure { name, slots, .. } => {
+                let Some(_guard) = super::PrintGuard::enter(
+                    crate::value::PrintKind::Structure,
+                    std::rc::Rc::as_ptr(slots) as usize,
+                ) else {
+                    return formatter.write_str("#<CIRCULAR>");
+                };
                 write!(formatter, "#S({name}")?;
-                for (slot_name, value) in slots.borrow().iter() {
+                let snapshot = slots.borrow().clone();
+                for (slot_name, value) in &snapshot {
                     write!(formatter, " :{slot_name} {value}")?;
                 }
                 formatter.write_char(')')
             }
             Self::Class(definition) => write!(formatter, "#<CLASS {}>", definition.name),
-            Self::Instance(instance) => write!(formatter, "#<{} INSTANCE>", instance.class.name),
+            Self::Instance(instance) => {
+                write!(formatter, "#<{} INSTANCE>", instance.class.borrow().name)
+            }
             Self::Function(function) => fmt_function(formatter, function),
         }
     }
@@ -86,6 +101,10 @@ impl fmt::Display for Value {
 
 fn fmt_function(formatter: &mut fmt::Formatter<'_>, function: &Function) -> fmt::Result {
     match function {
+        Function::Complement { .. }
+        | Function::Constantly { .. }
+        | Function::Method { .. }
+        | Function::SlotSetfWriter { .. } => formatter.write_str("#<FUNCTION>"),
         Function::Builtin { name, .. } => write!(formatter, "#<BUILTIN {name}>"),
         Function::Primitive { name } => write!(formatter, "#<PRIMITIVE {name}>"),
         Function::StructureConstructor { name, .. } => {
@@ -124,7 +143,9 @@ fn fmt_function(formatter: &mut fmt::Formatter<'_>, function: &Function) -> fmt:
             formatter,
             "#<CONDITION-WRITER {condition_name}-{slot_name}>"
         ),
-        Function::Closure { .. } | Function::Compiled { .. } => formatter.write_str("#<FUNCTION>"),
+        Function::Closure { .. }
+        | Function::HashTableIterator { .. }
+        | Function::Compiled { .. } => formatter.write_str("#<FUNCTION>"),
         Function::Macro { .. } | Function::ModifyMacro { .. } => formatter.write_str("#<MACRO>"),
     }
 }

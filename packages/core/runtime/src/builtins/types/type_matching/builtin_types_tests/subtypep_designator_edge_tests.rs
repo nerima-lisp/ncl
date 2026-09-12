@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::builtins::types::subtype_entry::subtypep_value;
 use crate::builtins::types::subtype_validation::validate_subtype_designator;
 use crate::{Environment, Value};
@@ -7,17 +5,14 @@ use crate::{Environment, Value};
 use super::support::compound;
 
 #[test]
-fn validate_subtype_designator_rejects_malformed_lists_directly() {
+fn validate_subtype_designator_accepts_nil_and_rejects_malformed_lists() {
     let environment = Environment::new();
 
-    // `Value::list` collapses an empty vector to NIL, so the "compound list
-    // with no operator" branch can only be reached by constructing the
-    // empty `Value::List` directly.
-    let empty_list = Value::List(Rc::new(Vec::new()));
-    assert!(validate_subtype_designator("subtypep", &empty_list, &environment).is_err());
+    let empty_list = Value::Nil;
+    assert!(validate_subtype_designator("subtypep", &empty_list, &environment).is_ok());
 
     // A compound designator whose operator position is not a symbol.
-    let numeric_operator = Value::List(Rc::new(vec![Value::Integer(1), Value::Integer(2)]));
+    let numeric_operator = Value::list(vec![Value::Integer(1), Value::Integer(2)]);
     assert!(validate_subtype_designator("subtypep", &numeric_operator, &environment).is_err());
 }
 

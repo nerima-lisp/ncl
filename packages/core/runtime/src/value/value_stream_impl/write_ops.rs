@@ -9,20 +9,37 @@ impl Stream {
         match &mut self.kind {
             StreamKind::Output {
                 buffer,
+                position,
                 at_line_start,
+                output_dirty,
                 ..
             } => {
-                buffer.push_str(text);
+                let mut characters: Vec<char> = buffer.chars().collect();
+                for character in text.chars() {
+                    if *position < characters.len() {
+                        characters[*position] = character;
+                    } else {
+                        characters.push(character);
+                    }
+                    *position += 1;
+                }
+                *buffer = characters.into_iter().collect();
                 if let Some(character) = text.chars().last() {
                     *at_line_start = character == '\n';
                 }
+                *output_dirty = true;
                 true
             }
+            StreamKind::Probe
+            | StreamKind::BinaryInput { .. }
+            | StreamKind::BinaryOutput { .. }
+            | StreamKind::BinaryIo { .. } => false,
             StreamKind::Io {
                 characters,
                 position,
                 pushback,
                 at_line_start,
+                output_dirty,
                 ..
             } => {
                 pushback.take();
@@ -37,9 +54,55 @@ impl Stream {
                 if let Some(character) = text.chars().last() {
                     *at_line_start = character == '\n';
                 }
+                *output_dirty = true;
                 true
             }
             StreamKind::Input { .. } => false,
+        }
+    }
+
+    pub(crate) fn write_byte(&mut self, byte: u8) -> bool {
+        if self.closed {
+            return false;
+        }
+        match &mut self.kind {
+            StreamKind::BinaryOutput {
+                bytes,
+                position,
+                output_dirty,
+                ..
+            } => {
+                if *position < bytes.len() {
+                    bytes[*position] = byte;
+                } else {
+                    bytes.push(byte);
+                }
+                *position += 1;
+                *output_dirty = true;
+                true
+            }
+            StreamKind::BinaryIo {
+                bytes,
+                position,
+                pushback,
+                output_dirty,
+                ..
+            } => {
+                pushback.take();
+                if *position < bytes.len() {
+                    bytes[*position] = byte;
+                } else {
+                    bytes.push(byte);
+                }
+                *position += 1;
+                *output_dirty = true;
+                true
+            }
+            StreamKind::Input { .. }
+            | StreamKind::BinaryInput { .. }
+            | StreamKind::Probe
+            | StreamKind::Io { .. }
+            | StreamKind::Output { .. } => false,
         }
     }
 
@@ -51,7 +114,11 @@ impl Stream {
             StreamKind::Output { at_line_start, .. } | StreamKind::Io { at_line_start, .. } => {
                 *at_line_start
             }
-            StreamKind::Input { .. } => return None,
+            StreamKind::Input { .. }
+            | StreamKind::BinaryInput { .. }
+            | StreamKind::Probe
+            | StreamKind::BinaryOutput { .. }
+            | StreamKind::BinaryIo { .. } => return None,
         };
         if at_line_start {
             return Some(false);
@@ -62,13 +129,25 @@ impl Stream {
     pub(crate) fn take_output(&mut self) -> Option<String> {
         let StreamKind::Output {
             buffer,
+            committed_buffer,
+            position,
+            committed_position,
+            at_line_start,
+            committed_at_line_start,
+            output_dirty,
             file_path: None,
-            ..
         } = &mut self.kind
         else {
             return None;
         };
-        Some(std::mem::take(buffer))
+        let output = std::mem::take(buffer);
+        *committed_buffer = String::new();
+        *position = 0;
+        *committed_position = 0;
+        *at_line_start = true;
+        *committed_at_line_start = true;
+        *output_dirty = false;
+        Some(output)
     }
 
     pub(crate) fn close(&mut self, abort: bool) -> Result<(), std::io::Error> {
@@ -76,25 +155,16 @@ impl Stream {
             return Ok(());
         }
         if !abort {
-            if let StreamKind::Output {
-                buffer,
-                file_path: Some(path),
-                ..
-            } = &self.kind
-            {
-                std::fs::write(path.as_ref(), buffer.as_bytes())?;
-            }
-            if let StreamKind::Io {
-                characters,
-                file_path,
-                ..
-            } = &self.kind
-            {
-                let source: String = characters.iter().collect();
-                std::fs::write(file_path.as_ref(), source.as_bytes())?;
+            self.flush_output()?;
+            if let Some(path) = self.delete_on_close.take() {
+                std::fs::remove_file(path)?;
             }
         }
         self.closed = true;
         Ok(())
+    }
+
+    pub(crate) fn set_delete_on_close(&mut self, path: std::path::PathBuf) {
+        self.delete_on_close = Some(path);
     }
 }

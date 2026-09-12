@@ -7,7 +7,14 @@ mod tests {
     fn empty_class(name: &str) -> Rc<ClassDefinition> {
         Rc::new(ClassDefinition {
             name: name.to_string(),
-            precedence: vec![name.to_string(), "STANDARD-OBJECT".to_string()],
+            documentation: None,
+            direct_superclasses: Vec::new(),
+            direct_slots: Vec::new(),
+            direct_default_initargs: Vec::new(),
+            precedence: vec![
+                name.to_string().into(),
+                "STANDARD-OBJECT".to_string().into(),
+            ],
             slots: Vec::new(),
             default_initargs: Vec::new(),
         })
@@ -49,6 +56,141 @@ mod tests {
     }
 
     #[test]
+    fn using_class_slot_primitives_operate_on_an_instance() {
+        let class = empty_class("POINT");
+        let instance =
+            Value::instance(class.clone(), vec![("value".to_owned(), Value::Integer(7))]);
+        let class_value = Value::Class(class);
+        let value = Runtime::apply_slot_primitive(
+            "SLOT-VALUE-USING-CLASS",
+            &[
+                class_value.clone(),
+                instance.clone(),
+                Value::symbol("value"),
+            ],
+            SPAN,
+        )
+        .expect("using-class primitive is recognized")
+        .expect("slot value succeeds");
+        assert!(matches!(value, Value::Integer(7)));
+        let exists = Runtime::apply_slot_primitive(
+            "SLOT-EXISTS-P-USING-CLASS",
+            &[
+                class_value.clone(),
+                instance.clone(),
+                Value::symbol("value"),
+            ],
+            SPAN,
+        )
+        .expect("using-class exists primitive is recognized")
+        .expect("slot exists succeeds");
+        assert!(matches!(exists, Value::Boolean(true)));
+        let bound = Runtime::apply_slot_primitive(
+            "SLOT-BOUNDP-USING-CLASS",
+            &[
+                class_value.clone(),
+                instance.clone(),
+                Value::symbol("value"),
+            ],
+            SPAN,
+        )
+        .expect("using-class primitive is recognized")
+        .expect("slot boundp succeeds");
+        assert!(matches!(bound, Value::Boolean(true)));
+        Runtime::apply_slot_primitive(
+            "SLOT-MAKUNBOUND-USING-CLASS",
+            &[class_value, instance.clone(), Value::symbol("value")],
+            SPAN,
+        )
+        .expect("using-class primitive is recognized")
+        .expect("slot makunbound succeeds");
+        assert!(!instance.instance_slot_is_bound("value").unwrap_or(false));
+    }
+
+    #[test]
+    fn compiled_setf_using_class_slot_updates_the_instance() {
+        let values = Runtime::new()
+            .eval_compiled_source(
+                "(defclass point () ((value :initarg :value)))
+                 (let ((point (make-instance 'point :value 1)))
+                   (setf (slot-value-using-class (find-class 'point) point 'value) 9)
+                   (slot-value point 'value))",
+            )
+            .expect("compiled using-class SETF succeeds");
+        assert!(matches!(values.last(), Some(Value::Integer(9))));
+    }
+
+    #[test]
+    fn compiled_slot_exists_p_using_class_accepts_three_arguments() {
+        let values = Runtime::new()
+            .eval_compiled_source(
+                "(defclass exists-point () ((value)))
+                 (let ((point (make-instance 'exists-point)))
+                   (slot-exists-p-using-class (find-class 'exists-point) point 'value))",
+            )
+            .expect("compiled using-class SLOT-EXISTS-P succeeds");
+        assert!(matches!(values.last(), Some(Value::Boolean(true))));
+    }
+
+    #[test]
+    fn slot_value_dispatches_missing_slots_to_slot_missing() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass missing-slot-object () ())
+                 (defmethod slot-missing ((class t) (object missing-slot-object)
+                                           (slot-name t) (operation t))
+                   (declare (ignore class object slot-name operation))
+                   42)
+                 (slot-value (make-instance 'missing-slot-object) 'absent)",
+            )
+            .expect("SLOT-MISSING method handles an undefined slot");
+        assert!(matches!(values.last(), Some(Value::Integer(42))));
+    }
+
+    #[test]
+    fn slot_value_dispatches_unbound_slots_to_slot_unbound() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass unbound-slot-object () ((value)))
+                 (defmethod slot-unbound ((class t) (object unbound-slot-object)
+                                           (slot-name t))
+                   (declare (ignore class object slot-name))
+                   42)
+                 (slot-value (make-instance 'unbound-slot-object) 'value)",
+            )
+            .expect("SLOT-UNBOUND method handles an unbound slot");
+        assert!(matches!(values.last(), Some(Value::Integer(42))));
+    }
+
+    #[test]
+    fn slot_makunbound_dispatches_missing_slots_to_slot_missing() {
+        let source = "(defclass makunbound-missing-object () ())
+                      (defmethod slot-missing ((class t) (object makunbound-missing-object)
+                                                (slot-name t) (operation t))
+                        (declare (ignore class object slot-name))
+                        (if (eq operation 'slot-makunbound) 42 0))
+                      (slot-makunbound (make-instance 'makunbound-missing-object) 'absent)";
+        let values = Runtime::new()
+            .eval_source(source)
+            .expect("SLOT-MISSING handles an undefined SLOT-MAKUNBOUND");
+        assert!(matches!(values.last(), Some(Value::Integer(42))));
+    }
+
+    #[test]
+    fn compiled_slot_makunbound_dispatches_missing_slots_to_slot_missing() {
+        let source = "(defclass compiled-makunbound-missing-object () ())
+                      (defmethod slot-missing ((class t) (object compiled-makunbound-missing-object)
+                                                (slot-name t) (operation t))
+                        (declare (ignore class object slot-name))
+                        (if (eq operation 'slot-makunbound) 42 0))
+                      (slot-makunbound (make-instance 'compiled-makunbound-missing-object) 'absent)";
+        let values = Runtime::new()
+            .eval_compiled_source(source)
+            .expect("compiled SLOT-MISSING handles an undefined SLOT-MAKUNBOUND");
+        assert!(matches!(values.last(), Some(Value::Integer(42))));
+    }
+
+    #[test]
     fn class_of_a_non_instance_value_synthesizes_a_class_definition() {
         let environment = Environment::new();
         let result = Runtime::apply_class_introspection_primitive(
@@ -79,5 +221,257 @@ mod tests {
             result,
             Err(RuntimeError::Type { expected, .. }) if expected == "CLASS"
         ));
+    }
+
+    #[test]
+    fn class_finalized_p_accepts_class_objects() {
+        let environment = Environment::new();
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-FINALIZED-P",
+            &[Value::class_object(empty_class("POINT"))],
+            &environment,
+            SPAN,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(result.is_truthy());
+    }
+
+    #[test]
+    fn class_finalized_p_rejects_non_class_objects() {
+        let environment = Environment::new();
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-FINALIZED-P",
+            &[Value::Integer(1)],
+            &environment,
+            SPAN,
+        )
+        .unwrap()
+        .unwrap_err();
+        assert!(matches!(result, RuntimeError::Type { expected, .. } if expected == "CLASS"));
+    }
+
+    #[test]
+    fn class_direct_superclasses_returns_class_objects() {
+        let environment = Environment::new();
+        let class = Rc::new(ClassDefinition {
+            name: "POINT".to_owned(),
+            documentation: None,
+            direct_superclasses: vec!["STANDARD-OBJECT".into()],
+            direct_slots: vec!["X".into()],
+            direct_default_initargs: Vec::new(),
+            precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
+            slots: vec![ClassSlot {
+                name: "X".to_owned(),
+                documentation: None,
+                initargs: Vec::new(),
+                readers: Vec::new(),
+                writers: Vec::new(),
+                init_form: None,
+                type_form: None,
+                init_function: None,
+                class_value: None,
+            }],
+            default_initargs: Vec::new(),
+        });
+        environment.define_class("POINT", Rc::clone(&class));
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-DIRECT-SUPERCLASSES",
+            &[Value::class_object(class)],
+            &environment,
+            SPAN,
+        )
+        .unwrap_or_else(|| panic!("CLASS-DIRECT-SUPERCLASSES is recognized"))
+        .unwrap_or_else(|error| panic!("class introspection succeeds: {error}"));
+        assert!(matches!(result, Value::Cons(_)));
+    }
+
+    #[test]
+    fn class_direct_slots_returns_slot_names() {
+        let environment = Environment::new();
+        let class = Rc::new(ClassDefinition {
+            name: "POINT".to_owned(),
+            documentation: None,
+            direct_superclasses: vec!["STANDARD-OBJECT".into()],
+            direct_slots: vec!["X".into(), "Y".into()],
+            direct_default_initargs: Vec::new(),
+            precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
+            slots: vec![
+                ClassSlot {
+                    name: "X".to_owned(),
+                    documentation: None,
+                    initargs: Vec::new(),
+                    readers: Vec::new(),
+                    writers: Vec::new(),
+                    init_form: None,
+                    type_form: None,
+                    init_function: None,
+                    class_value: None,
+                },
+                ClassSlot {
+                    name: "Y".to_owned(),
+                    documentation: None,
+                    initargs: Vec::new(),
+                    readers: Vec::new(),
+                    writers: Vec::new(),
+                    init_form: None,
+                    type_form: None,
+                    init_function: None,
+                    class_value: None,
+                },
+            ],
+            default_initargs: Vec::new(),
+        });
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-DIRECT-SLOTS",
+            &[Value::class_object(class)],
+            &environment,
+            SPAN,
+        )
+        .unwrap()
+        .unwrap();
+        let slots = result
+            .list_items()
+            .expect("class-direct-slots returns a list");
+        assert_eq!(slots[0].instance_slot("NAME").unwrap().to_string(), "X");
+        assert_eq!(slots[1].instance_slot("NAME").unwrap().to_string(), "Y");
+    }
+
+    #[test]
+    fn class_slots_returns_effective_slot_names() {
+        let environment = Environment::new();
+        let class = Rc::new(ClassDefinition {
+            name: "POINT".to_owned(),
+            documentation: None,
+            direct_superclasses: vec!["STANDARD-OBJECT".into()],
+            direct_slots: vec!["X".into()],
+            direct_default_initargs: Vec::new(),
+            precedence: vec!["POINT".into(), "STANDARD-OBJECT".into()],
+            slots: vec![
+                ClassSlot {
+                    name: "X".to_owned(),
+                    documentation: None,
+                    initargs: Vec::new(),
+                    readers: Vec::new(),
+                    writers: Vec::new(),
+                    init_form: None,
+                    type_form: None,
+                    init_function: None,
+                    class_value: None,
+                },
+                ClassSlot {
+                    name: "Y".to_owned(),
+                    documentation: None,
+                    initargs: Vec::new(),
+                    readers: Vec::new(),
+                    writers: Vec::new(),
+                    init_form: None,
+                    type_form: None,
+                    init_function: None,
+                    class_value: None,
+                },
+            ],
+            default_initargs: Vec::new(),
+        });
+        let result = Runtime::apply_class_introspection_primitive(
+            "CLASS-SLOTS",
+            &[Value::class_object(class)],
+            &environment,
+            SPAN,
+        )
+        .unwrap()
+        .unwrap();
+        let slots = result.list_items().expect("class-slots returns a list");
+        assert_eq!(slots[0].instance_slot("NAME").unwrap().to_string(), "X");
+        assert_eq!(slots[1].instance_slot("NAME").unwrap().to_string(), "Y");
+    }
+
+    #[test]
+    fn change_class_replaces_class_and_preserves_shared_slot_names() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_compiled_source(
+                "(defclass old-point () ((x)))
+                 (defclass new-point () ((x) (y)))
+                 (let ((point (make-instance 'old-point)))
+                   (setf (slot-value point 'x) 7)
+                   (change-class point 'new-point)
+                   (list (class-name (class-of point))
+                         (slot-value point 'x)
+                         (slot-boundp point 'y)))",
+            )
+            .expect("compiled change-class succeeds");
+        let items = values.last().unwrap().list_items().unwrap();
+        assert_eq!(items[0].to_string(), "NEW-POINT");
+        assert!(matches!(items[1], Value::Integer(7)));
+        assert!(matches!(items[2], Value::Nil | Value::Boolean(false)));
+    }
+
+    #[test]
+    fn change_class_dispatches_update_instance_for_different_class() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_compiled_source(
+                "(defclass old-point () ((x)))
+                 (defclass new-point () ((x) (updated)))
+                 (defmethod update-instance-for-different-class
+                   ((old old-point) (new new-point))
+                   (setf (slot-value new 'updated) t)
+                   new)
+                 (let ((point (make-instance 'old-point)))
+                   (change-class point 'new-point)
+                   (slot-value point 'updated))",
+            )
+            .expect("compiled change-class hook succeeds");
+        assert!(matches!(values.last().unwrap(), Value::Boolean(true)));
+    }
+
+    #[test]
+    fn change_class_initializes_added_slots_from_initargs_and_initforms() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_compiled_source(
+                "(defclass old-point () ((x)))
+                 (defclass new-point () ((x) (y :initarg :y :initform 11) (z :initarg :z)))
+                 (let ((point (make-instance 'old-point)))
+                   (change-class point 'new-point :z 22)
+                   (list (slot-value point 'y) (slot-value point 'z)))",
+            )
+            .expect("compiled change-class initializes added slots");
+        let items = values.last().unwrap().list_items().unwrap();
+        assert!(matches!(items[0], Value::Integer(11)));
+        assert!(matches!(items[1], Value::Integer(22)));
+    }
+
+    #[test]
+    fn change_class_rejects_invalid_initarg_before_mutating_instance() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_source(
+                "(defclass old-point () ())
+                 (defclass new-point () ((x :initarg :x)))
+                 (let ((point (make-instance 'old-point)))
+                   (handler-case
+                       (progn (change-class point 'new-point 42 1) :unexpected)
+                     (error () (class-name (class-of point)))))",
+            )
+            .expect("change-class invalid initarg is handled");
+        assert_eq!(values.last().unwrap().to_string(), "OLD-POINT");
+    }
+
+    #[test]
+    fn change_class_rejects_odd_initargs_before_mutating_instance() {
+        let runtime = Runtime::new();
+        let values = runtime
+            .eval_source(
+                "(defclass old-point () ())
+                 (defclass new-point () ((x :initarg :x)))
+                 (let ((point (make-instance 'old-point)))
+                   (handler-case
+                       (progn (change-class point 'new-point :x) :unexpected)
+                     (error () (class-name (class-of point)))))",
+            )
+            .expect("change-class odd initargs are handled");
+        assert_eq!(values.last().unwrap().to_string(), "OLD-POINT");
     }
 }

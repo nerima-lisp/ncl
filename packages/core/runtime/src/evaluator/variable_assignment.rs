@@ -1,7 +1,21 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
+use crate::environment::intern_name;
 
 impl Runtime {
+    pub(crate) fn set_symbol_function(&self, name: &str, exact: bool, value: Value) {
+        if exact {
+            self.global.define_function_exact(name, value);
+        } else {
+            let function_name = self
+                .dynamic_candidates(name)
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| intern_name(name).to_string());
+            self.global.define_function(function_name, value);
+        }
+    }
+
     pub(crate) fn set_or_define_in(
         &self,
         name: &str,
@@ -39,20 +53,26 @@ impl Runtime {
     pub(crate) fn set_symbol_value(&self, name: &str, value: Value) -> Value {
         let candidates = self.dynamic_candidates(name);
         let mut dynamic = self.dynamic.borrow_mut();
-        if let Some((_, current)) = dynamic
-            .bindings
-            .iter_mut()
-            .rev()
-            .find(|(binding, _)| candidates.iter().any(|candidate| candidate == binding))
-        {
+        if let Some((_, current)) = dynamic.bindings.iter_mut().rev().find(|(binding, _)| {
+            candidates
+                .iter()
+                .any(|candidate| candidate.as_str() == binding.as_ref())
+        }) {
             *current = value.clone();
+            if candidates
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case("*RANDOM-STATE*"))
+            {
+                crate::builtins::set_dynamic_random_state(&value);
+            }
             return value;
         }
         let global_name = candidates
             .iter()
-            .find(|candidate| dynamic.special_names.contains(*candidate))
+            .find(|candidate| dynamic.special_names.contains(candidate.as_str()))
             .cloned()
-            .unwrap_or_else(|| normalize_name(name));
+            .unwrap_or_else(|| intern_name(name).to_string());
+        let global_name = intern_name(&global_name);
         dynamic.special_names.insert(global_name.clone());
         dynamic.globals.insert(global_name, value.clone());
         value
@@ -119,7 +139,7 @@ impl Runtime {
         }
     }
 
-    pub(super) fn ensure_symbol_writable(
+    pub(crate) fn ensure_symbol_writable(
         &self,
         name: &str,
         escaped: bool,

@@ -50,10 +50,14 @@ pub(in crate::vm::execution) fn execute_progv_instruction(
         })?;
     let _dynamic_guard = runtime.dynamic_guard();
     for (index, symbol) in symbol_items.iter().enumerate() {
-        let name = symbol
-            .symbol_name()
+        let (name, exact) = symbol
+            .variable_reference()
             .ok_or_else(|| invalid("progv symbol list must contain only symbols", span))?;
-        runtime.define_dynamic(name, value_items.get(index).cloned().unwrap_or(Value::Nil));
+        runtime.define_dynamic(
+            &name,
+            exact,
+            value_items.get(index).cloned().unwrap_or(Value::Unbound),
+        );
     }
     let body_function = program
         .functions
@@ -66,5 +70,81 @@ pub(in crate::vm::execution) fn execute_progv_instruction(
         environment.clone(),
         span,
     )?);
+    Ok(())
+}
+
+pub(in crate::vm::execution) fn execute_standard_stream_bind_instruction(
+    runtime: &Runtime,
+    program: &Rc<Program>,
+    input: bool,
+    stream: FunctionId,
+    variable: &str,
+    index: Option<&str>,
+    destination: Option<&str>,
+    body: FunctionId,
+    stack: &mut Vec<Value>,
+    environment: &Environment,
+    span: Span,
+) -> Result<(), RuntimeError> {
+    let stream_function = program
+        .functions
+        .get(stream)
+        .ok_or_else(|| invalid("compiled standard stream function id is out of range", span))?;
+    let stream_value =
+        run_code(runtime, program, stream_function, environment.clone(), span)?.primary_value();
+    let destination_value = destination.and_then(|name| environment.lookup(name));
+    let body_function = program.functions.get(body).ok_or_else(|| {
+        invalid(
+            "compiled standard stream body function id is out of range",
+            span,
+        )
+    })?;
+    let body_environment = environment.child();
+    body_environment.define(variable, stream_value.clone());
+    let _guard = crate::builtins::standard_streams::bind(
+        if input {
+            stream_value.clone()
+        } else {
+            crate::Value::Nil
+        },
+        if input {
+            crate::Value::Nil
+        } else {
+            stream_value.clone()
+        },
+    );
+    let body_value = run_code(
+        runtime,
+        program,
+        body_function,
+        body_environment.clone(),
+        span,
+    )?;
+    if let Some(index) = index {
+        let position = match &stream_value {
+            Value::Stream(stream) => stream
+                .borrow()
+                .position()
+                .map(|value| Value::Integer(value as i64)),
+            _ => None,
+        }
+        .unwrap_or(Value::Nil);
+        if !body_environment.set(index, position.clone()) {
+            body_environment.define(index, position);
+        }
+    }
+    let output = if input {
+        body_value
+    } else {
+        crate::builtins::get_output_stream_string(&[stream_value])?
+    };
+    if let Some(destination) =
+        destination.filter(|_| matches!(destination_value, Some(Value::String(_))))
+    {
+        if !environment.set(destination, output.clone()) {
+            environment.define(destination, output.clone());
+        }
+    }
+    stack.push(output);
     Ok(())
 }

@@ -4,8 +4,8 @@ use ncl_syntax::Span;
 #[test]
 fn condition_matching_normalizes_names_and_handles_control_errors() {
     let warning = RuntimeError::Signaled(Box::new(SignaledError {
-        condition: "CUSTOM-WARNING".to_owned(),
-        condition_types: vec!["SIMPLE-WARNING".to_owned()].into_boxed_slice(),
+        condition: "CUSTOM-WARNING".to_owned().into(),
+        condition_types: vec!["SIMPLE-WARNING".to_owned().into()].into_boxed_slice(),
         message: "warning".to_owned(),
         format_control: None,
         format_arguments: Box::default(),
@@ -80,8 +80,8 @@ fn condition_matching_covers_builtin_condition_hierarchy() {
 #[test]
 fn condition_matching_checks_error_hierarchy_for_non_warning_signaled_conditions() {
     let via_condition_types = RuntimeError::Signaled(Box::new(SignaledError {
-        condition: "APP-ERROR".to_owned(),
-        condition_types: vec!["TYPE-ERROR".to_owned()].into_boxed_slice(),
+        condition: "APP-ERROR".to_owned().into(),
+        condition_types: vec!["TYPE-ERROR".to_owned().into()].into_boxed_slice(),
         message: "bad type".to_owned(),
         format_control: None,
         format_arguments: Box::default(),
@@ -91,7 +91,7 @@ fn condition_matching_checks_error_hierarchy_for_non_warning_signaled_conditions
     assert!(via_condition_types.matches_condition("error"));
 
     let via_builtin_condition_name = RuntimeError::Signaled(Box::new(SignaledError {
-        condition: "SIMPLE-ERROR".to_owned(),
+        condition: "SIMPLE-ERROR".to_owned().into(),
         condition_types: Box::default(),
         message: "bad".to_owned(),
         format_control: None,
@@ -102,7 +102,7 @@ fn condition_matching_checks_error_hierarchy_for_non_warning_signaled_conditions
     assert!(via_builtin_condition_name.matches_condition("serious-condition"));
 
     let unrelated_condition = RuntimeError::Signaled(Box::new(SignaledError {
-        condition: "APP-SPECIFIC-ERROR".to_owned(),
+        condition: "APP-SPECIFIC-ERROR".to_owned().into(),
         condition_types: Box::default(),
         message: "bad".to_owned(),
         format_control: None,

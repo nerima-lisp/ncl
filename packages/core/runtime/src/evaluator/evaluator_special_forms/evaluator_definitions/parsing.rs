@@ -10,7 +10,7 @@ impl Runtime {
     ) -> Result<&'a [Form], RuntimeError> {
         match &form.kind {
             FormKind::List(items) => Ok(items),
-            FormKind::Atom(name) if normalize_name(name) == "NIL" => Ok(&[]),
+            FormKind::Atom(name) if crate::environment::names_equal(name, "NIL") => Ok(&[]),
             _ => Err(Self::invalid(context, form.span)),
         }
     }

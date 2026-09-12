@@ -8,9 +8,13 @@ pub(super) struct CompileState {
     pub(super) local_function_scopes: Vec<HashSet<String>>,
     pub(super) used_names: HashSet<String>,
     pub(super) temporary_counter: usize,
+    pub(super) special_names: HashSet<(String, bool)>,
 }
 
 impl CompileState {
+    pub(super) fn register_special(&mut self, name: String, escaped: bool) {
+        self.special_names.insert((name, escaped));
+    }
     pub(super) fn reserve_function(
         &mut self,
         name: Option<String>,
@@ -51,6 +55,13 @@ impl CompileState {
         } else {
             normalize_name(name)
         }
+    }
+
+    pub(super) fn has_local_function(&self, name: &str) -> bool {
+        self.local_function_scopes
+            .iter()
+            .rev()
+            .any(|scope| scope.contains(name))
     }
 
     pub(super) fn emit(
@@ -134,7 +145,11 @@ impl CompileState {
                 }
                 self.collect_form_names(tail);
             }
-            FormKind::String(_) | FormKind::Character(_) => {}
+            FormKind::String(_)
+            | FormKind::Character(_)
+            | FormKind::Literal(_)
+            | FormKind::CircularReference
+            | FormKind::Complex { .. } => {}
         }
     }
 

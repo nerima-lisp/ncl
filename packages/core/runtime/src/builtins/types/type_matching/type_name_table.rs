@@ -11,15 +11,29 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
         "T" | "OBJECT" => true,
         "NIL" | "NULL" => matches!(value, Value::Nil | Value::Boolean(false)),
         "BOOLEAN" => matches!(value, Value::Nil | Value::Boolean(_)),
-        "NUMBER" | "REAL" => matches!(
+        "NUMBER" => matches!(
             value,
-            Value::Integer(_) | Value::BigInteger(_) | Value::Rational(_) | Value::Float(_)
+            Value::Integer(_)
+                | Value::BigInteger(_)
+                | Value::Rational(_)
+                | Value::BigRational(_)
+                | Value::Float(_)
+                | Value::Complex(_)
         ),
+        "REAL" => matches!(
+            value,
+            Value::Integer(_)
+                | Value::BigInteger(_)
+                | Value::Rational(_)
+                | Value::BigRational(_)
+                | Value::Float(_)
+        ),
+        "COMPLEX" => matches!(value, Value::Complex(_)),
         "RATIONAL" => matches!(
             value,
-            Value::Integer(_) | Value::BigInteger(_) | Value::Rational(_)
+            Value::Integer(_) | Value::BigInteger(_) | Value::Rational(_) | Value::BigRational(_)
         ),
-        "RATIO" => matches!(value, Value::Rational(_)),
+        "RATIO" => matches!(value, Value::Rational(_) | Value::BigRational(_)),
         "INTEGER" => matches!(value, Value::Integer(_) | Value::BigInteger(_)),
         "FIXNUM" => matches!(value, Value::Integer(_)),
         "BIGNUM" => matches!(value, Value::BigInteger(_)),
@@ -42,14 +56,20 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
                 | Value::Keyword(_)
                 | Value::SymbolExact(_)
                 | Value::KeywordExact(_)
+                | Value::InternedSymbol(_)
         ),
-        "PACKAGE" => matches!(value, Value::Package(_)),
+        "PACKAGE" => matches!(value, Value::Package(_) | Value::PackageObject(_)),
         "ENVIRONMENT" => matches!(value, Value::Environment(_)),
-        "KEYWORD" => matches!(value, Value::Keyword(_) | Value::KeywordExact(_)),
-        "CONS" => matches!(value, Value::List(_) | Value::DottedList { .. }),
-        "LIST" => matches!(value, Value::Nil | Value::Boolean(false) | Value::List(_)),
-        "ATOM" => !matches!(value, Value::List(_) | Value::DottedList { .. }),
-        "VECTOR" | "SIMPLE-VECTOR" => matches!(value, Value::Vector(_)),
+        "KEYWORD" => match value {
+            Value::Keyword(_) | Value::KeywordExact(_) => true,
+            Value::InternedSymbol(symbol) => symbol.keyword(),
+            _ => false,
+        },
+        "CONS" => matches!(value, Value::Cons(_)),
+        "LIST" => matches!(value, Value::Nil | Value::Boolean(false) | Value::Cons(_)),
+        "ATOM" => !matches!(value, Value::Cons(_)),
+        "VECTOR" => matches!(value, Value::Vector(_) | Value::String(_)),
+        "SIMPLE-VECTOR" => matches!(value, Value::Vector(_)),
         "BIT-VECTOR" | "SIMPLE-BIT-VECTOR" => is_bit_vector_value(value),
         "ARRAY" | "SIMPLE-ARRAY" => dimensions_for_array(value).is_some(),
         "HASH-TABLE" => matches!(value, Value::HashTable { .. }),
@@ -58,7 +78,10 @@ pub(in crate::builtins::types::type_matching) fn type_matches(
         "ERROR" | "SERIOUS-CONDITION" | "WARNING" | "SIMPLE-CONDITION" | "SIMPLE-ERROR"
         | "SIMPLE-WARNING" | "ARITHMETIC-ERROR" | "DIVISION-BY-ZERO" | "TYPE-ERROR"
         | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR" | "COMPILER-ERROR" | "FILE-ERROR"
-        | "UNBOUND-VARIABLE" | "CONTROL-ERROR" => value.condition_is_type(type_name),
+        | "UNBOUND-VARIABLE" | "UNDEFINED-FUNCTION" | "UNBOUND-SLOT" | "CELL-ERROR"
+        | "CONTROL-ERROR" | "STREAM-ERROR" | "END-OF-FILE" | "STORAGE-CONDITION" => {
+            value.condition_is_type(type_name)
+        }
         "STRUCTURE" => value.structure_name().is_some(),
         "SEQUENCE" => matches!(value, Value::Boolean(false)) || sequence_length(value).is_some(),
         "FUNCTION" | "COMPILED-FUNCTION" => matches!(value, Value::Function(_)),

@@ -7,7 +7,7 @@ mod parser;
 use options::ParseIntegerOptions;
 use parser::parse_integer_value;
 
-pub(super) fn parse_integer(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn parse_integer(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.is_empty() || !(arguments.len() - 1).is_multiple_of(2) {
         return Err(arity(
             "parse-integer",
@@ -81,6 +81,14 @@ mod tests {
     }
 
     #[test]
+    fn parses_arbitrary_precision_integers() {
+        assert_eq!(
+            parse(&[Value::string("123456789012345678901234567890")]),
+            "#<VALUES 123456789012345678901234567890 30>"
+        );
+    }
+
+    #[test]
     fn rejects_invalid_integer_table_cases() {
         let cases = [
             vec![],
@@ -100,6 +108,19 @@ mod tests {
                 "arguments: {arguments:?}"
             );
         }
+    }
+
+    #[test]
+    fn rejects_bignum_radix_as_an_invalid_radix() {
+        let arguments = [
+            Value::string("1"),
+            keyword("radix"),
+            Value::big_integer(ibig::IBig::from(1) << 80),
+        ];
+        assert!(matches!(
+            parse_integer(&arguments),
+            Err(crate::RuntimeError::InvalidForm { .. })
+        ));
     }
 
     #[test]

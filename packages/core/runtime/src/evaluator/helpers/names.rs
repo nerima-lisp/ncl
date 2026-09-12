@@ -26,11 +26,13 @@ pub(in crate::evaluator) fn is_special_operator_name(name: &str) -> bool {
         | "PROGN"
         | "PROGV"
         | "QUOTE"
+        | "REMF"
         | "SETQ"
         | "SYMBOL-MACROLET"
         | "TAGBODY"
         | "THE"
         | "THROW"
+        | "WITH-HASH-TABLE-ITERATOR"
         | "UNWIND-PROTECT")
 }
 

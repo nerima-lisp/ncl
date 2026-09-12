@@ -30,9 +30,9 @@ impl Runtime {
                     binding.span,
                 ));
             };
-            if parts.len() < 3 {
+            if parts.len() < 2 {
                 return Err(Self::invalid(
-                    "local macro needs a name, parameters, and a body",
+                    "local macro needs a name and parameters",
                     binding.span,
                 ));
             }

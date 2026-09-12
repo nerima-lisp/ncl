@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_simple_directive(
+pub(crate) fn format_simple_directive(
     directive: char,
     output: &mut String,
     arguments: &[Value],
@@ -35,10 +35,11 @@ pub(super) fn format_simple_directive(
             } else {
                 format_argument("~P", arguments, argument_index)?
             };
-            let value = integer_argument("format", argument)?;
+            let value = integer_value("format", argument)?;
+            let one = ibig::IBig::from(1);
             if at_sign_modifier {
-                output.push_str(if value == 1 { "y" } else { "ies" });
-            } else if value != 1 {
+                output.push_str(if value == one { "y" } else { "ies" });
+            } else if value != one {
                 output.push('s');
             }
             Ok(true)
@@ -59,9 +60,7 @@ pub(super) fn format_simple_directive(
             let count = format_parameter_count(parameters, 0, 1)?;
             for repetition in 0..count {
                 match directive {
-                    '%' if repetition > 0 || (!output.is_empty() && !output.ends_with('\n')) => {
-                        output.push('\n');
-                    }
+                    '%' => output.push('\n'),
                     '&' if repetition == 0 => {
                         if !output.is_empty() && !output.ends_with('\n') {
                             output.push('\n');
@@ -101,8 +100,38 @@ pub(super) fn format_simple_directive(
             Ok(true)
         }
         '*' => {
-            let count = format_parameter_count(parameters, 0, 1)?;
-            *argument_index = argument_index.saturating_add(count).min(arguments.len());
+            if colon_modifier && at_sign_modifier {
+                return Err(RuntimeError::InvalidForm {
+                    message: "format ~* cannot combine the colon and at-sign modifiers".to_string(),
+                    span: None,
+                });
+            }
+            let count =
+                format_parameter_count(parameters, 0, if at_sign_modifier { 0 } else { 1 })?;
+            let next_index = if at_sign_modifier {
+                count
+            } else if colon_modifier {
+                argument_index
+                    .checked_sub(count)
+                    .ok_or_else(|| RuntimeError::InvalidForm {
+                        message: "format ~:* moved before the first argument".to_string(),
+                        span: None,
+                    })?
+            } else {
+                argument_index
+                    .checked_add(count)
+                    .ok_or_else(|| RuntimeError::InvalidForm {
+                        message: "format ~* moved beyond the argument list".to_string(),
+                        span: None,
+                    })?
+            };
+            if next_index > arguments.len() {
+                return Err(RuntimeError::InvalidForm {
+                    message: "format ~* moved beyond the argument list".to_string(),
+                    span: None,
+                });
+            }
+            *argument_index = next_index;
             Ok(true)
         }
         _ => Ok(false),

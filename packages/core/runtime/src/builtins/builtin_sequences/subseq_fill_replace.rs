@@ -24,8 +24,10 @@ pub fn subseq(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
     match &arguments[0] {
         Value::Nil => Ok(Value::Nil),
-        Value::List(items) => Ok(Value::list(items[start..end].to_vec())),
-        Value::Vector(items) => Ok(Value::vector(items[start..end].to_vec())),
+        Value::Cons(_) => Ok(Value::list(
+            sequence_elements("subseq", &arguments[0])?[start..end].to_vec(),
+        )),
+        Value::Vector(items) => Ok(Value::vector(items.visible_snapshot()[start..end].to_vec())),
         Value::String(value) => {
             let result = value
                 .chars()
@@ -45,25 +47,32 @@ pub fn fill(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(arguments.len() - 2).is_multiple_of(2) {
         return Err(arity(
             "fill",
-            "an item, a sequence, and keyword/value pairs",
+            "a sequence, an item, and keyword/value pairs",
             arguments.len(),
         ));
     }
-    let length = sequence_length(&arguments[1])
-        .ok_or_else(|| type_error("fill", "sequence", &arguments[1]))?;
+    let length = sequence_length(&arguments[0])
+        .ok_or_else(|| type_error("fill", "sequence", &arguments[0]))?;
     let (start, end) = sequence_bounds("fill", length, &arguments[2..])?;
-    if matches!(arguments[1], Value::String(_)) && !matches!(arguments[0], Value::Character(_)) {
+    if matches!(arguments[0], Value::String(_)) && !matches!(arguments[1], Value::Character(_)) {
         return Err(type_error(
             "fill",
             "a character for a string",
-            &arguments[0],
+            &arguments[1],
         ));
     }
-    let mut items = sequence_elements("fill", &arguments[1])?;
+    let mut items = sequence_elements("fill", &arguments[0])?;
     for item in &mut items[start..end] {
-        *item = arguments[0].clone();
+        *item = arguments[1].clone();
     }
-    rebuild_sequence("fill", &arguments[1], items)
+    if let Value::Vector(elements) = &arguments[0] {
+        elements.replace_range(start, &items[start..end]);
+        return Ok(arguments[0].clone());
+    }
+    if arguments[0].replace_list_range(start, &items[start..end]) {
+        return Ok(arguments[0].clone());
+    }
+    rebuild_sequence("fill", &arguments[0], items)
 }
 
 pub fn replace(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -98,6 +107,13 @@ pub fn replace(arguments: &[Value]) -> Result<Value, RuntimeError> {
         ));
     }
     result[start1..start1 + count].clone_from_slice(&source[start2..start2 + count]);
+    if let Value::Vector(elements) = &arguments[0] {
+        elements.replace_range(start1, &source[start2..start2 + count]);
+        return Ok(arguments[0].clone());
+    }
+    if arguments[0].replace_list_range(start1, &source[start2..start2 + count]) {
+        return Ok(arguments[0].clone());
+    }
     rebuild_sequence("replace", &arguments[0], result)
 }
 
@@ -133,7 +149,7 @@ mod tests {
             Err(RuntimeError::Arity { .. })
         ));
         assert!(matches!(
-            fill(&[Value::Integer(1), Value::string("ab")]),
+            fill(&[Value::string("ab"), Value::Integer(1)]),
             Err(RuntimeError::Type { .. })
         ));
     }

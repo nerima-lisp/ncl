@@ -24,6 +24,47 @@ fn use_package_is_idempotent_and_unuse_package_reverses_it() {
 }
 
 #[test]
+fn package_used_by_list_is_sorted_resolves_aliases_and_tracks_unuse_package() {
+    let mut state = PackageState::new();
+    state
+        .define_package(
+            "used-by-target",
+            vec!["target-alias".to_string()],
+            Vec::new(),
+            std::collections::HashSet::new(),
+            None,
+            std::collections::HashMap::new(),
+        )
+        .unwrap_or_else(|error| panic!("target define_package should succeed: {error}"));
+    for package in ["z-using", "a-using"] {
+        state
+            .define_package(
+                package,
+                Vec::new(),
+                Vec::new(),
+                std::collections::HashSet::new(),
+                None,
+                std::collections::HashMap::new(),
+            )
+            .unwrap_or_else(|error| panic!("consumer define_package should succeed: {error}"));
+    }
+
+    state.use_package("target-alias", "z-using");
+    state.use_package("used-by-target", "a-using");
+    state.use_package("used-by-target", "z-using");
+    assert_eq!(
+        state.package_used_by_list_for("target-alias"),
+        vec!["A-USING".to_string(), "Z-USING".to_string()]
+    );
+
+    state.unuse_package("used-by-target", "a-using");
+    assert_eq!(
+        state.package_used_by_list_for("used-by-target"),
+        vec!["Z-USING".to_string()]
+    );
+}
+
+#[test]
 fn define_package_rejects_a_nickname_that_collides_with_an_existing_package_name() {
     let mut state = PackageState::new();
     let result = state.define_package(
@@ -94,6 +135,30 @@ fn canonical_package_name_resolves_through_a_global_nickname() {
         .unwrap_or_else(|error| panic!("define_package should succeed: {error}"));
 
     assert_eq!(state.canonical_package_name("short"), "LONG-PACKAGE-NAME");
+}
+
+#[test]
+fn package_nicknames_preserve_definition_order_and_resolve_aliases() {
+    let mut state = PackageState::new();
+    state
+        .define_package(
+            "long-package-name",
+            vec!["z-short".to_string(), "a-short".to_string()],
+            Vec::new(),
+            std::collections::HashSet::new(),
+            None,
+            std::collections::HashMap::new(),
+        )
+        .unwrap_or_else(|error| panic!("define_package should succeed: {error}"));
+
+    assert_eq!(
+        state.package_nicknames_for("long-package-name"),
+        vec!["Z-SHORT".to_string(), "A-SHORT".to_string()]
+    );
+    assert_eq!(
+        state.package_nicknames_for("a-short"),
+        vec!["Z-SHORT".to_string(), "A-SHORT".to_string()]
+    );
 }
 
 #[test]

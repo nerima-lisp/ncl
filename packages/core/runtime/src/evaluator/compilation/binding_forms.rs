@@ -2,6 +2,20 @@
 use super::*;
 
 impl Runtime {
+    pub(super) fn prepare_compiled_locally(
+        &self,
+        form: &Form,
+        items: &[Form],
+        environment: &Environment,
+    ) -> Result<Form, RuntimeError> {
+        let local = environment.child();
+        let special_names = Self::special_declaration_names(items.get(1..).unwrap_or(&[]))?;
+        Self::declare_special_names(&local, &special_names);
+        let mut prepared = items.to_vec();
+        self.prepare_tail(&mut prepared, 1, &local)?;
+        Ok(Form::list(prepared, form.span))
+    }
+
     pub(super) fn prepare_compiled_let(
         &self,
         form: &Form,
@@ -18,10 +32,28 @@ impl Runtime {
             return Ok(Form::list(prepared, form.span));
         };
 
-        let local = environment.child();
+        let mut local = if sequential {
+            environment.clone()
+        } else {
+            environment.child()
+        };
+        let special_names = Self::special_declaration_names(items.get(2..).unwrap_or(&[]))?;
         let mut prepared_bindings = Vec::with_capacity(bindings.len());
         for binding in bindings {
             let FormKind::List(parts) = &binding.kind else {
+                let (name, escaped) =
+                    Self::variable_name_info(binding, "let binding name must be a symbol")?;
+                if sequential {
+                    local = local.child();
+                }
+                if escaped {
+                    local.define_exact(&name, Value::Nil);
+                } else {
+                    local.define(&name, Value::Nil);
+                }
+                if Self::declares_special(&special_names, &name, escaped) {
+                    Self::declare_special_names(&local, &[(name.to_string(), escaped)]);
+                }
                 prepared_bindings.push(binding.clone());
                 continue;
             };
@@ -39,12 +71,23 @@ impl Runtime {
                     self.prepare_compiled_form(&parts[1], initializer_environment)?;
             }
             prepared_bindings.push(Form::list(prepared_parts, binding.span));
+            if sequential {
+                local = local.child();
+            }
             if escaped {
-                local.define_exact(name, Value::Nil);
+                local.define_exact(&name, Value::Nil);
             } else {
-                local.define(name, Value::Nil);
+                local.define(&name, Value::Nil);
+            }
+            if Self::declares_special(&special_names, &name, escaped) {
+                Self::declare_special_names(&local, &[(name.to_string(), escaped)]);
             }
         }
+
+        if sequential && bindings.is_empty() {
+            local = environment.child();
+        }
+        Self::declare_special_names(&local, &special_names);
 
         let mut prepared = items.to_vec();
         prepared[1] = Form::list(prepared_bindings, binding_form.span);

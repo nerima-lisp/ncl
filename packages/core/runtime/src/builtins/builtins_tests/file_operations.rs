@@ -96,6 +96,163 @@ fn file_operations_cover_lifecycle_and_open_directions() -> Result<(), RuntimeEr
 }
 
 #[test]
+fn byte_file_streams_read_write_and_append_raw_bytes() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-byte-stream-{suffix}"));
+    std::fs::write(&root, [1_u8, 2_u8]).map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let path = Value::string(root.to_string_lossy().to_string());
+    let byte_type = Value::list(vec![Value::symbol("UNSIGNED-BYTE"), Value::Integer(8)]);
+
+    let input = open_file(&[
+        path.clone(),
+        Value::keyword("element-type"),
+        byte_type.clone(),
+    ])?;
+    assert_eq!(
+        stream_element_type(std::slice::from_ref(&input))?.to_string(),
+        "(UNSIGNED-BYTE 8)"
+    );
+    assert!(matches!(
+        read_byte(std::slice::from_ref(&input))?,
+        Value::Integer(1)
+    ));
+    assert!(matches!(
+        read_byte(std::slice::from_ref(&input))?,
+        Value::Integer(2)
+    ));
+    assert!(matches!(
+        read_byte(&[input.clone(), Value::Nil, Value::Integer(9)])?,
+        Value::Integer(9)
+    ));
+    close_stream(&[input])?;
+
+    let output = open_file(&[
+        path.clone(),
+        Value::keyword("direction"),
+        Value::keyword("output"),
+        Value::keyword("if-exists"),
+        Value::keyword("append"),
+        Value::keyword("element-type"),
+        byte_type,
+    ])?;
+    assert!(matches!(
+        write_byte(&[Value::Integer(3), output.clone()])?,
+        Value::Integer(3)
+    ));
+    close_stream(&[output])?;
+    let bytes = std::fs::read(&root).map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    assert_eq!(bytes, vec![1, 2, 3]);
+    Ok(())
+}
+
+#[test]
+fn byte_streams_support_sequence_io() -> Result<(), RuntimeError> {
+    let input = Value::binary_input_stream(vec![4, 5, 6]);
+    let destination = Value::vector(vec![Value::Nil, Value::Nil, Value::Nil, Value::Nil]);
+    assert!(matches!(
+        read_sequence(&[
+            destination.clone(),
+            input,
+            Value::keyword("start"),
+            Value::Integer(1),
+            Value::keyword("end"),
+            Value::Integer(4),
+        ])?,
+        Value::Integer(4)
+    ));
+    assert_eq!(
+        destination
+            .vector_items()
+            .unwrap()
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>(),
+        vec!["NIL", "4", "5", "6"]
+    );
+
+    let suffix = nanosecond_suffix()?;
+    let path = std::env::temp_dir().join(format!("ncl-byte-sequence-{suffix}"));
+    let output = Value::binary_output_stream(path.clone(), Vec::new(), 0);
+    write_sequence(&[
+        Value::vector(vec![
+            Value::Integer(7),
+            Value::Integer(8),
+            Value::Integer(9),
+        ]),
+        output.clone(),
+        Value::keyword("start"),
+        Value::Integer(1),
+        Value::keyword("end"),
+        Value::Integer(3),
+    ])?;
+    close_stream(&[output])?;
+    assert_eq!(std::fs::read(&path).unwrap(), vec![8, 9]);
+    std::fs::remove_file(path).unwrap();
+    Ok(())
+}
+
+#[test]
+fn byte_io_streams_share_a_file_cursor_for_read_and_write() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-byte-io-{suffix}"));
+    std::fs::write(&root, [1_u8, 2_u8, 3_u8]).map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let path = Value::string(root.to_string_lossy().to_string());
+    let byte_type = Value::list(vec![Value::symbol("UNSIGNED-BYTE"), Value::Integer(8)]);
+    let stream = open_file(&[
+        path,
+        Value::keyword("direction"),
+        Value::keyword("io"),
+        Value::keyword("if-exists"),
+        Value::keyword("overwrite"),
+        Value::keyword("element-type"),
+        byte_type,
+    ])?;
+    assert!(matches!(
+        read_byte(std::slice::from_ref(&stream))?,
+        Value::Integer(1)
+    ));
+    assert!(matches!(
+        write_byte(&[Value::Integer(9), stream.clone()])?,
+        Value::Integer(9)
+    ));
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read(&root).unwrap(), vec![1, 9, 3]);
+    std::fs::remove_file(root).unwrap();
+    Ok(())
+}
+
+#[test]
+fn byte_output_stream_file_position_repositions_writes() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let path = std::env::temp_dir().join(format!("ncl-byte-output-position-{suffix}"));
+    let stream = Value::binary_output_stream(path.clone(), vec![1, 2, 3], 3);
+
+    assert_eq!(
+        file_position(std::slice::from_ref(&stream))?.to_string(),
+        "3"
+    );
+    assert_eq!(
+        file_position(&[stream.clone(), Value::Integer(1)])?.to_string(),
+        "T"
+    );
+    write_byte(&[Value::Integer(9), stream.clone()])?;
+    close_stream(&[stream])?;
+
+    assert_eq!(std::fs::read(&path).unwrap(), vec![1, 9, 3]);
+    std::fs::remove_file(path).unwrap();
+    Ok(())
+}
+
+#[test]
 fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeError> {
     let suffix = nanosecond_suffix()?;
     let missing_path = std::env::temp_dir().join(format!("ncl-open-options-{suffix}-missing"));
@@ -135,6 +292,15 @@ fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeErr
     ])?;
     close_stream(&[io])?;
 
+    assert!(
+        open_file(&[
+            existing.clone(),
+            Value::keyword("element-type"),
+            Value::keyword("unsigned-byte"),
+        ])
+        .is_err()
+    );
+
     assert!(open_file(&[existing.clone(), Value::keyword("unknown"), Value::Nil]).is_err());
     assert!(open_file(&[existing.clone(), Value::keyword("direction")]).is_err());
     assert!(
@@ -148,5 +314,183 @@ fn open_keyword_options_cover_defaults_and_validation() -> Result<(), RuntimeErr
 
     let _ = std::fs::remove_file(missing_path);
     let _ = std::fs::remove_file(existing_path);
+    Ok(())
+}
+
+#[test]
+fn open_supersede_replaces_existing_file_contents() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-open-supersede-{suffix}"));
+    std::fs::write(&root, "old content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let path = Value::string(root.to_string_lossy().to_string());
+    let stream = open_file(&[
+        path,
+        Value::keyword("direction"),
+        Value::keyword("output"),
+        Value::keyword("if-exists"),
+        Value::keyword("supersede"),
+    ])?;
+    write_line(&[Value::string("new"), stream.clone()])?;
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read_to_string(&root).unwrap(), "new\n");
+    std::fs::remove_file(root).unwrap();
+    Ok(())
+}
+
+#[test]
+fn open_overwrite_writes_from_the_start_of_existing_file() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-open-overwrite-{suffix}"));
+    std::fs::write(&root, "old content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let stream = open_file(&[
+        Value::string(root.to_string_lossy().to_string()),
+        Value::keyword("direction"),
+        Value::keyword("output"),
+        Value::keyword("if-exists"),
+        Value::keyword("overwrite"),
+    ])?;
+    write_string(&[Value::string("new"), stream.clone()])?;
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read_to_string(&root).unwrap(), "new content");
+    std::fs::remove_file(root).unwrap();
+    Ok(())
+}
+
+#[test]
+fn open_rename_moves_existing_file_before_creating_output() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-open-rename-{suffix}"));
+    std::fs::write(&root, "old content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let stream = open_file(&[
+        Value::string(root.to_string_lossy().to_string()),
+        Value::keyword("direction"),
+        Value::keyword("output"),
+        Value::keyword("if-exists"),
+        Value::keyword("rename"),
+    ])?;
+    write_string(&[Value::string("new content"), stream.clone()])?;
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read_to_string(&root).unwrap(), "new content");
+    let backup = std::fs::read_dir(root.parent().unwrap())
+        .map_err(|error| RuntimeError::Io {
+            kind: error.kind(),
+            message: error.to_string(),
+        })?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|candidate| {
+            candidate
+                .to_string_lossy()
+                .starts_with(&format!("{}.ncl-rename-", root.display()))
+        })
+        .expect("rename should leave a backup file");
+    assert_eq!(std::fs::read_to_string(&backup).unwrap(), "old content");
+    std::fs::remove_file(root).unwrap();
+    std::fs::remove_file(backup).unwrap();
+    Ok(())
+}
+
+#[test]
+fn open_rename_and_delete_removes_backup_after_close() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-open-rename-delete-{suffix}"));
+    std::fs::write(&root, "old content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let stream = open_file(&[
+        Value::string(root.to_string_lossy().to_string()),
+        Value::keyword("direction"),
+        Value::keyword("output"),
+        Value::keyword("if-exists"),
+        Value::keyword("rename-and-delete"),
+    ])?;
+    write_string(&[Value::string("new content"), stream.clone()])?;
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read_to_string(&root).unwrap(), "new content");
+    assert!(
+        !std::fs::read_dir(root.parent().unwrap())
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|entry| {
+                entry
+                    .path()
+                    .to_string_lossy()
+                    .starts_with(&format!("{}.ncl-rename-", root.display()))
+            })
+    );
+    std::fs::remove_file(root).unwrap();
+    Ok(())
+}
+
+#[test]
+fn open_rename_and_delete_abort_preserves_backup() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-open-rename-abort-{suffix}"));
+    std::fs::write(&root, "old content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let stream = open_file(&[
+        Value::string(root.to_string_lossy().to_string()),
+        Value::keyword("direction"),
+        Value::keyword("output"),
+        Value::keyword("if-exists"),
+        Value::keyword("rename-and-delete"),
+    ])?;
+    close_stream(&[stream, Value::keyword("abort"), Value::symbol("t")])?;
+    assert!(!root.exists());
+    let backup = std::fs::read_dir(root.parent().unwrap())
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|candidate| {
+            candidate
+                .to_string_lossy()
+                .starts_with(&format!("{}.ncl-rename-", root.display()))
+        })
+        .expect("abort should preserve the renamed file");
+    assert_eq!(std::fs::read_to_string(&backup).unwrap(), "old content");
+    std::fs::remove_file(backup).unwrap();
+    Ok(())
+}
+
+#[test]
+fn open_io_rename_and_delete_preserves_contents_until_close() -> Result<(), RuntimeError> {
+    let suffix = nanosecond_suffix()?;
+    let root = std::env::temp_dir().join(format!("ncl-open-io-rename-delete-{suffix}"));
+    std::fs::write(&root, "old content").map_err(|error| RuntimeError::Io {
+        kind: error.kind(),
+        message: error.to_string(),
+    })?;
+    let stream = open_file(&[
+        Value::string(root.to_string_lossy().to_string()),
+        Value::keyword("direction"),
+        Value::keyword("io"),
+        Value::keyword("if-exists"),
+        Value::keyword("rename-and-delete"),
+    ])?;
+    write_string(&[Value::string("new content"), stream.clone()])?;
+    close_stream(&[stream])?;
+    assert_eq!(std::fs::read_to_string(&root).unwrap(), "new content");
+    assert!(
+        !std::fs::read_dir(root.parent().unwrap())
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|entry| entry
+                .path()
+                .to_string_lossy()
+                .starts_with(&format!("{}.ncl-rename-", root.display())))
+    );
+    std::fs::remove_file(root).unwrap();
     Ok(())
 }

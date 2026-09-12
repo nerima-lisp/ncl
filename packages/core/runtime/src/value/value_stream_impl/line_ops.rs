@@ -36,6 +36,10 @@ impl Stream {
                 source.extend(characters.iter().skip(*position).copied());
                 Some(source)
             }
+            StreamKind::Probe
+            | StreamKind::BinaryInput { .. }
+            | StreamKind::BinaryOutput { .. }
+            | StreamKind::BinaryIo { .. } => None,
             StreamKind::Io {
                 characters,
                 position,
@@ -79,6 +83,10 @@ impl Stream {
                 *position += remaining;
                 true
             }
+            StreamKind::Probe
+            | StreamKind::BinaryInput { .. }
+            | StreamKind::BinaryOutput { .. }
+            | StreamKind::BinaryIo { .. } => false,
             StreamKind::Io {
                 characters,
                 position,

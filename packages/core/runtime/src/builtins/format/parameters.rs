@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_parameter_number(
+pub(crate) fn format_parameter_number(
     parameters: &[FormatParameter],
     index: usize,
     default: i64,
@@ -20,7 +20,7 @@ pub(super) fn format_parameter_number(
     }
 }
 
-pub(super) fn format_parameter_count(
+pub(crate) fn format_parameter_count(
     parameters: &[FormatParameter],
     index: usize,
     default: i64,
@@ -32,7 +32,7 @@ pub(super) fn format_parameter_count(
     })
 }
 
-pub(super) fn format_parameter_character(
+pub(crate) fn format_parameter_character(
     parameters: &[FormatParameter],
     index: usize,
     default: char,
@@ -51,7 +51,7 @@ pub(super) fn format_parameter_character(
     }
 }
 
-pub(super) fn format_iteration_limit(
+pub(crate) fn format_iteration_limit(
     parameters: &[FormatParameter],
 ) -> Result<Option<usize>, RuntimeError> {
     if parameters.is_empty() || matches!(parameters[0], FormatParameter::Missing) {
@@ -61,7 +61,7 @@ pub(super) fn format_iteration_limit(
     }
 }
 
-pub(super) fn format_text_field(
+pub(crate) fn format_text_field(
     text: &str,
     parameters: &[FormatParameter],
     at_sign_modifier: bool,

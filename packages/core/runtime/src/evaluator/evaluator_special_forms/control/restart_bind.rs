@@ -42,6 +42,7 @@ impl Runtime {
         let guard = self.restart_guard(
             restarts
                 .iter()
+                .rev()
                 .map(|(name, function, _)| {
                     RestartBinding::new(name.clone(), Some(function.clone()))
                 })
@@ -62,7 +63,6 @@ impl Runtime {
                 };
                 let Some((_, function, binding_span)) = restarts
                     .iter()
-                    .rev()
                     .find(|(name, _, _)| normalize_name(invoked.as_str()) == name.as_str())
                 else {
                     return Err(error);

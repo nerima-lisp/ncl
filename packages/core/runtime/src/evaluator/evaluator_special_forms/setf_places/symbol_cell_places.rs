@@ -16,14 +16,14 @@ impl Runtime {
                     return Err(Self::arity("setf symbol-value", "one", args.len()));
                 }
                 let symbol = self.eval_in(&args[0], environment)?;
-                let (name, exact) = symbol.symbol_reference().ok_or_else(|| {
+                let (name, exact) = symbol.variable_reference().ok_or_else(|| {
                     Self::invalid("setf symbol-value target must be a symbol", args[0].span)
                 })?;
-                self.ensure_symbol_writable(name, exact, args[0].span)?;
+                self.ensure_symbol_writable(&name, exact, args[0].span)?;
                 if exact {
-                    self.set_symbol_value_exact(name, value);
+                    self.set_symbol_value_exact(&name, value);
                 } else {
-                    self.set_symbol_value(name, value);
+                    self.set_symbol_value(&name, value);
                 }
                 Ok(())
             }
@@ -43,13 +43,13 @@ impl Runtime {
                     Self::invalid("setf symbol-function target must be a symbol", args[0].span)
                 })?;
                 if exact {
-                    self.global.define_function_exact(name, value);
+                    self.global.define_function_exact(&name, value);
                 } else {
                     let function_name = self
-                        .dynamic_candidates(name)
+                        .dynamic_candidates(&name)
                         .into_iter()
                         .next()
-                        .unwrap_or_else(|| normalize_name(name));
+                        .unwrap_or_else(|| normalize_name(&name));
                     self.global.define_function(function_name, value);
                 }
                 Ok(())

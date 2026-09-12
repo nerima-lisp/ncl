@@ -67,10 +67,11 @@ pub(super) fn destructure_keyword_parameters(
     let mut supplied_keywords = HashMap::new();
     let mut accepts_unknown_keywords = lambda_list.allow_other_keys;
     for pair in keyword_arguments.as_chunks::<2>().0 {
-        let (Value::Keyword(keyword) | Value::KeywordExact(keyword)) = &pair[0] else {
-            return Err(invalid("keyword argument name must be a keyword", span));
+        let keyword_name = match &pair[0] {
+            Value::Keyword(keyword) | Value::KeywordExact(keyword) => keyword.to_string(),
+            Value::InternedSymbol(symbol) if symbol.keyword() => symbol.name().to_string(),
+            _ => return Err(invalid("keyword argument name must be a keyword", span)),
         };
-        let keyword_name = keyword.to_string();
         if keyword_name == "ALLOW-OTHER-KEYS" && pair[1].is_truthy() {
             accepts_unknown_keywords = true;
         }

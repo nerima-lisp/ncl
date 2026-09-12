@@ -6,7 +6,7 @@ impl Runtime {
     pub(in crate::evaluator::evaluator_special_forms) fn apply_setf_expansion(
         &self,
         expansion: &SetfExpansion,
-        value: Value,
+        value: &Value,
         environment: &Environment,
         span: Span,
     ) -> Result<(), RuntimeError> {
@@ -23,9 +23,7 @@ impl Runtime {
             let value = self.eval_in(value_form, &local)?;
             self.define_variable_in(&name, escaped, value, &local);
         }
-        let (store_name, store_escaped) =
-            Self::variable_name_info(&expansion.store, "SETF store variable must be a symbol")?;
-        self.define_variable_in(&store_name, store_escaped, value, &local);
+        self.bind_setf_stores(&expansion.stores, value, &local)?;
         self.eval_in(&expansion.store_form, &local)?;
         Ok(())
     }
@@ -43,13 +41,13 @@ mod tests {
         let expansion = SetfExpansion {
             temporaries: vec![Form::atom("NCL-SETF-TEMP-MISMATCH", span)],
             values: Vec::new(),
-            store: Form::atom("NCL-SETF-STORE-MISMATCH", span),
+            stores: vec![Form::atom("NCL-SETF-STORE-MISMATCH", span)],
             store_form: Form::atom("NCL-SETF-STORE-MISMATCH", span),
             access_form: Form::atom("NCL-SETF-ACCESS-MISMATCH", span),
         };
 
         let error = runtime
-            .apply_setf_expansion(&expansion, Value::Integer(1), &environment, span)
+            .apply_setf_expansion(&expansion, &Value::Integer(1), &environment, span)
             .map_or_else(
                 |error| error,
                 |value| panic!("mismatched temporary/value lists must be rejected, got {value:?}"),

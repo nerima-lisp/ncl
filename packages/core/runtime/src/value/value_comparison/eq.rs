@@ -1,6 +1,16 @@
 use std::rc::Rc;
 
-use crate::value::Value;
+use crate::value::{SymbolObject, Value};
+
+fn interned_symbol_matches_legacy(interned: &SymbolObject, legacy: &Value) -> bool {
+    match legacy {
+        Value::Symbol(name) | Value::SymbolExact(name) => interned.reference() == name.as_ref(),
+        Value::Keyword(name) | Value::KeywordExact(name) => {
+            interned.keyword() && interned.name() == name.as_ref()
+        }
+        _ => false,
+    }
+}
 
 impl Value {
     /// Performs Lisp `EQ` identity/equivalence comparison.
@@ -13,7 +23,9 @@ impl Value {
             (Self::Boolean(left), Self::Boolean(right)) => left == right,
             (Self::Integer(left), Self::Integer(right)) => left == right,
             (Self::Rational(left), Self::Rational(right)) => left == right,
+            (Self::BigRational(left), Self::BigRational(right)) => left == right,
             (Self::Float(left), Self::Float(right)) => left == right,
+            (Self::Complex(left), Self::Complex(right)) => Rc::ptr_eq(left, right),
             (Self::Character(left), Self::Character(right)) => left == right,
             (Self::Stream(left), Self::Stream(right)) => Rc::ptr_eq(left, right),
             (Self::Package(left), Self::Package(right))
@@ -21,13 +33,21 @@ impl Value {
             | (Self::Keyword(left), Self::Keyword(right))
             | (Self::SymbolExact(left), Self::SymbolExact(right))
             | (Self::KeywordExact(left), Self::KeywordExact(right)) => left == right,
+            (Self::PackageObject(left), Self::PackageObject(right)) => left.ptr_eq(right),
+            (Self::InternedSymbol(left), Self::InternedSymbol(right)) => left.ptr_eq(right),
+            (Self::InternedSymbol(left), right) if interned_symbol_matches_legacy(left, right) => {
+                true
+            }
+            (left, Self::InternedSymbol(right)) if interned_symbol_matches_legacy(right, left) => {
+                true
+            }
             (Self::String(left), Self::String(right)) => Rc::ptr_eq(left, right),
             (Self::UninternedSymbol(left), Self::UninternedSymbol(right)) => {
                 Rc::ptr_eq(left, right)
             }
-            (Self::List(left), Self::List(right)) | (Self::Vector(left), Self::Vector(right)) => {
-                Rc::ptr_eq(left, right)
-            }
+            (Self::Cons(left), Self::Cons(right)) => left.ptr_eq(right),
+            (Self::Vector(left), Self::Vector(right)) => left.ptr_eq(right),
+            (Self::Values(left), Self::Values(right)) => Rc::ptr_eq(left, right),
             (
                 Self::Array {
                     dimensions: left_dimensions,
@@ -39,7 +59,7 @@ impl Value {
                 },
             ) => {
                 Rc::ptr_eq(left_dimensions, right_dimensions)
-                    && Rc::ptr_eq(left_elements, right_elements)
+                    && left_elements.ptr_eq(right_elements)
             }
             (
                 Self::HashTable {
@@ -51,7 +71,6 @@ impl Value {
                     ..
                 },
             ) => Rc::ptr_eq(left_entries, right_entries),
-            (Self::Values(left), Self::Values(right)) => Rc::ptr_eq(left, right),
             (Self::Condition(left), Self::Condition(right)) => Rc::ptr_eq(left, right),
             (Self::Restart(left), Self::Restart(right)) => Rc::ptr_eq(left, right),
             (
@@ -71,16 +90,6 @@ impl Value {
             (Self::Instance(left), Self::Instance(right)) => {
                 Rc::ptr_eq(&left.class, &right.class) && Rc::ptr_eq(&left.slots, &right.slots)
             }
-            (
-                Self::DottedList {
-                    items: left,
-                    tail: left_tail,
-                },
-                Self::DottedList {
-                    items: right,
-                    tail: right_tail,
-                },
-            ) => Rc::ptr_eq(left, right) && Rc::ptr_eq(left_tail, right_tail),
             (Self::Function(left), Self::Function(right)) => Rc::ptr_eq(left, right),
             _ => false,
         }

@@ -28,15 +28,24 @@ pub struct StructureDefinition {
 #[derive(Clone, Debug)]
 pub struct ClassSlot {
     pub(crate) name: String,
-    pub(crate) initarg: Option<String>,
+    pub(crate) documentation: Option<String>,
+    pub(crate) initargs: Vec<String>,
+    pub(crate) readers: Vec<String>,
+    pub(crate) writers: Vec<String>,
     pub(crate) init_form: Option<Form>,
+    pub(crate) type_form: Option<Form>,
+    pub(crate) init_function: Option<Value>,
     pub(crate) class_value: Option<Rc<RefCell<Value>>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ClassDefinition {
     pub(crate) name: String,
-    pub(crate) precedence: Vec<String>,
+    pub(crate) documentation: Option<String>,
+    pub(crate) direct_superclasses: Vec<Rc<str>>,
+    pub(crate) direct_slots: Vec<Rc<str>>,
+    pub(crate) direct_default_initargs: Vec<(String, Form)>,
+    pub(crate) precedence: Vec<Rc<str>>,
     pub(crate) slots: Vec<ClassSlot>,
     pub(crate) default_initargs: Vec<(String, Form)>,
 }
@@ -44,13 +53,19 @@ pub struct ClassDefinition {
 #[derive(Clone, Debug)]
 pub struct MethodDefinition {
     pub(crate) qualifiers: Vec<String>,
-    pub(crate) specializers: Vec<String>,
+    pub(crate) specializers: Vec<MethodSpecializer>,
     pub(crate) function: Value,
 }
 
 #[derive(Clone, Debug)]
+pub enum MethodSpecializer {
+    Class(Rc<str>),
+    Eql(Value),
+}
+
+#[derive(Clone, Debug)]
 pub struct Instance {
-    pub class: Rc<ClassDefinition>,
+    pub class: Rc<RefCell<Rc<ClassDefinition>>>,
     pub slots: SlotValues,
 }
 

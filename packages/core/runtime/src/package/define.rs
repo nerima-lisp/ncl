@@ -1,5 +1,6 @@
 use super::names::{normalize_package_name, normalize_symbol_name};
 use super::{Package, PackageState};
+use crate::value::SymbolObject;
 use std::collections::{HashMap, HashSet};
 
 impl PackageState {
@@ -66,14 +67,39 @@ impl PackageState {
             }
         }
 
+        let object = self
+            .packages
+            .get(&name)
+            .map(|package| package.object.clone())
+            .unwrap_or_else(|| crate::value::PackageObject::new(&name));
+        let symbol_objects = exports
+            .iter()
+            .map(|symbol| {
+                (
+                    symbol.clone(),
+                    SymbolObject::new(
+                        symbol.clone(),
+                        object.clone(),
+                        false,
+                        name == super::KEYWORD_PACKAGE,
+                    ),
+                )
+            })
+            .collect();
         self.nicknames.retain(|_, package| package != &name);
         self.packages.insert(
             name.clone(),
             Package {
+                object,
                 use_packages,
+                nicknames: normalized_nicknames.clone(),
                 symbols: exports.clone(),
+                exact_symbols: HashSet::new(),
                 exports,
                 imports: HashMap::new(),
+                symbol_objects,
+                exact_symbol_objects: HashMap::new(),
+                import_objects: HashMap::new(),
                 shadows: HashSet::new(),
                 documentation,
                 local_nicknames: normalized_local_nicknames,

@@ -78,7 +78,7 @@ pub(in crate::vm::execution) fn run_code_from(
             return Ok(value);
         }
 
-        unreachable!("load instruction was not handled before dispatch");
+        unreachable!("unhandled instruction before dispatch: {instruction:?}");
     }
 }
 

@@ -5,19 +5,7 @@ use super::*;
 impl Runtime {
     fn association_entry_parts(entry: &Value) -> Option<(Value, Value)> {
         match entry {
-            Value::List(items) => {
-                let (key, rest) = items.split_first()?;
-                Some((key.clone(), Value::list(rest.to_vec())))
-            }
-            Value::DottedList { items, tail } => {
-                let (key, rest) = items.split_first()?;
-                let value = if rest.is_empty() {
-                    tail.as_ref().clone()
-                } else {
-                    Value::dotted_list(rest.to_vec(), tail.as_ref().clone())
-                };
-                Some((key.clone(), value))
-            }
+            Value::Cons(cell) => Some((cell.car(), cell.cdr())),
             _ => None,
         }
     }

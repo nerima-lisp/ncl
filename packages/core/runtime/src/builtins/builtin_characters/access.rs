@@ -2,6 +2,7 @@ use super::{
     RuntimeError, Value, arity, character_argument, exact, index_argument, out_of_bounds,
     string_designator, type_error,
 };
+use crate::environment::normalize_name;
 
 pub fn string_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "string", 1)?;
@@ -9,16 +10,40 @@ pub fn string_value(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 pub fn make_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    if !(1..=2).contains(&arguments.len()) {
-        return Err(arity("make-string", "1 or 2", arguments.len()));
+    if arguments.is_empty() || arguments.len() > 3 {
+        return Err(arity(
+            "make-string",
+            "a length and keyword/value pairs",
+            arguments.len(),
+        ));
     }
     let length = index_argument("make-string", &arguments[0])?;
-    let initial = arguments
-        .get(1)
-        .map(|value| character_argument("make-string", value))
-        .transpose()?
-        .unwrap_or(' ');
-    Ok(Value::string(
+    let initial = match arguments.get(1..) {
+        None => ' ',
+        Some([]) => ' ',
+        Some([value]) => character_argument("make-string", value)?,
+        Some([keyword, value]) => {
+            let name = match keyword {
+                Value::Keyword(name) | Value::KeywordExact(name) => normalize_name(name),
+                Value::InternedSymbol(symbol) if symbol.keyword() => normalize_name(symbol.name()),
+                _ => return Err(type_error("make-string", "a keyword", keyword)),
+            };
+            if name != "INITIAL-ELEMENT" {
+                return Err(RuntimeError::InvalidForm {
+                    message: format!("make-string does not support keyword :{name}"),
+                    span: None,
+                });
+            }
+            character_argument("make-string", value)?
+        }
+        Some(_) => {
+            return Err(RuntimeError::InvalidForm {
+                message: "make-string accepts only :initial-element".to_string(),
+                span: None,
+            });
+        }
+    };
+    Ok(Value::mutable_string(
         std::iter::repeat_n(initial, length).collect::<String>(),
     ))
 }
@@ -26,7 +51,7 @@ pub fn make_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
 pub fn character(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "char", 2)?;
     let index = index_argument("char", &arguments[1])?;
-    let Value::String(value) = &arguments[0] else {
+    let Some(value) = arguments[0].string_contents() else {
         return Err(type_error("char", "string", &arguments[0]));
     };
     value
@@ -39,7 +64,7 @@ pub fn character(arguments: &[Value]) -> Result<Value, RuntimeError> {
 pub fn simple_character(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "schar", 2)?;
     let index = index_argument("schar", &arguments[1])?;
-    let Value::String(value) = &arguments[0] else {
+    let Some(value) = arguments[0].string_contents() else {
         return Err(type_error("schar", "simple-string", &arguments[0]));
     };
     value
@@ -91,11 +116,36 @@ mod tests {
         assert!(matches!(
             make_string(&[]),
             Err(RuntimeError::Arity { function, expected, actual })
-                if function == "make-string" && expected == "1 or 2" && actual == 0
+                if function == "make-string" && expected == "a length and keyword/value pairs" && actual == 0
         ));
         assert!(matches!(
-            make_string(&[Value::Integer(1), Value::Character('x'), Value::Integer(2)]),
+            make_string(&[
+                Value::Integer(1),
+                Value::keyword("initial-element"),
+                Value::Character('x'),
+                Value::Integer(2),
+            ]),
             Err(RuntimeError::Arity { function, .. }) if function == "make-string"
         ));
+    }
+
+    #[test]
+    fn make_string_accepts_initial_element_keyword() {
+        assert_eq!(
+            ok_string(make_string(&[
+                Value::Integer(3),
+                Value::keyword("initial-element"),
+                Value::Character('x'),
+            ])),
+            Value::string("xxx").to_string()
+        );
+        assert!(
+            make_string(&[
+                Value::Integer(1),
+                Value::keyword("unknown"),
+                Value::Character('x'),
+            ])
+            .is_err()
+        );
     }
 }

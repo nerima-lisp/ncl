@@ -32,10 +32,10 @@ fn evaluates_character_and_string_operations(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
             evaluate(
-                "(list (string #\\a) (string 'hello) (make-string 3 #\\x) (char \"abc\" 1) (char-code #\\A) (code-char 98) (char= #\\a #\\a) (char-equal #\\A #\\a) (char< #\\a #\\c) (string= \"abc\" \"abc\") (string-equal \"AbC\" \"aBc\") (string< \"abc\" \"abd\") (string-upcase \"Abc\") (string-downcase \"AbC\"))"
+                "(list (string #\\a) (string 'hello) (make-string 3 #\\x) (make-string 3 :initial-element #\\y) (char \"abc\" 1) (char-code #\\A) (code-char 98) (char= #\\a #\\a) (char-equal #\\A #\\a) (char< #\\a #\\c) (string= \"abc\" \"abc\") (string-equal \"AbC\" \"aBc\") (string< \"abc\" \"abd\") (string-upcase \"Abc\") (string-downcase \"AbC\"))"
             )
             .to_string(),
-            "(\"a\" \"HELLO\" \"xxx\" #\\b 65 #\\b T T T T T 2 \"ABC\" \"abc\")"
+            "(\"a\" \"HELLO\" \"xxx\" \"yyy\" #\\b 65 #\\b T T T T T 2 \"ABC\" \"abc\")"
         );
     assert_eq!(
         evaluate(
@@ -49,6 +49,15 @@ fn evaluates_character_and_string_operations(#[case] eval_fn: EvalFn) {
         )
         .to_string(),
         "(\"Hello\" \"Hello x\" \"xx Hello\" \"Hello, World-42 Foo_Bar\" \"aBCDef\" \"AbcdEF\" \"Hello World\")"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((text (make-string 5 #\\Space)))
+               (setf (char text 0) #\\x)
+               (string-trim \" \" text))"
+        )
+        .to_string(),
+        "\"x\""
     );
 }
 
@@ -128,6 +137,134 @@ fn evaluates_condition_format_arguments(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_condition_message(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            r#"(condition-message
+                 (make-condition 'simple-condition
+                   :format-control "value: ~A"
+                   :format-arguments (list 7)))"#,
+        )
+        .to_string(),
+        "\"value: 7\""
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_type_error_accessors(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((condition (make-condition 'type-error :datum 7 :expected-type 'integer)))
+               (list (type-error-datum condition)
+                     (type-error-expected-type condition)))",
+        )
+        .to_string(),
+        "(7 INTEGER)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_unbound_variable_name_accessor(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(unbound-variable-name (make-condition 'unbound-variable :name 'missing))")
+            .to_string(),
+        "MISSING"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_arithmetic_error_accessors(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((condition (make-condition 'arithmetic-error :operation '+ :operands (list 1 2))))
+               (list (arithmetic-error-operation condition)
+                     (arithmetic-error-operands condition)))",
+        )
+        .to_string(),
+        "(+ (1 2))"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_file_error_pathname_accessor(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(file-error-pathname (make-condition 'file-error :pathname \"missing.lisp\"))")
+            .to_string(),
+        "\"missing.lisp\""
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_package_error_package_accessor(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(package-name (package-error-package (make-condition 'package-error :package (make-package \"package-error-accessor-compiled\"))))")
+            .to_string(),
+        "\"PACKAGE-ERROR-ACCESSOR-COMPILED\""
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_stream_error_stream_accessor(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(stream-element-type (stream-error-stream (make-condition 'stream-error :stream (make-string-input-stream \"data\"))))")
+            .to_string(),
+        "CHARACTER"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn recognizes_stream_error_condition_type(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate("(typep (make-condition 'stream-error :stream (make-string-input-stream \"data\")) 'stream-error)")
+            .to_string(),
+        "T"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn recognizes_standard_condition_hierarchy(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (typep (make-condition 'undefined-function) 'cell-error)
+                   (typep (make-condition 'end-of-file) 'stream-error)
+                   (typep (make-condition 'storage-condition) 'serious-condition)
+                   (typep (make-condition 'control-error) 'error)
+                   (subtypep 'control-error 'serious-condition)
+                   (subtypep 'undefined-function 'cell-error))",
+        )
+        .to_string(),
+        "(T T T T T T)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_error_through_condition_handlers(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
@@ -158,6 +295,24 @@ fn evaluates_error_through_condition_handlers(#[case] eval_fn: EvalFn) {
         )
         .to_string(),
         "42"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_most_recent_matching_handler_first(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(let ((seen nil))
+               (handler-bind ((simple-error (lambda (condition) (setq seen :outer)))
+                              (simple-error (lambda (condition) (setq seen :inner))))
+                 (signal (make-condition 'simple-error :format-control \"boom\")))
+               seen)",
+        )
+        .to_string(),
+        ":INNER"
     );
 }
 
@@ -204,6 +359,22 @@ fn evaluates_extended_character_operations(#[case] eval_fn: EvalFn) {
 #[rstest]
 #[case::evaluator(Runtime::eval_source as EvalFn)]
 #[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_bignum_character_integer_arguments(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(list (code-char (ash 1 80))
+                       (int-char (ash 1 80))
+                       (digit-char (ash 1 80) 16))",
+        )
+        .to_string(),
+        "(NIL NIL NIL)"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
 fn evaluates_handler_case_and_handler_bind(#[case] eval_fn: EvalFn) {
     let evaluate = |source: &str| evaluate_with(eval_fn, source);
     assert_eq!(
@@ -239,6 +410,40 @@ fn evaluates_handler_case_and_handler_bind(#[case] eval_fn: EvalFn) {
         )
         .to_string(),
         "7"
+    );
+    assert_eq!(
+        evaluate(
+            "(handler-case (error \"boom\")
+                   (simple-error () 11))",
+        )
+        .to_string(),
+        "11"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_cell_error_name(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(handler-case (symbol-value 'missing-cell)
+                   (cell-error (condition)
+                     (list (cell-error-name condition)
+                           (typep condition 'cell-error))))",
+        )
+        .to_string(),
+        "(MISSING-CELL T)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((condition (make-condition 'cell-error :name 'slot)))
+               (list (cell-error-name condition)
+                     (typep condition 'cell-error)))",
+        )
+        .to_string(),
+        "(SLOT T)"
     );
 }
 
@@ -293,5 +498,60 @@ fn evaluates_signal_warn_cerror_and_dynamic_handlers(#[case] eval_fn: EvalFn) {
         )
         .to_string(),
         "NIL"
+    );
+}
+
+#[rstest]
+#[case::evaluator(Runtime::eval_source as EvalFn)]
+#[case::compiled(Runtime::eval_compiled_source as EvalFn)]
+fn evaluates_condition_restart_compatibility(#[case] eval_fn: EvalFn) {
+    let evaluate = |source: &str| evaluate_with(eval_fn, source);
+    assert_eq!(
+        evaluate(
+            "(handler-bind ((warning (lambda (condition)
+                                      (declare (ignore condition))
+                                      (invoke-restart 'muffle-warning))))
+               (warn \"quiet\"))",
+        )
+        .to_string(),
+        "NIL"
+    );
+    assert_eq!(
+        evaluate(
+            "(handler-case (invoke-restart 'missing)
+                   (control-error (condition) (list (type-of condition) 'caught)))"
+        )
+        .to_string(),
+        "(CONDITION CAUGHT)"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((seen nil))
+               (handler-bind ((simple-condition
+                                (lambda (condition)
+                                  (declare (ignore condition))
+                                  (push :outer seen)))
+                              (simple-condition
+                                (lambda (condition)
+                                  (declare (ignore condition))
+                                  (push :inner seen))))
+                 (signal \"nested\"))
+               (reverse seen))",
+        )
+        .to_string(),
+        "(:OUTER :INNER)"
+    );
+    assert_eq!(
+        evaluate(
+            "(restart-bind ((same (lambda () :first))
+                            (same (lambda () :second)))
+               (invoke-restart 'same))",
+        )
+        .to_string(),
+        ":FIRST"
+    );
+    assert_eq!(
+        evaluate("(typep (make-condition 'simple-type-error) 'type-error)").to_string(),
+        "T"
     );
 }

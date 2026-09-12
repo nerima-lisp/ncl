@@ -1,7 +1,7 @@
 mod rounding_exact;
 use rounding_exact::{exact_quotient_and_remainder, float_quotient_and_remainder};
 
-use super::{Number, RuntimeError, Value, arity, exact, integer_argument, number_argument};
+use super::{Number, RuntimeError, Value, arity, exact, integer_value, number_argument};
 
 #[derive(Clone, Copy)]
 pub enum RoundingMode {
@@ -50,34 +50,29 @@ pub fn quotient_and_remainder(
 
 pub fn modulo(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "mod", 2)?;
-    let left = integer_argument("mod", &arguments[0])?;
-    let right = integer_argument("mod", &arguments[1])?;
-    let remainder = integer_remainder(left, right)?;
-    if remainder != 0 && (left < 0) != (right < 0) {
-        remainder
-            .checked_add(right)
-            .map(Value::Integer)
-            .ok_or(RuntimeError::NumericOverflow)
+    let left = integer_value("mod", &arguments[0])?;
+    let right = integer_value("mod", &arguments[1])?;
+    if right == ibig::IBig::from(0) {
+        return Err(RuntimeError::DivisionByZero);
+    }
+    let remainder = left.clone() % right.clone();
+    if remainder != ibig::IBig::from(0)
+        && (left < ibig::IBig::from(0)) != (right < ibig::IBig::from(0))
+    {
+        Ok(Value::big_integer(remainder + right))
     } else {
-        Ok(Value::Integer(remainder))
+        Ok(Value::big_integer(remainder))
     }
 }
 
 pub fn remainder(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "rem", 2)?;
-    let left = integer_argument("rem", &arguments[0])?;
-    let right = integer_argument("rem", &arguments[1])?;
-    integer_remainder(left, right).map(Value::Integer)
-}
-
-pub fn integer_remainder(left: i64, right: i64) -> Result<i64, RuntimeError> {
-    if right == 0 {
+    let left = integer_value("rem", &arguments[0])?;
+    let right = integer_value("rem", &arguments[1])?;
+    if right == ibig::IBig::from(0) {
         return Err(RuntimeError::DivisionByZero);
     }
-    if left == i64::MIN && right == -1 {
-        return Ok(0);
-    }
-    left.checked_rem(right).ok_or(RuntimeError::NumericOverflow)
+    Ok(Value::big_integer(left % right))
 }
 
 #[cfg(test)]
@@ -108,10 +103,6 @@ mod tests {
     fn rejects_division_by_zero() {
         assert!(modulo(&[Value::Integer(1), Value::Integer(0)]).is_err());
         assert!(remainder(&[Value::Integer(1), Value::Integer(0)]).is_err());
-        assert!(matches!(
-            integer_remainder(1, 0),
-            Err(RuntimeError::DivisionByZero)
-        ));
     }
 
     #[test]
@@ -139,11 +130,20 @@ mod tests {
     }
 
     #[test]
-    fn integer_remainder_avoids_overflow_at_the_minimum_boundary() {
+    fn remainder_avoids_overflow_at_the_minimum_boundary() {
         assert_eq!(
-            integer_remainder(i64::MIN, -1)
-                .unwrap_or_else(|error| panic!("unexpected error: {error}")),
-            0
+            ok_string(remainder(&[Value::Integer(i64::MIN), Value::Integer(-1)])),
+            "0"
         );
+    }
+
+    #[test]
+    fn modulo_and_remainder_accept_bignums() {
+        let dividend = Value::big_integer((ibig::IBig::from(1) << 80) + 1);
+        assert_eq!(
+            ok_string(remainder(&[dividend.clone(), Value::Integer(3)])),
+            "2"
+        );
+        assert_eq!(ok_string(modulo(&[dividend, Value::Integer(-3)])), "-1");
     }
 }

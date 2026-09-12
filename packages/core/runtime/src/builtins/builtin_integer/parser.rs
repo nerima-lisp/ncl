@@ -1,7 +1,8 @@
 use super::options::ParseIntegerOptions;
 use crate::{RuntimeError, Value};
+use ibig::IBig;
 
-pub(super) fn parse_integer_value(
+pub(crate) fn parse_integer_value(
     chars: &[char],
     options: ParseIntegerOptions,
 ) -> Result<Value, RuntimeError> {
@@ -27,7 +28,7 @@ pub(super) fn parse_integer_value(
         _ => false,
     };
     let digits_start = cursor;
-    let mut magnitude = 0_i128;
+    let mut magnitude = IBig::from(0);
     while cursor < end {
         let Some(digit) = parse_integer_digit(chars[cursor]) else {
             break;
@@ -35,10 +36,7 @@ pub(super) fn parse_integer_value(
         if digit >= radix {
             break;
         }
-        magnitude = magnitude
-            .checked_mul(i128::from(radix))
-            .and_then(|value| value.checked_add(i128::from(digit)))
-            .ok_or(RuntimeError::NumericOverflow)?;
+        magnitude = magnitude * IBig::from(radix) + IBig::from(digit);
         cursor += 1;
     }
     if cursor == digits_start {
@@ -50,16 +48,9 @@ pub(super) fn parse_integer_value(
             span: None,
         });
     }
-    let signed = if negative {
-        magnitude
-            .checked_neg()
-            .ok_or(RuntimeError::NumericOverflow)?
-    } else {
-        magnitude
-    };
-    let integer = i64::try_from(signed).map_err(|_| RuntimeError::NumericOverflow)?;
+    let signed = if negative { -magnitude } else { magnitude };
     if junk_allowed {
-        return parse_integer_result(Some(integer), cursor);
+        return parse_integer_result(Some(signed), cursor);
     }
     let mut trailing = cursor;
     while trailing < end && chars[trailing].is_whitespace() {
@@ -71,18 +62,18 @@ pub(super) fn parse_integer_value(
             span: None,
         });
     }
-    parse_integer_result(Some(integer), end)
+    parse_integer_result(Some(signed), end)
 }
 
-fn parse_integer_result(integer: Option<i64>, position: usize) -> Result<Value, RuntimeError> {
+fn parse_integer_result(integer: Option<IBig>, position: usize) -> Result<Value, RuntimeError> {
     let position = i64::try_from(position).map_err(|_| RuntimeError::NumericOverflow)?;
     Ok(Value::values(vec![
-        integer.map_or(Value::Nil, Value::Integer),
+        integer.map_or(Value::Nil, Value::big_integer),
         Value::Integer(position),
     ]))
 }
 
-pub(super) fn parse_integer_digit(character: char) -> Option<u32> {
+pub(crate) fn parse_integer_digit(character: char) -> Option<u32> {
     match character {
         '0'..='9' => Some(u32::from(character as u8 - b'0')),
         'A'..='Z' => Some(u32::from(character as u8 - b'A') + 10),

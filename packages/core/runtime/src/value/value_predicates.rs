@@ -23,23 +23,26 @@ impl Value {
 
     /// Returns the implementation's canonical Lisp type name.
     #[must_use]
-    pub const fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> &'static str {
         match self {
             Self::Nil => "NIL",
             Self::Unbound => "UNBOUND",
             Self::Boolean(_) => "BOOLEAN",
             Self::Integer(_) | Self::BigInteger(_) => "INTEGER",
-            Self::Rational(_) => "RATIO",
+            Self::Rational(_) | Self::BigRational(_) => "RATIO",
             Self::Float(_) => "FLOAT",
+            Self::Complex(_) => "COMPLEX",
             Self::String(_) => "STRING",
             Self::Character(_) => "CHARACTER",
             Self::Stream(_) => "STREAM",
             Self::RandomState(_) => "RANDOM-STATE",
-            Self::Package(_) => "PACKAGE",
+            Self::Package(_) | Self::PackageObject(_) => "PACKAGE",
             Self::Environment(_) => "ENVIRONMENT",
             Self::Symbol(_) | Self::SymbolExact(_) | Self::UninternedSymbol(_) => "SYMBOL",
+            Self::InternedSymbol(symbol) if !symbol.keyword() => "SYMBOL",
+            Self::InternedSymbol(_) => "KEYWORD",
             Self::Keyword(_) | Self::KeywordExact(_) => "KEYWORD",
-            Self::List(_) | Self::DottedList { .. } => "LIST",
+            Self::Cons(_) => "LIST",
             Self::Vector(_) => "VECTOR",
             Self::Array { .. } => "ARRAY",
             Self::HashTable { .. } => "HASH-TABLE",
@@ -64,6 +67,10 @@ mod tests {
     fn type_name_covers_every_value_variant() {
         let class_definition = Rc::new(ClassDefinition {
             name: "POINT".to_owned(),
+            documentation: None,
+            direct_superclasses: Vec::new(),
+            direct_slots: Vec::new(),
+            direct_default_initargs: Vec::new(),
             precedence: Vec::new(),
             slots: Vec::new(),
             default_initargs: Vec::new(),

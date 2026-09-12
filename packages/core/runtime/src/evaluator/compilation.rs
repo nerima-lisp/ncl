@@ -13,17 +13,36 @@ mod lambda;
 mod lambda_tests;
 mod local_macros;
 mod local_macros_tests;
+mod quasiquote;
+mod reservations;
+mod reservations_tests;
+mod setf;
 mod special_forms;
 mod special_forms_tests;
 mod symbol_macro;
 mod symbol_macro_tests;
 
 impl Runtime {
+    pub(super) fn prepare_compiled_top_level_form(
+        &self,
+        form: &Form,
+        environment: &Environment,
+    ) -> Result<Form, RuntimeError> {
+        if is_operator_form(form, "DEFPACKAGE") || is_operator_form(form, "IN-PACKAGE") {
+            let value = self.eval_values_in(form, environment)?;
+            return Self::quoted_value_form(&value, form.span);
+        }
+
+        self.prepare_compiled_form(form, environment)
+    }
+
     pub(super) fn prepare_compiled_form(
         &self,
         form: &Form,
         environment: &Environment,
     ) -> Result<Form, RuntimeError> {
+        let mut reservations = reservations::CompilationReservations::new(self);
+        reservations.reserve(form);
         if let Some(expanded) = Self::expand_symbol_macro_form(form, environment)? {
             return self.prepare_compiled_form(&expanded, environment);
         }
@@ -35,8 +54,20 @@ impl Runtime {
             return self.prepare_compiled_symbol_macrolet(form, environment);
         }
         if is_operator_form(form, "WITH-OPEN-FILE") {
-            let expanded = Self::expand_with_open_file(form)?;
+            let expanded = self.expand_with_open_file(form)?;
             return self.prepare_compiled_form(&expanded, environment);
+        }
+        if is_operator_form(form, "WITH-OPEN-STREAM") {
+            let expanded = self.expand_with_open_stream(form)?;
+            return self.prepare_compiled_form(&expanded, environment);
+        }
+
+        if is_operator_form(form, "LOAD-TIME-VALUE") {
+            let value = self.eval_values_in(form, environment)?.primary_value();
+            return Ok(Form::new(
+                FormKind::Literal(ncl_syntax::OpaqueLiteral::new(value)),
+                form.span,
+            ));
         }
 
         if is_operator_form(form, "DEFMACRO")
@@ -45,15 +76,16 @@ impl Runtime {
             || is_operator_form(form, "DEFINE-SYMBOL-MACRO")
             || is_operator_form(form, "MACROEXPAND-1")
             || is_operator_form(form, "MACROEXPAND")
-            || is_operator_form(form, "LOAD-TIME-VALUE")
-            || is_operator_form(form, "DEFPACKAGE")
-            || is_operator_form(form, "IN-PACKAGE")
         {
             let value = self.eval_values_in(form, environment)?;
             return Self::quoted_value_form(&value, form.span);
         }
 
-        let expanded = self.expand_macros(form.clone(), environment)?;
+        let (expanded, changed) = self.expand_macros_with_flag(form.clone(), environment)?;
+        reservations.reserve(&expanded);
+        if changed {
+            return self.prepare_compiled_form(&expanded, environment);
+        }
         match &expanded.kind {
             FormKind::List(items) => self.prepare_compiled_list(&expanded, items, environment),
             _ => Ok(expanded),
@@ -81,12 +113,6 @@ impl Runtime {
             return Ok(Form::list(forms, span));
         }
 
-        Ok(Form::list(
-            vec![
-                Form::atom("QUOTE", span),
-                Self::form_from_value(value, span)?,
-            ],
-            span,
-        ))
+        Ok(Self::retained_value_form(value, span))
     }
 }

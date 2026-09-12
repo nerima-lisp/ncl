@@ -15,6 +15,7 @@ pub fn parse_sequence_sort_key(
     for pair in options.as_chunks::<2>().0 {
         let keyword_name = match &pair[0] {
             Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
+            Value::InternedSymbol(symbol) if symbol.keyword() => normalize_name(symbol.name()),
             _ => {
                 return Err(Runtime::invalid(
                     "sequence sort keyword argument name must be a keyword",

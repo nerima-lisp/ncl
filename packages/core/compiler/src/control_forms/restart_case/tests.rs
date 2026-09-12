@@ -1,3 +1,5 @@
+mod invalid_function_id;
+
 use super::*;
 use ncl_syntax::read;
 
@@ -25,28 +27,6 @@ fn expect_catch_arity(error: &CompileError) {
         CompileErrorKind::Arity { operator, .. } => assert_eq!(operator, "CATCH"),
         other => panic!("expected the nested CATCH arity error to propagate, got {other:?}"),
     }
-}
-
-#[test]
-fn compile_restart_case_rejects_invalid_function_id() {
-    let span = Span::new(0, 1);
-    let items = vec![
-        Form::atom("RESTART-CASE", span),
-        Form::atom("1", span),
-        empty_clause(span),
-    ];
-    let mut state = CompileState::default();
-    state.reserve_function(None, Vec::new());
-
-    let error = state
-        .compile_restart_case(usize::MAX, span, &items)
-        .map_or_else(
-            |error| error,
-            |value| {
-                panic!("an out-of-range target function must fail the final emit, got {value:?}")
-            },
-        );
-    expect_internal(&error);
 }
 
 #[test]
@@ -160,123 +140,5 @@ fn compile_restart_case_propagates_malformed_auxiliary_default() -> Result<(), S
     Ok(())
 }
 
-#[test]
-fn compile_restart_case_propagates_malformed_clause_body() {
-    let span = Span::new(0, 1);
-    let clause = Form::list(
-        vec![
-            Form::atom("R", span),
-            Form::list(Vec::new(), span),
-            bad_catch(span),
-        ],
-        span,
-    );
-    let items = vec![
-        Form::atom("RESTART-CASE", span),
-        Form::atom("1", span),
-        clause,
-    ];
-    let mut state = CompileState::default();
-    let function = state.reserve_function(None, Vec::new());
-
-    let error = state
-        .compile_restart_case(function, span, &items)
-        .map_or_else(|error| error, |value| panic!("a malformed clause body form must propagate its own compile error, got {value:?}"));
-    expect_catch_arity(&error);
-}
-
-#[test]
-fn compile_with_condition_restarts_rejects_invalid_function_id() {
-    let span = Span::new(0, 1);
-    let items = vec![
-        Form::atom("WITH-CONDITION-RESTARTS", span),
-        Form::atom("1", span),
-        Form::atom("2", span),
-        Form::atom("3", span),
-    ];
-    let mut state = CompileState::default();
-    state.reserve_function(None, Vec::new());
-
-    let error = state
-        .compile_with_condition_restarts(usize::MAX, span, &items)
-        .map_or_else(
-            |error| error,
-            |value| {
-                panic!("an out-of-range target function must fail the final emit, got {value:?}")
-            },
-        );
-    expect_internal(&error);
-}
-
-#[test]
-fn compile_with_condition_restarts_propagates_malformed_condition_form() {
-    let span = Span::new(0, 1);
-    let items = vec![
-        Form::atom("WITH-CONDITION-RESTARTS", span),
-        bad_catch(span),
-        Form::atom("2", span),
-        Form::atom("3", span),
-    ];
-    let mut state = CompileState::default();
-    let function = state.reserve_function(None, Vec::new());
-
-    let error = state
-        .compile_with_condition_restarts(function, span, &items)
-        .map_or_else(
-            |error| error,
-            |value| {
-                panic!(
-                    "a malformed condition form must propagate its own compile error, got {value:?}"
-                )
-            },
-        );
-    expect_catch_arity(&error);
-}
-
-#[test]
-fn compile_with_condition_restarts_propagates_malformed_restarts_form() {
-    let span = Span::new(0, 1);
-    let items = vec![
-        Form::atom("WITH-CONDITION-RESTARTS", span),
-        Form::atom("1", span),
-        bad_catch(span),
-        Form::atom("3", span),
-    ];
-    let mut state = CompileState::default();
-    let function = state.reserve_function(None, Vec::new());
-
-    let error = state
-        .compile_with_condition_restarts(function, span, &items)
-        .map_or_else(
-            |error| error,
-            |value| {
-                panic!(
-                    "a malformed restarts form must propagate its own compile error, got {value:?}"
-                )
-            },
-        );
-    expect_catch_arity(&error);
-}
-
-#[test]
-fn compile_with_condition_restarts_propagates_malformed_body_form() {
-    let span = Span::new(0, 1);
-    let items = vec![
-        Form::atom("WITH-CONDITION-RESTARTS", span),
-        Form::atom("1", span),
-        Form::atom("2", span),
-        bad_catch(span),
-    ];
-    let mut state = CompileState::default();
-    let function = state.reserve_function(None, Vec::new());
-
-    let error = state
-        .compile_with_condition_restarts(function, span, &items)
-        .map_or_else(
-            |error| error,
-            |value| {
-                panic!("a malformed body form must propagate its own compile error, got {value:?}")
-            },
-        );
-    expect_catch_arity(&error);
-}
+mod malformed_clause_body;
+mod with_condition_restarts_tests;

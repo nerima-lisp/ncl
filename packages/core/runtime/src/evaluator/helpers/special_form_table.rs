@@ -1,5 +1,5 @@
+use super::Form;
 use super::form_predicates::atom_name;
-use super::{Form, normalize_name};
 
 const SPECIAL_FORM_NAMES: &[&str] = &[
     "QUOTE",
@@ -7,6 +7,7 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "DECLARE",
     "LOCALLY",
     "EVAL-WHEN",
+    "WITH-COMPILATION-UNIT",
     "LOAD-TIME-VALUE",
     "NTH-VALUE",
     "DECLAIM",
@@ -29,6 +30,9 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "THROW",
     "WITH-SIMPLE-RESTART",
     "WITH-OPEN-FILE",
+    "WITH-OPEN-STREAM",
+    "WITH-INPUT-FROM-STRING",
+    "WITH-OUTPUT-TO-STRING",
     "RESTART-CASE",
     "UNWIND-PROTECT",
     "BLOCK",
@@ -54,6 +58,7 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "LET*",
     "FLET",
     "LABELS",
+    "WITH-HASH-TABLE-ITERATOR",
     "MACROLET",
     "SYMBOL-MACROLET",
     "DOTIMES",
@@ -75,6 +80,7 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "PSETQ",
     "MULTIPLE-VALUE-SETQ",
     "SETF",
+    "%SETF-INTRINSIC-STORE",
     "PSETF",
     "PUSH",
     "POP",
@@ -84,8 +90,11 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "DEFSETF",
     "INCF",
     "DECF",
+    "REMF",
     "DEFSTRUCT",
+    "DEFTYPE",
     "DEFCLASS",
+    "DEFINE-CONDITION",
     "DEFGENERIC",
     "DEFMETHOD",
     "DEFVAR",
@@ -98,9 +107,13 @@ const SPECIAL_FORM_NAMES: &[&str] = &[
     "APPLY",
     "MAP-INTO",
     "MAPCAR",
+    "MAPHASH",
 ];
 
 pub(in crate::evaluator) fn is_special_form(form: &Form) -> bool {
-    atom_name(form)
-        .is_some_and(|operator| SPECIAL_FORM_NAMES.contains(&normalize_name(operator).as_str()))
+    atom_name(form).is_some_and(|operator| {
+        SPECIAL_FORM_NAMES
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(operator))
+    })
 }

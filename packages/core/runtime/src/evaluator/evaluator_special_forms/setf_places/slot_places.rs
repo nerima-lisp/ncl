@@ -21,11 +21,7 @@ impl Runtime {
                 span: Some(args[0].span),
             });
         };
-        if current.set_instance_slot(&class.name, &slot_name, value) {
-            Ok(())
-        } else {
-            Err(Self::invalid("slot is not defined for this class", span))
-        }
+        self.set_instance_slot_checked(&current, &class.name, &slot_name, value, span)
     }
 
     pub(super) fn set_function_place(
@@ -52,11 +48,8 @@ impl Runtime {
                         span: Some(args[0].span),
                     });
                 }
-                if current.set_instance_slot(class_name, slot_name, value) {
-                    Ok(Some(()))
-                } else {
-                    Err(Self::invalid("slot is not defined for this class", span))
-                }
+                self.set_instance_slot_checked(&current, class_name, slot_name, value, span)?;
+                Ok(Some(()))
             }
             crate::Function::StructureAccessor {
                 structure_name,

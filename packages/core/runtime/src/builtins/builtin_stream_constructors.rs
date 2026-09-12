@@ -1,7 +1,7 @@
-use super::{arity, exact, integer_argument, type_error};
+use super::{arity, exact, integer_value, type_error};
 use crate::{RuntimeError, Value};
 
-pub(super) fn make_string_input_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn make_string_input_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=3).contains(&arguments.len()) {
         return Err(arity("make-string-input-stream", "1 to 3", arguments.len()));
     }
@@ -27,13 +27,13 @@ pub(super) fn make_string_input_stream(arguments: &[Value]) -> Result<Value, Run
     Ok(Value::string_input_stream(source, start, end))
 }
 
-pub(super) fn stream_bound(
+pub(crate) fn stream_bound(
     function: &str,
     value: &Value,
     length: usize,
 ) -> Result<usize, RuntimeError> {
-    let bound = integer_argument(function, value)?;
-    let bound = usize::try_from(bound).map_err(|_| RuntimeError::InvalidForm {
+    let bound = integer_value(function, value)?;
+    let bound = usize::try_from(&bound).map_err(|_| RuntimeError::InvalidForm {
         message: format!("{function} stream position must be non-negative"),
         span: None,
     })?;
@@ -46,7 +46,23 @@ pub(super) fn stream_bound(
     Ok(bound)
 }
 
-pub(super) fn make_string_output_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn make_string_output_stream(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "make-string-output-stream", 0)?;
     Ok(Value::string_output_stream())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stream_bound;
+    use crate::{RuntimeError, Value};
+
+    #[test]
+    fn stream_bound_treats_a_large_integer_as_an_integer() {
+        let result = stream_bound(
+            "make-string-input-stream",
+            &Value::big_integer(ibig::IBig::from(1) << 80),
+            3,
+        );
+        assert!(matches!(result, Err(RuntimeError::InvalidForm { .. })));
+    }
 }

@@ -64,13 +64,16 @@ impl Runtime {
         let mut supplied = HashMap::new();
         let mut accepts_unknown = lambda_list.allow_other_keys;
         for pair in keyword_arguments.as_chunks::<2>().0 {
-            let (Value::Keyword(keyword) | Value::KeywordExact(keyword)) = &pair[0] else {
-                return Err(Self::invalid(
-                    "keyword argument name must be a keyword",
-                    span,
-                ));
+            let name = match &pair[0] {
+                Value::Keyword(keyword) | Value::KeywordExact(keyword) => keyword.to_string(),
+                Value::InternedSymbol(symbol) if symbol.keyword() => symbol.name().to_string(),
+                _ => {
+                    return Err(Self::invalid(
+                        "keyword argument name must be a keyword",
+                        span,
+                    ));
+                }
             };
-            let name = keyword.to_string();
             accepts_unknown |= name == "ALLOW-OTHER-KEYS" && pair[1].is_truthy();
             supplied.insert(name, pair[1].clone());
         }

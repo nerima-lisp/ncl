@@ -30,7 +30,7 @@ impl Runtime {
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        if items.len() < 3 {
+        if items.len() < 2 {
             return Err(Self::invalid(
                 "lambda needs parameters and a body",
                 items.first().map_or(Span::new(0, 0), |item| item.span),
@@ -80,7 +80,7 @@ impl Runtime {
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        if items.len() < 4 {
+        if items.len() < 3 {
             return Err(Self::invalid(
                 "defun needs a name, parameters, and a body",
                 items[0].span,

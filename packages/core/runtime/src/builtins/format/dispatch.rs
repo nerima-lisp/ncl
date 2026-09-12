@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_control_characters(
+pub(crate) fn format_control_characters(
     characters: &[char],
     arguments: &[Value],
     colon_iteration_last: bool,
@@ -59,7 +59,7 @@ pub(super) fn format_control_characters(
     Ok((output, argument_index, None))
 }
 
-pub(super) fn format_non_simple_directive(
+pub(crate) fn format_non_simple_directive(
     state: &mut FormatControlState<'_>,
     directive: char,
     parameters: &[FormatParameter],

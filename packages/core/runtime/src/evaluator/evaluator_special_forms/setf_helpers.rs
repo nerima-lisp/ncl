@@ -2,7 +2,7 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn setf_index(value: Value, span: Span) -> Result<usize, RuntimeError> {
+    pub(crate) fn setf_index(value: Value, span: Span) -> Result<usize, RuntimeError> {
         match value {
             Value::Integer(index) if index >= 0 => {
                 usize::try_from(index).map_err(|_| Self::invalid("SETF index is too large", span))

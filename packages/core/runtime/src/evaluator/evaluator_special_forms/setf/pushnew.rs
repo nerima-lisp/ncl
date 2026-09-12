@@ -20,6 +20,9 @@ impl Runtime {
             ));
         }
 
+        let _guard = self.dynamic_guard();
+        let item = self.eval_in(&items[1], environment)?;
+        let (expansion, local) = self.capture_modify_place(&items[2], items, environment)?;
         let pushnew_options = self.parse_pushnew_options(&items[3..], environment)?;
         let PushnewOptions {
             test,
@@ -27,8 +30,7 @@ impl Runtime {
             key,
         } = pushnew_options;
 
-        let item = self.eval_in(&items[1], environment)?;
-        let current = self.eval_in(&items[2], environment)?;
+        let current = self.eval_in(&expansion.access_form, &local)?;
         let elements = current.list_items().ok_or_else(|| {
             Self::invalid("PUSHNEW place must contain a proper list", items[2].span)
         })?;
@@ -80,15 +82,11 @@ impl Runtime {
                 .primary_value()
                 .is_truthy();
             if if invert_test { !equal } else { equal } {
-                return Ok(current);
+                return self.store_modify_place(&expansion, &current, &local);
             }
         }
 
-        let mut result_elements = elements;
-        result_elements.insert(0, item);
-        let result = Value::list(result_elements);
-        self.set_place(&items[2], result.clone(), environment)?;
-        Ok(result)
+        self.store_modify_place(&expansion, &Value::cons(item, current), &local)
     }
 
     fn parse_pushnew_options(

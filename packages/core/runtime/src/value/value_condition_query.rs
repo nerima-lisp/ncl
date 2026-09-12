@@ -39,14 +39,31 @@ impl Value {
                     "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
                 )
             }
-            "TYPE-ERROR" | "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR"
-            | "COMPILER-ERROR" | "FILE-ERROR" | "UNBOUND-VARIABLE" => {
+            "TYPE-ERROR" | "SIMPLE-TYPE-ERROR" => {
                 matches!(
                     expected.as_str(),
-                    "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+                    "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "TYPE-ERROR"
                 )
             }
-            "CONTROL-ERROR" => matches!(expected.as_str(), "CONDITION"),
+            "PROGRAM-ERROR" | "PACKAGE-ERROR" | "READER-ERROR" | "COMPILER-ERROR"
+            | "FILE-ERROR" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+            ),
+            "STREAM-ERROR" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "STREAM-ERROR"
+            ),
+            "UNBOUND-VARIABLE" | "UNDEFINED-FUNCTION" | "UNBOUND-SLOT" | "CELL-ERROR" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION" | "CELL-ERROR"
+            ),
+            "END-OF-FILE" => matches!(expected.as_str(), "CONDITION" | "STREAM-ERROR"),
+            "STORAGE-CONDITION" => matches!(expected.as_str(), "CONDITION" | "SERIOUS-CONDITION"),
+            "CONTROL-ERROR" => matches!(
+                expected.as_str(),
+                "CONDITION" | "ERROR" | "SERIOUS-CONDITION"
+            ),
             _ => false,
         }
     }

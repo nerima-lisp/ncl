@@ -18,8 +18,8 @@ impl Runtime {
         let key = parse_sequence_sort_key(options, span)?;
         let (kind, items) = match sequence {
             Value::Nil => (SequenceKind::List, Vec::new()),
-            Value::List(items) => (SequenceKind::List, items.as_ref().clone()),
-            Value::Vector(items) => (SequenceKind::Vector, items.as_ref().clone()),
+            Value::Cons(_) => (SequenceKind::List, sequence_items(sequence, span)?),
+            Value::Vector(items) => (SequenceKind::Vector, items.visible_snapshot()),
             Value::String(value) => (
                 SequenceKind::String,
                 value.chars().map(Value::Character).collect(),
@@ -71,11 +71,18 @@ impl Runtime {
             }
             sorted.insert(insert_at, (item, item_key));
         }
-        sequence_sort_result(
-            kind,
-            sorted.into_iter().map(|(item, _)| item).collect(),
-            span,
-        )
+        let result = sorted.into_iter().map(|(item, _)| item).collect::<Vec<_>>();
+        if let Value::Vector(elements) = sequence {
+            elements.replace_range(0, &result);
+            return Ok(sequence.clone());
+        }
+        if matches!(sequence, Value::Cons(_)) {
+            if !sequence.replace_list_range(0, &result) {
+                return Err(Self::invalid("SORT list changed during callback", span));
+            }
+            return Ok(sequence.clone());
+        }
+        sequence_sort_result(kind, result, span)
     }
 
     pub(crate) fn apply_sequence_merge(

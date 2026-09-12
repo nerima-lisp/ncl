@@ -6,6 +6,7 @@ impl RuntimeError {
             Self::Read(_) => "READER-ERROR".to_owned(),
             Self::Compile(_) => "COMPILER-ERROR".to_owned(),
             Self::UnboundVariable { .. } => "UNBOUND-VARIABLE".to_owned(),
+            Self::UnboundSlot { .. } => "UNBOUND-SLOT".to_owned(),
             Self::NotCallable { .. } | Self::Type { .. } => "TYPE-ERROR".to_owned(),
             Self::Arity { .. } => "PROGRAM-ERROR".to_owned(),
             Self::InvalidForm { .. } => "SIMPLE-ERROR".to_owned(),
@@ -13,7 +14,7 @@ impl RuntimeError {
                 if error.warning {
                     "SIMPLE-WARNING".to_owned()
                 } else {
-                    error.condition.clone()
+                    error.condition.to_string()
                 }
             }
             Self::Package { .. } => "PACKAGE-ERROR".to_owned(),
@@ -30,10 +31,7 @@ impl RuntimeError {
     pub(crate) fn matches_condition(&self, condition: &str) -> bool {
         if matches!(
             self,
-            Self::ReturnFrom { .. }
-                | Self::Go { .. }
-                | Self::Throw { .. }
-                | Self::InvokeRestart { .. }
+            Self::ReturnFrom { .. } | Self::Go { .. } | Self::Throw { .. }
         ) {
             return false;
         }
@@ -56,8 +54,8 @@ impl RuntimeError {
                         // application-defined condition whose condition_types
                         // includes the built-in TYPE-ERROR is itself a
                         // type-error, even though its own name is not.
-                        std::iter::once(error.condition.as_str())
-                            .chain(error.condition_types.iter().map(String::as_str))
+                        std::iter::once(error.condition.as_ref())
+                            .chain(error.condition_types.iter().map(|name| name.as_ref()))
                             .any(|name| {
                                 name == condition
                                     || matches!(
@@ -72,6 +70,7 @@ impl RuntimeError {
                                             | "COMPILER-ERROR"
                                             | "FILE-ERROR"
                                             | "UNBOUND-VARIABLE"
+                                            | "CELL-ERROR"
                                     )
                             })
                     }
@@ -82,11 +81,11 @@ impl RuntimeError {
 
         match self {
             Self::Signaled(error) => {
-                condition == error.condition
+                condition == error.condition.as_ref()
                     || error
                         .condition_types
                         .iter()
-                        .any(|type_name| type_name.as_str() == condition)
+                        .any(|type_name| type_name.as_ref() == condition)
                     || (error.warning && condition == "WARNING")
                     || (!error.warning && condition == "SIMPLE-CONDITION")
             }
@@ -94,6 +93,9 @@ impl RuntimeError {
                 matches!(condition.as_str(), "DIVISION-BY-ZERO" | "ARITHMETIC-ERROR")
             }
             Self::NumericOverflow => condition == "ARITHMETIC-ERROR",
+            Self::UnboundVariable { .. } => {
+                matches!(condition.as_str(), "UNBOUND-VARIABLE" | "CELL-ERROR")
+            }
             _ => condition == self.condition_type_name(),
         }
     }

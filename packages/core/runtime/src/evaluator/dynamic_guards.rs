@@ -7,6 +7,7 @@ impl Runtime {
             state: self.dynamic.clone(),
             depth: self.dynamic.borrow().bindings.len(),
             exact_depth: self.dynamic.borrow().exact_bindings.len(),
+            random_depth: crate::builtins::dynamic_random_state_depth(),
         }
     }
 
@@ -27,16 +28,14 @@ impl Runtime {
         self.dynamic.borrow().condition_handlers.clone()
     }
 
-    pub(crate) fn suspend_condition_handler(
+    pub(crate) fn suspend_condition_handler_at(
         &self,
-        condition: &str,
+        index: usize,
     ) -> Option<ConditionHandlerSuspension> {
-        let condition = normalize_name(condition);
         let mut state = self.dynamic.borrow_mut();
-        let index = state
-            .condition_handlers
-            .iter()
-            .rposition(|handler| normalize_name(&handler.condition) == condition)?;
+        if index >= state.condition_handlers.len() {
+            return None;
+        }
         let binding = state.condition_handlers.remove(index);
         Some(ConditionHandlerSuspension {
             state: self.dynamic.clone(),

@@ -1,6 +1,40 @@
 use super::*;
 
 #[test]
+fn maphash_calls_function_for_each_entry_and_returns_nil() {
+    let result = evaluate(
+        "(let ((table (make-hash-table)))
+           (setf (gethash 'a table) 1)
+           (setf (gethash 'b table) 2)
+           (let ((total 0))
+             (maphash (lambda (key value)
+                        (declare (ignore key))
+                        (incf total value))
+                      table)
+             total))",
+    );
+    assert_eq!(result.to_string(), "3");
+}
+
+#[test]
+fn with_hash_table_iterator_returns_key_value_pairs_and_stops() {
+    let result = evaluate(
+        "(let ((table (make-hash-table)))
+           (setf (gethash 'a table) 1)
+           (setf (gethash 'b table) 2)
+           (with-hash-table-iterator (next table)
+             (list
+               (multiple-value-call #'list (next))
+               (multiple-value-call #'list (next))
+               (multiple-value-call #'list (next)))))",
+    );
+    assert!(matches!(
+        result.to_string().as_str(),
+        "((T A 1) (T B 2) (NIL NIL NIL))" | "((T B 2) (T A 1) (NIL NIL NIL))"
+    ));
+}
+
+#[test]
 fn rejects_invalid_map_result_types_and_string_results() {
     for result_type in ["'hash-table", "'integer"] {
         assert!(matches!(
@@ -782,13 +816,19 @@ fn evaluates_list_construction_and_partitioning() {
     assert_eq!(evaluate("(butlast '(1 2 3))").to_string(), "(1 2)");
     assert_eq!(evaluate("(nbutlast '(1 2 3) 2)").to_string(), "(1)");
     assert_eq!(evaluate("(nreverse '(1 2 3))").to_string(), "(3 2 1)");
-    assert_eq!(evaluate("(nconc '(1 2) '(3 4))").to_string(), "(1 2 3 4)");
-    assert_eq!(evaluate("(nconc '(1 2) 3)").to_string(), "(1 2 . 3)");
+    assert_eq!(
+        evaluate("(nconc (list 1 2) (list 3 4))").to_string(),
+        "(1 2 3 4)"
+    );
+    assert_eq!(evaluate("(nconc (list 1 2) 3)").to_string(), "(1 2 . 3)");
     assert_eq!(
         evaluate("(revappend '(1 2) '(3 4))").to_string(),
         "(2 1 3 4)"
     );
-    assert_eq!(evaluate("(nreconc '(1 2) '(3 4))").to_string(), "(2 1 3 4)");
+    assert_eq!(
+        evaluate("(nreconc (list 1 2) (list 3 4))").to_string(),
+        "(2 1 3 4)"
+    );
     assert_eq!(
         evaluate("(funcall #'list* 1 '(2 3))").to_string(),
         "(1 2 3)"
@@ -845,7 +885,7 @@ fn rejects_invalid_sequence_operations() {
         "(subseq '(a b) 2 1)",
         "(subseq 1 0)",
         "(fill 0 1)",
-        "(fill 0 '(a b) :start 2 :end 1)",
+        "(fill '(a b) 0 :start 2 :end 1)",
         "(replace '(a) 1)",
         "(replace '(a) '(b) :start1 1 :end1 0)",
         "(copy-seq 1)",
@@ -953,9 +993,128 @@ fn evaluates_map_into_over_sequences() {
         "#(#(2 3))"
     );
     assert_eq!(
+        evaluate(
+            "(let ((calls 0) (container (vector (vector 0 0))))
+               (map-into (aref container (progn (incf calls) 0)) #'1+ '(1 2))
+               (list calls container))",
+        )
+        .to_string(),
+        "(1 #(#(2 3)))"
+    );
+    assert_eq!(
+        evaluate(
+            "(let ((calls 0) (holder (list (list 0 0))))
+               (let ((target (progn (incf calls) holder)))
+                 (map-into (car target) #'1+ '(1 2))
+                 (list calls target)))",
+        )
+        .to_string(),
+        "(1 ((2 3)))"
+    );
+    assert_eq!(
         evaluate("(map-into (vector 1 2) #'1+ '())").to_string(),
         "#(1 2)"
     );
+}
+
+#[test]
+fn sequence_operations_respect_vector_fill_pointers() {
+    assert_eq!(
+        evaluate("(reduce #'+ (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))")
+            .to_string(),
+        "3"
+    );
+    assert_eq!(
+        evaluate(
+            "(map-into (make-array 3 :initial-contents '(0 0 9) :fill-pointer 2) #'1+ '(1 2 3))"
+        )
+        .to_string(),
+        "#(2 3)"
+    );
+    assert_eq!(
+        evaluate("(position 9 (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))")
+            .to_string(),
+        "NIL"
+    );
+    assert_eq!(
+        evaluate("(every #'numberp (make-array 3 :initial-contents '(1 2 nil) :fill-pointer 2))")
+            .to_string(),
+        "T"
+    );
+    assert_eq!(
+        evaluate("(length (copy-seq (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2)))")
+            .to_string(),
+        "2"
+    );
+    assert_eq!(
+        evaluate("(reverse (make-array 3 :initial-contents '(1 2 9) :fill-pointer 2))").to_string(),
+        "#(2 1)"
+    );
+}
+
+#[test]
+fn simple_bit_vector_predicates_respect_array_metadata() {
+    assert_eq!(
+        evaluate(
+            "(list (simple-bit-vector-p #(0 1))\
+                       (simple-bit-vector-p (make-array 2 :element-type 'bit :adjustable t))\
+                       (simple-bit-vector-p (make-array 2 :element-type 'bit :fill-pointer 1))\
+                       (typep (make-array 2 :element-type 'bit :adjustable t) 'simple-bit-vector))"
+        )
+        .to_string(),
+        "(T NIL NIL NIL)"
+    );
+}
+
+#[test]
+fn simple_vector_typep_respects_array_metadata() {
+    assert_eq!(
+        evaluate(
+            "(list (typep #(1 2) 'simple-vector)\
+                       (typep (make-array 2 :adjustable t) 'simple-vector)\
+                       (typep (make-array 2 :fill-pointer 1) 'simple-vector)\
+                       (typep (make-array 2 :element-type 'character) 'simple-vector))"
+        )
+        .to_string(),
+        "(T NIL NIL NIL)"
+    );
+}
+
+#[test]
+fn simple_array_typep_respects_array_metadata() {
+    assert_eq!(
+        evaluate(
+            "(list (typep (make-array 2) 'simple-array)\
+                       (typep (make-array 2 :adjustable t) 'simple-array)\
+                       (typep (make-array 2 :fill-pointer 1) 'simple-array)\
+                       (typep (make-array 2 :displaced-to (make-array 3)) 'simple-array)\
+                       (typep (make-array 2 :adjustable t) '(simple-array * 2)))"
+        )
+        .to_string(),
+        "(T NIL NIL NIL NIL)"
+    );
+}
+
+#[test]
+fn evaluates_fill_pointer_true() {
+    assert_eq!(
+        evaluate(
+            "(let ((array (make-array 3 :initial-contents '(1 2 3) :fill-pointer t)))\
+               (list (fill-pointer array)\
+                     (fill-pointer (adjust-array array 4 :fill-pointer t))))",
+        )
+        .to_string(),
+        "(3 4)"
+    );
+}
+
+#[test]
+fn rejects_make_array_fill_pointer_beyond_vector_length() {
+    assert!(matches!(
+        Runtime::new().eval_source("(make-array 2 :fill-pointer 3)"),
+        Err(ncl_runtime::RuntimeError::InvalidForm { message, .. })
+            if message.contains("fill pointer exceeds vector length")
+    ));
 }
 
 #[test]

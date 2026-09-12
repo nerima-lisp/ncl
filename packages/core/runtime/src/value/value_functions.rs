@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use ncl_compiler::{FunctionId, Program};
@@ -8,6 +8,20 @@ use ncl_syntax::{
 };
 
 use super::{Environment, MacroLambdaList, MethodDefinition, RuntimeError, Value};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MethodCombination {
+    Standard,
+    And,
+    Or,
+    Progn,
+    List,
+    Append,
+    Nconc,
+    Plus,
+    Max,
+    Min,
+}
 
 /// Function pointer used by a registered runtime primitive.
 pub type Builtin = fn(&[Value]) -> Result<Value, RuntimeError>;
@@ -21,6 +35,16 @@ pub enum Function {
         name: &'static str,
         /// The Rust function implementing the primitive.
         function: Builtin,
+    },
+    /// A function that negates the truth value returned by another function.
+    Complement {
+        /// The function whose result is negated.
+        function: Value,
+    },
+    /// A function that always returns the same value.
+    Constantly {
+        /// The value returned for every invocation.
+        value: Value,
     },
     /// A named primitive resolved by the evaluator.
     Primitive {
@@ -65,8 +89,19 @@ pub enum Function {
     Generic {
         /// The generic function name.
         name: String,
+        /// The defining lambda list, when supplied by `defgeneric`.
+        lambda_list: Option<Form>,
+        /// Documentation string supplied when the generic function was defined.
+        documentation: Option<String>,
+        /// Built-in method combination used by the generic function.
+        method_combination: MethodCombination,
         /// The methods currently registered on the generic function.
         methods: Rc<RefCell<Vec<MethodDefinition>>>,
+    },
+    /// A method object associated with a generic function.
+    Method {
+        /// Metadata and effective function for the method.
+        definition: MethodDefinition,
     },
     /// A reader method for a class slot.
     SlotReader {
@@ -77,6 +112,13 @@ pub enum Function {
     },
     /// A writer method for a class slot.
     SlotWriter {
+        /// The class name.
+        class_name: String,
+        /// The slot name.
+        slot_name: String,
+    },
+    /// A SETF function for a class slot.
+    SlotSetfWriter {
         /// The class name.
         class_name: String,
         /// The slot name.
@@ -120,6 +162,13 @@ pub enum Function {
         body: Vec<Form>,
         /// Environment captured by the closure.
         environment: Environment,
+    },
+    /// A stateful iterator over a hash table snapshot.
+    HashTableIterator {
+        /// Entries copied when the iterator was created.
+        entries: Rc<Vec<(Value, Value)>>,
+        /// Next entry index shared by calls through the local function.
+        index: Rc<Cell<usize>>,
     },
     /// A macro closure.
     Macro {

@@ -49,6 +49,7 @@ impl Runtime {
         for pair in arguments.as_chunks::<2>().0 {
             let keyword_name = match &pair[0] {
                 Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
+                Value::InternedSymbol(symbol) if symbol.keyword() => normalize_name(symbol.name()),
                 _ => {
                     return Err(Self::invalid(
                         "structure constructor keyword name must be a keyword",

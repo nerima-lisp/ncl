@@ -1,42 +1,37 @@
-use super::{RuntimeError, Value, exact, integer_argument, type_error};
+use super::{RuntimeError, Value, exact, integer_value, type_error};
 
 pub fn greatest_common_divisor(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    let mut result = 0i128;
+    let mut result = ibig::IBig::from(0);
     for argument in arguments {
-        result = integer_gcd(result, i128::from(integer_argument("gcd", argument)?));
+        result = big_integer_gcd(&result, &integer_value("gcd", argument)?);
     }
-    i64::try_from(result)
-        .map(Value::Integer)
-        .map_err(|_| RuntimeError::NumericOverflow)
+    Ok(Value::big_integer(result))
 }
 
 pub fn least_common_multiple(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    let mut result = 1i128;
+    let mut result = ibig::IBig::from(1);
     for argument in arguments {
-        let value = i128::from(integer_argument("lcm", argument)?);
-        if result == 0 || value == 0 {
-            result = 0;
+        let value = integer_value("lcm", argument)?;
+        if result == ibig::IBig::from(0) || value == ibig::IBig::from(0) {
+            result = ibig::IBig::from(0);
             continue;
         }
-        let divisor = integer_gcd(result, value);
-        result = (result / divisor)
-            .checked_mul(value.abs())
-            .ok_or(RuntimeError::NumericOverflow)?;
+        let divisor = big_integer_gcd(&result, &value);
+        result = (result / divisor) * absolute_big_integer(&value);
     }
-    i64::try_from(result)
-        .map(Value::Integer)
-        .map_err(|_| RuntimeError::NumericOverflow)
+    Ok(Value::big_integer(result))
 }
 
-pub const fn integer_gcd(mut left: i128, mut right: i128) -> i128 {
-    left = left.abs();
-    right = right.abs();
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
+fn big_integer_gcd(left: &ibig::IBig, right: &ibig::IBig) -> ibig::IBig {
+    left.gcd(right)
+}
+
+fn absolute_big_integer(value: &ibig::IBig) -> ibig::IBig {
+    if value < &ibig::IBig::from(0) {
+        -value.clone()
+    } else {
+        value.clone()
     }
-    left
 }
 
 pub fn numerator(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -44,7 +39,8 @@ pub fn numerator(arguments: &[Value]) -> Result<Value, RuntimeError> {
     match &arguments[0] {
         Value::Integer(value) => Ok(Value::Integer(*value)),
         Value::BigInteger(value) => Ok(Value::BigInteger(value.clone())),
-        Value::Rational(value) => Ok(Value::Integer(value.numerator())),
+        Value::Rational(value) => Ok(Value::big_integer(value.numerator().clone())),
+        Value::BigRational(value) => Ok(Value::big_integer(value.numerator().clone())),
         value => Err(type_error("numerator", "rational", value)),
     }
 }
@@ -53,39 +49,40 @@ pub fn denominator(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "denominator", 1)?;
     match &arguments[0] {
         Value::Integer(_) | Value::BigInteger(_) => Ok(Value::Integer(1)),
-        Value::Rational(value) => Ok(Value::Integer(value.denominator())),
+        Value::Rational(value) => Ok(Value::big_integer(value.denominator().clone())),
+        Value::BigRational(value) => Ok(Value::big_integer(value.denominator().clone())),
         value => Err(type_error("denominator", "rational", value)),
     }
 }
 
 pub fn arithmetic_shift(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "ash", 2)?;
-    let value = integer_argument("ash", &arguments[0])?;
-    let count = integer_argument("ash", &arguments[1])?;
-    if count >= 0 {
-        if count >= 64 {
-            return if value == 0 {
-                Ok(Value::Integer(0))
-            } else {
-                Err(RuntimeError::NumericOverflow)
-            };
+    let value = integer_value("ash", &arguments[0])?;
+    let count = integer_value("ash", &arguments[1])?;
+    if count >= ibig::IBig::from(0) {
+        if value == ibig::IBig::from(0) {
+            return Ok(Value::Integer(0));
         }
-        return value
-            .checked_shl(u32::try_from(count).map_err(|_| RuntimeError::NumericOverflow)?)
-            .map(Value::Integer)
-            .ok_or(RuntimeError::NumericOverflow);
+        let shift = usize::try_from(&count).map_err(|_| RuntimeError::NumericOverflow)?;
+        let result = value << shift;
+        if super::exceeds_exact_bignum_digit_cap(&result) {
+            return Err(RuntimeError::NumericOverflow);
+        }
+        return Ok(Value::big_integer(result));
     }
 
-    let shift = if count == i64::MIN {
-        u64::MAX
-    } else {
-        count.unsigned_abs()
+    let magnitude = -count;
+    let result = match usize::try_from(&magnitude) {
+        Ok(shift) => value >> shift,
+        Err(_) => {
+            if value < ibig::IBig::from(0) {
+                ibig::IBig::from(-1)
+            } else {
+                ibig::IBig::from(0)
+            }
+        }
     };
-    Ok(Value::Integer(if shift >= 64 {
-        if value < 0 { -1 } else { 0 }
-    } else {
-        value >> u32::try_from(shift).map_err(|_| RuntimeError::NumericOverflow)?
-    }))
+    Ok(Value::big_integer(result))
 }
 
 #[cfg(test)]
@@ -153,15 +150,15 @@ mod tests {
     }
 
     #[test]
-    fn arithmetic_shift_left_saturates_and_overflows_at_boundary() {
+    fn arithmetic_shift_left_promotes_at_machine_boundary() {
         assert_eq!(
             ok_string(arithmetic_shift(&[Value::Integer(0), Value::Integer(64)])),
             "0",
         );
-        assert!(matches!(
-            arithmetic_shift(&[Value::Integer(1), Value::Integer(64)]),
-            Err(RuntimeError::NumericOverflow)
-        ));
+        assert_eq!(
+            ok_string(arithmetic_shift(&[Value::Integer(1), Value::Integer(64)])),
+            "18446744073709551616",
+        );
     }
 
     #[test]
@@ -186,6 +183,43 @@ mod tests {
                 Value::Integer(-100)
             ])),
             "-1",
+        );
+    }
+
+    #[test]
+    fn arithmetic_shift_accepts_bignums_and_arbitrary_counts() {
+        assert_eq!(
+            ok_string(arithmetic_shift(&[
+                Value::big_integer(ibig::IBig::from(3) << 80),
+                Value::Integer(2),
+            ])),
+            "14507109835375550096474112",
+        );
+        assert_eq!(
+            ok_string(arithmetic_shift(&[
+                Value::Integer(5),
+                Value::big_integer(-(ibig::IBig::from(1) << 80)),
+            ])),
+            "0",
+        );
+    }
+
+    #[test]
+    fn gcd_and_lcm_accept_bignums_without_machine_integer_overflow() {
+        let large = ibig::IBig::from(3) << 80;
+        assert_eq!(
+            ok_string(greatest_common_divisor(&[
+                Value::big_integer(large.clone() * 12),
+                Value::big_integer(large.clone() * 18),
+            ])),
+            (large.clone() * ibig::IBig::from(6)).to_string(),
+        );
+        assert_eq!(
+            ok_string(least_common_multiple(&[
+                Value::big_integer(large.clone() * 2),
+                Value::big_integer(large.clone() * 3),
+            ])),
+            (large * ibig::IBig::from(6)).to_string(),
         );
     }
 }

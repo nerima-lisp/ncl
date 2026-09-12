@@ -53,8 +53,11 @@ impl Runtime {
         let lists = sequences
             .iter()
             .map(|value| {
-                value.list_items().ok_or_else(|| {
-                    Self::invalid(&format!("{operation_name} arguments must be lists"), span)
+                value.list_cells().ok_or_else(|| {
+                    Self::invalid(
+                        &format!("{operation_name} arguments must be proper lists"),
+                        span,
+                    )
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -64,31 +67,32 @@ impl Runtime {
             let arguments = if mode.uses_tails {
                 lists
                     .iter()
-                    .map(|items| Value::list(items[index..].to_vec()))
+                    .map(|items| Value::Cons(items[index].clone()))
                     .collect::<Vec<_>>()
             } else {
                 lists
                     .iter()
-                    .map(|items| items[index].clone())
+                    .map(|items| items[index].car())
                     .collect::<Vec<_>>()
             };
             let result = self
                 .apply_in(function, &arguments, span, environment)?
                 .primary_value();
-            if mode.concatenates {
-                let items = result.list_items().ok_or_else(|| {
-                    Self::invalid(
-                        &format!("{operation_name} function results must be lists"),
-                        span,
-                    )
-                })?;
-                results.extend(items);
-            } else if !mode.returns_first {
+            if !mode.returns_first {
                 results.push(result);
             }
         }
         if mode.returns_first {
             Ok(sequences.first().cloned().unwrap_or(Value::Nil))
+        } else if mode.concatenates {
+            crate::builtins::nconc_lists(&operation_name, &results).map_err(|_| {
+                Self::invalid(
+                    &format!(
+                        "{operation_name} nonfinal function results must be noncircular lists"
+                    ),
+                    span,
+                )
+            })
         } else {
             Ok(Value::list(results))
         }

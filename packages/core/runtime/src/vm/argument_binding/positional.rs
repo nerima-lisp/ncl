@@ -1,11 +1,11 @@
 use std::rc::Rc;
 
 use ncl_compiler::{FunctionCode, Program};
-use ncl_syntax::Span;
 
 use crate::{Environment, Runtime, RuntimeError, Value};
 
 use super::support::{default_value, define_binding};
+use super::{BindingContext, declare_special_if};
 
 pub fn argument_layout(
     function: &FunctionCode,
@@ -32,8 +32,31 @@ pub fn argument_layout(
             actual: arguments.len(),
         });
     }
-    let optional_supplied_count =
-        supplied_optional_count(function, arguments, required_count, optional_count);
+    let optional_supplied_count = if function.has_keyword_section && function.allow_other_keys {
+        let available = arguments
+            .len()
+            .saturating_sub(required_count)
+            .min(optional_count);
+        let is_declared_keyword = |argument: &Value| match argument {
+            Value::Keyword(name) | Value::KeywordExact(name) => function
+                .keywords
+                .iter()
+                .any(|specification| specification.keyword_name == name.to_string()),
+            Value::InternedSymbol(symbol) if symbol.keyword() => function
+                .keywords
+                .iter()
+                .any(|specification| specification.keyword_name == symbol.name()),
+            _ => false,
+        };
+        (0..available)
+            .take_while(|index| !is_declared_keyword(&arguments[required_count + *index]))
+            .count()
+    } else {
+        arguments
+            .len()
+            .saturating_sub(required_count)
+            .min(optional_count)
+    };
     let key_start = required_count + optional_supplied_count;
     if !function.has_keyword_section && function.rest.is_none() && arguments.len() > maximum_count {
         let expected = if optional_count > 0 {
@@ -48,29 +71,6 @@ pub fn argument_layout(
         });
     }
     Ok((optional_supplied_count, key_start))
-}
-
-fn supplied_optional_count(
-    function: &FunctionCode,
-    arguments: &[Value],
-    required_count: usize,
-    optional_count: usize,
-) -> usize {
-    let supplied_count = arguments
-        .len()
-        .saturating_sub(required_count)
-        .min(optional_count);
-    if !function.has_keyword_section {
-        return supplied_count;
-    }
-    (0..supplied_count)
-        .take_while(|index| {
-            !matches!(
-                arguments[required_count + *index],
-                Value::Keyword(_) | Value::KeywordExact(_)
-            )
-        })
-        .count()
 }
 
 pub fn bind_required(
@@ -99,8 +99,7 @@ pub fn bind_optional(
     function: &FunctionCode,
     arguments: &[Value],
     supplied_count: usize,
-    local: &Environment,
-    span: Span,
+    context: &mut BindingContext<'_>,
 ) -> Result<(), RuntimeError> {
     for (index, specification) in function.optional.iter().enumerate() {
         let supplied =
@@ -111,25 +110,38 @@ pub fn bind_optional(
                 runtime,
                 program,
                 specification.default_function,
-                local,
-                span,
+                &context.local,
+                context.span,
                 "compiled optional default is out of range",
             )?,
         };
+        context.local = context.local.child();
+        declare_special_if(
+            &context.local,
+            &specification.name,
+            specification.name_escaped,
+            context.special_names,
+        );
         define_binding(
             runtime,
             &specification.name,
             value,
             specification.name_escaped,
-            local,
+            &context.local,
         );
         if let Some(name) = &specification.supplied_p {
+            declare_special_if(
+                &context.local,
+                name,
+                specification.supplied_p_escaped.unwrap_or(false),
+                context.special_names,
+            );
             define_binding(
                 runtime,
                 name,
                 Value::boolean(supplied.is_some()),
                 specification.supplied_p_escaped.unwrap_or(false),
-                local,
+                &context.local,
             );
         }
     }

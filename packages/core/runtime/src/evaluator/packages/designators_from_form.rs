@@ -7,6 +7,7 @@ impl Runtime {
     pub(super) fn package_name_from_form(form: &Form) -> Result<String, RuntimeError> {
         let raw = match &form.kind {
             FormKind::Atom(value) | FormKind::String(value) => value.as_str(),
+            _ if Self::form_string(form).is_some() => Self::form_string(form).unwrap_or_default(),
             _ => {
                 return Err(Self::invalid(
                     "package name must be a symbol or string",
@@ -30,6 +31,7 @@ impl Runtime {
     pub(super) fn symbol_name_from_form(form: &Form) -> Result<String, RuntimeError> {
         let raw = match &form.kind {
             FormKind::Atom(value) | FormKind::String(value) => value.as_str(),
+            _ if Self::form_string(form).is_some() => Self::form_string(form).unwrap_or_default(),
             _ => {
                 return Err(Self::invalid(
                     "symbol name must be a symbol or string",

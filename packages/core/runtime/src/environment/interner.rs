@@ -2,12 +2,15 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
+mod special_forms;
+
 thread_local! {
     /// Case-insensitive frame keys, deduplicated so repeated lookups of the
     /// same name reuse one allocation instead of normalizing a fresh
     /// `String` on every `Environment` access -- the hottest path in the
     /// evaluator (variable/function lookup runs on every form).
     static INTERNED_NAMES: RefCell<HashSet<Rc<str>>> = RefCell::new(HashSet::new());
+    static INTERNED_EXACT_NAMES: RefCell<HashSet<Rc<str>>> = RefCell::new(HashSet::new());
 }
 
 /// Normalizes `name` to upper case and returns a deduplicated, reference-
@@ -26,6 +29,29 @@ pub fn intern_name(name: &str) -> Rc<str> {
     intern_normalized(&name.to_ascii_uppercase())
 }
 
+/// Returns a deduplicated handle while preserving the symbol's exact case.
+pub fn intern_exact_name(name: &str) -> Rc<str> {
+    INTERNED_EXACT_NAMES.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(existing) = cache.get(name) {
+            return Rc::clone(existing);
+        }
+        let interned: Rc<str> = Rc::from(name);
+        cache.insert(Rc::clone(&interned));
+        interned
+    })
+}
+
+/// Compares symbol names using the runtime's ASCII case-insensitive rules
+/// without allocating a temporary normalized string.
+pub fn names_equal(left: &str, right: &str) -> bool {
+    left.bytes()
+        .map(|byte| byte.to_ascii_uppercase())
+        .eq(right.bytes().map(|byte| byte.to_ascii_uppercase()))
+}
+
+pub use special_forms::lookup as special_form_name;
+
 fn intern_normalized(normalized: &str) -> Rc<str> {
     INTERNED_NAMES.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -42,7 +68,13 @@ fn intern_normalized(normalized: &str) -> Rc<str> {
 mod tests {
     use std::rc::Rc;
 
-    use super::intern_name;
+    use super::{intern_exact_name, intern_name, names_equal, special_form_name};
+
+    #[test]
+    fn names_equal_is_case_insensitive_without_changing_length_rules() {
+        assert!(names_equal("Continue", "CONTINUE"));
+        assert!(!names_equal("CONTINUE", "CONTINUE!"));
+    }
 
     #[test]
     fn repeated_interning_reuses_the_same_allocation() {
@@ -64,5 +96,21 @@ mod tests {
         let first = intern_name("one");
         let second = intern_name("two");
         assert!(!Rc::ptr_eq(&first, &second));
+    }
+
+    #[test]
+    fn exact_names_preserve_case_and_reuse_the_same_allocation() {
+        let first = intern_exact_name("MiXeD");
+        let second = intern_exact_name("MiXeD");
+        let different_case = intern_exact_name("MIXED");
+        assert_eq!(&*first, "MiXeD");
+        assert!(Rc::ptr_eq(&first, &second));
+        assert!(!Rc::ptr_eq(&first, &different_case));
+    }
+
+    #[test]
+    fn special_form_lookup_is_case_insensitive_and_rejects_unknown_names() {
+        assert_eq!(special_form_name("let*"), Some("LET*"));
+        assert_eq!(special_form_name("not-a-special-form"), None);
     }
 }

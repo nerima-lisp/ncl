@@ -17,15 +17,26 @@ impl Runtime {
             return Ok(form.clone());
         }
         match normalize_name(operator).as_str() {
-            "THE"
-            | "WITH-SIMPLE-RESTART"
-            | "BLOCK"
-            | "INCF"
-            | "DECF"
-            | "DEFINE"
-            | "DEFVAR"
-            | "DEFPARAMETER" => {
+            "QUASIQUOTE" => {
+                if prepared.len() == 2 {
+                    prepared[1] = self.prepare_compiled_quasiquote(&prepared[1], environment, 1)?;
+                }
+            }
+            "SETF"
+            | "%SETF-INTRINSIC-STORE"
+            | "PSETF"
+            | "SHIFTF"
+            | "ROTATEF"
+            | "PUSH"
+            | "POP"
+            | "PUSHNEW" => {
+                self.prepare_compiled_place_mutation(&mut prepared, environment)?;
+            }
+            "THE" | "WITH-SIMPLE-RESTART" | "BLOCK" | "DEFINE" | "DEFVAR" | "DEFPARAMETER" => {
                 self.prepare_tail(&mut prepared, 2, environment)?;
+            }
+            "INCF" | "DECF" => {
+                return self.prepare_compiled_arithmetic_place(items, environment, operator);
             }
             "EVAL-WHEN" => {
                 if prepared.len() > 1 && Self::eval_when_executes(&prepared[1])? {
@@ -46,6 +57,7 @@ impl Runtime {
             }
             "LAMBDA" => self.prepare_lambda(&mut prepared, environment)?,
             "DEFUN" => self.prepare_defun(&mut prepared, environment)?,
+            "DEFMETHOD" => self.prepare_defmethod(&mut prepared, environment)?,
             "FUNCTION" => {
                 if prepared.len() == 2 && is_operator_form(&prepared[1], "LAMBDA") {
                     prepared[1] = self.prepare_compiled_form(&prepared[1], environment)?;
@@ -71,6 +83,9 @@ impl Runtime {
                 }
                 self.prepare_tail(&mut prepared, 2, environment)?;
             }
+            "LOCALLY" => {
+                return self.prepare_compiled_locally(form, &prepared, environment);
+            }
             "FLET" | "LABELS" => {
                 if prepared.len() > 1 {
                     prepared[1] =
@@ -79,19 +94,10 @@ impl Runtime {
                 self.prepare_tail(&mut prepared, 2, environment)?;
             }
             "DOTIMES" | "DOLIST" => {
-                if prepared.len() > 1 {
-                    prepared[1] = self.prepare_iteration_binding(&prepared[1], environment)?;
-                }
-                self.prepare_tail(&mut prepared, 2, environment)?;
+                self.prepare_compiled_iteration(&mut prepared, environment)?;
             }
             "DO" | "DO*" => {
-                if prepared.len() > 1 {
-                    prepared[1] = self.prepare_do_bindings(&prepared[1], environment)?;
-                }
-                if prepared.len() > 2 {
-                    prepared[2] = self.prepare_do_termination(&prepared[2], environment)?;
-                }
-                self.prepare_tail(&mut prepared, 3, environment)?;
+                self.prepare_compiled_do(&mut prepared, environment)?;
             }
             "PSETQ" => {
                 return self.prepare_compiled_psetq(form, &prepared, environment);
@@ -107,6 +113,46 @@ impl Runtime {
         Ok(Form::list(prepared, form.span))
     }
 
+    fn prepare_compiled_iteration(
+        &self,
+        items: &mut [Form],
+        environment: &Environment,
+    ) -> Result<(), RuntimeError> {
+        if items.len() > 1 {
+            items[1] = self.prepare_iteration_binding(&items[1], environment)?;
+        }
+        self.prepare_tail(items, 2, environment)
+    }
+
+    fn prepare_compiled_do(
+        &self,
+        items: &mut [Form],
+        environment: &Environment,
+    ) -> Result<(), RuntimeError> {
+        if items.len() > 1 {
+            items[1] = self.prepare_do_bindings(&items[1], environment)?;
+        }
+        if items.len() > 2 {
+            items[2] = self.prepare_do_termination(&items[2], environment)?;
+        }
+        self.prepare_tail(items, 3, environment)
+    }
+
+    fn prepare_compiled_arithmetic_place(
+        &self,
+        items: &[Form],
+        environment: &Environment,
+        operator: &str,
+    ) -> Result<Form, RuntimeError> {
+        let arithmetic = if normalize_name(operator) == "INCF" {
+            "+"
+        } else {
+            "-"
+        };
+        let expanded = self.expand_arithmetic_place(items, environment, operator, arithmetic)?;
+        self.prepare_compiled_form(&expanded, environment)
+    }
+
     fn is_compiled_opaque_operator(operator: &str) -> bool {
         matches!(
             operator,
@@ -116,12 +162,10 @@ impl Runtime {
                 | "DEFSTRUCT"
                 | "DEFCLASS"
                 | "DEFGENERIC"
-                | "DEFMETHOD"
                 | "DEFSETF"
                 | "DEFINE-MODIFY-MACRO"
                 | "DEFCONSTANT"
                 | "QUOTE"
-                | "QUASIQUOTE"
         )
     }
 

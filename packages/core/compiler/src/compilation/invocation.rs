@@ -80,6 +80,7 @@ impl CompileState {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn compile_map_into(
         &mut self,
         function: FunctionId,
@@ -90,25 +91,108 @@ impl CompileState {
             return Err(Self::arity_error(items, "MAP-INTO", "at least two", span));
         }
         let destination = items[1].clone();
-        self.emit(
-            function,
-            Instruction::FunctionLoad("MAP-INTO".to_string()),
-            items[0].span,
-        )?;
-        for item in &items[1..] {
-            self.compile_expression(function, item)?;
+        let stable_list_destination = match &destination.kind {
+            FormKind::List(destination_items) => {
+                destination_items.len() == 2
+                    && Self::symbol_name_info(&destination_items[0], "list place operator")
+                        .is_ok_and(|(name, escaped)| {
+                            !escaped && matches!(name.as_str(), "CAR" | "CDR" | "FIRST" | "REST")
+                        })
+                    && matches!(destination_items[1].kind, FormKind::Atom(_))
+            }
+            _ => false,
+        };
+        if stable_list_destination {
+            let FormKind::List(destination_items) = &destination.kind else {
+                unreachable!()
+            };
+            let operator = Self::symbol_name_info(&destination_items[0], "list place operator")?.0;
+            self.compile_expression(function, &destination_items[1])?;
+            self.compile_expression(function, &items[2])?;
+            for item in &items[3..] {
+                self.compile_expression(function, item)?;
+            }
+            self.emit(
+                function,
+                Instruction::MapIntoListPlace {
+                    operator,
+                    place: destination_items[1].clone(),
+                    sequence_count: items.len().saturating_sub(3),
+                },
+                span,
+            )?;
+            return Ok(());
         }
-        self.emit(
-            function,
-            Instruction::Call(items.len().saturating_sub(1)),
-            span,
-        )?;
-        self.emit(
-            function,
-            Instruction::MapIntoSetf(destination.clone()),
-            destination.span,
-        )?;
-        Ok(())
+        let stable_nth_destination = match &destination.kind {
+            FormKind::List(destination_items) => {
+                destination_items.len() == 3
+                    && Self::symbol_name_info(&destination_items[0], "NTH place operator")
+                        .is_ok_and(|(name, escaped)| !escaped && name == "NTH")
+                    && matches!(destination_items[2].kind, FormKind::Atom(_))
+            }
+            _ => false,
+        };
+        if stable_nth_destination {
+            let FormKind::List(destination_items) = &destination.kind else {
+                unreachable!()
+            };
+            self.compile_expression(function, &destination_items[1])?;
+            self.compile_expression(function, &destination_items[2])?;
+            self.compile_expression(function, &items[2])?;
+            for item in &items[3..] {
+                self.compile_expression(function, item)?;
+            }
+            self.emit(
+                function,
+                Instruction::MapIntoNthPlace {
+                    sequence_count: items.len().saturating_sub(3),
+                    place: destination,
+                },
+                span,
+            )?;
+            return Ok(());
+        }
+        let stable_vector_destination = match &destination.kind {
+            FormKind::List(destination_items) => {
+                destination_items.len() == 3
+                    && Self::symbol_name_info(&destination_items[0], "AREF place operator")
+                        .is_ok_and(|(name, escaped)| !escaped && name == "AREF")
+                    && matches!(destination_items[1].kind, FormKind::Atom(_))
+            }
+            _ => false,
+        };
+        if stable_vector_destination {
+            let FormKind::List(destination_items) = &destination.kind else {
+                unreachable!()
+            };
+            self.compile_expression(function, &destination_items[2])?;
+            self.compile_expression(function, &destination_items[1])?;
+            self.compile_expression(function, &items[2])?;
+            for item in &items[3..] {
+                self.compile_expression(function, item)?;
+            }
+            self.emit(
+                function,
+                Instruction::MapIntoArefVectorPlace {
+                    sequence_count: items.len().saturating_sub(3),
+                    place: destination,
+                },
+                span,
+            )?;
+            return Ok(());
+        }
+        if let Some(form) = items[1..]
+            .iter()
+            .find(|form| matches!(form.kind, FormKind::DottedList { .. }))
+        {
+            return Err(CompileError::new(
+                CompileErrorKind::UnsupportedForm {
+                    message: "dotted lists cannot be evaluated".to_string(),
+                },
+                form.span,
+            ));
+        }
+        self.compile_runtime_definition(function, span, items)
     }
 }
 

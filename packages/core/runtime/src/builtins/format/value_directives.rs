@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_value_directive(
+pub(crate) fn format_value_directive(
     directive: char,
     arguments: &[Value],
     argument_index: &mut usize,
@@ -22,7 +22,7 @@ pub(super) fn format_value_directive(
     }
 }
 
-pub(super) fn format_a_directive(
+pub(crate) fn format_a_directive(
     arguments: &[Value],
     argument_index: &mut usize,
     parameters: &[FormatParameter],
@@ -39,7 +39,7 @@ pub(super) fn format_a_directive(
     format_text_field(&formatted, parameters, at_sign_modifier)
 }
 
-pub(super) fn format_s_directive(
+pub(crate) fn format_s_directive(
     arguments: &[Value],
     argument_index: &mut usize,
     parameters: &[FormatParameter],

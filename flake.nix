@@ -51,6 +51,7 @@
               src = builtins.path {
                 path = ./.;
                 name = "ncl-source";
+                filter = path: type: !pkgs.lib.hasInfix "/target/" (toString path);
               };
               cargoLock.lockFile = ./Cargo.lock;
               cargoBuildFlags = [ "--workspace" ];
@@ -144,7 +145,8 @@
               version = "0.1.0";
               src = builtins.path {
                 path = ./.;
-                name = "ncl-source";
+                name = "ncl-cargo-test-source";
+                filter = path: type: !pkgs.lib.hasInfix "/target/" (toString path);
               };
               cargoLock.lockFile = ./Cargo.lock;
               buildType = "debug";

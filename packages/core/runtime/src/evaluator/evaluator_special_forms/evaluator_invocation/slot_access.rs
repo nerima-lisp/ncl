@@ -1,11 +1,13 @@
-use super::{Runtime, RuntimeError, Span, Value};
+use super::{Environment, Runtime, RuntimeError, Span, Value};
 
 impl Runtime {
     pub(super) fn apply_slot_reader(
+        &self,
         class_name: &str,
         slot_name: &str,
         arguments: &[Value],
         span: Span,
+        environment: &Environment,
     ) -> Result<Value, RuntimeError> {
         if arguments.len() != 1 {
             return Err(Self::arity("slot reader", "one", arguments.len()));
@@ -17,16 +19,50 @@ impl Runtime {
                 span: Some(span),
             });
         }
-        let value = arguments[0]
-            .instance_slot(slot_name)
-            .ok_or_else(|| Self::invalid("slot is not defined for this class", span))?;
+        let Some(value) = arguments[0].instance_slot(slot_name) else {
+            let function = environment
+                .lookup_function("SLOT-MISSING")
+                .unwrap_or_else(|| Value::primitive("SLOT-MISSING"));
+            return self.apply_in(
+                &function,
+                &[
+                    Value::class_object(
+                        arguments[0]
+                            .instance_class_definition()
+                            .expect("validated instance has a class"),
+                    ),
+                    arguments[0].clone(),
+                    Value::symbol(slot_name),
+                    Value::symbol("SLOT-VALUE"),
+                ],
+                span,
+                environment,
+            );
+        };
         if matches!(value, Value::Unbound) {
-            return Err(Self::invalid("slot is unbound", span));
+            let function = environment
+                .lookup_function("SLOT-UNBOUND")
+                .unwrap_or_else(|| Value::primitive("SLOT-UNBOUND"));
+            return self.apply_in(
+                &function,
+                &[
+                    Value::class_object(
+                        arguments[0]
+                            .instance_class_definition()
+                            .expect("validated instance has a class"),
+                    ),
+                    arguments[0].clone(),
+                    Value::symbol(slot_name),
+                ],
+                span,
+                environment,
+            );
         }
         Ok(value)
     }
 
     pub(super) fn apply_slot_writer(
+        &self,
         class_name: &str,
         slot_name: &str,
         arguments: &[Value],
@@ -44,11 +80,8 @@ impl Runtime {
                 span: Some(span),
             });
         }
-        if object.set_instance_slot(class_name, slot_name, value.clone()) {
-            Ok(value)
-        } else {
-            Err(Self::invalid("slot is not defined for this class", span))
-        }
+        self.set_instance_slot_checked(object, class_name, slot_name, value.clone(), span)?;
+        Ok(value)
     }
 
     pub(super) fn apply_condition_reader(

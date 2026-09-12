@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn integer_spec_is_subtype(
+pub(crate) fn integer_spec_is_subtype(
     subtype_arguments: &[Value],
     supertype_arguments: &[Value],
 ) -> Result<bool, RuntimeError> {
@@ -27,10 +27,12 @@ pub(super) fn integer_spec_is_subtype(
         .flatten();
 
     let subtype_empty = subtype_lower
-        .zip(subtype_upper)
+        .as_ref()
+        .zip(subtype_upper.as_ref())
         .is_some_and(|(lower, upper)| lower > upper);
     let supertype_empty = supertype_lower
-        .zip(supertype_upper)
+        .as_ref()
+        .zip(supertype_upper.as_ref())
         .is_some_and(|(lower, upper)| lower > upper);
     if subtype_empty {
         return Ok(true);
@@ -52,7 +54,7 @@ pub(super) fn integer_spec_is_subtype(
     Ok(lower_ok && upper_ok)
 }
 
-pub(super) fn named_integer_is_subtype(
+pub(crate) fn named_integer_is_subtype(
     subtype_name: &str,
     supertype_arguments: &[Value],
 ) -> Result<bool, RuntimeError> {

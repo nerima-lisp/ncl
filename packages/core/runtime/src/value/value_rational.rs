@@ -1,49 +1,43 @@
 use crate::error::RuntimeError;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 /// An exact, normalized rational number.
 pub struct Rational {
-    numerator: i64,
-    denominator: i64,
+    numerator: ibig::IBig,
+    denominator: ibig::IBig,
 }
 
 impl Rational {
     pub(crate) fn new(numerator: i128, denominator: i128) -> Result<Self, RuntimeError> {
-        if denominator == 0 {
+        Self::from_big(ibig::IBig::from(numerator), ibig::IBig::from(denominator))
+    }
+
+    pub(crate) fn from_big(
+        mut numerator: ibig::IBig,
+        mut denominator: ibig::IBig,
+    ) -> Result<Self, RuntimeError> {
+        if denominator == ibig::IBig::from(0) {
             return Err(RuntimeError::DivisionByZero);
         }
 
-        let (numerator, denominator) = if denominator < 0 {
-            (
-                numerator
-                    .checked_neg()
-                    .ok_or(RuntimeError::NumericOverflow)?,
-                denominator
-                    .checked_neg()
-                    .ok_or(RuntimeError::NumericOverflow)?,
-            )
-        } else {
-            (numerator, denominator)
-        };
+        if denominator < ibig::IBig::from(0) {
+            numerator = -numerator;
+            denominator = -denominator;
+        }
 
-        let numerator_abs = if numerator < 0 {
-            u128::try_from(
-                numerator
-                    .checked_neg()
-                    .ok_or(RuntimeError::NumericOverflow)?,
-            )
-            .map_err(|_| RuntimeError::NumericOverflow)?
+        let numerator_abs = if numerator < ibig::IBig::from(0) {
+            -&numerator
         } else {
-            u128::try_from(numerator).map_err(|_| RuntimeError::NumericOverflow)?
+            numerator.clone()
         };
-        let denominator_abs =
-            u128::try_from(denominator).map_err(|_| RuntimeError::NumericOverflow)?;
-        let divisor = gcd(numerator_abs, denominator_abs);
-        let divisor = i128::try_from(divisor).map_err(|_| RuntimeError::NumericOverflow)?;
-        let numerator =
-            i64::try_from(numerator / divisor).map_err(|_| RuntimeError::NumericOverflow)?;
-        let denominator =
-            i64::try_from(denominator / divisor).map_err(|_| RuntimeError::NumericOverflow)?;
+        let denominator_abs = if denominator < ibig::IBig::from(0) {
+            -&denominator
+        } else {
+            denominator.clone()
+        };
+        let divisor = numerator_abs.gcd(&denominator_abs);
+        let numerator = numerator / &divisor;
+        let denominator = denominator / &divisor;
 
         Ok(Self {
             numerator,
@@ -51,22 +45,38 @@ impl Rational {
         })
     }
 
-    pub(crate) const fn numerator(self) -> i64 {
-        self.numerator
+    pub(crate) const fn numerator(&self) -> &ibig::IBig {
+        &self.numerator
     }
 
-    pub(crate) const fn denominator(self) -> i64 {
+    pub(crate) const fn denominator(&self) -> &ibig::IBig {
+        &self.denominator
+    }
+
+    pub(crate) fn numerator_i128(&self) -> Option<i128> {
+        self.numerator.to_string().parse().ok()
+    }
+
+    pub(crate) fn denominator_i128(&self) -> Option<i128> {
+        self.denominator.to_string().parse().ok()
+    }
+
+    pub(crate) fn numerator_f64(&self) -> f64 {
+        self.numerator.to_string().parse().unwrap_or_else(|_| {
+            if self.numerator < ibig::IBig::from(0) {
+                f64::NEG_INFINITY
+            } else {
+                f64::INFINITY
+            }
+        })
+    }
+
+    pub(crate) fn denominator_f64(&self) -> f64 {
         self.denominator
+            .to_string()
+            .parse()
+            .unwrap_or(f64::INFINITY)
     }
-}
-
-const fn gcd(mut left: u128, mut right: u128) -> u128 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-    left
 }
 
 #[cfg(test)]
@@ -103,37 +113,21 @@ mod tests {
             Ok(value) => value,
             Err(error) => panic!("unexpected normalization error: {error:?}"),
         };
-        assert_eq!(value.numerator(), 0);
-        assert_eq!(value.denominator(), 1);
+        assert_eq!(value.numerator(), &ibig::IBig::from(0));
+        assert_eq!(value.denominator(), &ibig::IBig::from(1));
     }
 
     #[test]
-    fn rejects_zero_denominator_and_unrepresentable_values() {
+    fn rejects_zero_denominator() {
         assert_eq!(Rational::new(1, 0), Err(RuntimeError::DivisionByZero));
-        assert_eq!(
-            Rational::new(i128::MIN, 1),
-            Err(RuntimeError::NumericOverflow)
-        );
-        assert_eq!(
-            Rational::new(1, i128::MIN),
-            Err(RuntimeError::NumericOverflow)
-        );
     }
 
     #[test]
-    fn rejects_unrepresentable_numerators_and_denominators_after_sign_normalization() {
-        // A negative denominator negates the numerator first; i128::MIN has no
-        // positive counterpart, so that negation must fail before normalization
-        // proceeds any further.
-        assert_eq!(
-            Rational::new(i128::MIN, -1),
-            Err(RuntimeError::NumericOverflow)
-        );
-        // The reduced denominator can still overflow i64 even when the
-        // reduced numerator fits, since gcd-reduction is independent per side.
-        assert_eq!(
-            Rational::new(1, i128::from(i64::MAX) + 1),
-            Err(RuntimeError::NumericOverflow)
-        );
+    fn supports_large_numerators_and_denominators() {
+        let value = match Rational::from_big(ibig::IBig::from(1) << 200, ibig::IBig::from(3)) {
+            Ok(value) => value,
+            Err(error) => panic!("unexpected large rational error: {error:?}"),
+        };
+        assert_eq!(value.denominator(), &ibig::IBig::from(3));
     }
 }

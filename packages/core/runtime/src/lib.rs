@@ -12,4 +12,4 @@ pub use environment::Environment;
 pub use error::{ReturnValue, RuntimeError};
 pub use evaluator::Runtime;
 pub(crate) use value::ClosureOptions;
-pub use value::{Function, Rational, Stream, Value};
+pub use value::{BigRational, Function, Rational, SharedElements, Stream, Value};

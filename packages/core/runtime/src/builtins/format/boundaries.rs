@@ -1,25 +1,25 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_iteration_end(
+pub(crate) fn format_iteration_end(
     characters: &[char],
     start: usize,
 ) -> Result<usize, RuntimeError> {
     format_directive_end(characters, start, '{', "format iteration is missing ~}")
 }
 
-pub(super) fn format_choice_end(characters: &[char], start: usize) -> Result<usize, RuntimeError> {
+pub(crate) fn format_choice_end(characters: &[char], start: usize) -> Result<usize, RuntimeError> {
     format_directive_end(characters, start, '[', "format choice is missing ~]")
 }
 
-pub(super) fn format_justification_end(
+pub(crate) fn format_justification_end(
     characters: &[char],
     start: usize,
 ) -> Result<usize, RuntimeError> {
     format_directive_end(characters, start, '<', "format justification is missing ~>")
 }
 
-pub(super) fn format_case_conversion_end(
+pub(crate) fn format_case_conversion_end(
     characters: &[char],
     start: usize,
 ) -> Result<usize, RuntimeError> {
@@ -31,7 +31,7 @@ pub(super) fn format_case_conversion_end(
     )
 }
 
-pub(super) fn format_directive_end(
+pub(crate) fn format_directive_end(
     characters: &[char],
     start: usize,
     opening: char,
@@ -77,7 +77,7 @@ pub(super) fn format_directive_end(
     })
 }
 
-pub(super) fn format_choice_clauses(body: &[char]) -> Result<Vec<(&[char], bool)>, RuntimeError> {
+pub(crate) fn format_choice_clauses(body: &[char]) -> Result<Vec<(&[char], bool)>, RuntimeError> {
     let mut clauses = Vec::new();
     let mut clause_start = 0;
     let mut default_clause = false;

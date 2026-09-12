@@ -20,7 +20,7 @@ fn argument_layout_handles_optional_keyword_and_rest_shapes() {
         (
             &optional,
             vec![Value::Integer(1), Value::Keyword("key".to_string().into())],
-            (0, 1),
+            (1, 2),
         ),
         (
             &optional,

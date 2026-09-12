@@ -2,6 +2,7 @@ use super::{
     Form, FormKind, Runtime, RuntimeError, Span, SymbolTokenKind, atom_name, is_special_form,
     literal_atom, normalize_name, package, parse_symbol_token,
 };
+use crate::Value;
 
 impl Runtime {
     pub(super) fn resolve_form(&self, form: &Form) -> Result<Form, RuntimeError> {
@@ -11,9 +12,16 @@ impl Runtime {
 
     fn resolve_form_in(&self, form: &Form, current: &str) -> Result<Form, RuntimeError> {
         let kind = match &form.kind {
+            FormKind::CircularReference => FormKind::CircularReference,
+            FormKind::Literal(value) => FormKind::Literal(value.clone()),
             FormKind::Atom(atom) => {
+                let retained_uninterned = form
+                    .original_value
+                    .as_ref()
+                    .and_then(|value| value.downcast_ref::<Value>())
+                    .is_some_and(|value| matches!(value, Value::UninternedSymbol(_)));
                 let escaped = parse_symbol_token(atom).is_ok_and(|token| token.escaped);
-                if escaped {
+                if retained_uninterned || escaped {
                     FormKind::Atom(atom.clone())
                 } else {
                     FormKind::Atom(self.resolve_atom(atom, current, form.span)?)
@@ -25,10 +33,12 @@ impl Runtime {
                 let mut resolved = Vec::with_capacity(items.len());
                 for (index, item) in items.iter().enumerate() {
                     if index == 0 && is_special_form(item) {
-                        resolved.push(Form::atom(
+                        let mut operator = Form::atom(
                             normalize_name(atom_name(item).unwrap_or_default()),
                             item.span,
-                        ));
+                        );
+                        operator.original_value.clone_from(&item.original_value);
+                        resolved.push(operator);
                     } else {
                         resolved.push(self.resolve_form_in(item, current)?);
                     }
@@ -48,8 +58,14 @@ impl Runtime {
                     .map(|item| self.resolve_form_in(item, current))
                     .collect::<Result<Vec<_>, _>>()?,
             ),
+            FormKind::Complex { real, imaginary } => FormKind::Complex {
+                real: Box::new(self.resolve_form_in(real, current)?),
+                imaginary: Box::new(self.resolve_form_in(imaginary, current)?),
+            },
         };
-        Ok(Form::new(kind, form.span))
+        let mut resolved = Form::new(kind, form.span);
+        resolved.original_value.clone_from(&form.original_value);
+        Ok(resolved)
     }
 
     fn resolve_atom(&self, atom: &str, current: &str, span: Span) -> Result<String, RuntimeError> {
@@ -113,9 +129,11 @@ impl Runtime {
         } else {
             current.to_string()
         };
-        self.packages
-            .borrow_mut()
-            .ensure_symbol(&package_name, &normalized);
+        let mut packages = self.packages.borrow_mut();
+        if let Some(imported) = packages.imported_symbol_for(&package_name, &normalized) {
+            return Ok(imported);
+        }
+        packages.ensure_symbol(&package_name, &normalized);
         Ok(package::canonical_symbol_name(&package_name, &normalized))
     }
 
@@ -147,5 +165,40 @@ mod tests {
             }
             other => panic!("expected an invalid package-qualified symbol error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn resolve_atom_preserves_imported_symbol_identity() {
+        let runtime = Runtime::new();
+        {
+            let mut packages = runtime.packages.borrow_mut();
+            packages
+                .define_package(
+                    "IDENTITY-SOURCE",
+                    Vec::new(),
+                    Vec::new(),
+                    ["SHARED".to_string()].into_iter().collect(),
+                    None,
+                    std::collections::HashMap::new(),
+                )
+                .expect("source package should be defined");
+            packages
+                .define_package(
+                    "IDENTITY-TARGET",
+                    Vec::new(),
+                    Vec::new(),
+                    std::collections::HashSet::new(),
+                    None,
+                    std::collections::HashMap::new(),
+                )
+                .expect("target package should be defined");
+            packages.import_symbol("IDENTITY-SOURCE", "SHARED", "IDENTITY-TARGET", false);
+        }
+        assert_eq!(
+            runtime
+                .resolve_atom("shared", "IDENTITY-TARGET", SPAN)
+                .expect("imported symbol should resolve"),
+            "IDENTITY-SOURCE::SHARED"
+        );
     }
 }

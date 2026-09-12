@@ -5,6 +5,7 @@ use ncl_syntax::Span;
 
 use crate::{Environment, Runtime, RuntimeError, Value};
 
+use super::super::BindingContext;
 use super::{bind_optional, bind_required, function};
 
 #[test]
@@ -42,15 +43,8 @@ fn bind_optional_rejects_an_out_of_range_default_function_id() {
         entry: 0,
     });
 
-    let result = bind_optional(
-        &runtime,
-        &program,
-        &compiled,
-        &[],
-        0,
-        &local,
-        Span::new(0, 1),
-    );
+    let mut context = BindingContext::new(&local, Span::new(0, 1), &[]);
+    let result = bind_optional(&runtime, &program, &compiled, &[], 0, &mut context);
 
     assert!(
         matches!(result, Err(RuntimeError::InvalidForm { message, .. }) if message == "compiled optional default is out of range")
@@ -74,20 +68,24 @@ fn bind_optional_binds_supplied_values_and_supplied_p_with_escaped_names() {
         entry: 0,
     });
 
+    let mut context = BindingContext::new(&local, Span::new(0, 1), &[]);
     let result = bind_optional(
         &runtime,
         &program,
         &compiled,
         &[Value::Integer(9)],
         1,
-        &local,
-        Span::new(0, 1),
+        &mut context,
     );
 
     assert!(result.is_ok());
-    assert!(matches!(local.lookup_exact("Opt"), Some(Value::Integer(9))));
+    assert!(local.lookup_exact("Opt").is_none());
     assert!(matches!(
-        local.lookup_exact("Opt-P"),
+        context.local.lookup_exact("Opt"),
+        Some(Value::Integer(9))
+    ));
+    assert!(matches!(
+        context.local.lookup_exact("Opt-P"),
         Some(Value::Boolean(true))
     ));
 }

@@ -19,8 +19,122 @@ fn compiled_supports_uninterned_symbols_and_gensym() {
 }
 
 #[test]
+fn compiled_evaluates_equality_predicates() {
+    assert_eq!(
+        evaluate(
+            r#"(list (eq 1 1)
+                      (eql 1 1)
+                      (equal '(1 (2)) '(1 (2)))
+                      (equalp "Text" "text"))"#,
+        )
+        .to_string(),
+        "(T T T T)",
+    );
+}
+
+#[test]
+fn compiled_evaluates_digit_char() {
+    assert_eq!(
+        evaluate("(list (digit-char 10) (digit-char 10 16) (digit-char 15 16))").to_string(),
+        "(NIL #\\A #\\F)",
+    );
+}
+
+#[test]
+fn compiled_evaluates_numeric_inequality() {
+    assert_eq!(
+        evaluate("(list (/= 1 2 3) (/= 1 2 1) (/= 1))").to_string(),
+        "(T NIL T)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_numeric_rounding() {
+    assert_eq!(
+        evaluate("(list (multiple-value-list (floor 7 2)) (multiple-value-list (ceiling 7 2)) (multiple-value-list (truncate -7 2)) (multiple-value-list (round 7 2)))").to_string(),
+        "((3 1) (4 -1) (-3 -1) (4 -1))",
+    );
+}
+
+#[test]
+fn compiled_evaluates_transcendental_and_complex_numeric_operations() {
+    assert_eq!(
+        evaluate("(list (sqrt 9) (sin 0) (cos 0) (exp 0) (realpart #C(2 3)) (imagpart #C(2 3)) (conjugate #C(2 3)))").to_string(),
+        "(3 0.0 1.0 1.0 2 3 #C(2 -3))",
+    );
+}
+
+#[test]
+fn compiled_evaluates_expt() {
+    assert_eq!(evaluate("(expt 2 10)").to_string(), "1024");
+}
+
+#[test]
+fn compiled_evaluates_rational_conversion() {
+    assert_eq!(evaluate("(rational 1.5)").to_string(), "3/2");
+}
+
+#[test]
+fn compiled_evaluates_float_conversion() {
+    assert_eq!(evaluate("(float 3)").to_string(), "3.0");
+}
+
+#[test]
+fn compiled_evaluates_rationalize_conversion() {
+    assert_eq!(evaluate("(rationalize 0.5)").to_string(), "1/2");
+}
+
+#[test]
+fn compiled_evaluates_rational_parts() {
+    assert_eq!(
+        evaluate("(list (numerator 7/3) (denominator 7/3) (numerator 4) (denominator 4))")
+            .to_string(),
+        "(7 3 4 1)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_integer_square_root() {
+    assert_eq!(evaluate("(isqrt 10)").to_string(), "3");
+}
+
+#[test]
+fn compiled_evaluates_logarithm() {
+    assert_eq!(evaluate("(log 1)").to_string(), "0.0");
+}
+
+#[test]
+fn compiled_evaluates_complex_constructor() {
+    assert_eq!(evaluate("(complex 1 2)").to_string(), "#C(1 2)");
+}
+
+#[test]
+fn compiled_evaluates_not_and_null() {
+    assert_eq!(
+        evaluate("(list (not nil) (not 1) (null nil) (null 1))").to_string(),
+        "(T NIL T NIL)"
+    );
+}
+
+#[test]
+fn compiled_evaluates_symbol_accessors() {
+    assert_eq!(
+        evaluate("(list (symbol-name 'cl:car) (symbol-package 'cl:car))").to_string(),
+        "(\"CAR\" #<PACKAGE \"COMMON-LISP\">)"
+    );
+}
+
+#[test]
 fn compiled_evaluates_arithmetic() {
     assert_eq!(evaluate("(+ 7 (* 6 5))").to_string(), "37");
+}
+
+#[test]
+fn compiled_defines_and_expands_symbol_macros() {
+    assert_eq!(
+        evaluate("(define-symbol-macro answer 42) answer").to_string(),
+        "42"
+    );
 }
 
 #[test]
@@ -60,6 +174,14 @@ fn compiled_flet_uses_a_separate_function_namespace() {
         )
         .to_string(),
         "(6 8)",
+    );
+}
+
+#[test]
+fn compiled_function_quote_uses_the_local_function_binding() {
+    assert_eq!(
+        evaluate("(flet ((car (x) 42)) (funcall #'car '(1)))").to_string(),
+        "42",
     );
 }
 
@@ -384,14 +506,15 @@ fn compiled_keyword_parameters_use_defaults_supplied_p_and_allow_other_keys() {
                               &allow-other-keys
                               &aux (total (+ first second-value)))
              (list required optional optional-p first first-p second-value second-p rest total))
-             (list (describe 4 :second 20)
+             (list (describe 4 5 :second 20)
+                   (describe 4)
                    (describe 4 7 :first 30 :other 99))",
         )
         .must_exist();
 
     assert_eq!(
         values[1].to_string(),
-        "((4 5 NIL 9 NIL 20 T (:SECOND 20) 29) (4 7 T 30 T 31 NIL (:FIRST 30 :OTHER 99) 61))"
+        "((4 5 T 9 NIL 20 T (:SECOND 20) 29) (4 5 NIL 9 NIL 10 NIL NIL 19) (4 7 T 30 T 31 NIL (:FIRST 30 :OTHER 99) 61))"
     );
 }
 
@@ -588,7 +711,7 @@ fn compiled_symbol_macrolet_with_lexical_shadowing_and_places() {
                        (progn (psetq item 6) cell))))",
         )
         .to_string(),
-        "(42 7 9 (5) (6))"
+        "(42 7 9 (6) (6))"
     );
 }
 
@@ -723,6 +846,40 @@ fn compiled_reports_compile_errors() {
         .must_fail();
 
     assert!(matches!(error, RuntimeError::Compile(_)));
+}
+
+#[test]
+fn compiled_evaluates_value_unary_operations() {
+    let values = Runtime::new()
+        .eval_compiled_source("(list (identity 42) (type-of 42))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(42 INTEGER)");
+}
+
+#[test]
+fn compiled_evaluates_dynamic_typep() {
+    let values = Runtime::new()
+        .eval_compiled_source("(list (typep 1 'integer) (typep 1 'string) (typep '(1 2) 'list))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(T NIL T)");
+}
+
+#[test]
+fn compiled_evaluates_cons_with_list_and_dotted_tail() {
+    let values = Runtime::new()
+        .eval_compiled_source("(list (cons 1 '(2 3)) (cons 1 2))")
+        .must_exist();
+    assert_eq!(values[0].to_string(), "((1 2 3) (1 . 2))");
+}
+
+#[test]
+fn compiled_evaluates_destructive_cons_updates() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            "(let ((pair (cons 1 (list 2 3))))\n  (rplaca pair 9)\n  (rplacd pair (list 4 5))\n  (list (car pair) (cdr pair) (typep pair 'cons)))",
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), "(9 (4 5) T)");
 }
 
 use super::*;

@@ -44,6 +44,13 @@ pub(super) fn execute_pre_control_instruction(
         context.environment,
         context.program_counter,
         context.span,
+    )? || execute_parallel_assignment_instruction(
+        context.runtime,
+        instruction,
+        context.stack,
+        context.environment,
+        context.program_counter,
+        context.span,
     )? {
         return Ok(true);
     }

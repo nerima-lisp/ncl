@@ -31,7 +31,6 @@ pub fn svref(arguments: &[Value]) -> Result<Value, RuntimeError> {
     };
     items
         .get(index)
-        .cloned()
         .ok_or_else(|| out_of_bounds("svref", index))
 }
 
@@ -110,7 +109,12 @@ pub fn array_in_bounds_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
         ));
     }
     for (dimension, value) in dimensions.iter().zip(&arguments[1..]) {
-        if index_argument("array-in-bounds-p", value)? >= *dimension {
+        let index = match value {
+            Value::Integer(index) if *index >= 0 => *index as usize,
+            Value::Integer(_) => return Ok(Value::Nil),
+            _ => index_argument("array-in-bounds-p", value)?,
+        };
+        if index >= *dimension {
             return Ok(Value::Nil);
         }
     }

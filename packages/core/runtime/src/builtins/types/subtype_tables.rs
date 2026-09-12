@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn compound_subtype_named(operator: &str, supertype_name: &str) -> bool {
+pub(crate) fn compound_subtype_named(operator: &str, supertype_name: &str) -> bool {
     match operator {
         "INTEGER" => matches!(
             supertype_name,
@@ -34,7 +34,7 @@ pub(super) fn compound_subtype_named(operator: &str, supertype_name: &str) -> bo
     }
 }
 
-pub(super) fn named_subtype_relation(
+pub(crate) fn named_subtype_relation(
     subtype_name: &str,
     supertype_name: &str,
     environment: &Environment,
@@ -63,11 +63,38 @@ pub(super) fn named_subtype_relation(
     {
         return Some(true);
     }
+    if environment.lookup_condition(subtype_name).is_some() {
+        return Some(condition_subtype_relation(
+            subtype_name,
+            supertype_name,
+            environment,
+            &mut std::collections::HashSet::new(),
+        ));
+    }
     if known_type_name(subtype_name, environment) && known_type_name(supertype_name, environment) {
         Some(false)
     } else {
         None
     }
+}
+
+fn condition_subtype_relation(
+    subtype_name: &str,
+    supertype_name: &str,
+    environment: &Environment,
+    visited: &mut std::collections::HashSet<String>,
+) -> bool {
+    if !visited.insert(subtype_name.to_owned()) {
+        return false;
+    }
+    let Some(definition) = environment.lookup_condition(subtype_name) else {
+        return false;
+    };
+    definition.parents.iter().any(|parent| {
+        parent.eq_ignore_ascii_case(supertype_name)
+            || builtin_subtype(parent, supertype_name)
+            || condition_subtype_relation(parent, supertype_name, environment, visited)
+    })
 }
 
 fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
@@ -77,8 +104,9 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
             "SYMBOL" | "LIST" | "SEQUENCE" | "ATOM" | "BOOLEAN" | "NIL" | "NULL"
         ),
         "BOOLEAN" => matches!(supertype_name, "SYMBOL" | "ATOM"),
-        "NUMBER" => matches!(supertype_name, "REAL" | "ATOM"),
+        "NUMBER" => matches!(supertype_name, "ATOM"),
         "REAL" => matches!(supertype_name, "NUMBER" | "ATOM"),
+        "COMPLEX" => matches!(supertype_name, "NUMBER" | "ATOM"),
         "FIXNUM" | "BIGNUM" | "BIT" => matches!(
             supertype_name,
             "INTEGER" | "RATIONAL" | "NUMBER" | "REAL" | "ATOM"
@@ -86,7 +114,9 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
         "INTEGER" => matches!(supertype_name, "RATIONAL" | "NUMBER" | "REAL" | "ATOM"),
         "RATIO" => matches!(supertype_name, "RATIONAL" | "NUMBER" | "REAL" | "ATOM"),
         "RATIONAL" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
-        "FLOAT" => matches!(supertype_name, "NUMBER" | "REAL" | "ATOM"),
+        "SHORT-FLOAT" | "SINGLE-FLOAT" | "DOUBLE-FLOAT" | "LONG-FLOAT" | "FLOAT" => {
+            matches!(supertype_name, "FLOAT" | "NUMBER" | "REAL" | "ATOM")
+        }
         "BASE-CHAR" => matches!(supertype_name, "CHARACTER" | "ATOM"),
         "STANDARD-CHAR" => matches!(supertype_name, "BASE-CHAR" | "CHARACTER" | "ATOM"),
         "EXTENDED-CHAR" => matches!(supertype_name, "CHARACTER" | "ATOM"),
@@ -94,12 +124,20 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
         "STRING" | "BASE-STRING" => {
             matches!(
                 supertype_name,
-                "STRING" | "BASE-STRING" | "SEQUENCE" | "ATOM"
+                "STRING" | "BASE-STRING" | "VECTOR" | "ARRAY" | "SEQUENCE" | "ATOM"
             )
         }
         "SIMPLE-STRING" | "SIMPLE-BASE-STRING" => matches!(
             supertype_name,
-            "STRING" | "BASE-STRING" | "SIMPLE-STRING" | "SIMPLE-BASE-STRING" | "SEQUENCE" | "ATOM"
+            "STRING"
+                | "BASE-STRING"
+                | "SIMPLE-STRING"
+                | "SIMPLE-BASE-STRING"
+                | "VECTOR"
+                | "ARRAY"
+                | "SIMPLE-ARRAY"
+                | "SEQUENCE"
+                | "ATOM"
         ),
         "KEYWORD" => matches!(supertype_name, "SYMBOL" | "ATOM"),
         "CONS" => matches!(supertype_name, "LIST" | "SEQUENCE"),
@@ -123,6 +161,24 @@ fn builtin_subtype(subtype_name: &str, supertype_name: &str) -> bool {
             matches!(supertype_name, "ARRAY" | "SIMPLE-ARRAY" | "ATOM")
         }
         "COMPILED-FUNCTION" => matches!(supertype_name, "FUNCTION" | "ATOM"),
+        "DIVISION-BY-ZERO" => matches!(
+            supertype_name,
+            "ARITHMETIC-ERROR" | "ERROR" | "SERIOUS-CONDITION" | "CONDITION"
+        ),
+        "END-OF-FILE" => matches!(
+            supertype_name,
+            "STREAM-ERROR" | "ERROR" | "SERIOUS-CONDITION" | "CONDITION"
+        ),
+        "UNDEFINED-FUNCTION" | "UNBOUND-SLOT" => matches!(
+            supertype_name,
+            "CELL-ERROR" | "ERROR" | "SERIOUS-CONDITION" | "CONDITION"
+        ),
+        "CELL-ERROR" => matches!(supertype_name, "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
+        "STREAM-ERROR" => matches!(supertype_name, "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
+        "STORAGE-CONDITION" | "PARSE-ERROR" => {
+            matches!(supertype_name, "SERIOUS-CONDITION" | "CONDITION")
+        }
+        "CONTROL-ERROR" => matches!(supertype_name, "ERROR" | "SERIOUS-CONDITION" | "CONDITION"),
         "FUNCTION" | "STREAM" | "PACKAGE" | "ENVIRONMENT" | "HASH-TABLE" | "CONDITION"
         | "RESTART" | "STRUCTURE" | "UNBOUND" | "VALUES" | "CLASS" | "STANDARD-OBJECT" => {
             supertype_name == "ATOM"

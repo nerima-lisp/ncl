@@ -5,6 +5,8 @@ use crate::{Form, FormKind};
 impl fmt::Display for Form {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
+            FormKind::CircularReference => formatter.write_str("#<CIRCULAR-REFERENCE>"),
+            FormKind::Literal(value) => fmt::Display::fmt(value, formatter),
             FormKind::Atom(value) => formatter.write_str(value),
             FormKind::String(value) => write!(formatter, "{value:?}"),
             FormKind::Character(value) => write!(formatter, "#\\{value}"),
@@ -37,6 +39,9 @@ impl fmt::Display for Form {
                     item.fmt(formatter)?;
                 }
                 formatter.write_str(")")
+            }
+            FormKind::Complex { real, imaginary } => {
+                write!(formatter, "#C({real} {imaginary})")
             }
         }
     }

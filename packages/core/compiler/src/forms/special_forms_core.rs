@@ -1,4 +1,4 @@
-use crate::{CompileError, CompileState, Form, FunctionId, Span};
+use crate::{CompileError, CompileState, Constant, Form, FunctionId, Instruction, Span};
 
 impl CompileState {
     pub(super) fn dispatch_core_and_control_forms(
@@ -11,12 +11,18 @@ impl CompileState {
         Some(match name {
             "QUOTE" => self.compile_quote(function, span, items),
             "QUASIQUOTE" => self.compile_quasiquote(function, span, items),
-            "DECLARE" | "DECLAIM" | "PROCLAIM" => self.compile_declare(function, span),
-            "LOCALLY" | "PROGN" => self.compile_progn(function, items),
+            "DECLARE" => self.compile_declare(function, span, items),
+            "DECLAIM" | "PROCLAIM" => self.compile_declare(function, span, &[]),
+            "LOCALLY" => self.compile_locally(function, span, items),
+            "PROGN" => self.compile_progn(function, items),
             "EVAL-WHEN" => self.compile_eval_when(function, span, items),
+            "WITH-COMPILATION-UNIT" => self.compile_with_compilation_unit(function, span, items),
+            "PSETF" if items.len() == 1 => self
+                .emit(function, Instruction::Constant(Constant::Nil), span)
+                .map(|_| ()),
             "LOAD-TIME-VALUE"
-            | "NTH-VALUE"
             | "DEFINE-SYMBOL-MACRO"
+            | "WITH-HASH-TABLE-ITERATOR"
             | "PSETF"
             | "PUSH"
             | "POP"
@@ -29,7 +35,10 @@ impl CompileState {
             | "DEFSETF"
             | "DEFINE-MODIFY-MACRO"
             | "DEFINE-SETF-EXPANDER"
-            | "GET-SETF-EXPANSION" => self.compile_runtime_definition(function, span, items),
+            | "DEFPACKAGE"
+            | "IN-PACKAGE"
+            | "GET-SETF-EXPANSION"
+            | "DEFINE-CONDITION" => self.compile_runtime_definition(function, span, items),
             "THE" => self.compile_the(function, span, items),
             "IF" => self.compile_if(function, span, items),
             "PROG1" => self.compile_prog1(function, span, items),
@@ -37,6 +46,7 @@ impl CompileState {
             "PROG" => self.compile_prog(function, span, items, false),
             "PROG*" => self.compile_prog(function, span, items, true),
             "VALUES" => self.compile_values(function, span, items),
+            "NTH-VALUE" => self.compile_nth_value(function, span, items),
             "IGNORE-ERRORS" => self.compile_ignore_errors(function, span, items),
             "HANDLER-CASE" => self.compile_handler_case(function, span, items),
             "HANDLER-BIND" => self.compile_handler_bind(function, span, items),
@@ -47,6 +57,9 @@ impl CompileState {
                 self.compile_with_condition_restarts(function, span, items)
             }
             "WITH-OPEN-FILE" => self.compile_with_open_file(function, span, items),
+            "WITH-OPEN-STREAM" => self.compile_with_open_stream(function, span, items),
+            "WITH-INPUT-FROM-STRING" => self.compile_with_input_from_string(function, span, items),
+            "WITH-OUTPUT-TO-STRING" => self.compile_with_output_to_string(function, span, items),
             "RESTART-CASE" => self.compile_restart_case(function, span, items),
             "PROGV" => self.compile_progv(function, span, items),
             "THROW" => self.compile_throw(function, span, items),

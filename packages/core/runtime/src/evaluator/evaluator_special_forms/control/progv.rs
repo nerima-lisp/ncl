@@ -35,10 +35,14 @@ impl Runtime {
 
         let _dynamic_guard = self.dynamic_guard();
         for (index, symbol) in symbols.iter().enumerate() {
-            let name = symbol.symbol_name().ok_or_else(|| {
+            let (name, exact) = symbol.variable_reference().ok_or_else(|| {
                 Self::invalid("progv symbol list must contain only symbols", items[1].span)
             })?;
-            self.define_dynamic(name, values.get(index).cloned().unwrap_or(Value::Nil));
+            self.define_dynamic(
+                &name,
+                exact,
+                values.get(index).cloned().unwrap_or(Value::Unbound),
+            );
         }
 
         self.eval_sequence_values(&items[3..], environment)

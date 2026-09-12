@@ -7,28 +7,10 @@ pub fn list(arguments: &[Value]) -> Result<Value, RuntimeError> {
 }
 
 pub fn list_star(arguments: &[Value]) -> Result<Value, RuntimeError> {
-    if arguments.is_empty() {
-        return Err(arity("list*", "at least one", 0));
-    }
-    if arguments.len() == 1 {
-        return Ok(arguments[0].clone());
-    }
-
-    let mut values = arguments[..arguments.len() - 1].to_vec();
-    let Some(last) = arguments.last() else {
+    let Some((tail, prefix)) = arguments.split_last() else {
         return Err(arity("list*", "at least one", 0));
     };
-    match last {
-        Value::Nil | Value::List(_) => {
-            values.extend(last.list_items().unwrap_or_default());
-            Ok(Value::list(values))
-        }
-        Value::DottedList { items, tail } => {
-            values.extend(items.iter().cloned());
-            Ok(Value::dotted_list(values, tail.as_ref().clone()))
-        }
-        tail => Ok(Value::dotted_list(values, tail.clone())),
-    }
+    Ok(Value::dotted_list(prefix.to_vec(), tail.clone()))
 }
 
 pub fn make_list(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -69,26 +51,31 @@ pub fn values_list(arguments: &[Value]) -> Result<Value, RuntimeError> {
 
 pub fn list_length(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "list-length", 1)?;
-    let length = match &arguments[0] {
-        Value::Nil => 0,
-        Value::List(items) => items.len(),
-        value => return Err(type_error("list-length", "proper list", value)),
-    };
-    integer_from_usize("list-length", length)
+    match arguments[0].list_parts() {
+        Some((items, Value::Nil | Value::Boolean(false))) => {
+            integer_from_usize("list-length", items.len())
+        }
+        None if matches!(arguments[0], Value::Cons(_)) => Ok(Value::Nil),
+        _ => Err(type_error(
+            "list-length",
+            "proper or circular list",
+            &arguments[0],
+        )),
+    }
 }
 
 pub fn acons(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "acons", 3)?;
-    let Some(alist) = arguments[2].list_items() else {
+    if !matches!(
+        arguments[2],
+        Value::Nil | Value::Boolean(false) | Value::Cons(_)
+    ) {
         return Err(type_error("acons", "list", &arguments[2]));
-    };
-    let mut result = Vec::with_capacity(alist.len() + 1);
-    result.push(Value::dotted_list(
-        vec![arguments[0].clone()],
-        arguments[1].clone(),
-    ));
-    result.extend(alist);
-    Ok(Value::list(result))
+    }
+    Ok(Value::cons(
+        Value::cons(arguments[0].clone(), arguments[1].clone()),
+        arguments[2].clone(),
+    ))
 }
 
 pub fn pairlis(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -107,16 +94,14 @@ pub fn pairlis(arguments: &[Value]) -> Result<Value, RuntimeError> {
             span: None,
         });
     }
-    let mut result = match arguments.get(2) {
-        Some(alist) => alist
-            .list_items()
-            .ok_or_else(|| type_error("pairlis", "list", alist))?,
-        None => Vec::new(),
-    };
-    for (key, value) in keys.into_iter().zip(values) {
-        result.insert(0, Value::dotted_list(vec![key], value));
+    let mut result = arguments.get(2).cloned().unwrap_or(Value::Nil);
+    if !matches!(result, Value::Nil | Value::Boolean(false) | Value::Cons(_)) {
+        return Err(type_error("pairlis", "list", &result));
     }
-    Ok(Value::list(result))
+    for (key, value) in keys.into_iter().zip(values) {
+        result = Value::cons(Value::cons(key, value), result);
+    }
+    Ok(result)
 }
 
 #[cfg(test)]

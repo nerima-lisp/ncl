@@ -45,6 +45,7 @@ fn rejects_incompatible_format_modifiers_from_table_cases() {
     let cases = [
         ("~:P", vec![]),
         ("~@I", vec![]),
+        ("~:@*", vec![]),
         ("~1W", vec![Value::Integer(1)]),
         ("~1_", vec![]),
         ("~:?[ignored]", vec![Value::string("~A"), Value::Integer(1)]),
@@ -60,6 +61,13 @@ fn rejects_incompatible_format_modifiers_from_table_cases() {
             "incompatible format control should fail: {control}"
         );
     }
+}
+
+#[test]
+fn rejects_format_star_cursor_moves_outside_the_argument_list() {
+    assert!(format_control("~2*", &[Value::Integer(1)]).is_err());
+    assert!(format_control("~:*", &[]).is_err());
+    assert!(format_control("~3@*", &[Value::Integer(1), Value::Integer(2)]).is_err());
 }
 
 #[test]

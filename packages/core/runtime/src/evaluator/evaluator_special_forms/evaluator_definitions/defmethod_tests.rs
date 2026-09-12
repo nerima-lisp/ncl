@@ -20,6 +20,136 @@ mod tests {
     }
 
     #[test]
+    fn defgeneric_accepts_string_documentation() {
+        Runtime::new()
+            .eval_source(r#"(defgeneric documented-generic (x) (:documentation "docs"))"#)
+            .unwrap_or_else(|error| panic!("valid defgeneric documentation should work: {error}"));
+    }
+
+    #[test]
+    fn defgeneric_accepts_and_method_combination() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric all-true (x) (:method-combination and))\
+                 (defmethod all-true ((x t)) t)\
+                 (defmethod all-true ((x t)) nil)\
+                 (all-true 1)",
+            )
+            .unwrap_or_else(|error| panic!("and method combination should work: {error}"));
+        assert!(!values.last().expect("generic result").is_truthy());
+    }
+
+    #[test]
+    fn defgeneric_accepts_or_method_combination() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric any-true (x) (:method-combination or))\
+                 (defmethod any-true ((x t)) nil)\
+                 (defmethod any-true ((x t)) t)\
+                 (any-true 1)",
+            )
+            .unwrap_or_else(|error| panic!("or method combination should work: {error}"));
+        assert!(values.last().expect("generic result").is_truthy());
+    }
+
+    #[test]
+    fn builtin_progn_method_combination_returns_last_value() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric sequence (x) (:method-combination progn))\
+                 (defmethod sequence ((x t)) 1)\
+                 (defmethod sequence ((x t)) 2)\
+                 (sequence 1)",
+            )
+            .unwrap_or_else(|error| panic!("progn method combination should work: {error}"));
+        assert_eq!(values.last().expect("generic result").to_string(), "2");
+    }
+
+    #[test]
+    fn builtin_list_and_append_method_combinations_combine_all_values() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric collect-values (x) (:method-combination list))\
+                 (defmethod collect-values ((x t)) 1)\
+                 (defmethod collect-values ((x t)) 2)\
+                 (defgeneric append-values (x) (:method-combination append))\
+                 (defmethod append-values ((x t)) (list 1))\
+                 (defmethod append-values ((x t)) (list 2 3))\
+                 (list (collect-values 1) (append-values 1))",
+            )
+            .unwrap_or_else(|error| panic!("list/append method combinations failed: {error}"));
+        assert_eq!(
+            values.last().expect("generic result").to_string(),
+            "((1 2) (1 2 3))"
+        );
+    }
+
+    #[test]
+    fn builtin_numeric_and_nconc_method_combinations_combine_all_values() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric sum-values (x) (:method-combination +))\
+                 (defmethod sum-values ((x t)) 2)\
+                 (defmethod sum-values ((x t)) 3)\
+                 (defgeneric max-values (x) (:method-combination max))\
+                 (defmethod max-values ((x t)) 2)\
+                 (defmethod max-values ((x t)) 3)\
+                 (defgeneric min-values (x) (:method-combination min))\
+                 (defmethod min-values ((x t)) 2)\
+                 (defmethod min-values ((x t)) 3)\
+                 (defgeneric nconc-values (x) (:method-combination nconc))\
+                 (defmethod nconc-values ((x t)) (list 1))\
+                 (defmethod nconc-values ((x t)) (list 2 3))\
+                 (list (sum-values 1) (max-values 1) (min-values 1) (nconc-values 1))",
+            )
+            .unwrap_or_else(|error| panic!("numeric/nconc method combinations failed: {error}"));
+        assert_eq!(
+            values.last().expect("generic result").to_string(),
+            "(5 3 2 (1 2 3))"
+        );
+    }
+
+    #[test]
+    fn builtin_method_combinations_preserve_values_and_short_circuit() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defgeneric first-value (x) (:method-combination or))\
+                 (defmethod first-value ((x t)) 7)\
+                 (defmethod first-value ((x t)) (error \"must not run\"))\
+                 (first-value 1)",
+            )
+            .unwrap_or_else(|error| panic!("short-circuit method combination failed: {error}"));
+        assert_eq!(values.last().expect("generic result").to_string(), "7");
+    }
+
+    #[test]
+    fn defgeneric_rejects_an_unsupported_method_combination() {
+        let error = eval_err("(defgeneric unsupported-generic (x) (:method-combination median))");
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "unsupported defgeneric method combination"
+        ));
+    }
+
+    #[test]
+    fn defgeneric_accepts_the_standard_method_combination() {
+        Runtime::new()
+            .eval_source("(defgeneric standard-combination (x) (:method-combination standard))")
+            .unwrap_or_else(|error| panic!("standard method combination should work: {error}"));
+    }
+
+    #[test]
+    fn defgeneric_rejects_malformed_documentation() {
+        let error = eval_err("(defgeneric malformed-documentation (x) (:documentation 1))");
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "defgeneric :documentation needs one string"
+        ));
+    }
+
+    #[test]
     fn defmethod_rejects_too_few_arguments() {
         let error = eval_err("(defmethod foo)");
         assert!(matches!(
@@ -47,6 +177,19 @@ mod tests {
             error,
             RuntimeError::InvalidForm { message, .. }
                 if message == "unsupported defmethod qualifier"
+        ));
+    }
+
+    #[test]
+    fn defmethod_rejects_multiple_qualifiers() {
+        let error = eval_err(
+            "(defgeneric multiply-qualified (x))
+             (defmethod multiply-qualified :before :after (x) x)",
+        );
+        assert!(matches!(
+            error,
+            RuntimeError::InvalidForm { message, .. }
+                if message == "defmethod accepts at most one method qualifier"
         ));
     }
 

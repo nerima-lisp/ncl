@@ -1,7 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn format_case_directive(
+pub(crate) fn format_case_directive(
     state: &mut FormatControlState<'_>,
     parameters: &[FormatParameter],
     colon_modifier: bool,
@@ -30,7 +30,7 @@ pub(super) fn format_case_directive(
     Ok(termination)
 }
 
-pub(super) fn format_case_conversion(
+pub(crate) fn format_case_conversion(
     text: &str,
     colon_modifier: bool,
     at_sign_modifier: bool,

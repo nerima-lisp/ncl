@@ -3,7 +3,7 @@ use std::rc::Rc;
 use ncl_compiler::{FunctionId, Program, RestartCaseClause};
 use ncl_syntax::Span;
 
-use crate::environment::normalize_name;
+use crate::environment::names_equal;
 use crate::evaluator::RestartBinding;
 use crate::vm::entry::{run, run_code};
 use crate::vm::primitives::invalid;
@@ -27,6 +27,7 @@ pub(in crate::vm::execution) fn execute_restart_case_instruction(
     let guard = runtime.restart_guard(
         clauses
             .iter()
+            .rev()
             .map(|clause| RestartBinding::new(clause.name.clone(), None))
             .collect(),
     );
@@ -51,7 +52,7 @@ pub(in crate::vm::execution) fn execute_restart_case_instruction(
             };
             let Some(clause) = clauses
                 .iter()
-                .find(|clause| normalize_name(invoked.as_str()) == clause.name.as_str())
+                .find(|clause| names_equal(invoked.as_str(), clause.name.as_str()))
             else {
                 return Err(error);
             };

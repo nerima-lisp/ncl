@@ -22,7 +22,7 @@ fn setf_instructions_reject_a_missing_stack_value() {
         execute_set_instruction(
             &runtime,
             &Instruction::Setf(place.clone()),
-            &mut [],
+            &mut Vec::new(),
             &environment,
             &mut program_counter,
             span,
@@ -33,7 +33,7 @@ fn setf_instructions_reject_a_missing_stack_value() {
         execute_set_instruction(
             &runtime,
             &Instruction::MapIntoSetf(place),
-            &mut [],
+            &mut Vec::new(),
             &environment,
             &mut program_counter,
             span,

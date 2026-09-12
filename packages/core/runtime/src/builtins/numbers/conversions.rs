@@ -1,5 +1,5 @@
 use crate::builtins::builtin_helpers::{number_error, type_error};
-use crate::{Rational, RuntimeError, Value};
+use crate::{BigRational, Rational, RuntimeError, Value};
 
 use super::Number;
 
@@ -7,7 +7,8 @@ pub(in crate::builtins) fn number(value: &Value) -> Result<Number, RuntimeError>
     match value {
         Value::Integer(value) => Ok(Number::Integer(*value)),
         Value::BigInteger(value) => Ok(Number::Big(value.as_ref().clone())),
-        Value::Rational(value) => Ok(Number::Rational(*value)),
+        Value::Rational(value) => Ok(Number::Rational(value.clone())),
+        Value::BigRational(value) => Ok(Number::BigRational(value.as_ref().clone())),
         Value::Float(value) => Ok(Number::Float(*value)),
         value => Err(number_error("numeric operation", value)),
     }
@@ -20,7 +21,8 @@ pub(in crate::builtins) fn number_argument(
     match value {
         Value::Integer(value) => Ok(Number::Integer(*value)),
         Value::BigInteger(value) => Ok(Number::Big(value.as_ref().clone())),
-        Value::Rational(value) => Ok(Number::Rational(*value)),
+        Value::Rational(value) => Ok(Number::Rational(value.clone())),
+        Value::BigRational(value) => Ok(Number::BigRational(value.as_ref().clone())),
         Value::Float(value) => Ok(Number::Float(*value)),
         value => Err(number_error(function, value)),
     }
@@ -31,9 +33,12 @@ pub(in crate::builtins) fn number_to_value(number: Number) -> Result<Value, Runt
         Number::Integer(value) => Ok(Value::Integer(value)),
         Number::Big(value) => Ok(Value::big_integer(value)),
         Number::Rational(value) => Value::rational(
-            i128::from(value.numerator()),
-            i128::from(value.denominator()),
+            value.numerator_i128().unwrap_or(0),
+            value.denominator_i128().unwrap_or(1),
         ),
+        Number::BigRational(value) => {
+            Value::big_rational(value.numerator().clone(), value.denominator().clone())
+        }
         Number::Float(value) => Ok(Value::Float(value)),
     }
 }
@@ -107,11 +112,42 @@ pub(in crate::builtins) fn rational_number(
     denominator: i128,
 ) -> Result<Number, RuntimeError> {
     match Rational::new(numerator, denominator) {
-        Ok(value) if value.denominator() == 1 => Ok(Number::Integer(value.numerator())),
+        Ok(value) if value.denominator() == &ibig::IBig::from(1) => {
+            Ok(Number::Integer(value.numerator_i128().unwrap_or(0) as i64))
+        }
         Ok(value) => Ok(Number::Rational(value)),
         Err(RuntimeError::NumericOverflow) if denominator == 1 => {
             Ok(Number::Big(ibig::IBig::from(numerator)))
         }
+        Err(error) => Err(error),
+    }
+}
+
+pub(in crate::builtins) fn big_rational_number(
+    numerator: ibig::IBig,
+    denominator: ibig::IBig,
+) -> Result<Number, RuntimeError> {
+    let value = BigRational::new(numerator, denominator)?;
+    if value.denominator() == &ibig::IBig::from(1) {
+        if exceeds_exact_bignum_digit_cap(value.numerator()) {
+            return Err(RuntimeError::NumericOverflow);
+        }
+        return Ok(number_from_big(value.numerator().clone()));
+    }
+    if exceeds_exact_bignum_digit_cap(value.numerator())
+        || exceeds_exact_bignum_digit_cap(value.denominator())
+    {
+        return Err(RuntimeError::NumericOverflow);
+    }
+    let Ok(numerator) = i128::try_from(value.numerator()) else {
+        return Ok(Number::BigRational(value));
+    };
+    let Ok(denominator) = i128::try_from(value.denominator()) else {
+        return Ok(Number::BigRational(value));
+    };
+    match rational_number(numerator, denominator) {
+        Ok(number) => Ok(number),
+        Err(RuntimeError::NumericOverflow) => Ok(Number::BigRational(value)),
         Err(error) => Err(error),
     }
 }
@@ -131,6 +167,17 @@ pub(in crate::builtins) fn integer_argument(
         return Err(RuntimeError::NumericOverflow);
     }
     Err(type_error(function, "integer", value))
+}
+
+pub(in crate::builtins) fn integer_value(
+    function: &str,
+    value: &Value,
+) -> Result<ibig::IBig, RuntimeError> {
+    match value {
+        Value::Integer(value) => Ok(ibig::IBig::from(*value)),
+        Value::BigInteger(value) => Ok(value.as_ref().clone()),
+        value => Err(type_error(function, "integer", value)),
+    }
 }
 
 #[cfg(test)]

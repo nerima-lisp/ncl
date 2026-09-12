@@ -10,6 +10,9 @@ pub fn operator_span(items: &[Form], fallback: Span) -> Span {
 
 pub fn symbol_reference(atom: &str) -> Option<(String, bool)> {
     let token = parse_symbol_token(atom).ok()?;
+    if token.kind == SymbolTokenKind::Uninterned && !token.name.is_empty() {
+        return Some((format!("#:{}", token.name), token.escaped));
+    }
     if token.kind != SymbolTokenKind::Symbol {
         return None;
     }
@@ -70,6 +73,8 @@ mod tests {
         let symbol_cases = [
             ("name", Some(("NAME".to_string(), false))),
             ("|Exact|", Some(("Exact".to_string(), true))),
+            ("#:temporary", Some(("#:TEMPORARY".to_string(), false))),
+            ("#:|Temporary|", Some(("#:Temporary".to_string(), true))),
             (":keyword", None),
             ("#\\x", Some(("#x".to_string(), true))),
         ];

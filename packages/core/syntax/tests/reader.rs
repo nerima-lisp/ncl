@@ -13,6 +13,37 @@ fn reads_lists_prefixes_and_literals() {
 }
 
 #[test]
+fn reads_case_insensitive_complex_literals() {
+    let forms = read("#C(1 2) #c(-3 4)").unwrap();
+
+    assert!(matches!(
+        &forms[0].kind,
+        FormKind::Complex { real, imaginary }
+            if matches!(&real.kind, FormKind::Atom(atom) if atom == "1")
+                && matches!(&imaginary.kind, FormKind::Atom(atom) if atom == "2")
+    ));
+    assert!(matches!(
+        &forms[1].kind,
+        FormKind::Complex { real, imaginary }
+            if matches!(&real.kind, FormKind::Atom(atom) if atom == "-3")
+                && matches!(&imaginary.kind, FormKind::Atom(atom) if atom == "4")
+    ));
+    assert_eq!(forms[0].to_string(), "#C(1 2)");
+    assert_eq!(forms[1].to_string(), "#C(-3 4)");
+}
+
+#[test]
+fn complex_literals_require_two_components() {
+    for source in ["#C(1)", "#C(1 2 3)", "#C(1 . 2)"] {
+        assert_eq!(
+            read(source).unwrap_err().kind,
+            ReadErrorKind::InvalidDispatch,
+            "source: {source}"
+        );
+    }
+}
+
+#[test]
 fn comments_are_ignored_and_spans_are_source_offsets() {
     let forms = read("; comment\n(+ 1 2)").unwrap();
 

@@ -1,15 +1,17 @@
 use super::{Environment, Form, FormKind, Runtime, RuntimeError, normalize_name, unqualified_name};
+use crate::value::MethodSpecializer;
 
 pub(super) struct DefmethodParameters {
     pub(super) required: Vec<String>,
     pub(super) required_escaped: Vec<bool>,
-    pub(super) specializers: Vec<String>,
+    pub(super) specializers: Vec<MethodSpecializer>,
     pub(super) normalized: Vec<Form>,
     pub(super) required_count: usize,
 }
 
 impl Runtime {
     pub(super) fn parse_defmethod_required_parameters(
+        &self,
         parameters: &[Form],
         environment: &Environment,
     ) -> Result<DefmethodParameters, RuntimeError> {
@@ -40,19 +42,31 @@ impl Runtime {
             required.push(unqualified_name(&parameter_name));
             required_escaped.push(escaped);
             let specializer = match specializer_form {
-                None => "T".to_owned(),
-                Some(form) => Self::definition_name_from_form(form, "defmethod specializer")?,
+                None => MethodSpecializer::Class("T".into()),
+                Some(form) => match &form.kind {
+                    FormKind::List(parts) if parts.len() == 2 => {
+                        let name =
+                            Self::definition_name_from_form(&parts[0], "defmethod specializer")?;
+                        if name != "EQL" {
+                            return Err(Self::invalid(
+                                "unsupported defmethod specializer",
+                                parameter.span,
+                            ));
+                        }
+                        MethodSpecializer::Eql(self.eval_in(&parts[1], environment)?)
+                    }
+                    _ => {
+                        let name = Self::definition_name_from_form(form, "defmethod specializer")?;
+                        if !crate::builtins::known_type_name(&name, environment) {
+                            return Err(Self::invalid(
+                                "unknown defmethod specializer",
+                                parameter.span,
+                            ));
+                        }
+                        MethodSpecializer::Class(name.into())
+                    }
+                },
             };
-            if specializer != "T"
-                && specializer != "OBJECT"
-                && specializer != "STANDARD-OBJECT"
-                && environment.lookup_class(&specializer).is_none()
-            {
-                return Err(Self::invalid(
-                    "unknown defmethod specializer",
-                    parameter.span,
-                ));
-            }
             specializers.push(specializer);
             normalized_parameters.push(name_form.clone());
             required_parameter_count += 1;

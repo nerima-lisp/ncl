@@ -1,4 +1,4 @@
-use super::{array_option_name, integer_argument, type_error};
+use super::{array_option_name, integer_value, type_error};
 use crate::{RuntimeError, Value};
 
 pub fn sequence_bounds(
@@ -65,7 +65,10 @@ pub fn replace_bounds(
 pub fn sequence_elements(function: &str, value: &Value) -> Result<Vec<Value>, RuntimeError> {
     match value {
         Value::Nil => Ok(Vec::new()),
-        Value::List(items) | Value::Vector(items) => Ok(items.as_ref().clone()),
+        Value::Cons(_) => value
+            .list_items()
+            .ok_or_else(|| type_error(function, "proper sequence", value)),
+        Value::Vector(items) => Ok(items.visible_snapshot()),
         Value::String(value) => Ok(value.chars().map(Value::Character).collect()),
         _ => Err(type_error(function, "sequence", value)),
     }
@@ -77,7 +80,7 @@ pub fn rebuild_sequence(
     items: Vec<Value>,
 ) -> Result<Value, RuntimeError> {
     match template {
-        Value::Nil | Value::List(_) => Ok(Value::list(items)),
+        Value::Nil | Value::Cons(_) => Ok(Value::list(items)),
         Value::Vector(_) => Ok(Value::vector(items)),
         Value::String(_) => {
             let mut result = String::new();
@@ -100,15 +103,16 @@ pub fn rebuild_sequence(
 pub fn sequence_length(value: &Value) -> Option<usize> {
     match value {
         Value::Nil => Some(0),
-        Value::List(items) | Value::Vector(items) => Some(items.len()),
+        Value::Cons(_) => value.list_items().map(|items| items.len()),
+        Value::Vector(items) => Some(items.sequence_len()),
         Value::String(value) => Some(value.chars().count()),
         _ => None,
     }
 }
 
 pub fn index_argument(function: &str, value: &Value) -> Result<usize, RuntimeError> {
-    let index = integer_argument(function, value)?;
-    usize::try_from(index).map_err(|_| RuntimeError::InvalidForm {
+    let index = integer_value(function, value)?;
+    usize::try_from(&index).map_err(|_| RuntimeError::InvalidForm {
         message: format!("{function} index must be non-negative"),
         span: None,
     })
@@ -173,6 +177,24 @@ mod tests {
     fn integer_from_usize_reports_overflow() {
         assert!(matches!(
             integer_from_usize("test", usize::MAX),
+            Err(RuntimeError::InvalidForm { .. })
+        ));
+    }
+
+    #[test]
+    fn index_argument_accepts_bignums_and_rejects_negative_or_oversized_values() {
+        let within_usize = Value::big_integer(ibig::IBig::from(1) << 40);
+        assert_eq!(index_argument("test", &within_usize), Ok(1_usize << 40));
+
+        let negative = Value::big_integer(-(ibig::IBig::from(1) << 40));
+        assert!(matches!(
+            index_argument("test", &negative),
+            Err(RuntimeError::InvalidForm { .. })
+        ));
+
+        let oversized = Value::big_integer(ibig::IBig::from(1) << (usize::BITS as usize));
+        assert!(matches!(
+            index_argument("test", &oversized),
             Err(RuntimeError::InvalidForm { .. })
         ));
     }

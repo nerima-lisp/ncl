@@ -1,6 +1,7 @@
 use crate::builtins::type_predicates::equalp_value;
 use crate::builtins::types::predicates::{
-    characterp, endp, keywordp, simple_vector_p, symbol_name_value, symbol_package_value, vectorp,
+    bit_vector_p, characterp, endp, keywordp, simple_bit_vector_p, simple_vector_p,
+    symbol_name_value, symbol_package_value, vectorp,
 };
 use crate::builtins::types::special_form_support::the_check;
 use crate::builtins::types::type_designator::type_designator_name;
@@ -28,6 +29,16 @@ fn predicates_and_symbol_accessors_cover_value_categories() {
         (keywordp, vec![Value::symbol("answer")], false),
         (vectorp, vec![Value::vector(vec![Value::Nil])], true),
         (simple_vector_p, vec![Value::vector(Vec::new())], true),
+        (
+            bit_vector_p,
+            vec![Value::vector(vec![Value::Integer(0), Value::Integer(1)])],
+            true,
+        ),
+        (
+            simple_bit_vector_p,
+            vec![Value::vector(vec![Value::Integer(2)])],
+            false,
+        ),
     ];
     for (predicate, arguments, expected) in predicate_cases {
         let actual = valid_value(predicate(arguments));
@@ -46,7 +57,7 @@ fn predicates_and_symbol_accessors_cover_value_categories() {
     );
     assert_eq!(
         valid_value(symbol_package_value(&[Value::keyword("answer")])).to_string(),
-        "KEYWORD"
+        "#<PACKAGE \"KEYWORD\">"
     );
 }
 
@@ -77,11 +88,11 @@ fn equalp_compares_nested_values_case_insensitively_and_falls_back_to_eql() {
 fn symbol_accessors_handle_all_symbol_representations() {
     let cases = [
         (Value::UninternedSymbol("scratch".into()), "scratch", "NIL"),
-        (Value::symbol("pkg::answer"), "ANSWER", "PKG"),
-        (Value::symbol("answer"), "ANSWER", "NCL-USER"),
-        (Value::keyword("answer"), "ANSWER", "KEYWORD"),
-        (Value::Nil, "NIL", "COMMON-LISP"),
-        (Value::Boolean(true), "T", "COMMON-LISP"),
+        (Value::symbol("pkg::answer"), "ANSWER", "#<PACKAGE \"PKG\">"),
+        (Value::symbol("answer"), "ANSWER", "#<PACKAGE \"NCL-USER\">"),
+        (Value::keyword("answer"), "ANSWER", "#<PACKAGE \"KEYWORD\">"),
+        (Value::Nil, "NIL", "#<PACKAGE \"COMMON-LISP\">"),
+        (Value::Boolean(true), "T", "#<PACKAGE \"COMMON-LISP\">"),
     ];
     for (value, expected_name, expected_package) in cases {
         assert_eq!(

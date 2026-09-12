@@ -49,17 +49,17 @@ impl Runtime {
             _ => None,
         };
 
-        for index in 0..items.len() {
+        for (index, item) in items.iter().enumerate() {
             let candidate = match &key_function {
                 Some(key_function) => self
                     .apply_in(
                         &Value::Function(key_function.clone()),
-                        std::slice::from_ref(&items[index]),
+                        std::slice::from_ref(item),
                         span,
                         environment,
                     )?
                     .primary_value(),
-                None => items[index].clone(),
+                None => item.clone(),
             };
             let is_match = if is_predicate {
                 self.apply_in(
@@ -84,19 +84,16 @@ impl Runtime {
             if is_match {
                 return match operation {
                     "ADJOIN" => Ok(list.clone()),
-                    "MEMBER" | "MEMBER-IF" | "MEMBER-IF-NOT" => {
-                        Ok(Value::list(items[index..].to_vec()))
-                    }
+                    "MEMBER" | "MEMBER-IF" | "MEMBER-IF-NOT" => list
+                        .nth_tail(index)
+                        .ok_or_else(|| Self::invalid("MEMBER list changed during callback", span)),
                     _ => Err(Self::invalid("unknown list membership operation", span)),
                 };
             }
         }
 
         if operation == "ADJOIN" {
-            let mut result = Vec::with_capacity(items.len() + 1);
-            result.push(item_or_predicate.clone());
-            result.extend(items);
-            Ok(Value::list(result))
+            Ok(Value::cons(item_or_predicate.clone(), list.clone()))
         } else {
             Ok(Value::Nil)
         }

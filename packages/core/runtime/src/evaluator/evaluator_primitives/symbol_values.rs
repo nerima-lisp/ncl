@@ -6,7 +6,7 @@ impl Runtime {
         &self,
         name: &str,
         arguments: &[Value],
-        environment: &Environment,
+        _environment: &Environment,
         span: Span,
     ) -> Option<Result<Value, RuntimeError>> {
         if !matches!(name, "BOUNDP" | "CONSTANTP" | "SYMBOL-VALUE") {
@@ -19,12 +19,12 @@ impl Runtime {
                         return Err(Self::arity("boundp", "one", arguments.len()));
                     }
                     let (name, exact) = arguments[0]
-                        .symbol_reference()
+                        .variable_reference()
                         .ok_or_else(|| Self::invalid("boundp argument must be a symbol", span))?;
                     Ok(Value::boolean(if exact {
-                        self.is_bound_exact_in(name, environment)
+                        self.is_symbol_value_bound_exact(&name)
                     } else {
-                        self.is_bound_in(name, environment)
+                        self.is_symbol_value_bound(&name)
                     }))
                 }
                 "CONSTANTP" => {
@@ -37,19 +37,19 @@ impl Runtime {
                     if arguments.len() != 1 {
                         return Err(Self::arity("symbol-value", "one", arguments.len()));
                     }
-                    let (name, exact) = arguments[0].symbol_reference().ok_or_else(|| {
+                    let (name, exact) = arguments[0].variable_reference().ok_or_else(|| {
                         Self::invalid("symbol-value argument must be a symbol", span)
                     })?;
                     let value = if exact {
-                        self.lookup_exact_in(name, environment)
+                        self.lookup_symbol_value_exact(&name)
                     } else {
-                        self.lookup_in(name, environment)
+                        self.lookup_symbol_value_in(&name)
                     };
                     value.ok_or_else(|| RuntimeError::UnboundVariable {
                         name: if exact {
-                            name.to_string()
+                            name.clone()
                         } else {
-                            normalize_name(name)
+                            normalize_name(&name)
                         },
                         span: Some(span),
                     })

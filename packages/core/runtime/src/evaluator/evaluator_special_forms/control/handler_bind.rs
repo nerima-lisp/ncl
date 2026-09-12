@@ -35,7 +35,7 @@ impl Runtime {
             let condition = Self::condition_name(&parts[0])?;
             let function = self.eval_in(&parts[1], environment)?;
             handler_bindings.push(ConditionHandlerBinding {
-                condition,
+                condition: condition.into(),
                 function: Some(function),
                 catch: false,
             });

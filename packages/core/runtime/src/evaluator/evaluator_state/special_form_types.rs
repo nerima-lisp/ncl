@@ -12,7 +12,7 @@ pub enum MacroLambdaListSection {
 pub struct SetfExpansion {
     pub temporaries: Vec<Form>,
     pub values: Vec<Form>,
-    pub store: Form,
+    pub stores: Vec<Form>,
     pub store_form: Form,
     pub access_form: Form,
 }

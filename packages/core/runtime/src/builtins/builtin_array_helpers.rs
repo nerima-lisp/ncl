@@ -3,14 +3,14 @@ use crate::environment::normalize_name;
 use super::{index_argument, out_of_bounds, type_error};
 use crate::{RuntimeError, Value};
 
-pub(super) fn parse_array_dimensions(
+pub(crate) fn parse_array_dimensions(
     function: &str,
     value: &Value,
 ) -> Result<Vec<usize>, RuntimeError> {
     match value {
         Value::Integer(_) => Ok(vec![index_argument(function, value)?]),
         Value::Nil => Ok(Vec::new()),
-        Value::List(_) | Value::Vector(_) => {
+        Value::Cons(_) | Value::Vector(_) => {
             let Some(items) = sequence_items(value) else {
                 return Err(type_error(
                     function,
@@ -31,18 +31,19 @@ pub(super) fn parse_array_dimensions(
     }
 }
 
-pub(super) fn array_option_name(function: &str, value: &Value) -> Result<String, RuntimeError> {
+pub(crate) fn array_option_name(function: &str, value: &Value) -> Result<String, RuntimeError> {
     match value {
         Value::Keyword(name)
         | Value::Symbol(name)
         | Value::UninternedSymbol(name)
         | Value::SymbolExact(name)
         | Value::KeywordExact(name) => Ok(normalize_name(name)),
+        Value::InternedSymbol(symbol) => Ok(normalize_name(symbol.name())),
         other => Err(type_error(function, "keyword", other)),
     }
 }
 
-pub(super) fn flatten_array_contents(
+pub(crate) fn flatten_array_contents(
     function: &str,
     contents: &Value,
     dimensions: &[usize],
@@ -79,7 +80,7 @@ pub(super) fn flatten_array_contents(
     Ok(())
 }
 
-pub(super) fn array_coordinate_index(
+pub(crate) fn array_coordinate_index(
     function: &str,
     dimensions: &[usize],
     indices: &[Value],
@@ -113,7 +114,7 @@ pub(super) fn array_coordinate_index(
     Ok(offset)
 }
 
-pub(super) fn array_total_size_for(
+pub(crate) fn array_total_size_for(
     function: &str,
     dimensions: &[usize],
 ) -> Result<usize, RuntimeError> {
@@ -127,7 +128,7 @@ pub(super) fn array_total_size_for(
     })
 }
 
-pub(super) fn dimensions_for_array(value: &Value) -> Option<Vec<usize>> {
+pub(crate) fn dimensions_for_array(value: &Value) -> Option<Vec<usize>> {
     match value {
         Value::Vector(items) => Some(vec![items.len()]),
         Value::Array { dimensions, .. } => Some(dimensions.as_ref().clone()),
@@ -135,10 +136,10 @@ pub(super) fn dimensions_for_array(value: &Value) -> Option<Vec<usize>> {
     }
 }
 
-pub(super) fn array_elements(value: &Value) -> Option<Vec<Value>> {
-    value.vector_items().or_else(|| value.array_items())
+pub(crate) fn array_elements(value: &Value) -> Option<Vec<Value>> {
+    value.array_storage().map(|elements| elements.snapshot())
 }
 
-pub(super) fn sequence_items(value: &Value) -> Option<Vec<Value>> {
-    value.list_items().or_else(|| value.vector_items())
+pub(crate) fn sequence_items(value: &Value) -> Option<Vec<Value>> {
+    value.sequence_items()
 }

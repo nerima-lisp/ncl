@@ -3,6 +3,27 @@ use super::evaluator_special_forms::evaluator_sequences::sequence_types::Sequenc
 use super::*;
 
 impl Runtime {
+    pub(crate) fn apply_sequence_merge_values(
+        &self,
+        result_type: &Value,
+        sequence1: &Value,
+        sequence2: &Value,
+        predicate: &Value,
+        options: &[Value],
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.apply_sequence_merge(SequenceMergeContext {
+            result_type,
+            sequence1,
+            sequence2,
+            predicate,
+            options,
+            environment,
+            span,
+        })
+    }
+
     pub(super) fn apply_sequence_collection(
         &self,
         name: &str,

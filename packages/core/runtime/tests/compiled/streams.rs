@@ -1,0 +1,138 @@
+use super::support::MustExist;
+use ncl_runtime::Runtime;
+
+#[test]
+fn compiled_with_input_from_string_binds_stream_and_reads_it() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(with-input-from-string (stream "alpha
+")
+                 (read-line))"#,
+        )
+        .must_exist();
+
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), r#""alpha""#);
+}
+
+#[test]
+fn compiled_with_input_from_string_honors_start_and_end_keywords() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(with-input-from-string (stream "012345" :start 2 :end 4)
+                 (read-line))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), r#""23""#);
+}
+
+#[test]
+fn evaluator_with_input_from_string_honors_start_and_end_keywords() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(with-input-from-string (stream "012345" :start 2 :end 4)
+                 (read-line))"#,
+        )
+        .must_exist();
+    assert_eq!(values[0].to_string(), r#""23""#);
+}
+
+#[test]
+fn compiled_with_input_from_string_sets_index_after_body() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(let ((index -1))
+                 (with-input-from-string (stream "012345" :start 2 :end 5 :index index)
+                   (read-line))
+                 index)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), "3");
+}
+
+#[test]
+fn evaluator_with_input_from_string_sets_index_after_body() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(let ((index -1))
+                 (with-input-from-string (stream "012345" :start 2 :end 5 :index index)
+                   (read-line))
+                 index)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), "3");
+}
+
+#[test]
+fn compiled_with_output_to_string_binds_standard_output_and_returns_text() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(with-output-to-string (stream)
+                 (write-string "alpha" stream)
+                 (write-line " beta"))"#,
+        )
+        .must_exist();
+
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].to_string(), r#""alpha beta\n""#);
+}
+
+#[test]
+fn compiled_with_output_to_string_updates_destination_variable() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(let ((destination (make-string 0)))
+                 (with-output-to-string (stream destination)
+                   (write-string "alpha" stream))
+                 destination)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), r#""alpha""#);
+}
+
+#[test]
+fn evaluator_with_output_to_string_updates_destination_variable() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(let ((destination (make-string 0)))
+                 (with-output-to-string (stream destination)
+                   (write-string "alpha" stream))
+                 destination)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), r#""alpha""#);
+}
+
+#[test]
+fn compiled_with_output_to_string_preserves_mutable_destination_identity() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(let ((destination (make-string 0)))
+                 (with-output-to-string (stream destination)
+                   (write-string "alpha" stream))
+                 (setf (char destination 0) #\A)
+                 destination)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), r#""Alpha""#);
+}
+
+#[test]
+fn evaluator_with_output_to_string_preserves_mutable_destination_identity() {
+    let values = Runtime::new()
+        .eval_source(
+            r#"(let ((destination (make-string 0)))
+                 (with-output-to-string (stream destination)
+                   (write-string "alpha" stream))
+                 (setf (char destination 0) #\A)
+                 destination)"#,
+        )
+        .must_exist();
+
+    assert_eq!(values[0].to_string(), r#""Alpha""#);
+}

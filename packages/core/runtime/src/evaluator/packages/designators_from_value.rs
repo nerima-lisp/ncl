@@ -10,6 +10,11 @@ impl Runtime {
     ) -> Result<String, RuntimeError> {
         let raw = match value {
             Value::Package(name) | Value::String(name) => name.as_ref(),
+            Value::PackageObject(object) => {
+                return object
+                    .name()
+                    .ok_or_else(|| Self::package_error("package has been deleted", span));
+            }
             _ => value.symbol_name().ok_or_else(|| RuntimeError::Type {
                 expected: "PACKAGE DESIGNATOR".to_string(),
                 actual: value.type_name().to_string(),
@@ -64,6 +69,25 @@ impl Runtime {
         Ok(package::normalize_symbol_name(name))
     }
 
+    pub(in crate::evaluator) fn symbol_lookup_name_from_value(
+        value: &Value,
+        span: Span,
+    ) -> Result<String, RuntimeError> {
+        let raw = match value {
+            Value::String(name) => name.as_ref(),
+            _ => value.symbol_name().ok_or_else(|| RuntimeError::Type {
+                expected: "STRING DESIGNATOR".to_string(),
+                actual: value.type_name().to_string(),
+                span: Some(span),
+            })?,
+        };
+        let name = raw.strip_prefix(':').unwrap_or(raw);
+        if name.is_empty() || package::split_symbol(name).is_some() || name.contains(':') {
+            return Err(Self::package_error("symbol name cannot be qualified", span));
+        }
+        Ok(name.to_string())
+    }
+
     pub(in crate::evaluator) fn name_designator_from_value(
         value: &Value,
         span: Span,
@@ -83,10 +107,7 @@ impl Runtime {
         Ok(unqualified_name(name))
     }
 
-    pub(in crate::evaluator) fn slot_name_from_value(
-        value: &Value,
-        span: Span,
-    ) -> Result<String, RuntimeError> {
+    pub(crate) fn slot_name_from_value(value: &Value, span: Span) -> Result<String, RuntimeError> {
         Self::name_designator_from_value(value, span)
     }
 }

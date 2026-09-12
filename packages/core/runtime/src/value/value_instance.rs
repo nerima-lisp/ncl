@@ -8,9 +8,16 @@ impl Value {
         Self::Class(definition)
     }
 
+    pub(crate) fn class_definition(&self) -> Option<Rc<ClassDefinition>> {
+        match self {
+            Self::Class(definition) => Some(definition.clone()),
+            _ => None,
+        }
+    }
+
     pub(crate) fn instance(definition: Rc<ClassDefinition>, slots: Vec<(String, Self)>) -> Self {
         Self::Instance(Instance {
-            class: definition,
+            class: Rc::new(RefCell::new(definition)),
             slots: Rc::new(RefCell::new(
                 slots
                     .into_iter()
@@ -22,9 +29,23 @@ impl Value {
 
     pub(crate) fn instance_class_definition(&self) -> Option<Rc<ClassDefinition>> {
         match self {
-            Self::Instance(instance) => Some(instance.class.clone()),
+            Self::Instance(instance) => Some(instance.class.borrow().clone()),
             _ => None,
         }
+    }
+
+    pub(crate) fn instance_snapshot(&self) -> Option<Self> {
+        let Self::Instance(instance) = self else {
+            return None;
+        };
+        let class = instance.class.borrow().clone();
+        let slots = instance
+            .slots
+            .borrow()
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.clone()))
+            .collect();
+        Some(Self::instance(class, slots))
     }
 
     pub(crate) fn instance_is_type(&self, expected: &str) -> bool {
@@ -33,6 +54,7 @@ impl Value {
         };
         instance
             .class
+            .borrow()
             .precedence
             .iter()
             .any(|class_name| class_name.eq_ignore_ascii_case(expected))
@@ -44,6 +66,7 @@ impl Value {
         };
         if let Some(slot) = instance
             .class
+            .borrow()
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
@@ -63,6 +86,15 @@ impl Value {
         let Self::Instance(instance) = self else {
             return false;
         };
+        if instance
+            .class
+            .borrow()
+            .slots
+            .iter()
+            .any(|slot| slot.name.eq_ignore_ascii_case(slot_name) && slot.class_value.is_some())
+        {
+            return true;
+        }
         instance
             .slots
             .borrow()
@@ -84,6 +116,7 @@ impl Value {
         }
         if let Some(slot) = instance
             .class
+            .borrow()
             .slots
             .iter()
             .find(|slot| slot.name.eq_ignore_ascii_case(slot_name))
@@ -100,6 +133,28 @@ impl Value {
             return false;
         };
         *slot_value = value;
+        true
+    }
+
+    pub(crate) fn change_instance_class(&self, definition: Rc<ClassDefinition>) -> bool {
+        let Self::Instance(instance) = self else {
+            return false;
+        };
+        let old_slots = instance.slots.borrow().clone();
+        let slots = definition
+            .slots
+            .iter()
+            .map(|slot| {
+                let value = old_slots
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case(&slot.name))
+                    .map(|(_, value)| value.clone())
+                    .unwrap_or(Self::Unbound);
+                (slot.name.clone().into(), value)
+            })
+            .collect();
+        *instance.slots.borrow_mut() = slots;
+        *instance.class.borrow_mut() = definition;
         true
     }
 }

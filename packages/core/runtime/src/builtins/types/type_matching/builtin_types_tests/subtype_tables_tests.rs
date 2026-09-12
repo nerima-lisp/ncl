@@ -12,8 +12,9 @@ fn named_subtype_relation_covers_builtin_atomic_hierarchy() {
         ("NIL", "BOOLEAN"),
         ("NULL", "NIL"),
         ("BOOLEAN", "SYMBOL"),
-        ("NUMBER", "REAL"),
         ("REAL", "NUMBER"),
+        ("COMPLEX", "NUMBER"),
+        ("COMPLEX", "ATOM"),
         ("RATIO", "RATIONAL"),
         ("RATIO", "NUMBER"),
         ("RATIO", "REAL"),
@@ -21,6 +22,10 @@ fn named_subtype_relation_covers_builtin_atomic_hierarchy() {
         ("RATIONAL", "REAL"),
         ("FLOAT", "NUMBER"),
         ("FLOAT", "REAL"),
+        ("SHORT-FLOAT", "FLOAT"),
+        ("SINGLE-FLOAT", "FLOAT"),
+        ("DOUBLE-FLOAT", "FLOAT"),
+        ("LONG-FLOAT", "FLOAT"),
         ("BASE-CHAR", "CHARACTER"),
         ("STANDARD-CHAR", "BASE-CHAR"),
         ("STANDARD-CHAR", "CHARACTER"),
@@ -47,6 +52,9 @@ fn named_subtype_relation_covers_builtin_atomic_hierarchy() {
         ("BIT-VECTOR", "SEQUENCE"),
         ("ARRAY", "SIMPLE-ARRAY"),
         ("COMPILED-FUNCTION", "FUNCTION"),
+        ("UNDEFINED-FUNCTION", "CELL-ERROR"),
+        ("UNBOUND-SLOT", "CELL-ERROR"),
+        ("END-OF-FILE", "STREAM-ERROR"),
         ("STREAM", "ATOM"),
         ("RESTART", "ATOM"),
     ];
@@ -58,7 +66,12 @@ fn named_subtype_relation_covers_builtin_atomic_hierarchy() {
         );
     }
 
-    let false_cases = [("INTEGER", "STRING"), ("RATIO", "CHARACTER")];
+    let false_cases = [
+        ("INTEGER", "STRING"),
+        ("RATIO", "CHARACTER"),
+        ("NUMBER", "REAL"),
+        ("COMPLEX", "REAL"),
+    ];
     for (subtype, supertype) in false_cases {
         assert_eq!(
             named_subtype_relation(subtype, supertype, &environment),

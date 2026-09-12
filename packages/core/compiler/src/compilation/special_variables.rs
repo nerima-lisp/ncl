@@ -2,6 +2,37 @@
 use super::*;
 
 impl CompileState {
+    pub(crate) fn compile_defconstant(
+        &mut self,
+        function: FunctionId,
+        span: Span,
+        items: &[Form],
+    ) -> Result<(), CompileError> {
+        if !(items.len() == 3 || items.len() == 4) {
+            return Err(Self::arity_error(
+                items,
+                "DEFCONSTANT",
+                "two or three",
+                span,
+            ));
+        }
+        let name_form = items
+            .get(1)
+            .ok_or_else(|| Self::internal_error(span, "missing defconstant name"))?;
+        let (name, escaped) = Self::symbol_name_info(name_form, "defconstant name")?;
+        self.compile_expression(function, &items[2])?;
+        self.emit(
+            function,
+            if escaped {
+                Instruction::DefineConstantExact(name)
+            } else {
+                Instruction::DefineConstant(name)
+            },
+            span,
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn compile_defvar(
         &mut self,
         function: FunctionId,
@@ -24,6 +55,7 @@ impl CompileState {
                 "defvar name"
             },
         )?;
+        self.register_special(name.clone(), escaped);
         if force {
             if let Some(initializer) = items.get(2) {
                 self.compile_expression(function, initializer)?;

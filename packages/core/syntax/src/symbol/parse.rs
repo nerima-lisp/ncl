@@ -8,11 +8,11 @@ use super::{SymbolToken, SymbolTokenError, SymbolTokenKind};
 /// Returns [`SymbolTokenError`] when escaping or package qualification is invalid.
 pub fn parse_symbol_token(token: &str) -> Result<SymbolToken, SymbolTokenError> {
     let decoded = decode(token)?;
-    if decoded.is_empty() {
+    let escaped = decoded.iter().any(|character| character.escaped) || token.contains('|');
+    if decoded.is_empty() && !escaped {
         return Err(SymbolTokenError::EmptyName);
     }
 
-    let escaped = decoded.iter().any(|character| character.escaped);
     let separators = decoded
         .iter()
         .enumerate()

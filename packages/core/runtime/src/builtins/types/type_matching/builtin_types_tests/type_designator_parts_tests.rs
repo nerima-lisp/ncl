@@ -1,14 +1,12 @@
-use std::rc::Rc;
-
 use crate::Value;
 use crate::builtins::types::type_designator_parts::{compound_type_parts, same_type_designator};
 
 #[test]
 fn compound_type_parts_declines_malformed_compound_lists() {
-    let empty_list = Value::List(Rc::new(Vec::new()));
+    let empty_list = Value::Nil;
     assert!(compound_type_parts(&empty_list).is_none());
 
-    let numeric_operator = Value::List(Rc::new(vec![Value::Integer(1)]));
+    let numeric_operator = Value::list(vec![Value::Integer(1)]);
     assert!(compound_type_parts(&numeric_operator).is_none());
 }
 
@@ -25,7 +23,7 @@ fn same_type_designator_compares_compound_designators_structurally() {
         "designators with a different argument count differ"
     );
 
-    let left_bad_operator = Value::List(Rc::new(vec![Value::Integer(1), Value::symbol("x")]));
+    let left_bad_operator = Value::list(vec![Value::Integer(1), Value::symbol("x")]);
     let right_named = Value::list(vec![Value::symbol("or"), Value::symbol("x")]);
     assert!(
         !same_type_designator(&left_bad_operator, &right_named),

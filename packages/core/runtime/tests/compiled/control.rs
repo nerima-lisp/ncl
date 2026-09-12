@@ -152,9 +152,12 @@ fn compiled_interns_and_finds_package_symbols() {
 
     assert_eq!(
         values[1].to_string(),
-        "(T :INTERNAL :INTERNAL \"FOO\" SYMBOLS)"
+        "(T :INTERNAL :INTERNAL \"FOO\" #<PACKAGE \"SYMBOLS\">)"
     );
-    assert_eq!(values[2].to_string(), "(:FOO :EXTERNAL \"FOO\" KEYWORD)");
+    assert_eq!(
+        values[2].to_string(),
+        "(:FOO :EXTERNAL \"FOO\" #<PACKAGE \"KEYWORD\">)"
+    );
     assert_eq!(values[3].to_string(), "(NIL NIL)");
 }
 
@@ -439,7 +442,10 @@ rest"))
                (list (streamp input)
                      (input-stream-p input)
                      (output-stream-p output)
+                     (open-stream-p output)
                      (typep output 'stream)
+                     (stream-element-type output)
+                     (stream-external-format output)
                      (peek-char input)
                      (read-char input)
                      (read-char input)
@@ -453,7 +459,49 @@ rest"))
 
     assert_eq!(
         values.last().must_exist().to_string(),
-        r#"(T T T T #\a #\a #\b NIL #\b "c" NIL "ok!")"#
+        r#"(T T T T T CHARACTER :DEFAULT #\a #\a #\b NIL #\b "c" NIL "ok!")"#
+    );
+}
+
+#[test]
+fn compiled_string_streams_support_nonblocking_input_operations() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_compiled_source(
+            r#"(let ((input (make-string-input-stream "ab")))
+               (list (listen input)
+                     (read-char-no-hang input)
+                     (clear-input input)
+                     (listen input)
+                     (read-char-no-hang input)))"#,
+        )
+        .must_exist();
+
+    assert_eq!(
+        values.last().must_exist().to_string(),
+        "(T #\\a NIL NIL NIL)"
+    );
+}
+
+#[test]
+fn compiled_string_streams_support_file_position_and_reject_file_length() {
+    let runtime = Runtime::new();
+    let values = runtime
+        .eval_compiled_source(
+            r#"(let ((stream (make-string-input-stream "abc")))
+               (list (handler-case (file-length stream)
+                       (type-error () :type-error))
+                     (file-position stream)
+                     (read-char stream)
+                     (file-position stream)
+                     (file-position stream 0)
+                     (read-char stream)))"#,
+        )
+        .must_exist();
+
+    assert_eq!(
+        values.last().must_exist().to_string(),
+        "(:TYPE-ERROR 0 #\\a 1 T #\\a)"
     );
 }
 
@@ -487,17 +535,27 @@ fn compiled_file_streams_round_trip_through_with_open_file() {
     let pathname = format!("{:?}", path.to_string_lossy().to_string());
     let source = format!(
         r#"(progn
-               (with-open-file (stream {pathname}
+               (with-open-file ((stream {pathname}
                                 :direction :output
-                                :if-exists :supersede)
+                                :if-exists :supersede))
                  (write-string "hello" stream))
-               (with-open-file (stream {pathname})
+               (with-open-file ((stream {pathname}))
                  (char= (read-char stream) #\h)))"#,
     );
 
     assert_eq!(evaluate(&source).to_string(), "T");
     assert_eq!(std::fs::read_to_string(&path).must_exist(), "hello");
     let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn compiled_string_streams_are_closed_through_with_open_stream() {
+    let source = r#"(let ((stream (make-string-output-stream)))
+                       (with-open-stream ((owned stream))
+                         (write-string "hello" owned))
+                       (get-output-stream-string stream))"#;
+
+    assert_eq!(evaluate(&source).to_string(), r#""hello""#);
 }
 
 #[test]
@@ -516,18 +574,22 @@ fn compiled_file_stream_options_cover_probe_append_and_abort() {
     let _ = std::fs::remove_file(&missing_path);
     let source = format!(
         r#"(progn
-               (with-open-file (stream {pathname}
+               (with-open-file ((stream {pathname}
                                 :direction :output
-                                :if-exists :supersede)
+                                :if-exists :supersede))
                  (write-string "a" stream))
-               (with-open-file (stream {pathname}
+               (with-open-file ((stream {pathname}
                                 :direction :output
-                                :if-exists :append)
+                                :if-exists :append))
                  (write-string "b" stream))
                (let ((existing (open {pathname} :direction :probe))
                      (missing (open {missing_pathname} :direction :probe)))
-                 (prog1 (list (streamp existing) (null missing))
-                   (close existing)))
+                 (and (equal (list (streamp existing)
+                                   (input-stream-p existing)
+                                   (output-stream-p existing)
+                                   (null missing))
+                             '(t nil nil t))
+                      (close existing)))
                (let ((stream (open {missing_pathname}
                                    :direction :output
                                    :if-does-not-exist :create)))
@@ -569,12 +631,43 @@ fn compiled_file_io_stream_reads_writes_and_appends() {
                          (write-string "!" append-stream)
                          (close append-stream))
                        t)
-                     (with-open-file (input {pathname})
+                     (with-open-file ((input {pathname}))
                        (string= (read-line input) "aZc!"))))"#,
     );
 
     assert_eq!(evaluate(&source).to_string(), "(T T T T T)");
     assert_eq!(std::fs::read_to_string(&path).must_exist(), "aZc!");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn compiled_byte_io_stream_reads_from_the_initial_cursor() {
+    let path = std::env::temp_dir().join(format!(
+        "ncl-byte-io-stream-compiled-{}",
+        std::process::id()
+    ));
+    let pathname = format!("{:?}", path.to_string_lossy().to_string());
+    std::fs::write(&path, [7_u8, 8_u8]).must_exist();
+    let source = format!(
+        r#"(let ((stream (open {pathname}
+                            :direction :io
+                            :element-type '(unsigned-byte 8)
+                            :if-exists :overwrite)))
+               (let ((result (list (stream-element-type stream)
+                                   (file-position stream)
+                                   (read-byte stream)
+                                   (file-position stream)
+                                   (read-byte stream)
+                                   (write-byte 9 stream))))
+                 (close stream)
+                 result))"#,
+    );
+
+    assert_eq!(
+        evaluate(&source).to_string(),
+        "((UNSIGNED-BYTE 8) 0 7 1 8 9)"
+    );
+    assert_eq!(std::fs::read(&path).must_exist(), [7_u8, 8_u8, 9_u8]);
     let _ = std::fs::remove_file(path);
 }
 
@@ -724,9 +817,12 @@ fn compiled_executes_dynamic_bindings_and_multiple_value_calls() {
 }
 
 #[test]
-fn compiled_progv_fills_missing_values_and_rejects_non_symbols() {
+fn compiled_progv_leaves_missing_values_unbound_and_rejects_non_symbols() {
     assert_eq!(
-        evaluate("(progv '(first second) '(10) (list first second))").to_string(),
+        evaluate(
+            "(progv '(progv-first progv-second) '(10) (list progv-first (boundp 'progv-second)))"
+        )
+        .to_string(),
         "(10 NIL)"
     );
     let error = Runtime::new()
@@ -776,4 +872,47 @@ fn compiled_executes_restart_case_and_handler_case_paths() {
         "9"
     );
 }
+#[test]
+fn compiled_evaluates_character_conversions() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(list (character "A") (char-code #\A) (char-int #\A) (code-char 65) (int-char 66))"#,
+        )
+        .must_exist();
+    assert_eq!(
+        values.last().must_exist().to_string(),
+        "(#\\A 65 65 #\\A #\\B)"
+    );
+}
+
+#[test]
+fn compiled_reads_characters_into_a_vector_sequence() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(let ((result (vector #\_ #\_ #\_)))
+                 (list (read-sequence result (make-string-input-stream "abc") :start 1)
+                       result))"#,
+        )
+        .must_exist();
+    assert_eq!(
+        values.last().must_exist().to_string(),
+        "(3 #(#\\_ #\\a #\\b))"
+    );
+}
+
+#[test]
+fn compiled_output_control_operations_manage_string_streams() {
+    let values = Runtime::new()
+        .eval_compiled_source(
+            r#"(let ((stream (make-string-output-stream)))
+                 (write-string "discarded" stream)
+                 (clear-output stream)
+                 (write-string "kept" stream)
+                 (list (force-output stream) (finish-output stream)
+                       (get-output-stream-string stream)))"#,
+        )
+        .must_exist();
+    assert_eq!(values.last().must_exist().to_string(), "(NIL NIL \"kept\")");
+}
+
 use super::*;

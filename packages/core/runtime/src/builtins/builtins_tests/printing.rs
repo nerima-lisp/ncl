@@ -1,8 +1,48 @@
-use std::rc::Rc;
-
 use crate::RuntimeError;
 use crate::builtins::builtin_printer::parse_print_options;
 use crate::builtins::*;
+
+#[test]
+fn shared_cycles_printing_internal_safety_not_print_circle() {
+    let vector = Value::vector(vec![Value::Nil, Value::Nil]);
+    let Value::Vector(storage) = &vector else {
+        unreachable!()
+    };
+    assert!(storage.set(0, vector.clone()));
+    assert!(storage.set(1, vector.clone()));
+    let expected = "#(#<CIRCULAR> #<CIRCULAR>)";
+    assert_eq!(vector.to_string(), expected);
+    assert_eq!(format!("{vector:?}"), format!("Value({expected})"));
+    for escape in [false, true] {
+        assert_eq!(printed_value(&vector, escape), expected);
+    }
+    assert!(storage.set(0, Value::Nil));
+    assert!(storage.set(1, Value::Nil));
+    let child = Value::vector(vec![Value::Integer(1)]);
+    let shared = Value::vector(vec![child.clone(), child]);
+    assert_eq!(shared.to_string(), "#(#(1) #(1))");
+    assert_eq!(printed_value(&shared, true), "#(#(1) #(1))");
+}
+
+#[test]
+fn vector_structure_cycle_printing_internal_safety() {
+    let vector = Value::vector(vec![Value::Nil]);
+    let structure = Value::structure_with_types(
+        "NODE",
+        vec![("LINK".to_owned(), vector.clone())],
+        Vec::new(),
+    );
+    let Value::Vector(storage) = &vector else {
+        unreachable!()
+    };
+    assert!(storage.set(0, structure.clone()));
+    for value in [&vector, &structure] {
+        assert!(value.to_string().contains("#<CIRCULAR>"));
+        assert!(format!("{value:?}").contains("#<CIRCULAR>"));
+        assert!(printed_value(value, true).contains("#<CIRCULAR>"));
+    }
+    assert!(storage.set(0, Value::Nil));
+}
 
 #[test]
 fn core_printing_wrappers_cover_success_and_argument_errors() -> Result<(), RuntimeError> {
@@ -81,13 +121,9 @@ fn print_helpers_cover_table_driven_values_and_options() -> Result<(), RuntimeEr
             "(1 . 2)",
             "(1 . 2)",
         ),
+        (Value::dotted_list(Vec::new(), Value::Integer(2)), "2", "2"),
         (
-            Value::dotted_list(Vec::new(), Value::Integer(2)),
-            "(. 2)",
-            "(. 2)",
-        ),
-        (
-            Value::Vector(Rc::new(vec![Value::string("text"), Value::Integer(2)])),
+            Value::vector(vec![Value::string("text"), Value::Integer(2)]),
             "#(\"text\" 2)",
             "#(text 2)",
         ),

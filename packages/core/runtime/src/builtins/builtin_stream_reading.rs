@@ -1,12 +1,18 @@
 use super::{
-    arity, end_of_file_error, exact, input_stream_reference, peek_character, stream_reference,
-    stream_state_error, type_error,
+    arity, end_of_file_error, exact, input_stream_reference, peek_character, sequence_bounds,
+    stream_reference, stream_state_error, type_error,
 };
 use crate::{RuntimeError, Value};
 
-pub(super) fn get_output_stream_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn get_output_stream_string(arguments: &[Value]) -> Result<Value, RuntimeError> {
     exact(arguments, "get-output-stream-string", 1)?;
     let stream = stream_reference("get-output-stream-string", &arguments[0])?;
+    if stream.borrow().element_type_name() != "CHARACTER" {
+        return Err(stream_state_error(
+            "get-output-stream-string",
+            "a character output stream",
+        ));
+    }
     let output = stream
         .borrow_mut()
         .take_output()
@@ -14,7 +20,7 @@ pub(super) fn get_output_stream_string(arguments: &[Value]) -> Result<Value, Run
     Ok(Value::string(output))
 }
 
-pub(super) fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 4 {
         return Err(arity("read-char", "0 to 4", arguments.len()));
     }
@@ -22,8 +28,11 @@ pub(super) fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let eof_error_p = arguments.get(1).is_none_or(Value::is_truthy);
     let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let mut stream = stream.borrow_mut();
-    if !stream.is_input() {
+    if !stream.is_character_input() {
         return Err(stream_state_error("read-char", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("read-char", "a character stream"));
     }
     match stream.read_char() {
         Some(character) => Ok(Value::Character(character)),
@@ -32,7 +41,7 @@ pub(super) fn read_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 5 {
         return Err(arity("peek-char", "0 to 5", arguments.len()));
     }
@@ -49,8 +58,11 @@ pub(super) fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
         .cloned()
         .unwrap_or(Value::Nil);
     let mut stream = stream.borrow_mut();
-    if !stream.is_input() {
+    if !stream.is_character_input() {
         return Err(stream_state_error("peek-char", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("peek-char", "a character stream"));
     }
     match peek_character(&mut stream, peek_type)? {
         Some(character) => Ok(Value::Character(character)),
@@ -59,7 +71,7 @@ pub(super) fn peek_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     }
 }
 
-pub(super) fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if !(1..=2).contains(&arguments.len()) {
         return Err(arity("unread-char", "1 to 2", arguments.len()));
     }
@@ -69,8 +81,11 @@ pub(super) fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     };
     let stream = input_stream_reference("unread-char", arguments.get(1))?;
     let mut stream = stream.borrow_mut();
-    if !stream.is_input() {
+    if !stream.is_character_input() {
         return Err(stream_state_error("unread-char", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("unread-char", "a character stream"));
     }
     if !stream.unread_char(character) {
         return Err(stream_state_error(
@@ -81,7 +96,114 @@ pub(super) fn unread_char(arguments: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Nil)
 }
 
-pub(super) fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
+pub(crate) fn listen(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() > 1 {
+        return Err(arity("listen", "0 to 1", arguments.len()));
+    }
+    let stream = input_stream_reference("listen", arguments.first())?;
+    let stream = stream.borrow();
+    if !stream.is_input() {
+        return Err(stream_state_error("listen", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("listen", "a character stream"));
+    }
+    Ok(Value::boolean(stream.peek_char().is_some()))
+}
+
+pub(crate) fn read_char_no_hang(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() > 1 {
+        return Err(arity("read-char-no-hang", "0 to 1", arguments.len()));
+    }
+    let stream = input_stream_reference("read-char-no-hang", arguments.first())?;
+    let mut stream = stream.borrow_mut();
+    if !stream.is_input() {
+        return Err(stream_state_error("read-char-no-hang", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error(
+            "read-char-no-hang",
+            "a character stream",
+        ));
+    }
+    Ok(stream.read_char().map_or(Value::Nil, Value::Character))
+}
+
+pub(crate) fn clear_input(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() > 1 {
+        return Err(arity("clear-input", "0 to 1", arguments.len()));
+    }
+    let stream = input_stream_reference("clear-input", arguments.first())?;
+    let mut stream = stream.borrow_mut();
+    if !stream.is_input() {
+        return Err(stream_state_error("clear-input", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("clear-input", "a character stream"));
+    }
+    while stream.read_char().is_some() {}
+    Ok(Value::Nil)
+}
+
+pub(crate) fn read_sequence(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() < 2 {
+        return Err(arity("read-sequence", "at least 2", arguments.len()));
+    }
+    let destination = &arguments[0];
+    let length = destination
+        .sequence_items()
+        .map(|items| items.len())
+        .ok_or_else(|| type_error("read-sequence", "a vector sequence", destination))?;
+    if !matches!(destination, Value::Vector(_)) {
+        return Err(type_error(
+            "read-sequence",
+            "a vector sequence",
+            destination,
+        ));
+    }
+    let stream = input_stream_reference("read-sequence", arguments.get(1))?;
+    let (start, end) = sequence_bounds("read-sequence", length, &arguments[2..])?;
+    let mut stream = stream.borrow_mut();
+    if !stream.is_input() {
+        return Err(stream_state_error("read-sequence", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        if stream.element_type_name() != "UNSIGNED-BYTE" || !matches!(destination, Value::Vector(_))
+        {
+            return Err(stream_state_error(
+                "read-sequence",
+                "a character stream or unsigned-byte vector",
+            ));
+        }
+        let mut index = start;
+        while index < end {
+            let Some(byte) = stream.read_byte() else {
+                break;
+            };
+            destination
+                .set_vector_item(index, Value::Integer(byte as i64))
+                .ok_or_else(|| type_error("read-sequence", "a vector sequence", destination))?;
+            index += 1;
+        }
+        return Ok(Value::Integer(index as i64));
+    }
+    let mut index = start;
+    while index < end {
+        let Some(character) = stream.read_char() else {
+            break;
+        };
+        match destination {
+            Value::Vector(_) => destination
+                .set_vector_item(index, Value::Character(character))
+                .ok_or_else(|| type_error("read-sequence", "a vector sequence", destination))?,
+            _ => unreachable!("read-sequence validates its destination before reading"),
+        }
+        index += 1;
+    }
+    Ok(Value::Integer(index as i64))
+}
+
+pub(crate) fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     if arguments.len() > 4 {
         return Err(arity("read-line", "0 to 4", arguments.len()));
     }
@@ -89,8 +211,11 @@ pub(super) fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
     let eof_error_p = arguments.get(1).is_none_or(Value::is_truthy);
     let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
     let mut stream = stream.borrow_mut();
-    if !stream.is_input() {
+    if !stream.is_character_input() {
         return Err(stream_state_error("read-line", "an input stream"));
+    }
+    if stream.element_type_name() != "CHARACTER" {
+        return Err(stream_state_error("read-line", "a character stream"));
     }
     match stream.read_line() {
         Some((line, eof)) => Ok(Value::values(vec![
@@ -99,5 +224,23 @@ pub(super) fn read_line(arguments: &[Value]) -> Result<Value, RuntimeError> {
         ])),
         None if eof_error_p => Err(end_of_file_error("a line")),
         None => Ok(Value::values(vec![eof_value, Value::boolean(true)])),
+    }
+}
+
+pub(crate) fn read_byte(arguments: &[Value]) -> Result<Value, RuntimeError> {
+    if arguments.len() > 3 {
+        return Err(arity("read-byte", "0 to 3", arguments.len()));
+    }
+    let stream = input_stream_reference("read-byte", arguments.first())?;
+    let eof_error_p = arguments.get(1).is_none_or(Value::is_truthy);
+    let eof_value = arguments.get(2).cloned().unwrap_or(Value::Nil);
+    let mut stream = stream.borrow_mut();
+    if !stream.is_binary_input() {
+        return Err(stream_state_error("read-byte", "a binary input stream"));
+    }
+    match stream.read_byte() {
+        Some(byte) => Ok(Value::Integer(i64::from(byte))),
+        None if eof_error_p => Err(end_of_file_error("a byte")),
+        None => Ok(eof_value),
     }
 }

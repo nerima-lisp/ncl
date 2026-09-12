@@ -113,13 +113,21 @@ mod tests {
     }
 
     #[test]
-    fn rejects_an_optional_default_that_cannot_round_trip_through_a_form() {
+    fn preserves_an_optional_default_function_in_the_stored_result() {
         let runtime = Runtime::new();
-        let result = runtime.eval_source(
-            "(progn
-               (define-modify-macro touch-place (&optional (x (function car))) list)
-               (let ((cell (list 1))) (touch-place cell)))",
+        assert_eq!(
+            last_result_string(
+                &runtime,
+                "(progn
+                   (define-modify-macro touch-place (&optional (x (function car))) list)
+                   (let ((cell (list 1)))
+                     (let ((result (touch-place cell)))
+                       (list (car result)
+                             (eq (car (cdr result)) (function car))
+                             (eq result cell)
+                             (funcall (car (cdr result)) (list 7))))))",
+            ),
+            "((1) T T 7)"
         );
-        assert!(result.is_err());
     }
 }

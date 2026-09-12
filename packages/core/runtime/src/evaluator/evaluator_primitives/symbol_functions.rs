@@ -34,9 +34,9 @@ impl Runtime {
             .symbol_reference()
             .ok_or_else(|| Self::invalid("fboundp argument must be a symbol", span))?;
         let value = if exact {
-            self.lookup_function_exact_in(name, environment)
+            self.lookup_function_exact_in(&name, environment)
         } else {
-            self.lookup_function_in(name, environment)
+            self.lookup_function_in(&name, environment)
         };
         Ok(Value::boolean(matches!(value, Some(Value::Function(_)))))
     }
@@ -59,9 +59,9 @@ impl Runtime {
             }
         };
         let value = if exact {
-            self.lookup_function_exact_in(name, environment)
+            self.lookup_function_exact_in(&name, environment)
         } else {
-            self.lookup_function_in(name, environment)
+            self.lookup_function_in(&name, environment)
         };
         Ok(match value {
             Some(Value::Function(function))
@@ -83,7 +83,7 @@ impl Runtime {
         let (name, _) = arguments[0]
             .symbol_reference()
             .ok_or_else(|| Self::invalid("special-operator-p argument must be a symbol", span))?;
-        Ok(Value::boolean(is_special_operator_name(name)))
+        Ok(Value::boolean(is_special_operator_name(&name)))
     }
 
     fn apply_compiled_function_p(arguments: &[Value]) -> Result<Value, RuntimeError> {
@@ -114,9 +114,9 @@ impl Runtime {
             .symbol_reference()
             .ok_or_else(|| Self::invalid("function argument must be a symbol", span))?;
         let value = if exact {
-            self.lookup_function_exact_in(name, environment)
+            self.lookup_function_exact_in(&name, environment)
         } else {
-            self.lookup_function_in(name, environment)
+            self.lookup_function_in(&name, environment)
         };
         match value {
             Some(Value::Function(function)) => Ok(Value::Function(function)),
@@ -128,7 +128,7 @@ impl Runtime {
                 name: if exact {
                     name.to_string()
                 } else {
-                    normalize_name(name)
+                    normalize_name(&name)
                 },
                 span: Some(span),
             }),

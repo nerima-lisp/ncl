@@ -2,13 +2,56 @@
 use super::*;
 
 impl CompileState {
+    fn is_declare_form(form: &Form) -> bool {
+        let FormKind::List(items) = &form.kind else {
+            return false;
+        };
+        let Some(operator) = items.first() else {
+            return false;
+        };
+        Self::symbol_name(operator, "declaration operator").is_ok_and(|name| name == "DECLARE")
+    }
+
+    fn function_body_forms(body: &[Form]) -> Vec<Form> {
+        let mut result = Vec::with_capacity(body.len());
+        let mut in_prologue = true;
+        let mut documentation_seen = false;
+
+        for (index, form) in body.iter().enumerate() {
+            if in_prologue
+                && !documentation_seen
+                && Self::is_string_form(form)
+                && body.get(index + 1).is_some_and(Self::is_declare_form)
+            {
+                documentation_seen = true;
+                continue;
+            }
+            if in_prologue && Self::is_declare_form(form) {
+                result.push(form.clone());
+                continue;
+            }
+            in_prologue = false;
+            result.push(form.clone());
+        }
+        result
+    }
+
+    pub(crate) fn compile_function_body(
+        &mut self,
+        function: FunctionId,
+        body: &[Form],
+    ) -> Result<(), CompileError> {
+        let body = Self::function_body_forms(body);
+        self.compile_sequence(function, &body)
+    }
+
     pub(crate) fn compile_lambda(
         &mut self,
         function: FunctionId,
         span: Span,
         items: &[Form],
     ) -> Result<(), CompileError> {
-        if items.len() < 3 {
+        if items.len() < 2 {
             return Err(CompileError::new(
                 CompileErrorKind::InvalidForm {
                     message: "lambda needs parameters and a body".to_string(),
@@ -34,7 +77,7 @@ impl CompileState {
         let auxiliary = self.compile_auxiliary_parameters(&lambda_list.auxiliary)?;
         self.functions[child].auxiliary = auxiliary;
         let body = items.get(2..).unwrap_or(&[]);
-        self.compile_sequence(child, body)?;
+        self.compile_function_body(child, body)?;
         self.emit(child, Instruction::Return, span)?;
         self.emit(function, Instruction::MakeClosure(child), span)?;
         Ok(())
@@ -91,7 +134,7 @@ impl CompileState {
         span: Span,
         items: &[Form],
     ) -> Result<(), CompileError> {
-        if items.len() < 4 {
+        if items.len() < 3 {
             return Err(CompileError::new(
                 CompileErrorKind::InvalidForm {
                     message: "defun needs a name, parameters, and a body".to_string(),
@@ -119,7 +162,7 @@ impl CompileState {
         let auxiliary = self.compile_auxiliary_parameters(&lambda_list.auxiliary)?;
         self.functions[child].auxiliary = auxiliary;
         let body = items.get(3..).unwrap_or(&[]);
-        self.compile_sequence(child, body)?;
+        self.compile_function_body(child, body)?;
         self.emit(child, Instruction::Return, span)?;
 
         self.emit(function, Instruction::MakeClosure(child), span)?;

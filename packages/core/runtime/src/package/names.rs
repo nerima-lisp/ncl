@@ -24,10 +24,20 @@ pub fn canonical_symbol_name(package: &str, name: &str) -> String {
     }
 }
 
+pub fn canonical_exact_symbol_name(package: &str, name: &str) -> String {
+    let package = normalize_package_name(package);
+    if package == DEFAULT_PACKAGE {
+        name.to_string()
+    } else {
+        format!("{package}::{name}")
+    }
+}
+
 pub fn split_symbol(name: &str) -> Option<(&str, &str, bool)> {
     if let Some((package, symbol)) = name.split_once("::") {
-        return Some((package, symbol, false));
+        return (!package.is_empty() && !symbol.is_empty()).then_some((package, symbol, false));
     }
-    name.split_once(':')
-        .map(|(package, symbol)| (package, symbol, true))
+    name.split_once(':').and_then(|(package, symbol)| {
+        (!package.is_empty() && !symbol.is_empty()).then_some((package, symbol, true))
+    })
 }

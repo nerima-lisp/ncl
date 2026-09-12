@@ -13,6 +13,10 @@ impl fmt::Display for RuntimeError {
                 write!(formatter, "unbound variable {name}")?;
                 write_span(formatter, *span)
             }
+            Self::UnboundSlot { name, span } => {
+                write!(formatter, "slot {name} is unbound")?;
+                write_span(formatter, *span)
+            }
             Self::NotCallable { value, span } => {
                 write!(formatter, "{value} is not callable")?;
                 write_span(formatter, *span)

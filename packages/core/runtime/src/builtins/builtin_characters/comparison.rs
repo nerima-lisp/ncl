@@ -24,7 +24,7 @@ pub fn character_greater_equal(arguments: &[Value]) -> Result<Value, RuntimeErro
     compare_characters("char>=", arguments, false, |left, right| left >= right)
 }
 
-pub(super) fn compare_characters(
+pub(crate) fn compare_characters(
     function: &str,
     arguments: &[Value],
     ignore_case: bool,
@@ -52,7 +52,7 @@ pub(super) fn compare_characters(
     })))
 }
 
-pub(super) fn compare_characters_distinct(
+pub(crate) fn compare_characters_distinct(
     function: &str,
     arguments: &[Value],
     ignore_case: bool,

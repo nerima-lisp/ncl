@@ -24,6 +24,9 @@ impl CompileState {
                 form.span,
             ));
         };
+        if token.kind == SymbolTokenKind::Uninterned && !token.name.is_empty() {
+            return Ok((format!("#:{}", token.name), token.escaped));
+        }
         if token.kind != SymbolTokenKind::Symbol || token.name.is_empty() {
             return Err(CompileError::new(
                 CompileErrorKind::ExpectedSymbol {
@@ -112,6 +115,19 @@ mod tests {
 
         for form in cases {
             assert!(CompileState::symbol_name_info(&form, "name").is_err());
+        }
+    }
+
+    #[test]
+    fn symbol_name_info_accepts_uninterned_names_and_preserves_escaping() {
+        for (source, expected, escaped) in [
+            ("#:temporary", "#:TEMPORARY", false),
+            ("#:|Temporary|", "#:Temporary", true),
+        ] {
+            assert_eq!(
+                CompileState::symbol_name_info(&atom(source), "name"),
+                Ok((expected.to_string(), escaped))
+            );
         }
     }
 

@@ -32,7 +32,7 @@ pub fn float_quotient_and_remainder(
     clippy::float_cmp,
     reason = "round-to-even requires distinguishing an exact half"
 )]
-pub(super) fn round_float(value: f64) -> f64 {
+pub(crate) fn round_float(value: f64) -> f64 {
     let truncated = value.trunc();
     let fraction = (value - truncated).abs();
     if fraction > 0.5 || (fraction == 0.5 && truncated % 2.0 != 0.0) {
@@ -46,7 +46,7 @@ pub(super) fn round_float(value: f64) -> f64 {
     clippy::cast_possible_truncation,
     reason = "the finite range check guarantees that the conversion fits in i64"
 )]
-pub(super) fn float_integer(value: f64) -> Result<i64, RuntimeError> {
+pub(crate) fn float_integer(value: f64) -> Result<i64, RuntimeError> {
     if !value.is_finite()
         || !(-9_223_372_036_854_775_808.0..9_223_372_036_854_775_808.0).contains(&value)
     {

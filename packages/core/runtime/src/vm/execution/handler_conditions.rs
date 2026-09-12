@@ -34,11 +34,9 @@ pub(super) fn execute_handler_case_instruction(
     drop(guard);
     match protected_result {
         Ok(value) => stack.push(value),
-        Err(
-            error @ (RuntimeError::ReturnFrom { .. }
-            | RuntimeError::Go { .. }
-            | RuntimeError::InvokeRestart { .. }),
-        ) => return Err(error),
+        Err(error @ (RuntimeError::ReturnFrom { .. } | RuntimeError::Go { .. })) => {
+            return Err(error);
+        }
         Err(error) => {
             let Some(clause) = clauses
                 .iter()
@@ -113,6 +111,7 @@ pub(super) fn execute_handler_bind_instruction(
         Err(error) => {
             let Some(handler) = handlers
                 .iter()
+                .rev()
                 .find(|handler| error.matches_condition(&handler.condition))
             else {
                 return Err(error);

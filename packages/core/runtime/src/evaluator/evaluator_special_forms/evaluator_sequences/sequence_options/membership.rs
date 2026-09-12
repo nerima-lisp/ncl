@@ -20,6 +20,7 @@ pub fn parse_list_membership_options(
     for pair in options.as_chunks::<2>().0 {
         let keyword_name = match &pair[0] {
             Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
+            Value::InternedSymbol(symbol) if symbol.keyword() => normalize_name(symbol.name()),
             _ => {
                 return Err(Runtime::invalid(
                     "list membership keyword argument name must be a keyword",
@@ -77,6 +78,7 @@ pub fn parse_association_search_options(
     for pair in options.as_chunks::<2>().0 {
         let keyword_name = match &pair[0] {
             Value::Keyword(keyword) | Value::KeywordExact(keyword) => normalize_name(keyword),
+            Value::InternedSymbol(symbol) if symbol.keyword() => normalize_name(symbol.name()),
             _ => {
                 return Err(Runtime::invalid(
                     "association search keyword argument name must be a keyword",

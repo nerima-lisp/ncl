@@ -44,7 +44,7 @@ Macro expansion is available in both routes. The Rust API exposes the same
 boundary through <code>eval_compiled</code> and
 <code>eval_compiled_source</code> for embedding applications. The compiler is
 an execution backend for the current language surface; it is not an
-implementation of SBCL's optimizing compiler.
+implementation of an optimizing compiler for another runtime.
 
 ## Packages and macros
 
@@ -63,7 +63,7 @@ compiled route.
 ## Supported language surface
 
 The project documents behavior that is implemented and tested locally. It does
-not provide a backward-compatibility layer or claim whole-program SBCL
-compatibility. See the [compatibility reference](../reference/compatibility.md)
+not provide a backward-compatibility layer or claim whole-program
+compatibility with another implementation. See the [compatibility reference](../reference/compatibility.md)
 for the current feature boundary and the [roadmap](../project/roadmap.md) for
 planned work.

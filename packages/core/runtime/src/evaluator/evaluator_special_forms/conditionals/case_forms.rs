@@ -2,7 +2,6 @@ use ncl_syntax::{Form, FormKind};
 
 use crate::builtins;
 use crate::evaluator::helpers::is_case_default_form;
-use crate::evaluator::quoted_form_value;
 use crate::{Environment, Runtime, RuntimeError, Value};
 
 impl Runtime {
@@ -74,7 +73,7 @@ impl Runtime {
             }
 
             let matches = if type_case {
-                builtins::typep_value(&key, &quoted_form_value(&parts[0])?)?
+                builtins::typep_value(&key, &self.runtime_quoted_value(&parts[0])?)?
             } else {
                 let keys = match &parts[0].kind {
                     FormKind::List(keys) => keys.as_slice(),
@@ -82,7 +81,8 @@ impl Runtime {
                 };
                 keys.iter()
                     .try_fold(false, |matched, key_form| -> Result<bool, RuntimeError> {
-                        Ok(matched || builtins::eql_value(&key, &quoted_form_value(key_form)?))
+                        Ok(matched
+                            || builtins::eql_value(&key, &self.runtime_quoted_value(key_form)?))
                     })?
             };
             if matches {

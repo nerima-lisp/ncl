@@ -8,9 +8,9 @@ impl Runtime {
         items: &[Form],
         environment: &Environment,
     ) -> Result<Value, RuntimeError> {
-        if items.len() < 4 {
+        if items.len() < 3 {
             return Err(Self::invalid(
-                "defmacro needs a name, parameters, and a body",
+                "defmacro needs a name and parameters",
                 items[0].span,
             ));
         }

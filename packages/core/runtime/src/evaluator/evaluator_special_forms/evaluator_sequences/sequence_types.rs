@@ -138,6 +138,8 @@ pub(super) struct ListSetOptions {
 
 pub(super) struct ListSetContext<'a> {
     pub(super) operation: &'a str,
+    pub(super) first: &'a Value,
+    pub(super) second: &'a Value,
     pub(super) first_items: &'a [Value],
     pub(super) second_items: &'a [Value],
     pub(super) first_keys: &'a [Value],

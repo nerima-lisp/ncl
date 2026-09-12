@@ -28,18 +28,7 @@ pub(in crate::builtins::types::type_matching) fn cons_type_matches(
 
 fn cons_parts(value: &Value) -> Option<(Value, Value)> {
     match value {
-        Value::List(items) if !items.is_empty() => {
-            let items = items.as_ref();
-            let tail = if items.len() == 1 {
-                Value::Nil
-            } else {
-                Value::list(items[1..].to_vec())
-            };
-            Some((items[0].clone(), tail))
-        }
-        Value::DottedList { items, tail } if !items.is_empty() => {
-            Some((items[0].clone(), (*tail).as_ref().clone()))
-        }
+        Value::Cons(cell) => Some((cell.car(), cell.cdr())),
         _ => None,
     }
 }
@@ -85,6 +74,18 @@ pub(in crate::builtins::types::type_matching) fn simple_vector_type_matches(
     let Some(items) = value.vector_items() else {
         return Ok(false);
     };
+    let Some(storage) = value.array_storage() else {
+        return Ok(false);
+    };
+    if storage.has_fill_pointer() || storage.is_adjustable() || storage.is_displaced() {
+        return Ok(false);
+    }
+    if !matches!(
+        storage.element_type(),
+        Value::Symbol(symbol) if symbol.eq_ignore_ascii_case("T")
+    ) {
+        return Ok(false);
+    }
     Ok(expected_size.is_none_or(|size| size == items.len()))
 }
 
@@ -109,7 +110,7 @@ pub(in crate::builtins::types::type_matching) fn bit_vector_type_matches(
 }
 
 pub(in crate::builtins::types::type_matching) fn is_bit_vector_value(value: &Value) -> bool {
-    matches!(value, Value::Vector(items) if items.iter().all(is_bit_value))
+    matches!(value, Value::Vector(items) if items.snapshot().iter().all(is_bit_value))
 }
 
 pub(in crate::builtins::types::type_matching) const fn is_bit_value(value: &Value) -> bool {

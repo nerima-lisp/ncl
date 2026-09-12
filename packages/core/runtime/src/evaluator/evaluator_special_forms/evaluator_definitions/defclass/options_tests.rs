@@ -51,6 +51,19 @@ mod tests {
     }
 
     #[test]
+    fn defclass_rejects_an_unsupported_class_option() {
+        let error = eval_err("(defclass unsupported-option-class () () (:metaclass custom))");
+        assert!(error.to_string().contains("unsupported defclass metaclass"));
+    }
+
+    #[test]
+    fn defclass_accepts_standard_class_metaclass() {
+        Runtime::new()
+            .eval_source("(defclass standard-metaclass-class () () (:metaclass standard-class))")
+            .unwrap_or_else(|error| panic!("standard-class should be accepted: {error}"));
+    }
+
+    #[test]
     fn defclass_object_superclass_is_folded_into_standard_object() {
         let values = Runtime::new()
             .eval_source("(defclass object-rooted-class (object) ())")
@@ -58,5 +71,30 @@ mod tests {
                 panic!("OBJECT must be accepted as an explicit superclass alias: {error}")
             });
         assert_eq!(values[0].to_string(), "OBJECT-ROOTED-CLASS");
+    }
+
+    #[test]
+    fn defclass_uses_c3_linearization_for_diamond_inheritance() {
+        let values = Runtime::new()
+            .eval_source(
+                "(defclass cpl-a () ())
+                 (defclass cpl-b (cpl-a) ())
+                 (defclass cpl-c (cpl-a) ())
+                 (defclass cpl-d (cpl-b cpl-c) ())
+                 (mapcar #'class-name (class-precedence-list (find-class 'cpl-d)))",
+            )
+            .unwrap_or_else(|error| panic!("diamond inheritance should compute a CPL: {error}"));
+        assert_eq!(
+            values.last().unwrap().to_string(),
+            "(CPL-D CPL-B CPL-C CPL-A STANDARD-OBJECT)"
+        );
+    }
+
+    #[test]
+    fn defclass_accepts_empty_default_initargs() {
+        let values = Runtime::new()
+            .eval_source("(defclass empty-default-initargs () () (:default-initargs))")
+            .unwrap_or_else(|error| panic!("empty :default-initargs should be accepted: {error}"));
+        assert_eq!(values[0].to_string(), "EMPTY-DEFAULT-INITARGS");
     }
 }

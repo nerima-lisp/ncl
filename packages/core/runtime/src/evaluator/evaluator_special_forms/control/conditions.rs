@@ -64,7 +64,7 @@ impl Runtime {
                 Self::variable_name_info(variable, "handler-case condition variable")?;
             }
             handlers.push(ConditionHandlerBinding {
-                condition,
+                condition: condition.into(),
                 function: None,
                 catch: true,
             });
@@ -75,11 +75,9 @@ impl Runtime {
         drop(guard);
         let protected = match protected_result {
             Ok(value) => return Ok(value),
-            Err(
-                error @ (RuntimeError::ReturnFrom { .. }
-                | RuntimeError::Go { .. }
-                | RuntimeError::InvokeRestart { .. }),
-            ) => return Err(error),
+            Err(error @ (RuntimeError::ReturnFrom { .. } | RuntimeError::Go { .. })) => {
+                return Err(error);
+            }
             Err(error) => error,
         };
 

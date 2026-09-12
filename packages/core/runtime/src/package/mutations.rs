@@ -1,5 +1,6 @@
-use super::names::{canonical_symbol_name, normalize_symbol_name};
+use super::names::{canonical_symbol_name, normalize_package_name, normalize_symbol_name};
 use super::{KEYWORD_PACKAGE, PackageState, SymbolStatus};
+use crate::value::SymbolObject;
 
 impl PackageState {
     pub(crate) fn intern_symbol(&mut self, package: &str, name: &str) -> Option<SymbolStatus> {
@@ -7,7 +8,43 @@ impl PackageState {
         let name = normalize_symbol_name(name);
         self.packages.get_mut(&package).map(|entry| {
             entry.symbols.insert(name.clone());
+            entry.symbol_objects.entry(name.clone()).or_insert_with(|| {
+                SymbolObject::new(
+                    name.clone(),
+                    entry.object.clone(),
+                    false,
+                    package == KEYWORD_PACKAGE,
+                )
+            });
             if package == KEYWORD_PACKAGE || entry.exports.contains(&name) {
+                SymbolStatus::External
+            } else {
+                SymbolStatus::Internal
+            }
+        })
+    }
+
+    pub(crate) fn intern_exact_symbol(
+        &mut self,
+        package: &str,
+        name: &str,
+    ) -> Option<SymbolStatus> {
+        let package = self.canonical_package_name(package);
+        self.packages.get_mut(&package).map(|entry| {
+            entry.exact_symbols.insert(name.to_string());
+            entry.symbols.insert(name.to_string());
+            entry
+                .exact_symbol_objects
+                .entry(name.to_string())
+                .or_insert_with(|| {
+                    SymbolObject::new(
+                        name.to_string(),
+                        entry.object.clone(),
+                        true,
+                        package == KEYWORD_PACKAGE,
+                    )
+                });
+            if package == KEYWORD_PACKAGE || entry.exports.contains(name) {
                 SymbolStatus::External
             } else {
                 SymbolStatus::Internal
@@ -19,7 +56,15 @@ impl PackageState {
         let package = self.canonical_package_name(package);
         let name = normalize_symbol_name(name);
         if let Some(entry) = self.packages.get_mut(&package) {
-            entry.symbols.insert(name);
+            entry.symbols.insert(name.clone());
+            entry.symbol_objects.entry(name.clone()).or_insert_with(|| {
+                SymbolObject::new(
+                    name.clone(),
+                    entry.object.clone(),
+                    false,
+                    package == KEYWORD_PACKAGE,
+                )
+            });
         }
     }
 
@@ -51,12 +96,32 @@ impl PackageState {
         let source_package = self.canonical_package_name(source_package);
         let source_name = normalize_symbol_name(source_name);
         let target = self.canonical_package_name(target);
+        let source_symbol = self.packages.get_mut(&source_package).map(|entry| {
+            entry.symbols.insert(source_name.clone());
+            entry
+                .symbol_objects
+                .entry(source_name.clone())
+                .or_insert_with(|| {
+                    SymbolObject::new(
+                        source_name.clone(),
+                        entry.object.clone(),
+                        false,
+                        source_package == KEYWORD_PACKAGE,
+                    )
+                })
+                .clone()
+        });
         if let Some(entry) = self.packages.get_mut(&target) {
             entry.symbols.insert(source_name.clone());
             entry.imports.insert(
                 source_name.clone(),
                 canonical_symbol_name(&source_package, &source_name),
             );
+            if let Some(source_symbol) = source_symbol {
+                entry
+                    .import_objects
+                    .insert(source_name.clone(), source_symbol);
+            }
             if shadowing {
                 entry.shadows.insert(source_name);
             } else {
@@ -71,6 +136,15 @@ impl PackageState {
         if let Some(entry) = self.packages.get_mut(&package) {
             entry.symbols.insert(name.clone());
             entry.imports.remove(&name);
+            entry.import_objects.remove(&name);
+            entry.symbol_objects.entry(name.clone()).or_insert_with(|| {
+                SymbolObject::new(
+                    name.clone(),
+                    entry.object.clone(),
+                    false,
+                    package == KEYWORD_PACKAGE,
+                )
+            });
             entry.shadows.insert(name);
         }
     }
@@ -87,10 +161,25 @@ impl PackageState {
             let removed_from_exports = entry.exports.remove(&name);
             let removed_from_imports = entry.imports.remove(&name).is_some();
             let removed_from_shadows = entry.shadows.remove(&name);
+            entry.symbol_objects.remove(&name);
+            entry.import_objects.remove(&name);
             removed_from_symbols
                 || removed_from_exports
                 || removed_from_imports
                 || removed_from_shadows
+        })
+    }
+
+    pub(crate) fn unintern_exact_symbol(&mut self, package: &str, name: &str) -> bool {
+        let package = self.canonical_package_name(package);
+        self.packages.get_mut(&package).is_some_and(|entry| {
+            let removed = entry.exact_symbols.remove(name);
+            if removed {
+                entry.symbols.remove(name);
+                entry.exact_symbol_objects.remove(name);
+                entry.symbol_objects.remove(&normalize_symbol_name(name));
+            }
+            removed
         })
     }
 
@@ -100,7 +189,18 @@ impl PackageState {
             for symbol in symbols {
                 let symbol = normalize_symbol_name(symbol);
                 entry.symbols.insert(symbol.clone());
-                entry.exports.insert(symbol);
+                entry.exports.insert(symbol.clone());
+                entry
+                    .symbol_objects
+                    .entry(symbol.clone())
+                    .or_insert_with(|| {
+                        SymbolObject::new(
+                            symbol,
+                            entry.object.clone(),
+                            false,
+                            package == KEYWORD_PACKAGE,
+                        )
+                    });
             }
         }
     }

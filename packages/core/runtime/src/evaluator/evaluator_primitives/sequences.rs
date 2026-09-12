@@ -10,7 +10,45 @@ impl Runtime {
         environment: &Environment,
         span: Span,
     ) -> Option<Result<Value, RuntimeError>> {
-        self.apply_sequence_mutation_primitive(name, arguments, environment, span)
+        if let Some(index) = matches!(
+            name,
+            "FIRST"
+                | "SECOND"
+                | "THIRD"
+                | "FOURTH"
+                | "FIFTH"
+                | "SIXTH"
+                | "SEVENTH"
+                | "EIGHTH"
+                | "NINTH"
+                | "TENTH"
+        )
+        .then(|| match name {
+            "FIRST" => 0,
+            "SECOND" => 1,
+            "THIRD" => 2,
+            "FOURTH" => 3,
+            "FIFTH" => 4,
+            "SIXTH" => 5,
+            "SEVENTH" => 6,
+            "EIGHTH" => 7,
+            "NINTH" => 8,
+            "TENTH" => 9,
+            _ => unreachable!(),
+        }) {
+            return Some(match arguments {
+                [sequence] => crate::builtins::nth(&[Value::Integer(index), sequence.clone()]),
+                _ => Err(Self::arity(
+                    &name.to_ascii_lowercase(),
+                    "one",
+                    arguments.len(),
+                )),
+            });
+        }
+        self.apply_tree_primitive(name, arguments, environment, span)
+            .or_else(|| self.apply_tree_substitution_primitive(name, arguments, environment, span))
+            .or_else(|| self.apply_list_topology_primitive(name, arguments, span))
+            .or_else(|| self.apply_sequence_mutation_primitive(name, arguments, environment, span))
             .or_else(|| self.apply_sequence_set_primitive(name, arguments, environment, span))
             .or_else(|| self.apply_sequence_search_primitive(name, arguments, environment, span))
     }

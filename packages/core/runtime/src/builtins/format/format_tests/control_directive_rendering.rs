@@ -56,6 +56,8 @@ fn formats_tab_directive_from_table_cases() {
         ("~5,4T", "abcdefgh", "abcdefgh "),
         ("~0,0T", "abcdefgh", "abcdefgh"),
         ("~:T", "abc", "abc"),
+        ("~5:T", "abc", "abc"),
+        ("~5:T", "abcde", "abcde"),
         ("~5,4T", "ab\ncd", "ab\ncd   "),
     ];
 
@@ -120,6 +122,12 @@ fn renders_simple_directives_from_table_cases() {
         ("~:C", vec![Value::Character(' ')], "Space"),
         ("~_", vec![], ""),
         ("~*~A", vec![Value::Integer(1), Value::Integer(2)], "2"),
+        (
+            "~2@*~A",
+            vec![Value::Integer(0), Value::Integer(1), Value::Integer(2)],
+            "2",
+        ),
+        ("~@*~A", vec![Value::Integer(0), Value::Integer(1)], "0"),
         ("~P", vec![Value::Integer(2)], "s"),
         ("~@P", vec![Value::Integer(2)], "ies"),
     ];
@@ -127,6 +135,32 @@ fn renders_simple_directives_from_table_cases() {
     for (control, arguments, expected) in cases {
         assert_eq!(render(control, arguments), expected, "control: {control}");
     }
+}
+
+#[test]
+fn moves_format_argument_cursor_with_star_modifiers() {
+    assert_eq!(
+        render(
+            "~A~*~A",
+            vec![Value::string("a"), Value::string("b"), Value::string("c")]
+        ),
+        "ac"
+    );
+    assert_eq!(
+        render("~A~:*~A", vec![Value::string("a"), Value::string("b")]),
+        "aa"
+    );
+    assert_eq!(
+        render("~A~@*~A", vec![Value::string("a"), Value::string("b")]),
+        "aa"
+    );
+    assert_eq!(
+        render(
+            "~A~1@*~A",
+            vec![Value::string("a"), Value::string("b"), Value::string("c")]
+        ),
+        "ab"
+    );
 }
 
 #[test]

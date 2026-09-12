@@ -3,6 +3,7 @@ use crate::builtins::types::type_matching::spec_utils::{
     invalid_type_spec, is_type_wildcard, require_type_spec_arity,
 };
 use crate::{RuntimeError, Value};
+use ibig::IBig;
 
 pub(in crate::builtins::types::type_matching) fn integer_type_matches(
     function: &str,
@@ -20,21 +21,25 @@ pub(in crate::builtins::types::type_matching) fn integer_type_matches(
         .map(|bound| integer_type_bound(function, bound))
         .transpose()?
         .flatten();
-    let Value::Integer(number) = value else {
-        return Ok(false);
+    let number = match value {
+        Value::Integer(number) => IBig::from(*number),
+        Value::BigInteger(number) => number.as_ref().clone(),
+        _ => return Ok(false),
     };
-    Ok(lower.is_none_or(|bound| *number >= bound) && upper.is_none_or(|bound| *number <= bound))
+    Ok(lower.as_ref().is_none_or(|bound| &number >= bound)
+        && upper.as_ref().is_none_or(|bound| &number <= bound))
 }
 
 pub(in crate::builtins::types) fn integer_type_bound(
     function: &str,
     value: &Value,
-) -> Result<Option<i64>, RuntimeError> {
+) -> Result<Option<IBig>, RuntimeError> {
     if is_type_wildcard(value) {
         return Ok(None);
     }
     match value {
-        Value::Integer(bound) => Ok(Some(*bound)),
+        Value::Integer(bound) => Ok(Some(IBig::from(*bound))),
+        Value::BigInteger(bound) => Ok(Some(bound.as_ref().clone())),
         value => Err(type_error(function, "integer or *", value)),
     }
 }

@@ -17,6 +17,20 @@ impl Runtime {
             .collect()
     }
 
+    pub(in crate::evaluator) fn package_nickname_names_from_value(
+        &self,
+        value: &Value,
+        span: Span,
+    ) -> Result<Vec<String>, RuntimeError> {
+        let values = value
+            .list_items()
+            .ok_or_else(|| Self::invalid("package nicknames must be a proper list", span))?;
+        values
+            .iter()
+            .map(|value| Self::package_designator_name(value, span))
+            .collect()
+    }
+
     pub(in crate::evaluator) fn symbol_names_from_value(
         value: &Value,
         span: Span,
@@ -27,6 +41,46 @@ impl Runtime {
         values
             .iter()
             .map(|value| Self::symbol_name_from_value(value, span))
+            .collect()
+    }
+
+    pub(in crate::evaluator) fn symbol_references_from_value(
+        &self,
+        value: &Value,
+        span: Span,
+    ) -> Result<Vec<(String, bool)>, RuntimeError> {
+        let values = if matches!(value, Value::Nil | Value::Boolean(false)) {
+            vec![value.clone()]
+        } else {
+            value.list_items().unwrap_or_else(|| vec![value.clone()])
+        };
+        values
+            .iter()
+            .map(|value| {
+                let (raw, exact) = match value {
+                    Value::String(name) => (name.to_string(), false),
+                    value => value.symbol_reference().ok_or_else(|| RuntimeError::Type {
+                        expected: "SYMBOL".to_string(),
+                        actual: value.type_name().to_string(),
+                        span: Some(span),
+                    })?,
+                };
+                let raw = raw.strip_prefix(':').unwrap_or(&raw);
+                if exact {
+                    let name = package::split_symbol(raw)
+                        .map(|(_, symbol_name, _)| symbol_name)
+                        .unwrap_or(raw);
+                    if name.is_empty() || name.contains(':') {
+                        return Err(Self::invalid(
+                            "qualified symbol designators are not supported here",
+                            span,
+                        ));
+                    }
+                    Ok((name.to_string(), true))
+                } else {
+                    Ok((Self::symbol_name_from_value(value, span)?, false))
+                }
+            })
             .collect()
     }
 
@@ -43,6 +97,15 @@ impl Runtime {
             .map(|value| {
                 if matches!(value, Value::UninternedSymbol(_)) {
                     return Err(Self::invalid("uninterned symbols cannot be imported", span));
+                }
+                if let Value::InternedSymbol(symbol) = value {
+                    let package_name = symbol.package().name().ok_or_else(|| {
+                        Self::invalid("symbols from deleted packages cannot be imported", span)
+                    })?;
+                    return Ok((
+                        package::normalize_package_name(&package_name),
+                        package::normalize_symbol_name(symbol.name()),
+                    ));
                 }
                 let raw = value.symbol_name().ok_or_else(|| RuntimeError::Type {
                     expected: "SYMBOL".to_string(),
@@ -71,15 +134,29 @@ impl Runtime {
         package_name: &str,
         symbol_name: &str,
     ) -> Value {
-        let package_name = self.packages.borrow().canonical_package_name(package_name);
+        let (package_name, symbol_object, exact_name, imported_name) = {
+            let packages = self.packages.borrow();
+            let package_name = packages.canonical_package_name(package_name);
+            let symbol_object = packages.symbol_object_for(&package_name, symbol_name);
+            let exact_name = packages.exact_symbol_name(&package_name, symbol_name);
+            let imported_name = packages.imported_symbol_name(&package_name, symbol_name);
+            (package_name, symbol_object, exact_name, imported_name)
+        };
+        if let Some(symbol_object) = symbol_object {
+            return Value::interned_symbol(symbol_object);
+        }
+        if let Some(exact_name) = exact_name {
+            let exact_name = package::canonical_exact_symbol_name(&package_name, &exact_name);
+            return if package_name == package::KEYWORD_PACKAGE {
+                Value::keyword_exact(exact_name)
+            } else {
+                Value::symbol_exact(exact_name)
+            };
+        }
         if package_name == package::KEYWORD_PACKAGE {
             Value::keyword(symbol_name)
         } else {
-            let symbol_name = self
-                .packages
-                .borrow()
-                .imported_symbol_name(&package_name, symbol_name);
-            Value::symbol(symbol_name)
+            Value::symbol(imported_name)
         }
     }
 
@@ -92,73 +169,4 @@ impl Runtime {
 }
 
 #[cfg(test)]
-mod tests {
-    use ncl_syntax::Span;
-
-    use crate::{Runtime, Value};
-
-    const SPAN: Span = Span::new(0, 1);
-
-    fn valid<T, E>(result: Result<T, E>) -> T {
-        result.unwrap_or_else(|_| panic!("expected a valid designator list"))
-    }
-
-    #[test]
-    fn package_and_symbol_lists_are_table_driven() {
-        let runtime = Runtime::new();
-        let packages = Value::list(vec![
-            Value::String("ncl-user".into()),
-            Value::symbol("keyword"),
-        ]);
-        assert_eq!(
-            valid(runtime.package_names_from_value(&packages, SPAN)),
-            ["NCL-USER", "KEYWORD"]
-        );
-
-        let symbols = Value::list(vec![Value::symbol("one"), Value::keyword("two")]);
-        assert_eq!(
-            valid(Runtime::symbol_names_from_value(&symbols, SPAN)),
-            ["ONE", "TWO"]
-        );
-
-        let invalid = Value::Integer(1);
-        assert!(runtime.package_names_from_value(&invalid, SPAN).is_err());
-        assert!(Runtime::symbol_names_from_value(&invalid, SPAN).is_err());
-    }
-
-    #[test]
-    fn import_references_resolve_keyword_qualified_and_current_symbols() {
-        let runtime = Runtime::new();
-        let references = Value::list(vec![
-            Value::keyword("key"),
-            Value::symbol("common-lisp:car"),
-            Value::symbol("local"),
-        ]);
-        assert_eq!(
-            valid(runtime.symbol_import_references_from_value(&references, SPAN)),
-            [
-                ("KEYWORD".into(), "KEY".into()),
-                ("COMMON-LISP".into(), "CAR".into()),
-                ("NCL-USER".into(), "LOCAL".into())
-            ]
-        );
-        assert!(
-            runtime
-                .symbol_import_references_from_value(&Value::Integer(1), SPAN)
-                .is_err()
-        );
-        assert!(
-            runtime
-                .symbol_import_references_from_value(
-                    &Value::list(vec![Value::UninternedSymbol("x".into())]),
-                    SPAN
-                )
-                .is_err()
-        );
-        assert!(
-            runtime
-                .symbol_import_references_from_value(&Value::list(vec![Value::Integer(1)]), SPAN)
-                .is_err()
-        );
-    }
-}
+mod tests;

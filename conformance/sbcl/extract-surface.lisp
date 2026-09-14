@@ -40,8 +40,10 @@
                 (yes/no (fboundp symbol)) #\Tab (yes/no (boundp symbol)) #\Tab
                 (yes/no (safe-find-class symbol)) #\Tab (safe-type-kind symbol)))
     (error (condition)
-      (format nil "~A~C~A~Cerror~C~A~%" (package-name package) #\Tab
-              (symbol-name symbol) #\Tab #\Tab condition))))
+      (format nil "~A~C~A~Cerror~Cno~Cno~Cno~Cno~Cno~Cno~Cno~Cno~Cno~Cno~C~A~%"
+              (package-name package) #\Tab (symbol-name symbol) #\Tab
+              #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab
+              condition))))
 (defparameter *header*
   (format nil "package~Csymbol~Cfunction~Cmacro~Cspecial-operator~Cvariable~Cconstant~Ctype~Cclass~Ccondition~Cfboundp~Cboundp~Cfind-class~Csb-int-type-kind~%"
           #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab #\Tab))

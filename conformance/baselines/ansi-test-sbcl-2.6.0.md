@@ -1,13 +1,214 @@
-再現コマンド: `sbcl --noinform --disable-debugger --userinit /dev/null --load doit.lsp`
+再現コマンド: `sbcl --noinform --userinit /dev/null --load doit.lsp --eval '(sb-ext:exit)' < /dev/null`
 
 # ansi-test on SBCL 2.6.0
 
 - 測定日: 2026-09-15
 - リポジトリ: ansi-test `ca06bd919661af162c67407c9d994e881870bdb3`
-- 全走行対象: 21,942 pending tests
-- 結果: 完走せず、合格・失敗・未対応の確定集計なし
-- 中断箇所: `INVOKE-DEBUGGER.1`
-- 中断理由: テストハーネスが `No format-control for ~S` の `SIMPLE-ERROR` を発生
-- 壁時計時間: 3.295 秒（SBCL の `TIME` 出力）
+- 全走行対象: 21,942 tests
+- 結果: 合格 21,768、失敗 174、未実行 0
+- 壁時計時間: 19.414 秒（ハーネスの `Evaluation took`）
 
-章ごとの完走内訳と失敗テスト名一覧は、ハーネスが中断したため確定できません。走行ログには中断までにロードされたテスト名が出力されています。
+174 件は assertion failure として完走後に報告された。`--disable-debugger` と `--non-interactive` は使用していない。
+
+## 章別失敗件数
+
+| 章 | 失敗件数 |
+| --- | ---: |
+| characters | 3 |
+| conditions | 2 |
+| cons | 1 |
+| data-and-control-flow | 4 |
+| environment | 2 |
+| eval-and-compile | 1 |
+| hash-tables | 4 |
+| iteration | 5 |
+| numbers | 9 |
+| objects | 3 |
+| packages | 1 |
+| pathnames | 3 |
+| printer | 19 |
+| printer/format | 46 |
+| sequences | 29 |
+| streams | 5 |
+| strings | 33 |
+| symbols | 1 |
+| system-construction | 1 |
+| types-and-classes | 2 |
+| **合計** | **174** |
+
+## 失敗テスト名
+
+- `MAKE-SYMBOL.11`
+- `DEFINE-COMPILER-MACRO.8`
+- `DESTRUCTURING-BIND.ERROR.10`
+- `EQUAL.13`
+- `EQUAL.14`
+- `MACROLET.36`
+- `LOOP.1.39`
+- `LOOP.1.40`
+- `LOOP.1.41`
+- `LOOP.1.42`
+- `LOOP.1.43`
+- `MAKE-LOAD-FORM.ORDER.14`
+- `FIND-CLASS.24`
+- `DEFINE-METHOD-COMBINATION-LONG.11.4`
+- `MAKE-CONDITION.3`
+- `MAKE-CONDITION.4`
+- `UNION.FOLD.1`
+- `SXHASH.8`
+- `SXHASH.17`
+- `SXHASH.18`
+- `SXHASH.19`
+- `INTERN.3`
+- `EXP.ERROR.8`
+- `EXP.ERROR.9`
+- `EXP.ERROR.10`
+- `EXP.ERROR.11`
+- `EXPT.ERROR.8`
+- `EXPT.ERROR.9`
+- `EXPT.ERROR.10`
+- `EXPT.ERROR.11`
+- `PARSE-INTEGER.21`
+- `MAP.48`
+- `SUBSTITUTE.FOLD.1`
+- `SUBSTITUTE.FOLD.2`
+- `SUBSTITUTE.FOLD.3`
+- `SUBSTITUTE.FOLD.4`
+- `SUBSTITUTE-IF.FOLD.1`
+- `SUBSTITUTE-IF.FOLD.2`
+- `SUBSTITUTE-IF.FOLD.3`
+- `SUBSTITUTE-IF.FOLD.4`
+- `SUBSTITUTE-IF-NOT.FOLD.1`
+- `SUBSTITUTE-IF-NOT.FOLD.2`
+- `SUBSTITUTE-IF-NOT.FOLD.3`
+- `SUBSTITUTE-IF-NOT.FOLD.4`
+- `REMOVE.FOLD.1`
+- `REMOVE.FOLD.2`
+- `REMOVE.FOLD.3`
+- `REMOVE.FOLD.4`
+- `REMOVE-IF.FOLD.1`
+- `REMOVE-IF.FOLD.2`
+- `REMOVE-IF.FOLD.3`
+- `REMOVE-IF.FOLD.4`
+- `REMOVE-IF-NOT.FOLD.1`
+- `REMOVE-IF-NOT.FOLD.2`
+- `REMOVE-IF-NOT.FOLD.3`
+- `REMOVE-IF-NOT.FOLD.4`
+- `REMOVE-DUPLICATES.FOLD.1`
+- `REMOVE-DUPLICATES.FOLD.2`
+- `REMOVE-DUPLICATES.FOLD.3`
+- `REMOVE-DUPLICATES.FOLD.4`
+- `SUBTYPEP.CONS.44`
+- `SUBTYPEP-COMPLEX.8`
+- `STRING.8`
+- `STRING.9`
+- `STRING.10`
+- `STRING.12`
+- `STRING.13`
+- `SIMPLE-STRING.11`
+- `SIMPLE-STRING.12`
+- `SIMPLE-STRING.13`
+- `SIMPLE-STRING-P.8`
+- `SIMPLE-STRING-P.9`
+- `STRINGP.9`
+- `STRINGP.10`
+- `STRING-UPCASE.11`
+- `STRING-DOWNCASE.11`
+- `STRING-CAPITALIZE.11`
+- `NSTRING-UPCASE.11`
+- `NSTRING-DOWNCASE.11`
+- `NSTRING-CAPITALIZE.12`
+- `STRING-TRIM.20`
+- `STRING-LEFT-TRIM.20`
+- `STRING-RIGHT-TRIM.20`
+- `STRING=.NIL-ARRAY.1`
+- `STRING/=.NIL-ARRAY.1`
+- `STRING<.NIL-ARRAY.1`
+- `STRING<=.NIL-ARRAY.1`
+- `STRING>.NIL-ARRAY.1`
+- `STRING>=.NIL-ARRAY.1`
+- `STRING-EQUAL.NIL-ARRAY.1`
+- `STRING-NOT-EQUAL.NIL-ARRAY.1`
+- `STRING-LESSP.NIL-ARRAY.1`
+- `STRING-NOT-GREATERP.NIL-ARRAY.1`
+- `STRING-GREATERP.NIL-ARRAY.1`
+- `STRING-NOT-LESSP.NIL-ARRAY.1`
+- `CHAR-UPCASE.2`
+- `CHAR-DOWNCASE.2`
+- `BOTH-CASE-P.2`
+- `MAKE-PATHNAME-ERROR-ABSOLUTE-WILD-INFERIORS-BACK`
+- `MAKE-PATHNAME-ERROR-RELATIVE-WILD-INFERIORS-BACK`
+- `LOGICAL-PATHNAME.ERROR.9`
+- `WRITE-STRING.2`
+- `WRITE-LINE.2`
+- `MAKE-STRING-INPUT-STREAM.10`
+- `MAKE-STRING-OUTPUT-STREAM.12`
+- `WITH-INPUT-FROM-STRING.10`
+- `PRINT.STRING.NIL.1`
+- `PRINT.STRING.NIL.2`
+- `PRINT.BACKQUOTE.RANDOM.1`
+- `PRINT.BACKQUOTE.RANDOM.2`
+- `PRINT.BACKQUOTE.RANDOM.3`
+- `PRINT.BACKQUOTE.RANDOM.4`
+- `PRINT.BACKQUOTE.RANDOM.5`
+- `PRINT.BACKQUOTE.RANDOM.10`
+- `PRINT.BACKQUOTE.RANDOM.11`
+- `PRINT.BACKQUOTE.RANDOM.13`
+- `PRINT.BACKQUOTE.RANDOM.14`
+- `PRINT.ARRAY.LEVEL.8`
+- `PPRINT-LOGICAL-BLOCK.7`
+- `PPRINT-LOGICAL-BLOCK.ERROR.1`
+- `PPRINT-LOGICAL-BLOCK.ERROR.1-UNSAFE`
+- `PPRINT-LOGICAL-BLOCK.ERROR.3`
+- `PPRINT-LOGICAL-BLOCK.ERROR.3-UNSAFE`
+- `PRINT-LEVEL.8`
+- `PRINT-LEVEL.9`
+- `FORMAT.R.37`
+- `FORMATTER.R.37`
+- `FORMAT.R.38`
+- `FORMATTER.R.38`
+- `FORMAT.D.27`
+- `FORMATTER.D.27`
+- `FORMAT.D.28`
+- `FORMATTER.D.28`
+- `FORMAT.D.29`
+- `FORMATTER.D.29`
+- `FORMAT.B.27`
+- `FORMATTER.B.27`
+- `FORMAT.B.28`
+- `FORMATTER.B.28`
+- `FORMAT.B.29`
+- `FORMATTER.B.29`
+- `FORMAT.O.27`
+- `FORMATTER.O.27`
+- `FORMAT.O.28`
+- `FORMATTER.O.28`
+- `FORMAT.O.29`
+- `FORMATTER.O.29`
+- `FORMAT.X.27`
+- `FORMATTER.X.27`
+- `FORMAT.X.28`
+- `FORMATTER.X.28`
+- `FORMAT.X.29`
+- `FORMATTER.X.29`
+- `FORMAT.F.5`
+- `FORMAT.F.8`
+- `FORMAT.F.45`
+- `FORMATTER.F.45`
+- `FORMAT.F.46`
+- `FORMATTER.F.46`
+- `FORMAT.F.46B`
+- `FORMATTER.F.46B`
+- `FORMAT.E.1`
+- `FORMAT.E.2`
+- `FORMAT.E.26`
+- `FORMAT.A.29`
+- `FORMAT.A.57`
+- `FORMATTER.A.57`
+- `FORMAT.A.58`
+- `FORMATTER.A.58`
+- `FORMAT.S.29`
+- `FORMAT./.17`
+- `COMPILE-FILE.2`
+- `APROPOS.ERROR.2`
+- `APROPOS-LIST.ERROR.2`

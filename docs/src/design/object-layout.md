@@ -4,7 +4,7 @@
 
 `Word` は 64-bit tagged value で、NIL と T は静的に固定配置する。cons は header なしの `(car, cdr)` 2 語、header object は 1 語 header の後ろに payload を置く。bit 0..7 は widetag、bit 8..15 は GC flags、bit 16..63 は size/length とする。generation と pin は page metadata に置く。
 
-lowtag の契約は次のとおりである。`listp` は list lowtag の検査だけ、`consp` は list lowtag かつ NIL でない値、`symbolp` は NIL または other-pointer と symbol widetag の組み合わせを検査する。character、single-float、function は対応する immediate/function lowtag を使う。unbound marker は予約済み other-immediate である。
+lowtag の契約は次のとおりである。`listp` は list lowtag の検査だけ、`consp` は list lowtag かつ NIL でない値、`symbolp` は NIL または other-pointer と symbol widetag の組み合わせを検査する。つまり symbolp は「NIL または other-pointer + symbol widetag」である。character、single-float、function は対応する immediate/function lowtag を使う。unbound marker は予約済み other-immediate である。
 
 symbol は value、function、plist、package、name、`tls_index: u32`、identity-hash slot、flags word を持つ。flags word は bit 0 special、bit 1 constant、bit 2 macro、bit 3 package-lock、残りを予約とする。cons 専用 page と header-object page は混在させず、pin は page attribute とする。
 

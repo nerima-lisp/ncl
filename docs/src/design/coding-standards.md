@@ -59,17 +59,39 @@ An entity is identified by lifecycle identity: symbol, package, class, and threa
 
 Keep files near 300 lines and below 500. Do not use `mod.rs`; use `foo.rs` and optionally `foo/`. Default visibility is private, crate sharing is `pub(crate)`, and only listed contracts are `pub`. Use newtypes when type meaning matters, `#[repr(transparent)]` only when ABI representation is fixed, and `#[must_use]` for Result, tokens, and builders. Public enums that may gain variants are `#[non_exhaustive]`.
 
-Each crate owns its error enum and manually implements Error, Display, and required From conversions. Return failures and propagate with `?`; do not use thiserror or `Box<dyn Error>`. Production code has no unwrap, expect, panic, or unbounded todo. `unsafe` is confined to ncl-sys and documents alignment, lifetime, ownership, and FFI invariants with a SAFETY reason. Explicit Send and Sync require an actual sharing proof. Clone is derived only for cheap values.
+Each crate owns its error enum and manually implements Error, Display, and required From conversions. Return failures and propagate with `?`; do not use thiserror or `Box<dyn Error>`. Production code has no unwrap, expect, panic, or unbounded todo. `todo!()` is allowed only in the Phase 0 skeleton, and its count is reported by inspection. `unsafe` is confined to ncl-sys and documents alignment, lifetime, ownership, and FFI invariants with a SAFETY reason. Explicit Send and Sync require an actual sharing proof. Clone is derived only for cheap values.
 
 Prefer iterators and return-position `impl Trait`. Use traits for replaceable strategies such as ISA or allocator and enums for closed sets. Every public item has documentation; public functions document Errors, Panics, and Safety as applicable, including `Panics: Never` when relevant.
+
+Required API examples preserve the newtype and error boundaries:
+
+```rust
+#[repr(transparent)]
+pub struct Word(u64);
+
+pub struct SymbolId(Word);
+
+#[must_use]
+pub fn alloc(thread: &mut ThreadContext, runtime: &Runtime, kind: TypeTag, words: usize)
+    -> Result<Word, StorageCondition> { todo!() }
+```
+
+Reader code propagates its domain error with `?`:
+
+```rust
+pub fn read_form(input: &mut Input) -> Result<Form, ReaderError> {
+    let token = input.next_token()?;
+    parse_token(token)
+}
+```
 
 ## Lisp, GC, and OS boundary
 
 `Word` is `#[repr(transparent)] struct Word(u64)`. Heap APIs take `&mut ThreadContext` first and `&Runtime` for shared state. Never store managed Word in an unregistered Vec, HashMap, static, or Box. Exceptions are pushed roots or Runtime-registered root collections. Every field store uses a write barrier and every blocking I/O, sleep, or foreign call pairs enter_native with leave_native.
 
-OS calls are handwritten `extern "C"` declarations in ncl-sys: memory mapping, thread creation and join, pthread identity and stack attributes, mutexes, condition variables, semaphores, dynamic loading, clock, file I/O, directory and stat calls, signals, macOS JIT write protection, and instruction-cache invalidation. cfg and ABI differences remain in ncl-sys.
+OS calls are handwritten `extern "C"` declarations in ncl-sys: `mmap`, `munmap`, `mprotect`, `pthread_create`, `pthread_join`, `pthread_self`, pthread stack attributes, mutexes, condition variables, semaphores, `dlopen`, `dlsym`, `dlerror`, `clock_gettime`, `read`, `write`, `open`, `close`, `stat`, `opendir`, `signal`, macOS `pthread_jit_write_protect_np`, and `sys_icache_invalidate`. cfg and ABI differences remain in ncl-sys.
 
-External crates are zero. Standard HashMap is allowed, but security or reproducibility-sensitive maps use an in-tree SipHash implementation. Randomness comes through an OS entropy wrapper. UnicodeData is generated into static Rust tables. Bignum uses little-endian u32 limbs. A regular-expression crate is not introduced.
+External crates are zero. Standard HashMap is allowed, but security or reproducibility-sensitive maps use an in-tree SipHash implementation. Randomness comes through an OS entropy wrapper. The 47 symbols required by `sb-unicode` are generated from UnicodeData into static Rust tables. Bignum uses little-endian u32 limbs. A regular-expression crate is not introduced.
 
 ## Examples
 
@@ -80,6 +102,22 @@ pub fn unintern(package: &mut Package, name: SymbolName) -> Result<bool, Package
 ```
 
 An API returning a dynamic error after `expect("symbol exists")` is rejected because it hides a domain invariant. A trait such as `InstructionSelector::select(&Form) -> Result<Instruction, CodegenError>` is preferred over a string ISA with unchecked branch coverage.
+
+The two corresponding bad examples are a public `unintern` that returns
+`Box<dyn Error>` after `expect("symbol exists")`, and a selector that accepts
+`&str` for a closed ISA set. They hide domain failure and exhaustiveness.
+
+```rust
+// bad: panic and an untyped error hide the package invariant
+pub fn unintern(package: &mut Package, name: &str) -> Box<dyn Error> {
+    package.table.remove(name).expect("symbol exists");
+}
+```
+
+```rust
+// bad: a closed set is represented by unchecked strings
+pub fn select(isa: &str) -> Result<Vec<String>, String> { todo!() }
+```
 
 ## Tests, benchmarks, and lanes
 

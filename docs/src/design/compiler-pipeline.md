@@ -6,7 +6,7 @@ front end は reader output を macroexpand、parse、declaration/type propagati
 
 `ncl-ir` の型一覧は維持する。Function は id、name、params、return types、basic blocks、locals、handler regions、debug locations、BasicBlock は id、block parameters、Ops、Terminator を持つ。OpKind は Const、Move、Load、Store、LoadField、StoreField、Alloc、LoadArg、Call、CallIndirect、Builtin、Prim、Compare、Convert、SetMultipleValues、Safepoint、Terminator は Jump、Branch、Switch、CallReturn、TailCall、Return、Throw、Unreachable とする。
 
-段階は 1a 固定テンプレート、1b linear scan、1c tail transfer、2 unbox/inline cache の順である。FASL の 64-byte header と section 構成は native backend の仕様を使い、対象不一致は load 前に拒否する。interpret evaluator は実装しない。
+段階は 1a 固定テンプレート展開、1b 線形走査レジスタ割当と spill、1c self tail call と一般 tail transfer および `&rest`/`&key` 専用プロローグ、2 fixnum/double の unbox、型推論接続、inline cache の順である。1a は値をスタックスロットに置き、scratch 2 本を使い、プロローグ、定数、return、呼び出し、分岐、割当、safepoint map、unwind を含む動く系とする。FASL の 64-byte header と section 構成は native backend の仕様を使い、対象不一致は load 前に拒否する。interpret evaluator は実装しない。
 
 ## 根拠
 
@@ -22,7 +22,7 @@ front end は reader output を macroexpand、parse、declaration/type propagati
 
 - listed IR types、OpKind、Terminator、handler、debug location を変更しない。
 - backend は `MachineFunction` と `CodeBlob` を通じて encoder を呼び、stack map を省略しない。
-- 1a で unboxed representation、inline cache、独自 ABI を追加しない。
+- 1a で unboxed representation、inline cache、独自 ABI を追加しない。Phase 1 は性能を主張しない。
 
 ## Complete IR contract
 
@@ -34,4 +34,6 @@ Types are `Word`, `I64`, `F64`, `Address`, `Bool`, and `Unit`. Constants are fix
 
 Direct expansion includes `car`, `cdr`, `rplaca`, `rplacd`, `svref`, `aref`, `aset`, fixnum arithmetic and comparison, `eq`, `eql`, `typep`, character predicates, and structure slot accessors. The compiler-macro registry stores symbol descriptor, arity pattern, expansion callback, and feature bit.
 
-Phase 1a is fixed templates and frame slots; 1b adds calls, returns, and multiple values; 1c adds allocation, GC maps, and unwind; Phase 2 reaches `fib(25)`, compile-file, and FASL load. Each stage is complete only when its tests execute. FASL stores native code, relocations, descriptors/constants, symbol bindings, maps, and debug records; incompatible architecture or feature bits signal a condition.
+Phase 1a expands fixed templates with values in stack slots and two scratch registers, including prologue, constants, return, calls, branches, allocation, safepoint maps, and unwind. Its native entry must execute `(+ 1 2)`, cons, a branch, a builtin call, a safepoint, and `fib(25)`; performance is not an acceptance criterion. Phase 1b adds linear-scan register allocation and spill, with representative benchmarks no slower than the template version. Phase 1c adds self tail call, general tail transfer, and specialized `&rest`/`&key` prologues; self recursion at depth 1,000,000 must not add frames. Phase 2 adds fixnum/double unboxing, type-inference connection, and inline caches; the first gate is `fib(25)` within 2x SBCL on the same machine, recording commit hash and conditions. Each stage is complete only when its tests execute. FASL stores native code, relocations, descriptors/constants, symbol bindings, maps, and debug records; incompatible architecture or feature bits signal a condition.
+
+Inline-cache keys are the triple `(call-site, generic-function identity, class-layout generation)`. Each site has at most four entries; a miss falls back to runtime dispatch. A failed type guard is a condition edge in the IR, not an unchecked branch.

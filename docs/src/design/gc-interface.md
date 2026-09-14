@@ -13,15 +13,27 @@ API は次のとおりである。
 ```text
 alloc(&mut ThreadContext, &Runtime, TypeTag, usize) -> Result<Word, StorageCondition>
 alloc_large(&mut ThreadContext, &Runtime, TypeTag, usize) -> Result<Word, StorageCondition>
+alloc_code(bytes) -> CodePtr
+free_code(CodePtr)
+publish_code(CodePtr) // RW -> RX
 push_root(&mut ThreadContext, &mut Word) -> RootToken
 pop_root(&mut ThreadContext, RootToken)
 write_barrier(&mut ThreadContext, Word, Slot)
 poll_safepoint(&mut ThreadContext)
 enter_native(&mut ThreadContext)
 leave_native(&mut ThreadContext)
+register_thread(&Heap, &mut Thread) -> Result<(), StorageCondition>
+unregister_thread(&Heap, &Thread)
+register(&Runtime)
+register_layout(&Heap, u8, ReferenceLayout) -> Result<(), LayoutError>
 ```
 
-Native code の `SafepointMap` は 16-byte little-endian header (`pc_offset: u32`, `frame_words: u16`, `slot_words: u16`, `word_slot_count: u16`, `register_mask: u16`, `map_flags: u32`) に続く slot bitmap と register id 列である。slot bit 0 は frame header 語 0、bit 8 は最初の local slot とし、header 0..7 は root にしない。register id と flags の定義は [Native backend](native-backend.md) に従う。
+`alloc_code` and `free_code` manage non-moving code space. `publish_code` changes a
+constructed range from writable to executable only after constants, relocations,
+maps, and debug records are installed. Thread and layout registration use the
+names and ownership shown here; a lower layer must not invent a second registry.
+
+Native code の `SafepointMap` は 16-byte little-endian header (`pc_offset: u32`, `frame_words: u16`, `slot_words: u16`, `word_slot_count: u16`, `register_mask: u16`, `map_flags: u32`) に続く slot bitmap と `u16` register id 列である。列挙するのは `Word` を持ちうるレジスタだけで、整数、浮動小数点、raw address 専用レジスタは列挙しない。slot bitmap は bit 0..3 を header 語 0..3 に割り当て、header 語 2 は常に 1、他の header 語は常に 0 とする。bit 4 が最初の local slot である。return PC は非移動 code space を指すため更新しない。register id と flags の定義は [Native backend](native-backend.md) に従う。
 
 ## 根拠
 
@@ -48,10 +60,10 @@ Stop-the-world collection issues an epoch, each mutator publishes its snapshot a
 
 Conservative scanning polls first, obtains stack bounds, saves callee-saved registers, and scans only the published interval. On macOS use `pthread_get_stackaddr_np` and `pthread_get_stacksize_np`; on Linux use `pthread_getattr_np`. Candidate words must pass page-table membership and object-start reverse lookup. Pages are pinned while examined. `RootToken` is the standard path for live Rust values.
 
-Weak API is `make_weak(value)`, `weak_value(weak)`, and `register_finalizer(object, callback)`. A weak target is cleared when otherwise unreachable; a finalizer is queued once, and queue/callback state remains strongly held until completion. Non-moving code space has independent allocation and release.
+Weak API is `make_weak(value, weakness)`, `weak_value(weak)`, and `register_finalizer(object, callback)`. The four weakness names are `:key`, `:value`, `:key-and-value`, and `:key-or-value`. A weak target is cleared when otherwise unreachable; a finalizer is queued once, and queue/callback state remains strongly held until completion. Non-moving code space has independent allocation and release.
 
 ## SafepointMap wire format
 
-The 16-byte little-endian header is `pc_offset:u32`, `frame_words:u16`, `slot_words:u16`, `word_slot_count:u16`, `register_mask:u16`, and `map_flags:u32`. Bitmap bit 0 denotes header word 0, bit 8 denotes the first local, and later bits denote local or outgoing slots. Header words are metadata and are not roots. `map_flags` bit 0 is call, bit 1 loop-backedge, bit 2 allocation-slow, and bit 3 has-derived-address.
+The 16-byte little-endian header is `pc_offset:u32`, `frame_words:u16`, `slot_words:u16`, `word_slot_count:u16`, `register_mask:u16`, and `map_flags:u32`. Bitmap bits 0..3 denote header words 0..3, with bit 2 always one and the other header bits always zero; bit 4 denotes the first local, followed by local and outgoing slots. The function object in header word 2 is a precise moving-heap root. Return PC is not updated because code space is non-moving. Register ids are `u16` and list only registers that may contain `Word`. `map_flags` bit 0 is call, bit 1 loop-backedge, bit 2 allocation-slow, and bit 3 has-derived-address.
 
-PC lookup binary-searches code-relative map offsets. Frame walking reads the four-word header, uses the function object to find the code object, finds the map, updates live slots and registers through forwarding, then follows previous FP. Native frames use the conservative boundary recorded by `enter_native`; JIT frames use precise maps.
+PC lookup binary-searches code-relative map offsets. Frame walking reads the four-word header, forwards the function object in word 2 and live slots/registers, leaves the return PC unchanged, then follows previous FP. Native frames use the conservative boundary recorded by `enter_native`; JIT frames use precise maps.

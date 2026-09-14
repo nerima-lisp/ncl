@@ -4,7 +4,7 @@
 
 `Word` は 64-bit tagged value で、NIL と T は静的に固定配置する。cons は header なしの `(car, cdr)` 2 語、header object は 1 語 header の後ろに payload を置く。bit 0..7 は widetag、bit 8..15 は GC flags、bit 16..63 は size/length とする。generation と pin は page metadata に置く。
 
-lowtag の契約は次のとおりである。`listp` は list lowtag の検査だけ、`consp` は list lowtag かつ NIL でない値、`symbolp` は NIL または other-pointer と symbol widetag の組み合わせを検査する。character、single-float、function は対応する immediate/function lowtag を使う。unbound marker は予約済み other-immediate である。
+lowtag の契約は次のとおりである。`listp` は list lowtag の検査だけ、`consp` は list lowtag かつ NIL でない値、`symbolp` は NIL または other-pointer と symbol widetag の組み合わせを検査する。つまり symbolp は「NIL または other-pointer + symbol widetag」である。character、single-float、function は対応する immediate/function lowtag を使う。unbound marker は予約済み other-immediate である。
 
 symbol は value、function、plist、package、name、`tls_index: u32`、identity-hash slot、flags word を持つ。flags word は bit 0 special、bit 1 constant、bit 2 macro、bit 3 package-lock、残りを予約とする。cons 専用 page と header-object page は混在させず、pin は page attribute とする。
 
@@ -25,3 +25,45 @@ NIL を list lowtag として扱うことで list predicate を高速にし、sy
 - lowtag、widetag、header bit 割当、cons 2 語、symbol flags の値を変更しない。
 - Rust の未登録領域に heap `Word` を保持せず、移動 object の address を code bytes に埋め込まない。
 - accessor は object ownership を越えて raw OS API を直接呼ばない。
+
+## Concrete representation tables
+
+| bit 1..3 | kind | payload |
+| --- | --- | --- |
+| 000 | character | Unicode scalar in bit 4..24 |
+| 001 | list pointer | aligned cons address, two words |
+| 010 | single-float | IEEE-754 binary32 in bit 4..35 |
+| 011 | function pointer | simple-fun or closure |
+| 100 | other-immediate | unbound marker and reserved immediates |
+| 101 | instance pointer | structure or CLOS instance |
+| 110 | reserved | must not be allocated |
+| 111 | other pointer | symbol, string, vector, number, package |
+
+Fixnum uses bit 0 = 0, a signed 63-bit payload, and `most-positive-fixnum = 4611686018427387903`. `consp` checks the list lowtag and excludes NIL; `listp` checks NIL or that lowtag. `fixnump` checks bit 0. Character, single-float, and function predicates inspect their lowtag. `symbolp`, `stringp`, and `simple-vector-p` inspect the widetag after the other-pointer lowtag.
+
+| header bits | meaning |
+| --- | --- |
+| 0..7 | widetag |
+| 8..15 | GC flags: young, marked, forwarded, finalizable, weak, hashed |
+| 16..63 | size or length |
+
+Cons pages contain `(car, cdr)` with no header. Header-object pages contain the one-word header followed by payload. Page metadata stores generation and pin state.
+
+| object | payload layout |
+| --- | --- |
+| cons | car, cdr |
+| symbol | value, function, plist, package, name, tls_index, hash, flags |
+| string | base-char u8; character UTF-32 scalar units |
+| simple-vector | length and contiguous Word elements |
+| specialized array | bit, unsigned/signed integer, single-float, double-float, or character elements |
+| non-simple array | dimensions, fill-pointer, displaced-to, offset, adjustable flag |
+| hash-table | open addressing, power-of-two capacity, 7/8 load threshold, four weakness modes, synchronized flag |
+| structure | layout descriptor and slots |
+| CLOS instance | class pointer, indirect slot vector, layout generation |
+| simple-fun / closure | entry and code object; closure captured values inline |
+| bignum / ratio | sign and little-endian u32 limbs; numerator and denominator |
+| double-float / complex | binary64; real and imaginary values |
+| package / readtable / stream | names and tables; syntax and dispatch tables; direction, element type, buffer and state |
+| code object | entry, size, constant table, stack-map index, debug table |
+
+Symbol flags are bit 0 special, bit 1 constant, bit 2 macro, bit 3 package-lock, with the rest reserved. NIL and T are statically allocated, scanned but never moved. NIL is list-lowtag compatible: its car and cdr positions point to NIL and align with symbol value/function cells. Symbols and instances keep identity hashes in slots. Other `eq` keys use address hashing and the hashed flag, with rehash notification after movement.

@@ -58,6 +58,8 @@ nav:
       - Object layout: design/object-layout.md
       - GC interface: design/gc-interface.md
       - Calling convention: design/calling-convention.md
+      - Native backend: design/native-backend.md
+      - Coding standards: design/coding-standards.md
       - Threads: design/threads.md
       - Compiler pipeline: design/compiler-pipeline.md
       - Crates: design/crates.md

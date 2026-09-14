@@ -39,4 +39,4 @@ agent-12 の unsafe は4ブロック。pthread API 呼出し3箇所 (`src/main.r
 
 各 spike は指定 worktree を開発環境として、リポジトリ外の manifest を対象に実行した。agent-12 は `cargo fmt --check`、`cargo check`、`cargo run` が exit 0、`cargo test` は exit 0 だが0 tests選択。agent-3 は `cargo fmt -- --check` と `cargo test --all-targets` が exit 0、4 tests passed。agent-56 は `cargo fmt -- --check`、`cargo test --all-targets`、`cargo clippy --all-targets -- -D warnings` が exit 0、2 tests passed。ergonomics は `cargo run` exit 0、`cargo test` は exit 0だが0 tests選択。`nix develop path:<worktree>` の文字列形式はこの環境の Nix 2.34.8 で相対解釈され exit 1 となったため、同じ worktree の絶対パス installable 形式で再実行した。
 
-実 repository の `ncl-sys` 統合、Linux 実行、sanitizer/loom、長時間 concurrency stress、実 Cranelift stack map との接続はこの spike の対象外であり、動いたとは判定していない。
+実 repository の `ncl-sys` 統合、Linux 実行、sanitizer/loom、長時間 concurrency stress、実 native stack map との接続はこの spike の対象外であり、動いたとは判定していない。

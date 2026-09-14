@@ -9,8 +9,8 @@ This note summarizes `conformance/ownership/symbols.tsv`. The checker is the sou
 | `ncl-clos` | 147 | ADD-METHOD, BUILT-IN-CLASS, CLASS, COPY-STRUCTURE, FIND-METHOD | ncl-object, ncl-types, ncl-conditions |
 | `ncl-compiler-front` | 162 | &KEY, BLOCK, COMPILE-FILE-LINE, DECLAIM, DEFCLASS, MAKE-LOAD-FORM, TRULY-THE | ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-ir |
 | `ncl-conditions` | 100 | *DEBUGGER-HOOK*, BREAK, DIVISION-BY-ZERO, NAME-CONFLICT, SYSTEM-CONDITION | ncl-object |
-| `ncl-ffi` | 108 | *, ADDR, ALIEN, DLOPEN-OR-LOSE, MEMMOVE, RUN-PROGRAM | ncl-object, ncl-conditions, libloading |
-| `ncl-image` | 7 | *POSIX-ARGV*, EXIT, OS-COLD-INIT-OR-REINIT, QUIT, SAVE-LISP-AND-DIE | ncl-object, ncl-compiler-back |
+| `ncl-ffi` | 108 | *, ADDR, ALIEN, DLOPEN-OR-LOSE, MEMMOVE, RUN-PROGRAM | ncl-object, ncl-conditions, ncl-sys |
+| `ncl-image` | 7 | *POSIX-ARGV*, EXIT, OS-COLD-INIT-OR-REINIT, QUIT, SAVE-LISP-AND-DIE | ncl-object, ncl-objfile, ncl-sys |
 | `ncl-lib-format` | 1 | FORMAT | ncl-object and standard-library lower layers |
 | `ncl-lib-hash-arrays` | 55 | ADJUSTABLE-ARRAY-P, AREF, ARRAY, ARRAY-DIMENSION, HASH-TABLE-SYNCHRONIZED-P, WITH-LOCKED-HASH-TABLE | ncl-object |
 | `ncl-lib-macros` | 98 | AND, APPLY, CONSTANTP, FUNCALL, MACROEXPAND, VALUES | ncl-object, ncl-types, ncl-reader, ncl-conditions |

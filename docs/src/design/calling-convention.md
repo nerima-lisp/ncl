@@ -2,30 +2,34 @@
 
 ## 決定
 
-NCL の Lisp entry は Cranelift の Signature で定義する。固定窓は (ctx: i64, argc: i64, a0: i64, a1: i64, a2: i64, a3: i64, rest: i64) -> (v0: i64, mv_count: i64) とする。ctx は ThreadContext、argc は実引数数、a0..a3 は最初の 4 引数、rest は caller が用意した残余引数配列への tagged Word address である。&rest/&key の解析と arity check は prologue で行う。Cranelift が ABI のレジスタ割当を決定し、任意の物理レジスタ名を契約にしない。
+NCL の論理入口は `(ctx, argc, a0, a1, a2, a3, rest) -> (v0, mv_count)` である。物理割当、4 語以下の frame header、Rust builtin、tail transfer の正規仕様は [Native backend](native-backend.md) を参照する。
 
-ThreadContext は Cranelift 0.134.3 の enable_pinned_reg と get_pinned_reg/set_pinned_reg を使い、x86-64 では r15、AArch64 では x21 に保持する。通常の引数と戻り値は SystemV または AppleAarch64 の target ABI、Lisp の本物の tail call は Tail call convention と return_call/return_call_indirect を使う。multiple values は v0 と mv_count の 2 戻り値とし、3 個目以降は ThreadContext の MV 領域へ格納する。
+| 項目 | x86-64 SysV | AArch64 AAPCS64 |
+| --- | --- | --- |
+| `ctx` | `r15` | `x21` |
+| `argc` | `rdi` | `x0` |
+| `a0..a3` | `rsi`, `rdx`, `rcx`, `r8` | `x1..x4` |
+| `rest` | `r9` | `x5` |
+| `v0` | `rax` | `x0` |
+| `mv_count` | `rdx` | `x1` |
+| scratch | `r10`, `r11` | `x16`, `x17` |
 
-Cranelift が決める frame layout に NCL の 6 語 frame header を要求しない。handler chain、unwind-protect record、catch tag は ThreadContext にぶら下がる連鎖とし、record は stack slot address と dynamic depth を登録する。backtrace は preserve_frame_pointers と JIT module が管理する code-address -> function-object table で作る。active handler/cleanup 中の tail call は通常 call にする。
+固定アリティの builtin は `extern "C" fn(ctx: *mut ThreadContext, a0: Word, a1: Word) -> Word` のような直接シグネチャを使う。可変長または keyword builtin だけが引数配列 adapter を使う。condition と非局所脱出は `ThreadContext` の pending flag と予約戻り値 `unbound` marker で通知し、呼び出しテンプレートは復帰直後に flag を検査する。`builtin!` は両形式を生成する。
 
-固定 arity builtin は extern C fn(ctx: *mut ThreadContext, a0: Word, a1: Word) -> Word のような直接 signature で登録する。condition または non-local exit は ThreadContext の pending flag と unbound marker 等の予約戻り値で伝える。可変長・keyword builtin だけが (ctx, argc, *const Word, *mut MultipleValues) -> NclStatus 形式を使う。builtin! は両形式を生成する。
-
-Cranelift 0.134.3 の try_call/try_call_indirect は exception table の normal/exception destination と payload を生成するが、Cranelift は unwinder を実装せず exception tag の意味を embedder に委ねる。NCL はこれを Lisp unwinder の landing block として使う。tail call は caller に戻らないため catch site にできない。Rust は panic = abort とし、Lisp frame は NCL unwinder、Rust frame は NclStatus::NonLocalExit の戻り値伝播で脱出する。Rust builtin が funcall/apply/mapcar 等で Lisp を呼び返す場合、status/pending flag を必ず検査して上位へ返す。
+NCL frame header は `previous FP / return PC / function object / flags` の 4 語以下とする。handler、cleanup、catch は `ThreadContext` の現在ポインタ 3 本からレコード連鎖を辿る。frame header 連鎖は GC と backtrace、record 連鎖は unwinder が使う。
 
 ## 根拠
 
-固定窓を Cranelift signature にすれば引数を全て配列へ退避せず、物理レジスタ名にも依存しない。pinned register は context の常駐だけに使い、他の allocation は Cranelift に任せる。frame layout は backend が決めるため独自 header を ABI に埋め込まない。exception table の tag と unwinder を分ければ Cranelift の責務境界を越えない。
+レジスタ表を固定すると encoder、stack map、builtin ABI の検証対象が一致する。固定アリティで配列を一度 materialize しないため、直接 call の引数経路と戻り値経路を明示できる。詳細な frame と stack map の byte layout は native backend が所有する。
 
 ## 却下した代替案
 
-- argc/r10、context/r14 の固定レジスタ表は Cranelift の一般 ABI 契約でないため却下した。
-- 全 builtin を pointer-array ABI にする案は固定 arity の hot path で配列退避を要求するため却下した。
-- Cranelift frame に 6 語 header を強制する案は backend の frame layout と競合するため却下した。
-- Rust panic/unwind、trap の catch/throw 流用は Rust の abort 契約または Lisp payload と両立しないため却下した。
+- 物理レジスタ割当を backend 実装へ委譲する案は、GC map と builtin 境界を検証できないため却下する。
+- 全 builtin を `args + argc` 形式にする案は固定アリティの不要な adapter を生むため却下する。
+- handler を frame header に追加する案は call ごとの store 数を増やすため却下する。
 
 ## Phase 1 レーンが前提にしてよいこと / してはいけないこと
 
-- ABI は上記 Cranelift signature、pinned register、固定 arity/可変長 builtin の二形式を使う。
-- 物理レジスタ、Cranelift frame layout、Lisp handler chain を独自に固定しない。
-- try_call の存在を unwinder 実装済みの意味に解釈せず、landing block と status propagation を実装する。
-- Lisp 呼出しから戻る Rust builtin は status と pending flag を検査してから返す。
+- 表のレジスタ名、論理引数順、4 語以下の header を変更しない。
+- fixed builtin に可変長 adapter を追加せず、pending flag の検査を省略しない。
+- tail call、multiple values、unwind の追加仕様は native backend の定義を複製せず参照する。

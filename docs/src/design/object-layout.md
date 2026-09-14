@@ -2,41 +2,26 @@
 
 ## 決定
 
-NCL の値は repr(transparent) の Word(u64) である。fixnum は bit 0 が 0 の n << 1 で、符号付き 63-bit payload、most-positive-fixnum = 2^62-1 = 4611686018427387903 とする。bit 0 が 1 の語は bit 1..3 の lowtag で分類する。
+`Word` は 64-bit tagged value で、NIL と T は静的に固定配置する。cons は header なしの `(car, cdr)` 2 語、header object は 1 語 header の後ろに payload を置く。bit 0..7 は widetag、bit 8..15 は GC flags、bit 16..63 は size/length とする。generation と pin は page metadata に置く。
 
-| bit 1..3 | 種別 | 表現 |
-| --- | --- | --- |
-| 000 | character immediate | bit 4..24 に Unicode scalar value |
-| 001 | list pointer | 8-byte aligned address + lowtag。cons はヘッダなし 2 語 |
-| 010 | single-float immediate | bit 4..35 に IEEE-754 binary32 |
-| 011 | function pointer | simple-fun または closure object |
-| 100 | other-immediate | bit 4..63 に payload。unbound marker を含む |
-| 101 | instance pointer | structure または CLOS instance |
-| 111 | other pointer | symbol、string、vector、number、package 等 |
+lowtag の契約は次のとおりである。`listp` は list lowtag の検査だけ、`consp` は list lowtag かつ NIL でない値、`symbolp` は NIL または other-pointer と symbol widetag の組み合わせを検査する。character、single-float、function は対応する immediate/function lowtag を使う。unbound marker は予約済み other-immediate である。
 
-即値は lowtag 000 の character、010 の single-float、100 の other-immediate とする。unbound marker は other-immediate の固定値とし、NIL と T は即値にしない。
+symbol は value、function、plist、package、name、`tls_index: u32`、identity-hash slot、flags word を持つ。flags word は bit 0 special、bit 1 constant、bit 2 macro、bit 3 package-lock、残りを予約とする。cons 専用 page と header-object page は混在させず、pin は page attribute とする。
 
-consp は list lowtag、listp は NIL 比較または list lowtag、fixnump は bit 0、characterp/single-float-p は respective immediate lowtag、functionp は function lowtagだけで判定する。symbolp、stringp、simple-vector-p は other lowtag の後の 1 語 widetag を読む。
-
-ヘッダ付き object のヘッダは 1 語固定で、bit 0..7 を widetag、bit 8..15 を GC flags、bit 16..63 を size/length とする。flags は young、marked、forwarded、finalizable、weak、hashed と予約 bit。世代と pin はページ metadata に置き、pin は世代ではない。cons はヘッダなしの (car, cdr) 2 語で、cons 専用ページのページ種別から GC が走査方法を決める。
-
-静的領域には NIL と T の symbol object を起動時に固定配置する。GC は領域を走査するが移動しない。NIL は list lowtag として見た car/cdr が自分自身を指すレイアウトにし、symbol の value/function cell 位置と整合させる。simple-fun と closure は別 widetag とし、closure 値は object 内に inline 配置する。
-
-symbol は value、function、plist、package、name、tls_index: u32、identity-hash slot を持つ。structure/CLOS instance は layout 経由の slot に identity hash を置ける。それ以外の eq hash key はアドレス hash とし、移動時に hashed flag の表へ再ハッシュ通知する。全 object に hash 語は追加しない。bignum は GC ヒープ上の little-endian u32 limb 配列である。package、symbol table、intern は ncl-object の責務、ncl-lib-packages は builtin 登録だけを担う。
+所有境界は [GC interface](gc-interface.md) と [Native backend](native-backend.md) に従う。heap、code space、per-thread roots は `ncl-sys` が所有し、`ncl-object` は widetag、accessor、symbol/package/intern、`Runtime`、`ThreadContext` wrapper、register 型を提供する。weak pointer は強 root ではなく、到達不能後の finalizer queue だけを強く保持する。
 
 ## 根拠
 
-bit 0 を fixnum に専有すれば 62-bit の符号付き値域を保ちつつ、残りを immediate と 4 種の pointer lowtag に使える。頻出の cons/function 操作からヘッダ読みを除き、NIL/T を通常の symbol にすれば全 symbol accessor と car nil/cdr nil に特別分岐を追加しない。
+NIL を list lowtag として扱うことで list predicate を高速にし、symbol predicate だけは NIL の言語仕様を明示できる。固定 header と page 種別は collector が payload の解釈を推測せずに済む。移動対象と code space を分けることで return PC の再配置を不要にする。
 
 ## 却下した代替案
 
-- 全値を 3 bit tag で分ける案は fixnum と immediate が衝突するため却下した。
-- NIL/T の即値化は symbol accessor と cons accessor の分岐を増やすため却下した。
-- cons header、全 object の hash: u64、closure vector の二段間接参照はサイズまたは hot path を悪化させるため却下した。
-- intern を ncl-lib-packages に置く案は reader/printer/lib の責務を分断するため却下した。
+- 全 object に hash word を追加する案は payload と GC scan を膨らませるため却下する。
+- cons と header object を同一 page に置く案は scan mode を曖昧にするため却下する。
+- pin を generation として表す案は collector の状態を誤分類するため却下する。
 
 ## Phase 1 レーンが前提にしてよいこと / してはいけないこと
 
-- Word、lowtag、widetag、cons 2 語、NIL/T 固定配置を変更しない。
-- Word を生の u64 として公開せず、object pointer を Rust reference として allocation point 越しに保持しない。
-- 新しい object type、tag、header flag、hash 方式はこの文書を先に更新する。
+- lowtag、widetag、header bit 割当、cons 2 語、symbol flags の値を変更しない。
+- Rust の未登録領域に heap `Word` を保持せず、移動 object の address を code bytes に埋め込まない。
+- accessor は object ownership を越えて raw OS API を直接呼ばない。

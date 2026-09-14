@@ -25,6 +25,7 @@ impl FunctionBuilder {
         params: Vec<Param>,
         return_types: Vec<Ty>,
     ) -> Self {
+        let param_count = params.len();
         let mut builder = Self {
             function: Function {
                 id,
@@ -38,7 +39,7 @@ impl FunctionBuilder {
                 debug: Vec::new(),
             },
             next_block: 0,
-            next_value: 0,
+            next_value: u32::try_from(param_count).unwrap_or(u32::MAX),
             current: None,
         };
         builder.create_block(Vec::new());

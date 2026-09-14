@@ -2,9 +2,11 @@
 resolver = "3"
 members = [
     ".",
+    "packages/sys",
 ]
 default-members = [
     ".",
+    "packages/sys",
 ]
 
 [workspace.package]

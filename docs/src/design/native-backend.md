@@ -8,7 +8,7 @@
 
 `ncl-codegen` は `MachineFunction` を作り、asm crate が bytes と `Fixup` を生成し、`ncl-objfile` が `Relocation` と FASL/object sections に変換する。asm crate は `Reg`、`Inst`、`Fixup`、`EncodeError` を自前定義し何にも依存しない。code object は `ncl-sys` 管理の非移動 code space に page 単位で置き、未参照後に解放する。GC は code object 内の constant slots だけを更新する。
 
-frame header は 4 語以下、`previous FP / return PC / function object / flags` とする。handler、cleanup、catch は ThreadContext の 3 本の現在ポインタで record chain を形成し、record は frame address と dynamic depth を持つ。unwinder は record chain、backtrace と GC scan は frame header chain を辿る。
+frame header は 4 語、`previous FP / return PC / function object / flags` とする。function object は移動 heap 上の精密 root であり、return PC は非移動 code space のため更新しない。handler、cleanup、catch は ThreadContext の 3 本の現在ポインタで record chain を形成し、全 record は frame address と dynamic depth を持つ。unwinder は record chain、backtrace と GC scan は frame header chain を辿る。
 
 ### 物理呼び出し規約
 
@@ -26,9 +26,9 @@ fixed builtin は直接 `extern "C" fn(ctx: *mut ThreadContext, a0: Word, a1: Wo
 
 ### metadata と object
 
-SafepointMap は 16-byte header、slot bitmap、register id 列である。header は `pc_offset u32, frame_words u16, slot_words u16, word_slot_count u16, register_mask u16, map_flags u32`。FASL header は 64 byte、magic `NCLFASL\\0`、version 1、architecture、pointer width 8、little-endian、feature bitmap、各 section offset/size を固定する。
+SafepointMap は 16-byte header、slot bitmap、`u16` register id 列である。header は `pc_offset u32, frame_words u16, slot_words u16, word_slot_count u16, register_mask u16, map_flags u32`。bitmap bit 0..3 は frame header 語 0..3、bit 2 は常に 1、他は常に 0、bit 4 は最初の local slot である。列挙するのは `Word` を持ちうるレジスタだけである。FASL header は 64 byte、magic `NCLFASL\0`、version 1、architecture、pointer width 8、little-endian、feature bitmap、各 section offset/size を固定する。
 
-phase は 1a template、1b linear scan、1c tail call、2 unbox/IC とする。tail transfer は frame header と dynamic records の条件を満たす場合だけ行い、active cleanup では禁止する。
+phase は compiler-pipeline と同じく、1a 固定テンプレート展開、1b 線形走査レジスタ割当と spill、1c self tail call と一般 tail transfer および `&rest`/`&key` 専用プロローグ、2 fixnum/double の unbox、型推論接続、inline cache とする。1a はスタックスロット、scratch 2 本、プロローグ/定数/return/呼び出し/分岐/割当/safepoint map/unwind を含む動く系である。Phase 1 は性能を主張しない。tail transfer は frame header と dynamic records の条件を満たす場合だけ行い、active cleanup では禁止する。
 
 ## 根拠
 
@@ -43,7 +43,7 @@ phase は 1a template、1b linear scan、1c tail call、2 unbox/IC とする。t
 
 ## Phase 1 レーンが前提にしてよいこと / してはいけないこと
 
-- 表のレジスタ、4 語以下 header、16-byte map、64-byte FASL header、phase 順序を変更しない。
+- 表のレジスタ、4 語 header、16-byte map、64-byte FASL header、phase 順序を変更しない。
 - encoder は `ncl-codegen`、`ncl-object`、`ncl-sys` に依存しない。
 - code bytes に移動 heap address を埋め込まず、constant slot と relocation metadata を使う。
 - stack map、RootToken、pending flag、unwind record を省略した実装を受け入れない。
@@ -58,7 +58,23 @@ phase は 1a template、1b linear scan、1c tail call、2 unbox/IC とする。t
 | object writing | ncl-objfile | FASL or native bytes |
 | runtime publication | ncl-sys/ncl-object | RW to RX and entry release |
 
-The four Phase 1 lanes are estimated as: 1a fixed prologue, constants, two scratch registers, and return; 1b calls, branches, stack slots, and both encoders; 1c allocation, relocation, precise stack maps, and unwind; 2 FASL, native images, diagnostics, and conformance. Lane outputs are `MachineFunction`, `Fixup`, `CodeBlob`, and `SafepointMap`, with stable field order and error semantics.
+The four implementation lanes are frozen as follows.
+
+| lane | file count | type count | frozen concern |
+| --- | ---: | ---: | --- |
+| ABI/frame/GC metadata | 8 | 14 | entry ABI, four-word frame, maps, unwind records |
+| x86-64 | 10 | 16 | register model, encoder, disassembler, fixups |
+| AArch64 | 10 | 16 | register model, encoder, disassembler, fixups |
+| object/FASL/JIT adapter | 12 | 20 | sections, relocation, publication, loader adapter |
+
+Lane order is strict: the ABI lane freezes `MachineFunction` and the metadata schema first. The object lane starts only after `CodeBlob` and `Relocation` are frozen. The bounded contexts are Reg/Inst/Fixup/disassembler; Section/Relocation/Mach-O/ELF; and W^X/icache/dlopen.
+
+The lane table above is the only lane partition. Phase definitions come from
+`compiler-pipeline.md`: 1a is the complete fixed-template running system, 1b
+is linear-scan allocation and spill, 1c is tail transfer plus specialized
+prologues, and 2 is unboxing, type-inference connection, and inline cache.
+Lane outputs are `MachineFunction`, `Fixup`, `CodeBlob`, and `SafepointMap`,
+with stable field order and error semantics.
 
 ## Minimal public API
 
@@ -67,6 +83,7 @@ MachineFunction lower(Function, Target) -> Result<MachineFunction, CodegenError>
 CodeBlob encode(MachineFunction, Target) -> Result<CodeBlob, EncodeError>
 Vec<u8> write_fasl(FaslInput) -> Result<Vec<u8>, ObjfileError>
 SafepointMap build_map(FrameLayout, LiveValues) -> Result<SafepointMap, MapError>
+map_and_publish(CodeBlob, LinkTable, &mut ThreadContext) -> Result<JitHandle, SysError>
 ```
 
 The encoder has no allocator, OS call, symbol lookup, or GC dependency. `ncl-objfile` emits bytes only and does not call the OS. A code blob contains bytes, relocations, entry offset, frame size, and maps. Relocations are applied through constant slots, never by embedding moving heap addresses in instruction bytes.
@@ -82,17 +99,17 @@ Direct fixed-arity builtins receive a direct `extern "C"` signature. Variadic an
 ## Non-local exit records
 
 ```text
-CatchRecord    { tag, target_frame, value_slot, previous }
-CleanupRecord  { cleanup_entry, dynamic_depth, previous }
-HandlerRecord  { predicate, handler_entry, frame_address, previous }
+CatchRecord    { tag, target_frame, target_pc, value_slot, depth, previous }
+CleanupRecord  { cleanup_entry, frame_address, depth, previous }
+HandlerRecord  { predicate, handler_entry, frame_address, depth, previous }
 ThreadContext  { catch, cleanup, handler }
 ```
 
-The unwinder sets pending status, runs cleanup in LIFO order, restores bindings and handler depth, and transfers to the selected catch or handler. A cleanup exit replaces the old pending exit only after its record is linked. Rust frames are not machine-unwound: adapters return `NclStatus::NonLocalExit`, callers propagate it, and only the top NCL entry unwinds Lisp records. Panic is abort.
+The unwinder sets pending status, runs cleanup in LIFO order, restores bindings and handler depth, and transfers to the selected frame address and `target_pc`. A cleanup exit replaces the old pending exit only after its record is linked. Rust frames are not machine-unwound: adapters return `NclStatus::NonLocalExit`, callers propagate it, and only the top NCL entry unwinds Lisp records. Panic is abort.
 
 ## SafepointMap and code object
 
-Every map has a 16-byte little-endian header: `pc_offset:u32`, `frame_words:u16`, `slot_words:u16`, `word_slot_count:u16`, `register_mask:u16`, `map_flags:u32`. The bitmap uses bit 0 for header word 0 and bit 8 for the first local. Register ids follow the stable table. Flags are call, loop-backedge, allocation-slow, and has-derived-address at bits 0 through 3. PC lookup is binary search over code-relative offsets.
+Every map has a 16-byte little-endian header: `pc_offset:u32`, `frame_words:u16`, `slot_words:u16`, `word_slot_count:u16`, `register_mask:u16`, `map_flags:u32`. The bitmap uses bits 0..3 for header words 0..3, with bit 2 always one and the other header bits always zero, and bit 4 for the first local. The function object in header word 2 is forwarded during frame walking; return PC is not. Register ids are `u16` and list only registers that can hold `Word`. Flags are call, loop-backedge, allocation-slow, and has-derived-address at bits 0 through 3. PC lookup is binary search over code-relative offsets.
 
 The code object stores entry, size, constant table, stack-map index, debug table, function name, source locations, frame size, and entry offset. The collector resolves a return PC from the function object's code object, finds the map, updates live slots and registers, and follows previous FP. Native transition records a conservative register spill area; JIT frames remain precise.
 
@@ -164,10 +181,10 @@ The fixed form passes `ctx` and typed Word arguments directly and returns one Wo
 
 | phase | required artifact | acceptance |
 | --- | --- | --- |
-| 1a | fixed prologue and epilogue | constant return and `fib(5)` smoke |
-| 1b | branch, call, local and tail transfer | `fib(25)` and multiple values |
-| 1c | allocation and map | moving collection with live locals |
-| 2 | FASL, image, diagnostics | compile-file, load, backtrace, disassemble |
+| 1a | fixed template expansion | native entry executes `(+ 1 2)`, cons, branch, builtin call, safepoint, and `fib(25)`; performance is not measured |
+| 1b | linear-scan allocation and spill | representative benchmarks are no slower than template version |
+| 1c | self/general tail transfer and specialized prologues | self recursion depth 1,000,000 adds no frames |
+| 2 | unbox, type inference, inline cache | same-machine `fib(25)` is within 2x SBCL, with commit hash and conditions recorded |
 
 No phase is accepted from an encoder byte comparison alone. The runtime smoke test must exercise published code, and the GC phase must move an object referenced by a live mapped slot.
 
@@ -191,13 +208,13 @@ The debug table maps code-relative ranges to source file id, line, column, form 
 
 ### Detailed lane deliverables
 
-Lane 1a freezes the entry signature, four-word header, stack alignment, argument spill order, return registers, and direct builtin adapter.
+Lane 1a freezes the entry signature, four-word header, stack alignment, argument spill order, return registers, direct builtin adapter, constants, calls, branches, allocation, maps, and unwind.
 
 Lane 1b implements block layout, local calls, full calls, self tail calls, general tail calls, branch fixups, and both target register tables.
 
-Lane 1c implements allocation slow paths, write-barrier calls, RootToken transitions, map emission, register masks, derived-address flags, and moving-GC frame updates.
+Lane 1c implements self and general tail transfer, specialized `&rest`/`&key` prologues, allocation slow paths, write-barrier calls, RootToken transitions, map emission, register masks, derived-address flags, and moving-GC frame updates.
 
-Lane 2 implements FASL serialization, image sections, relocation validation, code-space publication, disassembly, source locations, backtrace, and conformance fixtures.
+Lane 2 implements fixnum/double unboxing, type-inference connection, inline-cache dispatch, FASL serialization, image sections, relocation validation, code-space publication, disassembly, source locations, backtrace, and conformance fixtures.
 
 Every lane preserves the same `Word` representation, logical entry order, physical RegisterId values, frame flags, map header, and error categories. A target-specific optimization is accepted only after the generic template, exact encoder bytes, map, unwind record, and runtime smoke test remain equivalent.
 

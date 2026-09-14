@@ -4,7 +4,7 @@
 
 NCL は 1 OS thread を 1 Lisp thread として登録する。`ThreadContext` は TLAB、shadow roots、binding stack、multiple values、handler/cleanup/catch pointers、stack bounds、safepoint epoch、register snapshot、native state、interrupt flags、deadline、wait state を持つ。これらと共有 heap は `ncl-sys` が所有する。
 
-symbol の `tls_index: u32` は 1 語の現在値 slot を指し、binding entry は `(old_value, tls_index)` の 2 語とする。mutex、condition variable、semaphore、waitqueue は `ncl-sys` の OS wrapper を使う。blocking 前に poll と interrupt/deadline 検査を行い、`enter_native` から `leave_native` を対にする。
+symbol の `tls_index: u32` は 1 語の thread override slot を指す。value cell は global default、TLS slot は thread override を保持し、binding entry は `(old_value, tls_index)` の 2 語とする。bind は現在値を binding stack に保存して TLS slot を新しい値へ設定し、unbind は保存値を復元して entry を pop する。mutex、condition variable、semaphore、waitqueue は `ncl-sys` の OS wrapper を使う。blocking 前に poll と interrupt/deadline 検査を行い、`enter_native` から `leave_native` を対にする。
 
 `interrupt-thread` は対象の interrupt flag と safepoint request bit を設定し、waitqueue を wake する。Lisp callback は safepoint または native transition 復帰時だけ実行する。deadline は monotonic nanoseconds の絶対値で、timeout は pending non-local exit として cleanup 後に報告する。
 
@@ -32,4 +32,4 @@ ThreadContext fields are thread id, native stack bounds, current frame, TLAB bas
 
 The OS wrappers expose mutex lock/unlock, condition wait/signal/broadcast, semaphore wait/post, and waitqueue park/wake. The protocol is poll, inspect interrupt and deadline, enter native, park, wake, leave native, and poll again. `interrupt-thread` atomically sets interrupt and poll-request bits and wakes a waitqueue. Delivery occurs at a safepoint or native return.
 
-`with-deadline` pushes an absolute monotonic-nanosecond deadline. `with-timeout` derives one and installs a timeout condition. Poll, blocking waits, and builtin boundaries check it; expiration becomes a pending non-local exit after cleanup. TLS contains one current-value word per symbol, while every binding entry contains exactly old-value and tls-index, two words.
+`with-deadline` pushes an absolute monotonic-nanosecond deadline. `with-timeout` derives one and installs a timeout condition. Poll, blocking waits, and builtin boundaries check it; expiration becomes a pending non-local exit after cleanup. A symbol value cell supplies the global default; each thread has one override word in TLS. Binding uses the old value and TLS index, and unbinding restores the old value before removing the entry.

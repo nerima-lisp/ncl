@@ -7,7 +7,7 @@
 ```text
 ncl-sys -> none
 ncl-object -> ncl-sys
-ncl-ir -> ncl-object
+ncl-ir -> none
 ncl-types -> ncl-object
 ncl-reader -> ncl-object
 ncl-printer -> ncl-object
@@ -16,7 +16,7 @@ ncl-clos -> ncl-object, ncl-types
 ncl-compiler-front -> ncl-ir, ncl-reader, ncl-conditions, ncl-clos
 ncl-asm-x86-64 -> none
 ncl-asm-aarch64 -> none
-ncl-objfile -> ncl-sys
+ncl-objfile -> none
 ncl-codegen -> ncl-ir, ncl-asm-x86-64, ncl-asm-aarch64, ncl-objfile, ncl-object, ncl-sys
 ncl-lib-numbers -> ncl-object, ncl-types
 ncl-lib-sequences -> ncl-object, ncl-types
@@ -52,13 +52,13 @@ asm crates have no neighbors, so encoding is independent of object model and OS.
 
 - The complete list and adjacency list above are frozen.
 - No external dependency, hidden workspace member, or reverse edge may be added.
-- `ncl-objfile` consumes asm `Fixup` values as its own `Relocation` values; asm does not import objfile types.
+- `ncl-codegen` converts asm `Fixup` values into objfile `Relocation` values; objfile does not import asm types.
 
 ### Public API summary
 
 | crate | public API and responsibility |
 | --- | --- |
-| ncl-sys | OS `extern "C"`: mmap, mprotect, munmap, pthread create/join/self, stack attributes, mutex, condvar, semaphore, dlopen, dlsym, dlerror, clock_gettime, read, write, open, close, stat, opendir, signals, pthread_jit_write_protect_np, sys_icache_invalidate |
+| ncl-sys | OS `extern "C"`: mmap, mprotect, munmap, pthread_create, pthread_join, pthread_self, pthread stack attributes, mutex, condvar, semaphore, dlopen, dlsym, dlerror, clock_gettime, read, write, open, close, stat, opendir, signal, pthread_jit_write_protect_np, sys_icache_invalidate |
 | ncl-object | `Word`, `TypeTag`, accessors, `Runtime`, `ThreadContext`, `RootToken`, `register`, `builtin!`, allocation and package/intern API |
 | ncl-ir | independent IR data types and descriptors only |
 | ncl-types | type specifiers, predicates, and type errors |

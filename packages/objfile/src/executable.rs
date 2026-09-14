@@ -100,13 +100,17 @@ pub fn write_mach_executable(
         });
     }
     let header = 32usize;
-    let segment = 72usize + 2 * 80;
-    let main = 24usize;
-    let commands = segment + main;
-    let code_offset = header + commands;
-    let data_offset = code_offset
+    let segment_size = 72usize + 80;
+    let dylinker_size = 32usize;
+    let main_size = 24usize;
+    let commands = segment_size * 2 + dylinker_size + main_size;
+    let code_offset = header
+        .checked_add(commands)
+        .ok_or(ObjectError::InvalidStructure("Mach-O command overflow"))?;
+    let code_end = code_offset
         .checked_add(image.code.len())
         .ok_or(ObjectError::InvalidStructure("executable size overflow"))?;
+    let data_offset = (code_end + 0x0fff) & !0x0fff;
     let mut out = vec![
         0;
         data_offset
@@ -114,51 +118,154 @@ pub fn write_mach_executable(
             .ok_or(ObjectError::InvalidStructure("executable size overflow"))?
     ];
     let cpu = match architecture {
-        MachArchitecture::X86_64 => 0x01000007u32,
-        MachArchitecture::Arm64 => 0x0100000cu32,
+        MachArchitecture::X86_64 => 0x0100_0007_u32,
+        MachArchitecture::Arm64 => 0x0100_000c_u32,
     };
-    out[0..4].copy_from_slice(&0xfeedfacfu32.to_le_bytes());
+    out[0..4].copy_from_slice(&0xfeed_facf_u32.to_le_bytes());
     out[4..8].copy_from_slice(&cpu.to_le_bytes());
     out[12..16].copy_from_slice(&2u32.to_le_bytes());
-    out[16..20].copy_from_slice(&2u32.to_le_bytes());
-    out[20..24].copy_from_slice(&(commands as u32).to_le_bytes());
-    out[32..36].copy_from_slice(&0x19u32.to_le_bytes());
-    out[36..40].copy_from_slice(&(segment as u32).to_le_bytes());
-    write_name(&mut out, 40, "__TEXT");
-    out[88..92].copy_from_slice(&7u32.to_le_bytes());
-    out[92..96].copy_from_slice(&5u32.to_le_bytes());
-    out[96..100].copy_from_slice(&2u32.to_le_bytes());
-    write_section(
+    out[16..20].copy_from_slice(&4u32.to_le_bytes());
+    out[20..24].copy_from_slice(
+        &u32::try_from(commands)
+            .map_err(|_| ObjectError::InvalidField {
+                field: "Mach-O command size",
+                value: u64::MAX,
+            })?
+            .to_le_bytes(),
+    );
+    write_exec_segment(
         &mut out,
-        104,
+        32,
+        "__TEXT",
+        0x1_0000_0000,
+        0,
+        u64::try_from(code_end).map_err(|_| ObjectError::InvalidField {
+            field: "Mach-O text size",
+            value: u64::MAX,
+        })?,
+        7,
+        5,
+        code_offset,
+        image.code.len(),
         "__text",
         "__TEXT",
-        code_offset as u32,
-        image.code.len() as u64,
-    );
-    write_section(
+    )?;
+    write_exec_segment(
         &mut out,
-        184,
+        32 + segment_size,
+        "__DATA",
+        0x1_0000_0000
+            + u64::try_from(data_offset).map_err(|_| ObjectError::InvalidField {
+                field: "Mach-O data offset",
+                value: u64::MAX,
+            })?,
+        u64::try_from(data_offset).map_err(|_| ObjectError::InvalidField {
+            field: "Mach-O data offset",
+            value: u64::MAX,
+        })?,
+        u64::try_from(image.metadata.len()).map_err(|_| ObjectError::InvalidField {
+            field: "Mach-O metadata size",
+            value: u64::MAX,
+        })?,
+        3,
+        1,
+        data_offset,
+        image.metadata.len(),
         "__ncl",
-        "__TEXT",
-        data_offset as u32,
-        image.metadata.len() as u64,
-    );
-    let main_at = 32 + segment;
-    out[main_at..main_at + 4].copy_from_slice(&0x80000028u32.to_le_bytes());
+        "__DATA",
+    )?;
+    let dylinker_at = 32 + segment_size * 2;
+    write_dylinker(&mut out, dylinker_at);
+    let main_at = dylinker_at + dylinker_size;
+    out[main_at..main_at + 4].copy_from_slice(&0x8000_0028_u32.to_le_bytes());
     out[main_at + 4..main_at + 8].copy_from_slice(&24u32.to_le_bytes());
-    out[main_at + 8..main_at + 16].copy_from_slice(&(code_offset as u64).to_le_bytes());
-    out[code_offset..data_offset].copy_from_slice(&image.code);
+    out[main_at + 8..main_at + 16].copy_from_slice(
+        &u64::try_from(code_offset)
+            .map_err(|_| ObjectError::InvalidField {
+                field: "Mach-O entry offset",
+                value: u64::MAX,
+            })?
+            .to_le_bytes(),
+    );
+    out[code_offset..code_end].copy_from_slice(&image.code);
     out[data_offset..].copy_from_slice(&image.metadata);
     Ok(out)
+}
+
+fn write_dylinker(out: &mut [u8], at: usize) {
+    out[at..at + 4].copy_from_slice(&0x0eu32.to_le_bytes());
+    out[at + 4..at + 8].copy_from_slice(&32u32.to_le_bytes());
+    out[at + 8..at + 12].copy_from_slice(&12u32.to_le_bytes());
+    out[at + 12..at + 12 + 14].copy_from_slice(b"/usr/lib/dyld\0");
+}
+
+fn write_exec_segment(
+    out: &mut [u8],
+    at: usize,
+    segment: &str,
+    vmaddr: u64,
+    fileoff: u64,
+    filesize: u64,
+    maxprot: u32,
+    initprot: u32,
+    section_offset: usize,
+    section_size: usize,
+    section_name: &str,
+    section_segment: &str,
+) -> Result<(), ObjectError> {
+    let command_size = 152u32;
+    out[at..at + 4].copy_from_slice(&0x19u32.to_le_bytes());
+    out[at + 4..at + 8].copy_from_slice(&command_size.to_le_bytes());
+    write_name(out, at + 8, segment);
+    out[at + 24..at + 32].copy_from_slice(&vmaddr.to_le_bytes());
+    out[at + 32..at + 40].copy_from_slice(&filesize.to_le_bytes());
+    out[at + 40..at + 48].copy_from_slice(&fileoff.to_le_bytes());
+    out[at + 48..at + 56].copy_from_slice(&filesize.to_le_bytes());
+    out[at + 56..at + 60].copy_from_slice(&maxprot.to_le_bytes());
+    out[at + 60..at + 64].copy_from_slice(&initprot.to_le_bytes());
+    out[at + 64..at + 68].copy_from_slice(&1u32.to_le_bytes());
+    let section_at = at + 72;
+    write_section(
+        out,
+        section_at,
+        section_name,
+        section_segment,
+        u32::try_from(section_offset).map_err(|_| ObjectError::InvalidField {
+            field: "Mach-O section offset",
+            value: u64::MAX,
+        })?,
+        u64::try_from(section_size).map_err(|_| ObjectError::InvalidField {
+            field: "Mach-O section size",
+            value: u64::MAX,
+        })?,
+        vmaddr
+            + if fileoff == 0 {
+                u64::try_from(section_offset).map_err(|_| ObjectError::InvalidField {
+                    field: "Mach-O section address",
+                    value: u64::MAX,
+                })?
+            } else {
+                0
+            },
+    );
+    Ok(())
 }
 
 fn write_name(out: &mut [u8], at: usize, name: &str) {
     out[at..at + name.len()].copy_from_slice(name.as_bytes());
 }
-fn write_section(out: &mut [u8], at: usize, name: &str, segment: &str, offset: u32, size: u64) {
+fn write_section(
+    out: &mut [u8],
+    at: usize,
+    name: &str,
+    segment: &str,
+    offset: u32,
+    size: u64,
+    address: u64,
+) {
     write_name(out, at, name);
     write_name(out, at + 16, segment);
+    out[at + 32..at + 40].copy_from_slice(&address.to_le_bytes());
     out[at + 40..at + 48].copy_from_slice(&size.to_le_bytes());
     out[at + 48..at + 52].copy_from_slice(&offset.to_le_bytes());
 }

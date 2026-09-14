@@ -75,7 +75,8 @@ fn native_object_magic_and_relocations() {
     .write();
     assert!(macho.is_ok());
     let macho = macho.unwrap_or_else(|_| Vec::new());
-    assert!(validate_macho(&macho, MachArchitecture::Arm64).is_ok());
+    let validation = validate_macho(&macho, MachArchitecture::Arm64);
+    assert!(validation.is_ok(), "{validation:?}");
 }
 
 #[test]
@@ -170,4 +171,28 @@ fn fasl_rejects_overlapping_sections_and_out_of_range_relocations() {
     };
     let bytes = FaslWriter::write(&value).unwrap_or_default();
     assert!(FaslReader::read(&bytes, Architecture::X86_64, 0).is_err());
+}
+
+#[test]
+#[ignore = "requires macOS codesign and execution"]
+fn signed_minimal_macho_executes() {
+    let image = ExecutableImage {
+        architecture: Architecture::Aarch64,
+        code: vec![0x20, 0x00, 0x80, 0xd2, 0xc0, 0x03, 0x5f, 0xd6],
+        metadata: b"NCL\0".to_vec(),
+    };
+    let path = std::env::temp_dir().join("ncl-objfile-minimal-macho");
+    let bytes = write_mach_executable(&image, MachArchitecture::Arm64)
+        .unwrap_or_else(|error| panic!("writer failed: {error}"));
+    std::fs::write(&path, bytes).unwrap_or_else(|error| panic!("write failed: {error}"));
+    let signed = std::process::Command::new("codesign")
+        .args(["--sign", "-", path.to_str().unwrap_or_default()])
+        .status()
+        .unwrap_or_else(|error| panic!("codesign failed to start: {error}"));
+    assert!(signed.success());
+    let result = std::process::Command::new(&path)
+        .status()
+        .unwrap_or_else(|error| panic!("execution failed to start: {error}"));
+    assert_eq!(result.code(), Some(0));
+    let _ = std::fs::remove_file(path);
 }

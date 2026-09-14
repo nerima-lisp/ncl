@@ -134,9 +134,8 @@ fn write_segment(
     write_u32(out, *cursor, 0x19);
     write_u32(out, *cursor + 4, command_size);
     write_name(out, *cursor + 8, "__TEXT");
-    write_u32(out, *cursor + 64, 7);
-    write_u32(out, *cursor + 68, 5);
-    write_u32(out, *cursor + 72, nsects);
+    write_u32(out, *cursor + 64, nsects);
+    write_u32(out, *cursor + 68, 0);
     *cursor += 72;
     for ((section, offset), (relocation_offset, relocation_count)) in sections
         .iter()
@@ -271,7 +270,99 @@ pub fn validate_macho(bytes: &[u8], architecture: MachArchitecture) -> Result<()
             "invalid Mach-O load commands",
         ));
     }
+    let mut cursor = 32usize;
+    let mut has_segment = false;
+    for _ in 0..ncmds {
+        let command = read_u32(bytes, cursor, "Mach-O command")?;
+        let size =
+            usize::try_from(read_u32(bytes, cursor + 4, "Mach-O command size")?).map_err(|_| {
+                ObjectError::InvalidField {
+                    field: "Mach-O command size",
+                    value: u64::MAX,
+                }
+            })?;
+        if size < 8 || cursor.checked_add(size).is_none_or(|end| end > command_end) {
+            return Err(ObjectError::InvalidStructure("invalid Mach-O command size"));
+        }
+        if command == 0x19 {
+            has_segment = true;
+            if size < 72 {
+                return Err(ObjectError::InvalidStructure("short LC_SEGMENT_64"));
+            }
+            let nsects = usize::try_from(read_u32(bytes, cursor + 64, "Mach-O section count")?)
+                .map_err(|_| ObjectError::InvalidField {
+                    field: "Mach-O section count",
+                    value: u64::MAX,
+                })?;
+            let section_bytes = nsects.checked_mul(80).ok_or(ObjectError::InvalidStructure(
+                "Mach-O section table overflow",
+            ))?;
+            if 72usize
+                .checked_add(section_bytes)
+                .is_none_or(|end| end > size)
+            {
+                return Err(ObjectError::InvalidStructure("short Mach-O section table"));
+            }
+            for index in 0..nsects {
+                let section = cursor + 72 + index * 80;
+                let offset =
+                    usize::try_from(read_u32(bytes, section + 48, "Mach-O section offset")?)
+                        .map_err(|_| ObjectError::InvalidField {
+                            field: "Mach-O section offset",
+                            value: u64::MAX,
+                        })?;
+                let section_size =
+                    usize::try_from(read_u64(bytes, section + 40, "Mach-O section size")?)
+                        .map_err(|_| ObjectError::InvalidField {
+                            field: "Mach-O section size",
+                            value: u64::MAX,
+                        })?;
+                if offset
+                    .checked_add(section_size)
+                    .is_none_or(|end| end > bytes.len())
+                {
+                    return Err(ObjectError::OutOfBounds {
+                        section: "Mach-O section",
+                        offset: u64::try_from(offset).unwrap_or(u64::MAX),
+                        size: u64::try_from(section_size).unwrap_or(u64::MAX),
+                    });
+                }
+            }
+        }
+        cursor += size;
+    }
+    if !has_segment {
+        return Err(ObjectError::InvalidStructure("missing Mach-O load command"));
+    }
     Ok(())
+}
+
+fn read_u32(bytes: &[u8], offset: usize, field: &'static str) -> Result<u32, ObjectError> {
+    let end = offset
+        .checked_add(4)
+        .ok_or(ObjectError::InvalidStructure("Mach-O field overflow"))?;
+    bytes
+        .get(offset..end)
+        .ok_or(ObjectError::Truncated { offset, needed: 4 })
+        .map(|value| u32::from_le_bytes([value[0], value[1], value[2], value[3]]))
+        .map_err(|_| ObjectError::InvalidField { field, value: 0 })
+}
+
+fn read_u64(bytes: &[u8], offset: usize, field: &'static str) -> Result<u64, ObjectError> {
+    let end = offset
+        .checked_add(8)
+        .ok_or(ObjectError::InvalidStructure("Mach-O field overflow"))?;
+    bytes
+        .get(offset..end)
+        .ok_or(ObjectError::Truncated { offset, needed: 8 })
+        .and_then(|value| {
+            let array = match <[u8; 8]>::try_from(value) {
+                Ok(array) => array,
+                Err(_) => return Err(ObjectError::Truncated { offset, needed: 8 }),
+            };
+            Ok(u64::from_le_bytes(array))
+        })
+        .map_err(|_| ObjectError::InvalidField { field, value: 0 })
 }
 
 /// Stateless Mach-O validator.

@@ -43,7 +43,8 @@ impl Default for Thread {
 }
 impl Thread {
     /// Create an unregistered thread context.
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             roots: Vec::new(),
             heap: None,
@@ -71,10 +72,12 @@ impl Thread {
             && (0..token.count).all(|_| self.roots.pop().is_some())
     }
     /// Return the current safepoint state.
+    #[must_use]
     pub const fn safepoint_state(&self) -> SafepointState {
         self.state
     }
     /// Return the current native state.
+    #[must_use]
     pub const fn native_state(&self) -> NativeState {
         self.native
     }
@@ -95,31 +98,31 @@ impl Thread {
         self.stack_bounds = Some((address, address + 1));
         self.callee_saved = crate::snapshot_callee_saved();
     }
-    pub(crate) fn enter_native(&mut self) {
+    pub(crate) const fn enter_native(&mut self) {
         self.native = NativeState::Native;
         self.state = SafepointState::Safe;
     }
-    pub(crate) fn leave_native(&mut self) {
+    pub(crate) const fn leave_native(&mut self) {
         self.native = NativeState::Lisp;
         self.state = SafepointState::Running;
     }
-    pub(crate) fn heap_collect(&mut self, _full: bool) {
+    pub(crate) fn heap_collect(&mut self, full: bool) {
         if let Some(heap) = self.heap {
             // SAFETY: registration stores this thread's heap pointer for its lifetime.
             unsafe {
-                (*heap).collect(_full);
+                (*heap).collect(full);
             }
         }
         self.state = SafepointState::Collecting;
         self.state = SafepointState::Running;
     }
     /// Request delivery of an interrupt at the next safepoint.
-    pub fn request_interrupt(&mut self) {
+    pub const fn request_interrupt(&mut self) {
         self.interrupt = true;
         self.state = SafepointState::PollRequested;
     }
     /// Whether an interrupt is pending, consuming the request.
-    pub fn take_interrupt(&mut self) -> bool {
+    pub const fn take_interrupt(&mut self) -> bool {
         let pending = self.interrupt;
         self.interrupt = false;
         pending

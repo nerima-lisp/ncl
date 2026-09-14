@@ -1,7 +1,7 @@
 //! Platform boundary declarations used by the runtime.
 
 #[cfg(unix)]
-pub(crate) mod declarations {
+pub mod declarations {
     use core::ffi::{c_char, c_int, c_void};
     #[repr(C)]
     pub struct Stat {

@@ -37,6 +37,10 @@ fn snapshot_callee_saved() -> [u64; 16] {
 }
 
 /// Allocate a normal header object.
+///
+/// # Errors
+///
+/// Returns a storage condition when the size is invalid, the thread is not registered, or capacity is exhausted.
 pub fn alloc(
     thread: &mut Thread,
     heap: &Heap,
@@ -47,6 +51,10 @@ pub fn alloc(
 }
 
 /// Allocate an object in the large-object space.
+///
+/// # Errors
+///
+/// Returns a storage condition when the size is invalid, the thread is not registered, or capacity is exhausted.
 pub fn alloc_large(
     thread: &mut Thread,
     heap: &Heap,
@@ -57,6 +65,10 @@ pub fn alloc_large(
 }
 
 /// Allocate a two-word cons cell.
+///
+/// # Errors
+///
+/// Returns a storage condition when the thread is not registered or capacity is exhausted.
 pub fn alloc_cons(
     thread: &mut Thread,
     heap: &Heap,
@@ -67,6 +79,10 @@ pub fn alloc_cons(
 }
 
 /// Register a mutator with a heap.
+///
+/// # Errors
+///
+/// Returns `ThreadNotRegistered` when the thread is already registered with this heap.
 pub fn register_thread(heap: &Heap, thread: &mut Thread) -> Result<(), StorageCondition> {
     heap.register_thread(thread)
 }
@@ -105,12 +121,12 @@ pub fn register_root_set(thread: &mut Thread, values: &mut [Word]) -> RootToken 
 }
 
 /// Enter a foreign/native section.
-pub fn enter_native(thread: &mut Thread) {
+pub const fn enter_native(thread: &mut Thread) {
     thread.enter_native();
 }
 
 /// Leave a foreign/native section.
-pub fn leave_native(thread: &mut Thread) {
+pub const fn leave_native(thread: &mut Thread) {
     thread.leave_native();
 }
 
@@ -135,6 +151,10 @@ pub fn write_barrier(thread: &mut Thread, object: Word, slot: usize) {
 }
 
 /// Register the payload reference layout for a widetag.
+///
+/// # Errors
+///
+/// Returns `LayoutError` when the widetag already has a layout.
 pub fn register_layout(
     heap: &Heap,
     widetag: u8,
@@ -154,20 +174,25 @@ pub fn collect(thread: &mut Thread, full: bool) {
 }
 
 /// Mark an object as weak with the specified weakness policy.
+#[must_use]
 pub fn make_weak(thread: &Thread, value: Word, weakness: Weakness) -> Word {
-    thread
-        .heap
-        .map_or(value, |heap| unsafe { (*heap).make_weak(value, weakness) })
+    thread.heap.map_or(value, |heap| {
+        // SAFETY: the heap pointer is installed only by register_thread.
+        unsafe { (*heap).make_weak(value, weakness) }
+    })
 }
 /// Read the value slot of a weak object, or NIL when it is cleared.
+#[must_use]
 pub fn weak_value(thread: &Thread, value: Word) -> Word {
-    thread
-        .heap
-        .map_or(Word::NIL, |heap| unsafe { (*heap).weak_value(value) })
+    thread.heap.map_or(Word::NIL, |heap| {
+        // SAFETY: the heap pointer is installed only by register_thread.
+        unsafe { (*heap).weak_value(value) }
+    })
 }
 /// Register a one-shot finalizer callback.
 pub fn register_finalizer(thread: &Thread, object: Word, callback: Finalizer) {
     if let Some(heap) = thread.heap {
+        // SAFETY: the heap pointer is installed only by register_thread.
         unsafe {
             (*heap).register_finalizer(object, callback);
         }

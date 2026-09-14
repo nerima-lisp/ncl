@@ -9,7 +9,9 @@ impl<T> Mutex<T> {
         Self(StdMutex::new(value))
     }
     pub fn lock(&self) -> MutexGuard<'_, T> {
-        self.0.lock().unwrap_or_else(|p| p.into_inner())
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 /// A condition variable paired with [`Mutex`].
@@ -17,7 +19,9 @@ impl<T> Mutex<T> {
 pub struct Condvar(StdCondvar);
 impl Condvar {
     pub fn wait<'a, T>(&self, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
-        self.0.wait(guard).unwrap_or_else(|p| p.into_inner())
+        self.0
+            .wait(guard)
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
     pub fn wait_timeout<'a, T>(
         &self,
@@ -27,7 +31,7 @@ impl Condvar {
         let (guard, result) = self
             .0
             .wait_timeout(guard, timeout)
-            .unwrap_or_else(|p| p.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         (guard, result.timed_out())
     }
     pub fn notify_one(&self) {
@@ -44,6 +48,7 @@ pub struct Semaphore {
     available: Condvar,
 }
 impl Semaphore {
+    #[must_use]
     pub fn new(count: usize) -> Self {
         Self {
             state: Mutex::new(count),

@@ -31,13 +31,13 @@ pub enum RelocKind {
     PcRel32,
     /// x86-64 PC-relative call through the PLT.
     Plt32,
-    /// AArch64 unconditional branch displacement.
+    /// `AArch64` unconditional branch displacement.
     Branch26,
-    /// AArch64 page-relative address materialization.
+    /// `AArch64` page-relative address materialization.
     Adrp21,
-    /// AArch64 page offset materialization.
+    /// `AArch64` page offset materialization.
     Add12,
-    /// AArch64 conditional branch displacement.
+    /// `AArch64` conditional branch displacement.
     CondBranch19,
     /// Address of an NCL code entry.
     CodeEntry,

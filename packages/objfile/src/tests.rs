@@ -182,17 +182,24 @@ fn signed_minimal_macho_executes() {
         metadata: b"NCL\0".to_vec(),
     };
     let path = std::env::temp_dir().join("ncl-objfile-minimal-macho");
-    let bytes = write_mach_executable(&image, MachArchitecture::Arm64)
-        .unwrap_or_else(|error| panic!("writer failed: {error}"));
-    std::fs::write(&path, bytes).unwrap_or_else(|error| panic!("write failed: {error}"));
-    let signed = std::process::Command::new("codesign")
+    let Ok(bytes) = write_mach_executable(&image, MachArchitecture::Arm64) else {
+        assert!(false, "writer failed");
+        return;
+    };
+    let write_result = std::fs::write(&path, bytes);
+    assert!(write_result.is_ok(), "write failed");
+    let Ok(signed) = std::process::Command::new("codesign")
         .args(["--sign", "-", path.to_str().unwrap_or_default()])
         .status()
-        .unwrap_or_else(|error| panic!("codesign failed to start: {error}"));
+    else {
+        assert!(false, "codesign failed to start");
+        return;
+    };
     assert!(signed.success());
-    let result = std::process::Command::new(&path)
-        .status()
-        .unwrap_or_else(|error| panic!("execution failed to start: {error}"));
+    let Ok(result) = std::process::Command::new(&path).status() else {
+        assert!(false, "execution failed to start");
+        return;
+    };
     assert_eq!(result.code(), Some(0));
     let _ = std::fs::remove_file(path);
 }

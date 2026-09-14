@@ -4,22 +4,42 @@ use std::fmt;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ObjectError {
     /// The input ended before a required field was available.
-    Truncated { offset: usize, needed: usize },
+    Truncated {
+        /// Offset where bytes ended.
+        offset: usize,
+        /// Number of bytes required.
+        needed: usize,
+    },
     /// A field contained a value not supported by the format.
-    InvalidField { field: &'static str, value: u64 },
+    InvalidField {
+        /// Field name.
+        field: &'static str,
+        /// Rejected value.
+        value: u64,
+    },
     /// A section range was outside the input bytes.
     OutOfBounds {
+        /// Section or table name.
         section: &'static str,
+        /// Start offset.
         offset: u64,
+        /// Requested byte count.
         size: u64,
     },
     /// Two sections overlap.
     Overlap {
+        /// Earlier range.
         first: &'static str,
+        /// Later overlapping range.
         second: &'static str,
     },
     /// A relocation refers to an unknown section or symbol.
-    InvalidReference { kind: &'static str, index: usize },
+    InvalidReference {
+        /// Reference category.
+        kind: &'static str,
+        /// Invalid index.
+        index: usize,
+    },
     /// A relocation cannot be represented in the target format.
     UnsupportedRelocation(RelocKind),
     /// A name or table cannot be represented in the target format.

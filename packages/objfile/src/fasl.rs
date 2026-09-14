@@ -6,7 +6,7 @@ use crate::{ObjectError, RelocKind, Relocation, SectionId, SymbolRef};
 pub enum Architecture {
     /// 64-bit x86.
     X86_64 = 1,
-    /// 64-bit AArch64.
+    /// 64-bit `AArch64`.
     Aarch64 = 2,
 }
 
@@ -205,7 +205,7 @@ impl FaslReader {
                 u32_at(bytes, 32)?,
                 u32_at(bytes, 36)?
                     .checked_mul(16)
-                    .ok_or_else(|| ObjectError::InvalidField {
+                    .ok_or(ObjectError::InvalidField {
                         field: "relocation size",
                         value: u64::MAX,
                     })?,
@@ -249,7 +249,7 @@ impl FaslReader {
                             value: u64::from(debug_start),
                         })?..,
                     )
-                    .map_or_else(Vec::new, ToOwned::to_owned),
+                    .map_or_else(Vec::new, <[u8]>::to_vec),
             },
         })
     }
@@ -280,7 +280,9 @@ fn decode_relocations(bytes: &[u8]) -> Result<Vec<Relocation>, ObjectError> {
         });
     }
     bytes
-        .chunks_exact(16)
+        .as_chunks::<16>()
+        .0
+        .iter()
         .map(|r| {
             Ok(Relocation {
                 section: SectionId(u32::from_le_bytes(r[0..4].try_into().map_err(|_| {
@@ -312,7 +314,7 @@ fn decode_relocations(bytes: &[u8]) -> Result<Vec<Relocation>, ObjectError> {
         })
         .collect()
 }
-fn kind_number(kind: RelocKind) -> u32 {
+const fn kind_number(kind: RelocKind) -> u32 {
     match kind {
         RelocKind::Abs64 => 0,
         RelocKind::PcRel32 => 1,

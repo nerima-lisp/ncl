@@ -3,24 +3,33 @@ use crate::{ObjectError, Relocation, SectionId};
 /// Mach-O CPU architecture.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MachArchitecture {
+    /// x86-64 Mach-O CPU type.
     X86_64,
+    /// arm64 Mach-O CPU type.
     Arm64,
 }
 
 /// A Mach-O section with its segment and section names.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MachSection {
+    /// Generic section identifier.
     pub id: SectionId,
+    /// Mach-O segment name.
     pub segment: String,
+    /// Mach-O section name.
     pub name: String,
+    /// Section payload.
     pub bytes: Vec<u8>,
 }
 
 /// A relocatable 64-bit Mach-O object description.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MachObject {
+    /// Target CPU.
     pub architecture: MachArchitecture,
+    /// Sections to emit.
     pub sections: Vec<MachSection>,
+    /// Relocation records.
     pub relocations: Vec<Relocation>,
 }
 
@@ -48,7 +57,12 @@ impl MachObject {
         let mut offsets = Vec::new();
         for section in &self.sections {
             align(&mut out, 8);
-            offsets.push(out.len() as u32);
+            offsets.push(
+                u32::try_from(out.len()).map_err(|_| ObjectError::InvalidField {
+                    field: "section offset",
+                    value: u64::MAX,
+                })?,
+            );
             out.extend_from_slice(&section.bytes);
         }
         let mut relocation_offsets = Vec::with_capacity(self.sections.len());
@@ -78,9 +92,15 @@ impl MachObject {
                 );
             }
         }
-        let symoff = out.len() as u32;
+        let symoff = u32::try_from(out.len()).map_err(|_| ObjectError::InvalidField {
+            field: "symbol table offset",
+            value: u64::MAX,
+        })?;
         out.extend_from_slice(&[0; 24]);
-        let stroff = out.len() as u32;
+        let stroff = u32::try_from(out.len()).map_err(|_| ObjectError::InvalidField {
+            field: "string table offset",
+            value: u64::MAX,
+        })?;
         out.push(0);
         let mut cursor = 32usize;
         write_segment(
@@ -175,12 +195,14 @@ fn encode_relocation(
     architecture: MachArchitecture,
 ) -> Result<u64, ObjectError> {
     let kind = match (architecture, relocation.kind) {
-        (MachArchitecture::Arm64, crate::RelocKind::Abs64 | crate::RelocKind::ExternalSymbol) => 0,
-        (MachArchitecture::Arm64, crate::RelocKind::Branch26) => 2,
+        (
+            MachArchitecture::Arm64 | MachArchitecture::X86_64,
+            crate::RelocKind::Abs64 | crate::RelocKind::ExternalSymbol,
+        ) => 0,
         (MachArchitecture::Arm64, crate::RelocKind::Adrp21) => 3,
         (MachArchitecture::Arm64, crate::RelocKind::Add12) => 4,
-        (MachArchitecture::X86_64, crate::RelocKind::Abs64 | crate::RelocKind::ExternalSymbol) => 0,
-        (MachArchitecture::X86_64, crate::RelocKind::PcRel32 | crate::RelocKind::Plt32) => 2,
+        (MachArchitecture::Arm64, crate::RelocKind::Branch26)
+        | (MachArchitecture::X86_64, crate::RelocKind::PcRel32 | crate::RelocKind::Plt32) => 2,
         _ => return Err(ObjectError::UnsupportedRelocation(relocation.kind)),
     };
     let (symbol, external) = match relocation.symbol {
@@ -198,7 +220,7 @@ fn encode_relocation(
     };
     let descriptor = symbol | (pcrel << 24) | (length << 25) | (external << 27) | (kind << 28);
     Ok(
-        u64::from(u32::from_le_bytes((relocation.offset as i32).to_le_bytes()))
+        u64::from(u32::from_le_bytes(relocation.offset.to_le_bytes()))
             | (u64::from(descriptor) << 32),
     )
 }
@@ -356,9 +378,8 @@ fn read_u64(bytes: &[u8], offset: usize, field: &'static str) -> Result<u64, Obj
         .get(offset..end)
         .ok_or(ObjectError::Truncated { offset, needed: 8 })
         .and_then(|value| {
-            let array = match <[u8; 8]>::try_from(value) {
-                Ok(array) => array,
-                Err(_) => return Err(ObjectError::Truncated { offset, needed: 8 }),
+            let Ok(array) = <[u8; 8]>::try_from(value) else {
+                return Err(ObjectError::Truncated { offset, needed: 8 });
             };
             Ok(u64::from_le_bytes(array))
         })
@@ -371,6 +392,10 @@ pub struct MachReader;
 
 impl MachReader {
     /// Validates a 64-bit Mach-O object for the requested architecture.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the Mach-O header or load commands are malformed.
     pub fn validate(bytes: &[u8], architecture: MachArchitecture) -> Result<(), ObjectError> {
         validate_macho(bytes, architecture)
     }

@@ -12,6 +12,10 @@ pub struct ExecutableImage {
 }
 
 /// Writes a minimal ELF executable image with RX and RW load segments.
+///
+/// # Errors
+///
+/// Returns an error when the image size cannot be represented in the ELF envelope.
 pub fn write_elf_executable(image: &ExecutableImage) -> Result<Vec<u8>, ObjectError> {
     if image.architecture != Architecture::X86_64 && image.architecture != Architecture::Aarch64 {
         return Err(ObjectError::InvalidField {
@@ -45,7 +49,7 @@ pub fn write_elf_executable(image: &ExecutableImage) -> Result<Vec<u8>, ObjectEr
         .to_le_bytes(),
     );
     out[20..24].copy_from_slice(&1u32.to_le_bytes());
-    out[24..32].copy_from_slice(&(0x400000u64 + text_offset as u64).to_le_bytes());
+    out[24..32].copy_from_slice(&(0x0040_0000_u64 + text_offset as u64).to_le_bytes());
     out[32..40].copy_from_slice(&(phoff as u64).to_le_bytes());
     out[52..54].copy_from_slice(&64u16.to_le_bytes());
     out[54..56].copy_from_slice(&56u16.to_le_bytes());
@@ -56,7 +60,7 @@ pub fn write_elf_executable(image: &ExecutableImage) -> Result<Vec<u8>, ObjectEr
         1,
         5,
         text_offset as u64,
-        0x400000 + text_offset as u64,
+        0x0040_0000 + text_offset as u64,
         image.code.len() as u64,
     );
     let data = phoff + 56;
@@ -65,7 +69,7 @@ pub fn write_elf_executable(image: &ExecutableImage) -> Result<Vec<u8>, ObjectEr
         1,
         6,
         data_offset as u64,
-        0x400000 + data_offset as u64,
+        0x0040_0000 + data_offset as u64,
         image.metadata.len() as u64,
     );
     out[text_offset..text_offset + image.code.len()].copy_from_slice(&image.code);
@@ -85,6 +89,10 @@ fn write_phdr(out: &mut [u8], kind: u32, flags: u32, offset: u64, address: u64, 
 }
 
 /// Writes a Mach-O executable envelope containing NCL metadata.
+///
+/// # Errors
+///
+/// Returns an error when the image architecture or size is incompatible with Mach-O.
 pub fn write_mach_executable(
     image: &ExecutableImage,
     architecture: MachArchitecture,
@@ -96,7 +104,7 @@ pub fn write_mach_executable(
     if image.architecture != expected {
         return Err(ObjectError::InvalidField {
             field: "architecture",
-            value: image.architecture as u8 as u64,
+            value: u64::from(image.architecture as u8),
         });
     }
     let header = 32usize;

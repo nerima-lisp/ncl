@@ -3,41 +3,57 @@ use crate::{ObjectError, RelocKind, Relocation, Section, SectionId, SymbolRef};
 /// ELF machine architecture.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ElfArchitecture {
+    /// x86-64 ELF machine 62.
     X86_64,
+    /// `AArch64` ELF machine 183.
     Aarch64,
 }
 
 /// ELF section category used by the object writer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ElfSectionKind {
+    /// Executable code.
     Text,
+    /// Read-only data.
     Rodata,
+    /// NCL metadata.
     Metadata,
 }
 
 /// A section supplied to the ELF writer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ElfSection {
+    /// Generic section identifier.
     pub id: SectionId,
+    /// Section category.
     pub kind: ElfSectionKind,
+    /// Section payload.
     pub bytes: Vec<u8>,
 }
 
 /// A symbol supplied to the ELF writer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ElfSymbol {
+    /// Symbol name.
     pub name: String,
+    /// Defining section, or `None` for undefined symbols.
     pub section: Option<SectionId>,
+    /// Symbol value.
     pub value: u64,
+    /// Whether the symbol is global.
     pub global: bool,
 }
 
 /// A relocatable ELF64 object description.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ElfObject {
+    /// Target machine.
     pub architecture: ElfArchitecture,
+    /// Payload sections.
     pub sections: Vec<ElfSection>,
+    /// Relocation records.
     pub relocations: Vec<Relocation>,
+    /// Local and global symbols.
     pub symbols: Vec<ElfSymbol>,
 }
 
@@ -67,19 +83,29 @@ impl ElfObject {
         let mut shstr = vec![0];
         let mut name_offsets = Vec::new();
         for name in names.iter().skip(1) {
-            name_offsets.push(shstr.len() as u32);
+            name_offsets.push(u32::try_from(shstr.len()).map_err(|_| {
+                ObjectError::InvalidField {
+                    field: "section name table size",
+                    value: u64::MAX,
+                }
+            })?);
             shstr.extend_from_slice(name.as_bytes());
             shstr.push(0);
         }
         let mut strtab = vec![0];
         let mut symbol_names = Vec::new();
         for symbol in &self.symbols {
-            symbol_names.push(strtab.len() as u32);
+            symbol_names.push(u32::try_from(strtab.len()).map_err(|_| {
+                ObjectError::InvalidField {
+                    field: "string table size",
+                    value: u64::MAX,
+                }
+            })?);
             strtab.extend_from_slice(symbol.name.as_bytes());
             strtab.push(0);
         }
         let mut out = vec![0; 64];
-        let mut ranges = vec![(0u64, 0u64); 9];
+        let mut ranges = [(0u64, 0u64); 9];
         for (index, kind) in [
             ElfSectionKind::Text,
             ElfSectionKind::Rodata,
@@ -143,18 +169,30 @@ impl ElfObject {
                     2 => (1, 2, 0, 0, 1, 0),
                     3 => (1, 0, 0, 0, 1, 0),
                     4 | 5 => (4, 0, 6, if index == 4 { 1 } else { 3 }, 8, 24),
-                    6 => (2, 0, 7, (self.symbols.len() + 1) as u32, 8, 24),
+                    6 => (
+                        2,
+                        0,
+                        7,
+                        u32::try_from(self.symbols.len() + 1).map_err(|_| {
+                            ObjectError::InvalidField {
+                                field: "symbol count",
+                                value: u64::MAX,
+                            }
+                        })?,
+                        8,
+                        24,
+                    ),
                     7 | 8 => (3, 0, 0, 0, 1, 0),
                     _ => (0, 0, 0, 0, 1, 0),
                 };
             sh[4..8].copy_from_slice(&ty.to_le_bytes());
-            sh[8..16].copy_from_slice(&(flags as u64).to_le_bytes());
+            sh[8..16].copy_from_slice(&flags.to_le_bytes());
             sh[24..32].copy_from_slice(&ranges[index].0.to_le_bytes());
             sh[32..40].copy_from_slice(&ranges[index].1.to_le_bytes());
             sh[40..44].copy_from_slice(&link.to_le_bytes());
             sh[44..48].copy_from_slice(&info.to_le_bytes());
-            sh[48..56].copy_from_slice(&(align_value as u64).to_le_bytes());
-            sh[56..64].copy_from_slice(&(entsize as u64).to_le_bytes());
+            sh[48..56].copy_from_slice(&align_value.to_le_bytes());
+            sh[56..64].copy_from_slice(&entsize.to_le_bytes());
             out.extend_from_slice(&sh);
         }
         out[0..4].copy_from_slice(b"\x7fELF");
@@ -173,6 +211,10 @@ impl ElfObject {
 }
 
 /// Validates an ELF64 relocatable object header and section table.
+///
+/// # Errors
+///
+/// Returns an error when the header, machine, or section table is malformed.
 pub fn validate_elf(bytes: &[u8], architecture: ElfArchitecture) -> Result<(), ObjectError> {
     if bytes.len() < 64 {
         return Err(ObjectError::Truncated {
@@ -216,8 +258,8 @@ pub fn validate_elf(bytes: &[u8], architecture: ElfArchitecture) -> Result<(), O
         .ok_or(ObjectError::InvalidStructure("section table overflow"))?;
     if shoff
         .checked_add(table_size)
-        .filter(|end| *end <= bytes.len())
-        .is_none()
+        .as_ref()
+        .is_none_or(|end| *end > bytes.len())
     {
         return Err(ObjectError::OutOfBounds {
             section: "ELF section table",
@@ -234,6 +276,10 @@ pub struct ElfReader;
 
 impl ElfReader {
     /// Validates an ELF object for the requested architecture.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the object is malformed or targets another machine.
     pub fn validate(bytes: &[u8], architecture: ElfArchitecture) -> Result<(), ObjectError> {
         validate_elf(bytes, architecture)
     }
@@ -266,13 +312,13 @@ fn validate_input(object: &ElfObject) -> Result<(), ObjectError> {
                 size: 1,
             });
         }
-        if let SymbolRef::Local(index) = relocation.symbol {
-            if usize::try_from(index).map_or(true, |i| i >= object.symbols.len()) {
-                return Err(ObjectError::InvalidReference {
-                    kind: "symbol",
-                    index: index as usize,
-                });
-            }
+        if let SymbolRef::Local(index) = relocation.symbol
+            && usize::try_from(index).map_or(true, |i| i >= object.symbols.len())
+        {
+            return Err(ObjectError::InvalidReference {
+                kind: "symbol",
+                index: index as usize,
+            });
         }
     }
     Ok(())
@@ -301,7 +347,7 @@ fn encode_rela(
     }
     Ok(out)
 }
-fn elf_type(kind: RelocKind, machine: u16) -> Result<u32, ObjectError> {
+const fn elf_type(kind: RelocKind, machine: u16) -> Result<u32, ObjectError> {
     match (machine, kind) {
         (62, RelocKind::Abs64 | RelocKind::CodeEntry | RelocKind::ExternalSymbol) => Ok(1),
         (62, RelocKind::PcRel32) => Ok(2),
@@ -326,6 +372,7 @@ fn align(bytes: &mut Vec<u8>, alignment: usize) {
 }
 
 /// Converts generic sections into ELF section descriptions.
+#[must_use]
 pub fn sections_from_generic(sections: &[Section]) -> Vec<ElfSection> {
     sections
         .iter()

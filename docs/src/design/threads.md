@@ -23,3 +23,13 @@ mutator 固有状態を ThreadContext に閉じ込めることで共有 Runtime 
 - TLS slot は 1 語、binding entry は 2 語、blocking call は native transition とする。
 - thread の登録、離脱、poll、root publication を独自の global state に置かない。
 - mutex 保持中に GC request を待つ実装を追加しない。
+
+## Poll state machine
+
+`Running -> PollRequested -> Published -> Collecting -> Running` is the normal request path. `Published` records stack bounds, callee-saved registers, current frame, and epoch. A thread blocked in native code is `Safe`; it contributes its registered roots and conservative boundary without delaying collection.
+
+ThreadContext fields are thread id, native stack bounds, current frame, TLAB base/limit, allocation counter, TLS area, binding stack, handler/catch/cleanup pointers, registered roots, safepoint epoch/state, interrupt flags, deadline stack, multiple-value area, wait state, native register spill area, and pending status.
+
+The OS wrappers expose mutex lock/unlock, condition wait/signal/broadcast, semaphore wait/post, and waitqueue park/wake. The protocol is poll, inspect interrupt and deadline, enter native, park, wake, leave native, and poll again. `interrupt-thread` atomically sets interrupt and poll-request bits and wakes a waitqueue. Delivery occurs at a safepoint or native return.
+
+`with-deadline` pushes an absolute monotonic-nanosecond deadline. `with-timeout` derives one and installs a timeout condition. Poll, blocking waits, and builtin boundaries check it; expiration becomes a pending non-local exit after cleanup. TLS contains one current-value word per symbol, while every binding entry contains exactly old-value and tls-index, two words.

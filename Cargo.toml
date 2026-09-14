@@ -3,10 +3,12 @@ resolver = "3"
 members = [
     ".",
     "packages/ir",
+    "packages/asm/x86-64",
 ]
 default-members = [
     ".",
     "packages/ir",
+    "packages/asm/x86-64",
 ]
 
 [workspace.package]

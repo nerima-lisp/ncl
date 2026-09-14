@@ -229,34 +229,34 @@ ASDF/INTERFACE	USER-SOURCE-REGISTRY	function	ncl-contrib-asdf	3	no	Phase 3 contr
 ASDF/INTERFACE	USER-SOURCE-REGISTRY-DIRECTORY	function	ncl-contrib-asdf	3	no	Phase 3 contrib surface
 ASDF/INTERFACE	VERSION	other	ncl-contrib-asdf	3	no	Phase 3 contrib surface
 ASDF/INTERFACE	VERSION-SATISFIES	function	ncl-contrib-asdf	3	no	Phase 3 contrib surface
-COMMON-LISP	&ALLOW-OTHER-KEYS	other	ncl-runtime	2	no	
-COMMON-LISP	&AUX	other	ncl-runtime	2	no	
-COMMON-LISP	&BODY	other	ncl-runtime	2	no	
-COMMON-LISP	&ENVIRONMENT	other	ncl-runtime	2	no	
-COMMON-LISP	&KEY	other	ncl-runtime	2	no	
-COMMON-LISP	&OPTIONAL	other	ncl-runtime	2	no	
-COMMON-LISP	&REST	other	ncl-runtime	2	no	
-COMMON-LISP	&WHOLE	other	ncl-runtime	2	no	
+COMMON-LISP	&ALLOW-OTHER-KEYS	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&AUX	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&BODY	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&ENVIRONMENT	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&KEY	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&OPTIONAL	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&REST	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&WHOLE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	*	variable+function	ncl-lib-numbers	1	yes	numeric tower or numeric type
-COMMON-LISP	**	variable	ncl-runtime	2	no	
-COMMON-LISP	***	variable	ncl-runtime	2	no	
-COMMON-LISP	*BREAK-ON-SIGNALS*	variable	ncl-runtime	2	no	
+COMMON-LISP	**	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	***	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	*BREAK-ON-SIGNALS*	variable	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	*COMPILE-FILE-PATHNAME*	variable	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	*COMPILE-FILE-TRUENAME*	variable	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	*COMPILE-PRINT*	variable	ncl-runtime	2	no	
-COMMON-LISP	*COMPILE-VERBOSE*	variable	ncl-runtime	2	no	
+COMMON-LISP	*COMPILE-FILE-TRUENAME*	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	*COMPILE-PRINT*	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	*COMPILE-VERBOSE*	variable	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	*DEBUG-IO*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*DEBUGGER-HOOK*	variable	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	*DEFAULT-PATHNAME-DEFAULTS*	variable	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	*ERROR-OUTPUT*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	*FEATURES*	variable	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	*GENSYM-COUNTER*	variable	ncl-runtime	2	no	
+COMMON-LISP	*FEATURES*	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	*GENSYM-COUNTER*	variable	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	*LOAD-PATHNAME*	variable	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	*LOAD-PRINT*	variable	ncl-runtime	2	no	
-COMMON-LISP	*LOAD-TRUENAME*	variable	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	*LOAD-VERBOSE*	variable	ncl-runtime	2	no	
-COMMON-LISP	*MACROEXPAND-HOOK*	variable	ncl-runtime	2	no	
-COMMON-LISP	*MODULES*	variable	ncl-runtime	2	no	
+COMMON-LISP	*LOAD-PRINT*	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	*LOAD-TRUENAME*	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	*LOAD-VERBOSE*	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	*MACROEXPAND-HOOK*	variable	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	*MODULES*	variable	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	*PACKAGE*	variable	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	*PRINT-ARRAY*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*PRINT-BASE*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
@@ -268,13 +268,13 @@ COMMON-LISP	*PRINT-LENGTH*	variable	ncl-lib-streams	1	no	stream/readtable/printi
 COMMON-LISP	*PRINT-LEVEL*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*PRINT-LINES*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*PRINT-MISER-WIDTH*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	*PRINT-PPRINT-DISPATCH*	variable	ncl-runtime	2	no	
+COMMON-LISP	*PRINT-PPRINT-DISPATCH*	variable	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	*PRINT-PRETTY*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*PRINT-RADIX*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	*PRINT-READABLY*	variable	ncl-runtime	2	no	
+COMMON-LISP	*PRINT-READABLY*	variable	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	*PRINT-RIGHT-MARGIN*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*QUERY-IO*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	*RANDOM-STATE*	variable	ncl-runtime	2	no	
+COMMON-LISP	*RANDOM-STATE*	variable	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	*READ-BASE*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*READ-DEFAULT-FLOAT-FORMAT*	variable	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	*READ-EVAL*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
@@ -285,56 +285,56 @@ COMMON-LISP	*STANDARD-OUTPUT*	variable	ncl-lib-streams	1	no	stream/readtable/pri
 COMMON-LISP	*TERMINAL-IO*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*TRACE-OUTPUT*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	+	variable+function	ncl-lib-numbers	1	yes	numeric tower or numeric type
-COMMON-LISP	++	variable	ncl-runtime	2	no	
-COMMON-LISP	+++	variable	ncl-runtime	2	no	
+COMMON-LISP	++	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	+++	variable	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	-	variable+function	ncl-lib-numbers	1	yes	numeric tower or numeric type
 COMMON-LISP	/	variable+function	ncl-lib-numbers	1	yes	numeric tower or numeric type
-COMMON-LISP	//	variable	ncl-runtime	2	no	
-COMMON-LISP	///	variable	ncl-runtime	2	no	
-COMMON-LISP	/=	function	ncl-runtime	2	yes	
+COMMON-LISP	//	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	///	variable	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	/=	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
 COMMON-LISP	1+	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
 COMMON-LISP	1-	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
-COMMON-LISP	<	function	ncl-runtime	2	yes	
-COMMON-LISP	<=	function	ncl-runtime	2	yes	
-COMMON-LISP	=	function	ncl-runtime	2	yes	
-COMMON-LISP	>	function	ncl-runtime	2	yes	
-COMMON-LISP	>=	function	ncl-runtime	2	yes	
+COMMON-LISP	<	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
+COMMON-LISP	<=	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
+COMMON-LISP	=	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
+COMMON-LISP	>	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
+COMMON-LISP	>=	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
 COMMON-LISP	ABORT	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	ABS	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ACONS	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	ACOS	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ACOSH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	ADD-METHOD	function	ncl-runtime	2	no	
+COMMON-LISP	ADD-METHOD	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ADJOIN	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	ADJUST-ARRAY	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
-COMMON-LISP	ADJUSTABLE-ARRAY-P	function	ncl-runtime	2	no	
+COMMON-LISP	ADJUSTABLE-ARRAY-P	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ALLOCATE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	ALPHA-CHAR-P	function	ncl-lib-strings	1	yes	character/string operation
 COMMON-LISP	ALPHANUMERICP	function	ncl-lib-strings	1	yes	character/string operation
 COMMON-LISP	AND	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	APPEND	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	APPLY	function	ncl-runtime	2	no	
-COMMON-LISP	APROPOS	function	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	APROPOS-LIST	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	APPLY	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	APROPOS	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	APROPOS-LIST	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	AREF	function	ncl-lib-hash-arrays	1	yes	array/vector/bit/hash operation
 COMMON-LISP	ARITHMETIC-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	ARITHMETIC-ERROR-OPERANDS	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	ARITHMETIC-ERROR-OPERATION	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	ARRAY	class	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ARRAY	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ARRAY-DIMENSION	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
-COMMON-LISP	ARRAY-DIMENSION-LIMIT	constant	ncl-runtime	2	no	
+COMMON-LISP	ARRAY-DIMENSION-LIMIT	constant	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ARRAY-DIMENSIONS	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	ARRAY-DISPLACEMENT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	ARRAY-ELEMENT-TYPE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
-COMMON-LISP	ARRAY-HAS-FILL-POINTER-P	function	ncl-runtime	2	no	
+COMMON-LISP	ARRAY-HAS-FILL-POINTER-P	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ARRAY-IN-BOUNDS-P	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	ARRAY-RANK	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
-COMMON-LISP	ARRAY-RANK-LIMIT	constant	ncl-runtime	2	no	
+COMMON-LISP	ARRAY-RANK-LIMIT	constant	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ARRAY-ROW-MAJOR-INDEX	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	ARRAY-TOTAL-SIZE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
-COMMON-LISP	ARRAY-TOTAL-SIZE-LIMIT	constant	ncl-runtime	2	no	
-COMMON-LISP	ARRAYP	function	ncl-runtime	2	no	
-COMMON-LISP	ASH	function	ncl-runtime	2	yes	
+COMMON-LISP	ARRAY-TOTAL-SIZE-LIMIT	constant	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ARRAYP	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ASH	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
 COMMON-LISP	ASIN	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ASINH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ASSERT	macro	ncl-lib-macros	1	no	macro expansion/setf surface
@@ -344,9 +344,9 @@ COMMON-LISP	ASSOC-IF-NOT	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	ATAN	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ATANH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ATOM	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	BASE-CHAR	type	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	BASE-STRING	class	ncl-runtime	2	no	
-COMMON-LISP	BIGNUM	class	ncl-runtime	2	no	
+COMMON-LISP	BASE-CHAR	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BASE-STRING	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BIGNUM	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	BIT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	BIT-AND	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	BIT-ANDC1	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
@@ -358,7 +358,7 @@ COMMON-LISP	BIT-NOR	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash oper
 COMMON-LISP	BIT-NOT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	BIT-ORC1	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	BIT-ORC2	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
-COMMON-LISP	BIT-VECTOR	class	ncl-runtime	2	no	
+COMMON-LISP	BIT-VECTOR	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	BIT-VECTOR-P	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	BIT-XOR	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	BLOCK	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
@@ -366,11 +366,11 @@ COMMON-LISP	BOOLE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BOOLE-1	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BOOLE-2	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BOOLE-AND	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	BOOLE-ANDC1	constant	ncl-runtime	2	no	
-COMMON-LISP	BOOLE-ANDC2	constant	ncl-runtime	2	no	
+COMMON-LISP	BOOLE-ANDC1	constant	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BOOLE-ANDC2	constant	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	BOOLE-C1	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BOOLE-C2	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	BOOLE-CLR	constant	ncl-runtime	2	no	
+COMMON-LISP	BOOLE-CLR	constant	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	BOOLE-EQV	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BOOLE-IOR	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BOOLE-NAND	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
@@ -379,50 +379,50 @@ COMMON-LISP	BOOLE-ORC1	constant	ncl-lib-numbers	1	no	numeric tower or numeric ty
 COMMON-LISP	BOOLE-ORC2	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BOOLE-SET	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BOOLE-XOR	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	BOOLEAN	type	ncl-runtime	2	no	
+COMMON-LISP	BOOLEAN	type	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	BOTH-CASE-P	function	ncl-lib-strings	1	yes	character/string operation
 COMMON-LISP	BOUNDP	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	BREAK	function	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	BROADCAST-STREAM	class	ncl-runtime	2	no	
-COMMON-LISP	BROADCAST-STREAM-STREAMS	function	ncl-runtime	2	no	
+COMMON-LISP	BROADCAST-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BROADCAST-STREAM-STREAMS	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	BUILT-IN-CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	BUTLAST	function	ncl-runtime	2	no	
+COMMON-LISP	BUTLAST	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	BYTE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BYTE-POSITION	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	BYTE-SIZE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	CAAAAR	function	ncl-runtime	2	no	
-COMMON-LISP	CAAADR	function	ncl-runtime	2	no	
+COMMON-LISP	CAAAAR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CAAADR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CAAAR	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	CAADAR	function	ncl-runtime	2	no	
-COMMON-LISP	CAADDR	function	ncl-runtime	2	no	
+COMMON-LISP	CAADAR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CAADDR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CAADR	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	CAAR	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	CADAAR	function	ncl-runtime	2	no	
-COMMON-LISP	CADADR	function	ncl-runtime	2	no	
+COMMON-LISP	CADAAR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CADADR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CADAR	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	CADDAR	function	ncl-runtime	2	no	
-COMMON-LISP	CADDDR	function	ncl-runtime	2	no	
+COMMON-LISP	CADDAR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CADDDR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CADDR	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	CADR	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	CALL-ARGUMENTS-LIMIT	constant	ncl-runtime	2	no	
+COMMON-LISP	CALL-ARGUMENTS-LIMIT	constant	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CALL-METHOD	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	CALL-NEXT-METHOD	other	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	CAR	function	ncl-lib-sequences	1	yes	sequence/list operation
 COMMON-LISP	CASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	CATCH	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	CCASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	CDAAAR	function	ncl-runtime	2	no	
-COMMON-LISP	CDAADR	function	ncl-runtime	2	no	
+COMMON-LISP	CDAAAR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CDAADR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CDAAR	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	CDADAR	function	ncl-runtime	2	no	
-COMMON-LISP	CDADDR	function	ncl-runtime	2	no	
+COMMON-LISP	CDADAR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CDADDR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CDADR	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	CDAR	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	CDDAAR	function	ncl-runtime	2	no	
-COMMON-LISP	CDDADR	function	ncl-runtime	2	no	
+COMMON-LISP	CDDAAR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CDDADR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CDDAR	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	CDDDAR	function	ncl-runtime	2	no	
-COMMON-LISP	CDDDDR	function	ncl-runtime	2	no	
+COMMON-LISP	CDDDAR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CDDDDR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CDDDR	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	CDDR	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	CDR	function	ncl-lib-sequences	1	yes	sequence/list operation
@@ -430,26 +430,26 @@ COMMON-LISP	CEILING	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	CELL-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	CELL-ERROR-NAME	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	CERROR	function	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	CHANGE-CLASS	function	ncl-runtime	2	no	
+COMMON-LISP	CHANGE-CLASS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CHAR	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	CHAR-CODE	function	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	CHAR-CODE-LIMIT	constant	ncl-runtime	2	no	
+COMMON-LISP	CHAR-CODE-LIMIT	constant	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CHAR-DOWNCASE	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	CHAR-EQUAL	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	CHAR-GREATERP	function	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	CHAR-INT	function	ncl-runtime	2	no	
+COMMON-LISP	CHAR-INT	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CHAR-LESSP	function	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	CHAR-NAME	function	ncl-runtime	2	no	
+COMMON-LISP	CHAR-NAME	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CHAR-NOT-EQUAL	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	CHAR-NOT-GREATERP	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	CHAR-NOT-LESSP	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	CHAR-UPCASE	function	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	CHAR/=	function	ncl-runtime	2	no	
-COMMON-LISP	CHAR<	function	ncl-runtime	2	no	
-COMMON-LISP	CHAR<=	function	ncl-runtime	2	no	
-COMMON-LISP	CHAR=	function	ncl-runtime	2	no	
-COMMON-LISP	CHAR>	function	ncl-runtime	2	no	
-COMMON-LISP	CHAR>=	function	ncl-runtime	2	no	
+COMMON-LISP	CHAR/=	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR<	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR<=	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR=	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR>	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR>=	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CHARACTER	class+function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	CHARACTERP	function	ncl-lib-strings	1	yes	character/string operation
 COMMON-LISP	CHECK-TYPE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
@@ -463,52 +463,52 @@ COMMON-LISP	CLOSE	function	ncl-lib-streams	1	no	stream/readtable/printing stream
 COMMON-LISP	CLRHASH	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	CODE-CHAR	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	COERCE	function	ncl-types	1	no	type predicate/coercion surface
-COMMON-LISP	COMPILATION-SPEED	other	ncl-runtime	2	no	
-COMMON-LISP	COMPILE	function	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	COMPILE-FILE	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	COMPILATION-SPEED	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COMPILE	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	COMPILE-FILE	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	COMPILE-FILE-PATHNAME	function	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	COMPILED-FUNCTION	type	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	COMPILED-FUNCTION-P	function	ncl-runtime	2	no	
-COMMON-LISP	COMPILER-MACRO	other	ncl-runtime	2	no	
-COMMON-LISP	COMPILER-MACRO-FUNCTION	function	ncl-runtime	2	no	
-COMMON-LISP	COMPLEMENT	function	ncl-runtime	2	no	
+COMMON-LISP	COMPILED-FUNCTION	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COMPILED-FUNCTION-P	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COMPILER-MACRO	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COMPILER-MACRO-FUNCTION	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COMPLEMENT	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	COMPLEX	class+function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	COMPLEXP	function	ncl-runtime	2	no	
+COMMON-LISP	COMPLEXP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	COMPUTE-APPLICABLE-METHODS	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	COMPUTE-RESTARTS	function	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	CONCATENATE	function	ncl-runtime	2	no	
-COMMON-LISP	CONCATENATED-STREAM	class	ncl-runtime	2	no	
-COMMON-LISP	CONCATENATED-STREAM-STREAMS	function	ncl-runtime	2	no	
+COMMON-LISP	CONCATENATE	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CONCATENATED-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CONCATENATED-STREAM-STREAMS	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	COND	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	CONDITION	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	CONJUGATE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	CONS	class+function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	CONSP	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	CONSTANTLY	function	ncl-runtime	2	no	
-COMMON-LISP	CONSTANTP	function	ncl-runtime	2	no	
+COMMON-LISP	CONSTANTLY	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CONSTANTP	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CONTINUE	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	CONTROL-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	COPY-ALIST	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	COPY-LIST	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	COPY-PPRINT-DISPATCH	function	ncl-runtime	2	no	
+COMMON-LISP	COPY-PPRINT-DISPATCH	function	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	COPY-READTABLE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	COPY-SEQ	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	COPY-STRUCTURE	function	ncl-runtime	2	no	
+COMMON-LISP	COPY-STRUCTURE	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	COPY-SYMBOL	function	ncl-lib-packages	1	no	package or symbol operation
-COMMON-LISP	COPY-TREE	function	ncl-runtime	2	no	
+COMMON-LISP	COPY-TREE	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	COS	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	COSH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	COUNT	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	COUNT-IF	function	ncl-runtime	2	no	
-COMMON-LISP	COUNT-IF-NOT	function	ncl-runtime	2	no	
+COMMON-LISP	COUNT-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COUNT-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	CTYPECASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	DEBUG	other	ncl-runtime	2	no	
+COMMON-LISP	DEBUG	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	DECF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	DECLAIM	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	DECLARATION	other	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	DECLARE	other	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	DECODE-FLOAT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	DECODE-UNIVERSAL-TIME	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	DECODE-UNIVERSAL-TIME	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	DEFCLASS	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	DEFCONSTANT	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	DEFGENERIC	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
@@ -531,7 +531,7 @@ COMMON-LISP	DELETE	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	DELETE-DUPLICATES	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	DELETE-FILE	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	DELETE-IF	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	DELETE-IF-NOT	function	ncl-runtime	2	no	
+COMMON-LISP	DELETE-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	DELETE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	DENOMINATOR	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	DEPOSIT-FIELD	function	ncl-lib-numbers	1	no	numeric tower or numeric type
@@ -542,8 +542,8 @@ COMMON-LISP	DIGIT-CHAR	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	DIGIT-CHAR-P	function	ncl-lib-strings	1	yes	character/string operation
 COMMON-LISP	DIRECTORY	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	DIRECTORY-NAMESTRING	function	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	DISASSEMBLE	function	ncl-runtime	2	no	
-COMMON-LISP	DIVISION-BY-ZERO	condition+class	ncl-runtime	2	no	
+COMMON-LISP	DISASSEMBLE	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	DIVISION-BY-ZERO	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	DO	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	DO*	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	DO-ALL-SYMBOLS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
@@ -552,77 +552,77 @@ COMMON-LISP	DO-SYMBOLS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	DOCUMENTATION	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	DOLIST	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	DOTIMES	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	DOUBLE-FLOAT	class	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	DOUBLE-FLOAT	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	DOUBLE-FLOAT-EPSILON	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	DOUBLE-FLOAT-NEGATIVE-EPSILON	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	DPB	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
-COMMON-LISP	DRIBBLE	function	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	DYNAMIC-EXTENT	other	ncl-runtime	2	no	
+COMMON-LISP	DRIBBLE	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	DYNAMIC-EXTENT	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ECASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	ECHO-STREAM	class	ncl-runtime	2	no	
-COMMON-LISP	ECHO-STREAM-INPUT-STREAM	function	ncl-runtime	2	no	
-COMMON-LISP	ECHO-STREAM-OUTPUT-STREAM	function	ncl-runtime	2	no	
-COMMON-LISP	ED	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	ECHO-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ECHO-STREAM-INPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ECHO-STREAM-OUTPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ED	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	EIGHTH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	ELT	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	ENCODE-UNIVERSAL-TIME	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	ENCODE-UNIVERSAL-TIME	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	END-OF-FILE	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	ENDP	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	ENOUGH-NAMESTRING	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	ENSURE-DIRECTORIES-EXIST	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	ENSURE-GENERIC-FUNCTION	function	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	EQ	function	ncl-runtime	2	yes	
-COMMON-LISP	EQL	function	ncl-runtime	2	yes	
-COMMON-LISP	EQUAL	function	ncl-runtime	2	no	
-COMMON-LISP	EQUALP	function	ncl-runtime	2	no	
+COMMON-LISP	EQ	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
+COMMON-LISP	EQL	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
+COMMON-LISP	EQUAL	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	EQUALP	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ERROR	condition+class+function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	ETYPECASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	EVAL	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	EVAL	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	EVAL-WHEN	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	EVENP	function	ncl-runtime	2	no	
+COMMON-LISP	EVENP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	EVERY	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	EXP	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	EXPORT	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	EXPT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	EXTENDED-CHAR	type	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	EXTENDED-CHAR	type	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	FBOUNDP	function	ncl-lib-packages	1	no	package or symbol operation
-COMMON-LISP	FCEILING	function	ncl-runtime	2	no	
-COMMON-LISP	FDEFINITION	function	ncl-runtime	2	no	
-COMMON-LISP	FFLOOR	function	ncl-runtime	2	no	
+COMMON-LISP	FCEILING	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FDEFINITION	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FFLOOR	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	FIFTH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	FILE-AUTHOR	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	FILE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	FILE-ERROR-PATHNAME	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	FILE-LENGTH	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	FILE-NAMESTRING	function	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	FILE-POSITION	function	ncl-runtime	2	no	
-COMMON-LISP	FILE-STREAM	class	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	FILE-STRING-LENGTH	function	ncl-runtime	2	no	
+COMMON-LISP	FILE-POSITION	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FILE-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FILE-STRING-LENGTH	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	FILE-WRITE-DATE	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	FILL	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	FILL-POINTER	function	ncl-runtime	2	no	
+COMMON-LISP	FILL-POINTER	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	FIND	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	FIND-ALL-SYMBOLS	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	FIND-CLASS	function	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	FIND-IF	function	ncl-runtime	2	no	
-COMMON-LISP	FIND-IF-NOT	function	ncl-runtime	2	no	
-COMMON-LISP	FIND-METHOD	function	ncl-runtime	2	no	
+COMMON-LISP	FIND-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FIND-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FIND-METHOD	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	FIND-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	FIND-RESTART	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	FIND-SYMBOL	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	FINISH-OUTPUT	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	FIRST	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	FIXNUM	class	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	FIXNUM	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	FLET	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	FLOAT	class+function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	FLOAT-DIGITS	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	FLOAT-PRECISION	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	FLOAT-RADIX	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	FLOAT-SIGN	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	FLOATING-POINT-INEXACT	condition+class	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	FLOATING-POINT-INVALID-OPERATION	condition+class	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	FLOATING-POINT-OVERFLOW	condition+class	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	FLOATING-POINT-UNDERFLOW	condition+class	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	FLOATING-POINT-INEXACT	condition+class	ncl-conditions	1	no	condition class and accessors
+COMMON-LISP	FLOATING-POINT-INVALID-OPERATION	condition+class	ncl-conditions	1	no	condition class and accessors
+COMMON-LISP	FLOATING-POINT-OVERFLOW	condition+class	ncl-conditions	1	no	condition class and accessors
+COMMON-LISP	FLOATING-POINT-UNDERFLOW	condition+class	ncl-conditions	1	no	condition class and accessors
 COMMON-LISP	FLOATP	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	FLOOR	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	FMAKUNBOUND	function	ncl-lib-packages	1	no	package or symbol operation
@@ -632,34 +632,34 @@ COMMON-LISP	FORMATTER	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	FOURTH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	FRESH-LINE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	FROUND	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	FTRUNCATE	function	ncl-runtime	2	no	
-COMMON-LISP	FTYPE	other	ncl-runtime	2	no	
-COMMON-LISP	FUNCALL	function	ncl-runtime	2	no	
+COMMON-LISP	FTRUNCATE	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FTYPE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FUNCALL	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	FUNCTION	special-operator+class	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	FUNCTION-KEYWORDS	function	ncl-runtime	2	no	
-COMMON-LISP	FUNCTION-LAMBDA-EXPRESSION	function	ncl-runtime	2	no	
-COMMON-LISP	FUNCTIONP	function	ncl-runtime	2	no	
+COMMON-LISP	FUNCTION-KEYWORDS	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FUNCTION-LAMBDA-EXPRESSION	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FUNCTIONP	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	GCD	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	GENERIC-FUNCTION	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	GENSYM	function	ncl-lib-packages	1	no	package or symbol operation
-COMMON-LISP	GENTEMP	function	ncl-runtime	2	no	
+COMMON-LISP	GENTEMP	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	GET	function	ncl-lib-packages	1	no	package or symbol operation
-COMMON-LISP	GET-DECODED-TIME	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	GET-DECODED-TIME	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	GET-DISPATCH-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	GET-INTERNAL-REAL-TIME	function	ncl-runtime	2	no	
-COMMON-LISP	GET-INTERNAL-RUN-TIME	function	ncl-runtime	2	no	
+COMMON-LISP	GET-INTERNAL-REAL-TIME	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	GET-INTERNAL-RUN-TIME	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	GET-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	GET-OUTPUT-STREAM-STRING	function	ncl-runtime	2	no	
-COMMON-LISP	GET-PROPERTIES	function	ncl-runtime	2	no	
+COMMON-LISP	GET-OUTPUT-STREAM-STRING	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	GET-PROPERTIES	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	GET-SETF-EXPANSION	function	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	GET-UNIVERSAL-TIME	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	GET-UNIVERSAL-TIME	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	GETF	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	GETHASH	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	GO	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	GRAPHIC-CHAR-P	function	ncl-lib-strings	1	yes	character/string operation
 COMMON-LISP	HANDLER-BIND	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	HANDLER-CASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	HASH-TABLE	class	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	HASH-TABLE-COUNT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	HASH-TABLE-P	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	HASH-TABLE-REHASH-SIZE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
@@ -667,43 +667,43 @@ COMMON-LISP	HASH-TABLE-REHASH-THRESHOLD	function	ncl-lib-hash-arrays	1	no	array/
 COMMON-LISP	HASH-TABLE-SIZE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	HASH-TABLE-TEST	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	HOST-NAMESTRING	function	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	IDENTITY	function	ncl-runtime	2	no	
+COMMON-LISP	IDENTITY	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	IF	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	IGNORABLE	other	ncl-runtime	2	no	
-COMMON-LISP	IGNORE	other	ncl-runtime	2	no	
+COMMON-LISP	IGNORABLE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	IGNORE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	IGNORE-ERRORS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	IMAGPART	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	IMPORT	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	IN-PACKAGE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	INCF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	INITIALIZE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	INLINE	other	ncl-runtime	2	no	
+COMMON-LISP	INLINE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	INPUT-STREAM-P	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	INSPECT	function	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	INTEGER	class	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	INSPECT	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	INTEGER	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	INTEGER-DECODE-FLOAT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	INTEGER-LENGTH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	INTEGERP	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	INTERACTIVE-STREAM-P	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	INTERN	function	ncl-lib-packages	1	no	package or symbol operation
-COMMON-LISP	INTERNAL-TIME-UNITS-PER-SECOND	constant	ncl-runtime	2	no	
+COMMON-LISP	INTERNAL-TIME-UNITS-PER-SECOND	constant	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	INTERSECTION	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	INVALID-METHOD-ERROR	function	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	INVOKE-DEBUGGER	function	ncl-runtime	2	no	
+COMMON-LISP	INVOKE-DEBUGGER	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	INVOKE-RESTART	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	INVOKE-RESTART-INTERACTIVELY	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	ISQRT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	KEYWORD	type	ncl-runtime	2	no	
-COMMON-LISP	KEYWORDP	function	ncl-runtime	2	no	
+COMMON-LISP	KEYWORD	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	KEYWORDP	function	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	LABELS	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	LAMBDA	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	LAMBDA-LIST-KEYWORDS	constant	ncl-runtime	2	no	
-COMMON-LISP	LAMBDA-PARAMETERS-LIMIT	constant	ncl-runtime	2	no	
-COMMON-LISP	LAST	function	ncl-runtime	2	no	
-COMMON-LISP	LCM	function	ncl-runtime	2	no	
+COMMON-LISP	LAMBDA-LIST-KEYWORDS	constant	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	LAMBDA-PARAMETERS-LIMIT	constant	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	LAST	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	LCM	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	LDB	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
 COMMON-LISP	LDB-TEST	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	LDIFF	function	ncl-runtime	2	no	
+COMMON-LISP	LDIFF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	LEAST-NEGATIVE-DOUBLE-FLOAT	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	LEAST-NEGATIVE-LONG-FLOAT	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	LEAST-NEGATIVE-NORMALIZED-DOUBLE-FLOAT	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
@@ -723,15 +723,15 @@ COMMON-LISP	LEAST-POSITIVE-SINGLE-FLOAT	constant	ncl-lib-numbers	1	no	numeric to
 COMMON-LISP	LENGTH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	LET	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	LET*	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	LISP-IMPLEMENTATION-TYPE	function	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	LISP-IMPLEMENTATION-VERSION	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	LISP-IMPLEMENTATION-TYPE	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	LISP-IMPLEMENTATION-VERSION	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	LIST	class+function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	LIST*	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	LIST-ALL-PACKAGES	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	LIST-LENGTH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	LISTEN	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	LISTP	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	LOAD	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	LOAD	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	LOAD-LOGICAL-PATHNAME-TRANSLATIONS	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	LOAD-TIME-VALUE	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	LOCALLY	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
@@ -739,56 +739,56 @@ COMMON-LISP	LOG	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	LOGAND	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
 COMMON-LISP	LOGANDC1	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	LOGANDC2	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	LOGBITP	function	ncl-runtime	2	no	
+COMMON-LISP	LOGBITP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	LOGCOUNT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	LOGEQV	function	ncl-runtime	2	yes	
+COMMON-LISP	LOGEQV	function	ncl-lib-numbers	1	yes	reclassified by subsystem ownership rule
 COMMON-LISP	LOGICAL-PATHNAME	class+function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	LOGICAL-PATHNAME-TRANSLATIONS	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	LOGIOR	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
-COMMON-LISP	LOGNAND	function	ncl-runtime	2	no	
+COMMON-LISP	LOGNAND	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	LOGNOR	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	LOGNOT	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
 COMMON-LISP	LOGORC1	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	LOGORC2	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	LOGTEST	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	LOGXOR	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
-COMMON-LISP	LONG-FLOAT	type	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	LONG-FLOAT	type	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	LONG-FLOAT-EPSILON	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	LONG-FLOAT-NEGATIVE-EPSILON	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	LONG-SITE-NAME	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	LONG-SITE-NAME	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	LOOP	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	LOOP-FINISH	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	LOWER-CASE-P	function	ncl-lib-strings	1	yes	character/string operation
-COMMON-LISP	MACHINE-INSTANCE	function	ncl-runtime	2	no	
-COMMON-LISP	MACHINE-TYPE	function	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	MACHINE-VERSION	function	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	MACRO-FUNCTION	function	ncl-runtime	2	no	
+COMMON-LISP	MACHINE-INSTANCE	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	MACHINE-TYPE	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	MACHINE-VERSION	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	MACRO-FUNCTION	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MACROEXPAND	function	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	MACROEXPAND-1	function	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	MACROLET	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	MAKE-ARRAY	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
-COMMON-LISP	MAKE-BROADCAST-STREAM	function	ncl-runtime	2	no	
-COMMON-LISP	MAKE-CONCATENATED-STREAM	function	ncl-runtime	2	no	
-COMMON-LISP	MAKE-CONDITION	function	ncl-runtime	2	no	
+COMMON-LISP	MAKE-BROADCAST-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-CONCATENATED-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-CONDITION	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKE-DISPATCH-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	MAKE-ECHO-STREAM	function	ncl-runtime	2	no	
+COMMON-LISP	MAKE-ECHO-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKE-HASH-TABLE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	MAKE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	MAKE-INSTANCES-OBSOLETE	function	ncl-runtime	2	no	
-COMMON-LISP	MAKE-LIST	function	ncl-runtime	2	no	
-COMMON-LISP	MAKE-LOAD-FORM	function	ncl-runtime	2	no	
-COMMON-LISP	MAKE-LOAD-FORM-SAVING-SLOTS	function	ncl-runtime	2	no	
-COMMON-LISP	MAKE-METHOD	other	ncl-runtime	2	no	
+COMMON-LISP	MAKE-INSTANCES-OBSOLETE	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-LIST	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-LOAD-FORM	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-LOAD-FORM-SAVING-SLOTS	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-METHOD	other	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	MAKE-PATHNAME	function	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	MAKE-RANDOM-STATE	function	ncl-runtime	2	no	
-COMMON-LISP	MAKE-SEQUENCE	function	ncl-runtime	2	no	
+COMMON-LISP	MAKE-RANDOM-STATE	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-SEQUENCE	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKE-STRING	function	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	MAKE-STRING-INPUT-STREAM	function	ncl-runtime	2	no	
-COMMON-LISP	MAKE-STRING-OUTPUT-STREAM	function	ncl-runtime	2	no	
+COMMON-LISP	MAKE-STRING-INPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-STRING-OUTPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKE-SYMBOL	function	ncl-lib-packages	1	no	package or symbol operation
-COMMON-LISP	MAKE-SYNONYM-STREAM	function	ncl-runtime	2	no	
-COMMON-LISP	MAKE-TWO-WAY-STREAM	function	ncl-runtime	2	no	
+COMMON-LISP	MAKE-SYNONYM-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-TWO-WAY-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKUNBOUND	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	MAP	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	MAP-INTO	function	ncl-lib-sequences	1	no	sequence/list operation
@@ -803,15 +803,15 @@ COMMON-LISP	MASK-FIELD	function	ncl-lib-numbers	1	no	numeric tower or numeric ty
 COMMON-LISP	MAX	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
 COMMON-LISP	MEMBER	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	MEMBER-IF	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	MEMBER-IF-NOT	function	ncl-runtime	2	no	
+COMMON-LISP	MEMBER-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MERGE	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	MERGE-PATHNAMES	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	METHOD	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	METHOD-COMBINATION	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	METHOD-COMBINATION-ERROR	function	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	METHOD-QUALIFIERS	function	ncl-runtime	2	no	
+COMMON-LISP	METHOD-QUALIFIERS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MIN	function	ncl-lib-numbers	1	yes	numeric tower or numeric type
-COMMON-LISP	MINUSP	function	ncl-runtime	2	no	
+COMMON-LISP	MINUSP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MISMATCH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	MOD	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	MOST-NEGATIVE-DOUBLE-FLOAT	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
@@ -830,52 +830,52 @@ COMMON-LISP	MULTIPLE-VALUE-CALL	special-operator	ncl-compiler-front	1	no	core sy
 COMMON-LISP	MULTIPLE-VALUE-LIST	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	MULTIPLE-VALUE-PROG1	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	MULTIPLE-VALUE-SETQ	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	MULTIPLE-VALUES-LIMIT	constant	ncl-runtime	2	no	
-COMMON-LISP	NAME-CHAR	function	ncl-runtime	2	no	
+COMMON-LISP	MULTIPLE-VALUES-LIMIT	constant	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NAME-CHAR	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NAMESTRING	function	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	NBUTLAST	function	ncl-runtime	2	no	
-COMMON-LISP	NCONC	function	ncl-runtime	2	no	
+COMMON-LISP	NBUTLAST	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NCONC	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NEXT-METHOD-P	other	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	NIL	constant	ncl-runtime	2	no	
-COMMON-LISP	NINTERSECTION	function	ncl-runtime	2	no	
+COMMON-LISP	NIL	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NINTERSECTION	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NINTH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	NO-APPLICABLE-METHOD	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	NO-NEXT-METHOD	function	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	NOT	function	ncl-runtime	2	no	
+COMMON-LISP	NOT	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NOTANY	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	NOTEVERY	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	NOTINLINE	other	ncl-runtime	2	no	
-COMMON-LISP	NRECONC	function	ncl-runtime	2	no	
+COMMON-LISP	NOTINLINE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NRECONC	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NREVERSE	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	NSET-DIFFERENCE	function	ncl-runtime	2	no	
-COMMON-LISP	NSET-EXCLUSIVE-OR	function	ncl-runtime	2	no	
+COMMON-LISP	NSET-DIFFERENCE	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NSET-EXCLUSIVE-OR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NSTRING-CAPITALIZE	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	NSTRING-DOWNCASE	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	NSTRING-UPCASE	function	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	NSUBLIS	function	ncl-runtime	2	no	
-COMMON-LISP	NSUBST	function	ncl-runtime	2	no	
-COMMON-LISP	NSUBST-IF	function	ncl-runtime	2	no	
-COMMON-LISP	NSUBST-IF-NOT	function	ncl-runtime	2	no	
+COMMON-LISP	NSUBLIS	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NSUBST	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NSUBST-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NSUBST-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NSUBSTITUTE	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	NSUBSTITUTE-IF	function	ncl-runtime	2	no	
-COMMON-LISP	NSUBSTITUTE-IF-NOT	function	ncl-runtime	2	no	
+COMMON-LISP	NSUBSTITUTE-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NSUBSTITUTE-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NTH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	NTH-VALUE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	NTHCDR	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	NULL	class+function	ncl-types	1	no	type predicate/coercion surface
-COMMON-LISP	NUMBER	class	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	NUMBER	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	NUMBERP	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	NUMERATOR	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	NUNION	function	ncl-runtime	2	no	
+COMMON-LISP	NUNION	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	ODDP	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	OPEN	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	OPEN-STREAM-P	function	ncl-runtime	2	no	
-COMMON-LISP	OPTIMIZE	other	ncl-runtime	2	no	
+COMMON-LISP	OPEN-STREAM-P	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	OPTIMIZE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	OR	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	OTHERWISE	other	ncl-runtime	2	no	
+COMMON-LISP	OTHERWISE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	OUTPUT-STREAM-P	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	PACKAGE	class	ncl-lib-packages	1	no	package or symbol operation
-COMMON-LISP	PACKAGE-ERROR	condition+class	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	PACKAGE	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PACKAGE-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
 COMMON-LISP	PACKAGE-ERROR-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	PACKAGE-NAME	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	PACKAGE-NICKNAMES	function	ncl-lib-packages	1	no	package or symbol operation
@@ -896,33 +896,33 @@ COMMON-LISP	PATHNAME-NAME	function	ncl-lib-pathnames	1	no	pathname/file operatio
 COMMON-LISP	PATHNAME-TYPE	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	PATHNAME-VERSION	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	PATHNAMEP	function	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	PEEK-CHAR	function	ncl-runtime	2	no	
+COMMON-LISP	PEEK-CHAR	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	PHASE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	PI	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	PLUSP	function	ncl-runtime	2	no	
+COMMON-LISP	PLUSP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	POP	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	POSITION	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	POSITION-IF	function	ncl-runtime	2	no	
-COMMON-LISP	POSITION-IF-NOT	function	ncl-runtime	2	no	
-COMMON-LISP	PPRINT	function	ncl-runtime	2	no	
-COMMON-LISP	PPRINT-DISPATCH	function	ncl-runtime	2	no	
+COMMON-LISP	POSITION-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	POSITION-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-DISPATCH	function	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	PPRINT-EXIT-IF-LIST-EXHAUSTED	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	PPRINT-FILL	function	ncl-runtime	2	no	
-COMMON-LISP	PPRINT-INDENT	function	ncl-runtime	2	no	
-COMMON-LISP	PPRINT-LINEAR	function	ncl-runtime	2	no	
+COMMON-LISP	PPRINT-FILL	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-INDENT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-LINEAR	function	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	PPRINT-LOGICAL-BLOCK	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	PPRINT-NEWLINE	function	ncl-runtime	2	no	
+COMMON-LISP	PPRINT-NEWLINE	function	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	PPRINT-POP	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	PPRINT-TAB	function	ncl-runtime	2	no	
-COMMON-LISP	PPRINT-TABULAR	function	ncl-runtime	2	no	
-COMMON-LISP	PRIN1	function	ncl-runtime	2	no	
-COMMON-LISP	PRIN1-TO-STRING	function	ncl-runtime	2	no	
-COMMON-LISP	PRINC	function	ncl-runtime	2	no	
-COMMON-LISP	PRINC-TO-STRING	function	ncl-runtime	2	no	
-COMMON-LISP	PRINT	function	ncl-runtime	2	no	
+COMMON-LISP	PPRINT-TAB	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-TABULAR	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRIN1	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRIN1-TO-STRING	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRINC	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRINC-TO-STRING	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRINT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	PRINT-NOT-READABLE	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	PRINT-NOT-READABLE-OBJECT	function	ncl-runtime	2	no	
-COMMON-LISP	PRINT-OBJECT	function	ncl-runtime	2	no	
+COMMON-LISP	PRINT-NOT-READABLE-OBJECT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRINT-OBJECT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	PRINT-UNREADABLE-OBJECT	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	PROBE-FILE	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	PROCLAIM	function	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
@@ -933,84 +933,84 @@ COMMON-LISP	PROG2	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	PROGN	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	PROGRAM-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	PROGV	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	PROVIDE	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	PROVIDE	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	PSETF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	PSETQ	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	PUSH	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	PUSHNEW	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	QUOTE	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	RANDOM	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	RANDOM-STATE	class	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	RANDOM-STATE-P	function	ncl-runtime	2	no	
+COMMON-LISP	RANDOM-STATE	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	RANDOM-STATE-P	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	RASSOC	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	RASSOC-IF	function	ncl-runtime	2	no	
-COMMON-LISP	RASSOC-IF-NOT	function	ncl-runtime	2	no	
-COMMON-LISP	RATIO	class	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	RASSOC-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	RASSOC-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	RATIO	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	RATIONAL	class+function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	RATIONALIZE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	RATIONALP	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	READ	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	READ-BYTE	function	ncl-runtime	2	no	
+COMMON-LISP	READ-BYTE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	READ-CHAR	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	READ-CHAR-NO-HANG	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	READ-DELIMITED-LIST	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	READ-FROM-STRING	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	READ-LINE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	READ-PRESERVING-WHITESPACE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	READ-SEQUENCE	function	ncl-runtime	2	no	
+COMMON-LISP	READ-SEQUENCE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	READER-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	READTABLE	class	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	READTABLE-CASE	function	ncl-runtime	2	no	
-COMMON-LISP	READTABLEP	function	ncl-runtime	2	no	
+COMMON-LISP	READTABLE	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	READTABLE-CASE	function	ncl-reader	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	READTABLEP	function	ncl-reader	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	REAL	class	ncl-types	1	no	type predicate/coercion surface
-COMMON-LISP	REALP	function	ncl-runtime	2	no	
+COMMON-LISP	REALP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	REALPART	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	REDUCE	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	REINITIALIZE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
-COMMON-LISP	REM	function	ncl-runtime	2	no	
+COMMON-LISP	REM	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	REMF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	REMHASH	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	REMOVE	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	REMOVE-DUPLICATES	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	REMOVE-IF	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	REMOVE-IF-NOT	function	ncl-runtime	2	no	
-COMMON-LISP	REMOVE-METHOD	function	ncl-runtime	2	no	
-COMMON-LISP	REMPROP	function	ncl-runtime	2	no	
+COMMON-LISP	REMOVE-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	REMOVE-METHOD	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	REMPROP	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	RENAME-FILE	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	RENAME-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	REPLACE	function	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	REQUIRE	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	REQUIRE	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	REST	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	RESTART	class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	RESTART	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	RESTART-BIND	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	RESTART-CASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	RESTART-NAME	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	RETURN	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	RETURN-FROM	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	REVAPPEND	function	ncl-runtime	2	no	
+COMMON-LISP	REVAPPEND	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	REVERSE	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	ROOM	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	ROOM	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	ROTATEF	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	ROUND	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	ROW-MAJOR-AREF	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	RPLACA	function	ncl-lib-sequences	1	yes	sequence/list operation
 COMMON-LISP	RPLACD	function	ncl-lib-sequences	1	yes	sequence/list operation
-COMMON-LISP	SAFETY	other	ncl-runtime	2	no	
-COMMON-LISP	SATISFIES	other	ncl-runtime	2	no	
+COMMON-LISP	SAFETY	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SATISFIES	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SBIT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	SCALE-FLOAT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	SCHAR	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	SEARCH	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SECOND	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SEQUENCE	class	ncl-types	1	no	type predicate/coercion surface
-COMMON-LISP	SERIOUS-CONDITION	condition+class	ncl-runtime	2	no	
+COMMON-LISP	SERIOUS-CONDITION	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SET	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	SET-DIFFERENCE	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SET-DISPATCH-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	SET-EXCLUSIVE-OR	function	ncl-runtime	2	no	
+COMMON-LISP	SET-EXCLUSIVE-OR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SET-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	SET-PPRINT-DISPATCH	function	ncl-runtime	2	no	
-COMMON-LISP	SET-SYNTAX-FROM-CHAR	function	ncl-runtime	2	no	
+COMMON-LISP	SET-PPRINT-DISPATCH	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SET-SYNTAX-FROM-CHAR	function	ncl-reader	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SETF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	SETQ	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	SEVENTH	function	ncl-lib-sequences	1	no	sequence/list operation
@@ -1018,63 +1018,63 @@ COMMON-LISP	SHADOW	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	SHADOWING-IMPORT	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	SHARED-INITIALIZE	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	SHIFTF	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	SHORT-FLOAT	type	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	SHORT-FLOAT	type	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SHORT-FLOAT-EPSILON	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	SHORT-FLOAT-NEGATIVE-EPSILON	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	SHORT-SITE-NAME	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	SHORT-SITE-NAME	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	SIGNAL	function	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	SIGNED-BYTE	type	ncl-runtime	2	no	
+COMMON-LISP	SIGNED-BYTE	type	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SIGNUM	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	SIMPLE-ARRAY	class	ncl-types	1	no	type predicate/coercion surface
-COMMON-LISP	SIMPLE-BASE-STRING	class	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	SIMPLE-BASE-STRING	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SIMPLE-BIT-VECTOR	class	ncl-types	1	no	type predicate/coercion surface
-COMMON-LISP	SIMPLE-BIT-VECTOR-P	function	ncl-runtime	2	no	
+COMMON-LISP	SIMPLE-BIT-VECTOR-P	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SIMPLE-CONDITION	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	SIMPLE-CONDITION-FORMAT-ARGUMENTS	function	ncl-runtime	2	no	
-COMMON-LISP	SIMPLE-CONDITION-FORMAT-CONTROL	function	ncl-runtime	2	no	
+COMMON-LISP	SIMPLE-CONDITION-FORMAT-ARGUMENTS	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SIMPLE-CONDITION-FORMAT-CONTROL	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SIMPLE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	SIMPLE-STRING	class	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	SIMPLE-STRING	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SIMPLE-STRING-P	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	SIMPLE-TYPE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	SIMPLE-VECTOR	class	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	SIMPLE-VECTOR	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SIMPLE-VECTOR-P	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	SIMPLE-WARNING	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	SIN	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	SINGLE-FLOAT	class	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	SINGLE-FLOAT	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SINGLE-FLOAT-EPSILON	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	SINGLE-FLOAT-NEGATIVE-EPSILON	constant	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	SINH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	SIXTH	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	SLEEP	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	SLEEP	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	SLOT-BOUNDP	function	ncl-clos	1	yes	CLOS/class/slot surface
 COMMON-LISP	SLOT-EXISTS-P	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	SLOT-MAKUNBOUND	function	ncl-clos	1	yes	CLOS/class/slot surface
 COMMON-LISP	SLOT-MISSING	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	SLOT-UNBOUND	function	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	SLOT-VALUE	function	ncl-clos	1	yes	CLOS/class/slot surface
-COMMON-LISP	SOFTWARE-TYPE	function	ncl-runtime	2	no	runtime integration or evaluation
-COMMON-LISP	SOFTWARE-VERSION	function	ncl-runtime	2	no	runtime integration or evaluation
+COMMON-LISP	SOFTWARE-TYPE	function	ncl-runtime	2	no	Phase 2 runtime integration
+COMMON-LISP	SOFTWARE-VERSION	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	SOME	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SORT	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	SPACE	other	ncl-runtime	2	no	
-COMMON-LISP	SPECIAL	other	ncl-runtime	2	no	
-COMMON-LISP	SPECIAL-OPERATOR-P	function	ncl-runtime	2	no	
-COMMON-LISP	SPEED	other	ncl-runtime	2	no	
+COMMON-LISP	SPACE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SPECIAL	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SPECIAL-OPERATOR-P	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SPEED	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SQRT	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	STABLE-SORT	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	STANDARD	other	ncl-runtime	2	no	
-COMMON-LISP	STANDARD-CHAR	type	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	STANDARD-CHAR-P	function	ncl-runtime	2	no	
+COMMON-LISP	STANDARD	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STANDARD-CHAR	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STANDARD-CHAR-P	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	STANDARD-CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	STANDARD-GENERIC-FUNCTION	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	STANDARD-METHOD	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	STANDARD-OBJECT	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	STEP	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	STORAGE-CONDITION	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	STORE-VALUE	function	ncl-runtime	2	no	
+COMMON-LISP	STORE-VALUE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	STREAM	class	ncl-types	1	no	type predicate/coercion surface
 COMMON-LISP	STREAM-ELEMENT-TYPE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	STREAM-ERROR	condition+class	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	STREAM-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
 COMMON-LISP	STREAM-ERROR-STREAM	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	STREAM-EXTERNAL-FORMAT	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	STREAMP	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
@@ -1089,7 +1089,7 @@ COMMON-LISP	STRING-NOT-EQUAL	function	ncl-lib-strings	1	no	character/string oper
 COMMON-LISP	STRING-NOT-GREATERP	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	STRING-NOT-LESSP	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	STRING-RIGHT-TRIM	function	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	STRING-STREAM	class	ncl-runtime	2	no	
+COMMON-LISP	STRING-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	STRING-TRIM	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	STRING-UPCASE	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	STRING/=	function	ncl-lib-strings	1	no	character/string operation
@@ -1099,23 +1099,23 @@ COMMON-LISP	STRING=	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	STRING>	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	STRING>=	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	STRINGP	function	ncl-lib-strings	1	no	character/string operation
-COMMON-LISP	STRUCTURE	other	ncl-runtime	2	no	
+COMMON-LISP	STRUCTURE	other	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	STRUCTURE-CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	STRUCTURE-OBJECT	class	ncl-clos	1	no	CLOS/class/slot surface
 COMMON-LISP	STYLE-WARNING	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	SUBLIS	function	ncl-runtime	2	no	
+COMMON-LISP	SUBLIS	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SUBSEQ	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	SUBSETP	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	SUBST	function	ncl-runtime	2	no	
-COMMON-LISP	SUBST-IF	function	ncl-runtime	2	no	
-COMMON-LISP	SUBST-IF-NOT	function	ncl-runtime	2	no	
+COMMON-LISP	SUBST	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SUBST-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SUBST-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SUBSTITUTE	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	SUBSTITUTE-IF	function	ncl-runtime	2	no	
-COMMON-LISP	SUBSTITUTE-IF-NOT	function	ncl-runtime	2	no	
+COMMON-LISP	SUBSTITUTE-IF	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SUBSTITUTE-IF-NOT	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SUBTYPEP	function	ncl-types	1	no	type predicate/coercion surface
 COMMON-LISP	SVREF	function	ncl-lib-hash-arrays	1	yes	array/vector/bit/hash operation
-COMMON-LISP	SXHASH	function	ncl-runtime	2	no	
-COMMON-LISP	SYMBOL	class	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SXHASH	function	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SYMBOL	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SYMBOL-FUNCTION	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	SYMBOL-MACROLET	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
 COMMON-LISP	SYMBOL-NAME	function	ncl-lib-packages	1	no	package or symbol operation
@@ -1123,11 +1123,11 @@ COMMON-LISP	SYMBOL-PACKAGE	function	ncl-lib-packages	1	no	package or symbol oper
 COMMON-LISP	SYMBOL-PLIST	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	SYMBOL-VALUE	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	SYMBOLP	function	ncl-lib-packages	1	no	package or symbol operation
-COMMON-LISP	SYNONYM-STREAM	class	ncl-runtime	2	no	
-COMMON-LISP	SYNONYM-STREAM-SYMBOL	function	ncl-runtime	2	no	
+COMMON-LISP	SYNONYM-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SYNONYM-STREAM-SYMBOL	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	T	constant+class	ncl-types	1	no	type predicate/coercion surface
 COMMON-LISP	TAGBODY	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	TAILP	function	ncl-runtime	2	no	
+COMMON-LISP	TAILP	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	TAN	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	TANH	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	TENTH	function	ncl-lib-sequences	1	no	sequence/list operation
@@ -1139,13 +1139,13 @@ COMMON-LISP	TIME	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	TRACE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	TRANSLATE-LOGICAL-PATHNAME	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	TRANSLATE-PATHNAME	function	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	TREE-EQUAL	function	ncl-runtime	2	no	
+COMMON-LISP	TREE-EQUAL	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	TRUENAME	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	TRUNCATE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	TWO-WAY-STREAM	class	ncl-runtime	2	no	
-COMMON-LISP	TWO-WAY-STREAM-INPUT-STREAM	function	ncl-runtime	2	no	
-COMMON-LISP	TWO-WAY-STREAM-OUTPUT-STREAM	function	ncl-runtime	2	no	
-COMMON-LISP	TYPE	other	ncl-runtime	2	no	
+COMMON-LISP	TWO-WAY-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	TWO-WAY-STREAM-INPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	TWO-WAY-STREAM-OUTPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	TYPE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	TYPE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	TYPE-ERROR-DATUM	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	TYPE-ERROR-EXPECTED-TYPE	function	ncl-conditions	1	no	condition/restart surface
@@ -1153,7 +1153,7 @@ COMMON-LISP	TYPE-OF	function	ncl-types	1	no	type predicate/coercion surface
 COMMON-LISP	TYPECASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	TYPEP	function	ncl-types	1	yes	type predicate/coercion surface
 COMMON-LISP	UNBOUND-SLOT	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	UNBOUND-SLOT-INSTANCE	function	ncl-runtime	2	no	
+COMMON-LISP	UNBOUND-SLOT-INSTANCE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	UNBOUND-VARIABLE	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	UNDEFINED-FUNCTION	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	UNEXPORT	function	ncl-lib-packages	1	no	package or symbol operation
@@ -1161,25 +1161,25 @@ COMMON-LISP	UNINTERN	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	UNION	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	UNLESS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	UNREAD-CHAR	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	UNSIGNED-BYTE	type	ncl-runtime	2	no	
+COMMON-LISP	UNSIGNED-BYTE	type	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	UNTRACE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	UNUSE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	UNWIND-PROTECT	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
-COMMON-LISP	UPDATE-INSTANCE-FOR-DIFFERENT-CLASS	function	ncl-runtime	2	no	
-COMMON-LISP	UPDATE-INSTANCE-FOR-REDEFINED-CLASS	function	ncl-runtime	2	no	
+COMMON-LISP	UPDATE-INSTANCE-FOR-DIFFERENT-CLASS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	UPDATE-INSTANCE-FOR-REDEFINED-CLASS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	UPGRADED-ARRAY-ELEMENT-TYPE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	UPGRADED-COMPLEX-PART-TYPE	function	ncl-types	1	no	type predicate/coercion surface
 COMMON-LISP	UPPER-CASE-P	function	ncl-lib-strings	1	yes	character/string operation
 COMMON-LISP	USE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
-COMMON-LISP	USE-VALUE	function	ncl-runtime	2	no	
+COMMON-LISP	USE-VALUE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	USER-HOMEDIR-PATHNAME	function	ncl-lib-pathnames	1	no	pathname/file operation
-COMMON-LISP	VALUES	function	ncl-runtime	2	no	
-COMMON-LISP	VALUES-LIST	function	ncl-runtime	2	no	
-COMMON-LISP	VARIABLE	other	ncl-runtime	2	no	
+COMMON-LISP	VALUES	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	VALUES-LIST	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	VARIABLE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	VECTOR	class+function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
-COMMON-LISP	VECTOR-POP	function	ncl-runtime	2	no	
-COMMON-LISP	VECTOR-PUSH	function	ncl-runtime	2	no	
-COMMON-LISP	VECTOR-PUSH-EXTEND	function	ncl-runtime	2	no	
+COMMON-LISP	VECTOR-POP	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	VECTOR-PUSH	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	VECTOR-PUSH-EXTEND	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	VECTORP	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	WARN	function	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	WARNING	condition+class	ncl-conditions	1	no	condition/restart surface
@@ -1197,16 +1197,16 @@ COMMON-LISP	WITH-PACKAGE-ITERATOR	macro	ncl-lib-macros	1	no	macro expansion/setf
 COMMON-LISP	WITH-SIMPLE-RESTART	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	WITH-SLOTS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	WITH-STANDARD-IO-SYNTAX	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	WRITE	function	ncl-runtime	2	no	
+COMMON-LISP	WRITE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	WRITE-BYTE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	WRITE-CHAR	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	WRITE-LINE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	WRITE-SEQUENCE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	WRITE-STRING	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	WRITE-TO-STRING	function	ncl-runtime	2	no	
-COMMON-LISP	Y-OR-N-P	function	ncl-runtime	2	no	
-COMMON-LISP	YES-OR-NO-P	function	ncl-runtime	2	no	
-COMMON-LISP	ZEROP	function	ncl-runtime	2	no	
+COMMON-LISP	WRITE-TO-STRING	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	Y-OR-N-P	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	YES-OR-NO-P	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ZEROP	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 SB-ACLREPL	*COMMAND-CHAR*	variable	ncl-contrib-sb-aclrepl	3	no	Phase 3 contrib surface
 SB-ACLREPL	*EXIT-ON-EOF*	variable	ncl-contrib-sb-aclrepl	3	no	Phase 3 contrib surface
 SB-ACLREPL	*MAX-HISTORY*	variable	ncl-contrib-sb-aclrepl	3	no	Phase 3 contrib surface
@@ -1262,7 +1262,7 @@ SB-ALIEN	SLOT	function	ncl-ffi	1	no	SB-ALIEN foreign interface
 SB-ALIEN	SSIZE-T	other	ncl-ffi	1	no	SB-ALIEN foreign interface
 SB-ALIEN	STRUCT	other	ncl-ffi	1	no	SB-ALIEN foreign interface
 SB-ALIEN	SYSTEM-AREA-POINTER	class	ncl-ffi	1	no	SB-ALIEN foreign interface
-SB-ALIEN	UNDEFINED-ALIEN-ERROR	condition+class	ncl-ffi	1	no	SB-ALIEN foreign interface
+SB-ALIEN	UNDEFINED-ALIEN-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
 SB-ALIEN	UNION	function	ncl-ffi	1	no	SB-ALIEN foreign interface
 SB-ALIEN	UNLOAD-SHARED-OBJECT	function	ncl-ffi	1	no	SB-ALIEN foreign interface
 SB-ALIEN	UNSIGNED	other	ncl-ffi	1	no	SB-ALIEN foreign interface
@@ -1589,242 +1589,242 @@ SB-DEBUG	VAR	function	ncl-conditions	1	no	SB-DEBUG debugger API
 SB-EXECUTABLE	COPY-STREAM	function	ncl-contrib-sb-executable	3	no	Phase 3 contrib surface
 SB-EXECUTABLE	MAKE-EXECUTABLE	function	ncl-contrib-sb-executable	3	no	Phase 3 contrib surface
 SB-EXT	*AFTER-GC-HOOKS*	variable	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
-SB-EXT	*BLOCK-COMPILE-DEFAULT*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*COMPILE-PROGRESS*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*COMPILER-PRINT-VARIABLE-ALIST*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*CORE-PATHNAME*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*DEBUG-PRINT-VARIABLE-ALIST*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*DEFAULT-C-STRING-EXTERNAL-FORMAT*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*DEFAULT-EXTERNAL-FORMAT*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*DEFAULT-SOURCE-EXTERNAL-FORMAT*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*DERIVE-FUNCTION-TYPES*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*DISASSEMBLE-ANNOTATE*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*ED-FUNCTIONS*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*EFFICIENCY-NOTE-COST-THRESHOLD*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*EFFICIENCY-NOTE-LIMIT*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*ENCLOSING-SOURCE-CUTOFF*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*EVALUATOR-MODE*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*EXIT-HOOKS*	variable	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	*BLOCK-COMPILE-DEFAULT*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*COMPILE-PROGRESS*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*COMPILER-PRINT-VARIABLE-ALIST*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*CORE-PATHNAME*	variable	ncl-runtime	2	no	Phase 2 evaluator/compiler or image integration
+SB-EXT	*DEBUG-PRINT-VARIABLE-ALIST*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*DEFAULT-C-STRING-EXTERNAL-FORMAT*	variable	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-EXT	*DEFAULT-EXTERNAL-FORMAT*	variable	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-EXT	*DEFAULT-SOURCE-EXTERNAL-FORMAT*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*DERIVE-FUNCTION-TYPES*	variable	ncl-runtime	2	no	Phase 2 evaluator/compiler or image integration
+SB-EXT	*DISASSEMBLE-ANNOTATE*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*ED-FUNCTIONS*	variable	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	*EFFICIENCY-NOTE-COST-THRESHOLD*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*EFFICIENCY-NOTE-LIMIT*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*ENCLOSING-SOURCE-CUTOFF*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*EVALUATOR-MODE*	variable	ncl-runtime	2	no	Phase 2 evaluator/compiler or image integration
+SB-EXT	*EXIT-HOOKS*	variable	ncl-runtime	2	no	Phase 2 evaluator/compiler or image integration
 SB-EXT	*EXIT-TIMEOUT*	variable	ncl-threads	1	no	SB-EXT timer/deadline API nearest to thread scheduling
-SB-EXT	*FORCIBLY-TERMINATE-THREADS-ON-EXIT*	variable	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	*FORCIBLY-TERMINATE-THREADS-ON-EXIT*	variable	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
 SB-EXT	*GC-REAL-TIME*	variable	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
 SB-EXT	*GC-RUN-TIME*	variable	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
-SB-EXT	*INIT-HOOKS*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*INLINE-EXPANSION-LIMIT*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*INSPECTED*	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*INVOKE-DEBUGGER-HOOK*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*MODULE-PROVIDER-FUNCTIONS*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*MUFFLED-WARNINGS*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*ON-PACKAGE-VARIANCE*	variable	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	*INIT-HOOKS*	variable	ncl-runtime	2	no	Phase 2 evaluator/compiler or image integration
+SB-EXT	*INLINE-EXPANSION-LIMIT*	variable	ncl-runtime	2	no	Phase 2 evaluator/compiler or image integration
+SB-EXT	*INSPECTED*	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	*INVOKE-DEBUGGER-HOOK*	variable	ncl-runtime	2	no	Phase 2 evaluator/compiler or image integration
+SB-EXT	*MODULE-PROVIDER-FUNCTIONS*	variable	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	*MUFFLED-WARNINGS*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*ON-PACKAGE-VARIANCE*	variable	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
 SB-EXT	*POSIX-ARGV*	variable	ncl-image	1	no	SB-EXT image/startup API
-SB-EXT	*PRINT-CIRCLE-NOT-SHARED*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*PRINT-VECTOR-LENGTH*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*RUNTIME-PATHNAME*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*SAVE-HOOKS*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*STACK-ALLOCATE-DYNAMIC-EXTENT*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*STEPPER-HOOK*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*SUPPRESS-PRINT-ERRORS*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*SYSINIT-PATHNAME-FUNCTION*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*UNDEFINED-WARNING-LIMIT*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	*USERINIT-PATHNAME-FUNCTION*	variable	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ADD-IMPLEMENTATION-PACKAGE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ADD-PACKAGE-LOCAL-NICKNAME	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ALWAYS-BOUND	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ARRAY-STORAGE-VECTOR	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ASSERT-VERSION->=	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ATOMIC-DECF	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ATOMIC-INCF	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ATOMIC-POP	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ATOMIC-PUSH	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ATOMIC-UPDATE	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	BYTES-CONSED-BETWEEN-GCS	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	CALL-WITH-TIMING	function	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	*PRINT-CIRCLE-NOT-SHARED*	variable	ncl-printer	1	no	reclassified by subsystem ownership rule
+SB-EXT	*PRINT-VECTOR-LENGTH*	variable	ncl-printer	1	no	reclassified by subsystem ownership rule
+SB-EXT	*RUNTIME-PATHNAME*	variable	ncl-runtime	2	no	Phase 2 evaluator/compiler or image integration
+SB-EXT	*SAVE-HOOKS*	variable	ncl-runtime	2	no	Phase 2 evaluator/compiler or image integration
+SB-EXT	*STACK-ALLOCATE-DYNAMIC-EXTENT*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*STEPPER-HOOK*	variable	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	*SUPPRESS-PRINT-ERRORS*	variable	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	*SYSINIT-PATHNAME-FUNCTION*	variable	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	*UNDEFINED-WARNING-LIMIT*	variable	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	*USERINIT-PATHNAME-FUNCTION*	variable	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	ADD-IMPLEMENTATION-PACKAGE	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	ADD-PACKAGE-LOCAL-NICKNAME	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	ALWAYS-BOUND	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	ARRAY-STORAGE-VECTOR	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	ASSERT-VERSION->=	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	ATOMIC-DECF	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	ATOMIC-INCF	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	ATOMIC-POP	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	ATOMIC-PUSH	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	ATOMIC-UPDATE	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	BYTES-CONSED-BETWEEN-GCS	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	CALL-WITH-TIMING	function	ncl-threads	1	no	reclassified by subsystem ownership rule
 SB-EXT	CANCEL-FINALIZATION	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
-SB-EXT	CAS	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	CODE-DELETION-NOTE	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	COMPARE-AND-SWAP	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	COMPILE-FILE-LINE	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	COMPILE-FILE-POSITION	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	COMPILER-NOTE	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	CREATE	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DECIMAL-WITH-GROUPED-DIGITS-WIDTH	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEFCONSTANT-UNEQL	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEFCONSTANT-UNEQL-NAME	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEFCONSTANT-UNEQL-NEW-VALUE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEFCONSTANT-UNEQL-OLD-VALUE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEFGLOBAL	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEFINE-HASH-TABLE-TEST	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEFINE-LOAD-TIME-GLOBAL	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEFINE-SOURCE-CONTEXT	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEFINED-TYPE-NAME-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DELETE-DIRECTORY	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DELETE-FILE-ERROR	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEPRECATED	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEPRECATION-CONDITION	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEPRECATION-CONDITION-NAME	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEPRECATION-CONDITION-NAMESPACE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEPRECATION-CONDITION-REPLACEMENTS	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEPRECATION-CONDITION-RUNTIME-ERROR	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEPRECATION-CONDITION-SOFTWARE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEPRECATION-CONDITION-VERSION	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DEPRECATION-ERROR	condition+class+function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DESCRIBE-COMPILER-POLICY	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DISABLE-DEBUGGER	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DISABLE-PACKAGE-LOCKS	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DOUBLE-FLOAT-NEGATIVE-INFINITY	constant	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DOUBLE-FLOAT-POSITIVE-INFINITY	constant	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	DYNAMIC-SPACE-SIZE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	EARLY-DEPRECATION-WARNING	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ENABLE-DEBUGGER	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	ENABLE-PACKAGE-LOCKS	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	END-BLOCK	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	EVAL-TLF	function	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	CAS	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	CODE-DELETION-NOTE	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	COMPARE-AND-SWAP	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	COMPILE-FILE-LINE	macro	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	COMPILE-FILE-POSITION	macro	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	COMPILER-NOTE	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	CREATE	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	DECIMAL-WITH-GROUPED-DIGITS-WIDTH	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	DEFCONSTANT-UNEQL	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	DEFCONSTANT-UNEQL-NAME	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	DEFCONSTANT-UNEQL-NEW-VALUE	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	DEFCONSTANT-UNEQL-OLD-VALUE	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	DEFGLOBAL	macro	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEFINE-HASH-TABLE-TEST	macro	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEFINE-LOAD-TIME-GLOBAL	macro	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEFINE-SOURCE-CONTEXT	macro	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEFINED-TYPE-NAME-P	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	DELETE-DIRECTORY	function	ncl-lib-pathnames	1	no	reclassified by subsystem ownership rule
+SB-EXT	DELETE-FILE-ERROR	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEPRECATED	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	DEPRECATION-CONDITION	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEPRECATION-CONDITION-NAME	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEPRECATION-CONDITION-NAMESPACE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEPRECATION-CONDITION-REPLACEMENTS	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEPRECATION-CONDITION-RUNTIME-ERROR	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEPRECATION-CONDITION-SOFTWARE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEPRECATION-CONDITION-VERSION	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	DEPRECATION-ERROR	condition+class+function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	DESCRIBE-COMPILER-POLICY	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	DISABLE-DEBUGGER	function	ncl-runtime	2	no	Phase 2 debugger integration
+SB-EXT	DISABLE-PACKAGE-LOCKS	other	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	DOUBLE-FLOAT-NEGATIVE-INFINITY	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	DOUBLE-FLOAT-POSITIVE-INFINITY	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	DYNAMIC-SPACE-SIZE	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	EARLY-DEPRECATION-WARNING	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	ENABLE-DEBUGGER	function	ncl-runtime	2	no	Phase 2 debugger integration
+SB-EXT	ENABLE-PACKAGE-LOCKS	other	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	END-BLOCK	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	EVAL-TLF	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 SB-EXT	EXIT	class+function	ncl-image	1	no	SB-EXT image/startup API
-SB-EXT	FILE-DOES-NOT-EXIST	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	FILE-EXISTS	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	FINAL-DEPRECATION-WARNING	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	FILE-DOES-NOT-EXIST	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	FILE-EXISTS	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	FINAL-DEPRECATION-WARNING	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
 SB-EXT	FINALIZE	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
-SB-EXT	FLOAT-DENORMALIZED-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	FLOAT-INFINITY-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	FLOAT-NAN-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	FLOAT-TRAPPING-NAN-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	FOLD-IDENTICAL-CODE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	FREEZE-TYPE	other	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	FLOAT-DENORMALIZED-P	function	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	FLOAT-INFINITY-P	function	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	FLOAT-NAN-P	function	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	FLOAT-TRAPPING-NAN-P	function	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	FOLD-IDENTICAL-CODE	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	FREEZE-TYPE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
 SB-EXT	GC	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
-SB-EXT	GC-LOGFILE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	GENERATION-AVERAGE-AGE	function	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	GC-LOGFILE	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	GENERATION-AVERAGE-AGE	function	ncl-object	1	no	reclassified by subsystem ownership rule
 SB-EXT	GENERATION-BYTES-ALLOCATED	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
-SB-EXT	GENERATION-BYTES-CONSED-BETWEEN-GCS	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	GENERATION-MINIMUM-AGE-BEFORE-GC	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	GENERATION-NUMBER-OF-GCS	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	GENERATION-NUMBER-OF-GCS-BEFORE-PROMOTION	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	GET-BYTES-CONSED	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	GET-CAS-EXPANSION	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	GET-TIME-OF-DAY	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	GLOBAL	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	HASH-TABLE-SYNCHRONIZED-P	function	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	GENERATION-BYTES-CONSED-BETWEEN-GCS	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	GENERATION-MINIMUM-AGE-BEFORE-GC	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	GENERATION-NUMBER-OF-GCS	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	GENERATION-NUMBER-OF-GCS-BEFORE-PROMOTION	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	GET-BYTES-CONSED	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	GET-CAS-EXPANSION	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	GET-TIME-OF-DAY	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	GLOBAL	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	HASH-TABLE-SYNCHRONIZED-P	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 SB-EXT	HASH-TABLE-WEAKNESS	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
-SB-EXT	HEAP-ALLOCATED-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	IMPLICIT-GENERIC-FUNCTION-NAME	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	IMPLICIT-GENERIC-FUNCTION-WARNING	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	INHIBIT-WARNINGS	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	INTERACTIVE-EVAL	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	INVALID-FASL	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	LATE-DEPRECATION-WARNING	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	LIST-ALL-TIMERS	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	LOCK-PACKAGE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	LONG-FLOAT-NEGATIVE-INFINITY	constant	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	LONG-FLOAT-POSITIVE-INFINITY	constant	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	HEAP-ALLOCATED-P	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	IMPLICIT-GENERIC-FUNCTION-NAME	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	IMPLICIT-GENERIC-FUNCTION-WARNING	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	INHIBIT-WARNINGS	other	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	INTERACTIVE-EVAL	function	ncl-runtime	2	no	Phase 2 evaluator integration
+SB-EXT	INVALID-FASL	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	LATE-DEPRECATION-WARNING	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	LIST-ALL-TIMERS	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	LOCK-PACKAGE	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	LONG-FLOAT-NEGATIVE-INFINITY	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	LONG-FLOAT-POSITIVE-INFINITY	constant	ncl-types	1	no	reclassified by subsystem ownership rule
 SB-EXT	MAKE-TIMER	function	ncl-threads	1	no	SB-EXT timer/deadline API nearest to thread scheduling
 SB-EXT	MAKE-WEAK-POINTER	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
 SB-EXT	MAKE-WEAK-VECTOR	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
-SB-EXT	MAP-DIRECTORY	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	MAYBE-INLINE	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	MOST-POSITIVE-WORD	constant	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	MUFFLE-CONDITIONS	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	NAME-CONFLICT	condition+class+function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	NAME-CONFLICT-DATUM	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	NAME-CONFLICT-FUNCTION	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	NAME-CONFLICT-SYMBOLS	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	NATIVE-NAMESTRING	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	NATIVE-PATHNAME	function	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	MAP-DIRECTORY	function	ncl-lib-pathnames	1	no	reclassified by subsystem ownership rule
+SB-EXT	MAYBE-INLINE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	MOST-POSITIVE-WORD	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	MUFFLE-CONDITIONS	other	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	NAME-CONFLICT	condition+class+function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	NAME-CONFLICT-DATUM	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	NAME-CONFLICT-FUNCTION	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	NAME-CONFLICT-SYMBOLS	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	NATIVE-NAMESTRING	function	ncl-lib-pathnames	1	no	reclassified by subsystem ownership rule
+SB-EXT	NATIVE-PATHNAME	function	ncl-lib-pathnames	1	no	reclassified by subsystem ownership rule
 SB-EXT	OCTETS-TO-STRING	function	ncl-lib-strings	1	no	SB-EXT encoding helper nearest to strings
-SB-EXT	OVERWRITE	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PACKAGE-DOES-NOT-EXIST	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PACKAGE-IMPLEMENTED-BY-LIST	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PACKAGE-IMPLEMENTS-LIST	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PACKAGE-LOCAL-NICKNAMES	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PACKAGE-LOCALLY-NICKNAMED-BY-LIST	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PACKAGE-LOCK-VIOLATION	condition+class+function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PACKAGE-LOCKED-ERROR	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PACKAGE-LOCKED-ERROR-SYMBOL	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PACKAGE-LOCKED-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PARSE-NATIVE-NAMESTRING	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	POSIX-ENVIRON	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	POSIX-GETENV	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PRIMITIVE-OBJECT-SIZE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PRINT-SYMBOL-WITH-PREFIX	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PRINT-UNREADABLY	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-ALIVE-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-CLOSE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-CORE-DUMPED	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-ERROR	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-EXIT-CODE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-INPUT	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-KILL	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-OUTPUT	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-PID	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-PLIST	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-PTY	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-STATUS	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-STATUS-HOOK	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PROCESS-WAIT	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	PURIFY	other	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	OVERWRITE	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	PACKAGE-DOES-NOT-EXIST	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	PACKAGE-IMPLEMENTED-BY-LIST	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	PACKAGE-IMPLEMENTS-LIST	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	PACKAGE-LOCAL-NICKNAMES	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	PACKAGE-LOCALLY-NICKNAMED-BY-LIST	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	PACKAGE-LOCK-VIOLATION	condition+class+function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	PACKAGE-LOCKED-ERROR	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	PACKAGE-LOCKED-ERROR-SYMBOL	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	PACKAGE-LOCKED-P	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	PARSE-NATIVE-NAMESTRING	function	ncl-lib-pathnames	1	no	reclassified by subsystem ownership rule
+SB-EXT	POSIX-ENVIRON	function	ncl-ffi	1	no	reclassified by subsystem ownership rule
+SB-EXT	POSIX-GETENV	function	ncl-ffi	1	no	reclassified by subsystem ownership rule
+SB-EXT	PRIMITIVE-OBJECT-SIZE	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	PRINT-SYMBOL-WITH-PREFIX	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+SB-EXT	PRINT-UNREADABLY	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-ALIVE-P	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-CLOSE	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-CORE-DUMPED	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-ERROR	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-EXIT-CODE	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-INPUT	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-KILL	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-OUTPUT	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-P	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-PID	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-PLIST	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-PTY	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-STATUS	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-STATUS-HOOK	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PROCESS-WAIT	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-EXT	PURIFY	other	ncl-object	1	no	reclassified by subsystem ownership rule
 SB-EXT	QUIT	function	ncl-image	1	no	SB-EXT image/startup API
-SB-EXT	READER-PACKAGE-DOES-NOT-EXIST	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	READTABLE-BASE-CHAR-PREFERENCE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	READTABLE-NORMALIZATION	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	REMOVE-IMPLEMENTATION-PACKAGE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	REMOVE-PACKAGE-LOCAL-NICKNAME	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	RENAME	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	RESOLVE-CONFLICT	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	RESTRICT-COMPILER-POLICY	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	RETRY	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	RUN-PROGRAM	function	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	READER-PACKAGE-DOES-NOT-EXIST	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	READTABLE-BASE-CHAR-PREFERENCE	function	ncl-reader	1	no	reclassified by subsystem ownership rule
+SB-EXT	READTABLE-NORMALIZATION	function	ncl-reader	1	no	reclassified by subsystem ownership rule
+SB-EXT	REMOVE-IMPLEMENTATION-PACKAGE	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	REMOVE-PACKAGE-LOCAL-NICKNAME	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	RENAME	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	RESOLVE-CONFLICT	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	RESTRICT-COMPILER-POLICY	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	RETRY	other	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	RUN-PROGRAM	function	ncl-ffi	1	no	reclassified by subsystem ownership rule
 SB-EXT	SAVE-LISP-AND-DIE	function	ncl-image	1	no	SB-EXT image/startup API
 SB-EXT	SCHEDULE-TIMER	function	ncl-threads	1	no	SB-EXT timer/deadline API nearest to thread scheduling
-SB-EXT	SEARCH-ROOTS	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SEED-RANDOM-STATE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SET-MACRO-POLICY	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SET-SBCL-SOURCE-LOCATION	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SHORT-FLOAT-NEGATIVE-INFINITY	constant	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SHORT-FLOAT-POSITIVE-INFINITY	constant	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SINGLE-FLOAT-NEGATIVE-INFINITY	constant	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SINGLE-FLOAT-POSITIVE-INFINITY	constant	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SPIN-LOOP-HINT	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STACK-ALLOCATED-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	START-BLOCK	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-CONDITION	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-CONDITION-ARGS	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-CONDITION-FORM	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-CONDITION-RESULT	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-CONTINUE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-FINISHED-CONDITION	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-FORM-CONDITION	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-INTO	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-NEXT	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-OUT	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	STEP-VALUES-CONDITION	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	SEARCH-ROOTS	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	SEED-RANDOM-STATE	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
+SB-EXT	SET-MACRO-POLICY	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	SET-SBCL-SOURCE-LOCATION	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	SHORT-FLOAT-NEGATIVE-INFINITY	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	SHORT-FLOAT-POSITIVE-INFINITY	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	SINGLE-FLOAT-NEGATIVE-INFINITY	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	SINGLE-FLOAT-POSITIVE-INFINITY	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+SB-EXT	SPIN-LOOP-HINT	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	STACK-ALLOCATED-P	function	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-EXT	START-BLOCK	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	STEP-CONDITION	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	STEP-CONDITION-ARGS	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	STEP-CONDITION-FORM	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	STEP-CONDITION-RESULT	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	STEP-CONTINUE	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	STEP-FINISHED-CONDITION	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	STEP-FORM-CONDITION	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	STEP-INTO	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	STEP-NEXT	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	STEP-OUT	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	STEP-VALUES-CONDITION	condition+class	ncl-conditions	1	no	condition class and accessors
 SB-EXT	STRING-TO-OCTETS	function	ncl-lib-strings	1	no	SB-EXT encoding helper nearest to strings
-SB-EXT	SUPERSEDE	other	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SYMBOL-GLOBAL-VALUE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	SYMBOL-PACKAGE-LOCKED-ERROR	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	TIMEOUT	condition+class	ncl-threads	1	no	SB-EXT timer/deadline API nearest to thread scheduling
+SB-EXT	SUPERSEDE	other	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	SYMBOL-GLOBAL-VALUE	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	SYMBOL-PACKAGE-LOCKED-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-EXT	TIMEOUT	condition+class	ncl-conditions	1	no	condition class and accessors
 SB-EXT	TIMER	class	ncl-threads	1	no	SB-EXT timer/deadline API nearest to thread scheduling
-SB-EXT	TIMER-NAME	function	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	TIMER-NAME	function	ncl-threads	1	no	reclassified by subsystem ownership rule
 SB-EXT	TIMER-SCHEDULED-P	function	ncl-threads	1	no	SB-EXT timer/deadline API nearest to thread scheduling
-SB-EXT	TRULY-THE	macro+special-operator	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	TYPEXPAND	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	TYPEXPAND-1	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	TYPEXPAND-ALL	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	UNKNOWN-KEYWORD-ARGUMENT	condition+class	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	UNKNOWN-KEYWORD-ARGUMENT-NAME	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	UNLOCK-PACKAGE	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	UNMUFFLE-CONDITIONS	other	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	TRULY-THE	macro+special-operator	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	TYPEXPAND	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	TYPEXPAND-1	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	TYPEXPAND-ALL	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	UNKNOWN-KEYWORD-ARGUMENT	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-EXT	UNKNOWN-KEYWORD-ARGUMENT-NAME	function	ncl-compiler-front	1	no	SB-EXT compiler/front-end extension
+SB-EXT	UNLOCK-PACKAGE	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	UNMUFFLE-CONDITIONS	other	ncl-conditions	1	no	reclassified by subsystem ownership rule
 SB-EXT	UNSCHEDULE-TIMER	function	ncl-threads	1	no	SB-EXT timer/deadline API nearest to thread scheduling
-SB-EXT	VALID-TYPE-SPECIFIER-P	function	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	WAIT-FOR	macro	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	VALID-TYPE-SPECIFIER-P	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	WAIT-FOR	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
 SB-EXT	WEAK-POINTER	class	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
 SB-EXT	WEAK-POINTER-P	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
 SB-EXT	WEAK-POINTER-VALUE	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
 SB-EXT	WEAK-VECTOR-P	function	ncl-object	1	no	SB-EXT GC/weak/finalizer API is registered by ncl-object
-SB-EXT	WITH-CURRENT-SOURCE-FORM	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	WITH-LOCKED-HASH-TABLE	macro	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	WITH-CURRENT-SOURCE-FORM	macro	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-EXT	WITH-LOCKED-HASH-TABLE	macro	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
 SB-EXT	WITH-TIMEOUT	macro	ncl-threads	1	no	SB-EXT timer/deadline API nearest to thread scheduling
-SB-EXT	WITH-UNLOCKED-PACKAGES	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	WITHOUT-PACKAGE-LOCKS	macro	ncl-runtime	2	no	SB-EXT runtime extension
-SB-EXT	WORD	type	ncl-runtime	2	no	SB-EXT runtime extension
+SB-EXT	WITH-UNLOCKED-PACKAGES	macro	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	WITHOUT-PACKAGE-LOCKS	macro	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+SB-EXT	WORD	type	ncl-types	1	no	reclassified by subsystem ownership rule
 SB-GMP	*GMP-DISABLED*	variable	ncl-contrib-sb-gmp	3	no	Phase 3 contrib surface
 SB-GMP	*GMP-VERSION*	variable	ncl-contrib-sb-gmp	3	no	Phase 3 contrib surface
 SB-GMP	INSTALL-GMP-FUNS	function	ncl-contrib-sb-gmp	3	no	Phase 3 contrib surface
@@ -2882,71 +2882,71 @@ SB-SPROF	STOP-SAMPLING	function	ncl-contrib-sb-sprof	3	no	Phase 3 contrib surfac
 SB-SPROF	UNPROFILE-CALL-COUNTS	function	ncl-contrib-sb-sprof	3	no	Phase 3 contrib surface
 SB-SPROF	WITH-PROFILING	macro	ncl-contrib-sb-sprof	3	no	Phase 3 contrib surface
 SB-SPROF	WITH-SAMPLING	macro	ncl-contrib-sb-sprof	3	no	Phase 3 contrib surface
-SB-SYS	%PRIMITIVE	special-operator	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	%STANDARD-CHAR-P	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*ALLOW-WITH-INTERRUPTS*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*EXIT-ERROR-HANDLER*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*EXIT-IN-PROGRESS*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*INTERRUPT-PENDING*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*INTERRUPTS-ENABLED*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*LINKAGE-INFO*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*LONG-SITE-NAME*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*MACHINE-VERSION*	other	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*PERIODIC-POLLING-FUNCTION*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*PERIODIC-POLLING-PERIOD*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*RUNTIME-DLHANDLE*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*SHARED-OBJECTS*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*SHORT-SITE-NAME*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*STDERR*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*STDIN*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*STDOUT*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	*TTY*	variable	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	ADD-FD-HANDLER	function	ncl-runtime	2	no	SB-SYS runtime integration surface
+SB-SYS	%PRIMITIVE	special-operator	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-SYS	%STANDARD-CHAR-P	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+SB-SYS	*ALLOW-WITH-INTERRUPTS*	variable	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	*EXIT-ERROR-HANDLER*	variable	ncl-object	1	no	SB-SYS low-level object support
+SB-SYS	*EXIT-IN-PROGRESS*	variable	ncl-object	1	no	SB-SYS low-level object support
+SB-SYS	*INTERRUPT-PENDING*	variable	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	*INTERRUPTS-ENABLED*	variable	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	*LINKAGE-INFO*	variable	ncl-object	1	no	SB-SYS low-level runtime/object support
+SB-SYS	*LONG-SITE-NAME*	variable	ncl-runtime	2	no	Phase 2 implementation-environment integration
+SB-SYS	*MACHINE-VERSION*	other	ncl-runtime	2	no	Phase 2 implementation-environment integration
+SB-SYS	*PERIODIC-POLLING-FUNCTION*	variable	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	*PERIODIC-POLLING-PERIOD*	variable	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	*RUNTIME-DLHANDLE*	variable	ncl-ffi	1	no	reclassified by subsystem ownership rule
+SB-SYS	*SHARED-OBJECTS*	variable	ncl-ffi	1	no	reclassified by subsystem ownership rule
+SB-SYS	*SHORT-SITE-NAME*	variable	ncl-runtime	2	no	Phase 2 implementation-environment integration
+SB-SYS	*STDERR*	variable	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	*STDIN*	variable	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	*STDOUT*	variable	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	*TTY*	variable	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	ADD-FD-HANDLER	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 SB-SYS	ALLOCATE-SYSTEM-MEMORY	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
-SB-SYS	ALLOW-WITH-INTERRUPTS	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	BEEP	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	BREAKPOINT-ERROR	condition+class	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	CANCEL-DEADLINE	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	CLOSE-SHARED-OBJECTS	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	DEADLINE-TIMEOUT	condition+class	ncl-runtime	2	no	SB-SYS runtime integration surface
+SB-SYS	ALLOW-WITH-INTERRUPTS	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	BEEP	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	BREAKPOINT-ERROR	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-SYS	CANCEL-DEADLINE	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	CLOSE-SHARED-OBJECTS	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	DEADLINE-TIMEOUT	condition+class	ncl-conditions	1	no	condition class and accessors
 SB-SYS	DEALLOCATE-SYSTEM-MEMORY	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
-SB-SYS	DECODE-INTERNAL-TIME	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	DECODE-TIMEOUT	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	DEFER-DEADLINE	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	DLOPEN-OR-LOSE	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	ELAPSED-CYCLES	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	ENABLE-INTERRUPT	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	EXIT-CODE	type	ncl-runtime	2	no	SB-SYS runtime integration surface
+SB-SYS	DECODE-INTERNAL-TIME	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
+SB-SYS	DECODE-TIMEOUT	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	DEFER-DEADLINE	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	DLOPEN-OR-LOSE	function	ncl-ffi	1	no	reclassified by subsystem ownership rule
+SB-SYS	ELAPSED-CYCLES	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
+SB-SYS	ENABLE-INTERRUPT	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	EXIT-CODE	type	ncl-object	1	no	SB-SYS low-level object support
 SB-SYS	EXTERN-ALIEN-NAME	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
-SB-SYS	FD-STREAM	class	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	FD-STREAM-FD	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	FD-STREAM-P	function	ncl-runtime	2	no	SB-SYS runtime integration surface
+SB-SYS	FD-STREAM	class	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	FD-STREAM-FD	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	FD-STREAM-P	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 SB-SYS	FIND-DYNAMIC-FOREIGN-SYMBOL-ADDRESS	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	FIND-FOREIGN-SYMBOL-ADDRESS	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	FOREIGN-SYMBOL-ADDRESS	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	FOREIGN-SYMBOL-DATAREF-SAP	other	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	FOREIGN-SYMBOL-SAP	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
-SB-SYS	GET-MACHINE-VERSION	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	GET-SYSTEM-INFO	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	IN-INTERRUPTION	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
+SB-SYS	GET-MACHINE-VERSION	function	ncl-runtime	2	no	Phase 2 implementation-environment integration
+SB-SYS	GET-SYSTEM-INFO	function	ncl-object	1	no	SB-SYS low-level object support
+SB-SYS	IN-INTERRUPTION	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
 SB-SYS	INT-SAP	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
-SB-SYS	INTERACTIVE-INTERRUPT	condition+class	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	INVALIDATE-DESCRIPTOR	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	INVOKE-INTERRUPTION	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	IO-TIMEOUT	condition+class	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	MACRO	other	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	MAKE-FD-STREAM	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	MEMMOVE	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	MEMORY-FAULT-ERROR	condition+class+function	ncl-ffi	1	no	SB-SYS alien/memory primitive
-SB-SYS	NLX-PROTECT	special-operator	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	OS-COLD-INIT-OR-REINIT	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	OS-CONTEXT-T	other	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	OS-DEINIT	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	OS-EXIT	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	READ-CYCLE-COUNTER	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	READ-N-BYTES	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	REMOVE-FD-HANDLER	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	REOPEN-SHARED-OBJECTS	function	ncl-runtime	2	no	SB-SYS runtime integration surface
+SB-SYS	INTERACTIVE-INTERRUPT	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-SYS	INVALIDATE-DESCRIPTOR	function	ncl-ffi	1	no	reclassified by subsystem ownership rule
+SB-SYS	INVOKE-INTERRUPTION	function	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	IO-TIMEOUT	condition+class	ncl-conditions	1	no	condition class and accessors
+SB-SYS	MACRO	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-SYS	MAKE-FD-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	MEMMOVE	function	ncl-ffi	1	no	reclassified by subsystem ownership rule
+SB-SYS	MEMORY-FAULT-ERROR	condition+class+function	ncl-conditions	1	no	condition class and accessors
+SB-SYS	NLX-PROTECT	special-operator	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+SB-SYS	OS-COLD-INIT-OR-REINIT	function	ncl-image	1	no	OS image lifecycle integration
+SB-SYS	OS-CONTEXT-T	other	ncl-object	1	no	SB-SYS low-level runtime/object support
+SB-SYS	OS-DEINIT	function	ncl-image	1	no	OS image lifecycle integration
+SB-SYS	OS-EXIT	function	ncl-image	1	no	OS image lifecycle integration
+SB-SYS	READ-CYCLE-COUNTER	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
+SB-SYS	READ-N-BYTES	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	REMOVE-FD-HANDLER	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	REOPEN-SHARED-OBJECTS	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 SB-SYS	SAP+	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SAP-	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SAP-FOREIGN-SYMBOL	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
@@ -2966,10 +2966,10 @@ SB-SYS	SAP<=	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SAP=	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SAP>	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SAP>=	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
-SB-SYS	SCRUB-CONTROL-STACK	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	SERVE-ALL-EVENTS	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	SERVE-EVENT	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	SIGNAL-DEADLINE	function	ncl-runtime	2	no	SB-SYS runtime integration surface
+SB-SYS	SCRUB-CONTROL-STACK	function	ncl-object	1	no	SB-SYS low-level runtime/object support
+SB-SYS	SERVE-ALL-EVENTS	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	SERVE-EVENT	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	SIGNAL-DEADLINE	function	ncl-threads	1	no	reclassified by subsystem ownership rule
 SB-SYS	SIGNED-SAP-REF-16	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SIGNED-SAP-REF-32	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SIGNED-SAP-REF-64	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
@@ -2977,22 +2977,22 @@ SB-SYS	SIGNED-SAP-REF-8	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SIGNED-SAP-REF-WORD	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SYSTEM-AREA-POINTER	class	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	SYSTEM-AREA-POINTER-P	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
-SB-SYS	SYSTEM-CONDITION	condition+class	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	SYSTEM-CONDITION-ADDRESS	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	SYSTEM-CONDITION-CONTEXT	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	SYSTEM-INTERNAL-RUN-TIME	function	ncl-runtime	2	no	SB-SYS runtime integration surface
+SB-SYS	SYSTEM-CONDITION	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-SYS	SYSTEM-CONDITION-ADDRESS	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-SYS	SYSTEM-CONDITION-CONTEXT	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+SB-SYS	SYSTEM-INTERNAL-RUN-TIME	function	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
 SB-SYS	UPDATE-ALIEN-LINKAGE-TABLE	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
 SB-SYS	VECTOR-SAP	function	ncl-ffi	1	no	SB-SYS alien/memory primitive
-SB-SYS	WAIT-UNTIL-FD-USABLE	function	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	WITH-CODE-PAGES-PINNED	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	WITH-DEADLINE	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	WITH-FD-HANDLER	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	WITH-INTERRUPT-BINDINGS	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	WITH-INTERRUPTS	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	WITH-LOCAL-INTERRUPTS	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	WITH-PINNED-OBJECTS	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	WITHOUT-GCING	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
-SB-SYS	WITHOUT-INTERRUPTS	macro	ncl-runtime	2	no	SB-SYS runtime integration surface
+SB-SYS	WAIT-UNTIL-FD-USABLE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	WITH-CODE-PAGES-PINNED	macro	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-SYS	WITH-DEADLINE	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	WITH-FD-HANDLER	macro	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+SB-SYS	WITH-INTERRUPT-BINDINGS	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	WITH-INTERRUPTS	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	WITH-LOCAL-INTERRUPTS	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
+SB-SYS	WITH-PINNED-OBJECTS	macro	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-SYS	WITHOUT-GCING	macro	ncl-object	1	no	reclassified by subsystem ownership rule
+SB-SYS	WITHOUT-INTERRUPTS	macro	ncl-threads	1	no	reclassified by subsystem ownership rule
 SB-THREAD	%DISPOSE-THREAD-STRUCTS	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	%THREAD-LOCAL-REFERENCES	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	*CURRENT-THREAD*	variable	ncl-threads	1	no	SB-THREAD API
@@ -3017,10 +3017,10 @@ SB-THREAD	GET-SPINLOCK	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	GRAB-MUTEX	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	HOLDING-MUTEX-P	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	INTERRUPT-THREAD	function	ncl-threads	1	no	SB-THREAD API
-SB-THREAD	INTERRUPT-THREAD-ERROR	condition+class	ncl-threads	1	no	SB-THREAD API
+SB-THREAD	INTERRUPT-THREAD-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
 SB-THREAD	INTERRUPT-THREAD-ERROR-THREAD	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	JOIN-THREAD	function	ncl-threads	1	no	SB-THREAD API
-SB-THREAD	JOIN-THREAD-ERROR	condition+class	ncl-threads	1	no	SB-THREAD API
+SB-THREAD	JOIN-THREAD-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
 SB-THREAD	JOIN-THREAD-ERROR-THREAD	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	JOIN-THREAD-PROBLEM	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	LIST-ALL-THREADS	function	ncl-threads	1	no	SB-THREAD API
@@ -3054,14 +3054,14 @@ SB-THREAD	SEMAPHORE-NOTIFICATION-STATUS	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	SIGNAL-SEMAPHORE	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	SPINLOCK	type	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	SYMBOL-VALUE-IN-THREAD	function	ncl-threads	1	no	SB-THREAD API
-SB-THREAD	SYMBOL-VALUE-IN-THREAD-ERROR	condition+class	ncl-threads	1	no	SB-THREAD API
+SB-THREAD	SYMBOL-VALUE-IN-THREAD-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
 SB-THREAD	TERMINATE-THREAD	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	THREAD	class	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	THREAD-ALIVE-P	function	ncl-threads	1	no	SB-THREAD API
-SB-THREAD	THREAD-DEADLOCK	condition+class	ncl-threads	1	no	SB-THREAD API
+SB-THREAD	THREAD-DEADLOCK	condition+class	ncl-conditions	1	no	condition class and accessors
 SB-THREAD	THREAD-DEADLOCK-CYCLE	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	THREAD-EPHEMERAL-P	function	ncl-threads	1	no	SB-THREAD API
-SB-THREAD	THREAD-ERROR	condition+class	ncl-threads	1	no	SB-THREAD API
+SB-THREAD	THREAD-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
 SB-THREAD	THREAD-ERROR-THREAD	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	THREAD-NAME	function	ncl-threads	1	no	SB-THREAD API
 SB-THREAD	THREAD-OS-TID	function	ncl-threads	1	no	SB-THREAD API

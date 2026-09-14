@@ -21,16 +21,7 @@ pub(super) fn check_op(
                 errors.push(VerifyError::ConstantOutOfBounds(block.id));
             }
             if let Some(constant) = function.constants.get(result.0 as usize) {
-                match constant {
-                    crate::Constant::SingleFloat(_) | crate::Constant::DoubleFloat(_) => {
-                        require_results(op, &[Ty::F64], block.id, errors);
-                    }
-                    _ => {
-                        if op.results.len() != 1 {
-                            errors.push(VerifyError::TypeMismatch(block.id));
-                        }
-                    }
-                }
+                require_results(op, &[constant_type(constant)], block.id, errors);
             }
         }
         OpKind::Move { value } => require_results(
@@ -315,16 +306,11 @@ pub(super) fn check_terminator(
             if values.len() != function.return_types.len() {
                 errors.push(VerifyError::ReturnArity(block.id));
             }
-            for value in values {
-                use_value(*value, block.id, position, definitions, dominators, errors);
-            }
-            for (value, expected) in values.iter().zip(&function.return_types) {
-                require_type(
-                    use_value(*value, block.id, position, definitions, dominators, errors),
-                    *expected,
-                    block.id,
-                    errors,
-                );
+            for (index, value) in values.iter().enumerate() {
+                let actual = use_value(*value, block.id, position, definitions, dominators, errors);
+                if let Some(expected) = function.return_types.get(index) {
+                    require_type(actual, *expected, block.id, errors);
+                }
             }
         }
         Terminator::Throw { condition } => require_type(
@@ -341,5 +327,19 @@ pub(super) fn check_terminator(
             errors,
         ),
         Terminator::Unreachable => {}
+    }
+}
+
+fn constant_type(constant: &crate::Constant) -> Ty {
+    match constant {
+        crate::Constant::Fixnum(_) => Ty::I64,
+        crate::Constant::SingleFloat(_) | crate::Constant::DoubleFloat(_) => Ty::F64,
+        crate::Constant::Character(_)
+        | crate::Constant::Symbol { .. }
+        | crate::Constant::Object(_)
+        | crate::Constant::StringBytes(_)
+        | crate::Constant::Nil
+        | crate::Constant::T
+        | crate::Constant::Unbound => Ty::Word,
     }
 }

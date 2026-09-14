@@ -249,6 +249,26 @@ fn verifier_reports_duplicate_block() {
         Vec::new(),
     );
     verify_has(&function, &VerifyError::DuplicateBlock(BlockId(0)));
+
+    let valid = finish(
+        "unique-blocks",
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        vec![
+            block(
+                0,
+                Vec::new(),
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            ),
+            block(1, Vec::new(), Terminator::Return { values: Vec::new() }),
+        ],
+        Vec::new(),
+    );
+    assert!(verify(&valid).is_ok());
 }
 
 #[test]
@@ -279,6 +299,33 @@ fn verifier_reports_duplicate_value() {
         Vec::new(),
     );
     verify_has(&function, &VerifyError::DuplicateValue(ValueId(0)));
+
+    let valid = finish(
+        "unique-values",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::Nil, Constant::T],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(0, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+                op(
+                    &[(1, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(1),
+                    },
+                ),
+            ],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+    assert!(verify(&valid).is_ok());
 }
 
 #[test]
@@ -311,6 +358,25 @@ fn verifier_reports_type_mismatch() {
         Vec::new(),
     );
     verify_has(&function, &VerifyError::TypeMismatch(BlockId(0)));
+
+    let valid = finish(
+        "matching-types",
+        vec![Param {
+            name: "condition".into(),
+            ty: Ty::Bool,
+        }],
+        vec![Ty::Bool],
+        Vec::new(),
+        vec![block(
+            0,
+            Vec::new(),
+            Terminator::Return {
+                values: vec![ValueId(0)],
+            },
+        )],
+        Vec::new(),
+    );
+    assert!(verify(&valid).is_ok());
 }
 
 #[test]

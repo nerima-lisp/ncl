@@ -330,7 +330,7 @@ pub(super) fn check_terminator(
     }
 }
 
-fn constant_type(constant: &crate::Constant) -> Ty {
+const fn constant_type(constant: &crate::Constant) -> Ty {
     match constant {
         crate::Constant::Fixnum(_) => Ty::I64,
         crate::Constant::SingleFloat(_) | crate::Constant::DoubleFloat(_) => Ty::F64,

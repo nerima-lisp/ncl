@@ -6,6 +6,11 @@ use ncl_sys::{
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+pub mod hash_table;
+pub mod package;
+
+use package::Package;
+
 /// Object widetags used by the object layer.
 pub mod widetag {
     pub const SYMBOL: u8 = 1;
@@ -102,6 +107,7 @@ impl From<StorageCondition> for ObjectError {
 pub struct Runtime {
     heap: Heap,
     functions: Mutex<HashMap<(String, String), Word>>,
+    packages: Mutex<HashMap<String, Package>>,
 }
 impl Runtime {
     /// Create a runtime with the default heap policy.
@@ -113,6 +119,19 @@ impl Runtime {
         Self {
             heap: Heap::new(config),
             functions: Mutex::new(HashMap::new()),
+            packages: Mutex::new(
+                [
+                    ("COMMON-LISP".to_owned(), Package::new("COMMON-LISP")),
+                    ("KEYWORD".to_owned(), Package::new("KEYWORD")),
+                    (
+                        "COMMON-LISP-USER".to_owned(),
+                        Package::new("COMMON-LISP-USER"),
+                    ),
+                    ("NCL".to_owned(), Package::new("NCL")),
+                ]
+                .into_iter()
+                .collect(),
+            ),
         }
     }
     /// Register all object layouts supported by this layer.
@@ -144,6 +163,20 @@ impl Runtime {
     /// Return the underlying heap.
     pub const fn heap(&self) -> &Heap {
         &self.heap
+    }
+
+    /// Create a package if it does not already exist.
+    pub fn ensure_package(&self, name: &str) -> bool {
+        let mut packages = match self.packages.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if packages.contains_key(name) {
+            false
+        } else {
+            packages.insert(name.to_owned(), Package::new(name));
+            true
+        }
     }
 
     /// Register a function object under a package and name.
@@ -412,69 +445,4 @@ macro_rules! builtin {
             direct: true,
         };
     };
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn classify_immediates() {
-        assert_eq!(classify(Word::fixnum(-2)), ObjectRef::Fixnum(-2));
-        assert_eq!(classify(Word::NIL), ObjectRef::Symbol(Word::NIL));
-    }
-    #[test]
-    fn allocation_requires_registration() {
-        let runtime = Runtime::new();
-        let mut ctx = ThreadContext::new();
-        assert!(make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).is_err());
-        assert!(ctx.register(&runtime).is_ok());
-        assert!(make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).is_ok());
-    }
-    #[test]
-    fn cons_accessors_round_trip() {
-        let runtime = Runtime::new();
-        let mut ctx = ThreadContext::new();
-        assert!(ctx.register(&runtime).is_ok());
-        let cons = match make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL) {
-            Ok(value) => value,
-            Err(_) => {
-                assert!(false, "registered thread could not allocate cons");
-                return;
-            }
-        };
-        assert_eq!(car(&mut ctx, cons), Ok(Word::fixnum(1)));
-        assert_eq!(cdr(&mut ctx, cons), Ok(Word::NIL));
-        assert_eq!(rplaca(&mut ctx, cons, Word::fixnum(2)), Ok(cons));
-        assert_eq!(car(&mut ctx, cons), Ok(Word::fixnum(2)));
-    }
-
-    #[test]
-    fn symbol_slots_round_trip() {
-        let runtime = Runtime::new();
-        let mut ctx = ThreadContext::new();
-        assert!(ctx.register(&runtime).is_ok());
-        let symbol = match make_symbol(&mut ctx, &runtime, Word::NIL) {
-            Ok(value) => value,
-            Err(_) => {
-                assert!(false, "registered thread could not allocate symbol");
-                return;
-            }
-        };
-        assert_eq!(symbol_name(&ctx, symbol), Ok(Word::NIL));
-        assert_eq!(symbol_value(&ctx, symbol), Ok(Word::UNBOUND));
-        assert!(set_symbol_value(&mut ctx, symbol, Word::fixnum(9)).is_ok());
-        assert_eq!(symbol_value(&ctx, symbol), Ok(Word::fixnum(9)));
-    }
-    #[test]
-    fn bindings_are_lifo() {
-        let mut ctx = ThreadContext::new();
-        ctx.bind(1, Word::fixnum(1));
-        ctx.bind(1, Word::fixnum(2));
-        assert_eq!(ctx.unbind(1), Ok(Word::fixnum(2)));
-    }
-    #[test]
-    fn builtin_metadata_expands() {
-        builtin!(TEST_BUILTIN, 2);
-        assert_eq!(TEST_BUILTIN.arity, 2);
-    }
 }

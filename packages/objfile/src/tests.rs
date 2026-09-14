@@ -113,4 +113,61 @@ fn fasl_rejects_bad_offsets_and_reserved_bits() {
     let mut bytes = FaslWriter::write(&value).unwrap_or_default();
     bytes[24..28].copy_from_slice(&u32::MAX.to_le_bytes());
     assert!(FaslReader::read(&bytes, Architecture::X86_64, 0).is_err());
+
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[11] = 4;
+    assert!(FaslReader::read(&bytes, Architecture::X86_64, 0).is_err());
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[12] = 2;
+    assert!(FaslReader::read(&bytes, Architecture::X86_64, 0).is_err());
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[16] = 1;
+    assert!(FaslReader::read(&bytes, Architecture::X86_64, 0).is_err());
+}
+
+#[test]
+fn fasl_rejects_overlapping_sections_and_out_of_range_relocations() {
+    let value = Fasl {
+        header: FaslHeader {
+            architecture: Architecture::X86_64,
+            features: 0,
+        },
+        sections: FaslSection {
+            code: vec![0xc3],
+            relocations: vec![Relocation {
+                section: SectionId(0),
+                offset: 0,
+                kind: RelocKind::Abs64,
+                symbol: SymbolRef::Local(0),
+                addend: 0,
+            }],
+            constants: vec![],
+            symbols: vec![],
+            stack_maps: vec![],
+            debug: vec![],
+        },
+    };
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[32..36].copy_from_slice(&64u32.to_le_bytes());
+    assert!(FaslReader::read(&bytes, Architecture::X86_64, 0).is_err());
+
+    let value = Fasl {
+        sections: FaslSection {
+            code: vec![],
+            relocations: vec![Relocation {
+                section: SectionId(0),
+                offset: 0,
+                kind: RelocKind::Abs64,
+                symbol: SymbolRef::Local(0),
+                addend: 0,
+            }],
+            constants: vec![],
+            symbols: vec![],
+            stack_maps: vec![],
+            debug: vec![],
+        },
+        ..value
+    };
+    let bytes = FaslWriter::write(&value).unwrap_or_default();
+    assert!(FaslReader::read(&bytes, Architecture::X86_64, 0).is_err());
 }

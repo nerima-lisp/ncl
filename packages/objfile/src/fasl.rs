@@ -4,32 +4,44 @@ use crate::{ObjectError, RelocKind, Relocation, SectionId, SymbolRef};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Architecture {
+    /// 64-bit x86.
     X86_64 = 1,
+    /// 64-bit AArch64.
     Aarch64 = 2,
 }
 
 /// The fixed FASL header values.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FaslHeader {
+    /// Target instruction-set architecture.
     pub architecture: Architecture,
+    /// Feature bits required by the image.
     pub features: u64,
 }
 
 /// The logical sections carried by a FASL.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FaslSection {
+    /// Machine code bytes.
     pub code: Vec<u8>,
+    /// Code and metadata relocations.
     pub relocations: Vec<Relocation>,
+    /// Tagged constant payload.
     pub constants: Vec<u8>,
+    /// Symbol binding payload.
     pub symbols: Vec<u8>,
+    /// Safepoint map payload.
     pub stack_maps: Vec<u8>,
+    /// Debug record payload.
     pub debug: Vec<u8>,
 }
 
 /// A complete FASL value.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Fasl {
+    /// Fixed header values.
     pub header: FaslHeader,
+    /// Variable sections in wire order.
     pub sections: FaslSection,
 }
 
@@ -178,13 +190,31 @@ impl FaslReader {
         let stack_offset = u32_at(bytes, 56)?;
         let stack_size = u32_at(bytes, 60)?;
         let stack = range(bytes, "stack map", stack_offset, stack_size)?;
-        let debug_start = stack_offset
-            .checked_add(stack_size)
-            .ok_or(ObjectError::OutOfBounds {
-                section: "debug",
-                offset: u64::from(stack_offset),
-                size: u64::from(stack_size),
-            })?;
+        let debug_start =
+            stack_offset
+                .checked_add(stack_size)
+                .ok_or_else(|| ObjectError::OutOfBounds {
+                    section: "debug",
+                    offset: u64::from(stack_offset),
+                    size: u64::from(stack_size),
+                })?;
+        let section_ranges = [
+            ("code", u32_at(bytes, 24)?, u32_at(bytes, 28)?),
+            (
+                "relocation",
+                u32_at(bytes, 32)?,
+                u32_at(bytes, 36)?
+                    .checked_mul(16)
+                    .ok_or_else(|| ObjectError::InvalidField {
+                        field: "relocation size",
+                        value: u64::MAX,
+                    })?,
+            ),
+            ("constant", u32_at(bytes, 40)?, u32_at(bytes, 44)?),
+            ("symbol", u32_at(bytes, 48)?, u32_at(bytes, 52)?),
+            ("stack map", stack_offset, stack_size),
+        ];
+        validate_section_order(&section_ranges)?;
         let relocations = decode_relocations(reloc)?;
         for relocation in &relocations {
             if relocation.section.0 != 0 {
@@ -193,9 +223,7 @@ impl FaslReader {
                     index: usize::try_from(relocation.section.0).unwrap_or(usize::MAX),
                 });
             }
-            if usize::try_from(relocation.offset).map_or(true, |offset| offset >= code.len())
-                && !code.is_empty()
-            {
+            if usize::try_from(relocation.offset).map_or(true, |offset| offset >= code.len()) {
                 return Err(ObjectError::OutOfBounds {
                     section: "FASL relocation",
                     offset: u64::from(relocation.offset),
@@ -214,10 +242,14 @@ impl FaslReader {
                 constants: constants.to_vec(),
                 symbols: symbols.to_vec(),
                 stack_maps: stack.to_vec(),
-                debug: match bytes.get(debug_start as usize..) {
-                    Some(value) => value.to_vec(),
-                    None => Vec::new(),
-                },
+                debug: bytes
+                    .get(
+                        usize::try_from(debug_start).map_err(|_| ObjectError::InvalidField {
+                            field: "debug offset",
+                            value: u64::from(debug_start),
+                        })?..,
+                    )
+                    .map_or_else(Vec::new, ToOwned::to_owned),
             },
         })
     }
@@ -241,7 +273,7 @@ fn encode_relocations(items: &[Relocation]) -> Result<Vec<u8>, ObjectError> {
     Ok(out)
 }
 fn decode_relocations(bytes: &[u8]) -> Result<Vec<Relocation>, ObjectError> {
-    if bytes.len() % 16 != 0 {
+    if !bytes.len().is_multiple_of(16) {
         return Err(ObjectError::InvalidField {
             field: "relocation size",
             value: bytes.len() as u64,
@@ -307,7 +339,7 @@ fn number_kind(value: u32) -> Result<RelocKind, ObjectError> {
     ]
     .get(value as usize)
     .copied()
-    .ok_or(ObjectError::InvalidField {
+    .ok_or_else(|| ObjectError::InvalidField {
         field: "relocation kind",
         value: u64::from(value),
     })
@@ -342,16 +374,39 @@ fn range<'a>(
     offset: u32,
     size: u32,
 ) -> Result<&'a [u8], ObjectError> {
-    let end = offset.checked_add(size).ok_or(ObjectError::OutOfBounds {
-        section: name,
-        offset: u64::from(offset),
-        size: u64::from(size),
-    })?;
+    let end = offset
+        .checked_add(size)
+        .ok_or_else(|| ObjectError::OutOfBounds {
+            section: name,
+            offset: u64::from(offset),
+            size: u64::from(size),
+        })?;
     bytes
         .get(offset as usize..end as usize)
-        .ok_or(ObjectError::OutOfBounds {
+        .ok_or_else(|| ObjectError::OutOfBounds {
             section: name,
             offset: u64::from(offset),
             size: u64::from(size),
         })
+}
+
+fn validate_section_order(sections: &[(&'static str, u32, u32)]) -> Result<(), ObjectError> {
+    let mut previous_end = 64u32;
+    for (name, offset, size) in sections {
+        if *offset < previous_end {
+            return Err(ObjectError::Overlap {
+                first: "previous FASL section",
+                second: name,
+            });
+        }
+        let end = offset
+            .checked_add(*size)
+            .ok_or_else(|| ObjectError::OutOfBounds {
+                section: name,
+                offset: u64::from(*offset),
+                size: u64::from(*size),
+            })?;
+        previous_end = end;
+    }
+    Ok(())
 }

@@ -23,3 +23,11 @@ front end は reader output を macroexpand、parse、declaration/type propagati
 - listed IR types、OpKind、Terminator、handler、debug location を変更しない。
 - backend は `MachineFunction` と `CodeBlob` を通じて encoder を呼び、stack map を省略しない。
 - 1a で unboxed representation、inline cache、独自 ABI を追加しない。
+
+## `ncl-ir` 最終契約
+
+`ncl-ir` は依存 crate を持たない。公開される値は `Function`、`BasicBlock`、`Op`、`OpKind`、`Terminator`、`Ty`、`Constant`、`HandlerRegion`、`DebugLocation` と、それらの ID 型である。`OpKind` は `Const`、`Move`、`Load`、`Store`、`LoadField`、`StoreField`、`Alloc`、`LoadArg`、`Call`、`CallIndirect`、`Builtin`、`Prim`、`Compare`、`Convert`、`SetMultipleValues`、`Safepoint` を持つ。`Terminator` は `Jump`、`Branch`、`Switch`、`CallReturn`、`TailCall`、`Return`、`Throw`、`Unreachable` を持つ。
+
+### テキスト形式
+
+`Function` の `Display` は `fn @name { payload }` の形式で、payload は長さと variant tag を含むカンマ区切りの hexadecimal atom 列である。文字列は ASCII の安全な文字以外を `_hh` として escape する。フィールドを失わないため、`parse(function.to_string()) == function` を保証する。

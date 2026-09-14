@@ -2,9 +2,11 @@
 resolver = "3"
 members = [
     ".",
+    "packages/ir",
 ]
 default-members = [
     ".",
+    "packages/ir",
 ]
 
 [workspace.package]

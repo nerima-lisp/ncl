@@ -51,6 +51,7 @@ struct Object {
     pinned: bool,
     weak: Option<Weakness>,
     finalizer: Option<(Finalizer, bool)>,
+    alive: bool,
 }
 #[derive(Debug)]
 struct State {
@@ -62,6 +63,7 @@ struct State {
     roots: Vec<*mut Word>,
     weak: Vec<usize>,
     finalizers: Vec<(Word, Finalizer)>,
+    after_gc_hooks: Vec<fn()>,
 }
 #[derive(Debug)]
 pub struct Heap {
@@ -90,6 +92,7 @@ impl Heap {
                 roots: Vec::new(),
                 weak: Vec::new(),
                 finalizers: Vec::new(),
+                after_gc_hooks: Vec::new(),
             }),
         }
     }
@@ -181,6 +184,7 @@ impl Heap {
             pinned: false,
             weak: None,
             finalizer: None,
+            alive: true,
         };
         let address = object.words.as_ptr() as usize;
         s.used += bytes;
@@ -198,8 +202,10 @@ impl Heap {
     fn find(s: &State, word: Word) -> Option<usize> {
         let addr = word.address();
         s.objects.iter().position(|o| {
-            let start = o.words.as_ptr() as usize;
-            addr >= start && addr < start + o.words.len() * 8 && (addr - start) % 8 == 0
+            o.alive && {
+                let start = o.words.as_ptr() as usize;
+                addr >= start && addr < start + o.words.len() * 8 && (addr - start) % 8 == 0
+            }
         })
     }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
@@ -273,6 +279,9 @@ impl Heap {
                     .map_or_else(Vec::new, |l| l.reference_words.clone())
             };
             for slot in layout {
+                if s.objects[i].weak.is_some() && slot == 1 {
+                    continue;
+                }
                 if slot < s.objects[i].words.len() {
                     let value = Word::from_bits(s.objects[i].words[slot]);
                     if let Some(next) = Self::find(&s, value) {
@@ -294,9 +303,7 @@ impl Heap {
                 s.objects[i].words = copy;
                 moved.insert(old, new_addr);
                 s.objects[i].survived = s.objects[i].survived.saturating_add(1);
-                if s.objects[i].survived >= 2 {
-                    s.objects[i].generation = 2;
-                }
+                s.objects[i].generation = s.objects[i].survived.min(2);
             }
         }
         for root in root_slots.iter().copied() {
@@ -329,6 +336,9 @@ impl Heap {
                     .map_or_else(Vec::new, |l| l.reference_words.clone())
             };
             for slot in layout {
+                if s.objects[i].weak.is_some() && slot == 1 {
+                    continue;
+                }
                 if slot < s.objects[i].words.len() {
                     let value = Word::from_bits(s.objects[i].words[slot]);
                     if let Some(addr) = moved.get(&value.address()) {
@@ -355,8 +365,30 @@ impl Heap {
                     s.finalizers.push((value, cb));
                     s.objects[i].finalizer = Some((cb, true));
                 }
+                s.used = s.used.saturating_sub(s.objects[i].words.len() * 8);
+                s.objects[i].alive = false;
             }
         }
+        for i in 0..s.objects.len() {
+            if s.objects[i].weak.is_some() && s.objects[i].alive {
+                let value = Word::from_bits(s.objects[i].words.get(1).copied().unwrap_or(0));
+                if Self::find(&s, value).is_none() {
+                    s.objects[i].words[1] = Word::NIL.bits();
+                }
+            }
+        }
+        let hooks = s.after_gc_hooks.clone();
+        let finalizers = s.finalizers.drain(..).collect::<Vec<_>>();
+        drop(s);
+        for (_, callback) in finalizers {
+            callback(Word::NIL);
+        }
+        for hook in hooks {
+            hook();
+        }
+    }
+    pub(crate) fn register_after_gc_hook(&self, hook: fn()) {
+        self.lock_state().after_gc_hooks.push(hook);
     }
     fn lock_state(&self) -> std::sync::MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(|p| p.into_inner())

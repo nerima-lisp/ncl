@@ -6,6 +6,7 @@
 mod code;
 mod heap;
 mod os;
+mod sync;
 mod thread;
 mod word;
 
@@ -14,8 +15,23 @@ pub use heap::{
     Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,
 };
+pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{NativeState, RootToken, SafepointState, Thread};
 pub use word::{LowTag, Word};
+
+#[cfg(target_arch = "aarch64")]
+fn snapshot_callee_saved() -> [u64; 16] {
+    let mut values = [0_u64; 16];
+    // SAFETY: the output array is valid for sixteen u64 stores and the assembly only reads callee-saved registers.
+    unsafe {
+        core::arch::asm!("stp x19, x20, [{0}, #0]", "stp x21, x22, [{0}, #16]", "stp x23, x24, [{0}, #32]", "stp x25, x26, [{0}, #48]", "stp x27, x28, [{0}, #64]", "stp x29, x30, [{0}, #80]", in(reg) values.as_mut_ptr(), options(nostack, preserves_flags));
+    }
+    values
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn snapshot_callee_saved() -> [u64; 16] {
+    [0; 16]
+}
 
 /// Allocate a normal header object.
 pub fn alloc(
@@ -60,6 +76,29 @@ pub fn unregister_thread(heap: &Heap, thread: &Thread) {
 /// Request and publish a safepoint if one is pending.
 pub fn poll_safepoint(thread: &mut Thread) {
     thread.poll_safepoint();
+}
+
+/// Request a cooperative safepoint on the next poll.
+pub fn request_safepoint(thread: &mut Thread) {
+    thread.request_safepoint();
+}
+
+/// Publish the current stack boundary and callee-saved register snapshot.
+pub fn publish_safepoint(thread: &mut Thread) {
+    thread.publish_snapshot();
+    thread.poll_safepoint();
+}
+
+/// Register a contiguous set of precise root slots.
+pub fn register_root_set(thread: &mut Thread, values: &mut [Word]) -> RootToken {
+    let token = RootToken {
+        index: thread.roots.len(),
+        count: values.len(),
+    };
+    thread
+        .roots
+        .extend(values.iter_mut().map(std::ptr::from_mut));
+    token
 }
 
 /// Enter a foreign/native section.

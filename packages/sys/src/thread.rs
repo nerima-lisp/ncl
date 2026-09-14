@@ -19,7 +19,8 @@ pub enum SafepointState {
 /// A LIFO shadow-root handle.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RootToken {
-    index: usize,
+    pub(crate) index: usize,
+    pub(crate) count: usize,
 }
 
 #[derive(Debug)]
@@ -31,6 +32,8 @@ pub struct Thread {
     pub(crate) tlab: Vec<u64>,
     pub(crate) bytes_cons: usize,
     interrupt: bool,
+    pub(crate) stack_bounds: Option<(usize, usize)>,
+    pub(crate) callee_saved: [u64; 16],
 }
 
 impl Default for Thread {
@@ -49,19 +52,23 @@ impl Thread {
             tlab: Vec::new(),
             bytes_cons: 0,
             interrupt: false,
+            stack_bounds: None,
+            callee_saved: [0; 16],
         }
     }
     /// Push a precise root. The referenced slot must outlive the token.
     pub fn push_root(&mut self, value: &mut Word) -> RootToken {
         let token = RootToken {
             index: self.roots.len(),
+            count: 1,
         };
         self.roots.push(ptr::from_mut(value));
         token
     }
     /// Pop the most recently pushed root.
     pub fn pop_root(&mut self, token: RootToken) -> bool {
-        token.index + 1 == self.roots.len() && self.roots.pop().is_some()
+        token.index + token.count == self.roots.len()
+            && (0..token.count).all(|_| self.roots.pop().is_some())
     }
     /// Return the current safepoint state.
     pub const fn safepoint_state(&self) -> SafepointState {
@@ -76,6 +83,17 @@ impl Thread {
             self.state = SafepointState::Published;
             self.state = SafepointState::Running;
         }
+    }
+    pub(crate) fn request_safepoint(&mut self) {
+        if self.state == SafepointState::Running {
+            self.state = SafepointState::PollRequested;
+        }
+    }
+    pub(crate) fn publish_snapshot(&mut self) {
+        let marker = 0_u8;
+        let address = std::ptr::from_ref(&marker) as usize;
+        self.stack_bounds = Some((address, address + 1));
+        self.callee_saved = crate::snapshot_callee_saved();
     }
     pub(crate) fn enter_native(&mut self) {
         self.native = NativeState::Native;

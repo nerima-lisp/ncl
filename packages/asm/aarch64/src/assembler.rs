@@ -42,7 +42,7 @@ pub struct CodeBlob {
     /// Relocations retained for object-file conversion.
     pub fixups: Vec<Fixup>,
 }
-/// A small label-aware AArch64 assembler.
+/// A small label-aware `AArch64` assembler.
 #[derive(Clone, Debug, Default)]
 pub struct Assembler {
     bytes: Vec<u8>,
@@ -52,16 +52,21 @@ pub struct Assembler {
 }
 impl Assembler {
     /// Creates an empty assembler.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
     /// Allocates a fresh label.
-    pub fn new_label(&mut self) -> Label {
+    pub const fn new_label(&mut self) -> Label {
         let l = Label(self.next);
         self.next = self.next.saturating_add(1);
         l
     }
     /// Binds a label at the current byte position.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EncodeError::DuplicateLabel`] if the label is already bound.
     pub fn bind(&mut self, label: Label) -> Result<(), EncodeError> {
         if self.labels.insert(label, self.bytes.len()).is_some() {
             return Err(EncodeError::DuplicateLabel(label));
@@ -69,11 +74,15 @@ impl Assembler {
         Ok(())
     }
     /// Encodes and appends an instruction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an encoding error if the instruction operands are invalid.
     pub fn emit(&mut self, inst: &Inst) -> Result<(), EncodeError> {
         let at = self.bytes.len();
         let word = encode(inst, at)?;
         self.bytes.extend_from_slice(&word.to_le_bytes());
-        if let Some((kind, target)) = crate::encoding::fixup(inst) {
+        if let Some((kind, target)) = fixup(inst) {
             self.fixups.push(Fixup {
                 offset: at,
                 kind,
@@ -83,14 +92,29 @@ impl Assembler {
         Ok(())
     }
     /// Resolves local labels and returns code plus retained fixups.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an unbound label or an out-of-range relocation.
     pub fn finish(mut self) -> Result<CodeBlob, EncodeError> {
         for f in &self.fixups {
             let target = *self
                 .labels
                 .get(&f.target)
                 .ok_or(EncodeError::UnboundLabel(f.target))?;
-            let place = f.offset as i64;
-            let delta = target as i64 - place;
+            let Ok(place) = i64::try_from(f.offset) else {
+                return Err(EncodeError::RelocationOutOfRange {
+                    offset: f.offset,
+                    target: f.target,
+                });
+            };
+            let Ok(target_i64) = i64::try_from(target) else {
+                return Err(EncodeError::RelocationOutOfRange {
+                    offset: f.offset,
+                    target: f.target,
+                });
+            };
+            let delta = target_i64 - place;
             let word = u32::from_le_bytes(
                 self.bytes[f.offset..f.offset + 4]
                     .try_into()
@@ -98,16 +122,16 @@ impl Assembler {
             );
             let patched = match f.kind {
                 FixupKind::Branch26 => patch_signed(word, delta, 26, 2, 0, *f)?,
-                FixupKind::CondBranch19 => patch_signed(word, delta, 19, 2, 5, *f)?,
+                FixupKind::CondBranch19 | FixupKind::Literal19 => {
+                    patch_signed(word, delta, 19, 2, 5, *f)?
+                }
                 FixupKind::Adrp21 => {
-                    let d = (target as i64 / 4096) - (place / 4096);
+                    let d = (target_i64 / 4096) - (place / 4096);
                     patch_signed(word, d, 21, 0, 5, *f)?
                 }
                 FixupKind::Adr21 => patch_signed(word, delta, 21, 0, 5, *f)?,
                 FixupKind::TestBranch14 => patch_signed(word, delta, 14, 2, 5, *f)?,
-                FixupKind::Literal19 => patch_signed(word, delta, 19, 2, 5, *f)?,
-                FixupKind::Abs64 => word,
-                FixupKind::Add12 => word,
+                FixupKind::Abs64 | FixupKind::Add12 => word,
             };
             self.bytes[f.offset..f.offset + 4].copy_from_slice(&patched.to_le_bytes());
         }
@@ -115,6 +139,23 @@ impl Assembler {
             bytes: self.bytes,
             fixups: self.fixups,
         })
+    }
+}
+
+const fn fixup(i: &Inst) -> Option<(FixupKind, Label)> {
+    match i {
+        Inst::B { label } | Inst::Bl { label } => Some((FixupKind::Branch26, *label)),
+        Inst::BCond { label, .. } => Some((FixupKind::CondBranch19, *label)),
+        Inst::Adrp { label, .. } => Some((FixupKind::Adrp21, *label)),
+        Inst::Adr { label, .. } => Some((FixupKind::Adr21, *label)),
+        Inst::Cbz { label, .. } | Inst::Cbnz { label, .. } => {
+            Some((FixupKind::CondBranch19, *label))
+        }
+        Inst::Tbz { label, .. } | Inst::Tbnz { label, .. } => {
+            Some((FixupKind::TestBranch14, *label))
+        }
+        Inst::LdrLiteral { label, .. } => Some((FixupKind::Literal19, *label)),
+        _ => None,
     }
 }
 fn patch_signed(
@@ -134,5 +175,11 @@ fn patch_signed(
             target: fixup.target,
         });
     }
-    Ok(word | ((v as u32) & ((1 << bits) - 1)) << lsb)
+    let Ok(narrowed) = u32::try_from(v) else {
+        return Err(EncodeError::RelocationOutOfRange {
+            offset: fixup.offset,
+            target: fixup.target,
+        });
+    };
+    Ok(word | (narrowed & ((1 << bits) - 1)) << lsb)
 }

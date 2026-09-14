@@ -1,15 +1,21 @@
-//! Dependency-free AArch64 instruction encoding for NCL's native backend.
+//! Dependency-free `AArch64` instruction encoding for NCL's native backend.
 #![allow(missing_docs)]
 
 mod assembler;
+mod decoder;
 mod encoding;
 mod model;
 
 pub use assembler::{Assembler, CodeBlob, Fixup, FixupKind, Label};
-pub use encoding::{decode, encode};
+pub use decoder::decode;
+pub use encoding::encode;
 pub use model::{Cond, Extend, Inst, MemOperand, Reg, RegOrSp, RegOrZr, Shift, VReg};
 
 /// Decodes one word and renders the supported instruction in a compact GNU-style form.
+///
+/// # Errors
+///
+/// Returns [`EncodeError::UnsupportedInstruction`] when the word is not supported.
 pub fn disassemble(word: u32) -> Result<String, EncodeError> {
     match decode(word)? {
         Inst::Nop => Ok(String::from("nop")),
@@ -19,10 +25,14 @@ pub fn disassemble(word: u32) -> Result<String, EncodeError> {
 }
 
 /// Produces a short MOV-wide sequence for a 64-bit constant.
+#[must_use]
 pub fn mov_imm64(rd: Reg, value: u64) -> Vec<Inst> {
     let mut parts = [0_u16; 4];
     for (index, part) in parts.iter_mut().enumerate() {
-        *part = (value >> (index * 16)) as u16;
+        *part = match u16::try_from((value >> (index * 16)) & u64::from(u16::MAX)) {
+            Ok(part) => part,
+            Err(_) => return Vec::new(),
+        };
     }
     let use_n = parts.iter().filter(|&&part| part == u16::MAX).count()
         > parts.iter().filter(|&&part| part == 0).count();
@@ -48,13 +58,13 @@ pub fn mov_imm64(rd: Reg, value: u64) -> Vec<Inst> {
         Inst::MovN {
             rd,
             imm: !parts[first],
-            shift: (first * 16) as u8,
+            shift: [0, 16, 32, 48][first],
         }
     } else {
         Inst::MovZ {
             rd,
             imm: parts[first],
-            shift: (first * 16) as u8,
+            shift: [0, 16, 32, 48][first],
         }
     }];
     for (index, &part) in parts.iter().enumerate() {
@@ -62,7 +72,7 @@ pub fn mov_imm64(rd: Reg, value: u64) -> Vec<Inst> {
             result.push(Inst::MovK {
                 rd,
                 imm: part,
-                shift: (index * 16) as u8,
+                shift: [0, 16, 32, 48][index],
             });
         }
     }
@@ -76,7 +86,7 @@ pub enum EncodeError {
     InvalidRegister(u8),
     /// An immediate cannot be represented by the selected instruction.
     ImmediateOutOfRange { value: i64, bits: u8 },
-    /// An immediate is not representable as an AArch64 logical immediate.
+    /// An immediate is not representable as an `AArch64` logical immediate.
     InvalidBitmaskImmediate(u64),
     /// A label was referenced but never bound.
     UnboundLabel(Label),
@@ -86,7 +96,7 @@ pub enum EncodeError {
     RelocationOutOfRange { offset: usize, target: Label },
     /// The byte stream does not contain a complete instruction.
     InvalidLength,
-    /// The instruction is not in the supported Phase 1 subset.
+    /// The instruction is not in the supported `Phase 1` subset.
     UnsupportedInstruction(u32),
 }
 

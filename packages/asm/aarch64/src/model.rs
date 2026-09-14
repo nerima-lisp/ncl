@@ -11,6 +11,10 @@ impl From<Reg> for RegOrSp {
 }
 impl Reg {
     /// Creates a register.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EncodeError::InvalidRegister`] when `n` is outside `x0` through `x30`.
     pub const fn new(n: u8) -> Result<Self, EncodeError> {
         if n <= 30 {
             Ok(Self(n))
@@ -19,6 +23,7 @@ impl Reg {
         }
     }
     /// Returns the register number.
+    #[must_use]
     pub const fn number(self) -> u8 {
         self.0
     }

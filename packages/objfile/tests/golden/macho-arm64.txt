@@ -1,0 +1,15 @@
+format: Mach-O 64-bit relocatable
+cpu: ARM64
+sections:
+  - __TEXT,__text
+  - __DATA,__const
+  - __DATA,__ncl
+load_commands:
+  - LC_SEGMENT_64
+  - LC_SYMTAB
+  - LC_BUILD_VERSION
+relocations:
+  - ARM64_RELOC_UNSIGNED
+  - ARM64_RELOC_BRANCH26
+  - ARM64_RELOC_PAGE21
+  - ARM64_RELOC_PAGEOFF12

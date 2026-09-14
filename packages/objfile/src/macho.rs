@@ -202,7 +202,8 @@ fn encode_relocation(
         (MachArchitecture::Arm64, crate::RelocKind::Adrp21) => 3,
         (MachArchitecture::Arm64, crate::RelocKind::Add12) => 4,
         (MachArchitecture::Arm64, crate::RelocKind::Branch26)
-        | (MachArchitecture::X86_64, crate::RelocKind::PcRel32 | crate::RelocKind::Plt32) => 2,
+        | (MachArchitecture::X86_64, crate::RelocKind::Plt32) => 2,
+        (MachArchitecture::X86_64, crate::RelocKind::PcRel32) => 1,
         _ => return Err(ObjectError::UnsupportedRelocation(relocation.kind)),
     };
     let (symbol, external) = match relocation.symbol {

@@ -2,10 +2,12 @@
 resolver = "3"
 members = [
     ".",
+    "packages/asm/x86-64",
     "packages/ir",
 ]
 default-members = [
     ".",
+    "packages/asm/x86-64",
     "packages/ir",
 ]
 

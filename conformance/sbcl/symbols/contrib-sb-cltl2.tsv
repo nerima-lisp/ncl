@@ -1,0 +1,10 @@
+package	symbol	function	macro	special-operator	variable	constant	type	class	condition	fboundp	boundp	find-class	sb-int-type-kind
+SB-CLTL2	COMPILER-LET	no	no	yes	no	no	no	no	no	yes	no	no	no
+SB-CLTL2	MACROEXPAND-ALL	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-CLTL2	DEFINE-DECLARATION	no	yes	no	no	no	no	no	no	yes	no	no	no
+SB-CLTL2	VARIABLE-INFORMATION	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-CLTL2	AUGMENT-ENVIRONMENT	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-CLTL2	DECLARATION-INFORMATION	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-CLTL2	ENCLOSE	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-CLTL2	PARSE-MACRO	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-CLTL2	FUNCTION-INFORMATION	yes	no	no	no	no	no	no	no	yes	no	no	no

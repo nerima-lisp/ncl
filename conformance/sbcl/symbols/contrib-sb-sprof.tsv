@@ -1,0 +1,17 @@
+package	symbol	function	macro	special-operator	variable	constant	type	class	condition	fboundp	boundp	find-class	sb-int-type-kind
+SB-SPROF	UNPROFILE-CALL-COUNTS	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	STOP-PROFILING	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	START-SAMPLING	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	REPORT	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	START-PROFILING	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	*SAMPLE-INTERVAL*	no	no	no	yes	no	no	no	no	no	yes	no	no
+SB-SPROF	WITH-PROFILING	no	yes	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	SAMPLE-PC	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	*REPORT-SORT-BY*	no	no	no	yes	no	no	no	no	no	yes	no	no
+SB-SPROF	MAP-TRACES	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	*REPORT-SORT-ORDER*	no	no	no	yes	no	no	no	no	no	yes	no	no
+SB-SPROF	STOP-SAMPLING	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	PROFILE-CALL-COUNTS	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	RESET	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-SPROF	*MAX-SAMPLES*	no	no	no	yes	no	no	no	no	no	yes	no	no
+SB-SPROF	WITH-SAMPLING	no	yes	no	no	no	no	no	no	yes	no	no	no

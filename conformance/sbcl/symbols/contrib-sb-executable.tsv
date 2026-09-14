@@ -1,0 +1,3 @@
+package	symbol	function	macro	special-operator	variable	constant	type	class	condition	fboundp	boundp	find-class	sb-int-type-kind
+SB-EXECUTABLE	MAKE-EXECUTABLE	yes	no	no	no	no	no	no	no	yes	no	no	no
+SB-EXECUTABLE	COPY-STREAM	yes	no	no	no	no	no	no	no	yes	no	no	no

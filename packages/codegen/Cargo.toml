@@ -1,0 +1,13 @@
+[package]
+name = "ncl-codegen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ncl-ir = { path = "../ir" }
+ncl-asm-x86-64 = { path = "../asm/x86-64" }
+
+[lints]
+workspace = true

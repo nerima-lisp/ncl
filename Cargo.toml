@@ -4,11 +4,13 @@ members = [
     ".",
     "packages/asm/x86-64",
     "packages/ir",
+    "packages/codegen",
 ]
 default-members = [
     ".",
     "packages/asm/x86-64",
     "packages/ir",
+    "packages/codegen",
 ]
 
 [workspace.package]

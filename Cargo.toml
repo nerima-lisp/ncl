@@ -3,10 +3,12 @@ resolver = "3"
 members = [
     ".",
     "packages/sys",
+    "packages/object",
 ]
 default-members = [
     ".",
     "packages/sys",
+    "packages/object",
 ]
 
 [workspace.package]

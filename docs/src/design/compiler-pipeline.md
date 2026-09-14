@@ -23,3 +23,15 @@ front end は reader output を macroexpand、parse、declaration/type propagati
 - listed IR types、OpKind、Terminator、handler、debug location を変更しない。
 - backend は `MachineFunction` と `CodeBlob` を通じて encoder を呼び、stack map を省略しない。
 - 1a で unboxed representation、inline cache、独自 ABI を追加しない。
+
+## Complete IR contract
+
+`ncl-ir` depends on no crate. `Function` contains id, name, parameters, return types, locals, blocks, handler regions, and debug locations. `BasicBlock` contains id, block parameters, operations, and one terminator. `Op` contains result type, source location, and `OpKind`.
+
+`OpKind` variants are `Const`, `Move`, `Load`, `Store`, `LoadField`, `StoreField`, `Alloc`, `LoadArg`, `Call`, `CallIndirect`, `Builtin`, `Prim`, `Compare`, `Convert`, `SetMultipleValues`, and `Safepoint`. Terminators are `Jump`, `Branch`, `Switch`, `CallReturn`, `TailCall`, `Return`, `Throw`, and `Unreachable`.
+
+Types are `Word`, `I64`, `F64`, `Address`, `Bool`, and `Unit`. Constants are fixnum, character, single-float, double-float, string bytes, and descriptors for symbol or object references. A symbol descriptor is package name plus symbol name; an object descriptor is a constant-table index. Codegen resolves descriptors, so they are not raw Word constants in the IR. Handler regions contain protected, handler, and cleanup blocks, catch tag, and dynamic depth. Debug locations contain source file id, line, column, and form id.
+
+Direct expansion includes `car`, `cdr`, `rplaca`, `rplacd`, `svref`, `aref`, `aset`, fixnum arithmetic and comparison, `eq`, `eql`, `typep`, character predicates, and structure slot accessors. The compiler-macro registry stores symbol descriptor, arity pattern, expansion callback, and feature bit.
+
+Phase 1a is fixed templates and frame slots; 1b adds calls, returns, and multiple values; 1c adds allocation, GC maps, and unwind; Phase 2 reaches `fib(25)`, compile-file, and FASL load. Each stage is complete only when its tests execute. FASL stores native code, relocations, descriptors/constants, symbol bindings, maps, and debug records; incompatible architecture or feature bits signal a condition.

@@ -33,3 +33,35 @@ NCL frame header は `previous FP / return PC / function object / flags` の 4 �
 - 表のレジスタ名、論理引数順、4 語以下の header を変更しない。
 - fixed builtin に可変長 adapter を追加せず、pending flag の検査を省略しない。
 - tail call、multiple values、unwind の追加仕様は native backend の定義を複製せず参照する。
+
+## Physical register contract
+
+| RegisterId | x86-64 | role | AArch64 |
+| ---: | --- | --- | --- |
+| 0 | rax | return value, caller-saved | x0 |
+| 1 | rdx | mv count, caller-saved | x1 |
+| 2 | rdi | argc, caller-saved | x2 |
+| 3 | rsi | a0, caller-saved | x3 |
+| 4 | rcx | a1, caller-saved | x4 |
+| 5 | r8 | a2, caller-saved | x5 |
+| 6 | r9 | a3/rest, caller-saved | x6 |
+| 7 | r10 | scratch, caller-saved | x7 |
+| 8 | r11 | scratch, caller-saved | x8 |
+| 9 | rbp | frame pointer, callee-saved | x9 |
+| 10 | rbx | callee-saved | x10 |
+| 11 | r12 | callee-saved | x11 |
+| 12 | r13 | callee-saved | x12 |
+| 13 | r14 | callee-saved | x13 |
+| 14 | r15 | ThreadContext, reserved | x14 |
+
+The AArch64 `RegisterId` is x0 through x30 with the same numeric id. x21 is the pinned ThreadContext register, x16 and x17 are scratch, and x29 is the frame pointer. Reserved registers are not allocated to ordinary values.
+
+## Frames, calls, and exits
+
+The frame begins with four words: previous FP, return PC, function object, and flags. Flags encode frame kind, tail state, and native state. It is followed by argument spills, local slots, and outgoing area. Every slot is 8 bytes and the frame is 16-byte aligned. The fifth and later arguments are at the caller outgoing area in increasing slot order.
+
+A full call creates a frame and publishes a safepoint. A local call uses the same frame but an intra-code target. A self tail call reuses the frame after replacing arguments. A general tail call cleans its outgoing area and transfers directly; tail transfer is forbidden while cleanup is active. `&rest` materializes the remainder array in the prologue, while `&key` validates and binds keyword pairs there.
+
+Multiple values return `v0` and count in the ABI registers; additional values are in the ThreadContext MV area. Direct Rust builtins use their fixed signature, while variadic or keyword builtins use the adapter returning `NclStatus`; both forms use a pending flag checked immediately after return.
+
+CatchRecord contains tag, target frame, value slot, and previous record. CleanupRecord contains cleanup entry, dynamic depth, and previous record. Handler records contain predicate, handler entry, frame address, and previous record. ThreadContext holds the three current pointers. Unwind marks the pending exit, runs LIFO cleanup, restores binding and handler chains, then transfers to the catch or handler target. Rust frames propagate `NclStatus` in two stages: adapter to builtin caller, then caller to the top NCL entry. Rust panic is abort.

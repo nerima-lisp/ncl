@@ -53,3 +53,53 @@ asm crates have no neighbors, so encoding is independent of object model and OS.
 - The complete list and adjacency list above are frozen.
 - No external dependency, hidden workspace member, or reverse edge may be added.
 - `ncl-objfile` consumes asm `Fixup` values as its own `Relocation` values; asm does not import objfile types.
+
+### Public API summary
+
+| crate | public API and responsibility |
+| --- | --- |
+| ncl-sys | OS `extern "C"`: mmap, mprotect, munmap, pthread create/join/self, stack attributes, mutex, condvar, semaphore, dlopen, dlsym, dlerror, clock_gettime, read, write, open, close, stat, opendir, signals, pthread_jit_write_protect_np, sys_icache_invalidate |
+| ncl-object | `Word`, `TypeTag`, accessors, `Runtime`, `ThreadContext`, `RootToken`, `register`, `builtin!`, allocation and package/intern API |
+| ncl-ir | independent IR data types and descriptors only |
+| ncl-types | type specifiers, predicates, and type errors |
+| ncl-reader/printer | readtable, reader and printer interfaces |
+| ncl-conditions | condition, handler, restart, catch and cleanup interfaces |
+| ncl-clos | class, slot, generic-function and MOP interfaces |
+| ncl-compiler-front | macroexpand, declarations, compiler macros, IR lowering |
+| ncl-codegen | MachineFunction, register allocation, frame and safepoint metadata |
+| ncl-asm-x86-64 / ncl-asm-aarch64 | target instruction model and encoder, no codegen dependency |
+| ncl-objfile | FASL and native object writer, returns bytes and calls no OS API |
+| ncl-lib-* | library builtin registration through `register(&Runtime)` |
+| ncl-threads | Lisp thread API over ncl-sys |
+| ncl-ffi | foreign declarations and calls |
+| ncl-image | image save/load |
+| ncl-runtime | eval, compile, load and registration orchestration |
+| ncl-conformance | conformance runner |
+
+The dependency graph is acyclic. `ncl-ir -> none` and `ncl-objfile -> none` are deliberate. `Runtime`, `ThreadContext`, and `builtin!` live in ncl-object. No external crate is permitted; OS declarations exist only in ncl-sys.
+
+### Registration and ownership rules
+
+`register(&Runtime)` is the only library registration entry point. It installs symbols, functions, classes, and compiler macros into Runtime registries and does not create a second global table. `ThreadContext` is created and registered by the runtime, owns its TLAB, binding stack, roots, handlers, safepoint state, and multiple-value area, and is unregistered before its OS thread exits.
+
+`ncl-sys` owns pages, stack bounds, OS synchronization, dynamic loading, code-space permissions, and platform declarations. `ncl-object` owns the typed boundary and allocation API. `ncl-ir` contains no allocator, OS call, or object ownership. `ncl-codegen` consumes IR and emits machine structures. The assembler crates consume only their own machine model. `ncl-objfile` serializes bytes and never calls mmap, mprotect, or pthread APIs.
+
+Reverse dependencies are forbidden: object does not import front end, codegen does not import compiler front, assembler does not import codegen, and objfile does not import runtime. A dependency review inspects every Cargo.toml edge and confirms the graph remains acyclic.
+
+### API shape by layer
+
+The unsafe layer returns raw handles and OS status values. The object layer converts them into `Word`, `StorageCondition`, `RootToken`, and typed slot operations. The compiler front end returns `Function` and diagnostics. Codegen returns `MachineFunction` and `CodegenError`. Assemblers return bytes and `Fixup`. Objfile returns a byte vector. Runtime is the only layer that sequences allocation, compilation, loading, and registration.
+
+No crate may expose a raw page pointer, mutable global heap, hidden thread registry, or platform-specific register name across its boundary. Platform names stay in ncl-sys or the target assembler. The public API summary and adjacency table are the source of truth for Phase 1 lane ownership.
+
+The library crates do not own compilation or allocation policy. They receive `Runtime` and `ThreadContext` from the integration layer, register builtins, and return typed conditions. This keeps registration, GC ownership, and OS access at their declared boundaries.
+
+Each crate exposes the smallest API needed by its neighboring contract.
+
+`ncl-sys` does not expose Lisp values.
+
+`ncl-object` does not expose platform register names.
+
+`ncl-ir` does not expose heap pointers.
+
+`ncl-objfile` does not expose executable mappings.

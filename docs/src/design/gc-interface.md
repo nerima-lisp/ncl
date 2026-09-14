@@ -39,3 +39,19 @@ Native code の `SafepointMap` は 16-byte little-endian header (`pc_offset: u32
 - `RootToken`、16-byte map header、slot bitmap、register id 列、page pin、poll 状態を変更しない。
 - allocation crossing の `Word` を token/typed handle なしで保持しない。
 - safepoint、write barrier、native transition を省略して green test を作らない。
+
+## Collection and root protocol
+
+The three generations are nursery (0), aging (1), and old (2). A nursery survivor is promoted after two collections or when its object size exceeds 8 KiB. Each mutator receives a 32 KiB TLAB; objects of at least 8 KiB use large-object space. The remembered-set card size is 512 bytes. Safepoints occur at allocation slow paths, loop backedges, and immediately before Lisp calls.
+
+Stop-the-world collection issues an epoch, each mutator publishes its snapshot and enters `Published` or `Safe`, the last required thread enters `Collecting`, the collector scans and moves objects, then release returns all threads to `Running`. `--dynamic-space-size` bounds the heap and failure is reported as `storage-condition`. `sb-ext:gc` requests the same protocol; `*after-gc-hooks*` run after release, and `bytes-consed-between-gcs` updates the allocation threshold.
+
+Conservative scanning polls first, obtains stack bounds, saves callee-saved registers, and scans only the published interval. On macOS use `pthread_get_stackaddr_np` and `pthread_get_stacksize_np`; on Linux use `pthread_getattr_np`. Candidate words must pass page-table membership and object-start reverse lookup. Pages are pinned while examined. `RootToken` is the standard path for live Rust values.
+
+Weak API is `make_weak(value)`, `weak_value(weak)`, and `register_finalizer(object, callback)`. A weak target is cleared when otherwise unreachable; a finalizer is queued once, and queue/callback state remains strongly held until completion. Non-moving code space has independent allocation and release.
+
+## SafepointMap wire format
+
+The 16-byte little-endian header is `pc_offset:u32`, `frame_words:u16`, `slot_words:u16`, `word_slot_count:u16`, `register_mask:u16`, and `map_flags:u32`. Bitmap bit 0 denotes header word 0, bit 8 denotes the first local, and later bits denote local or outgoing slots. Header words are metadata and are not roots. `map_flags` bit 0 is call, bit 1 loop-backedge, bit 2 allocation-slow, and bit 3 has-derived-address.
+
+PC lookup binary-searches code-relative map offsets. Frame walking reads the four-word header, uses the function object to find the code object, finds the map, updates live slots and registers through forwarding, then follows previous FP. Native frames use the conservative boundary recorded by `enter_native`; JIT frames use precise maps.

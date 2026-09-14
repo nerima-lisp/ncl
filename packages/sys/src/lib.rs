@@ -3,13 +3,16 @@
 
 //! The single unsafe boundary of the NCL runtime.
 
+mod code;
 mod heap;
 mod os;
 mod thread;
 mod word;
 
+pub use code::{CodePtr, Safepoint, SafepointMap, alloc_code, free_code, publish_code};
 pub use heap::{
-    Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
+    Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
+    Weakness,
 };
 pub use thread::{NativeState, RootToken, SafepointState, Thread};
 pub use word::{LowTag, Word};
@@ -80,7 +83,14 @@ pub fn pop_root(thread: &mut Thread, token: RootToken) -> bool {
 }
 
 /// Record a reference store for the generational collector.
-pub fn write_barrier(_thread: &mut Thread, _object: Word, _slot: usize) {}
+pub fn write_barrier(thread: &mut Thread, object: Word, slot: usize) {
+    if let Some(heap) = thread.heap {
+        // SAFETY: the heap pointer is installed only by register_thread.
+        unsafe {
+            (*heap).barrier(object, slot);
+        }
+    }
+}
 
 /// Register the payload reference layout for a widetag.
 pub fn register_layout(
@@ -91,7 +101,28 @@ pub fn register_layout(
     heap.register_layout(widetag, layout)
 }
 
-/// Start a collection. The moving collector is completed in the next phase.
+/// Start a collection and update registered precise roots.
 pub fn collect(thread: &mut Thread, full: bool) {
     thread.heap_collect(full);
+}
+
+/// Mark an object as weak with the specified weakness policy.
+pub fn make_weak(thread: &Thread, value: Word, weakness: Weakness) -> Word {
+    thread
+        .heap
+        .map_or(value, |heap| unsafe { (*heap).make_weak(value, weakness) })
+}
+/// Read the value slot of a weak object, or NIL when it is cleared.
+pub fn weak_value(thread: &Thread, value: Word) -> Word {
+    thread
+        .heap
+        .map_or(Word::NIL, |heap| unsafe { (*heap).weak_value(value) })
+}
+/// Register a one-shot finalizer callback.
+pub fn register_finalizer(thread: &Thread, object: Word, callback: Finalizer) {
+    if let Some(heap) = thread.heap {
+        unsafe {
+            (*heap).register_finalizer(object, callback);
+        }
+    }
 }

@@ -29,6 +29,8 @@ pub struct Thread {
     state: SafepointState,
     native: NativeState,
     pub(crate) tlab: Vec<u64>,
+    pub(crate) bytes_cons: usize,
+    interrupt: bool,
 }
 
 impl Default for Thread {
@@ -45,6 +47,8 @@ impl Thread {
             state: SafepointState::Running,
             native: NativeState::Lisp,
             tlab: Vec::new(),
+            bytes_cons: 0,
+            interrupt: false,
         }
     }
     /// Push a precise root. The referenced slot must outlive the token.
@@ -82,7 +86,24 @@ impl Thread {
         self.state = SafepointState::Running;
     }
     pub(crate) fn heap_collect(&mut self, _full: bool) {
+        if let Some(heap) = self.heap {
+            // SAFETY: registration stores this thread's heap pointer for its lifetime.
+            unsafe {
+                (*heap).collect(_full);
+            }
+        }
         self.state = SafepointState::Collecting;
         self.state = SafepointState::Running;
+    }
+    /// Request delivery of an interrupt at the next safepoint.
+    pub fn request_interrupt(&mut self) {
+        self.interrupt = true;
+        self.state = SafepointState::PollRequested;
+    }
+    /// Whether an interrupt is pending, consuming the request.
+    pub fn take_interrupt(&mut self) -> bool {
+        let pending = self.interrupt;
+        self.interrupt = false;
+        pending
     }
 }

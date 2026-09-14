@@ -4,11 +4,15 @@ members = [
     ".",
     "packages/sys",
     "packages/object",
+    "packages/ir",
+    "packages/asm/x86-64",
 ]
 default-members = [
     ".",
     "packages/sys",
     "packages/object",
+    "packages/ir",
+    "packages/asm/x86-64",
 ]
 
 [workspace.package]

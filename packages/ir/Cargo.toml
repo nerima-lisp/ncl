@@ -1,0 +1,10 @@
+[package]
+name = "ncl-ir"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The dependency-free compiler intermediate representation"
+
+[lints]
+workspace = true

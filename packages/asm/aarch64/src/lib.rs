@@ -9,6 +9,15 @@ pub use assembler::{Assembler, CodeBlob, Fixup, FixupKind, Label};
 pub use encoding::{decode, encode};
 pub use model::{Cond, Extend, Inst, MemOperand, Reg, RegOrSp, RegOrZr, Shift, VReg};
 
+/// Decodes one word and renders the supported instruction in a compact GNU-style form.
+pub fn disassemble(word: u32) -> Result<String, EncodeError> {
+    match decode(word)? {
+        Inst::Nop => Ok(String::from("nop")),
+        Inst::Ret { rn } => Ok(format!("ret x{}", rn.number())),
+        instruction => Ok(format!("{instruction:?}")),
+    }
+}
+
 /// Produces a short MOV-wide sequence for a 64-bit constant.
 pub fn mov_imm64(rd: Reg, value: u64) -> Vec<Inst> {
     let mut parts = [0_u16; 4];

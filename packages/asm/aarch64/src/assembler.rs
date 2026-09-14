@@ -13,8 +13,16 @@ pub enum FixupKind {
     CondBranch19,
     /// 21-bit page-relative address.
     Adrp21,
+    /// 21-bit byte-relative address.
+    Adr21,
+    /// 14-bit test-and-branch displacement.
+    TestBranch14,
+    /// 19-bit literal displacement.
+    Literal19,
     /// 64-bit absolute data.
     Abs64,
+    /// Twelve-bit add relocation.
+    Add12,
 }
 /// A symbolic relocation in a finished code blob.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -95,7 +103,11 @@ impl Assembler {
                     let d = (target as i64 / 4096) - (place / 4096);
                     patch_signed(word, d, 21, 0, 5, *f)?
                 }
+                FixupKind::Adr21 => patch_signed(word, delta, 21, 0, 5, *f)?,
+                FixupKind::TestBranch14 => patch_signed(word, delta, 14, 2, 5, *f)?,
+                FixupKind::Literal19 => patch_signed(word, delta, 19, 2, 5, *f)?,
                 FixupKind::Abs64 => word,
+                FixupKind::Add12 => word,
             };
             self.bytes[f.offset..f.offset + 4].copy_from_slice(&patched.to_le_bytes());
         }

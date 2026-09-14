@@ -194,6 +194,36 @@ pub enum Inst {
         rm: Reg,
         shift: Shift,
     },
+    /// Add and set flags.
+    Adds {
+        rd: Reg,
+        rn: Reg,
+        rm: Reg,
+        shift: Shift,
+    },
+    /// Subtract and set flags.
+    Subs {
+        rd: Reg,
+        rn: Reg,
+        rm: Reg,
+        shift: Shift,
+    },
+    /// Add an extended register.
+    AddExt {
+        rd: RegOrSp,
+        rn: RegOrSp,
+        rm: Reg,
+        extend: Extend,
+        shift: u8,
+    },
+    /// Subtract an extended register.
+    SubExt {
+        rd: RegOrSp,
+        rn: RegOrSp,
+        rm: Reg,
+        extend: Extend,
+        shift: u8,
+    },
     /// Load/store 64-bit.
     Ldr { rt: Reg, mem: MemOperand },
     /// Store 64-bit.
@@ -202,6 +232,22 @@ pub enum Inst {
     LdrW { rt: Reg, mem: MemOperand },
     /// Store 32-bit.
     StrW { rt: Reg, mem: MemOperand },
+    /// Load a byte.
+    Ldrb { rt: Reg, mem: MemOperand },
+    /// Store a byte.
+    Strb { rt: Reg, mem: MemOperand },
+    /// Load a halfword.
+    Ldrh { rt: Reg, mem: MemOperand },
+    /// Store a halfword.
+    Strh { rt: Reg, mem: MemOperand },
+    /// Load a sign-extended word.
+    Ldrsw { rt: Reg, mem: MemOperand },
+    /// Load a pair of registers.
+    Ldp { rt: Reg, rt2: Reg, mem: MemOperand },
+    /// Store a pair of registers.
+    Stp { rt: Reg, rt2: Reg, mem: MemOperand },
+    /// Load a literal from the PC-relative address.
+    LdrLiteral { rt: Reg, label: Label },
     /// Branch.
     B { label: Label },
     /// Branch with link.
@@ -235,12 +281,48 @@ pub enum Inst {
         rm: Reg,
         cond: Cond,
     },
+    /// Conditional set.
+    Cset { rd: Reg, cond: Cond },
+    /// Conditional increment.
+    Cinc { rd: Reg, rn: Reg, cond: Cond },
     /// Multiply.
     Mul { rd: Reg, rn: Reg, rm: Reg },
     /// Signed divide.
     Sdiv { rd: Reg, rn: Reg, rm: Reg },
     /// Unsigned divide.
     Udiv { rd: Reg, rn: Reg, rm: Reg },
+    /// Multiply-add.
+    Madd { rd: Reg, rn: Reg, rm: Reg, ra: Reg },
+    /// Multiply-subtract.
+    Msub { rd: Reg, rn: Reg, rm: Reg, ra: Reg },
+    /// Negate a register.
+    Neg { rd: Reg, rn: Reg, shift: Shift },
+    /// Invert a register.
+    Mvn { rd: Reg, rn: Reg, shift: Shift },
+    /// Add immediate and set flags.
+    AddsImm {
+        rd: RegOrSp,
+        rn: RegOrSp,
+        imm: u16,
+        shift: bool,
+    },
+    /// Subtract immediate and set flags.
+    SubsImm {
+        rd: RegOrSp,
+        rn: RegOrSp,
+        imm: u16,
+        shift: bool,
+    },
+    /// Compare negative.
+    Cmn { rn: Reg, rm: Reg, shift: Shift },
+    /// Logical immediate.
+    AndImm { rd: Reg, rn: Reg, imm: u64 },
+    /// Logical OR immediate.
+    OrrImm { rd: Reg, rn: Reg, imm: u64 },
+    /// Logical XOR immediate.
+    EorImm { rd: Reg, rn: Reg, imm: u64 },
+    /// Test immediate.
+    TstImm { rn: Reg, imm: u64 },
     /// Logical shifted register.
     And {
         rd: Reg,
@@ -264,6 +346,48 @@ pub enum Inst {
     },
     /// Test bits.
     Tst { rn: Reg, rm: Reg, shift: Shift },
+    /// Shift left by an immediate.
+    LslImm { rd: Reg, rn: Reg, amount: u8 },
+    /// Shift right by an immediate.
+    LsrImm { rd: Reg, rn: Reg, amount: u8 },
+    /// Arithmetic shift right by an immediate.
+    AsrImm { rd: Reg, rn: Reg, amount: u8 },
+    /// Shift left by a register.
+    LslReg { rd: Reg, rn: Reg, rm: Reg },
+    /// Shift right by a register.
+    LsrReg { rd: Reg, rn: Reg, rm: Reg },
+    /// Arithmetic shift right by a register.
+    AsrReg { rd: Reg, rn: Reg, rm: Reg },
+    /// Test a bit and branch if zero.
+    Tbz { rt: Reg, bit: u8, label: Label },
+    /// Test a bit and branch if nonzero.
+    Tbnz { rt: Reg, bit: u8, label: Label },
+    /// Floating-point move.
+    Fmov { rd: VReg, rn: VReg },
+    /// Move between a floating and general register.
+    FmovGeneral { v: VReg, r: Reg, to_float: bool },
+    /// Floating-point add.
+    Fadd { rd: VReg, rn: VReg, rm: VReg },
+    /// Floating-point subtract.
+    Fsub { rd: VReg, rn: VReg, rm: VReg },
+    /// Floating-point multiply.
+    Fmul { rd: VReg, rn: VReg, rm: VReg },
+    /// Floating-point divide.
+    Fdiv { rd: VReg, rn: VReg, rm: VReg },
+    /// Floating-point square root.
+    Fsqrt { rd: VReg, rn: VReg },
+    /// Floating-point negate.
+    Fneg { rd: VReg, rn: VReg },
+    /// Floating-point compare.
+    Fcmp { rn: VReg, rm: VReg },
+    /// Signed integer to floating point.
+    Scvtf { rd: VReg, rn: Reg },
+    /// Floating point to signed integer.
+    Fcvtzs { rd: Reg, rn: VReg },
+    /// Load a double-precision value.
+    LdrD { rt: VReg, mem: MemOperand },
+    /// Store a double-precision value.
+    StrD { rt: VReg, mem: MemOperand },
     /// Undefined instruction.
     Udf { imm: u16 },
     /// Data memory barrier.

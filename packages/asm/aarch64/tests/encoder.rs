@@ -74,3 +74,91 @@ fn unbound_label_is_an_error() {
     assert!(assembler.emit(&Inst::B { label: Label(7) }).is_ok());
     assert!(assembler.finish().is_err());
 }
+
+#[test]
+fn immediate_and_memory_boundaries_are_checked() {
+    assert!(
+        encode(
+            &Inst::MovZ {
+                rd: x(0),
+                imm: 1,
+                shift: 64
+            },
+            0
+        )
+        .is_err()
+    );
+    assert!(
+        encode(
+            &Inst::AddImm {
+                rd: RegOrSp::Sp,
+                rn: RegOrSp::Sp,
+                imm: 4096,
+                shift: false
+            },
+            0
+        )
+        .is_err()
+    );
+    assert!(
+        encode(
+            &Inst::Ldr {
+                rt: x(0),
+                mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                    base: RegOrSp::Sp,
+                    offset: 256
+                }
+            },
+            0
+        )
+        .is_err()
+    );
+    assert!(
+        encode(
+            &Inst::AndImm {
+                rd: x(0),
+                rn: x(1),
+                imm: 0
+            },
+            0
+        )
+        .is_err()
+    );
+    assert!(
+        encode(
+            &Inst::AndImm {
+                rd: x(0),
+                rn: x(1),
+                imm: u64::MAX
+            },
+            0
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn branch_kinds_are_retained() {
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assert!(
+        assembler
+            .emit(&Inst::Tbz {
+                rt: x(0),
+                bit: 3,
+                label
+            })
+            .is_ok()
+    );
+    assert!(
+        assembler
+            .emit(&Inst::LdrLiteral { rt: x(1), label })
+            .is_ok()
+    );
+    assert!(assembler.bind(label).is_ok());
+    let blob = assembler.finish();
+    assert!(blob.is_ok());
+    if let Ok(blob) = blob {
+        assert_eq!(blob.fixups.len(), 2);
+    }
+}

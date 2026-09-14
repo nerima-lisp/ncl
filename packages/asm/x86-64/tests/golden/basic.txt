@@ -1,0 +1,6 @@
+# Generated with: llvm-mc --triple=x86_64-apple-darwin --show-encoding
+# LLVM version: development toolchain in nix develop
+mov rax, rbx => 48 89 d8
+ret => c3
+int3 => cc
+ud2 => 0f 0b

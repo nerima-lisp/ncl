@@ -2,9 +2,11 @@
 resolver = "3"
 members = [
     ".",
+    "packages/asm/x86-64",
 ]
 default-members = [
     ".",
+    "packages/asm/x86-64",
 ]
 
 [workspace.package]

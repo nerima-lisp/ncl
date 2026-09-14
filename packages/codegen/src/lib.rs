@@ -9,14 +9,17 @@ mod relocation;
 mod safepoint;
 mod templates;
 
+#[cfg(test)]
+mod tests;
+
 pub use abi::{RegisterId, RuntimeAbi, X86_64Abi};
-pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
+pub use frame::{FrameLayout, FRAME_HEADER_WORDS};
 pub use lowering::compile_function;
 pub use machine::{Block, CompiledFunction, DebugLocation, MachineFunction, MachineOp};
-pub use relocation::{Relocation, RelocationKind, relocations_from_fixups};
+pub use relocation::{relocations_from_fixups, Relocation, RelocationKind};
 pub use safepoint::{
-    FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS, FLAG_LOOP_BACKEDGE, MapError,
-    SafepointMap,
+    MapError, SafepointMap, FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS,
+    FLAG_LOOP_BACKEDGE,
 };
 
 /// Errors produced while constructing machine-level code-generation data.
@@ -32,6 +35,8 @@ pub enum CodegenError {
     Encode(String),
     /// Frame layout arithmetic overflowed.
     FrameOverflow,
+    /// The fixed-template backend does not have the runtime contract needed for an operation.
+    Unsupported(String),
 }
 
 impl core::fmt::Display for CodegenError {
@@ -42,6 +47,7 @@ impl core::fmt::Display for CodegenError {
             Self::UnknownValue(id) => write!(f, "unknown value {id}"),
             Self::Encode(message) => write!(f, "encoding failed: {message}"),
             Self::FrameOverflow => f.write_str("frame layout overflowed"),
+            Self::Unsupported(message) => write!(f, "unsupported operation: {message}"),
         }
     }
 }

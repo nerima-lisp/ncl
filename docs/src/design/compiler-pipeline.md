@@ -2,33 +2,28 @@
 
 ## 決定
 
-front end は source reader output を macroexpand、parse、type propagation、declaration、compiler-macro expansion、IR lowering の順に処理する。back end は typed NCL IR を Cranelift CLIF、stack-map metadata、inline-cache metadata、FASL writer へ lower する。front/back の唯一の境界型は `ncl_compiler::ir::Function` とし、reader の旧 `Form` は使用しない。
+front end は reader output を macroexpand、parse、declaration/type propagation、compiler-macro expansion、ncl-ir lowering の順に処理する。back end は ncl-ir を Cranelift CLIF、user stack-map metadata、inline-cache metadata、FASL writer へ lower する。front/back の境界型は独立 crate ncl-ir のみとし、reader の Form を境界に出さない。
 
-IR は arena-owned immutable nodes として、`Function { params, blocks, locals, handlers, debug_spans }`、`BasicBlock { params, ops, terminator }`、`Op { result_types, kind }`、`Terminator { jump, branch, call, tail_call, return, throw }` を持つ。Lisp value は `Word`、machine integer、double、address の型を明示する。所有権は compiler arena、runtime object は `Word` 参照である。
+ncl-ir は Phase 0 で todo!() なしにデータ型を完全定義する。Function は id、name、params、return types、basic blocks、locals、handler regions、debug locations を持つ。BasicBlock は id、block parameters、Vec<Op>、Terminator を持つ。OpKind は Const、Move、Load、Store、LoadField、StoreField、Alloc、LoadArg、Call、CallIndirect、Builtin、Prim、Compare、Convert、SetMultipleValues、Safepoint とする。Terminator は Jump、Branch、Switch、CallReturn、TailCall、Return、Throw、Unreachable とする。型注釈は Word、I64、F64、Address、Bool、Unit、定数は fixnum、character、single/double-float、symbol reference、object reference、string bytes とする。handler region は protected blocks、handler blocks、cleanup blocks、catch tag、dynamic depth を持ち、debug location は source file id、line、column、form id を持つ。
 
-direct-expansion primitive の固定集合は `car`, `cdr`, `rplaca`, `rplacd`, `svref`, `aref`, `aset`, fixnum `+ - * / < <= =`, `eq`, `eql`, `typep`, character code/case predicates, structure slot accessors とする。各 primitive は type guard failure の condition edge を IR に出す。Rust-side compiler macro registry は name, arity pattern, expansion callback, feature bit を持つ。
+direct-expansion primitive は car、cdr、rplaca、rplacd、svref、aref、aset、fixnum arithmetic/comparison、eq、eql、typep、character predicates、structure slot accessors とする。type guard failure は condition edge にする。Rust-side compiler macro registry は name、arity pattern、expansion callback、feature bit を持つ。
 
-back end は `cranelift-codegen`, `cranelift-frontend`, `cranelift-module` と同一 version の `cranelift-jit`, `cranelift-object`, `cranelift-native` を使う。`compile` と REPL は JIT module、`compile-file` は object module を使う。non-tail calls に user stack maps を付け、frame slots の live Word を登録する。inline cache は calling-convention 契約の 4-entry IC である。
+Cranelift family は Phase 0 で 0.134.3 に固定する。compile と REPL は cranelift-jit、compile-file は cranelift-object を使い、codegen、frontend、module、jit、object、native も同じ版に揃える。non-tail call の user stack map は ncl-ir の Safepoint metadata から生成する。inline cache は call-site、generic function identity、class layout generation の 3 tuple を key とし最大 4 entry とする。
 
-FASL は native code section, relocation table, constant/object section, symbol table, header の順。header は magic `NCLFASL\0`, format version `1`, target architecture, pointer width `64`, endianness, feature bitmap, code/object offsets を持つ。x86-64 と AArch64 の FASL は相互非互換であり、loader は architecture と features を検査して mismatch condition を返す。
-
-`*evaluator-mode*` の interpret は実装しない。`eval` は source form を front/back で compile して実行し、compile-time macro effects と runtime execution を別 phase とする。
+FASL は native code、relocation、constant/object、symbol table、header の順で、header は magic NCLFASL、format version 1、target architecture、pointer width 64、endianness、feature bitmap、section offsets を持つ。architecture と feature が一致しない image は condition にする。evaluator-mode の interpret は実装せず、eval は front/back で compile して実行する。
 
 ## 根拠
 
-An explicit IR prevents reader syntax objects from leaking into code generation and makes type/GC metadata available before machine lowering. Cranelift JIT and object modules match the two artifact lifetimes. Native Rust standard libraries require direct expansion for hot structural and numeric operations because Rust-builtins are not Lisp-level inline candidates.
+独立 IR は front/back を同時並行で実装可能にし、型、GC metadata、handler region、debug location を machine lowering 前に固定する。JIT/object module は compile と compile-file の成果物の寿命に対応する。Phase 0 の型定義を完全にすれば lane が todo!() の実装詳細に依存しない。
 
 ## 却下した代替案
 
-- old AST/Form as runtime value was rejected because `read` must return Lisp data.
-- stack bytecode and an LLVM backend were rejected by the project decision.
-- a portable FASL was rejected because native code and relocation are architecture-specific.
-- evaluator mode was rejected; `eval` follows the compile-and-run path.
+- ncl_compiler::ir の内部 module は共有契約にならないため却下した。
+- old AST/Form、stack bytecode、LLVM、自前 backend はプロジェクト決定に反するため却下した。
+- portable FASL と interpret evaluator は native code 契約および決定済み実行経路と両立しないため却下した。
 
 ## Phase 1 レーンが前提にしてよいこと / してはいけないこと
 
-- IR node ownership and terminator exhaustiveness are stable.
-- New builtins must declare whether they are direct-expansion primitives or ordinary calls.
-- Back ends may not introduce a second IR or bypass stack-map emission.
-- FASL readers must reject version, architecture, pointer-width, endianness, or feature mismatches.
-- No lane may add a Lisp implementation of standard library behavior; standard libraries are Rust crates.
+- IR の型、OpKind、Terminator、定数、handler region、debug location を使い、第二の IR を作らない。
+- backend は ncl-ir を検証してから Cranelift に lower し、stack-map metadata を省略しない。
+- compile/REPL と compile-file の module 選択、FASL header 検証、interpret 非対応を変更しない。

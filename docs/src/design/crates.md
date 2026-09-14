@@ -2,100 +2,60 @@
 
 ## 決定
 
-新しい workspace は `packages/<name>/` に配置し、crate name は `ncl-<name>` とする。依存は下層から上層への一方向だけで、中央の builtin registration table は置かない。各 library crate は `pub fn register(rt: &mut Runtime)` を公開し、集約は `ncl-runtime/src/registration.rs` の 1 ファイルだけが行う。
+workspace は packages/<name>/ に置き、crate name は ncl-<name> とする。Runtime、ThreadContext、register の型、builtin! は全 library より下の ncl-object に置く。Runtime は package table、function registry、class table、GC settings を共有する Sync 状態とし、ThreadContext は TLAB、binding stack、roots、handlers、safepoint、MV を持つ。ncl-runtime は eval/compile/load と登録集約だけを担う。
 
-| crate | responsibility and public contract |
-| --- | --- |
-| `ncl-sys` | unsafe boundary, `Word`, heap, threads, safepoints, roots, FFI primitives |
-| `ncl-object` | headers, cons, symbol, strings, vectors, arrays, hash tables, numbers, functions and accessors |
-| `ncl-types` | type specifiers, predicates, subtype and type errors |
-| `ncl-reader` | character input and Lisp data reader |
-| `ncl-printer` | object printing and stream-oriented output |
-| `ncl-conditions` | conditions, handlers, restarts, unwind records |
-| `ncl-clos` | classes, slots, generic functions, methods and MOP indirection |
-| `ncl-compiler-front` | macroexpansion, declarations, type propagation, compiler macros and IR |
-| `ncl-compiler-back` | Cranelift lowering, JIT/object modules, stack maps and FASL |
-| `ncl-lib-numbers` | numeric tower and numeric builtins |
-| `ncl-lib-sequences` | sequence traversal and sequence builtins |
-| `ncl-lib-strings` | string and character builtins |
-| `ncl-lib-hash-arrays` | arrays and hash-table builtins |
-| `ncl-lib-streams` | stream objects and I/O builtins |
-| `ncl-lib-pathnames` | pathname and file-name builtins |
-| `ncl-lib-format` | FORMAT parser and renderer |
-| `ncl-lib-loop` | LOOP parser and expander |
-| `ncl-lib-packages` | package and symbol namespace builtins |
-| `ncl-lib-macros` | standard macro definitions and compiler-macro registrations |
-| `ncl-threads` | OS-thread Lisp API, locks, waits, deadlines and interrupts |
-| `ncl-ffi` | dynamic library loading and alien calls |
-| `ncl-image` | FASL image serialization, load and relocation |
-| `ncl-runtime` | Runtime, eval/compile/load, registration aggregation and public entry points |
-| `ncl-conformance` | ansi-test and cl-bench runners; data is supplied under `conformance/` |
-| root `ncl` | CLI, `--version`, `--eval`, REPL integration |
+### crate と隣接リスト
 
-`ncl-sys` is the sole crate with `unsafe_code = "allow"`, `unsafe_op_in_unsafe_fn = "deny"`, and `clippy::undocumented_unsafe_blocks = "deny"`. All other crates inherit workspace `unsafe_code = "forbid"`. External dependencies are fixed in Phase 0: Cranelift family (same version) in compiler-back, `libc` in sys, and `libloading` in ffi. No other dependency may be added by a Phase 1 lane.
+| crate | responsibility | dependencies |
+| --- | --- | --- |
+| ncl-sys | unsafe boundary、OS/FFI primitives | libc |
+| ncl-object | Word、heap、GC interface、Runtime、ThreadContext、object、package/intern、builtin ABI | ncl-sys |
+| ncl-ir | compiler IR data types only | ncl-sys |
+| ncl-types | type specifier/predicate/error | ncl-object |
+| ncl-reader | reader | ncl-object |
+| ncl-printer | printer | ncl-object |
+| ncl-conditions | conditions、handlers、restarts | ncl-object |
+| ncl-clos | classes、slots、generic functions、MOP | ncl-object、ncl-types、ncl-conditions |
+| ncl-compiler-front | macroexpand、declarations、compiler macros、front lowering | ncl-object、ncl-types、ncl-reader、ncl-conditions、ncl-ir |
+| ncl-compiler-back | Cranelift lowering、JIT/object、stack maps、FASL | ncl-object、ncl-ir、cranelift-codegen、cranelift-frontend、cranelift-module、cranelift-jit、cranelift-object、cranelift-native |
+| ncl-lib-* | standard-library builtins | ncl-object および各機能の下層 crate |
+| ncl-threads | OS-thread Lisp API | ncl-object、ncl-conditions、ncl-sys |
+| ncl-ffi | dynamic loading/alien calls | ncl-object、ncl-conditions、libloading |
+| ncl-image | FASL image load/relocation | ncl-object、ncl-compiler-back |
+| ncl-runtime | eval/compile/load、registration aggregation | library crates、ncl-compiler-front、ncl-compiler-back、ncl-image |
+| ncl-conformance | ansi-test/cl-bench runners | ncl-runtime |
+| root ncl | CLI/REPL | ncl-runtime |
 
-The Phase 1 signature surface is:
+ncl-compiler-front は ncl-compiler-back に依存せず、ncl-compiler-back は front に依存しない。ncl-conditions -> ncl-clos、ncl-reader -> ncl-object、全 lib -> ncl-object の向きを固定するため循環を含まない。ncl-sys だけが unsafe_code = allow、他は unsafe_code = forbid とする。外部依存は Cranelift 0.134.3 の 6 crate、libc、libloading だけに固定する。
 
-```rust
-// ncl-sys
-pub type Word = u64;
-pub struct RuntimeHandle;
-pub struct ThreadHandle;
-pub fn alloc(rt: &mut RuntimeHandle, ty: u16, words: usize) -> Result<Word, StorageCondition>;
-pub fn register_thread(rt: &mut RuntimeHandle) -> ThreadHandle;
-pub fn poll_safepoint(thread: &ThreadHandle);
-pub fn push_root(thread: &ThreadHandle, slot: &mut Word) -> RootToken;
-pub fn pop_root(thread: &ThreadHandle, token: RootToken);
+### Phase 1 signature surface
 
-// object, types, reader, printer, conditions, clos
-pub struct Object;
-pub struct Runtime;
-pub fn read(input: &mut impl Read) -> Result<Word, ReadError>;
-pub fn print_object(value: Word, output: &mut impl Write) -> Result<(), PrintError>;
-pub fn signal(rt: &mut Runtime, condition: Condition) -> NclStatus;
-pub fn register(rt: &mut Runtime);
+    #[repr(transparent)] pub struct Word(u64);
+    pub struct Runtime;
+    pub struct ThreadContext;
+    pub fn alloc(thread: &mut ThreadContext, rt: &Runtime, ty: TypeTag, words: usize) -> Result<Word, StorageCondition>;
+    pub fn register_thread(rt: &Runtime, thread: &mut ThreadContext);
+    pub fn poll_safepoint(thread: &mut ThreadContext);
+    pub fn push_root(thread: &mut ThreadContext, slot: &mut Word) -> RootToken;
+    pub fn write_barrier(thread: &mut ThreadContext, object: Word, slot: Slot);
+    pub fn enter_native(thread: &mut ThreadContext);
+    pub fn leave_native(thread: &mut ThreadContext);
+    pub fn register(rt: &Runtime);
 
-// compiler-front/back
-pub struct Function;
-pub fn lower(function: &Function) -> Result<CompiledFunction, CompileError>;
-pub fn compile_jit(function: &Function) -> Result<CodeHandle, CompileError>;
-pub fn compile_object(function: &Function) -> Result<ObjectFile, CompileError>;
-
-// each ncl-lib-* crate
-pub fn register(rt: &mut Runtime);
-
-// threads, ffi, image, runtime, conformance
-pub fn spawn(rt: &mut Runtime, entry: Word) -> Result<ThreadId, ThreadError>;
-pub fn open_library(path: &str) -> Result<Library, FfiError>;
-pub fn load_image(rt: &mut Runtime, bytes: &[u8]) -> Result<(), ImageError>;
-pub fn eval(rt: &mut Runtime, source: &str) -> Result<MultipleValues, EvalError>;
-pub fn run_ansi_tests(rt: &mut Runtime, suite: &Path) -> Result<TestReport, ConformanceError>;
-```
-
-The names `Read`, `Write`, `StorageCondition`, and other result types are public types in their owning crate. The snippets define the cross-crate signatures, not implementation bodies; each crate's `lib.rs` carries the doc comments and concrete module-specific types.
-
-Builtin definitions use one macro convention: `builtin!(name, min..=max, args => body)`. The generated function checks argc, checks each type before conversion, returns `NclStatus::Condition` on failure, and never panics. The registration function inserts the Lisp package/name, function object, lambda-list metadata, and direct-expansion flag into `Runtime`.
-
-Every crate exposes the types and functions listed by this table as documented `pub` signatures, even when a Phase 0 body is `todo!()`. `ncl-sys` is the exception: its Word type, bump allocator without TLAB, thread registration, dummy safepoint, and root API are executable and unit-tested.
+各 library crate の register は &Runtime を受ける。builtin! は固定 arity の直接 signature と可変長/keyword の配列 signature を生成し、pending flag と予約戻り値で condition/non-local exit を伝える。標準 library は Rust crate とし、package intern は ncl-object API を使う。
 
 ## 根拠
 
-The layering lets 24 parallel lanes compile against stable signatures while only one runtime file changes for aggregation. Registration ownership in each library avoids a shared global edit point. Keeping unsafe in ncl-sys makes audits and platform-specific MAP_JIT/W^X, signals, and raw calls explicit.
-
-The dependency policy is applied to the explicitly required Cranelift, libc, and libloading layers: a dependency is accepted only when a dependency-free implementation would exceed 200 lines, an equivalent is available through nixpkgs, it does not claim dependency-free operation, and it belongs at layer L2 or above. `libc` and `libloading` remain the platform boundary exceptions required by the contract.
+低層の Runtime/ThreadContext/register を ncl-object に置くことで library が最上位 runtime に依存する循環を除く。ncl-ir を独立させることで front と back が同時に安定した型へ compile できる。隣接リストを明示すると非循環を review できる。
 
 ## 却下した代替案
 
-- A central registration table was rejected because parallel library lanes would edit one file.
-- A `cl-cc` base was rejected; the NCL Rust core is authoritative.
-- LLVM, a custom backend, and bytecode were rejected in favor of Cranelift.
-- Lisp-written standard libraries were rejected; all standard-library crates are Rust.
-- Adding dependencies opportunistically in Phase 1 was rejected to keep the workspace contract reproducible.
+- register(&mut Runtime) を ncl-runtime に置く設計は library -> runtime の循環になるため却下した。
+- pub type Word = u64 はタグ操作と GC 値の混同を許すため newtype に置換した。
+- central registration table、cl-cc、LLVM、自前 backend、bytecode、Phase 1 の追加依存はプロジェクト決定に反するため却下した。
 
 ## Phase 1 レーンが前提にしてよいこと / してはいけないこと
 
-- Package paths, crate names, dependency direction, registration signature, and builtin macro behavior are stable.
-- A lane may implement only its listed crate and its own tests, without editing runtime aggregation or another lane's public API.
-- A lane may not add a dependency, unsafe block, alternate registration mechanism, or alternate backend.
-- `conformance/` is data owned by another stream and must not be modified.
-- Public signatures require doc comments and must compile under workspace lints.
+- 隣接リスト、ncl-ir の独立性、Runtime/ThreadContext の所在、Word newtype、Cranelift 0.134.3 固定を変更しない。
+- 各 lane は自身の crate と tests だけを編集し、central registration table や conformance/ を作らない。
+- unsafe、alternate backend、alternate builtin ABI、未登録の Rust Word storage を追加しない。

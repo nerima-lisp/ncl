@@ -2,64 +2,41 @@
 
 ## 決定
 
-NCL の Lisp 値は常に 64-bit の `Word` で表す。タグは下位 3 bit とし、値は次の通り固定する。
+NCL の値は repr(transparent) の Word(u64) である。fixnum は bit 0 が 0 の n << 1 で、符号付き 63-bit payload、most-positive-fixnum = 2^62-1 = 4611686018427387903 とする。bit 0 が 1 の語は bit 1..3 の lowtag で分類する。
 
-| tag | 種別 | 表現 |
+| bit 1..3 | 種別 | 表現 |
 | --- | --- | --- |
-| `000` | fixnum | `n << 1`。符号付き 62-bit、範囲 `-2^62`..`2^62-1` |
-| `001` | character | bit 3..23 に Unicode scalar value、bit 24..31 に character flags |
-| `010` | single-float | bit 3..34 に IEEE-754 binary32 の bit pattern |
-| `011` | heap pointer | 8-byte aligned address に `011` を加えた値 |
-| `100` | immediate true | `+0x4` |
-| `101` | immediate nil | `+0x5` |
-| `110` | immediate unbound | `+0x6` |
-| `111` | reserved | 常に invalid-value condition |
+| 000 | character immediate | bit 4..24 に Unicode scalar value |
+| 001 | list pointer | 8-byte aligned address + lowtag。cons はヘッダなし 2 語 |
+| 010 | single-float immediate | bit 4..35 に IEEE-754 binary32 |
+| 011 | function pointer | simple-fun または closure object |
+| 100 | other-immediate | bit 4..63 に payload。unbound marker を含む |
+| 101 | instance pointer | structure または CLOS instance |
+| 111 | other pointer | symbol、string、vector、number、package 等 |
 
-従って `most-positive-fixnum` は `4611686018427387903` である。pointer の復号は `word - 3` の一通りにし、GC は tag `011` だけを heap reference として扱う。
+即値は lowtag 000 の character、010 の single-float、100 の other-immediate とする。unbound marker は other-immediate の固定値とし、NIL と T は即値にしない。
 
-全ヒープオブジェクトは 16-byte header と 8-byte word 配列を持つ。header は low-to-high の順に、`type: u16`、`flags: u16`、`size_words: u32`、`hash: u64` とする。flags は bit 0 young、1 marked、2 pinned、3 finalizable、4 weak、5 forwarded、6..7 generation (0..3)、8..15 reserved。forwarding 中は payload word 0 に新アドレスを置く。
+consp は list lowtag、listp は NIL 比較または list lowtag、fixnump は bit 0、characterp/single-float-p は respective immediate lowtag、functionp は function lowtagだけで判定する。symbolp、stringp、simple-vector-p は other lowtag の後の 1 語 widetag を読む。
 
-オブジェクト payload は以下で固定する。offset は header 直後を 0 とし、参照フィールドは必ず `Word` である。
+ヘッダ付き object のヘッダは 1 語固定で、bit 0..7 を widetag、bit 8..15 を GC flags、bit 16..63 を size/length とする。flags は young、marked、forwarded、finalizable、weak、hashed と予約 bit。世代と pin はページ metadata に置き、pin は世代ではない。cons はヘッダなしの (car, cdr) 2 語で、cons 専用ページのページ種別から GC が走査方法を決める。
 
-| object | payload |
-| --- | --- |
-| cons | `car`, `cdr` |
-| symbol | `value`, `function`, `plist`, `package`, `name`, `special_tls_index: u32`, flags |
-| string | `length: u64`, `element_type`, packed code units。base-char は u8、character は UTF-32 |
-| simple-vector | `length`, followed by `Word[length]` |
-| specialized array | rank, dimensions, element type, data offset, data。`bit`, `u8`, `u16`, `u32`, `u64`, `i8`, `i16`, `i32`, `i64`, `single-float`, `double-float`, `character` を許す |
-| array | rank, dimensions vector, data vector, fill-pointer (or unbound), displaced-to, displaced offset, adjustable |
-| hash-table | test id, count, capacity, rehash size, threshold, weakness (none/key/value/key-and-value), synchronized flag, key/value arrays |
-| structure | layout id, class, slot words |
-| CLOS instance | class, indirect slot-vector, layout generation, slot words。再定義は indirect vector を差し替える |
-| function | entry pointer, closure vector, name, lambda-list metadata |
-| bignum | sign, limb count, little-endian base `2^32` `u32` limbs |
-| ratio | normalized numerator and positive denominator bignum references |
-| double-float | IEEE-754 binary64 bits |
-| complex | real and imag references |
-| package | name, nicknames, use-list, used-by list, symbol table, shadowing set |
-| readtable | syntax-type table, dispatch table, case mode |
-| stream | direction, element type, external format, state, implementation payload |
+静的領域には NIL と T の symbol object を起動時に固定配置する。GC は領域を走査するが移動しない。NIL は list lowtag として見た car/cdr が自分自身を指すレイアウトにし、symbol の value/function cell 位置と整合させる。simple-fun と closure は別 widetag とし、closure 値は object 内に inline 配置する。
 
-Hash-table buckets use open addressing with power-of-two capacity and a 7/8 maximum load factor. Weak tables are processed by GC before sweep; synchronized tables use a per-table mutex. Structure layout ids and CLOS layout generations are never reused.
+symbol は value、function、plist、package、name、tls_index: u32、identity-hash slot を持つ。structure/CLOS instance は layout 経由の slot に identity hash を置ける。それ以外の eq hash key はアドレス hash とし、移動時に hashed flag の表へ再ハッシュ通知する。全 object に hash 語は追加しない。bignum は GC ヒープ上の little-endian u32 limb 配列である。package、symbol table、intern は ncl-object の責務、ncl-lib-packages は builtin 登録だけを担う。
 
 ## 根拠
 
-The 64-bit word leaves 62 signed fixnum bits while preserving an 8-byte aligned pointer tag. It gives compiled arithmetic and identity checks a single-word fast path. A header-owned hash field avoids a side table and permits identity hashing before an object becomes immutable. The symbol has separate value and function cells because lexical function lookup and special bindings must not share a string-keyed environment. The TLS index is an index, not a pointer, so a symbol remains movable.
-
-The fixnum limit and word size were observed on SBCL 2.6.0 with `(format t "~D ~D" most-positive-fixnum sb-vm:n-word-bits)` on the target machine. The representation itself is NCL-owned and is not required to match SBCL's internal headers.
+bit 0 を fixnum に専有すれば 62-bit の符号付き値域を保ちつつ、残りを immediate と 4 種の pointer lowtag に使える。頻出の cons/function 操作からヘッダ読みを除き、NIL/T を通常の symbol にすれば全 symbol accessor と car nil/cdr nil に特別分岐を追加しない。
 
 ## 却下した代替案
 
-- Three low tag bits for every immediate was rejected because it leaves only 61 signed payload bits.
-- `Rc` graphs and string-keyed binding maps were rejected because they leak cycles and make symbol lookup allocate.
-- `ibig` was rejected; bignums are GC objects with an owned limb representation.
-- A side table for symbol cells was rejected because it obscures object identity and makes moving GC harder.
+- 全値を 3 bit tag で分ける案は fixnum と immediate が衝突するため却下した。
+- NIL/T の即値化は symbol accessor と cons accessor の分岐を増やすため却下した。
+- cons header、全 object の hash: u64、closure vector の二段間接参照はサイズまたは hot path を悪化させるため却下した。
+- intern を ncl-lib-packages に置く案は reader/printer/lib の責務を分断するため却下した。
 
 ## Phase 1 レーンが前提にしてよいこと / してはいけないこと
 
-- `Word`, `HeapPtr`, `ObjectHeader`, and each payload layout are stable contracts.
-- A heap pointer is valid only with tag `011`; `Word` values must be checked before dereference.
-- Accessors may assume 16-byte headers and word-aligned payloads, but may not assume an object address is stable across allocation.
-- No lane may add an object type, tag, header bit, or pointer side table without changing this document first.
-- No lane may use `Rc`, `Arc` cycles, string-keyed symbol bindings, or `unsafe` outside `ncl-sys`.
+- Word、lowtag、widetag、cons 2 語、NIL/T 固定配置を変更しない。
+- Word を生の u64 として公開せず、object pointer を Rust reference として allocation point 越しに保持しない。
+- 新しい object type、tag、header flag、hash 方式はこの文書を先に更新する。

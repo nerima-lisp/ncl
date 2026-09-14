@@ -2,45 +2,30 @@
 
 ## 決定
 
-関数呼び出しは関数オブジェクトの entry pointer へ間接 jump/call する。引数個数は専用 register、引数は architecture ABI の汎用 registers、残りは caller frame の argument area に置く。primary value は return register、multiple values は count register と frame area に置く。
+NCL の Lisp entry は Cranelift の Signature で定義する。固定窓は (ctx: i64, argc: i64, a0: i64, a1: i64, a2: i64, a3: i64, rest: i64) -> (v0: i64, mv_count: i64) とする。ctx は ThreadContext、argc は実引数数、a0..a3 は最初の 4 引数、rest は caller が用意した残余引数配列への tagged Word address である。&rest/&key の解析と arity check は prologue で行う。Cranelift が ABI のレジスタ割当を決定し、任意の物理レジスタ名を契約にしない。
 
-| role | x86-64 System V | AArch64 |
-| --- | --- | --- |
-| arguments 0..5 | `rdi,rsi,rdx,rcx,r8,r9` | `x0..x5` |
-| argc | `r10` | `x15` |
-| primary result | `rax` | `x0` |
-| second result / MV count | `rdx` | `x1` |
-| frame pointer | `rbp` | `x29` |
-| stack pointer | `rsp` | `sp` |
-| thread/runtime | `r14` | `x28` |
+ThreadContext は Cranelift 0.134.3 の enable_pinned_reg と get_pinned_reg/set_pinned_reg を使い、x86-64 では r15、AArch64 では x21 に保持する。通常の引数と戻り値は SystemV または AppleAarch64 の target ABI、Lisp の本物の tail call は Tail call convention と return_call/return_call_indirect を使う。multiple values は v0 と mv_count の 2 戻り値とし、3 個目以降は ThreadContext の MV 領域へ格納する。
 
-`r11`/`x16` は call scratch、`r12`/`x19` は callee-saved scratch とする。NCL entry は `extern "C"` と同じ machine ABI を使うが、argc と NCL frame metadata を追加する。frame header は previous frame pointer, return PC, function object, code object, stack-map id, handler-chain pointer の 6 words。argument area は 16-byte aligned とする。
+Cranelift が決める frame layout に NCL の 6 語 frame header を要求しない。handler chain、unwind-protect record、catch tag は ThreadContext にぶら下がる連鎖とし、record は stack slot address と dynamic depth を登録する。backtrace は preserve_frame_pointers と JIT module が管理する code-address -> function-object table で作る。active handler/cleanup 中の tail call は通常 call にする。
 
-full call は新 frame と function entry を作る。local call は compiler が lexical target を証明した場合だけ同じ frame の known entry へ jump する。tail call は現在 frame の arguments を上書きして jump し、handler または unwind-protect が active なら full call に戻す。
+固定 arity builtin は extern C fn(ctx: *mut ThreadContext, a0: Word, a1: Word) -> Word のような直接 signature で登録する。condition または non-local exit は ThreadContext の pending flag と unbound marker 等の予約戻り値で伝える。可変長・keyword builtin だけが (ctx, argc, *const Word, *mut MultipleValues) -> NclStatus 形式を使う。builtin! は両形式を生成する。
 
-ordinary lambda-list は front end が required, optional, rest, key, allow-other-keys, aux を positional metadata に lower する。arity error は entry prologue の condition。multiple values は `mv_count` (0..2^32-1) と frame slots の組であり、single-value consumer は count 0 を nil、count 1 を primary、count >1 を primary とする。
-
-Rust builtin は `extern "C" fn(*mut RuntimeHandle, argc: u32, args: *const Word, out: *mut MultipleValues) -> NclStatus`。builtin は entry 時に thread 登録状態を確認し、GC root を登録してから allocation する。`NclStatus` は `Ok`, `Condition`, `NonLocalExit` の 3 種で、condition object と payload は runtime の pending slot に置く。
-
-catch/throw と handler の unwind は Cranelift `try_call`/`try_call_indirect` の exception table を使う。例外 tag は catch tag と dynamic handler depth を含む 64-bit token。Cranelift は table と分岐を生成するが unwinder 自体は提供しないため、ncl-sys の `ncl_unwind_to(depth, token)` が pending non-local exit を設定し、landing block が handler chain を巻き戻す。`unwind-protect` は frame header の cleanup record として登録し、target handler に移る前に LIFO で実行する。試行呼び出しのない C/Rust callback が longjmp してはならない。
-
-compiler macro は `Function` object の inline-cache hook を参照する。cache は call-site, generic function identity, class layout generation の triple を key とし、最大 4 entry、miss は runtime dispatch へ戻る。self tail call は引数再束縛と back-edge に変換する。
+Cranelift 0.134.3 の try_call/try_call_indirect は exception table の normal/exception destination と payload を生成するが、Cranelift は unwinder を実装せず exception tag の意味を embedder に委ねる。NCL はこれを Lisp unwinder の landing block として使う。tail call は caller に戻らないため catch site にできない。Rust は panic = abort とし、Lisp frame は NCL unwinder、Rust frame は NclStatus::NonLocalExit の戻り値伝播で脱出する。Rust builtin が funcall/apply/mapcar 等で Lisp を呼び返す場合、status/pending flag を必ず検査して上位へ返す。
 
 ## 根拠
 
-register passing keeps the common one-to-six argument path free of heap arrays. A count register makes zero, one, and many values distinguishable without sentinel values. The explicit frame header is required by stack maps, GC, debugger backtraces, and non-local exits. Cranelift exposes `try_call` and exception tables and documents that the embedder defines exception-tag meaning, so the unwinder remains in ncl-sys.
+固定窓を Cranelift signature にすれば引数を全て配列へ退避せず、物理レジスタ名にも依存しない。pinned register は context の常駐だけに使い、他の allocation は Cranelift に任せる。frame layout は backend が決めるため独自 header を ABI に埋め込まない。exception table の tag と unwinder を分ければ Cranelift の責務境界を越えない。
 
 ## 却下した代替案
 
-- Lisp arguments を常に heap vector にする案は fixed-arity calls の allocation を増やすため却下した。
-- Rust panic を Lisp condition に使う案は unwind ABI と GC roots を混在させるため却下した。
-- Cranelift の trap を catch/throw に流用する案は trap が recoverable Lisp condition の payload/handler depth を表せないため却下した。
-- full call だけの ABI は local call と tail recursion の frame overhead を固定化するため却下した。
+- argc/r10、context/r14 の固定レジスタ表は Cranelift の一般 ABI 契約でないため却下した。
+- 全 builtin を pointer-array ABI にする案は固定 arity の hot path で配列退避を要求するため却下した。
+- Cranelift frame に 6 語 header を強制する案は backend の frame layout と競合するため却下した。
+- Rust panic/unwind、trap の catch/throw 流用は Rust の abort 契約または Lisp payload と両立しないため却下した。
 
 ## Phase 1 レーンが前提にしてよいこと / してはいけないこと
 
-- register allocation table と frame header の順序は固定である。
-- builtin は指定された `extern "C"` signature と `NclStatus` を使う。
-- allocation/call/back-edge には safepoint metadata を付け、raw Rust pointer を跨がせない。
-- handler chain を直接編集せず、runtime API で establish/unwind する。
-- `try_call` の presence を unwinder 実装済みの意味に解釈してはならない。
+- ABI は上記 Cranelift signature、pinned register、固定 arity/可変長 builtin の二形式を使う。
+- 物理レジスタ、Cranelift frame layout、Lisp handler chain を独自に固定しない。
+- try_call の存在を unwinder 実装済みの意味に解釈せず、landing block と status propagation を実装する。
+- Lisp 呼出しから戻る Rust builtin は status と pending flag を検査してから返す。

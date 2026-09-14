@@ -31,6 +31,10 @@ impl Display for VerifyError {
 impl Error for VerifyError {}
 
 /// Verifies block structure, SSA visibility, and the function return contract.
+///
+/// # Errors
+///
+/// Returns every structural, SSA, and type error found in `function`.
 pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
     let mut errors = Vec::new();
     let mut blocks = HashMap::new();
@@ -88,17 +92,11 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
     }
 }
 
-fn use_value(
-    value: ValueId,
-    block: BlockId,
-    values: &HashMap<ValueId, Ty>,
-    errors: &mut Vec<VerifyError>,
-) {
-    if !values.contains_key(&value) {
-        errors.push(VerifyError::UndefinedValue(value));
-    } else {
-        let _ = block;
+fn use_value(value: ValueId, values: &HashMap<ValueId, Ty>, errors: &mut Vec<VerifyError>) {
+    if values.contains_key(&value) {
+        return;
     }
+    errors.push(VerifyError::UndefinedValue(value));
 }
 fn check_op(
     op: &Op,
@@ -143,12 +141,12 @@ fn check_op(
             args.extend(operands);
         }
         OpKind::Builtin { args: operands, .. } | OpKind::SetMultipleValues { values: operands } => {
-            args.extend(operands)
+            args.extend(operands);
         }
         OpKind::Prim { args: operands, .. } => args.extend(operands),
     }
     for value in args {
-        use_value(value, block, values, errors);
+        use_value(value, values, errors);
     }
     if let OpKind::Prim {
         condition: Some(target),
@@ -180,7 +178,7 @@ fn successor(
         errors.push(VerifyError::SuccessorArity(block.id));
     }
     for (index, value) in args.iter().enumerate() {
-        use_value(*value, block.id, values, errors);
+        use_value(*value, values, errors);
         if let Some(parameter) = destination.params.get(index) {
             if values.get(value) != Some(&parameter.ty) {
                 errors.push(VerifyError::SuccessorType(block.id));
@@ -198,7 +196,7 @@ fn check_terminator(
 ) {
     match term {
         Terminator::Jump { target, args } => {
-            successor(*target, args, block, blocks, values, errors)
+            successor(*target, args, block, blocks, values, errors);
         }
         Terminator::Branch {
             condition,
@@ -207,7 +205,7 @@ fn check_terminator(
             else_target,
             else_args,
         } => {
-            use_value(*condition, block.id, values, errors);
+            use_value(*condition, values, errors);
             successor(*then_target, then_args, block, blocks, values, errors);
             successor(*else_target, else_args, block, blocks, values, errors);
         }
@@ -217,7 +215,7 @@ fn check_terminator(
             default,
             default_args,
         } => {
-            use_value(*value, block.id, values, errors);
+            use_value(*value, values, errors);
             for (_, target, args) in cases {
                 successor(*target, args, block, blocks, values, errors);
             }
@@ -231,20 +229,20 @@ fn check_terminator(
             function: callee,
             args,
         } => {
-            use_value(*callee, block.id, values, errors);
+            use_value(*callee, values, errors);
             for value in args {
-                use_value(*value, block.id, values, errors);
+                use_value(*value, values, errors);
             }
         }
         Terminator::Return { values: returned } => {
             for value in returned {
-                use_value(*value, block.id, values, errors);
+                use_value(*value, values, errors);
             }
             if returned.len() != function.return_types.len() {
                 errors.push(VerifyError::ReturnArity(block.id));
             }
         }
-        Terminator::Throw { condition } => use_value(*condition, block.id, values, errors),
+        Terminator::Throw { condition } => use_value(*condition, values, errors),
         Terminator::Unreachable => {}
     }
 }

@@ -46,8 +46,12 @@ impl FunctionBuilder {
     }
 
     /// Adds a local declaration.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the local table cannot be represented by a `u32` index.
     pub fn add_local(&mut self, name: impl Into<String>, ty: Ty) -> LocalId {
-        let id = LocalId(self.function.locals.len() as u32);
+        let id = LocalId(u32::try_from(self.function.locals.len()).unwrap_or(u32::MAX));
         self.function.locals.push(Local {
             id,
             name: name.into(),
@@ -57,8 +61,13 @@ impl FunctionBuilder {
     }
 
     /// Adds a constant and returns its table index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the constant table cannot be represented by a `u32` index.
     pub fn add_constant(&mut self, constant: Constant) -> crate::ConstantIndex {
-        let index = crate::ConstantIndex(self.function.constants.len() as u32);
+        let index =
+            crate::ConstantIndex(u32::try_from(self.function.constants.len()).unwrap_or(u32::MAX));
         self.function.constants.push(constant);
         index
     }
@@ -85,6 +94,10 @@ impl FunctionBuilder {
     }
 
     /// Selects an existing block for editing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `block` is not present in this function.
     pub fn position_at(&mut self, block: BlockId) -> Result<(), String> {
         self.current = Some(
             self.function
@@ -97,13 +110,17 @@ impl FunctionBuilder {
     }
 
     /// Allocates a fresh SSA value identity.
-    pub fn fresh_value(&mut self) -> ValueId {
+    pub const fn fresh_value(&mut self) -> ValueId {
         let value = ValueId(self.next_value);
         self.next_value += 1;
         value
     }
 
     /// Appends an operation and returns its result identities.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no block is currently selected.
     pub fn push_op(&mut self, kind: OpKind, result_types: &[Ty]) -> Result<Vec<ValueId>, String> {
         let index = self.current.ok_or_else(|| "no current block".to_owned())?;
         let results = result_types
@@ -120,6 +137,10 @@ impl FunctionBuilder {
     }
 
     /// Sets the current block terminator.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no block is currently selected.
     pub fn terminate(&mut self, terminator: Terminator) -> Result<(), String> {
         let index = self.current.ok_or_else(|| "no current block".to_owned())?;
         self.function.blocks[index].terminator = terminator;

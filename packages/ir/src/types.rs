@@ -74,20 +74,20 @@ impl Display for Ty {
 }
 
 /// A parameter of a function.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Param {
     pub name: String,
     pub ty: Ty,
 }
 /// A local binding.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Local {
     pub id: LocalId,
     pub name: String,
     pub ty: Ty,
 }
 /// A block parameter, which represents an SSA phi value.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BlockParam {
     pub value: ValueId,
     pub ty: Ty,
@@ -161,14 +161,14 @@ pub enum Convert {
 }
 
 /// An operation with SSA results and optional source location.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Op {
     pub results: Vec<(ValueId, Ty)>,
     pub kind: OpKind,
     pub loc: Option<DebugLocationId>,
 }
 /// An operation in a basic block.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum OpKind {
     Const {
         result: ConstantIndex,
@@ -231,7 +231,7 @@ pub enum OpKind {
 }
 
 /// A terminator and its successor arguments.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Terminator {
     Jump {
         target: BlockId,
@@ -267,7 +267,7 @@ pub enum Terminator {
     Unreachable,
 }
 /// An exception handler region.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HandlerRegion {
     pub protected: Vec<BlockId>,
     pub handler: BlockId,
@@ -276,7 +276,7 @@ pub struct HandlerRegion {
     pub depth: u32,
 }
 /// A basic block.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BasicBlock {
     pub id: BlockId,
     pub params: Vec<BlockParam>,

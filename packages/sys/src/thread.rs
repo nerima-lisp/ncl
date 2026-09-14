@@ -47,6 +47,9 @@ impl Thread {
             tlab: Vec::new(),
         }
     }
+    pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
+        self.heap.map(|heap| unsafe { &*heap })
+    }
     /// Push a precise root. The referenced slot must outlive the token.
     pub fn push_root(&mut self, value: &mut Word) -> RootToken {
         let token = RootToken {

@@ -7,6 +7,14 @@ name = "ncl"
 version = "0.1.0"
 
 [[package]]
+name = "ncl-asm-x86-64"
+version = "0.1.0"
+
+[[package]]
+name = "ncl-ir"
+version = "0.1.0"
+
+[[package]]
 name = "ncl-object"
 version = "0.1.0"
 dependencies = [
@@ -15,12 +23,4 @@ dependencies = [
 
 [[package]]
 name = "ncl-sys"
-version = "0.1.0"
-
-[[package]]
-name = "ncl-asm-x86-64"
-version = "0.1.0"
-
-[[package]]
-name = "ncl-ir"
 version = "0.1.0"

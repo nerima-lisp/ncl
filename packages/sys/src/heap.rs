@@ -132,6 +132,80 @@ impl Heap {
         }
         Ok(word)
     }
+
+    pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
+        let address = object.address().checked_add(slot.checked_mul(8)?)? as *const u64;
+        let state = self.lock_state();
+        let page = state.pages.iter().find(|page| {
+            let start = page.as_ptr() as usize;
+            let end = start.saturating_add(page.len().saturating_mul(8));
+            (address as usize) >= start
+                && (address as usize)
+                    .checked_add(8)
+                    .is_some_and(|end_pos| end_pos <= end)
+        })?;
+        let offset = (address as usize - page.as_ptr() as usize) / 8;
+        Some(Word::from_bits(page[offset]))
+    }
+
+    pub(crate) fn read_cons_word(&self, object: Word, slot: usize) -> Option<Word> {
+        let address = object.address().checked_add(slot.checked_mul(8)?)? as *const u64;
+        let state = self.lock_state();
+        let page = state.pages.iter().find(|page| {
+            let start = page.as_ptr() as usize;
+            let end = start.saturating_add(page.len().saturating_mul(8));
+            (address as usize) >= start
+                && (address as usize)
+                    .checked_add(8)
+                    .is_some_and(|end_pos| end_pos <= end)
+        })?;
+        let offset = (address as usize - page.as_ptr() as usize) / 8;
+        Some(Word::from_bits(page[offset]))
+    }
+
+    pub(crate) fn write_cons_word(&self, object: Word, slot: usize, value: Word) -> bool {
+        self.write_word_at(object, slot, value)
+    }
+
+    pub(crate) fn write_word(&self, object: Word, slot: usize, value: Word) -> bool {
+        self.write_word_at(object, slot + 1, value)
+    }
+
+    fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
+        let address = match object.address().checked_add(slot.saturating_mul(8)) {
+            Some(address) => address as *mut u64,
+            None => return false,
+        };
+        let mut state = self.lock_state();
+        let Some(page) = state.pages.iter_mut().find(|page| {
+            let start = page.as_ptr() as usize;
+            let end = start.saturating_add(page.len().saturating_mul(8));
+            (address as usize) >= start
+                && (address as usize)
+                    .checked_add(8)
+                    .is_some_and(|end_pos| end_pos <= end)
+        }) else {
+            return false;
+        };
+        let offset = (address as usize - page.as_ptr() as usize) / 8;
+        page[offset] = value.bits();
+        true
+    }
+
+    pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
+        let address = object.address() as *const u64;
+        let state = self.lock_state();
+        let page = state.pages.iter().find(|page| {
+            let start = page.as_ptr() as usize;
+            let end = start.saturating_add(page.len().saturating_mul(8));
+            (address as usize) >= start
+                && (address as usize)
+                    .checked_add(8)
+                    .is_some_and(|end_pos| end_pos <= end)
+        })?;
+        let offset = (address as usize - page.as_ptr() as usize) / 8;
+        Some(page[offset] as u8)
+    }
     fn allocate(
         &self,
         thread: &mut Thread,

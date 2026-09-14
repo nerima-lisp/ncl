@@ -3,6 +3,8 @@
 use ncl_sys::{
     Heap, HeapConfig, LowTag, ReferenceLayout, RootToken, StorageCondition, Thread, TypeTag, Word,
 };
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 /// Object widetags used by the object layer.
 pub mod widetag {
@@ -99,8 +101,7 @@ impl From<StorageCondition> for ObjectError {
 #[derive(Debug)]
 pub struct Runtime {
     heap: Heap,
-    package_count: usize,
-    function_count: usize,
+    functions: Mutex<HashMap<(String, String), Word>>,
 }
 impl Runtime {
     /// Create a runtime with the default heap policy.
@@ -111,27 +112,59 @@ impl Runtime {
     pub fn with_config(config: HeapConfig) -> Self {
         Self {
             heap: Heap::new(config),
-            package_count: 0,
-            function_count: 0,
+            functions: Mutex::new(HashMap::new()),
         }
     }
     /// Register all object layouts supported by this layer.
     pub fn register_layouts(&self) -> Result<(), ObjectError> {
-        for tag in 1..=widetag::CODE {
-            ncl_sys::register_layout(
-                &self.heap,
-                tag,
-                ReferenceLayout {
-                    reference_words: Vec::new(),
-                },
-            )
-            .map_err(|_| ObjectError::Layout)?;
+        for (tag, reference_words) in [
+            (widetag::SYMBOL, vec![0, 1, 2, 3, 4]),
+            (widetag::STRING, vec![]),
+            (widetag::SIMPLE_VECTOR, vec![1]),
+            (widetag::ARRAY, vec![0, 1, 2]),
+            (widetag::HASH_TABLE, vec![0, 1]),
+            (widetag::STRUCTURE, vec![0]),
+            (widetag::INSTANCE, vec![0, 1]),
+            (widetag::SIMPLE_FUN, vec![0, 1]),
+            (widetag::CLOSURE, vec![0, 1, 2]),
+            (widetag::BIGNUM, vec![]),
+            (widetag::RATIO, vec![0, 1]),
+            (widetag::DOUBLE_FLOAT, vec![]),
+            (widetag::COMPLEX, vec![0, 1]),
+            (widetag::PACKAGE, vec![0, 1, 2]),
+            (widetag::READTABLE, vec![0]),
+            (widetag::STREAM, vec![0, 1]),
+            (widetag::CODE, vec![0]),
+        ] {
+            ncl_sys::register_layout(&self.heap, tag, ReferenceLayout { reference_words })
+                .map_err(|_| ObjectError::Layout)?;
         }
         Ok(())
     }
     /// Return the underlying heap.
     pub const fn heap(&self) -> &Heap {
         &self.heap
+    }
+
+    /// Register a function object under a package and name.
+    pub fn define_function(&self, package: &str, name: &str, function: Word) {
+        let mut functions = match self.functions.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        functions.insert((package.to_owned(), name.to_owned()), function);
+    }
+
+    /// Look up a registered function object.
+    #[must_use]
+    pub fn function(&self, package: &str, name: &str) -> Option<Word> {
+        let functions = match self.functions.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        functions
+            .get(&(package.to_owned(), name.to_owned()))
+            .copied()
     }
 }
 impl Default for Runtime {
@@ -222,6 +255,80 @@ pub fn allocate(
     )
     .map_err(Into::into)
 }
+
+/// Allocate a symbol with an initial name and unbound value/function cells.
+pub fn make_symbol(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: Word,
+) -> Result<Word, ObjectError> {
+    let symbol = allocate(ctx, runtime, widetag::SYMBOL, 8)?;
+    for (slot, value) in [
+        (symbol_offset::VALUE, Word::UNBOUND),
+        (symbol_offset::FUNCTION, Word::UNBOUND),
+        (symbol_offset::PLIST, Word::NIL),
+        (symbol_offset::PACKAGE, Word::NIL),
+        (symbol_offset::NAME, name),
+        (symbol_offset::TLS_INDEX, Word::fixnum(0)),
+        (symbol_offset::HASH, Word::fixnum(0)),
+        (symbol_offset::FLAGS, Word::fixnum(0)),
+    ] {
+        if !ncl_sys::write_object_word(&mut ctx.thread, symbol, slot, value) {
+            return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+        }
+    }
+    Ok(symbol)
+}
+
+fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, ObjectError> {
+    if symbol != Word::NIL
+        && (symbol.lowtag() != LowTag::OtherPointer as u8
+            || ncl_sys::object_widetag(&ctx.thread, symbol) != Some(widetag::SYMBOL))
+    {
+        return Err(ObjectError::TypeError);
+    }
+    if symbol == Word::NIL {
+        return Ok(Word::NIL);
+    }
+    ncl_sys::read_object_word(&ctx.thread, symbol, slot)
+        .ok_or(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
+}
+
+/// Read a symbol's value cell.
+pub fn symbol_value(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::VALUE)
+}
+
+/// Set a symbol's value cell.
+pub fn set_symbol_value(
+    ctx: &mut ThreadContext,
+    symbol: Word,
+    value: Word,
+) -> Result<(), ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::VALUE)?;
+    if symbol == Word::NIL
+        || !ncl_sys::write_object_word(&mut ctx.thread, symbol, symbol_offset::VALUE, value)
+    {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::VALUE);
+    Ok(())
+}
+
+/// Read a symbol's function cell.
+pub fn symbol_function(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::FUNCTION)
+}
+
+/// Read a symbol's property list.
+pub fn symbol_plist(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::PLIST)
+}
+
+/// Read a symbol's name object.
+pub fn symbol_name(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::NAME)
+}
 /// Push a precise root.
 pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {
     ncl_sys::push_root(&mut ctx.thread, value)
@@ -232,15 +339,49 @@ pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
 }
 /// Return the car of a cons cell.
 pub fn car(_ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
-    if word.is_cons() {
-        Err(ObjectError::Unsupported)
-    } else {
-        Err(ObjectError::TypeError)
+    if word == Word::NIL {
+        return Ok(Word::NIL);
     }
+    if !word.is_cons() {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_sys::read_cons_word(&_ctx.thread, word, 0)
+        .ok_or(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
 }
 /// Return the cdr of a cons cell.
 pub fn cdr(ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
-    car(ctx, word)
+    if word == Word::NIL {
+        return Ok(Word::NIL);
+    }
+    if !word.is_cons() {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_sys::read_cons_word(&ctx.thread, word, 1)
+        .ok_or(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
+}
+
+/// Replace the car of a cons cell.
+pub fn rplaca(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, ObjectError> {
+    if !word.is_cons() {
+        return Err(ObjectError::TypeError);
+    }
+    if !ncl_sys::write_cons_word(&mut ctx.thread, word, 0, value) {
+        return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+    }
+    ncl_sys::write_barrier(&mut ctx.thread, word, 0);
+    Ok(word)
+}
+
+/// Replace the cdr of a cons cell.
+pub fn rplacd(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, ObjectError> {
+    if !word.is_cons() {
+        return Err(ObjectError::TypeError);
+    }
+    if !ncl_sys::write_cons_word(&mut ctx.thread, word, 1, value) {
+        return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+    }
+    ncl_sys::write_barrier(&mut ctx.thread, word, 1);
+    Ok(word)
 }
 
 /// Calling convention status.
@@ -258,6 +399,9 @@ pub struct Builtin {
 }
 /// Function registration callback.
 pub type RegisterFn = fn(&Runtime);
+
+/// Register the object layer's built-in definitions.
+pub fn register(_runtime: &Runtime) {}
 
 /// Declare fixed-arity builtin metadata.
 #[macro_export]
@@ -285,6 +429,41 @@ mod tests {
         assert!(make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).is_err());
         assert!(ctx.register(&runtime).is_ok());
         assert!(make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).is_ok());
+    }
+    #[test]
+    fn cons_accessors_round_trip() {
+        let runtime = Runtime::new();
+        let mut ctx = ThreadContext::new();
+        assert!(ctx.register(&runtime).is_ok());
+        let cons = match make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL) {
+            Ok(value) => value,
+            Err(_) => {
+                assert!(false, "registered thread could not allocate cons");
+                return;
+            }
+        };
+        assert_eq!(car(&mut ctx, cons), Ok(Word::fixnum(1)));
+        assert_eq!(cdr(&mut ctx, cons), Ok(Word::NIL));
+        assert_eq!(rplaca(&mut ctx, cons, Word::fixnum(2)), Ok(cons));
+        assert_eq!(car(&mut ctx, cons), Ok(Word::fixnum(2)));
+    }
+
+    #[test]
+    fn symbol_slots_round_trip() {
+        let runtime = Runtime::new();
+        let mut ctx = ThreadContext::new();
+        assert!(ctx.register(&runtime).is_ok());
+        let symbol = match make_symbol(&mut ctx, &runtime, Word::NIL) {
+            Ok(value) => value,
+            Err(_) => {
+                assert!(false, "registered thread could not allocate symbol");
+                return;
+            }
+        };
+        assert_eq!(symbol_name(&ctx, symbol), Ok(Word::NIL));
+        assert_eq!(symbol_value(&ctx, symbol), Ok(Word::UNBOUND));
+        assert!(set_symbol_value(&mut ctx, symbol, Word::fixnum(9)).is_ok());
+        assert_eq!(symbol_value(&ctx, symbol), Ok(Word::fixnum(9)));
     }
     #[test]
     fn bindings_are_lifo() {

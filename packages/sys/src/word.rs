@@ -56,6 +56,10 @@ impl Word {
     pub const fn bits(self) -> u64 {
         self.0
     }
+    /// Construct a tagged value from raw bits returned by the collector.
+    pub const fn from_bits(bits: u64) -> Self {
+        Self(bits)
+    }
     /// Return the lowtag.
     pub const fn lowtag(self) -> u8 {
         (self.0 & 7) as u8

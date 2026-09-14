@@ -10,7 +10,10 @@ mod sync;
 mod thread;
 mod word;
 
-pub use code::{CodePtr, Safepoint, SafepointMap, alloc_code, free_code, publish_code};
+pub use code::{
+    CodePtr, FrameHeader, Safepoint, SafepointMap, alloc_code, free_code, publish_code,
+    walk_frame_headers,
+};
 pub use heap::{
     Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,
@@ -138,6 +141,11 @@ pub fn register_layout(
     layout: ReferenceLayout,
 ) -> Result<(), LayoutError> {
     heap.register_layout(widetag, layout)
+}
+
+/// Register a callback run after a collection releases its roots.
+pub fn register_after_gc_hook(heap: &Heap, hook: fn()) {
+    heap.register_after_gc_hook(hook);
 }
 
 /// Start a collection and update registered precise roots.

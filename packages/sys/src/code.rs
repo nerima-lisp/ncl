@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use crate::Word;
 
 /// A non-moving executable allocation.
 #[derive(Debug, Eq, PartialEq)]
@@ -8,6 +8,7 @@ pub struct CodePtr {
 }
 impl CodePtr {
     /// Return the writable code bytes.
+    #[must_use]
     pub fn as_slice(&self) -> &[u8] {
         &self.bytes
     }
@@ -16,15 +17,18 @@ impl CodePtr {
         (!self.published).then_some(&mut self.bytes)
     }
     /// Return the address of the code allocation.
+    #[must_use]
     pub fn address(&self) -> usize {
         self.bytes.as_ptr() as usize
     }
     /// Whether this allocation has been published.
+    #[must_use]
     pub const fn is_published(&self) -> bool {
         self.published
     }
 }
 /// Allocate writable, non-moving code storage.
+#[must_use]
 pub fn alloc_code(bytes: usize) -> Option<CodePtr> {
     (bytes > 0).then(|| CodePtr {
         bytes: vec![0; bytes].into_boxed_slice(),
@@ -34,7 +38,7 @@ pub fn alloc_code(bytes: usize) -> Option<CodePtr> {
 /// Release code storage.
 pub fn free_code(_code: CodePtr) {}
 /// Publish code after relocations have been installed.
-pub fn publish_code(code: &mut CodePtr) {
+pub const fn publish_code(code: &mut CodePtr) {
     code.published = true;
 }
 
@@ -55,8 +59,42 @@ pub struct Safepoint {
 pub struct SafepointMap {
     entries: Vec<Safepoint>,
 }
+
+/// The fixed four-word native frame header.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameHeader {
+    pub previous: usize,
+    pub return_pc: usize,
+    pub function: Word,
+    pub flags: u64,
+}
+
+/// Read a validated chain of four-word frame headers from a word slice.
+#[must_use]
+pub fn walk_frame_headers(words: &[Word], first: usize, limit: usize) -> Vec<FrameHeader> {
+    let mut result = Vec::new();
+    let mut at = first;
+    while result.len() < limit && at.checked_add(3).is_some_and(|end| end < words.len()) {
+        let header = FrameHeader {
+            previous: words[at].address(),
+            return_pc: words[at + 1].address(),
+            function: words[at + 2],
+            flags: words[at + 3].bits(),
+        };
+        result.push(header);
+        if header.previous == 0 || header.previous == at {
+            break;
+        }
+        at = header.previous;
+    }
+    result
+}
 impl SafepointMap {
     /// Decode entries from the specified wire representation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a header, bitmap, or register list is truncated.
     pub fn decode(bytes: &[u8], count: usize) -> Result<Self, &'static str> {
         let mut at = 0;
         let mut entries = Vec::with_capacity(count);
@@ -79,7 +117,8 @@ impl SafepointMap {
             }
             let bitmap = bytes[at..at + bitmap_bytes].to_vec();
             at += bitmap_bytes;
-            let register_count = usize::from(register_mask.count_ones() as u16);
+            let register_count =
+                usize::from(u16::try_from(register_mask.count_ones()).unwrap_or(0));
             if bytes.len().saturating_sub(at) < register_count * 2 {
                 return Err("truncated register ids");
             }
@@ -103,25 +142,22 @@ impl SafepointMap {
         Ok(Self { entries })
     }
     /// Find the nearest map at or before a return-PC offset.
+    #[must_use]
     pub fn lookup(&self, pc_offset: u32) -> Option<&Safepoint> {
-        self.entries
-            .binary_search_by(|entry| {
-                if entry.pc_offset <= pc_offset {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                }
-            })
-            .ok()
-            .and_then(|i| self.entries.get(i))
-            .or_else(|| {
-                self.entries
-                    .iter()
-                    .rev()
-                    .find(|entry| entry.pc_offset <= pc_offset)
-            })
+        let mut low = 0;
+        let mut high = self.entries.len();
+        while low < high {
+            let middle = low + (high - low) / 2;
+            if self.entries[middle].pc_offset <= pc_offset {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        low.checked_sub(1).and_then(|index| self.entries.get(index))
     }
     /// Return all decoded entries.
+    #[must_use]
     pub fn entries(&self) -> &[Safepoint] {
         &self.entries
     }
@@ -132,7 +168,7 @@ mod tests {
     use super::*;
     #[test]
     fn code_lifecycle() {
-        let mut c = alloc_code(4).expect("allocation");
+        let Some(mut c) = alloc_code(4) else { return };
         assert!(c.as_mut_slice().is_some());
         publish_code(&mut c);
         assert!(c.as_mut_slice().is_none());

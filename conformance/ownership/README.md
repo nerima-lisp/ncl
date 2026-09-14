@@ -51,19 +51,19 @@ The checker compares `(package, symbol)` against every symbol row in `conformanc
 | `ncl-image` | 1 | 7 |
 | `ncl-lib-format` | 1 | 1 |
 | `ncl-lib-hash-arrays` | 1 | 55 |
-| `ncl-lib-macros` | 1 | 98 |
-| `ncl-lib-numbers` | 1 | 166 |
+| `ncl-lib-macros` | 1 | 97 |
+| `ncl-lib-numbers` | 1 | 164 |
 | `ncl-lib-packages` | 1 | 58 |
 | `ncl-lib-pathnames` | 1 | 43 |
 | `ncl-lib-sequences` | 1 | 150 |
-| `ncl-lib-streams` | 1 | 135 |
+| `ncl-lib-streams` | 1 | 121 |
 | `ncl-lib-strings` | 1 | 108 |
 | `ncl-object` | 1 | 39 |
 | `ncl-printer` | 1 | 24 |
-| `ncl-reader` | 1 | 5 |
+| `ncl-reader` | 1 | 23 |
 | `ncl-runtime` | 2 | 59 |
 | `ncl-threads` | 1 | 130 |
-| `ncl-types` | 1 | 65 |
+| `ncl-types` | 1 | 64 |
 
 Phase totals are 1,617 / 59 / 1,884 for phases 1 / 2 / 3.
 

@@ -275,11 +275,11 @@ COMMON-LISP	*PRINT-READABLY*	variable	ncl-printer	1	no	reclassified by subsystem
 COMMON-LISP	*PRINT-RIGHT-MARGIN*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*QUERY-IO*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*RANDOM-STATE*	variable	ncl-lib-numbers	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	*READ-BASE*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	*READ-DEFAULT-FLOAT-FORMAT*	variable	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	*READ-EVAL*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	*READ-SUPPRESS*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	*READTABLE*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*READ-BASE*	variable	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*READ-DEFAULT-FLOAT-FORMAT*	variable	ncl-reader	1	no	numeric tower or numeric type
+COMMON-LISP	*READ-EVAL*	variable	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*READ-SUPPRESS*	variable	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*READTABLE*	variable	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*STANDARD-INPUT*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*STANDARD-OUTPUT*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	*TERMINAL-IO*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
@@ -491,7 +491,7 @@ COMMON-LISP	CONTROL-ERROR	condition+class	ncl-conditions	1	no	condition/restart 
 COMMON-LISP	COPY-ALIST	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	COPY-LIST	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	COPY-PPRINT-DISPATCH	function	ncl-printer	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	COPY-READTABLE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	COPY-READTABLE	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	COPY-SEQ	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	COPY-STRUCTURE	function	ncl-clos	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	COPY-SYMBOL	function	ncl-lib-packages	1	no	package or symbol operation
@@ -645,10 +645,10 @@ COMMON-LISP	GENSYM	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	GENTEMP	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	GET	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	GET-DECODED-TIME	function	ncl-runtime	2	no	Phase 2 runtime integration
-COMMON-LISP	GET-DISPATCH-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	GET-DISPATCH-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	GET-INTERNAL-REAL-TIME	function	ncl-runtime	2	no	Phase 2 runtime integration
 COMMON-LISP	GET-INTERNAL-RUN-TIME	function	ncl-runtime	2	no	Phase 2 runtime integration
-COMMON-LISP	GET-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	GET-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	GET-OUTPUT-STREAM-STRING	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	GET-PROPERTIES	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	GET-SETF-EXPANSION	function	ncl-lib-macros	1	no	macro expansion/setf surface
@@ -770,7 +770,7 @@ COMMON-LISP	MAKE-ARRAY	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash o
 COMMON-LISP	MAKE-BROADCAST-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKE-CONCATENATED-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKE-CONDITION	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	MAKE-DISPATCH-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	MAKE-DISPATCH-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	MAKE-ECHO-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	MAKE-HASH-TABLE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
 COMMON-LISP	MAKE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
@@ -885,7 +885,7 @@ COMMON-LISP	PACKAGE-USED-BY-LIST	function	ncl-lib-packages	1	no	package or symbo
 COMMON-LISP	PACKAGEP	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	PAIRLIS	function	ncl-lib-sequences	1	no	sequence/list operation
 COMMON-LISP	PARSE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	PARSE-INTEGER	function	ncl-lib-numbers	1	no	numeric tower or numeric type
+COMMON-LISP	PARSE-INTEGER	function	ncl-reader	1	no	numeric tower or numeric type
 COMMON-LISP	PARSE-NAMESTRING	function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	PATHNAME	class+function	ncl-lib-pathnames	1	no	pathname/file operation
 COMMON-LISP	PATHNAME-DEVICE	function	ncl-lib-pathnames	1	no	pathname/file operation
@@ -949,17 +949,17 @@ COMMON-LISP	RATIO	class	ncl-types	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	RATIONAL	class+function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	RATIONALIZE	function	ncl-lib-numbers	1	no	numeric tower or numeric type
 COMMON-LISP	RATIONALP	function	ncl-lib-numbers	1	no	numeric tower or numeric type
-COMMON-LISP	READ	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	READ-BYTE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	READ-CHAR	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	READ-CHAR-NO-HANG	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	READ-DELIMITED-LIST	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	READ-FROM-STRING	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ-DELIMITED-LIST	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ-FROM-STRING	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	READ-LINE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
-COMMON-LISP	READ-PRESERVING-WHITESPACE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ-PRESERVING-WHITESPACE	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	READ-SEQUENCE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	READER-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
-COMMON-LISP	READTABLE	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	READTABLE	class	ncl-reader	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	READTABLE-CASE	function	ncl-reader	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	READTABLEP	function	ncl-reader	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	REAL	class	ncl-types	1	no	type predicate/coercion surface
@@ -1006,9 +1006,9 @@ COMMON-LISP	SEQUENCE	class	ncl-types	1	no	type predicate/coercion surface
 COMMON-LISP	SERIOUS-CONDITION	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SET	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	SET-DIFFERENCE	function	ncl-lib-sequences	1	no	sequence/list operation
-COMMON-LISP	SET-DISPATCH-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	SET-DISPATCH-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	SET-EXCLUSIVE-OR	function	ncl-lib-sequences	1	no	reclassified by subsystem ownership rule
-COMMON-LISP	SET-MACRO-CHARACTER	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	SET-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
 COMMON-LISP	SET-PPRINT-DISPATCH	function	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SET-SYNTAX-FROM-CHAR	function	ncl-reader	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SETF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
@@ -1196,7 +1196,7 @@ COMMON-LISP	WITH-OUTPUT-TO-STRING	macro	ncl-lib-macros	1	no	macro expansion/setf
 COMMON-LISP	WITH-PACKAGE-ITERATOR	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	WITH-SIMPLE-RESTART	macro	ncl-lib-macros	1	no	macro expansion/setf surface
 COMMON-LISP	WITH-SLOTS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
-COMMON-LISP	WITH-STANDARD-IO-SYNTAX	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-STANDARD-IO-SYNTAX	macro	ncl-reader	1	no	macro expansion/setf surface
 COMMON-LISP	WRITE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	WRITE-BYTE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
 COMMON-LISP	WRITE-CHAR	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface

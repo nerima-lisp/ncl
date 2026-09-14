@@ -95,6 +95,12 @@ fn golden_corpus_covers_all_groups() {
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .count();
     assert!(rows >= 200, "golden rows: {rows}");
+    let unique_rows: std::collections::BTreeSet<_> = files
+        .iter()
+        .flat_map(|file| file.lines())
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect();
+    assert_eq!(unique_rows.len(), rows, "golden rows must be unique");
     for line in files
         .iter()
         .flat_map(|file| file.lines())
@@ -110,7 +116,35 @@ fn golden_corpus_covers_all_groups() {
             assert!(u8::from_str_radix(byte, 16).is_ok(), "invalid byte: {byte}");
         }
     }
-    for required in ["movq", "addq", "jmp", "movsd", "xorpd"] {
+    for required in [
+        "movq",
+        "movzbl",
+        "movswq",
+        "leaq",
+        "addq",
+        "cmpq",
+        "testq",
+        "imulq",
+        "negq",
+        "shlq",
+        "cqo",
+        "idivq",
+        "setne",
+        "cmovne",
+        "jmpq",
+        "callq",
+        "je",
+        "pushq",
+        "popq",
+        "xchgq",
+        "btq",
+        "movsd",
+        "addsd",
+        "movq %rax, %xmm0",
+        "cvtsi2sd",
+        "cvttsd2si",
+        "xorpd",
+    ] {
         assert!(files.iter().any(|file| file.contains(required)));
     }
 }

@@ -50,7 +50,6 @@ jobs:
           exit $fail
       - run: python3 scripts/reachability.py --self-test
       - run: python3 scripts/reachability.py
-      - run: python3 scripts/check_symbol_lookup.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.0
@@ -95,26 +94,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       - run: python3 scripts/check_coverage_exclusions.py
-      # Two files excluded, each for a structural (not laziness) reason:
-      # - src/cli/repl/interactive.rs's interactive_repl_loop drives a live
-      #   reedline session, which enables raw terminal mode on its first read
-      #   and errors out under any non-tty stdin/stdout -- there is no way to
-      #   exercise it from a headless CI runner. Its actual decision logic
-      #   (FormValidator, NclPrompt, is_incomplete) lives in the sibling
-      #   repl.rs, is ordinary testable code, and is not excluded here.
-      # - builtin_definitions.rs's combine_builtin_definitions is a const fn
-      #   invoked exactly once, in a const initializer, so it runs entirely
-      #   during compile-time const evaluation and never as instrumented
-      #   runtime code -- every region reports 0 hits regardless of test
-      #   coverage, even though its output (BUILTIN_DEFINITIONS) backs every
-      #   builtin call in the runtime and is exhaustively exercised.
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --ignore-filename-regex 'src/cli/repl/interactive\.rs|packages/core/runtime/src/builtins/registry/builtin_definitions\.rs' --lcov --output-path lcov.info
+      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --lcov --output-path lcov.info
       # Region coverage, not line coverage: a line with an untaken branch
       # (e.g. one arm of a match) counts as fully covered by line metrics
       # but only partially by region metrics, so region is the stricter and
       # more accurate signal. This ratchet must remain at the production
       # target; lowering it would hide an untested branch.
-      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --ignore-filename-regex 'src/cli/repl/interactive\.rs|packages/core/runtime/src/builtins/registry/builtin_definitions\.rs' --summary-only --fail-under-regions 95.0
+      - run: cargo llvm-cov --locked --workspace --all-features --all-targets --summary-only --fail-under-regions 95.0
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov

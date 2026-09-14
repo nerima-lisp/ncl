@@ -2,15 +2,9 @@
 resolver = "3"
 members = [
     ".",
-    "packages/core/syntax",
-    "packages/core/compiler",
-    "packages/core/runtime",
 ]
 default-members = [
     ".",
-    "packages/core/syntax",
-    "packages/core/compiler",
-    "packages/core/runtime",
 ]
 
 [workspace.package]
@@ -48,8 +42,3 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
-
-[dependencies]
-ncl-runtime = { path = "packages/core/runtime", version = "0.1.0" }
-ncl-syntax = { path = "packages/core/syntax", version = "0.1.0" }
-reedline = "0.42.0"

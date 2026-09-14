@@ -54,6 +54,13 @@ nav:
       - API: reference/api.md
       - Architecture: reference/architecture.md
       - Compatibility: reference/compatibility.md
+  - Design:
+      - Object layout: design/object-layout.md
+      - GC interface: design/gc-interface.md
+      - Calling convention: design/calling-convention.md
+      - Threads: design/threads.md
+      - Compiler pipeline: design/compiler-pipeline.md
+      - Crates: design/crates.md
   - Project:
       - Development: project/development.md
       - Roadmap: project/roadmap.md

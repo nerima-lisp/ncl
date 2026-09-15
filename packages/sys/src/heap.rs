@@ -6,6 +6,8 @@ pub use crate::heap_types::{
 use crate::{Thread, Word};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Condvar, Mutex};
+#[path = "heap/scan.rs"]
+mod scan;
 const CARD_SIZE: usize = 512;
 const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
@@ -224,14 +226,18 @@ impl Heap {
         }
         state.objects[index].alive.then_some(index)
     }
-    fn layout(state: &State, index: usize) -> Vec<usize> {
-        if state.objects[index].kind == PageKind::Cons {
-            return vec![0, 1];
-        }
-        state
-            .layouts
-            .get(&Self::object_widetag(&state.objects[index]))
-            .map_or_else(Vec::new, |layout| layout.reference_words.clone())
+    fn find_conservative(state: &State, value: Word) -> Option<usize> {
+        let expected = if value.is_list() {
+            PageKind::Cons
+        } else if value.lowtag() == crate::LowTag::OtherPointer as u8 {
+            PageKind::HeaderObject
+        } else {
+            return None;
+        };
+        let index = Self::find_raw(state, value)?;
+        let object = &state.objects[index];
+        (object.kind == expected && value.address() == object.words.as_ptr() as usize)
+            .then_some(index)
     }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
         let mut state = self.lock_state();
@@ -280,12 +286,12 @@ impl Heap {
             callback(Word::NIL);
         }
     }
-    #[allow(
-        clippy::too_many_lines,
-        reason = "collection phases share one lock to preserve forwarding invariants"
-    )]
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn collect(&self, full: bool) {
         let mut state = self.lock_state();
+        for object in &mut state.objects {
+            object.pinned = false;
+        }
         let mut live = HashSet::new();
         let mut stack = Vec::new();
         let mut root_slots = state.roots.clone();
@@ -294,12 +300,12 @@ impl Heap {
             unsafe {
                 // SAFETY: registered thread pointers remain valid until unregister_thread.
                 root_slots.extend((*thread).roots.iter().copied());
-                conservative_values.extend((*thread).conservative_roots.iter().copied());
+                conservative_values.extend((*thread).conservative_snapshot());
             }
         }
         let mut conservative_indices = Vec::new();
         for value in conservative_values {
-            if let Some(index) = Self::find(&state, value) {
+            if let Some(index) = Self::find_conservative(&state, value) {
                 state.objects[index].pinned = true;
                 conservative_indices.push(index);
             }
@@ -325,7 +331,7 @@ impl Heap {
             if !live.insert(index) {
                 continue;
             }
-            for slot in Self::layout(&state, index) {
+            for slot in scan::layout(&state, index) {
                 if state.objects[index].weak.is_some() && slot == 1 {
                     continue;
                 }
@@ -401,7 +407,7 @@ impl Heap {
             if !state.objects[index].alive {
                 continue;
             }
-            for slot in Self::layout(&state, index) {
+            for slot in scan::layout(&state, index) {
                 if state.objects[index].weak.is_some() && slot == 1 {
                     continue;
                 }

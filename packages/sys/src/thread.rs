@@ -23,6 +23,12 @@ pub struct RootToken {
     pub(crate) count: usize,
 }
 
+/// Machine-visible mutator context.
+///
+/// This type is `repr(C)` so the offsets returned by [`thread_layout`] are a
+/// stable ABI. The object lane's `ThreadContext` places this type first and
+/// passes `*mut ThreadContext` to generated code as `*mut Thread`.
+#[repr(C)]
 #[derive(Debug)]
 pub struct Thread {
     pub(crate) roots: Vec<*mut Word>,
@@ -36,6 +42,41 @@ pub struct Thread {
     pub(crate) callee_saved: [u64; 16],
     pub(crate) safepoint_epoch: u64,
     pub(crate) conservative_roots: Vec<Word>,
+    pub(crate) tlab_bump: usize,
+    pub(crate) tlab_limit: usize,
+    pub(crate) mv: Vec<Word>,
+    pub(crate) handler: usize,
+    pub(crate) cleanup: usize,
+    pub(crate) catch: usize,
+    pub(crate) pending: bool,
+}
+
+/// Native offsets consumed by the code generator when addressing a thread context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ThreadLayout {
+    pub tlab_bump: usize,
+    pub tlab_limit: usize,
+    pub safepoint_state: usize,
+    pub pending: usize,
+    pub mv: usize,
+    pub handler: usize,
+    pub cleanup: usize,
+    pub catch: usize,
+}
+
+/// Return byte offsets for the machine-visible part of [`Thread`].
+#[must_use]
+pub const fn thread_layout() -> ThreadLayout {
+    ThreadLayout {
+        tlab_bump: std::mem::offset_of!(Thread, tlab_bump),
+        tlab_limit: std::mem::offset_of!(Thread, tlab_limit),
+        safepoint_state: std::mem::offset_of!(Thread, state),
+        pending: std::mem::offset_of!(Thread, pending),
+        mv: std::mem::offset_of!(Thread, mv),
+        handler: std::mem::offset_of!(Thread, handler),
+        cleanup: std::mem::offset_of!(Thread, cleanup),
+        catch: std::mem::offset_of!(Thread, catch),
+    }
 }
 
 impl Default for Thread {
@@ -59,6 +100,13 @@ impl Thread {
             callee_saved: [0; 16],
             safepoint_epoch: 0,
             conservative_roots: Vec::new(),
+            tlab_bump: 0,
+            tlab_limit: 0,
+            mv: Vec::new(),
+            handler: 0,
+            cleanup: 0,
+            catch: 0,
+            pending: false,
         }
     }
     pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
@@ -119,18 +167,30 @@ impl Thread {
         }
     }
     pub(crate) fn publish_snapshot(&mut self) {
-        let marker = 0_u8;
-        let address = std::ptr::from_ref(&marker) as usize;
-        self.stack_bounds = Some((address, address + 1));
+        self.stack_bounds = current_stack_bounds();
         self.callee_saved = crate::snapshot_callee_saved();
+    }
+    pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
+        let mut values = self.conservative_roots.clone();
+        values.extend(self.callee_saved.iter().copied().map(Word::from_bits));
+        if let Some((start, end)) = self.stack_bounds {
+            let mut address = start.next_multiple_of(8);
+            while address.checked_add(8).is_some_and(|next| next <= end) {
+                // SAFETY: the collector reads only a published, stopped stack interval at word alignment.
+                values.push(unsafe { Word::from_bits((address as *const u64).read()) });
+                address += 8;
+            }
+        }
+        values
     }
     pub(crate) const fn enter_native(&mut self) {
         self.native = NativeState::Native;
         self.state = SafepointState::Safe;
     }
-    pub(crate) const fn leave_native(&mut self) {
+    pub(crate) fn leave_native(&mut self) {
         self.native = NativeState::Lisp;
         self.state = SafepointState::Running;
+        self.poll_safepoint();
     }
     pub(crate) fn heap_collect(&mut self, full: bool) {
         if let Some(heap) = self.heap {
@@ -139,8 +199,6 @@ impl Thread {
                 (*heap).collect_with_thread(self, full);
             }
         }
-        self.state = SafepointState::Collecting;
-        self.state = SafepointState::Running;
     }
     /// Request delivery of an interrupt at the next safepoint.
     pub const fn request_interrupt(&mut self) {
@@ -157,3 +215,61 @@ impl Thread {
 
 // SAFETY: a Thread is an owner-local mutator context and is transferred to one OS thread at a time.
 unsafe impl Send for Thread {}
+
+#[cfg(target_os = "macos")]
+fn current_stack_bounds() -> Option<(usize, usize)> {
+    // SAFETY: pthread_self identifies the calling thread and both APIs return its live stack extent.
+    unsafe {
+        let thread = crate::os::declarations::pthread_self();
+        let top = crate::os::declarations::pthread_get_stackaddr_np(thread) as usize;
+        let size = crate::os::declarations::pthread_get_stacksize_np(thread);
+        top.checked_sub(size).map(|start| (start, top))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn current_stack_bounds() -> Option<(usize, usize)> {
+    let mut attr = [0_u8; 128];
+    let mut start = ptr::null_mut();
+    let mut size = 0;
+    // SAFETY: pthread attributes are written to platform ABI storage and destroyed after use.
+    let result = unsafe {
+        let thread = crate::os::declarations::pthread_self();
+        let result = crate::os::declarations::pthread_getattr_np(thread, attr.as_mut_ptr().cast());
+        if result == 0 {
+            let result = crate::os::declarations::pthread_attr_getstack(
+                attr.as_ptr().cast(),
+                &mut start,
+                &mut size,
+            );
+            let _ = crate::os::declarations::pthread_attr_destroy(attr.as_mut_ptr().cast());
+            result
+        } else {
+            result
+        }
+    };
+    (result == 0).then_some((start as usize, (start as usize).saturating_add(size)))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+const fn current_stack_bounds() -> Option<(usize, usize)> {
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layout_matches_c_struct_offsets() {
+        let layout = thread_layout();
+        assert_eq!(layout.tlab_bump, std::mem::offset_of!(Thread, tlab_bump));
+        assert_eq!(layout.tlab_limit, std::mem::offset_of!(Thread, tlab_limit));
+        assert_eq!(layout.safepoint_state, std::mem::offset_of!(Thread, state));
+        assert_eq!(layout.pending, std::mem::offset_of!(Thread, pending));
+        assert_eq!(layout.mv, std::mem::offset_of!(Thread, mv));
+        assert_eq!(layout.handler, std::mem::offset_of!(Thread, handler));
+        assert_eq!(layout.cleanup, std::mem::offset_of!(Thread, cleanup));
+        assert_eq!(layout.catch, std::mem::offset_of!(Thread, catch));
+    }
+}

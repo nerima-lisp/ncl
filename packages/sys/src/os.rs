@@ -4,18 +4,22 @@
 pub mod declarations {
     use core::ffi::{c_char, c_int, c_void};
     #[repr(C)]
+    #[derive(Debug)]
     pub struct Stat {
         _private: [u8; 0],
     }
     #[repr(C)]
+    #[derive(Debug)]
     pub struct Dirent {
         _private: [u8; 0],
     }
     #[repr(C)]
+    #[derive(Debug)]
     pub struct PthreadMutex {
         _private: [u8; 0],
     }
     #[repr(C)]
+    #[derive(Debug)]
     pub struct PthreadCond {
         _private: [u8; 0],
     }
@@ -85,5 +89,6 @@ pub mod declarations {
             stack: *mut *mut c_void,
             size: *mut usize,
         ) -> c_int;
+        pub fn pthread_attr_destroy(attr: *mut c_void) -> c_int;
     }
 }

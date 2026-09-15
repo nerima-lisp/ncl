@@ -7,22 +7,23 @@ mod code;
 mod heap;
 mod heap_state;
 mod heap_types;
-mod os;
+pub mod os;
 mod stw;
 mod sync;
 mod thread;
 mod word;
 
 pub use code::{
-    CodePtr, FrameHeader, Safepoint, SafepointMap, alloc_code, free_code, publish_code,
-    walk_frame_headers,
+    CodeError, CodeObjectMetadata, CodePtr, CodeRegistry, FrameHeader, Safepoint, SafepointMap,
+    alloc_code, free_code, publish_code, scan_frame, scan_frame_chain, walk_frame_headers,
+    write_code,
 };
 pub use heap::{
     Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,
 };
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
-pub use thread::{NativeState, RootToken, SafepointState, Thread};
+pub use thread::{NativeState, RootToken, SafepointState, Thread, ThreadLayout, thread_layout};
 pub use word::{LowTag, Word};
 
 #[cfg(target_arch = "aarch64")]
@@ -202,7 +203,7 @@ pub const fn enter_native(thread: &mut Thread) {
 }
 
 /// Leave a foreign/native section.
-pub const fn leave_native(thread: &mut Thread) {
+pub fn leave_native(thread: &mut Thread) {
     thread.leave_native();
 }
 

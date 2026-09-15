@@ -79,7 +79,9 @@ impl Heap {
 
     pub(crate) fn collect_with_thread(&self, thread: &mut Thread, full: bool) {
         self.begin_collection(thread);
+        thread.state = SafepointState::Collecting;
         self.collect(full);
+        thread.state = SafepointState::Running;
         self.end_collection();
     }
 }

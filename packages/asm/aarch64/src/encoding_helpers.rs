@@ -19,7 +19,7 @@ fn shift(s: Shift) -> (u32, u32) {
     }
 }
 
-pub(crate) fn wide(base: u32, rd: Reg, immv: u16, s: u8, _k: u8) -> Result<u32, EncodeError> {
+pub fn wide(base: u32, rd: Reg, immv: u16, s: u8, _k: u8) -> Result<u32, EncodeError> {
     if !s.is_multiple_of(16) || s > 48 {
         return Err(EncodeError::ImmediateOutOfRange {
             value: i64::from(s),
@@ -29,13 +29,7 @@ pub(crate) fn wide(base: u32, rd: Reg, immv: u16, s: u8, _k: u8) -> Result<u32, 
     Ok(base | u32::from(immv) << 5 | u32::from(s / 16) << 21 | rs(rd.into()))
 }
 
-pub(crate) fn addsub(
-    rd: RegOrSp,
-    rn: RegOrSp,
-    im: u16,
-    s: bool,
-    sub: bool,
-) -> Result<u32, EncodeError> {
+pub fn addsub(rd: RegOrSp, rn: RegOrSp, im: u16, s: bool, sub: bool) -> Result<u32, EncodeError> {
     if im > 4095 {
         return Err(EncodeError::ImmediateOutOfRange {
             value: i64::from(im),
@@ -49,7 +43,7 @@ pub(crate) fn addsub(
         | rs(rd))
 }
 
-pub(crate) fn reg3<R: Into<RegOrSp>>(
+pub fn reg3<R: Into<RegOrSp>>(
     base: u32,
     rd: R,
     rn: RegOrSp,

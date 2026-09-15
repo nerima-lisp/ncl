@@ -124,97 +124,15 @@ impl FaslReader {
         architecture: Architecture,
         features: u64,
     ) -> Result<Fasl, ObjectError> {
-        if bytes.len() < 64 {
-            return Err(ObjectError::Truncated {
-                offset: bytes.len(),
-                needed: 64,
-            });
-        }
-        if &bytes[0..8] != b"NCLFASL\0" {
-            return Err(ObjectError::InvalidField {
-                field: "magic",
-                value: 0,
-            });
-        }
-        if u16_at(bytes, 8)? != 1 {
-            return Err(ObjectError::InvalidField {
-                field: "version",
-                value: u64::from(u16_at(bytes, 8)?),
-            });
-        }
-        if bytes[10] != architecture as u8 {
-            return Err(ObjectError::InvalidField {
-                field: "architecture",
-                value: u64::from(bytes[10]),
-            });
-        }
-        if bytes[11] != 8 {
-            return Err(ObjectError::InvalidField {
-                field: "pointer width",
-                value: u64::from(bytes[11]),
-            });
-        }
-        if bytes[12] != 1 || bytes[13] != 64 {
-            return Err(ObjectError::InvalidField {
-                field: "header",
-                value: u64::from(bytes[13]),
-            });
-        }
-        if u16_at(bytes, 14)? != 0 {
-            return Err(ObjectError::InvalidField {
-                field: "reserved",
-                value: u64::from(u16_at(bytes, 14)?),
-            });
-        }
-        let actual_features = u64_at(bytes, 16)?;
-        if actual_features != features {
-            return Err(ObjectError::InvalidField {
-                field: "feature bitmap",
-                value: actual_features,
-            });
-        }
-        let code = range(bytes, "code", u32_at(bytes, 24)?, u32_at(bytes, 28)?)?;
-        let reloc = range(
-            bytes,
-            "relocation",
-            u32_at(bytes, 32)?,
-            u32_at(bytes, 36)?
-                .checked_mul(16)
-                .ok_or(ObjectError::InvalidField {
-                    field: "relocation size",
-                    value: u64::MAX,
-                })?,
-        )?;
-        let constants = range(bytes, "constant", u32_at(bytes, 40)?, u32_at(bytes, 44)?)?;
-        let symbols = range(bytes, "symbol", u32_at(bytes, 48)?, u32_at(bytes, 52)?)?;
-        let stack_offset = u32_at(bytes, 56)?;
-        let stack_size = u32_at(bytes, 60)?;
-        let stack = range(bytes, "stack map", stack_offset, stack_size)?;
-        let debug_start =
-            stack_offset
-                .checked_add(stack_size)
-                .ok_or_else(|| ObjectError::OutOfBounds {
-                    section: "debug",
-                    offset: u64::from(stack_offset),
-                    size: u64::from(stack_size),
-                })?;
-        let section_ranges = [
-            ("code", u32_at(bytes, 24)?, u32_at(bytes, 28)?),
-            (
-                "relocation",
-                u32_at(bytes, 32)?,
-                u32_at(bytes, 36)?
-                    .checked_mul(16)
-                    .ok_or(ObjectError::InvalidField {
-                        field: "relocation size",
-                        value: u64::MAX,
-                    })?,
-            ),
-            ("constant", u32_at(bytes, 40)?, u32_at(bytes, 44)?),
-            ("symbol", u32_at(bytes, 48)?, u32_at(bytes, 52)?),
-            ("stack map", stack_offset, stack_size),
-        ];
-        validate_section_order(&section_ranges)?;
+        validate_fasl_header(bytes, architecture, features)?;
+        let FaslRanges {
+            code,
+            reloc,
+            constants,
+            symbols,
+            stack,
+            debug_start,
+        } = read_fasl_ranges(bytes)?;
         let relocations = decode_relocations(reloc)?;
         for relocation in &relocations {
             if relocation.section.0 != 0 {
@@ -253,6 +171,111 @@ impl FaslReader {
             },
         })
     }
+}
+
+fn validate_fasl_header(
+    bytes: &[u8],
+    architecture: Architecture,
+    features: u64,
+) -> Result<(), ObjectError> {
+    if bytes.len() < 64 {
+        return Err(ObjectError::Truncated {
+            offset: bytes.len(),
+            needed: 64,
+        });
+    }
+    if &bytes[0..8] != b"NCLFASL\0" {
+        return Err(ObjectError::InvalidField {
+            field: "magic",
+            value: 0,
+        });
+    }
+    if u16_at(bytes, 8)? != 1 {
+        return Err(ObjectError::InvalidField {
+            field: "version",
+            value: u64::from(u16_at(bytes, 8)?),
+        });
+    }
+    if bytes[10] != architecture as u8 {
+        return Err(ObjectError::InvalidField {
+            field: "architecture",
+            value: u64::from(bytes[10]),
+        });
+    }
+    if bytes[11] != 8 {
+        return Err(ObjectError::InvalidField {
+            field: "pointer width",
+            value: u64::from(bytes[11]),
+        });
+    }
+    if bytes[12] != 1 || bytes[13] != 64 {
+        return Err(ObjectError::InvalidField {
+            field: "header",
+            value: u64::from(bytes[13]),
+        });
+    }
+    if u16_at(bytes, 14)? != 0 {
+        return Err(ObjectError::InvalidField {
+            field: "reserved",
+            value: u64::from(u16_at(bytes, 14)?),
+        });
+    }
+    let actual_features = u64_at(bytes, 16)?;
+    if actual_features != features {
+        return Err(ObjectError::InvalidField {
+            field: "feature bitmap",
+            value: actual_features,
+        });
+    }
+    Ok(())
+}
+
+struct FaslRanges<'a> {
+    code: &'a [u8],
+    reloc: &'a [u8],
+    constants: &'a [u8],
+    symbols: &'a [u8],
+    stack: &'a [u8],
+    debug_start: u32,
+}
+
+fn read_fasl_ranges(bytes: &[u8]) -> Result<FaslRanges<'_>, ObjectError> {
+    let code = range(bytes, "code", u32_at(bytes, 24)?, u32_at(bytes, 28)?)?;
+    let reloc_size = u32_at(bytes, 36)?
+        .checked_mul(16)
+        .ok_or(ObjectError::InvalidField {
+            field: "relocation size",
+            value: u64::MAX,
+        })?;
+    let reloc = range(bytes, "relocation", u32_at(bytes, 32)?, reloc_size)?;
+    let constants = range(bytes, "constant", u32_at(bytes, 40)?, u32_at(bytes, 44)?)?;
+    let symbols = range(bytes, "symbol", u32_at(bytes, 48)?, u32_at(bytes, 52)?)?;
+    let stack_offset = u32_at(bytes, 56)?;
+    let stack_size = u32_at(bytes, 60)?;
+    let stack = range(bytes, "stack map", stack_offset, stack_size)?;
+    let debug_start =
+        stack_offset
+            .checked_add(stack_size)
+            .ok_or_else(|| ObjectError::OutOfBounds {
+                section: "debug",
+                offset: u64::from(stack_offset),
+                size: u64::from(stack_size),
+            })?;
+    validate_section_order(&[
+        ("code", u32_at(bytes, 24)?, u32_at(bytes, 28)?),
+        ("relocation", u32_at(bytes, 32)?, reloc_size),
+        ("constant", u32_at(bytes, 40)?, u32_at(bytes, 44)?),
+        ("symbol", u32_at(bytes, 48)?, u32_at(bytes, 52)?),
+        ("stack map", stack_offset, stack_size),
+    ])?;
+    Ok(FaslRanges {
+        code,
+        reloc,
+        constants,
+        symbols,
+        stack,
+        debug_start,
+    })
 }
 
 fn encode_relocations(items: &[Relocation]) -> Result<Vec<u8>, ObjectError> {

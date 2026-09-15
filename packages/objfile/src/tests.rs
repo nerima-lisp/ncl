@@ -183,8 +183,7 @@ fn signed_minimal_macho_executes() {
     };
     let path = std::env::temp_dir().join("ncl-objfile-minimal-macho");
     let Ok(bytes) = write_mach_executable(&image, MachArchitecture::Arm64) else {
-        assert!(false, "writer failed");
-        return;
+        unreachable!("writer failed");
     };
     let write_result = std::fs::write(&path, bytes);
     assert!(write_result.is_ok(), "write failed");
@@ -192,13 +191,11 @@ fn signed_minimal_macho_executes() {
         .args(["--sign", "-", path.to_str().unwrap_or_default()])
         .status()
     else {
-        assert!(false, "codesign failed to start");
-        return;
+        unreachable!("codesign failed to start");
     };
     assert!(signed.success());
     let Ok(result) = std::process::Command::new(&path).status() else {
-        assert!(false, "execution failed to start");
-        return;
+        unreachable!("execution failed to start");
     };
     assert_eq!(result.code(), Some(0));
     let _ = std::fs::remove_file(path);

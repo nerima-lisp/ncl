@@ -140,74 +140,121 @@ impl ElfObject {
         align(&mut out, 8);
         ranges[5] = (out.len() as u64, rela_ncl.len() as u64);
         out.extend_from_slice(&rela_ncl);
-        let mut symtab = vec![0; 24];
-        for (index, symbol) in self.symbols.iter().enumerate() {
-            let mut entry = [0; 24];
-            entry[0..4].copy_from_slice(&symbol_names[index].to_le_bytes());
-            entry[4] = if symbol.global { 0x10 } else { 0 };
-            entry[5] = symbol_section(self, symbol);
-            entry[6..8].copy_from_slice(&0u16.to_le_bytes());
-            entry[8..16].copy_from_slice(&symbol.value.to_le_bytes());
-            symtab.extend_from_slice(&entry);
-        }
-        align(&mut out, 8);
-        ranges[6] = (out.len() as u64, symtab.len() as u64);
-        out.extend_from_slice(&symtab);
-        ranges[7] = (out.len() as u64, strtab.len() as u64);
-        out.extend_from_slice(&strtab);
-        ranges[8] = (out.len() as u64, shstr.len() as u64);
-        out.extend_from_slice(&shstr);
-        align(&mut out, 8);
-        let shoff = out.len() as u64;
-        out.extend_from_slice(&[0; 64]);
-        for index in 1..9 {
-            let mut sh = [0; 64];
-            sh[0..4].copy_from_slice(&name_offsets[index - 1].to_le_bytes());
-            let (ty, flags, link, info, align_value, entsize): (u32, u64, u32, u32, u64, u64) =
-                match index {
-                    1 => (1, 6, 0, 0, 16, 0),
-                    2 => (1, 2, 0, 0, 1, 0),
-                    3 => (1, 0, 0, 0, 1, 0),
-                    4 | 5 => (4, 0, 6, if index == 4 { 1 } else { 3 }, 8, 24),
-                    6 => (
-                        2,
-                        0,
-                        7,
-                        u32::try_from(self.symbols.len() + 1).map_err(|_| {
-                            ObjectError::InvalidField {
-                                field: "symbol count",
-                                value: u64::MAX,
-                            }
-                        })?,
-                        8,
-                        24,
-                    ),
-                    7 | 8 => (3, 0, 0, 0, 1, 0),
-                    _ => (0, 0, 0, 0, 1, 0),
-                };
-            sh[4..8].copy_from_slice(&ty.to_le_bytes());
-            sh[8..16].copy_from_slice(&flags.to_le_bytes());
-            sh[24..32].copy_from_slice(&ranges[index].0.to_le_bytes());
-            sh[32..40].copy_from_slice(&ranges[index].1.to_le_bytes());
-            sh[40..44].copy_from_slice(&link.to_le_bytes());
-            sh[44..48].copy_from_slice(&info.to_le_bytes());
-            sh[48..56].copy_from_slice(&align_value.to_le_bytes());
-            sh[56..64].copy_from_slice(&entsize.to_le_bytes());
-            out.extend_from_slice(&sh);
-        }
-        out[0..4].copy_from_slice(b"\x7fELF");
-        out[4] = 2;
-        out[5] = 1;
-        out[6] = 1;
-        out[16..18].copy_from_slice(&1u16.to_le_bytes());
-        out[18..20].copy_from_slice(&machine.to_le_bytes());
-        out[20..24].copy_from_slice(&1u32.to_le_bytes());
-        out[40..48].copy_from_slice(&shoff.to_le_bytes());
-        out[58..60].copy_from_slice(&64u16.to_le_bytes());
-        out[60..62].copy_from_slice(&9u16.to_le_bytes());
-        out[62..64].copy_from_slice(&8u16.to_le_bytes());
-        Ok(out)
+        finish_elf(ElfFinish {
+            object: self,
+            out,
+            ranges,
+            name_offsets,
+            strtab,
+            shstr,
+            symbol_names,
+            machine,
+        })
     }
+}
+
+struct ElfFinish<'a> {
+    object: &'a ElfObject,
+    out: Vec<u8>,
+    ranges: [(u64, u64); 9],
+    name_offsets: Vec<u32>,
+    strtab: Vec<u8>,
+    shstr: Vec<u8>,
+    symbol_names: Vec<u32>,
+    machine: u16,
+}
+
+fn finish_elf(finish: ElfFinish<'_>) -> Result<Vec<u8>, ObjectError> {
+    let ElfFinish {
+        object,
+        mut out,
+        mut ranges,
+        name_offsets,
+        strtab,
+        shstr,
+        symbol_names,
+        machine,
+    } = finish;
+    let mut symtab = vec![0; 24];
+    for (index, symbol) in object.symbols.iter().enumerate() {
+        let mut entry = [0; 24];
+        entry[0..4].copy_from_slice(&symbol_names[index].to_le_bytes());
+        entry[4] = if symbol.global { 0x10 } else { 0 };
+        entry[5] = symbol_section(object, symbol);
+        entry[8..16].copy_from_slice(&symbol.value.to_le_bytes());
+        symtab.extend_from_slice(&entry);
+    }
+    align(&mut out, 8);
+    ranges[6] = (out.len() as u64, symtab.len() as u64);
+    out.extend_from_slice(&symtab);
+    ranges[7] = (out.len() as u64, strtab.len() as u64);
+    out.extend_from_slice(&strtab);
+    ranges[8] = (out.len() as u64, shstr.len() as u64);
+    out.extend_from_slice(&shstr);
+    align(&mut out, 8);
+    let shoff = out.len() as u64;
+    out.extend_from_slice(&[0; 64]);
+    for index in 1..9 {
+        write_section_header(
+            &mut out,
+            &ranges,
+            &name_offsets,
+            index,
+            object.symbols.len(),
+        )?;
+    }
+    out[0..4].copy_from_slice(b"\x7fELF");
+    out[4] = 2;
+    out[5] = 1;
+    out[6] = 1;
+    out[16..18].copy_from_slice(&1u16.to_le_bytes());
+    out[18..20].copy_from_slice(&machine.to_le_bytes());
+    out[20..24].copy_from_slice(&1u32.to_le_bytes());
+    out[40..48].copy_from_slice(&shoff.to_le_bytes());
+    out[58..60].copy_from_slice(&64u16.to_le_bytes());
+    out[60..62].copy_from_slice(&9u16.to_le_bytes());
+    out[62..64].copy_from_slice(&8u16.to_le_bytes());
+    Ok(out)
+}
+
+fn write_section_header(
+    out: &mut Vec<u8>,
+    ranges: &[(u64, u64); 9],
+    names: &[u32],
+    index: usize,
+    symbols: usize,
+) -> Result<(), ObjectError> {
+    let (ty, flags, link, info, align_value, entsize): (u32, u64, u32, u32, u64, u64) = match index
+    {
+        1 => (1, 6, 0, 0, 16, 0),
+        2 => (1, 2, 0, 0, 1, 0),
+        3 => (1, 0, 0, 0, 1, 0),
+        4 | 5 => (4, 0, 6, if index == 4 { 1 } else { 3 }, 8, 24),
+        6 => (
+            2,
+            0,
+            7,
+            u32::try_from(symbols + 1).map_err(|_| ObjectError::InvalidField {
+                field: "symbol count",
+                value: u64::MAX,
+            })?,
+            8,
+            24,
+        ),
+        _ => (3, 0, 0, 0, 1, 0),
+    };
+    let mut sh = [0; 64];
+    sh[0..4].copy_from_slice(&names[index - 1].to_le_bytes());
+    sh[4..8].copy_from_slice(&ty.to_le_bytes());
+    sh[8..16].copy_from_slice(&flags.to_le_bytes());
+    sh[24..32].copy_from_slice(&ranges[index].0.to_le_bytes());
+    sh[32..40].copy_from_slice(&ranges[index].1.to_le_bytes());
+    sh[40..44].copy_from_slice(&link.to_le_bytes());
+    sh[44..48].copy_from_slice(&info.to_le_bytes());
+    sh[48..56].copy_from_slice(&align_value.to_le_bytes());
+    sh[56..64].copy_from_slice(&entsize.to_le_bytes());
+    out.extend_from_slice(&sh);
+    Ok(())
 }
 
 /// Validates an ELF64 relocatable object header and section table.

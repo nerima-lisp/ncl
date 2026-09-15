@@ -106,12 +106,14 @@ impl MachObject {
         write_segment(
             &mut out,
             &mut cursor,
-            &self.sections,
-            &offsets,
-            &relocation_offsets,
-            &relocation_counts,
-            segment_size,
-            nsects,
+            &SegmentLayout {
+                sections: &self.sections,
+                offsets: &offsets,
+                relocation_offsets: &relocation_offsets,
+                relocation_counts: &relocation_counts,
+                command_size: segment_size,
+                nsects,
+            },
         )?;
         write_u32(&mut out, cursor, 0x2);
         write_u32(&mut out, cursor + 4, 24);
@@ -141,16 +143,28 @@ impl MachObject {
     }
 }
 
+struct SegmentLayout<'a> {
+    sections: &'a [MachSection],
+    offsets: &'a [u32],
+    relocation_offsets: &'a [u32],
+    relocation_counts: &'a [u32],
+    command_size: u32,
+    nsects: u32,
+}
+
 fn write_segment(
     out: &mut [u8],
     cursor: &mut usize,
-    sections: &[MachSection],
-    offsets: &[u32],
-    relocation_offsets: &[u32],
-    relocation_counts: &[u32],
-    command_size: u32,
-    nsects: u32,
+    layout: &SegmentLayout<'_>,
 ) -> Result<(), ObjectError> {
+    let SegmentLayout {
+        sections,
+        offsets,
+        relocation_offsets,
+        relocation_counts,
+        command_size,
+        nsects,
+    } = *layout;
     write_u32(out, *cursor, 0x19);
     write_u32(out, *cursor + 4, command_size);
     write_name(out, *cursor + 8, "__TEXT");
@@ -293,6 +307,15 @@ pub fn validate_macho(bytes: &[u8], architecture: MachArchitecture) -> Result<()
             "invalid Mach-O load commands",
         ));
     }
+    validate_macho_commands(bytes, command_end, ncmds)?;
+    Ok(())
+}
+
+fn validate_macho_commands(
+    bytes: &[u8],
+    command_end: usize,
+    ncmds: u32,
+) -> Result<(), ObjectError> {
     let mut cursor = 32usize;
     let mut has_segment = false;
     for _ in 0..ncmds {

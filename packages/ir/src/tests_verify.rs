@@ -236,14 +236,220 @@ fn verifier_reports_each_reachable_error_fixture() {
 }
 
 #[test]
-fn verifier_error_catalog_names_unimplemented_checks() {
-    let catalog = [
-        VerifyError::DuplicateBlock(BlockId(0)),
-        VerifyError::DuplicateValue(ValueId(0)),
-        VerifyError::TypeMismatch(BlockId(0)),
-        VerifyError::SafepointWarning(BlockId(0)),
-    ];
-    assert_eq!(catalog.len(), 4);
+fn verifier_reports_duplicate_block() {
+    let function = finish(
+        "duplicate-block",
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        vec![
+            block(0, Vec::new(), Terminator::Return { values: Vec::new() }),
+            block(0, Vec::new(), Terminator::Return { values: Vec::new() }),
+        ],
+        Vec::new(),
+    );
+    verify_has(&function, &VerifyError::DuplicateBlock(BlockId(0)));
+}
+
+#[test]
+fn verifier_reports_duplicate_value() {
+    let function = finish(
+        "duplicate-value",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::Nil],
+        vec![block(
+            0,
+            vec![
+                op(
+                    &[(0, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+                op(
+                    &[(0, Ty::Word)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                ),
+            ],
+            Terminator::Return { values: Vec::new() },
+        )],
+        Vec::new(),
+    );
+    verify_has(&function, &VerifyError::DuplicateValue(ValueId(0)));
+}
+
+#[test]
+fn verifier_reports_type_mismatch() {
+    let function = finish(
+        "wrong-branch-condition",
+        Vec::new(),
+        Vec::new(),
+        vec![Constant::Fixnum(1)],
+        vec![
+            block(
+                0,
+                vec![op(
+                    &[(0, Ty::I64)],
+                    OpKind::Const {
+                        result: ConstantIndex(0),
+                    },
+                )],
+                Terminator::Branch {
+                    condition: ValueId(0),
+                    then_target: BlockId(1),
+                    then_args: Vec::new(),
+                    else_target: BlockId(2),
+                    else_args: Vec::new(),
+                },
+            ),
+            block(1, Vec::new(), Terminator::Return { values: Vec::new() }),
+            block(2, Vec::new(), Terminator::Return { values: Vec::new() }),
+        ],
+        Vec::new(),
+    );
+    verify_has(&function, &VerifyError::TypeMismatch(BlockId(0)));
+}
+
+#[test]
+fn verifier_accepts_unique_ids_and_matching_types() {
+    let function = finish(
+        "valid-structure",
+        vec![Param {
+            name: "condition".into(),
+            ty: Ty::Bool,
+        }],
+        vec![Ty::Bool],
+        Vec::new(),
+        vec![
+            block(
+                0,
+                Vec::new(),
+                Terminator::Jump {
+                    target: BlockId(1),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                Vec::new(),
+                Terminator::Return {
+                    values: vec![ValueId(0)],
+                },
+            ),
+        ],
+        Vec::new(),
+    );
+    assert!(verify(&function).is_ok());
+}
+
+#[test]
+fn verifier_rejects_value_not_dominated_by_use_block() {
+    let function = finish(
+        "non-dominating-value",
+        vec![Param {
+            name: "condition".into(),
+            ty: Ty::Bool,
+        }],
+        vec![Ty::Bool],
+        Vec::new(),
+        vec![
+            block(
+                0,
+                Vec::new(),
+                Terminator::Branch {
+                    condition: ValueId(0),
+                    then_target: BlockId(1),
+                    then_args: Vec::new(),
+                    else_target: BlockId(2),
+                    else_args: Vec::new(),
+                },
+            ),
+            block(
+                1,
+                vec![op(&[(1, Ty::Bool)], OpKind::Move { value: ValueId(0) })],
+                Terminator::Jump {
+                    target: BlockId(3),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                2,
+                Vec::new(),
+                Terminator::Jump {
+                    target: BlockId(3),
+                    args: Vec::new(),
+                },
+            ),
+            block(
+                3,
+                Vec::new(),
+                Terminator::Return {
+                    values: vec![ValueId(1)],
+                },
+            ),
+        ],
+        Vec::new(),
+    );
+    verify_has(&function, &VerifyError::UndefinedValue(ValueId(1)));
+}
+
+#[test]
+fn verifier_reports_missing_call_safepoint_and_accepts_present_one() {
+    let without = finish(
+        "missing-safepoint",
+        vec![Param {
+            name: "callee".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![block(
+            0,
+            vec![op(
+                &[(1, Ty::Word)],
+                OpKind::Call {
+                    function: ValueId(0),
+                    args: Vec::new(),
+                },
+            )],
+            Terminator::Return {
+                values: vec![ValueId(1)],
+            },
+        )],
+        Vec::new(),
+    );
+    verify_has(&without, &VerifyError::SafepointWarning(BlockId(0)));
+
+    let with = finish(
+        "present-safepoint",
+        vec![Param {
+            name: "callee".into(),
+            ty: Ty::Word,
+        }],
+        vec![Ty::Word],
+        Vec::new(),
+        vec![block(
+            0,
+            vec![
+                op(&[], OpKind::Safepoint),
+                op(
+                    &[(1, Ty::Word)],
+                    OpKind::Call {
+                        function: ValueId(0),
+                        args: Vec::new(),
+                    },
+                ),
+            ],
+            Terminator::Return {
+                values: vec![ValueId(1)],
+            },
+        )],
+        Vec::new(),
+    );
+    assert!(verify(&with).is_ok());
 }
 
 #[test]

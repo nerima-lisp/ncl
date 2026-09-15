@@ -300,3 +300,25 @@ fn stop_the_world_waits_for_mutator_poll() {
     crate::collect(&mut collector, false);
     assert!(worker.join().is_ok());
 }
+
+#[test]
+fn conservative_scan_rejects_interior_and_wrong_tag() {
+    let heap = Heap::new(HeapConfig::default());
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+    let object = heap
+        .alloc_cons(&mut thread, Word::NIL, Word::NIL)
+        .unwrap_or(Word::NIL);
+    crate::publish_conservative_root(
+        &mut thread,
+        Word::pointer(object.address() + 8, crate::LowTag::List),
+    );
+    crate::publish_conservative_root(
+        &mut thread,
+        Word::pointer(object.address(), crate::LowTag::OtherPointer),
+    );
+    heap.collect(false);
+    let state = heap.lock_state();
+    assert!(!state.objects.iter().any(|candidate| candidate.alive));
+    drop(state);
+}

@@ -202,6 +202,19 @@ impl Heap {
         }
         state.objects[index].alive.then_some(index)
     }
+    fn find_conservative(state: &State, value: Word) -> Option<usize> {
+        let expected = if value.is_list() {
+            PageKind::Cons
+        } else if value.lowtag() == crate::LowTag::OtherPointer as u8 {
+            PageKind::HeaderObject
+        } else {
+            return None;
+        };
+        let index = Self::find_raw(state, value)?;
+        let object = &state.objects[index];
+        (object.kind == expected && value.address() == object.words.as_ptr() as usize)
+            .then_some(index)
+    }
     fn layout(state: &State, index: usize) -> Vec<usize> {
         if state.objects[index].kind == PageKind::Cons {
             return vec![0, 1];
@@ -258,12 +271,12 @@ impl Heap {
             callback(Word::NIL);
         }
     }
-    #[allow(
-        clippy::too_many_lines,
-        reason = "collection phases share one lock to preserve forwarding invariants"
-    )]
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn collect(&self, full: bool) {
         let mut state = self.lock_state();
+        for object in &mut state.objects {
+            object.pinned = false;
+        }
         let mut live = HashSet::new();
         let mut stack = Vec::new();
         let mut root_slots = state.roots.clone();
@@ -272,12 +285,12 @@ impl Heap {
             // SAFETY: registered thread pointers remain valid until unregister_thread.
             unsafe {
                 root_slots.extend((*thread).roots.iter().copied());
-                conservative_values.extend((*thread).conservative_roots.iter().copied());
+                conservative_values.extend((*thread).conservative_snapshot());
             }
         }
         let mut conservative_indices = Vec::new();
         for value in conservative_values {
-            if let Some(index) = Self::find(&state, value) {
+            if let Some(index) = Self::find_conservative(&state, value) {
                 state.objects[index].pinned = true;
                 conservative_indices.push(index);
             }

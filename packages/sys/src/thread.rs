@@ -113,18 +113,30 @@ impl Thread {
         }
     }
     pub(crate) fn publish_snapshot(&mut self) {
-        let marker = 0_u8;
-        let address = std::ptr::from_ref(&marker) as usize;
-        self.stack_bounds = Some((address, address + 1));
+        self.stack_bounds = current_stack_bounds();
         self.callee_saved = crate::snapshot_callee_saved();
+    }
+    pub(crate) fn conservative_snapshot(&self) -> Vec<Word> {
+        let mut values = self.conservative_roots.clone();
+        values.extend(self.callee_saved.iter().copied().map(Word::from_bits));
+        if let Some((start, end)) = self.stack_bounds {
+            let mut address = start.next_multiple_of(8);
+            while address.checked_add(8).is_some_and(|next| next <= end) {
+                // SAFETY: the collector reads only a published, stopped stack interval at word alignment.
+                values.push(unsafe { Word::from_bits((address as *const u64).read()) });
+                address += 8;
+            }
+        }
+        values
     }
     pub(crate) const fn enter_native(&mut self) {
         self.native = NativeState::Native;
         self.state = SafepointState::Safe;
     }
-    pub(crate) const fn leave_native(&mut self) {
+    pub(crate) fn leave_native(&mut self) {
         self.native = NativeState::Lisp;
         self.state = SafepointState::Running;
+        self.poll_safepoint();
     }
     pub(crate) fn heap_collect(&mut self, full: bool) {
         if let Some(heap) = self.heap {
@@ -133,8 +145,6 @@ impl Thread {
                 (*heap).collect_with_thread(self, full);
             }
         }
-        self.state = SafepointState::Collecting;
-        self.state = SafepointState::Running;
     }
     /// Request delivery of an interrupt at the next safepoint.
     pub const fn request_interrupt(&mut self) {
@@ -151,3 +161,43 @@ impl Thread {
 
 // SAFETY: a Thread is an owner-local mutator context and is transferred to one OS thread at a time.
 unsafe impl Send for Thread {}
+
+#[cfg(target_os = "macos")]
+fn current_stack_bounds() -> Option<(usize, usize)> {
+    // SAFETY: pthread_self identifies the calling thread and both APIs return its live stack extent.
+    unsafe {
+        let thread = crate::os::declarations::pthread_self();
+        let top = crate::os::declarations::pthread_get_stackaddr_np(thread) as usize;
+        let size = crate::os::declarations::pthread_get_stacksize_np(thread);
+        top.checked_sub(size).map(|start| (start, top))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn current_stack_bounds() -> Option<(usize, usize)> {
+    let mut attr = [0_u8; 128];
+    let mut start = ptr::null_mut();
+    let mut size = 0;
+    // SAFETY: pthread attributes are written to platform ABI storage and destroyed after use.
+    let result = unsafe {
+        let thread = crate::os::declarations::pthread_self();
+        let result = crate::os::declarations::pthread_getattr_np(thread, attr.as_mut_ptr().cast());
+        if result == 0 {
+            let result = crate::os::declarations::pthread_attr_getstack(
+                attr.as_ptr().cast(),
+                &mut start,
+                &mut size,
+            );
+            let _ = crate::os::declarations::pthread_attr_destroy(attr.as_mut_ptr().cast());
+            result
+        } else {
+            result
+        }
+    };
+    (result == 0).then_some((start as usize, (start as usize).saturating_add(size)))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+const fn current_stack_bounds() -> Option<(usize, usize)> {
+    None
+}

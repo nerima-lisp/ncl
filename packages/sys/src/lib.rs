@@ -7,7 +7,7 @@ mod code;
 mod heap;
 mod heap_state;
 mod heap_types;
-mod os;
+pub mod os;
 mod stw;
 mod sync;
 mod thread;
@@ -150,7 +150,7 @@ pub const fn enter_native(thread: &mut Thread) {
 }
 
 /// Leave a foreign/native section.
-pub const fn leave_native(thread: &mut Thread) {
+pub fn leave_native(thread: &mut Thread) {
     thread.leave_native();
 }
 

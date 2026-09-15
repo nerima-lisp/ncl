@@ -21,6 +21,8 @@ dependencies = [
  "ncl-asm-aarch64",
  "ncl-asm-x86-64",
  "ncl-ir",
+ "ncl-object",
+ "ncl-sys",
 ]
 
 [[package]]

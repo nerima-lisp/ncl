@@ -1,6 +1,12 @@
 use crate::{Word, os::declarations};
 use core::ptr::NonNull;
-use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[path = "code/metadata.rs"]
+mod metadata;
+pub use metadata::{CodeObjectMetadata, SourceLocation};
+#[path = "code/registry.rs"]
+mod registry;
+pub use registry::CodeRegistry;
 
 const PAGE_SIZE: usize = 4096;
 const PROT_READ: i32 = 1;
@@ -17,21 +23,32 @@ const MAP_ANON: i32 = 0x20;
 /// Errors from executable code-space operations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CodeError {
+    /// The requested mapping has zero bytes.
     EmptyAllocation,
+    /// A range or address arithmetic operation exceeded the allocation.
     OutOfBounds,
+    /// Publication was requested after executable publication.
     AlreadyPublished,
+    /// A registry operation requires published code.
     NotPublished,
+    /// The operating system rejected the mapping request.
     MappingFailed,
+    /// The operating system rejected executable page permissions.
     ProtectionFailed,
+    /// A live registered frame still returns into the code allocation.
+    CodeInUse,
+    /// The code allocation is not present in the heap registry.
+    NotRegistered,
 }
 
 /// A page-backed, non-moving code allocation.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct CodePtr {
     ptr: NonNull<u8>,
     len: usize,
     mapping_len: usize,
-    published: bool,
+    published: AtomicBool,
+    entry: AtomicUsize,
 }
 
 impl CodePtr {
@@ -41,20 +58,13 @@ impl CodePtr {
         // SAFETY: ptr is a live mmap allocation owned by self.
         unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
     }
-    /// Return writable code bytes for relocation.
-    pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
-        (!self.published).then(|| {
-            // SAFETY: this allocation is writable until publication.
-            unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
-        })
-    }
     /// Copy bytes into the allocation at a checked offset.
     ///
     /// # Errors
     ///
     /// Returns an error for a published allocation or an out-of-bounds range.
     pub fn write_code(&mut self, offset: usize, bytes: &[u8]) -> Result<(), CodeError> {
-        if self.published {
+        if self.is_published() {
             return Err(CodeError::AlreadyPublished);
         }
         let end = offset
@@ -68,7 +78,11 @@ impl CodePtr {
         unsafe {
             declarations::pthread_jit_write_protect_np(0);
         };
-        self.as_mut_slice().ok_or(CodeError::AlreadyPublished)?[offset..end].copy_from_slice(bytes);
+        // SAFETY: the allocation is writable until publication and the checked range is in-bounds.
+        unsafe {
+            core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len)[offset..end]
+                .copy_from_slice(bytes);
+        }
         #[cfg(target_os = "macos")]
         // SAFETY: restore the JIT write-protection state after the copy.
         unsafe {
@@ -93,11 +107,16 @@ impl CodePtr {
     }
     /// Whether this allocation has been published.
     #[must_use]
-    pub const fn is_published(&self) -> bool {
-        self.published
+    pub fn is_published(&self) -> bool {
+        self.published.load(Ordering::Acquire)
+    }
+    /// Load the published entry address with acquire ordering.
+    #[must_use]
+    pub fn entry(&self) -> usize {
+        self.entry.load(Ordering::Acquire)
     }
     fn publish(&mut self) -> Result<(), CodeError> {
-        if self.published {
+        if self.is_published() {
             return Err(CodeError::AlreadyPublished);
         }
         #[cfg(not(target_os = "macos"))]
@@ -120,7 +139,8 @@ impl CodePtr {
             declarations::pthread_jit_write_protect_np(1);
             declarations::sys_icache_invalidate(self.ptr.as_ptr().cast(), self.len);
         }
-        self.published = true;
+        self.entry.store(self.address(), Ordering::Release);
+        self.published.store(true, Ordering::Release);
         Ok(())
     }
 }
@@ -168,11 +188,15 @@ pub fn alloc_code(bytes: usize) -> Result<CodePtr, CodeError> {
         ptr,
         len: bytes,
         mapping_len,
-        published: false,
+        published: AtomicBool::new(false),
+        entry: AtomicUsize::new(0),
     })
 }
 
-/// Release code storage.
+/// Release code storage that was never registered with a [`Heap`].
+///
+/// Registered code must be released through [`Heap::release_code`], which
+/// performs the stop-the-world quiescence check before dropping the mapping.
 pub fn free_code(code: CodePtr) {
     drop(code);
 }
@@ -195,71 +219,27 @@ pub fn write_code(code: &mut CodePtr, offset: usize, bytes: &[u8]) -> Result<(),
     code.write_code(offset, bytes)
 }
 
-/// Metadata registered for one immutable code range.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodeObjectMetadata {
-    pub entry_offset: usize,
-    pub size: usize,
-    pub constant_slots: Vec<Word>,
-    pub safepoint_map: SafepointMap,
-    pub debug_table: Vec<u8>,
-}
-
-/// PC range index for published code objects.
-#[derive(Clone, Debug, Default)]
-pub struct CodeRegistry {
-    objects: BTreeMap<usize, (usize, CodeObjectMetadata)>,
-}
-impl CodeRegistry {
-    /// Register metadata for a published code allocation.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the code allocation has not been published.
-    pub fn register(
-        &mut self,
-        code: &CodePtr,
-        metadata: CodeObjectMetadata,
-    ) -> Result<(), CodeError> {
-        if !code.is_published() {
-            return Err(CodeError::NotPublished);
-        }
-        let end = code
-            .address()
-            .checked_add(code.len())
-            .ok_or(CodeError::OutOfBounds)?;
-        self.objects.insert(code.address(), (end, metadata));
-        Ok(())
-    }
-    /// Remove metadata before releasing a code allocation.
-    pub fn unregister(&mut self, code: &CodePtr) -> Option<CodeObjectMetadata> {
-        self.objects
-            .remove(&code.address())
-            .map(|(_, metadata)| metadata)
-    }
-    /// Resolve a PC to its containing code object and relative offset.
-    #[must_use]
-    pub fn find(&self, pc: usize) -> Option<(&CodeObjectMetadata, u32)> {
-        let (base, (end, metadata)) = self.objects.range(..=pc).next_back()?;
-        if pc >= *end {
-            return None;
-        }
-        Some((metadata, u32::try_from(pc - base).ok()?))
-    }
-}
-
 /// One decoded safepoint entry.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Safepoint {
+    /// Code-relative return-PC offset selected by this entry.
     pub pc_offset: u32,
+    /// Number of words occupied by the complete frame.
     pub frame_words: u16,
+    /// Number of frame words covered by the bitmap.
     pub slot_words: u16,
+    /// Number of bitmap slots that contain Lisp words.
     pub word_slot_count: u16,
+    /// Bit mask identifying callee-saved registers to scan.
     pub register_mask: u16,
+    /// Backend-specific flags associated with this safepoint.
     pub map_flags: u32,
+    /// Bitset of live frame slots, indexed from the frame header.
     pub slot_bitmap: Vec<u8>,
+    /// Register indices corresponding to set bits in `register_mask`.
     pub register_ids: Vec<u16>,
 }
+/// Sorted safepoint metadata for one published code object.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SafepointMap {
     entries: Vec<Safepoint>,
@@ -267,9 +247,13 @@ pub struct SafepointMap {
 /// The fixed four-word native frame header.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FrameHeader {
+    /// Word index of the caller frame, or zero at the chain terminus.
     pub previous: usize,
+    /// Native return address used to resolve the code object and map.
     pub return_pc: usize,
+    /// Function object associated with this invocation.
     pub function: Word,
+    /// Backend-defined frame flags.
     pub flags: u64,
 }
 
@@ -383,6 +367,7 @@ impl SafepointMap {
         self.lookup(pc_offset)
     }
     #[must_use]
+    /// Find the map selected by a code-relative PC offset.
     pub fn lookup(&self, pc_offset: u32) -> Option<&Safepoint> {
         self.entries[..]
             .binary_search_by_key(&pc_offset, |entry| entry.pc_offset)
@@ -392,10 +377,12 @@ impl SafepointMap {
             )
     }
     #[must_use]
+    /// Return all entries in increasing PC order.
     pub fn entries(&self) -> &[Safepoint] {
         &self.entries
     }
     #[must_use]
+    /// Test whether a frame slot is a live Lisp word for this map.
     pub fn is_slot_live(map: &Safepoint, slot: usize) -> bool {
         slot < usize::from(map.word_slot_count)
             && map
@@ -420,6 +407,25 @@ pub fn scan_frame(
     for slot in 0..usize::from(map.slot_words).min(frame_end - frame_start) {
         if SafepointMap::is_slot_live(map, slot) {
             words[frame_start + slot] = forward(words[frame_start + slot]);
+            updated += 1;
+        }
+    }
+    Some(updated)
+}
+
+/// Scan one frame and its mapped callee-saved register slots.
+pub fn scan_frame_with_registers(
+    words: &mut [Word],
+    frame_start: usize,
+    map: &Safepoint,
+    registers: &mut [Word],
+    mut forward: impl FnMut(Word) -> Word,
+) -> Option<usize> {
+    let mut updated = scan_frame(words, frame_start, map, &mut forward)?;
+    for register_id in &map.register_ids {
+        let index = usize::from(*register_id);
+        if let Some(register) = registers.get_mut(index) {
+            *register = forward(*register);
             updated += 1;
         }
     }
@@ -452,5 +458,30 @@ pub fn scan_frame_chain(
     (frames > 0).then_some(updated)
 }
 
+/// Scan a frame chain by resolving each return PC through the code registry.
+pub fn scan_frame_chain_with_registry(
+    words: &mut [Word],
+    first: usize,
+    registry: &CodeRegistry,
+    registers: &mut [Word],
+    mut forward: impl FnMut(Word) -> Word,
+) -> Option<usize> {
+    let mut at = first;
+    let mut updated = 0;
+    let mut frames = 0;
+    while at.checked_add(3).is_some_and(|end| end < words.len()) {
+        let return_pc = words[at + 1].address();
+        let (metadata, offset) = registry.find(return_pc)?;
+        let map = metadata.safepoint_map.find_map(offset)?;
+        updated += scan_frame_with_registers(words, at, map, registers, &mut forward)?;
+        frames += 1;
+        let previous = words[at].address();
+        if previous == 0 || previous == at {
+            break;
+        }
+        at = previous;
+    }
+    (frames > 0).then_some(updated)
+}
 #[cfg(test)]
 mod tests;

@@ -1,4 +1,4 @@
-use crate::{Finalizer, PageKind, ReferenceLayout, Thread, Weakness, Word};
+use crate::{CodeRegistry, Finalizer, PageKind, ReferenceLayout, Thread, Weakness, Word};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
@@ -23,4 +23,5 @@ pub struct State {
     pub(crate) roots: Vec<*mut Word>,
     pub(crate) finalizers: Vec<(Word, Finalizer)>,
     pub(crate) after_gc_hooks: Vec<fn()>,
+    pub(crate) code_registry: CodeRegistry,
 }

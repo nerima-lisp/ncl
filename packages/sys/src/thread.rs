@@ -4,16 +4,23 @@ use std::ptr;
 /// Native transition state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeState {
+    /// The mutator is executing Lisp code.
     Lisp,
+    /// The mutator is executing outside the managed heap.
     Native,
 }
 /// Cooperative safepoint state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SafepointState {
+    /// The mutator may continue running.
     Running,
+    /// A collector has requested a safepoint.
     PollRequested,
+    /// The mutator has published its root snapshot.
     Published,
+    /// The collector is scanning this mutator.
     Collecting,
+    /// The mutator is outside the managed heap and safe to stop.
     Safe,
 }
 /// A LIFO shadow-root handle.
@@ -49,18 +56,28 @@ pub struct Thread {
     pub(crate) cleanup: usize,
     pub(crate) catch: usize,
     pub(crate) pending: bool,
+    pub(crate) frame_chain: Vec<Word>,
+    pub(crate) frame_registers: Vec<Word>,
 }
 
 /// Native offsets consumed by the code generator when addressing a thread context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ThreadLayout {
+    /// Offset of the TLAB allocation cursor.
     pub tlab_bump: usize,
+    /// Offset of the TLAB allocation limit.
     pub tlab_limit: usize,
+    /// Offset of the safepoint state word.
     pub safepoint_state: usize,
+    /// Offset of the pending interrupt flag.
     pub pending: usize,
+    /// Offset of the multiple-value return vector.
     pub mv: usize,
+    /// Offset of the handler chain.
     pub handler: usize,
+    /// Offset of the cleanup chain.
     pub cleanup: usize,
+    /// Offset of the catch chain.
     pub catch: usize,
 }
 
@@ -107,6 +124,8 @@ impl Thread {
             cleanup: 0,
             catch: 0,
             pending: false,
+            frame_chain: Vec::new(),
+            frame_registers: Vec::new(),
         }
     }
     pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
@@ -210,6 +229,11 @@ impl Thread {
         let pending = self.interrupt;
         self.interrupt = false;
         pending
+    }
+    /// Install a precise native frame and register snapshot for collection.
+    pub fn set_frame_snapshot(&mut self, frames: Vec<Word>, registers: Vec<Word>) {
+        self.frame_chain = frames;
+        self.frame_registers = registers;
     }
 }
 

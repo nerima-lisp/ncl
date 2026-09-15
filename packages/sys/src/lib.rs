@@ -1,6 +1,4 @@
 #![deny(unsafe_op_in_unsafe_fn, clippy::undocumented_unsafe_blocks)]
-#![allow(missing_docs, dead_code)]
-
 //! The single unsafe boundary of the NCL runtime.
 
 mod code;
@@ -15,8 +13,8 @@ mod word;
 
 pub use code::{
     CodeError, CodeObjectMetadata, CodePtr, CodeRegistry, FrameHeader, Safepoint, SafepointMap,
-    alloc_code, free_code, publish_code, scan_frame, scan_frame_chain, walk_frame_headers,
-    write_code,
+    SourceLocation, alloc_code, free_code, publish_code, scan_frame, scan_frame_chain,
+    scan_frame_chain_with_registry, scan_frame_with_registers, walk_frame_headers, write_code,
 };
 pub use heap::{
     Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,

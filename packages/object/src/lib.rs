@@ -14,9 +14,9 @@ pub mod hash_table;
 mod instance;
 mod layout;
 mod number;
+mod object_access;
 pub mod package;
 mod readtable;
-mod remaining;
 mod runtime_extensions;
 mod specialized_array;
 mod stream;
@@ -27,11 +27,13 @@ pub use array::{
     simple_vector_set, string_length, string_ref, string_set,
 };
 pub use builtin::{Builtin, FunctionObject, MultipleValues, NclStatus, RegisterFn};
+pub use code::code_slot;
 pub use code::{CodeObject, make_code_object};
 pub use cons::{rplaca, rplacd};
 pub use function::{
     Function, closure_ref, function_entry, function_name, make_closure, make_simple_fun,
 };
+pub use function::{function_code, function_lambda_list};
 pub use gc::{register, register_layouts};
 pub use instance::{Instance, instance_class, make_instance, slot_ref, slot_set};
 pub use layout::{
@@ -44,13 +46,17 @@ pub use number::{
     Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,
     make_complex, make_double, make_ratio,
 };
+pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
 use package::Package;
+pub use readtable::readtable_slot;
 pub use readtable::{Readtable, make_readtable};
-pub use remaining::{
+pub use stream::stream_slot;
+pub use structure::{layout, structure_layout};
+/* pub use remaining::{
     bignum_sign, code_slot, complex_imag, complex_real, function_code, function_lambda_list,
     ratio_denominator, ratio_numerator, readtable_slot, stream_slot,
 };
-pub use remaining::{layout, layout as structure_layout};
+pub use remaining::{layout, layout as structure_layout}; */
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
     specialized_array_set,

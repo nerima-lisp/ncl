@@ -3,9 +3,11 @@ pub use crate::heap_types::{
     Finalizer, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,
 };
-use crate::{Thread, Word};
+use crate::{CodeError, CodeObjectMetadata, CodePtr, Thread, Word};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Condvar, Mutex};
+#[path = "heap/collect.rs"]
+mod collect;
 #[path = "heap/scan.rs"]
 mod scan;
 const CARD_SIZE: usize = 512;
@@ -13,6 +15,7 @@ const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
 const FORWARDED_FLAG: u64 = 1 << 10;
 #[derive(Debug)]
+/// Moving heap and its stop-the-world coordination state.
 pub struct Heap {
     config: HeapConfig,
     state: Mutex<State>,
@@ -29,6 +32,7 @@ impl Default for HeapConfig {
 }
 impl Heap {
     #[must_use]
+    /// Construct an empty heap with the supplied capacity policy.
     pub fn new(config: HeapConfig) -> Self {
         Self {
             config,
@@ -41,14 +45,17 @@ impl Heap {
                 roots: Vec::new(),
                 finalizers: Vec::new(),
                 after_gc_hooks: Vec::new(),
+                code_registry: crate::CodeRegistry::default(),
             }),
             stop_world: Mutex::new(crate::stw::StopWorld::default()),
             stop_world_ready: Condvar::new(),
         }
     }
+    /// Return the configured dynamic-space capacity in bytes.
     pub const fn dynamic_space_size(&self) -> usize {
         self.config.dynamic_space_size
     }
+    /// Return the allocation debt threshold that triggers collection.
     pub const fn bytes_considered_between_gcs(&self) -> usize {
         self.config.bytes_considered_between_gcs
     }
@@ -73,6 +80,76 @@ impl Heap {
         thread.heap = Some(self);
         Ok(())
     }
+    /// Register published code metadata for precise native frame scanning.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CodeError::NotPublished` when the code is not executable yet.
+    pub fn register_code(
+        &self,
+        code: &CodePtr,
+        metadata: CodeObjectMetadata,
+    ) -> Result<(), CodeError> {
+        self.lock_state().code_registry.register(code, metadata)
+    }
+    /// Remove code metadata before releasing its non-moving allocation.
+    pub fn unregister_code(&self, code: &CodePtr) -> Option<CodeObjectMetadata> {
+        self.lock_state().code_registry.unregister(code)
+    }
+    /// Quiesce all registered mutators, then unregister and release executable code.
+    ///
+    /// `code` remains in `owned` when a published return PC is still present, so
+    /// the caller can retry after the owning frames have unwound.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CodeError::CodeInUse`] while a stopped frame still points into
+    /// the mapping, or [`CodeError::NotRegistered`] when the registry has no entry.
+    pub fn release_code(
+        &self,
+        thread: &mut Thread,
+        owned: &mut Option<CodePtr>,
+    ) -> Result<(), CodeError> {
+        if thread.heap != Some(self) {
+            return Err(CodeError::NotRegistered);
+        }
+        let code = owned.as_ref().ok_or(CodeError::NotRegistered)?;
+        self.begin_collection(thread);
+        let live = {
+            let state = self.lock_state();
+            if state.code_registry.find(code.address()).is_none() {
+                false
+            } else {
+                state.threads.iter().copied().any(|candidate| {
+                    // SAFETY: collection has stopped registered mutators.
+                    unsafe {
+                        (*candidate)
+                            .frame_chain
+                            .iter()
+                            .skip(1)
+                            .step_by(5)
+                            .any(|return_pc| {
+                                let pc = return_pc.address();
+                                pc >= code.address() && pc < code.address() + code.len()
+                            })
+                    }
+                })
+            }
+        };
+        if live {
+            self.end_collection();
+            return Err(CodeError::CodeInUse);
+        }
+        let code = owned.take().ok_or(CodeError::NotRegistered)?;
+        let removed = self.lock_state().code_registry.unregister(&code);
+        self.end_collection();
+        if removed.is_none() {
+            drop(code);
+            return Err(CodeError::NotRegistered);
+        }
+        drop(code);
+        Ok(())
+    }
     pub(crate) fn unregister_thread(&self, thread: &Thread) {
         let mut state = self.lock_state();
         let pointer = std::ptr::from_ref(thread).cast_mut();
@@ -92,8 +169,8 @@ impl Heap {
             .threads
             .iter()
             .filter(|candidate| {
+                // SAFETY: registered thread pointers are valid until unregister_thread.
                 unsafe {
-                    // SAFETY: registered thread pointers are valid until unregister_thread.
                     let pointer = **candidate;
                     (&*pointer).native_state() != crate::NativeState::Native
                 }
@@ -135,28 +212,6 @@ impl Heap {
         let value = self.allocate(thread, PageKind::Cons, TypeTag { widetag: 0 }, 2)?;
         self.write_words(value, &[(0, car), (1, cdr)]);
         Ok(value)
-    }
-    pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
-        let state = self.lock_state();
-        state.objects[Self::find(&state, object)?]
-            .words
-            .get(slot)
-            .map(|value| Word::from_bits(*value))
-    }
-    pub(crate) fn write_word(&self, object: Word, slot: usize, value: Word) -> bool {
-        self.write_word_at(object, slot + 1, value)
-    }
-    pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
-        let mut state = self.lock_state();
-        Self::find(&state, object)
-            .and_then(|index| state.objects[index].words.get_mut(slot))
-            .map(|target| *target = value.bits())
-            .is_some()
-    }
-    pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
-        let state = self.lock_state();
-        let index = Self::find(&state, object)?;
-        Some(Self::object_widetag(&state.objects[index]))
     }
     fn allocate(
         &self,
@@ -239,6 +294,28 @@ impl Heap {
         (object.kind == expected && value.address() == object.words.as_ptr() as usize)
             .then_some(index)
     }
+    pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
+        let state = self.lock_state();
+        state.objects[Self::find(&state, object)?]
+            .words
+            .get(slot)
+            .map(|value| Word::from_bits(*value))
+    }
+    pub(crate) fn write_word(&self, object: Word, slot: usize, value: Word) -> bool {
+        self.write_word_at(object, slot + 1, value)
+    }
+    pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
+        let mut state = self.lock_state();
+        Self::find(&state, object)
+            .and_then(|index| state.objects[index].words.get_mut(slot))
+            .map(|target| *target = value.bits())
+            .is_some()
+    }
+    pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
+        let state = self.lock_state();
+        let index = Self::find(&state, object)?;
+        Some(u8::try_from(state.objects[index].words[0] & WIDETAG_MASK).unwrap_or(0))
+    }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
         let mut state = self.lock_state();
         if let Some(index) = Self::find(&state, object) {
@@ -286,205 +363,6 @@ impl Heap {
             callback(Word::NIL);
         }
     }
-    #[allow(clippy::too_many_lines)]
-    pub(crate) fn collect(&self, full: bool) {
-        let mut state = self.lock_state();
-        for object in &mut state.objects {
-            object.pinned = false;
-        }
-        let mut live = HashSet::new();
-        let mut stack = Vec::new();
-        let mut root_slots = state.roots.clone();
-        let mut conservative_values = Vec::new();
-        for thread in state.threads.iter().copied() {
-            unsafe {
-                // SAFETY: registered thread pointers remain valid until unregister_thread.
-                root_slots.extend((*thread).roots.iter().copied());
-                conservative_values.extend((*thread).conservative_snapshot());
-            }
-        }
-        let mut conservative_indices = Vec::new();
-        for value in conservative_values {
-            if let Some(index) = Self::find_conservative(&state, value) {
-                state.objects[index].pinned = true;
-                conservative_indices.push(index);
-            }
-        }
-        if !full {
-            for (index, _) in state.dirty_cards.clone() {
-                if state.objects.get(index).is_some_and(|object| object.alive) {
-                    stack.push(index);
-                }
-            }
-        }
-        for root in root_slots.iter().copied() {
-            if !root.is_null() {
-                // SAFETY: registered root slots outlive registration.
-                let value = unsafe { *root };
-                if let Some(index) = Self::find(&state, value) {
-                    stack.push(index);
-                }
-            }
-        }
-        stack.extend(conservative_indices);
-        while let Some(index) = stack.pop() {
-            if !live.insert(index) {
-                continue;
-            }
-            for slot in scan::layout(&state, index) {
-                if state.objects[index].weak.is_some() && slot == 1 {
-                    continue;
-                }
-                if let Some(value) = state.objects[index]
-                    .words
-                    .get(slot)
-                    .copied()
-                    .map(Word::from_bits)
-                    && let Some(next) = Self::find(&state, value)
-                {
-                    stack.push(next);
-                }
-            }
-        }
-        let mut moved = HashMap::new();
-        let original_len = state.objects.len();
-        for index in 0..original_len {
-            if !live.contains(&index)
-                || state.objects[index].generation >= 2
-                || state.objects[index].pinned
-            {
-                continue;
-            }
-            let source = &state.objects[index];
-            let mut copy = Object {
-                words: source.words.clone(),
-                kind: source.kind,
-                generation: source.generation,
-                survived: source.survived.saturating_add(1),
-                pinned: source.pinned,
-                weak: source.weak,
-                finalizer: source.finalizer,
-                alive: true,
-                forwarded_to: None,
-            };
-            copy.generation = copy.survived.min(2);
-            let old_address = source.words.as_ptr() as usize;
-            let new_address = copy.words.as_ptr() as usize;
-            let new_index = state.objects.len();
-            state.objects[index].forwarded_to = Some(new_index);
-            state.objects[index].alive = false;
-            if state.objects[index].kind != PageKind::Cons {
-                state.objects[index].words[0] |= FORWARDED_FLAG;
-                if state.objects[index].words.len() > 1 {
-                    state.objects[index].words[1] = 0;
-                }
-            }
-            moved.insert(old_address, new_address);
-            state.objects.push(copy);
-            live.insert(new_index);
-        }
-        for root in root_slots.iter().copied() {
-            if root.is_null() {
-                continue;
-            }
-            // SAFETY: registered root slots remain valid and uniquely mutable by their owner.
-            let value = unsafe { *root };
-            if let Some(address) = Self::relocated_address(&state, &moved, value) {
-                unsafe {
-                    // SAFETY: the root slot is registered and points to a valid Word.
-                    *root = Word::pointer(
-                        address,
-                        if value.is_list() {
-                            crate::LowTag::List
-                        } else {
-                            crate::LowTag::OtherPointer
-                        },
-                    );
-                }
-            }
-        }
-        for index in 0..state.objects.len() {
-            if !state.objects[index].alive {
-                continue;
-            }
-            for slot in scan::layout(&state, index) {
-                if state.objects[index].weak.is_some() && slot == 1 {
-                    continue;
-                }
-                if let Some(value) = state.objects[index]
-                    .words
-                    .get(slot)
-                    .copied()
-                    .map(Word::from_bits)
-                    && let Some(address) = Self::relocated_address(&state, &moved, value)
-                {
-                    state.objects[index].words[slot] = Word::pointer(
-                        address,
-                        if value.is_list() {
-                            crate::LowTag::List
-                        } else {
-                            crate::LowTag::OtherPointer
-                        },
-                    )
-                    .bits();
-                }
-            }
-        }
-        for index in 0..state.objects.len() {
-            if !state.objects[index].alive || state.objects[index].weak.is_none() {
-                continue;
-            }
-            let value = state.objects[index]
-                .words
-                .get(1)
-                .copied()
-                .map_or(Word::NIL, Word::from_bits);
-            let retained = Self::find(&state, value).is_some_and(|target| {
-                full || live.contains(&target) || state.objects[target].generation >= 2
-            });
-            if !retained {
-                state.objects[index].words[1] = Word::NIL.bits();
-            }
-        }
-        for index in 0..state.objects.len() {
-            if !state.objects[index].alive {
-                continue;
-            }
-            let collect = !live.contains(&index) && (full || state.objects[index].generation < 2);
-            if !collect {
-                continue;
-            }
-            if let Some((callback, false)) = state.objects[index].finalizer {
-                state.finalizers.push((Word::NIL, callback));
-                state.objects[index].finalizer = Some((callback, true));
-            }
-            state.used = state
-                .used
-                .saturating_sub(state.objects[index].words.len() * 8);
-            state.objects[index].alive = false;
-        }
-        let dirty_cards = state
-            .dirty_cards
-            .iter()
-            .copied()
-            .filter(|(index, _)| {
-                state
-                    .objects
-                    .get(*index)
-                    .is_some_and(|object| object.alive && object.generation > 0)
-            })
-            .collect();
-        state.dirty_cards = dirty_cards;
-        let hooks = state.after_gc_hooks.clone();
-        for thread in state.threads.iter().copied() {
-            // SAFETY: collection owns the stop-the-world phase, so mutator snapshots are not changing.
-            unsafe { (*thread).conservative_roots.clear() };
-        }
-        drop(state);
-        for hook in hooks {
-            hook();
-        }
-    }
     pub(crate) fn register_after_gc_hook(&self, hook: fn()) {
         self.lock_state().after_gc_hooks.push(hook);
     }
@@ -492,9 +370,6 @@ impl Heap {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-    fn object_widetag(object: &Object) -> u8 {
-        u8::try_from(object.words[0] & WIDETAG_MASK).unwrap_or(0)
     }
     fn relocated_address(
         state: &State,
@@ -505,6 +380,16 @@ impl Heap {
         let object = &state.objects[index];
         let new_base = moved.get(&(object.words.as_ptr() as usize))?;
         Some(new_base + (value.address() - object.words.as_ptr() as usize))
+    }
+    const fn relocated_word(value: Word, address: usize) -> Word {
+        Word::pointer(
+            address,
+            if value.is_list() {
+                crate::LowTag::List
+            } else {
+                crate::LowTag::OtherPointer
+            },
+        )
     }
 }
 // SAFETY: State is accessed only while holding Heap::state; registered pointers are valid until unregistering.

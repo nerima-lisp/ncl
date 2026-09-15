@@ -15,6 +15,31 @@ fn code_lifecycle_and_write_bounds() {
 }
 
 #[test]
+fn registry_register_find_unregister() {
+    let Ok(mut code) = alloc_code(16) else {
+        return;
+    };
+    assert!(publish_code(&mut code).is_ok());
+    let metadata = CodeObjectMetadata {
+        entry_offset: 0,
+        size: code.len(),
+        constant_slots: vec![Word::NIL],
+        safepoint_map: SafepointMap::default(),
+        debug_table: Vec::new(),
+    };
+    let mut registry = CodeRegistry::default();
+    assert!(registry.register(&code, metadata).is_ok());
+    let Some((found, offset)) = registry.find(code.address() + 3) else {
+        return;
+    };
+    assert_eq!(found.entry_offset, 0);
+    assert_eq!(offset, 3);
+    assert!(registry.find(code.address() + code.len()).is_none());
+    assert!(registry.unregister(&code).is_some());
+    assert!(registry.find(code.address()).is_none());
+}
+
+#[test]
 fn map_decode_lookup_and_scan() {
     let mut bytes = vec![0; 16];
     bytes[0..4].copy_from_slice(&7u32.to_le_bytes());

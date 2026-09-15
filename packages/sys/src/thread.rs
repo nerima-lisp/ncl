@@ -23,6 +23,12 @@ pub struct RootToken {
     pub(crate) count: usize,
 }
 
+/// Machine-visible mutator context.
+///
+/// This type is `repr(C)` so the offsets returned by [`thread_layout`] are a
+/// stable ABI. The object lane's `ThreadContext` places this type first and
+/// passes `*mut ThreadContext` to generated code as `*mut Thread`.
+#[repr(C)]
 #[derive(Debug)]
 pub struct Thread {
     pub(crate) roots: Vec<*mut Word>,
@@ -242,4 +248,22 @@ fn current_stack_bounds() -> Option<(usize, usize)> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 const fn current_stack_bounds() -> Option<(usize, usize)> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layout_matches_c_struct_offsets() {
+        let layout = thread_layout();
+        assert_eq!(layout.tlab_bump, std::mem::offset_of!(Thread, tlab_bump));
+        assert_eq!(layout.tlab_limit, std::mem::offset_of!(Thread, tlab_limit));
+        assert_eq!(layout.safepoint_state, std::mem::offset_of!(Thread, state));
+        assert_eq!(layout.pending, std::mem::offset_of!(Thread, pending));
+        assert_eq!(layout.mv, std::mem::offset_of!(Thread, mv));
+        assert_eq!(layout.handler, std::mem::offset_of!(Thread, handler));
+        assert_eq!(layout.cleanup, std::mem::offset_of!(Thread, cleanup));
+        assert_eq!(layout.catch, std::mem::offset_of!(Thread, catch));
+    }
 }

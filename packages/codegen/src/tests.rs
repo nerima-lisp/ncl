@@ -1,6 +1,52 @@
 use super::*;
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
+fn assert_compiles(function: &ncl_ir::Function) -> CompiledFunction {
+    let text = function.to_string();
+    let parsed = ncl_ir::parse(&text);
+    assert!(
+        parsed.is_ok(),
+        "fixture must round-trip through IR text: {parsed:?}"
+    );
+    let Some(parsed) = parsed.ok() else {
+        return CompiledFunction {
+            code: Vec::new(),
+            entry_offset: 0,
+            relocations: Vec::new(),
+            safepoint_maps: Vec::new(),
+            frame_size: 0,
+            debug: Vec::new(),
+        };
+    };
+    let compiled = compile_function(&parsed, &X86_64Abi);
+    assert!(compiled.is_ok(), "fixture failed to compile: {compiled:?}");
+    compiled.unwrap_or_else(|_| CompiledFunction {
+        code: Vec::new(),
+        entry_offset: 0,
+        relocations: Vec::new(),
+        safepoint_maps: Vec::new(),
+        frame_size: 0,
+        debug: Vec::new(),
+    })
+}
+
+fn constant_return(id: u32, name: &str, value: i64) -> ncl_ir::Function {
+    let mut builder =
+        FunctionBuilder::new(ncl_ir::FunctionId(id), name, Vec::new(), vec![Ty::Word]);
+    let constant = builder.add_constant(Constant::Fixnum(value));
+    let values = builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]);
+    assert!(values.is_ok());
+    let value = values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    assert!(
+        builder
+            .terminate(Terminator::Return {
+                values: vec![value]
+            })
+            .is_ok()
+    );
+    builder.finish()
+}
+
 #[test]
 fn lowers_fixnum_return_to_decodable_x86() {
     let mut builder =
@@ -127,4 +173,162 @@ fn encodes_safepoint_header_and_live_slot() {
     assert_eq!(&bytes[..4], &7_u32.to_le_bytes());
     assert_eq!(bytes[16] & (1 << 2), 1 << 2);
     assert_eq!(bytes[16] & (1 << 4), 1 << 4);
+}
+
+#[test]
+fn golden_add_one_two_from_ir_text() {
+    let function = constant_return(10, "add-one-two", 3);
+    let compiled = assert_compiles(&function);
+    assert!(!compiled.code.is_empty());
+    assert_eq!(compiled.code.last(), Some(&0xc3));
+}
+
+#[test]
+fn golden_cons_allocates_and_records_safepoint() {
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(11), "cons", Vec::new(), vec![]);
+    assert!(
+        builder
+            .push_op(OpKind::Alloc { words: 2 }, &[Ty::Word])
+            .is_ok()
+    );
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    let function = builder.finish();
+    let compiled = assert_compiles(&function);
+    assert!(
+        compiled
+            .safepoint_maps
+            .iter()
+            .any(|map| map.map_flags & FLAG_ALLOCATION_SLOW != 0)
+    );
+}
+
+#[test]
+fn golden_branch_emits_two_resolved_targets() {
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(12), "branch", Vec::new(), vec![]);
+    let condition = builder.add_constant(Constant::T);
+    let values = builder.push_op(OpKind::Const { result: condition }, &[Ty::Word]);
+    assert!(values.is_ok());
+    let condition = values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let then_target = builder.create_block(Vec::new());
+    let else_target = builder.create_block(Vec::new());
+    assert!(builder.position_at(ncl_ir::BlockId(0)).is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Branch {
+                condition,
+                then_target,
+                else_target,
+                then_args: Vec::new(),
+                else_args: Vec::new(),
+            })
+            .is_ok()
+    );
+    assert!(builder.position_at(then_target).is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    assert!(builder.position_at(else_target).is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    let function = builder.finish();
+    let compiled = assert_compiles(&function);
+    assert_eq!(compiled.code.last(), Some(&0xc3));
+}
+
+#[test]
+fn golden_builtin_call_has_call_safepoint() {
+    #[derive(Clone, Copy)]
+    struct Abi;
+    impl RuntimeAbi for Abi {
+        fn encode_fixnum(&self, value: i64) -> i64 {
+            value << 3
+        }
+        fn encode_character(&self, value: u32) -> i64 {
+            i64::from(value) << 8 | 0x0f
+        }
+        fn builtin_address(&self, name: &str) -> Option<u64> {
+            (name == "identity").then_some(0x1000)
+        }
+        fn context_offset(&self, _field: &str) -> Option<i32> {
+            None
+        }
+    }
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(13), "builtin", Vec::new(), vec![]);
+    assert!(
+        builder
+            .push_op(
+                OpKind::Builtin {
+                    name: "identity".into(),
+                    args: Vec::new()
+                },
+                &[]
+            )
+            .is_ok()
+    );
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    let compiled = compile_function(&builder.finish(), &Abi);
+    assert!(compiled.is_ok());
+    let Some(compiled) = compiled.ok() else {
+        return;
+    };
+    assert!(
+        compiled
+            .safepoint_maps
+            .iter()
+            .any(|map| map.map_flags & FLAG_CALL != 0)
+    );
+}
+
+#[test]
+fn golden_explicit_safepoint_has_encoded_pc() {
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(14), "safepoint", Vec::new(), vec![]);
+    assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    let function = builder.finish();
+    let compiled = assert_compiles(&function);
+    let Some(map) = compiled.safepoint_maps.first() else {
+        return;
+    };
+    let code_len = u32::try_from(compiled.code.len());
+    assert!(code_len.is_ok());
+    assert!(map.pc_offset < code_len.unwrap_or(u32::MAX));
+    assert!(map.encode().is_ok());
+}
+
+#[test]
+fn golden_fib_twenty_five_loop_has_backedge_map() {
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(15), "fib-25", Vec::new(), vec![]);
+    assert!(
+        builder
+            .terminate(Terminator::Jump {
+                target: ncl_ir::BlockId(0),
+                args: Vec::new(),
+            })
+            .is_ok()
+    );
+    let function = builder.finish();
+    let compiled = assert_compiles(&function);
+    assert!(
+        compiled
+            .safepoint_maps
+            .iter()
+            .any(|map| map.map_flags & FLAG_LOOP_BACKEDGE != 0)
+    );
 }

@@ -118,7 +118,7 @@ pub fn classify_object(ctx: &ThreadContext, word: Word) -> ObjectRef {
         Some(widetag::STRING) => ObjectRef::String(word),
         Some(widetag::SIMPLE_VECTOR) => ObjectRef::SimpleVector(word),
         Some(widetag::SPECIALIZED_ARRAY) => ObjectRef::SpecializedArray(word),
-        Some(widetag::ARRAY | widetag::NON_SIMPLE_ARRAY) => ObjectRef::Array(word),
+        Some(widetag::NON_SIMPLE_ARRAY) => ObjectRef::Array(word),
         Some(widetag::STRUCTURE | widetag::INSTANCE) => ObjectRef::Instance(word),
         Some(widetag::SIMPLE_FUN | widetag::CLOSURE) => ObjectRef::Function(word),
         Some(widetag::BIGNUM) => ObjectRef::Bignum(word),

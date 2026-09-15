@@ -216,6 +216,56 @@ fn non_simple_arrays_store_dimensions_and_row_major_values() {
 }
 
 #[test]
+fn non_simple_array_references_survive_minor_and_full_gc() {
+    let runtime = Runtime::new();
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    assert!(runtime.register_layouts().is_ok());
+    let target = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(11)]).unwrap_or(Word::NIL);
+    let rank_one = make_array(
+        &mut ctx,
+        &runtime,
+        &[1],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: Some(1),
+            displaced_to: Some(target),
+            displaced_index_offset: 0,
+        },
+    )
+    .unwrap_or(Word::NIL);
+    let payload = make_string(&mut ctx, &runtime, &['x']).unwrap_or(Word::NIL);
+    let rank_three = make_array(
+        &mut ctx,
+        &runtime,
+        &[1, 1, 1],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: payload,
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )
+    .unwrap_or(Word::NIL);
+    let mut rank_one_root = rank_one;
+    let _rank_one_token = ncl_object::push_root(&mut ctx, &mut rank_one_root);
+    let mut rank_three_root = rank_three;
+    let _rank_three_token = ncl_object::push_root(&mut ctx, &mut rank_three_root);
+    ctx.collect(false);
+    ctx.collect(true);
+    assert_eq!(
+        array_row_major_ref(&ctx, rank_one_root, 0),
+        Ok(Word::fixnum(11))
+    );
+    let value = array_row_major_ref(&ctx, rank_three_root, 0).unwrap_or(Word::NIL);
+    assert_eq!(string_ref(&ctx, value, 0), Ok('x'));
+}
+
+#[test]
 fn remaining_object_kinds_round_trip() {
     let runtime = Runtime::new();
     let mut ctx = ThreadContext::new();

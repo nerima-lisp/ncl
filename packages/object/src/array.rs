@@ -301,7 +301,7 @@ pub fn make_array(
         return Err(ObjectError::Layout);
     }
     let rank = dimensions.len();
-    let data_offset = 6_usize.checked_add(rank).ok_or(ObjectError::Layout)?;
+    let data_offset = data_offset(rank);
     let object = allocate(
         ctx,
         runtime,
@@ -328,11 +328,19 @@ pub fn make_array(
         Some(value) => i64::try_from(value).map_err(|_| ObjectError::Layout)?,
         None => -1,
     };
-    write_meta(ctx, 2 + dimensions.len(), Word::fixnum(fp))?;
-    write_meta(ctx, 3 + dimensions.len(), displaced_to.unwrap_or(Word::NIL))?;
     write_meta(
         ctx,
-        4 + dimensions.len(),
+        layout::array_offset::DYNAMIC_BASE + dimensions.len(),
+        Word::fixnum(fp),
+    )?;
+    write_meta(
+        ctx,
+        layout::array_offset::DYNAMIC_BASE + dimensions.len() + 1,
+        displaced_to.unwrap_or(Word::NIL),
+    )?;
+    write_meta(
+        ctx,
+        layout::array_offset::DYNAMIC_BASE + dimensions.len() + 2,
         Word::fixnum(i64::try_from(displaced_index_offset).map_err(|_| ObjectError::Layout)?),
     )?;
     let mut flags = 0;
@@ -347,13 +355,17 @@ pub fn make_array(
     }
     write_meta(
         ctx,
-        5 + dimensions.len(),
+        layout::array_offset::DYNAMIC_BASE + dimensions.len() + 3,
         Word::fixnum(i64::try_from(flags).map_err(|_| ObjectError::Layout)?),
     )?;
     for index in 0..total {
         write_meta(ctx, data_offset + index, initial_element)?;
     }
     Ok(object)
+}
+
+const fn data_offset(rank: usize) -> usize {
+    layout::array_offset::DYNAMIC_BASE + rank + 4
 }
 
 /// Return an array's dimensions.
@@ -364,7 +376,14 @@ pub fn make_array(
 pub fn array_dimensions(ctx: &ThreadContext, object: Word) -> Result<Vec<usize>, ObjectError> {
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     (0..rank)
-        .map(|index| length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 2 + index))
+        .map(|index| {
+            length(
+                ctx,
+                object,
+                layout::widetag::NON_SIMPLE_ARRAY,
+                layout::array_offset::DYNAMIC_BASE + index,
+            )
+        })
         .collect()
 }
 
@@ -389,7 +408,7 @@ pub fn array_row_major_ref(
     let displaced = read(
         ctx,
         object,
-        3 + dimensions.len(),
+        layout::array_offset::DYNAMIC_BASE + dimensions.len() + 1,
         layout::widetag::NON_SIMPLE_ARRAY,
     )?;
     if displaced != Word::NIL {
@@ -397,7 +416,7 @@ pub fn array_row_major_ref(
             read(
                 ctx,
                 object,
-                4 + dimensions.len(),
+                layout::array_offset::DYNAMIC_BASE + dimensions.len() + 2,
                 layout::widetag::NON_SIMPLE_ARRAY,
             )?
             .as_fixnum()
@@ -414,7 +433,7 @@ pub fn array_row_major_ref(
             _ => Err(ObjectError::TypeError),
         };
     }
-    let slot = 6 + dimensions.len() + index;
+    let slot = data_offset(dimensions.len()) + index;
     read(ctx, object, slot, layout::widetag::NON_SIMPLE_ARRAY)
 }
 
@@ -440,7 +459,7 @@ pub fn array_row_major_set(
     let displaced = read(
         ctx,
         object,
-        3 + dimensions.len(),
+        layout::array_offset::DYNAMIC_BASE + dimensions.len() + 1,
         layout::widetag::NON_SIMPLE_ARRAY,
     )?;
     if displaced != Word::NIL {
@@ -448,7 +467,7 @@ pub fn array_row_major_set(
             read(
                 ctx,
                 object,
-                4 + dimensions.len(),
+                layout::array_offset::DYNAMIC_BASE + dimensions.len() + 2,
                 layout::widetag::NON_SIMPLE_ARRAY,
             )?
             .as_fixnum()
@@ -472,7 +491,7 @@ pub fn array_row_major_set(
     write(
         ctx,
         object,
-        6 + dimensions.len() + index,
+        data_offset(dimensions.len()) + index,
         value,
         layout::widetag::NON_SIMPLE_ARRAY,
     )

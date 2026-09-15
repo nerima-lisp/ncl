@@ -1,4 +1,4 @@
-use crate::{CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, SafepointMap};
+use crate::{CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, SafepointMap, checked_u32};
 use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
 use ncl_ir::{Function, OpKind, Terminator};
@@ -52,7 +52,6 @@ pub fn compile_function_aarch64(
         .iter()
         .map(|block| (block.id, assembler.new_label()))
         .collect::<std::collections::HashMap<_, _>>();
-    let mut pc = 0_u32;
     let mut maps = Vec::new();
     emit(
         &mut assembler,
@@ -84,14 +83,13 @@ pub fn compile_function_aarch64(
             },
         )?;
     }
-    pc = pc.saturating_add(8 + if body_bytes > 0 { 4 } else { 0 });
     for block in &function.blocks {
         assembler
             .bind(labels[&block.id])
             .map_err(|error| CodegenError::Encode(error.to_string()))?;
         for op in &block.ops {
             lower_op(&mut assembler, op, function, &value_slots, abi)?;
-            pc = pc.saturating_add(4);
+            let pc = checked_u32(assembler.offset())?;
             if matches!(op.kind, OpKind::Alloc { .. }) {
                 add_map(&mut maps, pc, frame, FLAG_ALLOCATION_SLOW)?;
             } else if matches!(
@@ -118,9 +116,13 @@ pub fn compile_function_aarch64(
                         label: labels[target],
                     },
                 )?;
-                pc = pc.saturating_add(4);
                 if *target == block.id {
-                    add_map(&mut maps, pc, frame, FLAG_LOOP_BACKEDGE)?;
+                    add_map(
+                        &mut maps,
+                        checked_u32(assembler.offset())?,
+                        frame,
+                        FLAG_LOOP_BACKEDGE,
+                    )?;
                 }
             }
             Terminator::Branch {
@@ -156,7 +158,6 @@ pub fn compile_function_aarch64(
                         label: labels[else_target],
                     },
                 )?;
-                pc = pc.saturating_add(8);
             }
             Terminator::Switch { default, .. } => {
                 emit(
@@ -165,7 +166,6 @@ pub fn compile_function_aarch64(
                         label: labels[default],
                     },
                 )?;
-                pc = pc.saturating_add(4);
             }
             Terminator::Return { values } => {
                 if let Some(value) = values.first() {
@@ -182,7 +182,6 @@ pub fn compile_function_aarch64(
                     u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
                 ) {
                     emit(&mut assembler, instruction)?;
-                    pc = pc.saturating_add(4);
                 }
                 if body_bytes > 0 {
                     emit(
@@ -208,17 +207,19 @@ pub fn compile_function_aarch64(
                     },
                 )?;
                 emit(&mut assembler, Inst::Ret { rn: Reg(30) })?;
-                pc = pc.saturating_add(8);
             }
             Terminator::CallReturn { .. } | Terminator::TailCall { .. } => {
                 emit(&mut assembler, Inst::Blr { rn: Reg(17) })?;
+                add_map(
+                    &mut maps,
+                    checked_u32(assembler.offset())?,
+                    frame,
+                    FLAG_CALL,
+                )?;
                 emit(&mut assembler, Inst::Ret { rn: Reg(30) })?;
-                pc = pc.saturating_add(8);
-                add_map(&mut maps, pc, frame, FLAG_CALL)?;
             }
             Terminator::Throw { .. } | Terminator::Unreachable => {
                 emit(&mut assembler, Inst::Brk { imm: 0 })?;
-                pc = pc.saturating_add(4);
             }
         }
     }

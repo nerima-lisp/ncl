@@ -12,6 +12,8 @@ mod templates;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_aarch64;
 
 pub use abi::{RegisterId, RuntimeAbi, X86_64Abi};
 pub use frame::{FRAME_HEADER_WORDS, FrameLayout};

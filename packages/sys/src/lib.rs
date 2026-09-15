@@ -1,6 +1,4 @@
 #![deny(unsafe_op_in_unsafe_fn, clippy::undocumented_unsafe_blocks)]
-#![allow(missing_docs, dead_code)]
-
 //! The single unsafe boundary of the NCL runtime.
 
 mod code;

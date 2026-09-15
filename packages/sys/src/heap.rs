@@ -291,9 +291,6 @@ impl Heap {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
-    fn widetag(object: &Object) -> u8 {
-        u8::try_from(object.words[0] & WIDETAG_MASK).unwrap_or(0)
-    }
     fn relocated_address(
         state: &State,
         moved: &HashMap<usize, usize>,

@@ -10,6 +10,9 @@ use crate::{
 };
 
 /// Register every header-object reference layout owned by ncl-object.
+///
+/// # Errors
+/// Returns `ObjectError::Layout` when a layout is already registered.
 pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
     for (tag, slots) in [
         (
@@ -98,6 +101,12 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
             tag,
             ncl_sys::ReferenceLayout {
                 reference_words: reference_words(&slots),
+                boxed_from: match tag {
+                    widetag::SIMPLE_VECTOR => Some(simple_vector_offset::DATA + 1),
+                    widetag::STRUCTURE => Some(structure_offset::SLOTS + 1),
+                    widetag::CLOSURE => Some(function_offset::CAPTURES + 1),
+                    _ => None,
+                },
             },
         )
         .map_err(|_| ObjectError::Layout)?;

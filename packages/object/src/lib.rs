@@ -40,12 +40,17 @@ pub use layout::{
     simple_vector_offset, specialized_array_offset, stream_offset, string_offset, structure_offset,
     symbol_offset, widetag,
 };
+pub use ncl_sys::{ThreadLayout, thread_layout};
 pub use number::{
     Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,
     make_complex, make_double, make_ratio,
 };
 pub use readtable::{Readtable, make_readtable};
-pub use remaining::layout;
+pub use remaining::{
+    bignum_sign, code_slot, complex_imag, complex_real, function_code, function_lambda_list,
+    ratio_denominator, ratio_numerator, readtable_slot, stream_slot,
+};
+pub use remaining::{layout, layout as structure_layout};
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
     specialized_array_set,
@@ -68,6 +73,14 @@ pub enum ObjectRef {
     Array(Word),
     Function(Word),
     Instance(Word),
+    Bignum(Word),
+    Ratio(Word),
+    DoubleFloat(Word),
+    Complex(Word),
+    Package(Word),
+    Readtable(Word),
+    Stream(Word),
+    Code(Word),
     Other { word: Word, widetag: u8 },
     Immediate(Word),
 }
@@ -104,6 +117,14 @@ pub fn classify_object(ctx: &ThreadContext, word: Word) -> ObjectRef {
         Some(widetag::ARRAY | widetag::NON_SIMPLE_ARRAY) => ObjectRef::Array(word),
         Some(widetag::STRUCTURE | widetag::INSTANCE) => ObjectRef::Instance(word),
         Some(widetag::SIMPLE_FUN | widetag::CLOSURE) => ObjectRef::Function(word),
+        Some(widetag::BIGNUM) => ObjectRef::Bignum(word),
+        Some(widetag::RATIO) => ObjectRef::Ratio(word),
+        Some(widetag::DOUBLE_FLOAT) => ObjectRef::DoubleFloat(word),
+        Some(widetag::COMPLEX) => ObjectRef::Complex(word),
+        Some(widetag::PACKAGE) => ObjectRef::Package(word),
+        Some(widetag::READTABLE) => ObjectRef::Readtable(word),
+        Some(widetag::STREAM) => ObjectRef::Stream(word),
+        Some(widetag::CODE) => ObjectRef::Code(word),
         Some(tag) => ObjectRef::Other { word, widetag: tag },
         None => classify(word),
     }
@@ -225,6 +246,7 @@ impl Default for Runtime {
 }
 
 /// Per-mutator object-layer context.
+#[repr(C)]
 #[derive(Debug)]
 pub struct ThreadContext {
     pub(crate) thread: Thread,

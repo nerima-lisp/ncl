@@ -86,5 +86,10 @@ assert!(pop_root(ctx, token));
 | hash table、package intern、GC symbol registration | 済 | Rust 内 hash table の Word は caller が root を管理する |
 | generational GC を跨ぐ object root 更新 | 部分 | package/hash table の移動参照更新統合は下流で要確認 |
 | string、simple-vector、特殊化配列、非 simple 配列の typed accessor/constructor | 済 | `ArrayElementType` と row-major accessor を使用する |
+| structure、CLOS instance、simple-fun、closure、bignum、ratio、double、complex、stream、readtable、code object | 部分 | payload accessor と layout は揃っている。可変長 closure は sys の `boxed_from` 接続後に GC 検証する |
+
+## 契約との差分
+
+double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` は `repr(C)` で `Thread` を先頭に持つ。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
 
 下流レーンは `Word` の lowtag を直接判定せず `classify` または typed accessor を使い、allocation を跨ぐ引数は `RootToken` で保護してください。

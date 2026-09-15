@@ -125,7 +125,9 @@ pub fn structure_set(
     if ncl_sys::object_widetag(&ctx.thread, object) != Some(widetag::STRUCTURE) {
         return Err(ObjectError::TypeError);
     }
-    put(ctx, object, structure_offset::SLOTS + index, value)
+    put(ctx, object, structure_offset::SLOTS + index, value)?;
+    ncl_sys::write_barrier(&mut ctx.thread, object, structure_offset::SLOTS + index);
+    Ok(())
 }
 
 /// Construct a CLOS instance with an indirect slot vector.
@@ -138,11 +140,19 @@ pub fn make_instance(
     class: Word,
     slots: &[Word],
 ) -> Result<Instance, ObjectError> {
-    let vector = crate::make_simple_vector(ctx, runtime, slots)?;
-    let object = allocate(ctx, runtime, widetag::INSTANCE, 3)?;
+    let mut vector = crate::make_simple_vector(ctx, runtime, slots)?;
+    let token = crate::push_root(ctx, &mut vector);
+    let object = match allocate(ctx, runtime, widetag::INSTANCE, 3) {
+        Ok(object) => object,
+        Err(error) => {
+            let _ = crate::pop_root(ctx, token);
+            return Err(error);
+        }
+    };
     put(ctx, object, instance_offset::CLASS, class)?;
     put(ctx, object, instance_offset::SLOT_VECTOR, vector)?;
     put(ctx, object, instance_offset::GENERATION, Word::fixnum(0))?;
+    let _ = crate::pop_root(ctx, token);
     Ok(object)
 }
 
@@ -291,16 +301,23 @@ pub fn make_bignum_from_i128(
         ctx,
         runtime,
         widetag::BIGNUM,
-        number_offset::LIMBS + limbs.len(),
+        number_offset::LIMBS + limbs.len().div_ceil(2),
     )?;
-    put(ctx, object, number_offset::SIGN, Word::fixnum(sign))?;
+    put(
+        ctx,
+        object,
+        number_offset::SIGN,
+        Word::from_bits(sign.cast_unsigned()),
+    )?;
     put(ctx, object, number_offset::LIMB_COUNT, fix(limbs.len())?)?;
-    for (index, limb) in limbs.into_iter().enumerate() {
+    for (index, pair) in limbs.chunks(2).enumerate() {
+        let low = u64::from(pair[0]);
+        let high = pair.get(1).map_or(0, |limb| u64::from(*limb));
         put(
             ctx,
             object,
             number_offset::LIMBS + index,
-            Word::fixnum(i64::from(limb)),
+            Word::from_bits(low | (high << 32)),
         )?;
     }
     Ok(object)
@@ -316,10 +333,13 @@ pub fn bignum_limbs(ctx: &ThreadContext, object: Bignum) -> Result<Vec<u32>, Obj
     let count = usize::try_from(count).map_err(|_| ObjectError::Layout)?;
     (0..count)
         .map(|i| {
-            get(ctx, object, widetag::BIGNUM, number_offset::LIMBS + i)?
-                .as_fixnum()
-                .and_then(|x| u32::try_from(x).ok())
-                .ok_or(ObjectError::Layout)
+            let bits = get(ctx, object, widetag::BIGNUM, number_offset::LIMBS + i / 2)?.bits();
+            let limb = if i % 2 == 0 {
+                u32::try_from(bits).map_err(|_| ObjectError::Layout)?
+            } else {
+                (bits >> 32) as u32
+            };
+            Ok(limb)
         })
         .collect()
 }
@@ -338,19 +358,6 @@ pub fn make_ratio(
     put(ctx, object, number_offset::RATIO_DENOMINATOR, denominator)?;
     Ok(object)
 }
-const fn split(bits: u64) -> (Word, Word) {
-    (
-        Word::fixnum((bits & 4_294_967_295_u64).cast_signed()),
-        Word::fixnum((bits >> 32).cast_signed()),
-    )
-}
-fn join(low: Word, high: Word) -> Result<u64, ObjectError> {
-    let lo = u64::try_from(low.as_fixnum().ok_or(ObjectError::Layout)?)
-        .map_err(|_| ObjectError::Layout)?;
-    let hi = u64::try_from(high.as_fixnum().ok_or(ObjectError::Layout)?)
-        .map_err(|_| ObjectError::Layout)?;
-    Ok(lo | (hi << 32))
-}
 /// Construct a boxed binary64 object.
 ///
 /// # Errors
@@ -360,10 +367,13 @@ pub fn make_double(
     runtime: &Runtime,
     value: f64,
 ) -> Result<DoubleFloat, ObjectError> {
-    let object = allocate(ctx, runtime, widetag::DOUBLE_FLOAT, 2)?;
-    let (lo, hi) = split(value.to_bits());
-    put(ctx, object, 0, lo)?;
-    put(ctx, object, 1, hi)?;
+    let object = allocate(ctx, runtime, widetag::DOUBLE_FLOAT, 1)?;
+    put(
+        ctx,
+        object,
+        number_offset::DOUBLE_BITS,
+        Word::from_bits(value.to_bits()),
+    )?;
     Ok(object)
 }
 /// Read a boxed binary64 value.
@@ -371,10 +381,15 @@ pub fn make_double(
 /// # Errors
 /// Returns an error for a non-double or malformed payload.
 pub fn double_value(ctx: &ThreadContext, object: DoubleFloat) -> Result<f64, ObjectError> {
-    Ok(f64::from_bits(join(
-        get(ctx, object, widetag::DOUBLE_FLOAT, 0)?,
-        get(ctx, object, widetag::DOUBLE_FLOAT, 1)?,
-    )?))
+    Ok(f64::from_bits(
+        get(
+            ctx,
+            object,
+            widetag::DOUBLE_FLOAT,
+            number_offset::DOUBLE_BITS,
+        )?
+        .bits(),
+    ))
 }
 /// Construct a complex object from real and imaginary references.
 ///
@@ -465,4 +480,97 @@ pub fn make_code_object(
         put(ctx, object, i, v)?;
     }
     Ok(object)
+}
+
+/// Read a ratio numerator.
+///
+/// # Errors
+/// Returns an error for a non-ratio or malformed object.
+pub fn ratio_numerator(ctx: &ThreadContext, object: Ratio) -> Result<Word, ObjectError> {
+    get(ctx, object, widetag::RATIO, number_offset::RATIO_NUMERATOR)
+}
+
+/// Read a ratio denominator.
+///
+/// # Errors
+/// Returns an error for a non-ratio or malformed object.
+pub fn ratio_denominator(ctx: &ThreadContext, object: Ratio) -> Result<Word, ObjectError> {
+    get(
+        ctx,
+        object,
+        widetag::RATIO,
+        number_offset::RATIO_DENOMINATOR,
+    )
+}
+
+/// Read the real component of a complex number.
+///
+/// # Errors
+/// Returns an error for a non-complex or malformed object.
+pub fn complex_real(ctx: &ThreadContext, object: Complex) -> Result<Word, ObjectError> {
+    get(ctx, object, widetag::COMPLEX, number_offset::COMPLEX_REAL)
+}
+
+/// Read the imaginary component of a complex number.
+///
+/// # Errors
+/// Returns an error for a non-complex or malformed object.
+pub fn complex_imag(ctx: &ThreadContext, object: Complex) -> Result<Word, ObjectError> {
+    get(ctx, object, widetag::COMPLEX, number_offset::COMPLEX_IMAG)
+}
+
+/// Read the bignum sign.
+///
+/// # Errors
+/// Returns an error for a non-bignum or malformed object.
+pub fn bignum_sign(ctx: &ThreadContext, object: Bignum) -> Result<bool, ObjectError> {
+    Ok(get(ctx, object, widetag::BIGNUM, number_offset::SIGN)?.bits() != 0)
+}
+
+/// Read a stream payload slot.
+///
+/// # Errors
+/// Returns an error for a non-stream or malformed object.
+pub fn stream_slot(ctx: &ThreadContext, object: Stream, slot: usize) -> Result<Word, ObjectError> {
+    get(ctx, object, widetag::STREAM, slot)
+}
+
+/// Read a readtable payload slot.
+///
+/// # Errors
+/// Returns an error for a non-readtable or malformed object.
+pub fn readtable_slot(
+    ctx: &ThreadContext,
+    object: Readtable,
+    slot: usize,
+) -> Result<Word, ObjectError> {
+    get(ctx, object, widetag::READTABLE, slot)
+}
+
+/// Read a code object payload slot.
+///
+/// # Errors
+/// Returns an error for a non-code object or malformed object.
+pub fn code_slot(
+    ctx: &ThreadContext,
+    object: CodeObject,
+    slot: usize,
+) -> Result<Word, ObjectError> {
+    get(ctx, object, widetag::CODE, slot)
+}
+
+/// Read a function's code object.
+///
+/// # Errors
+/// Returns an error for a non-function or malformed object.
+pub fn function_code(ctx: &ThreadContext, object: Function) -> Result<CodeObject, ObjectError> {
+    get_any_function(ctx, object, function_offset::CODE)
+}
+
+/// Read a function's lambda list.
+///
+/// # Errors
+/// Returns an error for a non-function or malformed object.
+pub fn function_lambda_list(ctx: &ThreadContext, object: Function) -> Result<Word, ObjectError> {
+    get_any_function(ctx, object, function_offset::LAMBDA_LIST)
 }

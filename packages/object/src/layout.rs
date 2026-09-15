@@ -19,6 +19,38 @@ pub mod widetag {
     pub const READTABLE: u8 = 15;
     pub const STREAM: u8 = 16;
     pub const CODE: u8 = 17;
+    pub const SPECIALIZED_ARRAY: u8 = 18;
+    pub const NON_SIMPLE_ARRAY: u8 = 19;
+}
+
+pub mod string_offset {
+    pub const LENGTH: usize = 0;
+    pub const DATA: usize = 1;
+}
+
+pub mod simple_vector_offset {
+    pub const LENGTH: usize = 0;
+    pub const DATA: usize = 1;
+}
+
+pub mod specialized_array_offset {
+    pub const ELEMENT_TYPE: usize = 0;
+    pub const LENGTH: usize = 1;
+    pub const DATA: usize = 2;
+}
+
+pub mod array_offset {
+    pub const ELEMENT_TYPE: usize = 0;
+    pub const RANK: usize = 1;
+    pub const DIMENSIONS: usize = 2;
+    pub const FILL_POINTER: usize = 3;
+    pub const DISPLACED_TO: usize = 4;
+    pub const OFFSET: usize = 5;
+    pub const FLAGS: usize = 6;
+    pub const DATA: usize = 7;
+    pub const FLAG_ADJUSTABLE: u64 = 1;
+    pub const FLAG_HAS_FILL_POINTER: u64 = 2;
+    pub const FLAG_DISPLACED: u64 = 4;
 }
 
 /// Payload offsets for a symbol object.

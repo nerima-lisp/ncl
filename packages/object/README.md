@@ -4,7 +4,7 @@
 
 ## 公開 API
 
-主な型は `Word`、`ObjectRef`、`ObjectError`、`Runtime`、`ThreadContext`、`Builtin`、`MultipleValues`、`NclStatus`、`HashTable`、`HashTest`、`Weakness`、`Package`、`FindStatus` です。
+主な型は `Word`、`ObjectRef`、`ObjectError`、`Runtime`、`ThreadContext`、`ArrayElementType`、`Builtin`、`MultipleValues`、`NclStatus`、`HashTable`、`HashTest`、`Weakness`、`Package`、`FindStatus` です。
 
 主な関数は次のとおりです。
 
@@ -21,6 +21,14 @@ set_symbol_value(&mut ThreadContext, Word, Word) -> Result<(), ObjectError>
 push_root(&mut ThreadContext, &mut Word) -> RootToken
 pop_root(&mut ThreadContext, RootToken) -> bool
 write_object_slot(&mut ThreadContext, Word, usize, Word) -> Result<(), ObjectError>
+make_string(&mut ThreadContext, &Runtime, &[char]) -> Result<Word, ObjectError>
+string_length/string_ref/string_set
+make_simple_vector(&mut ThreadContext, &Runtime, &[Word]) -> Result<Word, ObjectError>
+simple_vector_length/simple_vector_ref/simple_vector_set
+make_specialized_array(&mut ThreadContext, &Runtime, ArrayElementType, &[Word]) -> Result<Word, ObjectError>
+specialized_array_element_type/specialized_array_ref/specialized_array_set
+make_array(&mut ThreadContext, &Runtime, &[usize], ArrayElementType, Word, bool, Option<usize>, Option<Word>, usize) -> Result<Word, ObjectError>
+array_dimensions/array_row_major_ref/array_row_major_set
 ```
 
 `Runtime::new`, `Runtime::with_config`, `Runtime::register_layouts`、`Runtime::define_function`、`Runtime::function`、`Runtime::ensure_package`、`Runtime::define_class`、`Runtime::class`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config` が runtime の登録・照会 API です。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
@@ -77,6 +85,6 @@ assert!(pop_root(ctx, token));
 | Runtime、ThreadContext、RootToken、builtin metadata | 済 | special binding と多値の高水準 ABI は利用可能 |
 | hash table、package intern、GC symbol registration | 済 | Rust 内 hash table の Word は caller が root を管理する |
 | generational GC を跨ぐ object root 更新 | 部分 | package/hash table の移動参照更新統合は下流で要確認 |
-| string、array、instance、closure、number、stream 等の typed accessor/constructor | 未 | reader/types/clos レーンが契約を追加する |
+| string、simple-vector、特殊化配列、非 simple 配列の typed accessor/constructor | 済 | `ArrayElementType` と row-major accessor を使用する |
 
 下流レーンは `Word` の lowtag を直接判定せず `classify` または typed accessor を使い、allocation を跨ぐ引数は `RootToken` で保護してください。

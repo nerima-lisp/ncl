@@ -8,15 +8,31 @@ use ncl_sys::{
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+pub mod array;
 mod builtin;
+pub mod cons;
 mod gc;
 pub mod hash_table;
 mod layout;
 pub mod package;
 mod runtime_extensions;
+mod specialized_array;
+pub use array::{
+    ArrayElementType, ArrayOptions, array_dimensions, array_row_major_ref, array_row_major_set,
+    make_array, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
+    simple_vector_set, string_length, string_ref, string_set,
+};
 pub use builtin::{Builtin, FunctionObject, MultipleValues, NclStatus, RegisterFn};
+pub use cons::{rplaca, rplacd};
 pub use gc::register;
-pub use layout::{symbol_offset, widetag};
+pub use layout::{
+    array_offset, simple_vector_offset, specialized_array_offset, string_offset, symbol_offset,
+    widetag,
+};
+pub use specialized_array::{
+    make_specialized_array, specialized_array_element_type, specialized_array_ref,
+    specialized_array_set,
+};
 
 use package::Package;
 
@@ -28,6 +44,10 @@ pub enum ObjectRef {
     Character(u32),
     Cons(Word),
     Symbol(Word),
+    String(Word),
+    SimpleVector(Word),
+    SpecializedArray(Word),
+    Array(Word),
     Function(Word),
     Instance(Word),
     Other { word: Word, widetag: u8 },
@@ -55,6 +75,19 @@ pub fn classify(word: Word) -> ObjectRef {
         x if x == LowTag::Instance as u8 => ObjectRef::Instance(word),
         x if x == LowTag::OtherImmediate as u8 => ObjectRef::Immediate(word),
         _ => ObjectRef::Other { word, widetag: 0 },
+    }
+}
+
+/// Classify a heap object when a registered context can provide its widetag.
+#[must_use]
+pub fn classify_object(ctx: &ThreadContext, word: Word) -> ObjectRef {
+    match ncl_sys::object_widetag(&ctx.thread, word) {
+        Some(widetag::STRING) => ObjectRef::String(word),
+        Some(widetag::SIMPLE_VECTOR) => ObjectRef::SimpleVector(word),
+        Some(widetag::SPECIALIZED_ARRAY) => ObjectRef::SpecializedArray(word),
+        Some(widetag::ARRAY | widetag::NON_SIMPLE_ARRAY) => ObjectRef::Array(word),
+        Some(tag) => ObjectRef::Other { word, widetag: tag },
+        None => classify(word),
     }
 }
 
@@ -141,6 +174,8 @@ impl Runtime {
             (widetag::READTABLE, vec![0]),
             (widetag::STREAM, vec![0, 1]),
             (widetag::CODE, vec![0]),
+            (widetag::SPECIALIZED_ARRAY, vec![]),
+            (widetag::NON_SIMPLE_ARRAY, vec![4]),
         ] {
             ncl_sys::register_layout(&self.heap, tag, ReferenceLayout { reference_words })
                 .map_err(|_| ObjectError::Layout)?;
@@ -196,7 +231,7 @@ impl Default for Runtime {
 /// Per-mutator object-layer context.
 #[derive(Debug)]
 pub struct ThreadContext {
-    thread: Thread,
+    pub(crate) thread: Thread,
     bindings: Vec<(u32, Word)>,
     values: Vec<Word>,
     pending: Option<ObjectError>,
@@ -453,36 +488,4 @@ pub fn cdr(ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
     }
     ncl_sys::read_cons_word(&ctx.thread, word, 1)
         .ok_or(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
-}
-
-/// Replace the car of a cons cell.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a cons.
-pub fn rplaca(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, ObjectError> {
-    if !word.is_cons() {
-        return Err(ObjectError::TypeError);
-    }
-    if !ncl_sys::write_cons_word(&mut ctx.thread, word, 0, value) {
-        return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
-    }
-    ncl_sys::write_barrier(&mut ctx.thread, word, 0);
-    Ok(word)
-}
-
-/// Replace the cdr of a cons cell.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a cons.
-pub fn rplacd(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, ObjectError> {
-    if !word.is_cons() {
-        return Err(ObjectError::TypeError);
-    }
-    if !ncl_sys::write_cons_word(&mut ctx.thread, word, 1, value) {
-        return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
-    }
-    ncl_sys::write_barrier(&mut ctx.thread, word, 1);
-    Ok(word)
 }

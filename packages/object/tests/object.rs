@@ -3,8 +3,10 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::Package;
 use ncl_object::{
-    ObjectRef, Runtime, ThreadContext, builtin, car, classify, make_cons, make_symbol, register,
-    set_symbol_value, symbol_name, symbol_value,
+    ArrayElementType, ArrayOptions, ObjectRef, Runtime, ThreadContext, array_dimensions,
+    array_row_major_ref, array_row_major_set, builtin, car, classify, classify_object, make_array,
+    make_cons, make_simple_vector, make_specialized_array, make_string, make_symbol, register,
+    set_symbol_value, simple_vector_ref, string_ref, symbol_name, symbol_value,
 };
 use ncl_sys::Word;
 
@@ -146,4 +148,68 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     for token in tokens.into_iter().rev() {
         assert!(ncl_object::pop_root(&mut ctx, token));
     }
+}
+
+#[test]
+fn strings_and_simple_vectors_have_typed_accessors() {
+    let runtime = Runtime::new();
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    let string = make_string(&mut ctx, &runtime, &['a', 'λ']).unwrap_or(Word::NIL);
+    assert_eq!(string_ref(&ctx, string, 1), Ok('λ'));
+    assert_eq!(classify_object(&ctx, string), ObjectRef::String(string));
+    let vector = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(4)]).unwrap_or(Word::NIL);
+    assert_eq!(simple_vector_ref(&ctx, vector, 0), Ok(Word::fixnum(4)));
+    assert_eq!(
+        classify_object(&ctx, vector),
+        ObjectRef::SimpleVector(vector)
+    );
+}
+
+#[test]
+fn specialized_arrays_validate_element_type() {
+    let runtime = Runtime::new();
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    let array = make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(1)],
+    )
+    .unwrap_or(Word::NIL);
+    assert_eq!(
+        ncl_object::specialized_array_ref(&ctx, array, 0),
+        Ok(Word::fixnum(1))
+    );
+    assert!(ncl_object::specialized_array_set(&mut ctx, array, 0, Word::fixnum(2)).is_err());
+    assert_eq!(
+        classify_object(&ctx, array),
+        ObjectRef::SpecializedArray(array)
+    );
+}
+
+#[test]
+fn non_simple_arrays_store_dimensions_and_row_major_values() {
+    let runtime = Runtime::new();
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    let array = make_array(
+        &mut ctx,
+        &runtime,
+        &[2, 2],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: true,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )
+    .unwrap_or(Word::NIL);
+    assert_eq!(array_dimensions(&ctx, array), Ok(vec![2, 2]));
+    assert!(array_row_major_set(&mut ctx, array, 3, Word::fixnum(8)).is_ok());
+    assert_eq!(array_row_major_ref(&ctx, array, 3), Ok(Word::fixnum(8)));
+    assert_eq!(classify_object(&ctx, array), ObjectRef::Array(array));
 }

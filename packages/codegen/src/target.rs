@@ -273,7 +273,7 @@ pub fn compile_function_aarch64(
         .map_err(|error| CodegenError::Encode(error.to_string()))?;
     Ok(CompiledFunction {
         code: blob.bytes,
-        entry_offset: 8,
+        entry_offset: 0,
         relocations: Vec::new(),
         safepoint_maps: maps,
         frame_size: frame.size_bytes(),

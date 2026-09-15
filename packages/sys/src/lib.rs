@@ -7,6 +7,7 @@ mod code;
 mod heap;
 mod heap_state;
 mod heap_types;
+mod invoke;
 pub mod os;
 mod stw;
 mod sync;
@@ -22,6 +23,7 @@ pub use heap::{
     Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,
 };
+pub use invoke::invoke_entry;
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{NativeState, RootToken, SafepointState, Thread, ThreadLayout, thread_layout};
 pub use word::{LowTag, Word};

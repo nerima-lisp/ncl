@@ -26,9 +26,50 @@ fn duplicate_layout_rejected() {
     let h = Heap::new(HeapConfig::default());
     let l = ReferenceLayout {
         reference_words: vec![0],
+        boxed_from: None,
     };
     assert!(h.register_layout(9, l.clone()).is_ok());
     assert!(h.register_layout(9, l).is_err());
+}
+
+#[test]
+fn boxed_tail_layout_moves_every_capture() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    assert!(
+        h.register_layout(
+            15,
+            ReferenceLayout {
+                reference_words: vec![1],
+                boxed_from: Some(2),
+            },
+        )
+        .is_ok()
+    );
+    let mut closure = h
+        .alloc(&mut t, TypeTag { widetag: 15 }, 3)
+        .unwrap_or(Word::NIL);
+    let first = h
+        .alloc_cons(&mut t, Word::fixnum(1), Word::NIL)
+        .unwrap_or(Word::NIL);
+    let second = h
+        .alloc_cons(&mut t, Word::fixnum(2), Word::NIL)
+        .unwrap_or(Word::NIL);
+    let third = h
+        .alloc_cons(&mut t, Word::fixnum(3), Word::NIL)
+        .unwrap_or(Word::NIL);
+    h.write_words(closure, &[(1, first), (2, second), (3, third)]);
+    let token = t.push_root(&mut closure);
+    h.collect(false);
+    let state = h.lock_state();
+    let index = Heap::find(&state, closure).unwrap_or(usize::MAX);
+    for slot in 1..=3 {
+        let captured = Word::from_bits(state.objects[index].words[slot]);
+        assert!(Heap::find(&state, captured).is_some());
+    }
+    drop(state);
+    assert!(t.pop_root(token));
 }
 
 #[test]
@@ -96,6 +137,7 @@ fn unreachable_nursery_is_reclaimed_and_raw_layout_words_are_unchanged() {
             9,
             ReferenceLayout {
                 reference_words: vec![1],
+                boxed_from: None,
             },
         )
         .is_ok()
@@ -135,7 +177,8 @@ fn dirty_card_keeps_old_to_young_reference() {
         h.register_layout(
             12,
             ReferenceLayout {
-                reference_words: vec![1]
+                reference_words: vec![1],
+                boxed_from: None,
             }
         )
         .is_ok()
@@ -238,7 +281,8 @@ fn weak_value_clears_and_finalizer_runs_once() {
         h.register_layout(
             14,
             ReferenceLayout {
-                reference_words: vec![1]
+                reference_words: vec![1],
+                boxed_from: None,
             }
         )
         .is_ok()

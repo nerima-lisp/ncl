@@ -20,7 +20,10 @@ pub struct TypeTag {
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReferenceLayout {
+    /// Header-inclusive raw indices. Payload `N` is index `N + 1`.
     pub reference_words: Vec<usize>,
+    /// Header-inclusive index from which every word to the object end is boxed.
+    pub boxed_from: Option<usize>,
 }
 #[derive(Debug)]
 pub struct LayoutError;

@@ -6,6 +6,8 @@ pub use crate::heap_types::{
 use crate::{Thread, Word};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Condvar, Mutex};
+#[path = "heap/scan.rs"]
+mod scan;
 const CARD_SIZE: usize = 512;
 const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
@@ -215,15 +217,6 @@ impl Heap {
         (object.kind == expected && value.address() == object.words.as_ptr() as usize)
             .then_some(index)
     }
-    fn layout(state: &State, index: usize) -> Vec<usize> {
-        if state.objects[index].kind == PageKind::Cons {
-            return vec![0, 1];
-        }
-        state
-            .layouts
-            .get(&Self::widetag(&state.objects[index]))
-            .map_or_else(Vec::new, |layout| layout.reference_words.clone())
-    }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
         let mut state = self.lock_state();
         if let Some(index) = Self::find(&state, object) {
@@ -316,7 +309,7 @@ impl Heap {
             if !live.insert(index) {
                 continue;
             }
-            for slot in Self::layout(&state, index) {
+            for slot in scan::layout(&state, index) {
                 if state.objects[index].weak.is_some() && slot == 1 {
                     continue;
                 }
@@ -392,7 +385,7 @@ impl Heap {
             if !state.objects[index].alive {
                 continue;
             }
-            for slot in Self::layout(&state, index) {
+            for slot in scan::layout(&state, index) {
                 if state.objects[index].weak.is_some() && slot == 1 {
                     continue;
                 }

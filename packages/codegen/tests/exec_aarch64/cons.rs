@@ -182,6 +182,18 @@ fn executes_safepoint_poll_without_and_with_request() {
     publish_code(&mut code).expect("code publication");
     SAFEPOINT_SLOW_CALLS.store(0, Ordering::SeqCst);
     let mut thread = Thread::new();
+    enter_native(&mut thread);
+    let native_no_request = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        0,
+        [0; 4],
+        0,
+    );
+    assert_eq!(native_no_request, (abi.encode_fixnum(7) as u64, 1));
+    assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 0);
+    leave_native(&mut thread);
     let no_request = invoke_entry(
         &code,
         compiled.entry_offset as usize,

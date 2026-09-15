@@ -25,7 +25,7 @@ impl RuntimeAbi for Aarch64FixtureAbi {
     fn field_offset(&self, field: ContextField) -> Option<i32> {
         let layout = ncl_sys::thread_layout();
         let offset = match field {
-            ContextField::SafepointRequest => layout.safepoint_state,
+            ContextField::SafepointRequest => layout.safepoint_request,
             _ => return None,
         };
         i32::try_from(offset).ok()

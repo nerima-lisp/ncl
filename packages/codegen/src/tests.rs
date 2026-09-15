@@ -75,7 +75,7 @@ impl RuntimeAbi for Aarch64FixtureAbi {
         let offset = match field {
             ContextField::TlabBump => layout.tlab_bump,
             ContextField::TlabLimit => layout.tlab_limit,
-            ContextField::SafepointRequest => layout.safepoint_state,
+            ContextField::SafepointRequest => layout.safepoint_request,
             _ => return None,
         };
         i32::try_from(offset).ok()

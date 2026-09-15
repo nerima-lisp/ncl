@@ -12,8 +12,8 @@ use ncl_codegen::{
 };
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 use ncl_sys::{
-    Thread, alloc_code, invoke_entry, publish_code, request_safepoint, set_tlab, thread_layout,
-    tlab_bump, write_code,
+    Thread, alloc_code, enter_native, invoke_entry, leave_native, publish_code, request_safepoint,
+    set_tlab, thread_layout, tlab_bump, write_code,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
@@ -60,7 +60,7 @@ impl RuntimeAbi for BuiltinAbi {
         let offset = match field {
             ContextField::TlabBump => layout.tlab_bump,
             ContextField::TlabLimit => layout.tlab_limit,
-            ContextField::SafepointRequest => layout.safepoint_state,
+            ContextField::SafepointRequest => layout.safepoint_request,
             _ => return None,
         };
         i32::try_from(offset).ok()

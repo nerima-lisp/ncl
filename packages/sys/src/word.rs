@@ -33,54 +33,74 @@ impl Word {
     /// The unbound marker.
     pub const UNBOUND: Self = Self(4);
     /// Encode a signed 63-bit fixnum.
+    #[must_use]
     pub const fn fixnum(value: i64) -> Self {
-        Self((value as u64) << 1)
+        Self(u64::from_ne_bytes(value.to_ne_bytes()) << 1)
     }
     /// Decode a fixnum when the low bit is zero.
+    #[must_use]
     pub const fn as_fixnum(self) -> Option<i64> {
         if self.0 & 1 == 0 {
-            Some((self.0 as i64) >> 1)
+            Some(i64::from_ne_bytes(self.0.to_ne_bytes()) >> 1)
         } else {
             None
         }
     }
     /// Encode a character in bits 4..24.
+    #[must_use]
     pub const fn character(value: u32) -> Self {
         Self(((value as u64) << 4) | 1)
     }
     /// Encode a pointer with a lowtag.
+    #[must_use]
     pub const fn pointer(address: usize, tag: LowTag) -> Self {
         Self((address as u64) | tag as u64)
     }
     /// Return the raw tagged bits.
+    #[must_use]
     pub const fn bits(self) -> u64 {
         self.0
     }
-    /// Construct a tagged value from raw bits returned by the collector.
+    /// Construct a tagged word from its serialized bits.
+    #[must_use]
     pub const fn from_bits(bits: u64) -> Self {
         Self(bits)
     }
     /// Return the lowtag.
+    #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "lowtag is defined as the low three bits"
+    )]
     pub const fn lowtag(self) -> u8 {
         (self.0 & 7) as u8
     }
     /// Return the untagged address.
+    #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "heap addresses are usize-sized on supported targets"
+    )]
     pub const fn address(self) -> usize {
         (self.0 & !7) as usize
     }
     /// Whether this is a list value, including NIL.
+    #[must_use]
     pub const fn is_list(self) -> bool {
         self.lowtag() == LowTag::List as u8
     }
     /// Whether this is a non-NIL cons pointer.
+    #[must_use]
     pub const fn is_cons(self) -> bool {
         self.is_list() && self.0 != Self::NIL.0
     }
     /// Whether this is a fixnum.
+    #[must_use]
     pub const fn is_fixnum(self) -> bool {
         self.0 & 1 == 0
     }
     /// Whether this is an immediate character.
+    #[must_use]
     pub const fn is_character(self) -> bool {
         self.lowtag() == LowTag::Character as u8
     }

@@ -3,12 +3,37 @@
     missing_docs,
     clippy::borrow_as_ptr,
     clippy::cast_sign_loss,
+    clippy::fn_to_numeric_cast,
     clippy::expect_used
 )]
 
 use ncl_codegen::{RuntimeAbi, X86_64Abi, compile_function_aarch64};
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 use ncl_sys::{Thread, alloc_code, invoke_entry, publish_code, write_code};
+
+const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
+    left + right
+}
+
+struct BuiltinAbi;
+
+impl RuntimeAbi for BuiltinAbi {
+    fn encode_fixnum(&self, value: i64) -> i64 {
+        value << 3
+    }
+
+    fn encode_character(&self, value: u32) -> i64 {
+        i64::from(value) << 8 | 0x0f
+    }
+
+    fn builtin_address(&self, name: &str) -> Option<u64> {
+        (name == "add").then_some(builtin_add as *const () as usize as u64)
+    }
+
+    fn context_offset(&self, _field: &str) -> Option<i32> {
+        None
+    }
+}
 
 #[test]
 fn executes_constant_return_in_published_code() {
@@ -99,6 +124,122 @@ fn executes_fixnum_add_of_two_arguments() {
         0,
     );
     assert_eq!(value, abi.encode_fixnum(3) as u64);
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn executes_builtin_call_with_context_and_arguments() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(4),
+        "builtin-add",
+        vec![
+            Param {
+                name: "left".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "right".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let left = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("left")[0];
+    let right = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .expect("right")[0];
+    let result = builder
+        .push_op(
+            OpKind::Builtin {
+                name: "add".into(),
+                args: vec![left, right],
+            },
+            &[Ty::Word],
+        )
+        .expect("builtin")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![result],
+        })
+        .expect("return");
+    let abi = BuiltinAbi;
+    let compiled = compile_function_aarch64(&builder.finish(), &abi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let mut thread = Thread::new();
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        2,
+        [
+            abi.encode_fixnum(4) as u64,
+            abi.encode_fixnum(5) as u64,
+            0,
+            0,
+        ],
+        0,
+    );
+    assert_eq!(value, abi.encode_fixnum(9) as u64);
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn loads_fifth_argument_from_rest_storage() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(5),
+        "rest-argument",
+        vec![
+            Param {
+                name: "a0".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "a1".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "a2".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "a3".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "rest".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    let value = builder
+        .push_op(OpKind::LoadArg { index: 4 }, &[Ty::Word])
+        .expect("rest argument")[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![value],
+        })
+        .expect("return");
+    let abi = X86_64Abi;
+    let compiled = compile_function_aarch64(&builder.finish(), &abi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let rest = [abi.encode_fixnum(7) as u64];
+    let mut thread = Thread::new();
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        5,
+        [1, 2, 3, 4],
+        rest.as_ptr() as u64,
+    );
+    assert_eq!(value, abi.encode_fixnum(7) as u64);
     assert_eq!(count, 1);
 }
 

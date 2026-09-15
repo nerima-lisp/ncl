@@ -293,7 +293,11 @@ fn golden_builtin_call_has_call_safepoint() {
 }
 
 fn assert_aarch64_fixture(function: &ncl_ir::Function) {
-    let result = compile_function_aarch64(function, &X86_64Abi);
+    assert_aarch64_fixture_with_abi(function, &X86_64Abi);
+}
+
+fn assert_aarch64_fixture_with_abi(function: &ncl_ir::Function, abi: &dyn RuntimeAbi) {
+    let result = compile_function_aarch64(function, abi);
     assert!(result.is_ok(), "AArch64 fixture failed: {result:?}");
     let Some(compiled) = result.ok() else {
         return;
@@ -371,6 +375,24 @@ fn golden_aarch64_branch_decodes() {
 
 #[test]
 fn golden_aarch64_builtin_decodes() {
+    struct Abi;
+    impl RuntimeAbi for Abi {
+        fn encode_fixnum(&self, value: i64) -> i64 {
+            value << 3
+        }
+
+        fn encode_character(&self, value: u32) -> i64 {
+            i64::from(value) << 8 | 0x0f
+        }
+
+        fn builtin_address(&self, name: &str) -> Option<u64> {
+            (name == "identity").then_some(0x1000)
+        }
+
+        fn context_offset(&self, _field: &str) -> Option<i32> {
+            None
+        }
+    }
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(23),
         "aarch64-builtin",
@@ -393,7 +415,7 @@ fn golden_aarch64_builtin_decodes() {
             .terminate(Terminator::Return { values: Vec::new() })
             .is_ok()
     );
-    assert_aarch64_fixture(&builder.finish());
+    assert_aarch64_fixture_with_abi(&builder.finish(), &Abi);
 }
 
 #[test]

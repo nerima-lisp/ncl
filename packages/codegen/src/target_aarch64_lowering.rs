@@ -104,6 +104,38 @@ pub(super) fn lower_call(
     Ok(())
 }
 
+fn lower_builtin(
+    assembler: &mut Assembler,
+    name: &str,
+    args: &[ValueId],
+    slots: &[(ValueId, u32)],
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    if args.len() > 4 {
+        return Err(CodegenError::Unsupported(
+            "AArch64 builtins support at most four arguments".into(),
+        ));
+    }
+    let address = abi.builtin_address(name).ok_or_else(|| {
+        CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
+    })?;
+    emit(
+        assembler,
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(0)),
+            rn: RegOrSp::Reg(Reg(21)),
+        },
+    )?;
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), address) {
+        emit(assembler, instruction)?;
+    }
+    for (index, argument) in args.iter().enumerate() {
+        let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
+        load_slot(assembler, slots, *argument, register)?;
+    }
+    Ok(())
+}
+
 fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u64, CodegenError> {
     match constant {
         ncl_ir::Constant::Fixnum(value) => Ok(abi.encode_fixnum(*value).cast_unsigned()),
@@ -337,18 +369,30 @@ pub(super) fn lower_op(
             )?;
         }
         OpKind::LoadArg { index } => {
-            let source = match *index {
-                0..=3 => Reg(1 + *index),
-                _ => Reg(5),
-            };
             if let Some(result) = result {
-                emit(
-                    assembler,
-                    Inst::Mov {
-                        rd: RegOrSp::Reg(Reg(16)),
-                        rn: RegOrSp::Reg(source),
-                    },
-                )?;
+                if *index < 4 {
+                    emit(
+                        assembler,
+                        Inst::Mov {
+                            rd: RegOrSp::Reg(Reg(16)),
+                            rn: RegOrSp::Reg(Reg(1 + *index)),
+                        },
+                    )?;
+                } else {
+                    let offset = i16::from(*index - 4)
+                        .checked_mul(8)
+                        .ok_or(CodegenError::FrameOverflow)?;
+                    emit(
+                        assembler,
+                        Inst::Ldr {
+                            rt: Reg(16),
+                            mem: MemOperand::Unscaled {
+                                base: RegOrSp::Reg(Reg(5)),
+                                offset,
+                            },
+                        },
+                    )?;
+                }
                 store_slot(assembler, slots, result, Reg(16))?;
             }
         }
@@ -396,8 +440,12 @@ pub(super) fn lower_op(
                 store_slot(assembler, slots, result, Reg(0))?;
             }
         }
-        OpKind::Builtin { .. } => {
+        OpKind::Builtin { name, args } => {
+            lower_builtin(assembler, name, args, slots, abi)?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
+            if let Some(result) = result {
+                store_slot(assembler, slots, result, Reg(0))?;
+            }
         }
     }
     Ok(())

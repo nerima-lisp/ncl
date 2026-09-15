@@ -2,17 +2,19 @@
 resolver = "3"
 members = [
     ".",
+    "packages/sys",
+    "packages/object",
     "packages/ir",
     "packages/asm/x86-64",
     "packages/asm/aarch64",
-    "packages/sys",
 ]
 default-members = [
     ".",
+    "packages/sys",
+    "packages/object",
     "packages/ir",
     "packages/asm/x86-64",
     "packages/asm/aarch64",
-    "packages/sys",
 ]
 
 [workspace.package]

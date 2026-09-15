@@ -1,0 +1,77 @@
+use crate::{Runtime, ThreadContext};
+use ncl_sys::{HeapConfig, Word};
+
+impl Runtime {
+    /// Return the configured heap policy.
+    #[must_use]
+    pub const fn gc_config(&self) -> HeapConfig {
+        HeapConfig {
+            dynamic_space_size: self.heap().dynamic_space_size(),
+            bytes_considered_between_gcs: self.heap().bytes_considered_between_gcs(),
+        }
+    }
+    /// Register a class object by name.
+    pub fn define_class(&self, name: impl Into<String>, class: Word) {
+        self.classes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(name.into(), class);
+    }
+    /// Look up a class object.
+    #[must_use]
+    pub fn class(&self, name: &str) -> Option<Word> {
+        self.classes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(name)
+            .copied()
+    }
+    /// Add a feature name if absent.
+    pub fn add_feature(&self, feature: impl Into<String>) {
+        let mut features = self
+            .features
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let feature = feature.into();
+        if !features.contains(&feature) {
+            features.push(feature);
+        }
+    }
+    /// Return the configured feature names.
+    #[must_use]
+    pub fn features(&self) -> Vec<String> {
+        self.features
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl ThreadContext {
+    /// Mark a pending non-local exit.
+    pub const fn set_non_local_exit(&mut self, pending: bool) {
+        self.non_local_exit = pending;
+    }
+    /// Return and clear the non-local exit flag.
+    pub const fn take_non_local_exit(&mut self) -> bool {
+        let pending = self.non_local_exit;
+        self.non_local_exit = false;
+        pending
+    }
+    /// Set the current handler, cleanup, and catch frame pointers.
+    pub const fn set_control_pointers(
+        &mut self,
+        handler: Option<usize>,
+        cleanup: Option<usize>,
+        catch: Option<usize>,
+    ) {
+        self.handler = handler;
+        self.cleanup = cleanup;
+        self.catch = catch;
+    }
+    /// Return the current control frame pointers.
+    #[must_use]
+    pub const fn control_pointers(&self) -> (Option<usize>, Option<usize>, Option<usize>) {
+        (self.handler, self.cleanup, self.catch)
+    }
+}

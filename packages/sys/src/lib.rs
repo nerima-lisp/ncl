@@ -78,6 +78,58 @@ pub fn alloc_cons(
     heap.alloc_cons(thread, car, cdr)
 }
 
+/// Read a payload word from a live object.
+pub fn read_word(heap: &Heap, object: Word, slot: usize) -> Option<Word> {
+    heap.read_word(object, slot + 1)
+}
+
+/// Write a payload word in a live object.
+pub fn write_word(heap: &Heap, object: Word, slot: usize, value: Word) -> bool {
+    heap.write_word(object, slot + 1, value)
+}
+
+/// Read the header widetag of a live object.
+pub fn widetag(heap: &Heap, object: Word) -> Option<u8> {
+    heap.widetag(object)
+}
+
+/// Read the widetag of a live object through a registered thread.
+#[must_use]
+pub fn object_widetag(thread: &Thread, object: Word) -> Option<u8> {
+    let heap = thread.heap_ref()?;
+    heap.widetag(object)
+}
+
+/// Read a cons payload word through a registered thread.
+#[must_use]
+pub fn read_cons_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {
+    let heap = thread.heap_ref()?;
+    heap.read_cons_word(object, slot)
+}
+
+/// Read a header-object payload word through a registered thread.
+#[must_use]
+pub fn read_object_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {
+    let heap = thread.heap_ref()?;
+    heap.read_word(object, slot + 1)
+}
+
+/// Write a header-object payload word through a registered thread.
+pub fn write_object_word(thread: &mut Thread, object: Word, slot: usize, value: Word) -> bool {
+    let Some(heap) = thread.heap_ref() else {
+        return false;
+    };
+    heap.write_word(object, slot, value)
+}
+
+/// Write a cons payload word through a registered thread.
+pub fn write_cons_word(thread: &mut Thread, object: Word, slot: usize, value: Word) -> bool {
+    let Some(heap) = thread.heap_ref() else {
+        return false;
+    };
+    heap.write_cons_word(object, slot, value)
+}
+
 /// Register a mutator with a heap.
 ///
 /// # Errors

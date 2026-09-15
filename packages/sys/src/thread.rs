@@ -49,6 +49,8 @@ pub struct Thread {
     pub(crate) cleanup: usize,
     pub(crate) catch: usize,
     pub(crate) pending: bool,
+    pub(crate) frame_chain: Vec<Word>,
+    pub(crate) frame_registers: Vec<Word>,
 }
 
 /// Native offsets consumed by the code generator when addressing a thread context.
@@ -107,6 +109,8 @@ impl Thread {
             cleanup: 0,
             catch: 0,
             pending: false,
+            frame_chain: Vec::new(),
+            frame_registers: Vec::new(),
         }
     }
     /// Push a precise root. The referenced slot must outlive the token.
@@ -204,6 +208,11 @@ impl Thread {
         let pending = self.interrupt;
         self.interrupt = false;
         pending
+    }
+    /// Install a precise native frame and register snapshot for collection.
+    pub fn set_frame_snapshot(&mut self, frames: Vec<Word>, registers: Vec<Word>) {
+        self.frame_chain = frames;
+        self.frame_registers = registers;
     }
 }
 

@@ -15,8 +15,8 @@ mod word;
 
 pub use code::{
     CodeError, CodeObjectMetadata, CodePtr, CodeRegistry, FrameHeader, Safepoint, SafepointMap,
-    alloc_code, free_code, publish_code, scan_frame, scan_frame_chain, walk_frame_headers,
-    write_code,
+    alloc_code, free_code, publish_code, scan_frame, scan_frame_chain,
+    scan_frame_chain_with_registry, scan_frame_with_registers, walk_frame_headers, write_code,
 };
 pub use heap::{
     Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,

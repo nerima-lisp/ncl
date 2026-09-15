@@ -426,6 +426,25 @@ pub fn scan_frame(
     Some(updated)
 }
 
+/// Scan one frame and its mapped callee-saved register slots.
+pub fn scan_frame_with_registers(
+    words: &mut [Word],
+    frame_start: usize,
+    map: &Safepoint,
+    registers: &mut [Word],
+    mut forward: impl FnMut(Word) -> Word,
+) -> Option<usize> {
+    let mut updated = scan_frame(words, frame_start, map, &mut forward)?;
+    for register_id in &map.register_ids {
+        let index = usize::from(*register_id);
+        if let Some(register) = registers.get_mut(index) {
+            *register = forward(*register);
+            updated += 1;
+        }
+    }
+    Some(updated)
+}
+
 /// Scan a chain of mapped four-word frames and forward precise roots in place.
 pub fn scan_frame_chain(
     words: &mut [Word],
@@ -452,5 +471,30 @@ pub fn scan_frame_chain(
     (frames > 0).then_some(updated)
 }
 
+/// Scan a frame chain by resolving each return PC through the code registry.
+pub fn scan_frame_chain_with_registry(
+    words: &mut [Word],
+    first: usize,
+    registry: &CodeRegistry,
+    registers: &mut [Word],
+    mut forward: impl FnMut(Word) -> Word,
+) -> Option<usize> {
+    let mut at = first;
+    let mut updated = 0;
+    let mut frames = 0;
+    while at.checked_add(3).is_some_and(|end| end < words.len()) {
+        let return_pc = words[at + 1].address();
+        let (metadata, offset) = registry.find(return_pc)?;
+        let map = metadata.safepoint_map.find_map(offset)?;
+        updated += scan_frame_with_registers(words, at, map, registers, &mut forward)?;
+        frames += 1;
+        let previous = words[at].address();
+        if previous == 0 || previous == at {
+            break;
+        }
+        at = previous;
+    }
+    (frames > 0).then_some(updated)
+}
 #[cfg(test)]
 mod tests;

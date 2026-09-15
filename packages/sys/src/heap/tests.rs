@@ -73,6 +73,63 @@ fn boxed_tail_layout_moves_every_capture() {
 }
 
 #[test]
+fn collection_updates_registered_frame_snapshot() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    let Ok(mut code) = crate::alloc_code(16) else {
+        return;
+    };
+    assert!(crate::publish_code(&mut code).is_ok());
+    let mut map_bytes = vec![0; 16];
+    map_bytes[4..6].copy_from_slice(&5_u16.to_le_bytes());
+    map_bytes[6..8].copy_from_slice(&5_u16.to_le_bytes());
+    map_bytes[8..10].copy_from_slice(&5_u16.to_le_bytes());
+    map_bytes[10..12].copy_from_slice(&0_u16.to_le_bytes());
+    map_bytes.push(0b0001_0100);
+    let Ok(map) = crate::SafepointMap::decode(&map_bytes, 1) else {
+        return;
+    };
+    assert!(
+        h.register_code(
+            &code,
+            crate::CodeObjectMetadata {
+                entry_offset: 0,
+                size: code.len(),
+                constant_slots: Vec::new(),
+                safepoint_map: map,
+                debug_table: Vec::new(),
+            },
+        )
+        .is_ok()
+    );
+    let function = h
+        .alloc_cons(&mut t, Word::fixnum(1), Word::NIL)
+        .unwrap_or(Word::NIL);
+    let local = h
+        .alloc_cons(&mut t, Word::fixnum(2), Word::NIL)
+        .unwrap_or(Word::NIL);
+    let old_function = function;
+    let old_local = local;
+    t.set_frame_snapshot(
+        vec![
+            Word::from_bits(0),
+            Word::from_bits(code.address() as u64),
+            function,
+            Word::NIL,
+            local,
+        ],
+        Vec::new(),
+    );
+    h.collect(false);
+    assert_ne!(t.frame_chain[2], old_function);
+    assert_ne!(t.frame_chain[4], old_local);
+    let state = h.lock_state();
+    assert!(Heap::find(&state, t.frame_chain[2]).is_some());
+    assert!(Heap::find(&state, t.frame_chain[4]).is_some());
+}
+
+#[test]
 fn roots_are_lifo() {
     let mut t = Thread::new();
     let mut v = Word::NIL;

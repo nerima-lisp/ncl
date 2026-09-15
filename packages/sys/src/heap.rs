@@ -90,8 +90,8 @@ impl Heap {
             .threads
             .iter()
             .filter(|candidate| {
-                // SAFETY: registered thread pointers are valid until unregister_thread.
                 unsafe {
+                    // SAFETY: registered thread pointers are valid until unregister_thread.
                     let pointer = **candidate;
                     (&*pointer).native_state() != crate::NativeState::Native
                 }
@@ -136,33 +136,20 @@ impl Heap {
     }
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
         let state = self.lock_state();
-        let index = Self::find(&state, object)?;
-        state.objects[index]
+        state.objects[Self::find(&state, object)?]
             .words
             .get(slot)
-            .copied()
-            .map(Word::from_bits)
-    }
-    pub(crate) fn read_cons_word(&self, object: Word, slot: usize) -> Option<Word> {
-        self.read_word(object, slot)
-    }
-    pub(crate) fn write_cons_word(&self, object: Word, slot: usize, value: Word) -> bool {
-        self.write_word_at(object, slot, value)
+            .map(|value| Word::from_bits(*value))
     }
     pub(crate) fn write_word(&self, object: Word, slot: usize, value: Word) -> bool {
-        self.write_word_at(object, slot, value)
+        self.write_word_at(object, slot + 1, value)
     }
-    fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
+    pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
         let mut state = self.lock_state();
-        Self::find(&state, object).is_some_and(|index| {
-            state.objects[index]
-                .words
-                .get_mut(slot)
-                .is_some_and(|target| {
-                    *target = value.bits();
-                    true
-                })
-        })
+        Self::find(&state, object)
+            .and_then(|index| state.objects[index].words.get_mut(slot))
+            .map(|target| *target = value.bits())
+            .is_some()
     }
     pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
         let state = self.lock_state();
@@ -304,8 +291,8 @@ impl Heap {
         let mut root_slots = state.roots.clone();
         let mut conservative_values = Vec::new();
         for thread in state.threads.iter().copied() {
-            // SAFETY: registered thread pointers remain valid until unregister_thread.
             unsafe {
+                // SAFETY: registered thread pointers remain valid until unregister_thread.
                 root_slots.extend((*thread).roots.iter().copied());
                 conservative_values.extend((*thread).conservative_roots.iter().copied());
             }
@@ -397,8 +384,8 @@ impl Heap {
             // SAFETY: registered root slots remain valid and uniquely mutable by their owner.
             let value = unsafe { *root };
             if let Some(address) = Self::relocated_address(&state, &moved, value) {
-                // SAFETY: the root slot is registered and points to a valid Word.
                 unsafe {
+                    // SAFETY: the root slot is registered and points to a valid Word.
                     *root = Word::pointer(
                         address,
                         if value.is_list() {

@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+use ncl_object::hash_table::{HashTable, HashTest, Weakness};
+use ncl_object::package::Package;
 use ncl_object::{
     ObjectRef, Runtime, ThreadContext, builtin, car, classify, make_cons, make_symbol, register,
     set_symbol_value, symbol_name, symbol_value,
@@ -76,5 +78,72 @@ fn gc_extensions_register_the_owned_symbols() {
         "WEAK-VECTOR-P",
     ] {
         assert_eq!(runtime.function("SB-EXT", name), Some(Word::UNBOUND));
+    }
+}
+
+#[test]
+fn gc_preserves_object_accessors_and_weak_entries() {
+    let runtime = Runtime::new();
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    assert!(runtime.register_layouts().is_ok());
+    assert!(
+        ncl_sys::register_layout(
+            runtime.heap(),
+            99,
+            ncl_sys::ReferenceLayout {
+                reference_words: vec![1],
+            },
+        )
+        .is_ok()
+    );
+
+    let mut list = Word::NIL;
+    for value in 0..10_000 {
+        list = make_cons(&mut ctx, &runtime, Word::fixnum(value), list).unwrap_or(Word::NIL);
+    }
+    let mut symbols = Vec::new();
+    for _ in 0..1_000 {
+        symbols.push(make_symbol(&mut ctx, &runtime, Word::NIL).unwrap_or(Word::NIL));
+    }
+    let mut package = Package::new("GC-TEST");
+    let interned = package
+        .intern(&mut ctx, &runtime, "SAME")
+        .map_or(Word::NIL, |pair| pair.0);
+    let mut weak = ncl_object::allocate(&mut ctx, &runtime, 99, 1).unwrap_or(Word::NIL);
+    let referent = make_cons(&mut ctx, &runtime, Word::fixnum(7), Word::NIL).unwrap_or(Word::NIL);
+    assert!(ctx.write_object_slot(weak, 0, referent).is_ok());
+    weak = ctx.make_weak(weak, ncl_sys::Weakness::Value);
+    let mut roots = symbols;
+    roots.push(list);
+    roots.push(interned);
+    roots.push(weak);
+    let tokens = roots
+        .iter_mut()
+        .map(|value| ncl_object::push_root(&mut ctx, value))
+        .collect::<Vec<_>>();
+    assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
+    let table_key = Word::fixnum(42);
+    let mut table = HashTable::new(HashTest::Eq, Weakness::None, 8);
+    table.insert(table_key, Word::fixnum(99));
+
+    ctx.collect(false);
+    assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
+    assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
+    assert_eq!(symbol_value(&ctx, roots[1_001]), Ok(Word::UNBOUND));
+    assert_eq!(table.get(table_key), Some(Word::fixnum(99)));
+    assert_eq!(
+        package
+            .intern(&mut ctx, &runtime, "SAME")
+            .map(|pair| pair.0),
+        Ok(interned)
+    );
+
+    ctx.collect(true);
+    assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
+    assert_eq!(table.get(table_key), Some(Word::fixnum(99)));
+    assert_eq!(ctx.weak_value(weak), Word::NIL);
+    for token in tokens.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
     }
 }

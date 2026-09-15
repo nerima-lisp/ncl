@@ -123,7 +123,7 @@ pub fn object_widetag(thread: &Thread, object: Word) -> Option<u8> {
 #[must_use]
 pub fn read_cons_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {
     let heap = thread.heap_ref()?;
-    heap.read_cons_word(object, slot)
+    heap.read_word(object, slot)
 }
 
 /// Read a header-object payload word through a registered thread.
@@ -146,7 +146,7 @@ pub fn write_cons_word(thread: &mut Thread, object: Word, slot: usize, value: Wo
     let Some(heap) = thread.heap_ref() else {
         return false;
     };
-    heap.write_cons_word(object, slot, value)
+    heap.write_word_at(object, slot, value)
 }
 
 /// Register a mutator with a heap.

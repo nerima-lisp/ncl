@@ -23,6 +23,12 @@ pub struct RootToken {
     pub(crate) count: usize,
 }
 
+/// Machine-visible mutator context.
+///
+/// This type is `repr(C)` so the offsets returned by [`thread_layout`] are a
+/// stable ABI. The object lane's `ThreadContext` places this type first and
+/// passes `*mut ThreadContext` to generated code as `*mut Thread`.
+#[repr(C)]
 #[derive(Debug)]
 pub struct Thread {
     pub(crate) roots: Vec<*mut Word>,
@@ -43,6 +49,8 @@ pub struct Thread {
     pub(crate) cleanup: usize,
     pub(crate) catch: usize,
     pub(crate) pending: bool,
+    pub(crate) frame_chain: Vec<Word>,
+    pub(crate) frame_registers: Vec<Word>,
 }
 
 /// Native offsets consumed by the code generator when addressing a thread context.
@@ -101,6 +109,8 @@ impl Thread {
             cleanup: 0,
             catch: 0,
             pending: false,
+            frame_chain: Vec::new(),
+            frame_registers: Vec::new(),
         }
     }
     pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
@@ -205,6 +215,11 @@ impl Thread {
         self.interrupt = false;
         pending
     }
+    /// Install a precise native frame and register snapshot for collection.
+    pub fn set_frame_snapshot(&mut self, frames: Vec<Word>, registers: Vec<Word>) {
+        self.frame_chain = frames;
+        self.frame_registers = registers;
+    }
 }
 
 // SAFETY: a Thread is an owner-local mutator context and is transferred to one OS thread at a time.
@@ -248,4 +263,22 @@ fn current_stack_bounds() -> Option<(usize, usize)> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 const fn current_stack_bounds() -> Option<(usize, usize)> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layout_matches_c_struct_offsets() {
+        let layout = thread_layout();
+        assert_eq!(layout.tlab_bump, std::mem::offset_of!(Thread, tlab_bump));
+        assert_eq!(layout.tlab_limit, std::mem::offset_of!(Thread, tlab_limit));
+        assert_eq!(layout.safepoint_state, std::mem::offset_of!(Thread, state));
+        assert_eq!(layout.pending, std::mem::offset_of!(Thread, pending));
+        assert_eq!(layout.mv, std::mem::offset_of!(Thread, mv));
+        assert_eq!(layout.handler, std::mem::offset_of!(Thread, handler));
+        assert_eq!(layout.cleanup, std::mem::offset_of!(Thread, cleanup));
+        assert_eq!(layout.catch, std::mem::offset_of!(Thread, catch));
+    }
 }

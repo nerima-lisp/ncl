@@ -2,7 +2,7 @@ use crate::object_access::{fix, get, put};
 use crate::{ObjectError, Runtime, ThreadContext, allocate, widetag};
 use ncl_sys::Word;
 
-pub type CodeObject = Word;
+crate::word_newtype!(CodeObject);
 
 /// Allocate a code object descriptor.
 ///
@@ -24,7 +24,7 @@ pub fn make_code_object(
     {
         put(ctx, object, i, v)?;
     }
-    Ok(object)
+    Ok(object.into())
 }
 /// Read a raw code object slot.
 ///
@@ -35,5 +35,5 @@ pub fn code_slot(
     object: CodeObject,
     slot: usize,
 ) -> Result<Word, ObjectError> {
-    get(ctx, object, widetag::CODE, slot)
+    get(ctx, object.into(), widetag::CODE, slot)
 }

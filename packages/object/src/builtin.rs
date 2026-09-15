@@ -43,7 +43,26 @@ impl MultipleValues {
 }
 
 /// A function object identity used by the registration API.
-pub type FunctionObject = Word;
+/// A function object identity used by the registration API.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FunctionObject(Word);
+impl From<Word> for FunctionObject {
+    fn from(value: Word) -> Self {
+        Self(value)
+    }
+}
+impl From<FunctionObject> for Word {
+    fn from(value: FunctionObject) -> Self {
+        value.0
+    }
+}
+impl FunctionObject {
+    #[must_use]
+    pub const fn as_word(self) -> Word {
+        self.0
+    }
+}
 /// Function registration callback.
 pub type RegisterFn = fn(&super::Runtime);
 

@@ -5,7 +5,7 @@ use crate::{
 };
 use ncl_sys::Word;
 
-pub type Instance = Word;
+crate::word_newtype!(Instance);
 
 /// Allocate an instance with a simple-vector slot store.
 ///
@@ -30,7 +30,7 @@ pub fn make_instance(
     put(ctx, object, instance_offset::SLOT_VECTOR, vector)?;
     put(ctx, object, instance_offset::GENERATION, Word::fixnum(0))?;
     let _ = pop_root(ctx, token);
-    Ok(object)
+    Ok(object.into())
 }
 
 /// Read an instance class.
@@ -38,7 +38,12 @@ pub fn make_instance(
 /// # Errors
 /// Returns an error when the object is not an instance.
 pub fn instance_class(ctx: &ThreadContext, object: Instance) -> Result<Word, ObjectError> {
-    get(ctx, object, widetag::INSTANCE, instance_offset::CLASS)
+    get(
+        ctx,
+        object.into(),
+        widetag::INSTANCE,
+        instance_offset::CLASS,
+    )
 }
 
 /// Read an instance slot.
@@ -46,7 +51,12 @@ pub fn instance_class(ctx: &ThreadContext, object: Instance) -> Result<Word, Obj
 /// # Errors
 /// Returns an error when the object or slot is invalid.
 pub fn slot_ref(ctx: &ThreadContext, object: Instance, index: usize) -> Result<Word, ObjectError> {
-    let vector = get(ctx, object, widetag::INSTANCE, instance_offset::SLOT_VECTOR)?;
+    let vector = get(
+        ctx,
+        object.into(),
+        widetag::INSTANCE,
+        instance_offset::SLOT_VECTOR,
+    )?;
     simple_vector_ref(ctx, vector, index)
 }
 
@@ -60,6 +70,11 @@ pub fn slot_set(
     index: usize,
     value: Word,
 ) -> Result<(), ObjectError> {
-    let vector = get(ctx, object, widetag::INSTANCE, instance_offset::SLOT_VECTOR)?;
+    let vector = get(
+        ctx,
+        object.into(),
+        widetag::INSTANCE,
+        instance_offset::SLOT_VECTOR,
+    )?;
     simple_vector_set(ctx, vector, index, value)
 }

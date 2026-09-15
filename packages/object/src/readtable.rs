@@ -2,7 +2,7 @@ use crate::object_access::{get, put};
 use crate::{ObjectError, Runtime, ThreadContext, allocate, widetag};
 use ncl_sys::Word;
 
-pub type Readtable = Word;
+crate::word_newtype!(Readtable);
 
 /// Allocate a readtable descriptor.
 ///
@@ -19,7 +19,7 @@ pub fn make_readtable(
     for (i, v) in [syntax, dispatch, case_mode].into_iter().enumerate() {
         put(ctx, object, i, v)?;
     }
-    Ok(object)
+    Ok(object.into())
 }
 /// Read a raw readtable slot.
 ///
@@ -30,5 +30,5 @@ pub fn readtable_slot(
     object: Readtable,
     slot: usize,
 ) -> Result<Word, ObjectError> {
-    get(ctx, object, widetag::READTABLE, slot)
+    get(ctx, object.into(), widetag::READTABLE, slot)
 }

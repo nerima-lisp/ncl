@@ -2,7 +2,25 @@ use crate::object_access::{fix, get, put};
 use crate::{ObjectError, Runtime, ThreadContext, allocate, structure_offset, widetag};
 use ncl_sys::Word;
 
-pub type StructureLayout = u32;
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StructureLayout(u32);
+impl From<u32> for StructureLayout {
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+impl From<StructureLayout> for u32 {
+    fn from(value: StructureLayout) -> Self {
+        value.0
+    }
+}
+impl StructureLayout {
+    #[must_use]
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+}
 
 impl Runtime {
     /// Allocate a monotonically increasing structure layout identifier.
@@ -24,7 +42,7 @@ impl Runtime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(id, slot_count);
-        Ok(id)
+        Ok(StructureLayout(id))
     }
 
     /// Return the slot count for a registered structure layout.
@@ -33,7 +51,7 @@ impl Runtime {
         self.layouts
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(&id)
+            .get(&id.0)
             .copied()
     }
 }
@@ -52,7 +70,12 @@ pub fn make_structure(
         return Err(ObjectError::Layout);
     }
     let object = allocate(ctx, runtime, widetag::STRUCTURE, 1 + slots.len())?;
-    put(ctx, object, structure_offset::LAYOUT, fix(layout as usize)?)?;
+    put(
+        ctx,
+        object,
+        structure_offset::LAYOUT,
+        fix(layout.0 as usize)?,
+    )?;
     for (index, value) in slots.iter().copied().enumerate() {
         put(ctx, object, structure_offset::SLOTS + index, value)?;
     }
@@ -67,15 +90,9 @@ pub fn structure_layout(ctx: &ThreadContext, object: Word) -> Result<StructureLa
     let value = get(ctx, object, widetag::STRUCTURE, structure_offset::LAYOUT)?
         .as_fixnum()
         .ok_or(ObjectError::Layout)?;
-    u32::try_from(value).map_err(|_| ObjectError::Layout)
-}
-
-/// Read a structure layout identifier using the legacy accessor name.
-///
-/// # Errors
-/// Returns an error when the object is not a valid structure.
-pub fn layout(ctx: &ThreadContext, object: Word) -> Result<StructureLayout, ObjectError> {
-    structure_layout(ctx, object)
+    Ok(StructureLayout(
+        u32::try_from(value).map_err(|_| ObjectError::Layout)?,
+    ))
 }
 
 /// Read a structure slot.

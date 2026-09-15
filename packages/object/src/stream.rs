@@ -2,7 +2,7 @@ use crate::object_access::{get, put};
 use crate::{ObjectError, Runtime, ThreadContext, allocate, stream_offset, widetag};
 use ncl_sys::Word;
 
-pub type Stream = Word;
+crate::word_newtype!(Stream);
 
 /// Allocate a stream descriptor.
 ///
@@ -30,19 +30,19 @@ pub fn make_stream(
     {
         put(ctx, object, i, v)?;
     }
-    Ok(object)
+    Ok(object.into())
 }
 /// Read stream state.
 ///
 /// # Errors
 /// Returns an error when the object is invalid.
 pub fn stream_state(ctx: &ThreadContext, object: Stream) -> Result<Word, ObjectError> {
-    get(ctx, object, widetag::STREAM, stream_offset::STATE)
+    get(ctx, object.into(), widetag::STREAM, stream_offset::STATE)
 }
 /// Read a named stream slot.
 ///
 /// # Errors
 /// Returns an error when the object or slot is invalid.
 pub fn stream_slot(ctx: &ThreadContext, object: Stream, slot: usize) -> Result<Word, ObjectError> {
-    get(ctx, object, widetag::STREAM, slot)
+    get(ctx, object.into(), widetag::STREAM, slot)
 }

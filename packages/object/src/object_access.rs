@@ -1,6 +1,31 @@
 use crate::{ObjectError, ThreadContext};
 use ncl_sys::Word;
 
+#[macro_export]
+macro_rules! word_newtype {
+    ($name:ident) => {
+        #[repr(transparent)]
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub struct $name(Word);
+        impl From<Word> for $name {
+            fn from(value: Word) -> Self {
+                Self(value)
+            }
+        }
+        impl From<$name> for Word {
+            fn from(value: $name) -> Self {
+                value.0
+            }
+        }
+        impl $name {
+            #[must_use]
+            pub const fn as_word(self) -> Word {
+                self.0
+            }
+        }
+    };
+}
+
 pub fn put(
     ctx: &mut ThreadContext,
     object: Word,

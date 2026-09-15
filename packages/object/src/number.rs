@@ -4,10 +4,10 @@ use crate::object_access::{fix, get, put};
 use crate::{ObjectError, Runtime, ThreadContext, allocate, number_offset, widetag};
 use ncl_sys::Word;
 
-pub type Bignum = Word;
-pub type Ratio = Word;
-pub type DoubleFloat = Word;
-pub type Complex = Word;
+crate::word_newtype!(Bignum);
+crate::word_newtype!(Ratio);
+crate::word_newtype!(DoubleFloat);
+crate::word_newtype!(Complex);
 
 /// Allocate a bignum from a signed 128-bit integer.
 ///

@@ -50,18 +50,13 @@ pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, rat
 use package::Package;
 pub use readtable::readtable_slot;
 pub use readtable::{Readtable, make_readtable};
-pub use stream::stream_slot;
-pub use structure::{layout, structure_layout};
-/* pub use remaining::{
-    bignum_sign, code_slot, complex_imag, complex_real, function_code, function_lambda_list,
-    ratio_denominator, ratio_numerator, readtable_slot, stream_slot,
-};
-pub use remaining::{layout, layout as structure_layout}; */
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
     specialized_array_set,
 };
+pub use stream::stream_slot;
 pub use stream::{Stream, make_stream, stream_state};
+pub use structure::structure_layout;
 pub use structure::{StructureLayout, make_structure, structure_ref, structure_set};
 /// Classification of a tagged value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

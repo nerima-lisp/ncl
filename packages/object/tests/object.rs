@@ -271,7 +271,9 @@ fn remaining_object_kinds_round_trip() {
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     assert!(runtime.register_layouts().is_ok());
-    let layout = runtime.register_structure_layout(2).unwrap_or(0);
+    let layout = runtime
+        .register_structure_layout(2)
+        .unwrap_or_else(|_| 0.into());
     let structure = ncl_object::make_structure(
         &mut ctx,
         &runtime,
@@ -279,23 +281,24 @@ fn remaining_object_kinds_round_trip() {
         &[Word::fixnum(1), Word::fixnum(2)],
     )
     .unwrap_or(Word::NIL);
-    assert_eq!(ncl_object::layout(&ctx, structure), Ok(layout));
+    assert_eq!(ncl_object::structure_layout(&ctx, structure), Ok(layout));
     assert_eq!(
         ncl_object::structure_ref(&ctx, structure, 1),
         Ok(Word::fixnum(2))
     );
     let instance = ncl_object::make_instance(&mut ctx, &runtime, Word::NIL, &[Word::fixnum(3)])
-        .unwrap_or(Word::NIL);
+        .unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::slot_ref(&ctx, instance, 0), Ok(Word::fixnum(3)));
     assert!(ncl_object::slot_set(&mut ctx, instance, 0, Word::fixnum(4)).is_ok());
-    let bignum =
-        ncl_object::make_bignum_from_i128(&mut ctx, &runtime, -0x1_0000_0001).unwrap_or(Word::NIL);
+    let bignum = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, -0x1_0000_0001)
+        .unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::bignum_limbs(&ctx, bignum), Ok(vec![1, 1]));
-    let double = ncl_object::make_double(&mut ctx, &runtime, 1.25).unwrap_or(Word::NIL);
+    let double = ncl_object::make_double(&mut ctx, &runtime, 1.25)
+        .unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::double_value(&ctx, double), Ok(1.25));
     let code =
         ncl_object::make_code_object(&mut ctx, &runtime, 7, 4, Word::NIL, Word::NIL, Word::NIL)
-            .unwrap_or(Word::NIL);
+            .unwrap_or_else(|_| Word::NIL.into());
     let function = ncl_object::make_closure(
         &mut ctx,
         &runtime,
@@ -303,22 +306,25 @@ fn remaining_object_kinds_round_trip() {
         Word::NIL,
         Word::NIL,
         code,
-        &[instance],
+        &[instance.into()],
     )
-    .unwrap_or(Word::NIL);
+    .unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::function_entry(&ctx, function), Ok(7));
-    assert_eq!(ncl_object::closure_ref(&ctx, function, 0), Ok(instance));
-    let mut rooted_instance = instance;
+    assert_eq!(
+        ncl_object::closure_ref(&ctx, function, 0),
+        Ok(instance.into())
+    );
+    let mut rooted_instance: Word = instance.into();
     let instance_token = ncl_object::push_root(&mut ctx, &mut rooted_instance);
-    let mut rooted_function = function;
+    let mut rooted_function: Word = function.into();
     let function_token = ncl_object::push_root(&mut ctx, &mut rooted_function);
     ctx.collect(true);
     assert_eq!(
-        ncl_object::slot_ref(&ctx, rooted_instance, 0),
+        ncl_object::slot_ref(&ctx, rooted_instance.into(), 0),
         Ok(Word::fixnum(4))
     );
     assert_eq!(
-        ncl_object::closure_ref(&ctx, rooted_function, 0),
+        ncl_object::closure_ref(&ctx, rooted_function.into(), 0),
         Ok(rooted_instance)
     );
     assert!(ncl_object::pop_root(&mut ctx, function_token));
@@ -332,6 +338,6 @@ fn remaining_object_kinds_round_trip() {
         Word::fixnum(9),
         Word::NIL,
     )
-    .unwrap_or(Word::NIL);
+    .unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::stream_state(&ctx, stream), Ok(Word::fixnum(9)));
 }

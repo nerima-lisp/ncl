@@ -150,7 +150,7 @@ impl Runtime {
                     boxed_from: None,
                 },
             )
-                .map_err(|_| ObjectError::Layout)?;
+            .map_err(|_| ObjectError::Layout)?;
         }
         Ok(())
     }

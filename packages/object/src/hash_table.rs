@@ -1,5 +1,7 @@
 //! Heap-resident open-addressed hash tables.
 
+pub use crate::hash_support::sxhash;
+use crate::hash_support::{decode_test, decode_weakness, probe, read_u64, read_usize, to_fixnum};
 use crate::object_access::{get, put};
 use crate::{ObjectError, Runtime, ThreadContext, allocate, make_simple_vector};
 use crate::{
@@ -165,7 +167,8 @@ impl HashTable {
             return Ok(None);
         };
         let (index, kv) = self.storage(ctx)?;
-        let slot = Self::find_slot(ctx, index, kv, key, sxhash(key), self.test(ctx)?)?;
+        let test = self.test(ctx)?;
+        let slot = Self::find_slot(ctx, index, kv, key, hash_key(ctx, test, key)?, test)?;
         let position = usize::try_from(
             simple_vector_ref(ctx, index, slot)?
                 .as_fixnum()
@@ -294,14 +297,6 @@ impl HashTable {
     }
 }
 
-fn probe(hash: u64, step: usize, capacity: usize) -> usize {
-    (usize::try_from(hash).unwrap_or(0).wrapping_add(step)) & (capacity - 1)
-}
-fn to_fixnum(value: usize) -> Result<Word, ObjectError> {
-    Ok(Word::fixnum(
-        i64::try_from(value).map_err(|_| ObjectError::Layout)?,
-    ))
-}
 fn equal(
     ctx: &ThreadContext,
     test: HashTest,
@@ -481,50 +476,4 @@ fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectEr
         ),
         _ => None,
     })
-}
-fn read_usize(ctx: &ThreadContext, object: Word, slot: usize) -> Result<usize, ObjectError> {
-    usize::try_from(
-        get(ctx, object, widetag::HASH_TABLE, slot)?
-            .as_fixnum()
-            .ok_or(ObjectError::Layout)?,
-    )
-    .map_err(|_| ObjectError::Layout)
-}
-fn read_u64(ctx: &ThreadContext, object: Word, slot: usize) -> Result<u64, ObjectError> {
-    u64::try_from(
-        get(ctx, object, widetag::HASH_TABLE, slot)?
-            .as_fixnum()
-            .ok_or(ObjectError::Layout)?,
-    )
-    .map_err(|_| ObjectError::Layout)
-}
-const fn decode_test(word: Word) -> Result<HashTest, ObjectError> {
-    match word.as_fixnum() {
-        Some(0) => Ok(HashTest::Eq),
-        Some(1) => Ok(HashTest::Eql),
-        Some(2) => Ok(HashTest::Equal),
-        Some(3) => Ok(HashTest::Equalp),
-        _ => Err(ObjectError::Layout),
-    }
-}
-const fn decode_weakness(word: Word) -> Result<Weakness, ObjectError> {
-    match word.as_fixnum() {
-        Some(0) => Ok(Weakness::None),
-        Some(1) => Ok(Weakness::Key),
-        Some(2) => Ok(Weakness::Value),
-        Some(3) => Ok(Weakness::KeyAndValue),
-        Some(4) => Ok(Weakness::KeyOrValue),
-        _ => Err(ObjectError::Layout),
-    }
-}
-
-/// Compute a stable hash for immediate values and object identities.
-#[must_use]
-pub const fn sxhash(word: Word) -> u64 {
-    let mut x = word.bits();
-    x ^= x >> 30;
-    x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    x ^= x >> 27;
-    x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
-    x ^ (x >> 31)
 }

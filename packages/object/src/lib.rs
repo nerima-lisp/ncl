@@ -12,6 +12,7 @@ mod code;
 pub mod cons;
 mod function;
 mod gc;
+mod hash_support;
 pub mod hash_table;
 mod instance;
 mod layout;
@@ -171,39 +172,6 @@ impl Runtime {
     /// Return the underlying heap.
     pub const fn heap(&self) -> &Heap {
         &self.heap
-    }
-    /// Create a package if it does not already exist.
-    ///
-    /// # Errors
-    /// Returns an allocation or layout error.
-    pub fn ensure_package(&self, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
-        let _ = ctx;
-        let mut context = self
-            .registry_context
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let table = Self::table(&self.packages)?;
-        let name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>())?;
-        if let Some(package) = HashTable::from(table).get(&mut context, name_word)? {
-            return Ok(package);
-        }
-        let package = Package::new(&mut context, self, name)?.as_word();
-        HashTable::from(table).insert(&mut context, self, name_word, package)?;
-        drop(context);
-        Ok(package)
-    }
-    /// Find a package by its canonical name.
-    #[must_use]
-    pub fn find_package(&self, name: &str) -> Option<Word> {
-        let mut context = self.registry_context.lock().ok()?;
-        let table = Self::table(&self.packages).ok()?;
-        let name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
-        let result = HashTable::from(table)
-            .get(&mut context, name_word)
-            .ok()
-            .flatten();
-        drop(context);
-        result
     }
     /// Register a function object under a package and name.
     pub fn define_function(&self, package: &str, name: &str, function: Word) {

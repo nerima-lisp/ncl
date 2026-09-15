@@ -104,14 +104,17 @@ impl Package {
         runtime: &Runtime,
         name: &str,
     ) -> Result<(Word, FindStatus), ObjectError> {
-        let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+        let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+        let name_token = crate::push_root(ctx, &mut name_word);
         if let Some(found) = self.find_symbol(ctx, name_word)? {
+            let _ = crate::pop_root(ctx, name_token);
             return Ok(found);
         }
         let symbol = make_symbol(ctx, runtime, name_word)?;
         put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, self.0)?;
         let table = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
         table.insert(ctx, runtime, name_word, symbol)?;
+        let _ = crate::pop_root(ctx, name_token);
         Ok((symbol, FindStatus::Internal))
     }
     /// Export an internal symbol by moving it to the external table.

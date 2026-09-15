@@ -109,9 +109,8 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     for _ in 0..1_000 {
         symbols.push(make_symbol(&mut ctx, &runtime, Word::NIL).unwrap_or(Word::NIL));
     }
-    let Ok(package) = Package::new(&mut ctx, &runtime, "GC-TEST") else {
-        return;
-    };
+    let package =
+        Package::new(&mut ctx, &runtime, "GC-TEST").unwrap_or_else(|_| Package::from(Word::NIL));
     let mut package_word = package.as_word();
     let package_token = ncl_object::push_root(&mut ctx, &mut package_word);
     let package = Package::from(package_word);
@@ -132,9 +131,8 @@ fn gc_preserves_object_accessors_and_weak_entries() {
         .collect::<Vec<_>>();
     assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
     let table_key = Word::fixnum(42);
-    let Ok(table) = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None) else {
-        return;
-    };
+    let table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
+        .unwrap_or_else(|_| HashTable::from(Word::NIL));
     let mut table_word = table.as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
     let table = HashTable::from(table_word);
@@ -154,7 +152,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
         package
             .intern(&mut ctx, &runtime, "SAME")
             .map(|pair| pair.0),
-        Ok(interned)
+        Ok(roots[1_001])
     );
 
     ctx.collect(true);

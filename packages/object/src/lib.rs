@@ -11,7 +11,7 @@ mod classify;
 mod code;
 pub mod cons;
 mod function;
-mod gc;
+pub(crate) mod gc;
 mod hash_support;
 pub mod hash_table;
 mod instance;
@@ -40,7 +40,7 @@ pub use function::{
     Function, closure_ref, function_entry, function_name, make_closure, make_simple_fun,
 };
 pub use function::{function_code, function_lambda_list};
-pub use gc::{register, register_layouts};
+pub use gc::register;
 pub use instance::{Instance, instance_class, make_instance, slot_ref, slot_set};
 pub use layout::{
     array_offset, code_offset, function_offset, instance_offset, number_offset, readtable_offset,

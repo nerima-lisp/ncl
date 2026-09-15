@@ -7,6 +7,7 @@ mod lowering;
 mod machine;
 mod relocation;
 mod safepoint;
+mod target;
 mod templates;
 
 #[cfg(test)]
@@ -21,6 +22,8 @@ pub use safepoint::{
     FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS, FLAG_LOOP_BACKEDGE, MapError,
     SafepointMap,
 };
+pub use target::{AArch64TargetIsa, TargetIsa, compile_function_aarch64};
+pub use templates::TemplateKind;
 
 pub(crate) fn checked_u32(value: usize) -> Result<u32, CodegenError> {
     u32::try_from(value).map_err(|_| CodegenError::FrameOverflow)

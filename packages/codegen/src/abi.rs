@@ -36,6 +36,44 @@ pub enum RegisterId {
     R15 = 14,
 }
 
+/// A runtime-owned field consumed by generated code.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ContextField {
+    /// TLAB bump pointer.
+    TlabBump,
+    /// TLAB limit pointer.
+    TlabLimit,
+    /// Cooperative safepoint request bits.
+    SafepointRequest,
+    /// Pending condition flag.
+    Pending,
+    /// Multiple-value count.
+    MultipleValueCount,
+    /// Multiple-value word area.
+    MultipleValueArea,
+    /// Current handler record.
+    Handler,
+    /// Current cleanup record.
+    Cleanup,
+    /// Current catch record.
+    Catch,
+}
+
+/// A runtime entry point called by generated code.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum RuntimeFunction {
+    /// Allocation slow path.
+    AllocateSlow,
+    /// Safepoint slow path.
+    SafepointSlow,
+    /// Non-local exit unwinder.
+    Unwind,
+    /// Fixed or variadic builtin entry.
+    Builtin,
+    /// Runtime constant table lookup.
+    ConstantTable,
+}
+
 impl RegisterId {
     /// Returns the stable numeric identifier used by stack maps.
     #[must_use]
@@ -54,6 +92,28 @@ pub trait RuntimeAbi {
     fn builtin_address(&self, name: &str) -> Option<u64>;
     /// Returns the `ThreadContext` field offset used by a runtime operation.
     fn context_offset(&self, field: &str) -> Option<i32>;
+    /// Returns a typed `ThreadContext` field offset in bytes.
+    fn field_offset(&self, field: ContextField) -> Option<i32> {
+        self.context_offset(match field {
+            ContextField::TlabBump => "tlab_bump",
+            ContextField::TlabLimit => "tlab_limit",
+            ContextField::SafepointRequest => "safepoint_request",
+            ContextField::Pending => "pending",
+            ContextField::MultipleValueCount => "mv_count",
+            ContextField::MultipleValueArea => "mv_area",
+            ContextField::Handler => "handler",
+            ContextField::Cleanup => "cleanup",
+            ContextField::Catch => "catch",
+        })
+    }
+    /// Returns a runtime function address.
+    fn runtime_address(&self, _function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
+        None
+    }
+    /// Returns a runtime constant encoded as a machine word.
+    fn constant_word(&self, _name: &str) -> Option<i64> {
+        None
+    }
 }
 
 /// Default x86-64 ABI policy used by tests and embedders.

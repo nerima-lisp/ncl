@@ -18,6 +18,7 @@ version = "0.1.0"
 name = "ncl-codegen"
 version = "0.1.0"
 dependencies = [
+ "ncl-asm-aarch64",
  "ncl-asm-x86-64",
  "ncl-ir",
 ]

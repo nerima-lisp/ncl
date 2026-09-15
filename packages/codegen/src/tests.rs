@@ -292,6 +292,142 @@ fn golden_builtin_call_has_call_safepoint() {
     );
 }
 
+fn assert_aarch64_fixture(function: &ncl_ir::Function) {
+    let result = compile_function_aarch64(function, &X86_64Abi);
+    assert!(result.is_ok(), "AArch64 fixture failed: {result:?}");
+    let Some(compiled) = result.ok() else {
+        return;
+    };
+    assert!(!compiled.code.is_empty());
+    assert_eq!(compiled.code.len() % 4, 0);
+    let (words, _) = compiled.code.as_chunks::<4>();
+    for word in words {
+        let encoded = u32::from_le_bytes([word[0], word[1], word[2], word[3]]);
+        assert!(
+            ncl_asm_aarch64::decode(encoded).is_ok(),
+            "unsupported AArch64 golden word: 0x{encoded:08x}"
+        );
+    }
+}
+
+#[test]
+fn golden_aarch64_add_one_two_decodes() {
+    assert_aarch64_fixture(&constant_return(20, "aarch64-add", 3));
+}
+
+#[test]
+fn golden_aarch64_cons_decodes() {
+    let mut builder =
+        FunctionBuilder::new(ncl_ir::FunctionId(21), "aarch64-cons", Vec::new(), vec![]);
+    assert!(
+        builder
+            .push_op(OpKind::Alloc { words: 2 }, &[Ty::Word])
+            .is_ok()
+    );
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    assert_aarch64_fixture(&builder.finish());
+}
+
+#[test]
+fn golden_aarch64_branch_decodes() {
+    let mut builder =
+        FunctionBuilder::new(ncl_ir::FunctionId(22), "aarch64-branch", Vec::new(), vec![]);
+    let condition = builder.add_constant(Constant::T);
+    let values = builder.push_op(OpKind::Const { result: condition }, &[Ty::Word]);
+    assert!(values.is_ok());
+    let condition = values.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let then_target = builder.create_block(Vec::new());
+    let else_target = builder.create_block(Vec::new());
+    assert!(builder.position_at(ncl_ir::BlockId(0)).is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Branch {
+                condition,
+                then_target,
+                else_target,
+                then_args: Vec::new(),
+                else_args: Vec::new()
+            })
+            .is_ok()
+    );
+    assert!(builder.position_at(then_target).is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    assert!(builder.position_at(else_target).is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    assert_aarch64_fixture(&builder.finish());
+}
+
+#[test]
+fn golden_aarch64_builtin_decodes() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(23),
+        "aarch64-builtin",
+        Vec::new(),
+        vec![],
+    );
+    assert!(
+        builder
+            .push_op(
+                OpKind::Builtin {
+                    name: "identity".into(),
+                    args: Vec::new()
+                },
+                &[]
+            )
+            .is_ok()
+    );
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    assert_aarch64_fixture(&builder.finish());
+}
+
+#[test]
+fn golden_aarch64_safepoint_decodes() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(24),
+        "aarch64-safepoint",
+        Vec::new(),
+        vec![],
+    );
+    assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    assert_aarch64_fixture(&builder.finish());
+}
+
+#[test]
+fn golden_aarch64_fib_loop_decodes() {
+    let mut builder =
+        FunctionBuilder::new(ncl_ir::FunctionId(25), "aarch64-fib-25", Vec::new(), vec![]);
+    assert!(
+        builder
+            .terminate(Terminator::Jump {
+                target: ncl_ir::BlockId(0),
+                args: Vec::new()
+            })
+            .is_ok()
+    );
+    assert_aarch64_fixture(&builder.finish());
+}
+
 #[test]
 fn golden_explicit_safepoint_has_encoded_pc() {
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(14), "safepoint", Vec::new(), vec![]);

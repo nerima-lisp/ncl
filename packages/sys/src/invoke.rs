@@ -20,10 +20,10 @@ pub fn invoke_entry(
     // Thread, and an entry offset within that allocation.
     unsafe {
         core::arch::asm!(
-            "mov x15, x21",
+            "str x21, [sp, #-16]!",
             "mov x21, x16",
             "blr x17",
-            "mov x21, x15",
+            "ldr x21, [sp], #16",
             in("x16") ctx,
             in("x17") entry,
             in("x0") argc,

@@ -167,7 +167,7 @@ fn pair(m: crate::MemOperand, rt: Reg, rt2: Reg, load: bool) -> Result<u32, Enco
         });
     };
     let encoded = u32::from_ne_bytes(offset.to_ne_bytes());
-    Ok((if load { 0xA940_0000 } else { 0xA900_0000 })
+    Ok((if load { 0xA840_0000 } else { 0xA800_0000 })
         | (encoded & 0x7f) << 15
         | u32::from(rt2.0) << 10
         | base << 5
@@ -296,6 +296,9 @@ pub fn encode(i: &Inst, _at: usize) -> Result<u32, EncodeError> {
         Inst::MovZ { rd, imm, shift: s } => wide(0xD280_0000, *rd, *imm, *s, 0),
         Inst::MovK { rd, imm, shift: s } => wide(0xF280_0000, *rd, *imm, *s, 1),
         Inst::MovN { rd, imm, shift: s } => wide(0x9280_0000, *rd, *imm, *s, 0),
+        Inst::Mov { rd, rn } if matches!(rd, RegOrSp::Sp) || matches!(rn, RegOrSp::Sp) => {
+            addsub(*rd, *rn, 0, false, false)
+        }
         Inst::Mov { rd, rn } => Ok(0xAA00_03E0 | rs(*rn) << 16 | rs(*rd)),
         Inst::AddImm {
             rd,

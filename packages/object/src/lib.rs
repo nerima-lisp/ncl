@@ -142,7 +142,14 @@ impl Runtime {
             (widetag::STREAM, vec![0, 1]),
             (widetag::CODE, vec![0]),
         ] {
-            ncl_sys::register_layout(&self.heap, tag, ReferenceLayout { reference_words })
+            ncl_sys::register_layout(
+                &self.heap,
+                tag,
+                ReferenceLayout {
+                    reference_words,
+                    boxed_from: None,
+                },
+            )
                 .map_err(|_| ObjectError::Layout)?;
         }
         Ok(())

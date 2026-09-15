@@ -241,7 +241,14 @@ pub fn compile_function_aarch64(
                 )?;
                 pc = pc.saturating_add(4);
             }
-            Terminator::Return { .. } => {
+            Terminator::Return { values } => {
+                for instruction in ncl_asm_aarch64::mov_imm64(
+                    Reg(1),
+                    u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
+                ) {
+                    emit(&mut assembler, instruction)?;
+                    pc = pc.saturating_add(4);
+                }
                 emit(
                     &mut assembler,
                     Inst::Ldp {

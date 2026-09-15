@@ -31,7 +31,7 @@ pub const fn decode(word: u32) -> Result<Inst, EncodeError> {
             cond: cond((word & 0xf) as u8),
             label: crate::Label(0),
         }),
-        _ if word & 0xFF00_0000 == 0xA900_0000 => {
+        _ if word & 0xFF00_0000 == 0xA800_0000 => {
             let load = word & 0x0040_0000 != 0;
             let mode = (word >> 23) & 0x3;
             let offset = ((((word >> 15) & 0x7f) as i16) << 9 >> 9) * 8;

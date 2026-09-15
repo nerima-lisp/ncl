@@ -255,6 +255,10 @@ impl Default for Runtime {
     }
 }
 /// Per-mutator object-layer context.
+///
+/// The address of this value may be passed to generated code as a
+/// `*mut ncl_sys::Thread`. Generated code may access only the leading `Thread`
+/// portion.
 #[repr(C)]
 #[derive(Debug)]
 pub struct ThreadContext {

@@ -1,5 +1,77 @@
 use crate::{EncodeError, Inst, Reg};
 
+#[allow(clippy::cast_possible_truncation)]
+const fn unsigned_offset(word: u32) -> u16 {
+    ((word >> 10) as u16 & 0xfff).saturating_mul(8)
+}
+
+const fn decode_unsigned(word: u32, load: bool) -> Inst {
+    let mem = crate::MemOperand::Unsigned {
+        base: reg_or_sp(((word >> 5) & 0x1f) as u8),
+        offset: unsigned_offset(word),
+        scale: 8,
+    };
+    if load {
+        Inst::Ldr {
+            rt: Reg((word & 0x1f) as u8),
+            mem,
+        }
+    } else {
+        Inst::Str {
+            rt: Reg((word & 0x1f) as u8),
+            mem,
+        }
+    }
+}
+
+const fn decode_single_memory(word: u32) -> Inst {
+    let raw = ((word >> 12) & 0x1ff) as i16;
+    let offset = raw << 7 >> 7;
+    let base = reg_or_sp(((word >> 5) & 0x1f) as u8);
+    let mode = (word >> 10) & 0x3;
+    let mem = match mode {
+        3 => crate::MemOperand::PreIndex { base, offset },
+        1 => crate::MemOperand::PostIndex { base, offset },
+        _ => crate::MemOperand::Unscaled { base, offset },
+    };
+    if word & 0x0040_0000 != 0 {
+        Inst::Ldr {
+            rt: Reg((word & 0x1f) as u8),
+            mem,
+        }
+    } else {
+        Inst::Str {
+            rt: Reg((word & 0x1f) as u8),
+            mem,
+        }
+    }
+}
+
+const fn decode_pair(word: u32) -> Inst {
+    let load = word & 0x0040_0000 != 0;
+    let mode = (word >> 23) & 0x3;
+    let offset = ((((word >> 15) & 0x7f) as i16) << 9 >> 9) * 8;
+    let base = reg_or_sp(((word >> 5) & 0x1f) as u8);
+    let mem = match mode {
+        3 => crate::MemOperand::PreIndex { base, offset },
+        1 => crate::MemOperand::PostIndex { base, offset },
+        _ => crate::MemOperand::Unscaled { base, offset },
+    };
+    if load {
+        Inst::Ldp {
+            rt: Reg((word & 0x1f) as u8),
+            rt2: Reg(((word >> 10) & 0x1f) as u8),
+            mem,
+        }
+    } else {
+        Inst::Stp {
+            rt: Reg((word & 0x1f) as u8),
+            rt2: Reg(((word >> 10) & 0x1f) as u8),
+            mem,
+        }
+    }
+}
+
 /// Decodes one supported word.
 ///
 /// # Errors
@@ -26,28 +98,14 @@ pub const fn decode(word: u32) -> Result<Inst, EncodeError> {
             imm: ((word >> 10) & 0xfff) as u16,
             shift: word & (1 << 22) != 0,
         }),
-        _ if word & 0xFF80_0000 == 0xF800_0000 => {
-            let raw = ((word >> 12) & 0x1ff) as i16;
-            let offset = raw << 7 >> 7;
-            let base = reg_or_sp(((word >> 5) & 0x1f) as u8);
-            let mode = (word >> 10) & 0x3;
-            let mem = match mode {
-                3 => crate::MemOperand::PreIndex { base, offset },
-                1 => crate::MemOperand::PostIndex { base, offset },
-                _ => crate::MemOperand::Unscaled { base, offset },
-            };
-            if word & 0x0040_0000 != 0 {
-                Ok(Inst::Ldr {
-                    rt: Reg((word & 0x1f) as u8),
-                    mem,
-                })
-            } else {
-                Ok(Inst::Str {
-                    rt: Reg((word & 0x1f) as u8),
-                    mem,
-                })
-            }
-        }
+        _ if word & 0xFFC0_0000 == 0xF940_0000 => Ok(decode_unsigned(word, true)),
+        _ if word & 0xFFC0_0000 == 0xF900_0000 => Ok(decode_unsigned(word, false)),
+        _ if word & 0xFFE0_FC1F == 0xEB00_001F => Ok(Inst::Cmp {
+            rn: Reg(((word >> 5) & 0x1f) as u8),
+            rm: Reg(((word >> 16) & 0x1f) as u8),
+            shift: crate::Shift::Lsl(((word >> 22) & 0x3f) as u8),
+        }),
+        _ if word & 0xFF80_0000 == 0xF800_0000 => Ok(decode_single_memory(word)),
         _ if word & 0xFFE0_FFE0 == 0xAA00_03E0 => Ok(Inst::Mov {
             rd: crate::RegOrSp::Reg(Reg((word & 0x1f) as u8)),
             rn: crate::RegOrSp::Reg(Reg(((word >> 16) & 0x1f) as u8)),
@@ -73,33 +131,7 @@ pub const fn decode(word: u32) -> Result<Inst, EncodeError> {
             cond: cond((word & 0xf) as u8),
             label: crate::Label(0),
         }),
-        _ if word & 0x3E00_0000 == 0x2800_0000 => {
-            let load = word & 0x0040_0000 != 0;
-            let mode = (word >> 23) & 0x3;
-            let offset = ((((word >> 15) & 0x7f) as i16) << 9 >> 9) * 8;
-            let base = match ((word >> 5) & 0x1f) as u8 {
-                31 => crate::RegOrSp::Sp,
-                value => crate::RegOrSp::Reg(Reg(value)),
-            };
-            let mem = match mode {
-                3 => crate::MemOperand::PreIndex { base, offset },
-                1 => crate::MemOperand::PostIndex { base, offset },
-                _ => crate::MemOperand::Unscaled { base, offset },
-            };
-            if load {
-                Ok(Inst::Ldp {
-                    rt: Reg((word & 0x1f) as u8),
-                    rt2: Reg(((word >> 10) & 0x1f) as u8),
-                    mem,
-                })
-            } else {
-                Ok(Inst::Stp {
-                    rt: Reg((word & 0x1f) as u8),
-                    rt2: Reg(((word >> 10) & 0x1f) as u8),
-                    mem,
-                })
-            }
-        }
+        _ if word & 0x3E00_0000 == 0x2800_0000 => Ok(decode_pair(word)),
         _ => Err(EncodeError::UnsupportedInstruction(word)),
     }
 }

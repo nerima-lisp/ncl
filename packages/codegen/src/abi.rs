@@ -134,3 +134,25 @@ impl RuntimeAbi for X86_64Abi {
         None
     }
 }
+
+/// `AArch64` ABI policy used by native execution tests and embedders.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Aarch64Abi;
+
+impl RuntimeAbi for Aarch64Abi {
+    fn encode_fixnum(&self, value: i64) -> i64 {
+        value << 3
+    }
+
+    fn encode_character(&self, value: u32) -> i64 {
+        i64::from(value) << 8 | 0x0f
+    }
+
+    fn builtin_address(&self, _name: &str) -> Option<u64> {
+        None
+    }
+
+    fn context_offset(&self, _field: &str) -> Option<i32> {
+        None
+    }
+}

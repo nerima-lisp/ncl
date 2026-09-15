@@ -15,7 +15,7 @@ mod tests;
 #[cfg(test)]
 mod tests_aarch64;
 
-pub use abi::{RegisterId, RuntimeAbi, X86_64Abi};
+pub use abi::{Aarch64Abi, ContextField, RegisterId, RuntimeAbi, RuntimeFunction, X86_64Abi};
 pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
 pub use lowering::compile_function;
 pub use machine::{Block, CompiledFunction, DebugLocation, MachineFunction, MachineOp};

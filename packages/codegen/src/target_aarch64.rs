@@ -116,10 +116,14 @@ pub fn compile_function_aarch64(
             .bind(labels[&block.id])
             .map_err(|error| CodegenError::Encode(error.to_string()))?;
         for op in &block.ops {
-            lower_op(&mut assembler, op, function, &value_slots, abi)?;
-            let pc = checked_u32(assembler.offset())?;
+            let call_pc = lower_op(&mut assembler, op, function, &value_slots, abi)?;
             if matches!(op.kind, OpKind::Alloc { .. }) {
-                add_map(&mut maps, pc, frame, FLAG_ALLOCATION_SLOW)?;
+                add_map(
+                    &mut maps,
+                    call_pc.unwrap_or(checked_u32(assembler.offset())?),
+                    frame,
+                    FLAG_ALLOCATION_SLOW,
+                )?;
             } else if matches!(
                 op.kind,
                 OpKind::Call { .. }
@@ -127,7 +131,12 @@ pub fn compile_function_aarch64(
                     | OpKind::Builtin { .. }
                     | OpKind::Safepoint
             ) {
-                add_map(&mut maps, pc, frame, FLAG_CALL)?;
+                add_map(
+                    &mut maps,
+                    call_pc.unwrap_or(checked_u32(assembler.offset())?),
+                    frame,
+                    FLAG_CALL,
+                )?;
             }
         }
         match &block.terminator {

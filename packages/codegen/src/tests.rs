@@ -47,6 +47,45 @@ fn constant_return(id: u32, name: &str, value: i64) -> ncl_ir::Function {
     builder.finish()
 }
 
+#[derive(Clone, Copy)]
+struct Aarch64FixtureAbi;
+
+impl RuntimeAbi for Aarch64FixtureAbi {
+    fn encode_fixnum(&self, value: i64) -> i64 {
+        value << 3
+    }
+
+    fn encode_character(&self, value: u32) -> i64 {
+        i64::from(value) << 8 | 0x0f
+    }
+
+    fn builtin_address(&self, name: &str) -> Option<u64> {
+        (name == "identity").then_some(0x1000)
+    }
+
+    fn context_offset(&self, _field: &str) -> Option<i32> {
+        None
+    }
+
+    fn field_offset(&self, field: ContextField) -> Option<i32> {
+        let layout = ncl_sys::thread_layout();
+        let offset = match field {
+            ContextField::TlabBump => layout.tlab_bump,
+            ContextField::TlabLimit => layout.tlab_limit,
+            ContextField::SafepointRequest => layout.safepoint_state,
+            _ => return None,
+        };
+        i32::try_from(offset).ok()
+    }
+
+    fn runtime_address(&self, function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
+        match function {
+            RuntimeFunction::AllocateSlow | RuntimeFunction::SafepointSlow => Some(0x1000),
+            _ => None,
+        }
+    }
+}
+
 #[test]
 fn lowers_fixnum_return_to_decodable_x86() {
     let mut builder =
@@ -293,7 +332,7 @@ fn golden_builtin_call_has_call_safepoint() {
 }
 
 fn assert_aarch64_fixture(function: &ncl_ir::Function) {
-    assert_aarch64_fixture_with_abi(function, &X86_64Abi);
+    assert_aarch64_fixture_with_abi(function, &Aarch64FixtureAbi);
 }
 
 fn assert_aarch64_fixture_with_abi(function: &ncl_ir::Function, abi: &dyn RuntimeAbi) {

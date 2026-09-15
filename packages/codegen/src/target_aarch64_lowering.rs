@@ -1,4 +1,4 @@
-use crate::{CodegenError, RuntimeAbi};
+use crate::{CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 
@@ -102,6 +102,153 @@ pub(super) fn lower_call(
         load_slot(assembler, slots, *argument, register)?;
     }
     Ok(())
+}
+
+fn context_mem(abi: &dyn RuntimeAbi, field: ContextField) -> Result<MemOperand, CodegenError> {
+    let offset = abi.field_offset(field).ok_or_else(|| {
+        CodegenError::Unsupported(format!("context offset is unavailable: {field:?}"))
+    })?;
+    let offset = u16::try_from(offset).map_err(|_| CodegenError::FrameOverflow)?;
+    Ok(MemOperand::Unsigned {
+        base: RegOrSp::Reg(Reg(21)),
+        offset,
+        scale: 8,
+    })
+}
+
+fn runtime_address(abi: &dyn RuntimeAbi, function: RuntimeFunction) -> Result<u64, CodegenError> {
+    abi.runtime_address(function, None).ok_or_else(|| {
+        CodegenError::Unsupported(format!("runtime address is unavailable: {function:?}"))
+    })
+}
+
+fn lower_alloc(
+    assembler: &mut Assembler,
+    words: u32,
+    result: Option<ValueId>,
+    slots: &[(ValueId, u32)],
+    abi: &dyn RuntimeAbi,
+) -> Result<u32, CodegenError> {
+    let bytes = words
+        .checked_mul(8)
+        .and_then(|value| u16::try_from(value).ok())
+        .ok_or(CodegenError::FrameOverflow)?;
+    let slow = assembler.new_label();
+    let done = assembler.new_label();
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: context_mem(abi, ContextField::TlabBump)?,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(17),
+            mem: context_mem(abi, ContextField::TlabLimit)?,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::AddImm {
+            rd: RegOrSp::Reg(Reg(0)),
+            rn: RegOrSp::Reg(Reg(16)),
+            imm: bytes,
+            shift: false,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Cmp {
+            rn: Reg(0),
+            rm: Reg(17),
+            shift: Shift::Lsl(0),
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::BCond {
+            cond: Cond::Hi,
+            label: slow,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Str {
+            rt: Reg(0),
+            mem: context_mem(abi, ContextField::TlabBump)?,
+        },
+    )?;
+    if let Some(result) = result {
+        store_slot(assembler, slots, result, Reg(16))?;
+    }
+    emit(assembler, Inst::B { label: done })?;
+    assembler
+        .bind(slow)
+        .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    emit(
+        assembler,
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(0)),
+            rn: RegOrSp::Reg(Reg(21)),
+        },
+    )?;
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), u64::from(words)) {
+        emit(assembler, instruction)?;
+    }
+    for instruction in ncl_asm_aarch64::mov_imm64(
+        Reg(17),
+        runtime_address(abi, RuntimeFunction::AllocateSlow)?,
+    ) {
+        emit(assembler, instruction)?;
+    }
+    emit(assembler, Inst::Blr { rn: Reg(17) })?;
+    let call_pc = u32::try_from(assembler.offset()).map_err(|_| CodegenError::FrameOverflow)?;
+    if let Some(result) = result {
+        store_slot(assembler, slots, result, Reg(0))?;
+    }
+    assembler
+        .bind(done)
+        .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    Ok(call_pc)
+}
+
+fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u32, CodegenError> {
+    let done = assembler.new_label();
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: context_mem(abi, ContextField::SafepointRequest)?,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Cbz {
+            rt: Reg(16),
+            label: done,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(0)),
+            rn: RegOrSp::Reg(Reg(21)),
+        },
+    )?;
+    for instruction in ncl_asm_aarch64::mov_imm64(
+        Reg(17),
+        runtime_address(abi, RuntimeFunction::SafepointSlow)?,
+    ) {
+        emit(assembler, instruction)?;
+    }
+    emit(assembler, Inst::Blr { rn: Reg(17) })?;
+    let call_pc = u32::try_from(assembler.offset()).map_err(|_| CodegenError::FrameOverflow)?;
+    assembler
+        .bind(done)
+        .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    Ok(call_pc)
 }
 
 fn lower_builtin(
@@ -299,8 +446,9 @@ pub(super) fn lower_op(
     function: &Function,
     slots: &[(ValueId, u32)],
     abi: &dyn RuntimeAbi,
-) -> Result<(), CodegenError> {
+) -> Result<Option<u32>, CodegenError> {
     let result = op.results.first().map(|(value, _)| *value);
+    let mut call_pc = None;
     match &op.kind {
         OpKind::Const { result: constant } => {
             let value = function
@@ -428,7 +576,12 @@ pub(super) fn lower_op(
                 store_slot(assembler, slots, result, Reg(16))?;
             }
         }
-        OpKind::Alloc { .. } | OpKind::Safepoint => emit(assembler, Inst::Nop)?,
+        OpKind::Alloc { words } => {
+            call_pc = Some(lower_alloc(assembler, *words, result, slots, abi)?);
+        }
+        OpKind::Safepoint => {
+            call_pc = Some(lower_safepoint(assembler, abi)?);
+        }
         OpKind::Call { function, args }
         | OpKind::CallIndirect {
             callee: function,
@@ -448,7 +601,7 @@ pub(super) fn lower_op(
             }
         }
     }
-    Ok(())
+    Ok(call_pc)
 }
 
 pub(super) fn move_args(

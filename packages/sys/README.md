@@ -22,11 +22,13 @@ tagged words, heap, precise roots, safepoints, and platform surface.
 
 ## Platform scope
 
-The handwritten OS declarations are cfg-gated in `src/os.rs`. The current
-runtime tests execute on the host target only. Linux-specific declarations are
-compiled but not exercised by the macOS arm64 lane, and macOS JIT permission
-transitions are not exercised in this worktree because `CodePtr` still owns a
-safe byte buffer rather than an executable mapping.
+The handwritten OS declarations are cfg-gated in `src/os.rs`. Code space uses
+page-backed mappings, writes code while writable, then publishes it. macOS
+arm64 uses `MAP_JIT`, `pthread_jit_write_protect_np`, and
+`sys_icache_invalidate`; Linux allocates RW pages and uses `mprotect` to RX.
+The machine-code smoke test has AArch64 and x86-64 byte sequences. The current
+host run executes the AArch64 branch; the x86-64 branch is cfg-gated and not
+executed in this run.
 
 ## Safety, errors, and panics
 

@@ -4,13 +4,21 @@ use core::fmt;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum LowTag {
+    /// Immediate character or character-like value.
     Character = 0,
+    /// Cons pointer, including the NIL singleton.
     List = 1,
+    /// Immediate single-float representation.
     SingleFloat = 2,
+    /// Function object pointer.
     Function = 3,
+    /// Other immediate value.
     OtherImmediate = 4,
+    /// Instance pointer.
     Instance = 5,
+    /// Reserved tag value.
     Reserved = 6,
+    /// General heap pointer.
     OtherPointer = 7,
 }
 

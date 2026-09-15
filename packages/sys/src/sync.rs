@@ -5,9 +5,11 @@ use std::time::Duration;
 #[derive(Debug)]
 pub struct Mutex<T>(StdMutex<T>);
 impl<T> Mutex<T> {
+    /// Construct a mutex containing `value`.
     pub const fn new(value: T) -> Self {
         Self(StdMutex::new(value))
     }
+    /// Lock the mutex, recovering its value if a previous holder panicked.
     pub fn lock(&self) -> MutexGuard<'_, T> {
         self.0
             .lock()
@@ -18,11 +20,13 @@ impl<T> Mutex<T> {
 #[derive(Debug, Default)]
 pub struct Condvar(StdCondvar);
 impl Condvar {
+    /// Sleep until notified and recover a poisoned mutex guard.
     pub fn wait<'a, T>(&self, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
         self.0
             .wait(guard)
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
+    /// Sleep until notified or `timeout` expires; return whether it timed out.
     pub fn wait_timeout<'a, T>(
         &self,
         guard: MutexGuard<'a, T>,
@@ -34,9 +38,11 @@ impl Condvar {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         (guard, result.timed_out())
     }
+    /// Wake one waiter.
     pub fn notify_one(&self) {
         self.0.notify_one();
     }
+    /// Wake all waiters.
     pub fn notify_all(&self) {
         self.0.notify_all();
     }
@@ -48,6 +54,7 @@ pub struct Semaphore {
     available: Condvar,
 }
 impl Semaphore {
+    /// Construct a semaphore with `count` available permits.
     #[must_use]
     pub fn new(count: usize) -> Self {
         Self {
@@ -55,6 +62,7 @@ impl Semaphore {
             available: Condvar::default(),
         }
     }
+    /// Wait for and consume one permit.
     pub fn acquire(&self) {
         let mut count = self.state.lock();
         while *count == 0 {
@@ -62,6 +70,7 @@ impl Semaphore {
         }
         *count -= 1;
     }
+    /// Return one permit and wake a waiter.
     pub fn release(&self) {
         *self.state.lock() += 1;
         self.available.notify_one();
@@ -70,31 +79,38 @@ impl Semaphore {
 /// Wakeable wait queue used by interruptible blocking operations.
 #[derive(Debug)]
 pub struct WaitQueue {
-    state: Mutex<bool>,
+    state: Mutex<usize>,
     available: Condvar,
 }
 impl Default for WaitQueue {
     fn default() -> Self {
         Self {
-            state: Mutex::new(false),
+            state: Mutex::new(0),
             available: Condvar::default(),
         }
     }
 }
 impl WaitQueue {
+    /// Wait for a wake token.
     pub fn wait(&self) {
         let mut ready = self.state.lock();
-        while !*ready {
+        while *ready == 0 {
             ready = self.available.wait(ready);
         }
-        *ready = false;
+        *ready -= 1;
     }
+    /// Add one wake token and wake one waiter.
     pub fn wake_one(&self) {
-        *self.state.lock() = true;
+        let mut state = self.state.lock();
+        if *state != usize::MAX {
+            *state += 1;
+        }
+        drop(state);
         self.available.notify_one();
     }
+    /// Wake every current and future waiter until the queue is reset.
     pub fn wake_all(&self) {
-        *self.state.lock() = true;
+        *self.state.lock() = usize::MAX;
         self.available.notify_all();
     }
 }

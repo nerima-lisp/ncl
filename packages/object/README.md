@@ -92,4 +92,11 @@ assert!(pop_root(ctx, token));
 
 double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` は `repr(C)` で `Thread` を先頭に持つ。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
 
+| 種別 | layout | accessor | ctor | GC test |
+| --- | --- | --- | --- | --- |
+| structure / instance | 済 | 済 | 済 | 部分 |
+| simple-fun / closure | 済 | 済 | 済 | closure 1件 |
+| bignum / ratio / double / complex | 済 | 済 | 済 | 部分 |
+| stream / readtable / code | 済 | 部分 | 済 | 未実施 |
+
 下流レーンは `Word` の lowtag を直接判定せず `classify` または typed accessor を使い、allocation を跨ぐ引数は `RootToken` で保護してください。

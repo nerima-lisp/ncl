@@ -1,6 +1,5 @@
 //! Typed, safe values and runtime state for NCL.
 #![allow(missing_docs)]
-
 pub use ncl_sys::Word;
 use ncl_sys::{Heap, HeapConfig, LowTag, RootToken, StorageCondition, Thread, TypeTag};
 use std::collections::HashMap;
@@ -45,6 +44,7 @@ pub use number::{
     Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,
     make_complex, make_double, make_ratio,
 };
+use package::Package;
 pub use readtable::{Readtable, make_readtable};
 pub use remaining::{
     bignum_sign, code_slot, complex_imag, complex_real, function_code, function_lambda_list,
@@ -57,8 +57,6 @@ pub use specialized_array::{
 };
 pub use stream::{Stream, make_stream, stream_state};
 pub use structure::{StructureLayout, make_structure, structure_ref, structure_set};
-
-use package::Package;
 /// Classification of a tagged value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -203,7 +201,6 @@ impl Runtime {
     pub const fn heap(&self) -> &Heap {
         &self.heap
     }
-
     /// Create a package if it does not already exist.
     pub fn ensure_package(&self, name: &str) -> bool {
         let mut packages = match self.packages.lock() {
@@ -217,7 +214,6 @@ impl Runtime {
             true
         }
     }
-
     /// Register a function object under a package and name.
     pub fn define_function(&self, package: &str, name: &str, function: Word) {
         let mut functions = match self.functions.lock() {
@@ -226,7 +222,6 @@ impl Runtime {
         };
         functions.insert((package.to_owned(), name.to_owned()), function);
     }
-
     /// Look up a registered function object.
     #[must_use]
     pub fn function(&self, package: &str, name: &str) -> Option<Word> {
@@ -244,7 +239,6 @@ impl Default for Runtime {
         Self::new()
     }
 }
-
 /// Per-mutator object-layer context.
 #[repr(C)]
 #[derive(Debug)]
@@ -315,18 +309,15 @@ impl ThreadContext {
     pub const fn take_pending(&mut self) -> Option<ObjectError> {
         self.pending.take()
     }
-
     /// Run a collection for this registered context.
     pub fn collect(&mut self, full: bool) {
         ncl_sys::collect(&mut self.thread, full);
     }
-
     /// Mark an object as weak with the requested policy.
     #[must_use]
     pub fn make_weak(&self, value: Word, weakness: ncl_sys::Weakness) -> Word {
         ncl_sys::make_weak(&self.thread, value, weakness)
     }
-
     /// Read the value slot of a weak object.
     #[must_use]
     pub fn weak_value(&self, value: Word) -> Word {
@@ -338,7 +329,6 @@ impl Default for ThreadContext {
         Self::new()
     }
 }
-
 /// Allocate a cons cell.
 ///
 /// # Errors
@@ -371,7 +361,6 @@ pub fn allocate(
     )
     .map_err(Into::into)
 }
-
 /// Allocate a symbol with an initial name and unbound value/function cells.
 ///
 /// # Errors
@@ -399,7 +388,6 @@ pub fn make_symbol(
     }
     Ok(symbol)
 }
-
 fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, ObjectError> {
     if symbol != Word::NIL
         && (symbol.lowtag() != LowTag::OtherPointer as u8
@@ -413,7 +401,6 @@ fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, O
     ncl_sys::read_object_word(&ctx.thread, symbol, slot)
         .ok_or(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
 }
-
 /// Read a symbol's value cell.
 ///
 /// # Errors
@@ -422,7 +409,6 @@ fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, O
 pub fn symbol_value(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::VALUE)
 }
-
 /// Set a symbol's value cell.
 ///
 /// # Errors
@@ -442,7 +428,6 @@ pub fn set_symbol_value(
     ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::VALUE);
     Ok(())
 }
-
 /// Read a symbol's function cell.
 ///
 /// # Errors
@@ -451,7 +436,6 @@ pub fn set_symbol_value(
 pub fn symbol_function(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::FUNCTION)
 }
-
 /// Read a symbol's property list.
 ///
 /// # Errors
@@ -460,7 +444,6 @@ pub fn symbol_function(ctx: &ThreadContext, symbol: Word) -> Result<Word, Object
 pub fn symbol_plist(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::PLIST)
 }
-
 /// Read a symbol's name object.
 ///
 /// # Errors

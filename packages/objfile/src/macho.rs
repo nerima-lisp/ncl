@@ -1,5 +1,4 @@
 use crate::{ObjectError, Relocation, SectionId};
-
 /// Mach-O CPU architecture.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MachArchitecture {
@@ -8,7 +7,6 @@ pub enum MachArchitecture {
     /// arm64 Mach-O CPU type.
     Arm64,
 }
-
 /// A Mach-O section with its segment and section names.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MachSection {
@@ -21,7 +19,6 @@ pub struct MachSection {
     /// Section payload.
     pub bytes: Vec<u8>,
 }
-
 /// A relocatable 64-bit Mach-O object description.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MachObject {
@@ -32,7 +29,6 @@ pub struct MachObject {
     /// Relocation records.
     pub relocations: Vec<Relocation>,
 }
-
 impl MachObject {
     /// Writes a structurally valid Mach-O 64-bit relocatable object.
     ///
@@ -50,7 +46,6 @@ impl MachObject {
             value: u64::MAX,
         })?;
         let segment_size = 72u32 + nsects * 80;
-        let symtab_size = 24u32;
         let commands = segment_size + 24 + 32;
         let header_size = 32usize + commands as usize;
         let mut out = vec![0; header_size];
@@ -138,11 +133,9 @@ impl MachObject {
         out[20..24].copy_from_slice(&commands.to_le_bytes());
         out[24..28].copy_from_slice(&0u32.to_le_bytes());
         out[28..32].copy_from_slice(&0u32.to_le_bytes());
-        let _ = symtab_size;
         Ok(out)
     }
 }
-
 struct SegmentLayout<'a> {
     sections: &'a [MachSection],
     offsets: &'a [u32],
@@ -151,7 +144,6 @@ struct SegmentLayout<'a> {
     command_size: u32,
     nsects: u32,
 }
-
 fn write_segment(
     out: &mut [u8],
     cursor: &mut usize,
@@ -194,9 +186,7 @@ fn write_segment(
     Ok(())
 }
 fn write_name(out: &mut [u8], at: usize, name: &str) {
-    let bytes = name.as_bytes();
-    let length = bytes.len().min(16);
-    out[at..at + length].copy_from_slice(&bytes[..length]);
+    out[at..at + name.len()].copy_from_slice(name.as_bytes());
 }
 fn write_u32(out: &mut [u8], at: usize, value: u32) {
     out[at..at + 4].copy_from_slice(&value.to_le_bytes());
@@ -240,14 +230,13 @@ fn encode_relocation(
     )
 }
 fn align(bytes: &mut Vec<u8>, alignment: usize) {
-    let padding = (alignment - bytes.len() % alignment) % alignment;
-    bytes.resize(bytes.len() + padding, 0);
+    bytes.resize(
+        bytes.len() + (alignment - bytes.len() % alignment) % alignment,
+        0,
+    );
 }
-
-/// Checks the Mach-O magic, class, and endianness before a caller parses it.
-///
+/// Checks the Mach-O magic, class, and endianness before parsing.
 /// # Errors
-///
 /// Returns an error when the input is truncated or targets another CPU.
 pub fn validate_macho(bytes: &[u8], architecture: MachArchitecture) -> Result<(), ObjectError> {
     if bytes.len() < 32 {
@@ -310,7 +299,6 @@ pub fn validate_macho(bytes: &[u8], architecture: MachArchitecture) -> Result<()
     validate_macho_commands(bytes, command_end, ncmds)?;
     Ok(())
 }
-
 fn validate_macho_commands(
     bytes: &[u8],
     command_end: usize,
@@ -382,38 +370,25 @@ fn validate_macho_commands(
     }
     Ok(())
 }
-
 fn read_u32(bytes: &[u8], offset: usize, field: &'static str) -> Result<u32, ObjectError> {
-    let end = offset
-        .checked_add(4)
-        .ok_or(ObjectError::InvalidStructure("Mach-O field overflow"))?;
-    bytes
-        .get(offset..end)
-        .ok_or(ObjectError::Truncated { offset, needed: 4 })
-        .map(|value| u32::from_le_bytes([value[0], value[1], value[2], value[3]]))
-        .map_err(|_| ObjectError::InvalidField { field, value: 0 })
+    let value = bytes
+        .get(offset..offset + 4)
+        .ok_or(ObjectError::Truncated { offset, needed: 4 })?;
+    Ok(u32::from_le_bytes(value.try_into().map_err(|_| {
+        ObjectError::InvalidField { field, value: 0 }
+    })?))
 }
-
 fn read_u64(bytes: &[u8], offset: usize, field: &'static str) -> Result<u64, ObjectError> {
-    let end = offset
-        .checked_add(8)
-        .ok_or(ObjectError::InvalidStructure("Mach-O field overflow"))?;
-    bytes
-        .get(offset..end)
-        .ok_or(ObjectError::Truncated { offset, needed: 8 })
-        .and_then(|value| {
-            let Ok(array) = <[u8; 8]>::try_from(value) else {
-                return Err(ObjectError::Truncated { offset, needed: 8 });
-            };
-            Ok(u64::from_le_bytes(array))
-        })
-        .map_err(|_| ObjectError::InvalidField { field, value: 0 })
+    let value = bytes
+        .get(offset..offset + 8)
+        .ok_or(ObjectError::Truncated { offset, needed: 8 })?;
+    Ok(u64::from_le_bytes(value.try_into().map_err(|_| {
+        ObjectError::InvalidField { field, value: 0 }
+    })?))
 }
-
 /// Stateless Mach-O validator.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MachReader;
-
 impl MachReader {
     /// Validates a 64-bit Mach-O object for the requested architecture.
     ///
@@ -424,7 +399,73 @@ impl MachReader {
         validate_macho(bytes, architecture)
     }
 }
-
+/// Validates a Mach-O executable envelope and requires an NCL metadata section.
+/// # Errors
+/// Returns an error when the input lacks `LC_MAIN` or `__DATA,__ncl`.
+pub fn validate_mach_executable(
+    bytes: &[u8],
+    architecture: MachArchitecture,
+) -> Result<(), ObjectError> {
+    validate_macho(bytes, architecture)?;
+    let ncmds = read_u32(bytes, 16, "Mach-O command count")?;
+    let command_end = 32usize
+        .checked_add(
+            usize::try_from(read_u32(bytes, 20, "Mach-O command bytes")?).map_err(|_| {
+                ObjectError::InvalidField {
+                    field: "Mach-O command bytes",
+                    value: u64::MAX,
+                }
+            })?,
+        )
+        .ok_or(ObjectError::InvalidStructure("Mach-O command overflow"))?;
+    let mut cursor = 32usize;
+    let mut has_main = false;
+    let mut has_metadata = false;
+    for _ in 0..ncmds {
+        let command = read_u32(bytes, cursor, "Mach-O command")?;
+        let size =
+            usize::try_from(read_u32(bytes, cursor + 4, "Mach-O command size")?).map_err(|_| {
+                ObjectError::InvalidField {
+                    field: "Mach-O command size",
+                    value: u64::MAX,
+                }
+            })?;
+        if size < 8 || cursor.checked_add(size).is_none_or(|end| end > command_end) {
+            return Err(ObjectError::InvalidStructure("invalid Mach-O command size"));
+        }
+        if command == 0x8000_0028 {
+            has_main = size >= 24;
+        } else if command == 0x19 && size >= 72 {
+            let count = usize::try_from(read_u32(bytes, cursor + 64, "Mach-O section count")?)
+                .map_err(|_| ObjectError::InvalidField {
+                    field: "Mach-O section count",
+                    value: u64::MAX,
+                })?;
+            for index in 0..count {
+                let section = cursor + 72 + index * 80;
+                if section + 80 > cursor + size {
+                    return Err(ObjectError::InvalidStructure(
+                        "invalid Mach-O section table",
+                    ));
+                }
+                let section_size = read_u64(bytes, section + 40, "Mach-O section size")?;
+                if &bytes[section..section + 6] == b"__ncl\0"
+                    && &bytes[section + 16..section + 22] == b"__DATA"
+                    && section_size != 0
+                {
+                    has_metadata = true;
+                }
+            }
+        }
+        cursor += size;
+    }
+    if !has_main || !has_metadata {
+        return Err(ObjectError::InvalidStructure(
+            "missing NCL executable metadata",
+        ));
+    }
+    Ok(())
+}
 fn validate_input(object: &MachObject) -> Result<(), ObjectError> {
     for section in &object.sections {
         if section.name.len() > 16 || section.segment.len() > 16 {

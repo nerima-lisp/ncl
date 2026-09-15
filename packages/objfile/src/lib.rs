@@ -14,7 +14,10 @@ pub use elf::{
     sections_from_generic, validate_elf,
 };
 pub use error::ObjectError;
-pub use executable::{ExecutableImage, write_elf_executable, write_mach_executable};
+pub use executable::{
+    ExecutableImage, validate_elf_executable, write_elf_executable, write_mach_executable,
+};
 pub use fasl::{Architecture, Fasl, FaslHeader, FaslReader, FaslSection, FaslWriter};
+pub use macho::validate_mach_executable;
 pub use macho::{MachArchitecture, MachObject, MachReader, MachSection, validate_macho};
 pub use types::{RelocKind, Relocation, Section, SectionId, SymbolRef};

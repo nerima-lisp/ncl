@@ -11,6 +11,15 @@ pub mod declarations {
     pub struct Dirent {
         _private: [u8; 0],
     }
+    #[repr(C)]
+    pub struct PthreadMutex {
+        _private: [u8; 0],
+    }
+    #[repr(C)]
+    pub struct PthreadCond {
+        _private: [u8; 0],
+    }
+    pub type Sem = c_void;
     unsafe extern "C" {
         pub fn mmap(
             addr: *mut c_void,
@@ -46,6 +55,20 @@ pub mod declarations {
             signum: c_int,
             handler: Option<extern "C" fn(c_int)>,
         ) -> Option<extern "C" fn(c_int)>;
+        pub fn sigaction(signum: c_int, action: *const c_void, old_action: *mut c_void) -> c_int;
+        pub fn pthread_mutex_init(mutex: *mut PthreadMutex, attr: *const c_void) -> c_int;
+        pub fn pthread_mutex_destroy(mutex: *mut PthreadMutex) -> c_int;
+        pub fn pthread_mutex_lock(mutex: *mut PthreadMutex) -> c_int;
+        pub fn pthread_mutex_unlock(mutex: *mut PthreadMutex) -> c_int;
+        pub fn pthread_cond_init(cond: *mut PthreadCond, attr: *const c_void) -> c_int;
+        pub fn pthread_cond_destroy(cond: *mut PthreadCond) -> c_int;
+        pub fn pthread_cond_wait(cond: *mut PthreadCond, mutex: *mut PthreadMutex) -> c_int;
+        pub fn pthread_cond_signal(cond: *mut PthreadCond) -> c_int;
+        pub fn pthread_cond_broadcast(cond: *mut PthreadCond) -> c_int;
+        pub fn sem_init(sem: *mut Sem, shared: c_int, value: u32) -> c_int;
+        pub fn sem_destroy(sem: *mut Sem) -> c_int;
+        pub fn sem_wait(sem: *mut Sem) -> c_int;
+        pub fn sem_post(sem: *mut Sem) -> c_int;
     }
     #[cfg(target_os = "macos")]
     unsafe extern "C" {

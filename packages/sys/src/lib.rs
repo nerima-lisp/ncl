@@ -5,7 +5,10 @@
 
 mod code;
 mod heap;
+mod heap_state;
+mod heap_types;
 mod os;
+mod stw;
 mod sync;
 mod thread;
 mod word;
@@ -32,6 +35,22 @@ fn snapshot_callee_saved() -> [u64; 16] {
     values
 }
 #[cfg(not(target_arch = "aarch64"))]
+#[cfg(target_arch = "x86_64")]
+fn snapshot_callee_saved() -> [u64; 16] {
+    let mut values = [0_u64; 16];
+    // SAFETY: each output is a scalar register snapshot and no stack or flags are modified.
+    unsafe {
+        core::arch::asm!(
+            "mov {0}, rbx", "mov {1}, rbp", "mov {2}, r12",
+            "mov {3}, r13", "mov {4}, r14", "mov {5}, r15",
+            out(reg) values[0], out(reg) values[1], out(reg) values[2],
+            out(reg) values[3], out(reg) values[4], out(reg) values[5],
+            options(nostack, preserves_flags)
+        );
+    }
+    values
+}
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 fn snapshot_callee_saved() -> [u64; 16] {
     [0; 16]
 }
@@ -106,6 +125,11 @@ pub fn request_safepoint(thread: &mut Thread) {
 pub fn publish_safepoint(thread: &mut Thread) {
     thread.publish_snapshot();
     thread.poll_safepoint();
+}
+
+/// Publish a conservative candidate discovered in a native stack or register.
+pub fn publish_conservative_root(thread: &mut Thread, value: Word) {
+    thread.publish_conservative_root(value);
 }
 
 /// Register a contiguous set of precise root slots.

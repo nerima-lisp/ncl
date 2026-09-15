@@ -8,6 +8,7 @@ members = [
     "packages/sys",
     "packages/object",
     "packages/objfile",
+    "packages/codegen",
 ]
 default-members = [
     ".",
@@ -17,6 +18,7 @@ default-members = [
     "packages/sys",
     "packages/object",
     "packages/objfile",
+    "packages/codegen",
 ]
 
 [workspace.package]

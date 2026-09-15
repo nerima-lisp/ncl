@@ -29,3 +29,23 @@ legacy tests for later migration.
 
 契約文書側への正式な反映は、run ブランチでまとめて行います。この worktree では
 `docs/src/design/` を編集していません。
+
+## Object kinds
+
+| kind | layout | accessor | ctor | GC test |
+| --- | --- | --- | --- | --- |
+| symbol | registered fields | value/function/plist/name | `make_symbol` | `remaining_object_kinds_round_trip` |
+| string / vector | length and data | string/vector accessors | `make_string`, `make_simple_vector` | `remaining_object_kinds_round_trip` |
+| specialized array | element type and data | `specialized_array_*` | `make_specialized_array` | `remaining_object_kinds_round_trip` |
+| non-simple array | rank-variable metadata and boxed payload tail | `array_*` | `make_array` | `non_simple_array_references_survive_minor_and_full_gc` |
+| structure / instance | layout or class and slots | `structure_*`, `slot_*` | `make_structure`, `make_instance` | `remaining_object_kinds_round_trip` |
+| simple-fun / closure | entry, code, inline captures | `function_*`, `closure_ref` | `make_simple_fun`, `make_closure` | `remaining_object_kinds_round_trip` |
+| bignum / ratio | packed limbs or references | numeric accessors | numeric constructors | `remaining_object_kinds_round_trip` |
+| double-float / complex | binary64 or two references | numeric accessors | numeric constructors | `remaining_object_kinds_round_trip` |
+| stream / readtable | named descriptor slots | named accessors | `make_stream`, `make_readtable` | `remaining_object_kinds_round_trip` |
+| code | entry, size, tables | `code_*` | `make_code_object` | `remaining_object_kinds_round_trip` |
+
+The GC tests allocate each object, allocate additional objects, run minor and
+full collection, and check payload values and reference identity.
+
+下流レーンは、非 simple 配列の rank 可変 metadata が `boxed_from` から全語走査されること、kind 境界型が `Word` の transparent newtype であること、`classify_object` が Structure/Instance と SimpleFun/Closure を別 variant に返すことを前提にしてください。

@@ -295,6 +295,28 @@ impl Heap {
         (object.kind == expected && value.address() == object.words.as_ptr() as usize)
             .then_some(index)
     }
+    pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
+        let state = self.lock_state();
+        state.objects[Self::find(&state, object)?]
+            .words
+            .get(slot)
+            .map(|value| Word::from_bits(*value))
+    }
+    pub(crate) fn write_word(&self, object: Word, slot: usize, value: Word) -> bool {
+        self.write_word_at(object, slot + 1, value)
+    }
+    pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
+        let mut state = self.lock_state();
+        Self::find(&state, object)
+            .and_then(|index| state.objects[index].words.get_mut(slot))
+            .map(|target| *target = value.bits())
+            .is_some()
+    }
+    pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
+        let state = self.lock_state();
+        let index = Self::find(&state, object)?;
+        Some(u8::try_from(state.objects[index].words[0] & WIDETAG_MASK).unwrap_or(0))
+    }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
         let mut state = self.lock_state();
         if let Some(index) = Self::find(&state, object) {

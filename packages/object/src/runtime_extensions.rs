@@ -1,5 +1,5 @@
-use crate::{Runtime, ThreadContext};
-use ncl_sys::{HeapConfig, Word};
+use crate::{ObjectError, Runtime, ThreadContext};
+use ncl_sys::{HeapConfig, StorageCondition, Word};
 
 impl Runtime {
     /// Return the configured heap policy.
@@ -48,6 +48,23 @@ impl Runtime {
 }
 
 impl ThreadContext {
+    /// Write a payload slot of a header object.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage error when the object is unavailable to the registered thread.
+    pub fn write_object_slot(
+        &mut self,
+        object: Word,
+        slot: usize,
+        value: Word,
+    ) -> Result<(), ObjectError> {
+        if ncl_sys::write_object_word(&mut self.thread, object, slot, value) {
+            Ok(())
+        } else {
+            Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
+        }
+    }
     /// Mark a pending non-local exit.
     pub const fn set_non_local_exit(&mut self, pending: bool) {
         self.non_local_exit = pending;

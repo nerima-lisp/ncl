@@ -48,11 +48,6 @@ pub mod array_offset {
     pub const ELEMENT_TYPE: usize = 0;
     pub const RANK: usize = 1;
     pub const DIMENSIONS: usize = 2;
-    pub const FILL_POINTER: usize = 3;
-    pub const DISPLACED_TO: usize = 4;
-    pub const OFFSET: usize = 5;
-    pub const FLAGS: usize = 6;
-    pub const DATA: usize = 7;
     pub const DYNAMIC_BASE: usize = 2;
     pub const FLAG_ADJUSTABLE: u64 = 1;
     pub const FLAG_HAS_FILL_POINTER: u64 = 2;

@@ -3,9 +3,9 @@
 use crate::{
     ObjectError, Runtime, Word,
     layout::{
-        array_offset, code_offset, function_offset, instance_offset, number_offset,
-        readtable_offset, reference_words, simple_vector_offset, stream_offset, structure_offset,
-        symbol_offset, widetag,
+        code_offset, function_offset, instance_offset, number_offset, readtable_offset,
+        reference_words, simple_vector_offset, stream_offset, structure_offset, symbol_offset,
+        widetag,
     },
 };
 
@@ -86,7 +86,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
             ],
         ),
         (widetag::SPECIALIZED_ARRAY, vec![]),
-        (widetag::NON_SIMPLE_ARRAY, vec![array_offset::DISPLACED_TO]),
+        (widetag::NON_SIMPLE_ARRAY, vec![]),
     ] {
         ncl_sys::register_layout(
             runtime.heap(),

@@ -32,9 +32,9 @@ legacy tests for later migration.
 
 | kind | layout | accessor | ctor | GC test |
 | --- | --- | --- | --- | --- |
-| symbol | registered fields | value/function/plist/name | `make_symbol` | GC accessor test |
-| string / vector | length and data | string/vector accessors | `make_string`, `make_simple_vector` | GC kind suite |
-| specialized array | element type and data | `specialized_array_*` | `make_specialized_array` | GC kind suite |
+| symbol | registered fields | value/function/plist/name | `make_symbol` | `remaining_object_kinds_round_trip` |
+| string / vector | length and data | string/vector accessors | `make_string`, `make_simple_vector` | `remaining_object_kinds_round_trip` |
+| specialized array | element type and data | `specialized_array_*` | `make_specialized_array` | `remaining_object_kinds_round_trip` |
 | non-simple array | rank-variable metadata and boxed payload tail | `array_*` | `make_array` | `non_simple_array_references_survive_minor_and_full_gc` |
 | structure / instance | layout or class and slots | `structure_*`, `slot_*` | `make_structure`, `make_instance` | `remaining_object_kinds_round_trip` |
 | simple-fun / closure | entry, code, inline captures | `function_*`, `closure_ref` | `make_simple_fun`, `make_closure` | `remaining_object_kinds_round_trip` |

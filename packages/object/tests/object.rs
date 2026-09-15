@@ -272,6 +272,17 @@ fn remaining_object_kinds_round_trip() {
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     assert!(runtime.register_layouts().is_ok());
+    let name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E']).unwrap_or(Word::NIL);
+    let symbol = make_symbol(&mut ctx, &runtime, name).unwrap_or(Word::NIL);
+    let vector = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(21), Word::fixnum(22)])
+        .unwrap_or(Word::NIL);
+    let specialized = make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Fixnum,
+        &[Word::fixnum(31), Word::fixnum(32)],
+    )
+    .unwrap_or(Word::NIL);
     let layout = runtime
         .register_structure_layout(2)
         .unwrap_or_else(|_| 0.into());
@@ -297,9 +308,10 @@ fn remaining_object_kinds_round_trip() {
     let double =
         ncl_object::make_double(&mut ctx, &runtime, 1.25).unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::double_value(&ctx, double), Ok(1.25));
-    let code =
-        ncl_object::make_code_object(&mut ctx, &runtime, 7, 4, Word::NIL, Word::NIL, Word::NIL)
-            .unwrap_or_else(|_| Word::NIL.into());
+    let code = ncl_object::make_code_object(&mut ctx, &runtime, 7, 4, bignum.into(), name, vector)
+        .unwrap_or_else(|_| Word::NIL.into());
+    let simple_fun = ncl_object::make_simple_fun(&mut ctx, &runtime, 8, name, specialized, code)
+        .unwrap_or_else(|_| Word::NIL.into());
     let function = ncl_object::make_closure(
         &mut ctx,
         &runtime,
@@ -357,11 +369,20 @@ fn remaining_object_kinds_round_trip() {
         ratio.into(),
         complex.into(),
         readtable.into(),
+        name,
+        symbol,
+        vector,
+        specialized,
+        simple_fun.into(),
     ];
     let tokens: Vec<_> = roots
         .iter_mut()
         .map(|value| ncl_object::push_root(&mut ctx, value))
         .collect();
+    for index in 0..32 {
+        let suffix = u8::try_from(index % 26).unwrap_or(0);
+        let _ = make_string(&mut ctx, &runtime, &[char::from(b'a' + suffix)]);
+    }
     ctx.collect(false);
     assert_eq!(classify_object(&ctx, roots[2]), ObjectRef::Bignum(roots[2]));
     ctx.collect(true);
@@ -369,6 +390,55 @@ fn remaining_object_kinds_round_trip() {
         ncl_object::bignum_limbs(&ctx, roots[2].into()),
         Ok(vec![1, 1])
     );
+    assert_eq!(
+        ncl_object::structure_ref(&ctx, roots[0], 0),
+        Ok(Word::fixnum(1))
+    );
+    assert_eq!(
+        ncl_object::structure_ref(&ctx, roots[0], 1),
+        Ok(Word::fixnum(2))
+    );
+    assert_eq!(
+        ncl_object::slot_ref(&ctx, roots[1].into(), 0),
+        Ok(Word::fixnum(4))
+    );
+    assert_eq!(
+        ncl_object::closure_ref(&ctx, roots[5].into(), 0),
+        Ok(roots[1])
+    );
+    assert_eq!(
+        ncl_object::closure_ref(&ctx, roots[5].into(), 1),
+        Ok(roots[2])
+    );
+    assert_eq!(
+        ncl_object::closure_ref(&ctx, roots[5].into(), 2),
+        Ok(roots[3])
+    );
+    assert_eq!(
+        ncl_object::code_entry(&ctx, roots[4].into()),
+        Ok(Word::fixnum(7))
+    );
+    assert_eq!(
+        ncl_object::code_size(&ctx, roots[4].into()),
+        Ok(Word::fixnum(4))
+    );
+    assert_eq!(
+        ncl_object::code_constants(&ctx, roots[4].into()),
+        Ok(roots[2])
+    );
+    assert_eq!(
+        ncl_object::code_stack_map(&ctx, roots[4].into()),
+        Ok(roots[10])
+    );
+    assert_eq!(ncl_object::code_debug(&ctx, roots[4].into()), Ok(roots[12]));
+    assert_eq!(string_ref(&ctx, roots[10], 3), Ok('E'));
+    assert_eq!(symbol_name(&ctx, roots[11]), Ok(roots[10]));
+    assert_eq!(simple_vector_ref(&ctx, roots[12], 1), Ok(Word::fixnum(22)));
+    assert_eq!(
+        ncl_object::specialized_array_ref(&ctx, roots[13], 1),
+        Ok(Word::fixnum(32))
+    );
+    assert_eq!(ncl_object::function_entry(&ctx, roots[14].into()), Ok(8));
     assert_eq!(ncl_object::double_value(&ctx, roots[3].into()), Ok(1.25));
     assert_eq!(
         ncl_object::ratio_numerator(&ctx, roots[7].into()),

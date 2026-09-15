@@ -96,6 +96,9 @@ fn collection_updates_registered_frame_snapshot() {
             crate::CodeObjectMetadata {
                 entry_offset: 0,
                 size: code.len(),
+                frame_words: 5,
+                function_name: "test".to_string(),
+                source_locations: Vec::new(),
                 constant_slots: Vec::new(),
                 safepoint_map: map,
                 debug_table: Vec::new(),

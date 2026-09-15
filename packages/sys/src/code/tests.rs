@@ -11,6 +11,7 @@ fn code_lifecycle_and_write_bounds() {
     assert_eq!(code.write_code(3, &[5, 6]), Err(CodeError::OutOfBounds));
     assert!(publish_code(&mut code).is_ok());
     assert!(code.is_published());
+    assert_eq!(code.entry(), code.address());
     assert_eq!(code.write_code(0, &[1]), Err(CodeError::AlreadyPublished));
 }
 
@@ -23,6 +24,9 @@ fn registry_register_find_unregister() {
     let metadata = CodeObjectMetadata {
         entry_offset: 0,
         size: code.len(),
+        frame_words: 0,
+        function_name: "test".to_string(),
+        source_locations: Vec::new(),
         constant_slots: vec![Word::NIL],
         safepoint_map: SafepointMap::default(),
         debug_table: Vec::new(),

@@ -251,6 +251,53 @@ fn collection_scans_frames_across_registered_code_objects() {
 }
 
 #[test]
+fn release_code_waits_for_registered_frames_to_quiesce() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    let Ok(mut code) = crate::alloc_code(16) else {
+        return;
+    };
+    assert!(crate::publish_code(&mut code).is_ok());
+    let map = crate::SafepointMap::default();
+    assert!(
+        h.register_code(
+            &code,
+            crate::CodeObjectMetadata {
+                entry_offset: 0,
+                size: code.len(),
+                frame_words: 5,
+                function_name: "release-test".to_string(),
+                source_locations: Vec::new(),
+                constant_slots: Vec::new(),
+                safepoint_map: map,
+                debug_table: Vec::new(),
+            },
+        )
+        .is_ok()
+    );
+    t.set_frame_snapshot(
+        vec![
+            Word::from_bits(0),
+            Word::from_bits(code.address() as u64),
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        ],
+        Vec::new(),
+    );
+    let mut owned = Some(code);
+    assert_eq!(
+        h.release_code(&mut t, &mut owned),
+        Err(crate::CodeError::CodeInUse)
+    );
+    assert!(owned.is_some());
+    t.set_frame_snapshot(Vec::new(), Vec::new());
+    assert!(h.release_code(&mut t, &mut owned).is_ok());
+    assert!(owned.is_none());
+}
+
+#[test]
 fn roots_are_lifo() {
     let mut t = Thread::new();
     let mut v = Word::NIL;

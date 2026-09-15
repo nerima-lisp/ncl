@@ -35,6 +35,10 @@ pub enum CodeError {
     MappingFailed,
     /// The operating system rejected executable page permissions.
     ProtectionFailed,
+    /// A live registered frame still returns into the code allocation.
+    CodeInUse,
+    /// The code allocation is not present in the heap registry.
+    NotRegistered,
 }
 
 /// A page-backed, non-moving code allocation.
@@ -189,7 +193,10 @@ pub fn alloc_code(bytes: usize) -> Result<CodePtr, CodeError> {
     })
 }
 
-/// Release code storage.
+/// Release code storage that was never registered with a [`Heap`].
+///
+/// Registered code must be released through [`Heap::release_code`], which
+/// performs the stop-the-world quiescence check before dropping the mapping.
 pub fn free_code(code: CodePtr) {
     drop(code);
 }

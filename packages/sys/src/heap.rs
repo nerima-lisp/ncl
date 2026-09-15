@@ -96,6 +96,60 @@ impl Heap {
     pub fn unregister_code(&self, code: &CodePtr) -> Option<CodeObjectMetadata> {
         self.lock_state().code_registry.unregister(code)
     }
+    /// Quiesce all registered mutators, then unregister and release executable code.
+    ///
+    /// `code` remains in `owned` when a published return PC is still present, so
+    /// the caller can retry after the owning frames have unwound.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CodeError::CodeInUse`] while a stopped frame still points into
+    /// the mapping, or [`CodeError::NotRegistered`] when the registry has no entry.
+    pub fn release_code(
+        &self,
+        thread: &mut Thread,
+        owned: &mut Option<CodePtr>,
+    ) -> Result<(), CodeError> {
+        if thread.heap != Some(self) {
+            return Err(CodeError::NotRegistered);
+        }
+        let code = owned.as_ref().ok_or(CodeError::NotRegistered)?;
+        self.begin_collection(thread);
+        let live = {
+            let state = self.lock_state();
+            if state.code_registry.find(code.address()).is_none() {
+                false
+            } else {
+                state.threads.iter().copied().any(|candidate| {
+                    // SAFETY: collection has stopped registered mutators.
+                    unsafe {
+                        (*candidate)
+                            .frame_chain
+                            .iter()
+                            .skip(1)
+                            .step_by(5)
+                            .any(|return_pc| {
+                                let pc = return_pc.address();
+                                pc >= code.address() && pc < code.address() + code.len()
+                            })
+                    }
+                })
+            }
+        };
+        if live {
+            self.end_collection();
+            return Err(CodeError::CodeInUse);
+        }
+        let code = owned.take().ok_or(CodeError::NotRegistered)?;
+        let removed = self.lock_state().code_registry.unregister(&code);
+        self.end_collection();
+        if removed.is_none() {
+            drop(code);
+            return Err(CodeError::NotRegistered);
+        }
+        drop(code);
+        Ok(())
+    }
     pub(crate) fn unregister_thread(&self, thread: &Thread) {
         let mut state = self.lock_state();
         let pointer = std::ptr::from_ref(thread).cast_mut();

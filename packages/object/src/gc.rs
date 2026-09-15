@@ -95,9 +95,9 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
                 reference_words: reference_words(&slots),
                 boxed_from: match tag {
                     widetag::SIMPLE_VECTOR => Some(simple_vector_offset::DATA + 1),
+                    widetag::HASH_TABLE | widetag::NON_SIMPLE_ARRAY => Some(1),
                     widetag::STRUCTURE => Some(structure_offset::SLOTS + 1),
                     widetag::CLOSURE => Some(function_offset::CAPTURES + 1),
-                    widetag::NON_SIMPLE_ARRAY => Some(1),
                     _ => None,
                 },
             },

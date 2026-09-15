@@ -127,14 +127,21 @@ fn gc_preserves_object_accessors_and_weak_entries() {
         .collect::<Vec<_>>();
     assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
     let table_key = Word::fixnum(42);
-    let mut table = HashTable::new(HashTest::Eq, Weakness::None, 8);
-    table.insert(table_key, Word::fixnum(99));
+    let Ok(table) = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None) else {
+        return;
+    };
+    let mut table_word = table.as_word();
+    let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
+    let table = HashTable::from(table_word);
+    assert!(table
+        .insert(&mut ctx, &runtime, table_key, Word::fixnum(99))
+        .is_ok());
 
     ctx.collect(false);
     assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
     assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
     assert_eq!(symbol_value(&ctx, roots[1_001]), Ok(Word::UNBOUND));
-    assert_eq!(table.get(table_key), Some(Word::fixnum(99)));
+    assert_eq!(table.get(&mut ctx, table_key), Ok(Some(Word::fixnum(99))));
     assert_eq!(
         package
             .intern(&mut ctx, &runtime, "SAME")
@@ -144,8 +151,10 @@ fn gc_preserves_object_accessors_and_weak_entries() {
 
     ctx.collect(true);
     assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
-    assert_eq!(table.get(table_key), Some(Word::fixnum(99)));
+    let table = HashTable::from(table_word);
+    assert_eq!(table.get(&mut ctx, table_key), Ok(Some(Word::fixnum(99))));
     assert_eq!(ctx.weak_value(weak), Word::NIL);
+    assert!(ncl_object::pop_root(&mut ctx, table_token));
     for token in tokens.into_iter().rev() {
         assert!(ncl_object::pop_root(&mut ctx, token));
     }

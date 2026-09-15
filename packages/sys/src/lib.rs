@@ -258,6 +258,12 @@ pub fn collect(thread: &mut Thread, full: bool) {
     thread.heap_collect(full);
 }
 
+/// Return the collection epoch of the thread's heap.
+#[must_use]
+pub fn heap_epoch(thread: &Thread) -> u64 {
+    thread.heap_ref().map_or(0, Heap::gc_epoch)
+}
+
 /// Mark an object as weak with the specified weakness policy.
 #[must_use]
 pub fn make_weak(thread: &Thread, value: Word, weakness: Weakness) -> Word {

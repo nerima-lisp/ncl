@@ -5,12 +5,16 @@ members = [
     "packages/asm/x86-64",
     "packages/ir",
     "packages/codegen",
+    "packages/asm/aarch64",
+    "packages/sys",
 ]
 default-members = [
     ".",
     "packages/asm/x86-64",
     "packages/ir",
     "packages/codegen",
+    "packages/asm/aarch64",
+    "packages/sys",
 ]
 
 [workspace.package]

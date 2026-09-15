@@ -195,6 +195,16 @@ pub fn register_root_set(thread: &mut Thread, values: &mut [Word]) -> RootToken 
     token
 }
 
+/// Register a precise root slot owned by a heap-level registry.
+pub fn push_heap_root(heap: &Heap, value: &mut Word) -> RootToken {
+    heap.push_root(value)
+}
+
+/// Remove the most recently registered heap-level root.
+pub fn pop_heap_root(heap: &Heap, token: RootToken) -> bool {
+    heap.pop_root(token)
+}
+
 /// Enter a foreign/native section.
 pub const fn enter_native(thread: &mut Thread) {
     thread.enter_native();

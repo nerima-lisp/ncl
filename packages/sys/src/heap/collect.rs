@@ -3,6 +3,7 @@ use super::{FORWARDED_FLAG, HashMap, HashSet, Object, PageKind, Word, scan};
 impl super::Heap {
     pub(crate) fn collect(&self, full: bool) {
         let mut state = self.lock_state();
+        state.gc_epoch = state.gc_epoch.wrapping_add(1);
         for object in &mut state.objects {
             object.pinned = false;
         }

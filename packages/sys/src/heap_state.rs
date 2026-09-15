@@ -16,6 +16,7 @@ pub struct Object {
 #[derive(Debug)]
 pub struct State {
     pub(crate) used: usize,
+    pub(crate) gc_epoch: u64,
     pub(crate) objects: Vec<Object>,
     pub(crate) layouts: HashMap<u8, ReferenceLayout>,
     pub(crate) threads: Vec<*mut Thread>,

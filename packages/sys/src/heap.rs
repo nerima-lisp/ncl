@@ -38,6 +38,7 @@ impl Heap {
             config,
             state: Mutex::new(State {
                 used: 0,
+                gc_epoch: 0,
                 objects: Vec::new(),
                 layouts: HashMap::new(),
                 threads: Vec::new(),
@@ -58,6 +59,35 @@ impl Heap {
     /// Return the allocation debt threshold that triggers collection.
     pub const fn bytes_considered_between_gcs(&self) -> usize {
         self.config.bytes_considered_between_gcs
+    }
+    /// Return the monotonically increasing collection epoch.
+    #[must_use]
+    pub fn gc_epoch(&self) -> u64 {
+        self.lock_state().gc_epoch
+    }
+    /// Register a heap-owned precise root slot.
+    ///
+    /// The referenced slot must outlive the returned token and remain at the
+    /// same address until [`Heap::pop_root`] is called.
+    pub fn push_root(&self, value: &mut Word) -> crate::RootToken {
+        let mut state = self.lock_state();
+        let token = crate::RootToken {
+            index: state.roots.len(),
+            count: 1,
+        };
+        state.roots.push(std::ptr::from_mut(value));
+        token
+    }
+    /// Remove the most recently registered heap-owned root.
+    pub fn pop_root(&self, token: crate::RootToken) -> bool {
+        let mut state = self.lock_state();
+        if token.index + token.count != state.roots.len() {
+            return false;
+        }
+        for _ in 0..token.count {
+            let _ = state.roots.pop();
+        }
+        true
     }
     /// # Errors
     /// Returns `LayoutError` when the widetag is already registered.

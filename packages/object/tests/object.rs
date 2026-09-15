@@ -266,6 +266,7 @@ fn non_simple_array_references_survive_minor_and_full_gc() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn remaining_object_kinds_round_trip() {
     let runtime = Runtime::new();
     let mut ctx = ThreadContext::new();
@@ -306,7 +307,7 @@ fn remaining_object_kinds_round_trip() {
         Word::NIL,
         Word::NIL,
         code,
-        &[instance.into()],
+        &[instance.into(), bignum.into(), double.into()],
     )
     .unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::function_entry(&ctx, function), Ok(7));
@@ -314,21 +315,14 @@ fn remaining_object_kinds_round_trip() {
         ncl_object::closure_ref(&ctx, function, 0),
         Ok(instance.into())
     );
-    let mut rooted_instance: Word = instance.into();
-    let instance_token = ncl_object::push_root(&mut ctx, &mut rooted_instance);
-    let mut rooted_function: Word = function.into();
-    let function_token = ncl_object::push_root(&mut ctx, &mut rooted_function);
-    ctx.collect(true);
     assert_eq!(
-        ncl_object::slot_ref(&ctx, rooted_instance.into(), 0),
-        Ok(Word::fixnum(4))
+        ncl_object::closure_ref(&ctx, function, 1),
+        Ok(bignum.into())
     );
     assert_eq!(
-        ncl_object::closure_ref(&ctx, rooted_function.into(), 0),
-        Ok(rooted_instance)
+        ncl_object::closure_ref(&ctx, function, 2),
+        Ok(double.into())
     );
-    assert!(ncl_object::pop_root(&mut ctx, function_token));
-    assert!(ncl_object::pop_root(&mut ctx, instance_token));
     let stream = ncl_object::make_stream(
         &mut ctx,
         &runtime,
@@ -340,4 +334,59 @@ fn remaining_object_kinds_round_trip() {
     )
     .unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::stream_state(&ctx, stream), Ok(Word::fixnum(9)));
+    let ratio = ncl_object::make_ratio(&mut ctx, &runtime, bignum.into(), double.into())
+        .unwrap_or_else(|_| Word::NIL.into());
+    let complex = ncl_object::make_complex(&mut ctx, &runtime, ratio.into(), bignum.into())
+        .unwrap_or_else(|_| Word::NIL.into());
+    let readtable = ncl_object::make_readtable(
+        &mut ctx,
+        &runtime,
+        complex.into(),
+        ratio.into(),
+        Word::fixnum(2),
+    )
+    .unwrap_or_else(|_| Word::NIL.into());
+    let mut roots = [
+        structure,
+        instance.into(),
+        bignum.into(),
+        double.into(),
+        code.into(),
+        function.into(),
+        stream.into(),
+        ratio.into(),
+        complex.into(),
+        readtable.into(),
+    ];
+    let tokens: Vec<_> = roots
+        .iter_mut()
+        .map(|value| ncl_object::push_root(&mut ctx, value))
+        .collect();
+    ctx.collect(false);
+    assert_eq!(classify_object(&ctx, roots[2]), ObjectRef::Bignum(roots[2]));
+    ctx.collect(true);
+    assert_eq!(
+        ncl_object::bignum_limbs(&ctx, roots[2].into()),
+        Ok(vec![1, 1])
+    );
+    assert_eq!(ncl_object::double_value(&ctx, roots[3].into()), Ok(1.25));
+    assert_eq!(
+        ncl_object::ratio_numerator(&ctx, roots[7].into()),
+        Ok(roots[2])
+    );
+    assert_eq!(
+        ncl_object::complex_real(&ctx, roots[8].into()),
+        Ok(roots[7])
+    );
+    assert_eq!(
+        ncl_object::readtable_syntax(&ctx, roots[9].into()),
+        Ok(roots[8])
+    );
+    assert_eq!(
+        ncl_object::stream_state(&ctx, roots[6].into()),
+        Ok(Word::fixnum(9))
+    );
+    for token in tokens.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
 }

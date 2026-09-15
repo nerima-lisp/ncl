@@ -51,7 +51,8 @@ pub use number::{
     make_complex, make_double, make_ratio,
 };
 pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
-use package::Package;
+pub use package::FindStatus;
+pub use package::Package;
 pub use readtable::readtable_slot;
 pub use readtable::{
     Readtable, make_readtable, readtable_case, readtable_dispatch, readtable_syntax,
@@ -92,7 +93,7 @@ impl From<StorageCondition> for ObjectError {
 pub struct Runtime {
     heap: Heap,
     functions: Mutex<HashMap<(String, String), Word>>,
-    packages: Mutex<HashMap<String, Package>>,
+    packages: Mutex<Vec<(String, Word)>>,
     classes: Mutex<HashMap<String, Word>>,
     features: Mutex<Vec<String>>,
     layouts: Mutex<HashMap<u32, usize>>,
@@ -107,27 +108,17 @@ impl Runtime {
     /// Create a runtime with an explicit heap policy.
     #[must_use]
     pub fn with_config(config: HeapConfig) -> Self {
-        Self {
+        let runtime = Self {
             heap: Heap::new(config),
             functions: Mutex::new(HashMap::new()),
-            packages: Mutex::new(
-                [
-                    ("COMMON-LISP".to_owned(), Package::new("COMMON-LISP")),
-                    ("KEYWORD".to_owned(), Package::new("KEYWORD")),
-                    (
-                        "COMMON-LISP-USER".to_owned(),
-                        Package::new("COMMON-LISP-USER"),
-                    ),
-                    ("NCL".to_owned(), Package::new("NCL")),
-                ]
-                .into_iter()
-                .collect(),
-            ),
+            packages: Mutex::new(Vec::with_capacity(16)),
             classes: Mutex::new(HashMap::new()),
             features: Mutex::new(Vec::new()),
             layouts: Mutex::new(HashMap::new()),
             next_layout: Mutex::new(1),
-        }
+        };
+        let _ = runtime.register_layouts();
+        runtime
     }
     /// Register all object layouts supported by this layer.
     ///
@@ -142,17 +133,38 @@ impl Runtime {
         &self.heap
     }
     /// Create a package if it does not already exist.
-    pub fn ensure_package(&self, name: &str) -> bool {
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
+    pub fn ensure_package(&self, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
         let mut packages = match self.packages.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        if packages.contains_key(name) {
-            false
+        if let Some((_, package)) = packages
+            .iter()
+            .find(|(package_name, _)| package_name == name)
+        {
+            Ok(*package)
         } else {
-            packages.insert(name.to_owned(), Package::new(name));
-            true
+            let package = Package::new(ctx, self, name)?.as_word();
+            packages.push((name.to_owned(), package));
+            if let Some((_, slot)) = packages.last_mut() {
+                let _ = ncl_sys::push_heap_root(self.heap(), slot);
+            }
+            drop(packages);
+            Ok(package)
         }
+    }
+    /// Find a package by its canonical name.
+    #[must_use]
+    pub fn find_package(&self, name: &str) -> Option<Word> {
+        self.packages
+            .lock()
+            .ok()?
+            .iter()
+            .find(|(package_name, _)| package_name == name)
+            .map(|(_, package)| *package)
     }
     /// Register a function object under a package and name.
     pub fn define_function(&self, package: &str, name: &str, function: Word) {
@@ -217,7 +229,11 @@ impl ThreadContext {
     ///
     /// Returns the storage condition reported by the heap.
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
-        ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(Into::into)
+        ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
+        for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "SB-EXT"] {
+            runtime.ensure_package(self, name)?;
+        }
+        Ok(())
     }
     /// Bind a special variable, preserving stack order.
     pub fn bind(&mut self, index: u32, value: Word) {

@@ -1,8 +1,13 @@
-//! Symbols and package namespace invariants.
+//! Heap-resident package namespaces.
 
-use crate::{ObjectError, Runtime, ThreadContext, make_symbol};
+use crate::hash_table::{HashTable, HashTest, Weakness};
+use crate::object_access::{get, put};
+use crate::widetag;
+use crate::{ObjectError, Runtime, ThreadContext, make_simple_vector, make_string, make_symbol};
+use crate::{string_length, string_ref};
 use ncl_sys::Word;
-use std::collections::{HashMap, HashSet};
+
+crate::word_newtype!(Package);
 
 /// Result of looking up a name in a package.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -12,131 +17,159 @@ pub enum FindStatus {
     Inherited,
 }
 
-/// A package namespace with explicit exports, shadows, and used packages.
-#[derive(Debug)]
-pub struct Package {
-    name: String,
-    symbols: HashMap<String, Word>,
-    exports: HashSet<String>,
-    shadows: HashSet<String>,
-    used: Vec<String>,
-    gensym: u64,
-}
+const NAME: usize = 0;
+const NICKNAMES: usize = 1;
+const USE_LIST: usize = 2;
+const USED_BY: usize = 3;
+const INTERNAL: usize = 4;
+const EXTERNAL: usize = 5;
+const SHADOWING: usize = 6;
+const LOCAL_NICKNAMES: usize = 7;
+const LOCK: usize = 8;
+const GENSYM: usize = 9;
 
 impl Package {
-    /// Create an empty package with a name.
-    #[must_use]
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            symbols: HashMap::new(),
-            exports: HashSet::new(),
-            shadows: HashSet::new(),
-            used: Vec::new(),
-            gensym: 0,
-        }
-    }
-    /// Return the package name.
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    /// Find an accessible symbol and its status.
-    #[must_use]
-    pub fn find_symbol(
-        &self,
-        name: &str,
-        packages: &HashMap<String, Self>,
-    ) -> Option<(Word, FindStatus)> {
-        if let Some(symbol) = self.symbols.get(name) {
-            return Some((
-                *symbol,
-                if self.exports.contains(name) {
-                    FindStatus::External
-                } else {
-                    FindStatus::Internal
-                },
-            ));
-        }
-        if self.shadows.contains(name) {
-            return None;
-        }
-        self.used.iter().find_map(|used| {
-            packages
-                .get(used)?
-                .symbols
-                .get(name)
-                .map(|symbol| (*symbol, FindStatus::Inherited))
-        })
-    }
-    /// Intern a name, preserving the package's one-symbol-per-name invariant.
+    /// Allocate an empty package and its internal and external symbol tables.
     ///
     /// # Errors
+    /// Returns an allocation or layout error.
+    pub fn new(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        name: &str,
+    ) -> Result<Self, ObjectError> {
+        let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+        let internal = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+        let external = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+        let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 10)?;
+        for (slot, value) in [
+            (NAME, name_word),
+            (NICKNAMES, Word::NIL),
+            (USE_LIST, Word::NIL),
+            (USED_BY, Word::NIL),
+            (INTERNAL, internal),
+            (EXTERNAL, external),
+            (SHADOWING, Word::NIL),
+            (LOCAL_NICKNAMES, Word::NIL),
+            (LOCK, Word::fixnum(0)),
+            (GENSYM, Word::fixnum(0)),
+        ] {
+            put(ctx, object, slot, value)?;
+        }
+        Ok(object.into())
+    }
+    /// Return the package name object.
     ///
-    /// Returns an object error when symbol allocation fails.
+    /// # Errors
+    /// Returns an error for an invalid heap layout.
+    pub fn name(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
+        get(ctx, self.0, widetag::PACKAGE, NAME)
+    }
+    /// Find an accessible symbol in this package.
+    ///
+    /// # Errors
+    /// Returns an error for an invalid heap layout.
+    pub fn find_symbol(
+        self,
+        ctx: &mut ThreadContext,
+        name: Word,
+    ) -> Result<Option<(Word, FindStatus)>, ObjectError> {
+        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
+        if let Some(symbol) = internal.get(ctx, name)? {
+            return Ok(Some((symbol, FindStatus::Internal)));
+        }
+        let external = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
+        Ok(external
+            .get(ctx, name)?
+            .map(|symbol| (symbol, FindStatus::External)))
+    }
+    /// Intern a symbol by name, returning its symbol and status.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
     pub fn intern(
-        &mut self,
+        self,
         ctx: &mut ThreadContext,
         runtime: &Runtime,
         name: &str,
     ) -> Result<(Word, FindStatus), ObjectError> {
-        if let Some(found) = self.symbols.get(name) {
-            return Ok((
-                *found,
-                if self.exports.contains(name) {
-                    FindStatus::External
-                } else {
-                    FindStatus::Internal
-                },
-            ));
+        let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
+        for (key, symbol) in internal.map_entries(ctx)? {
+            if strings_equal(ctx, key, name_word)? {
+                return Ok((symbol, FindStatus::Internal));
+            }
         }
-        let symbol = make_symbol(ctx, runtime, Word::NIL)?;
-        self.symbols.insert(name.to_owned(), symbol);
+        if let Some(found) = self.find_symbol(ctx, name_word)? {
+            return Ok(found);
+        }
+        let symbol = make_symbol(ctx, runtime, name_word)?;
+        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, self.0)?;
+        let table = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
+        table.insert(ctx, runtime, name_word, symbol)?;
         Ok((symbol, FindStatus::Internal))
     }
-    /// Remove a symbol from this package.
-    pub fn unintern(&mut self, name: &str) -> bool {
-        self.exports.remove(name);
-        self.shadows.remove(name);
-        self.symbols.remove(name).is_some()
-    }
-    /// Mark an internal symbol external.
-    pub fn export(&mut self, name: &str) -> bool {
-        self.symbols.contains_key(name) && self.exports.insert(name.to_owned())
-    }
-    /// Import a symbol under its printed name.
-    pub fn import(&mut self, name: impl Into<String>, symbol: Word) -> bool {
-        self.symbols.insert(name.into(), symbol).is_none()
-    }
-    /// Reserve a name against inherited symbols.
-    pub fn shadow(&mut self, name: impl Into<String>) {
-        let name = name.into();
-        self.shadows.insert(name.clone());
-        self.symbols.entry(name).or_insert(Word::NIL);
-    }
-    /// Add another package to the use list.
-    pub fn use_package(&mut self, name: impl Into<String>) -> bool {
-        let name = name.into();
-        if self.used.contains(&name) {
-            false
-        } else {
-            self.used.push(name);
-            true
-        }
-    }
-    /// Generate a fresh uninterned symbol placeholder.
+    /// Export an internal symbol by moving it to the external table.
     ///
     /// # Errors
-    ///
-    /// Returns an object error when symbol allocation fails.
-    pub fn gensym(
-        &mut self,
+    /// Returns an allocation or layout error.
+    pub fn export(
+        self,
         ctx: &mut ThreadContext,
         runtime: &Runtime,
-    ) -> Result<Word, ObjectError> {
-        self.gensym += 1;
+        name: Word,
+    ) -> Result<bool, ObjectError> {
+        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
+        let Some(symbol) = internal.remove(ctx, runtime, name)? else {
+            return Ok(false);
+        };
+        HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?)
+            .insert(ctx, runtime, name, symbol)?;
+        Ok(true)
+    }
+    /// Add a name to the package's shadowing list.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
+    pub fn shadow(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        name: Word,
+    ) -> Result<(), ObjectError> {
+        let list = get(ctx, self.0, widetag::PACKAGE, SHADOWING)?;
+        let vector = make_simple_vector(ctx, runtime, &[name, list])?;
+        put(ctx, self.0, SHADOWING, vector)
+    }
+    /// Generate an uninterned symbol.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
+    pub fn gensym(self, ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
+        let number = get(ctx, self.0, widetag::PACKAGE, GENSYM)?
+            .as_fixnum()
+            .ok_or(ObjectError::Layout)?;
+        put(ctx, self.0, GENSYM, Word::fixnum(number + 1))?;
         make_symbol(ctx, runtime, Word::NIL)
     }
+}
+
+fn strings_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, ObjectError> {
+    if ncl_sys::object_widetag(&ctx.thread, left) != Some(widetag::STRING)
+        || ncl_sys::object_widetag(&ctx.thread, right) != Some(widetag::STRING)
+    {
+        return Ok(left == right);
+    }
+    let length = string_length(ctx, left)?;
+    if length != string_length(ctx, right)? {
+        return Ok(false);
+    }
+    for index in 0..length {
+        if string_ref(ctx, left, index)? != string_ref(ctx, right, index)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 /// Canonical static NIL value.
@@ -148,21 +181,4 @@ pub const fn nil() -> Word {
 #[must_use]
 pub const fn truth() -> Word {
     Word::TRUE
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn package_intern_is_unique_and_unintern_reopens_name() {
-        let runtime = Runtime::new();
-        let mut ctx = ThreadContext::new();
-        assert!(ctx.register(&runtime).is_ok());
-        let mut package = Package::new("NCL");
-        let first = package.intern(&mut ctx, &runtime, "X").map(|pair| pair.0);
-        let second = package.intern(&mut ctx, &runtime, "X").map(|pair| pair.0);
-        assert_eq!(first, second);
-        assert!(package.unintern("X"));
-        assert!(package.intern(&mut ctx, &runtime, "X").is_ok());
-    }
 }

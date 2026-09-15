@@ -1,5 +1,7 @@
 use super::*;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
 
 #[test]
 fn tags_round_trip() {
@@ -262,4 +264,61 @@ fn weak_value_clears_and_finalizer_runs_once() {
     h.collect(false);
     crate::run_pending_finalizers(&t);
     assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn conservative_root_pins_object_address() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    let value = h
+        .alloc_cons(&mut t, Word::fixnum(7), Word::NIL)
+        .unwrap_or(Word::NIL);
+    let address = value.address();
+    crate::publish_conservative_root(&mut t, value);
+    h.collect(false);
+    assert_eq!(value.address(), address);
+    let state = h.lock_state();
+    assert!(Heap::find(&state, value).is_some());
+}
+
+#[test]
+fn stop_the_world_waits_for_mutator_poll() {
+    let heap = Arc::new(Heap::new(HeapConfig::default()));
+    let mut collector = Thread::new();
+    assert_eq!(heap.register_thread(&mut collector), Ok(()));
+    let worker_heap = Arc::clone(&heap);
+    let worker = thread::spawn(move || {
+        let mut thread = Thread::new();
+        assert_eq!(worker_heap.register_thread(&mut thread), Ok(()));
+        for _ in 0..100 {
+            let _ = worker_heap.alloc_cons(&mut thread, Word::NIL, Word::NIL);
+            crate::poll_safepoint(&mut thread);
+        }
+        worker_heap.unregister_thread(&thread);
+    });
+    crate::collect(&mut collector, false);
+    assert!(worker.join().is_ok());
+}
+
+#[test]
+fn conservative_scan_rejects_interior_and_wrong_tag() {
+    let heap = Heap::new(HeapConfig::default());
+    let mut thread = Thread::new();
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+    let object = heap
+        .alloc_cons(&mut thread, Word::NIL, Word::NIL)
+        .unwrap_or(Word::NIL);
+    crate::publish_conservative_root(
+        &mut thread,
+        Word::pointer(object.address() + 8, crate::LowTag::List),
+    );
+    crate::publish_conservative_root(
+        &mut thread,
+        Word::pointer(object.address(), crate::LowTag::OtherPointer),
+    );
+    heap.collect(false);
+    let state = heap.lock_state();
+    assert!(!state.objects.iter().any(|candidate| candidate.alive));
+    drop(state);
 }

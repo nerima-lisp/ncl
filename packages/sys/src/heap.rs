@@ -1,77 +1,21 @@
+use crate::heap_state::{Object, State};
+pub use crate::heap_types::{
+    Finalizer, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
+    Weakness,
+};
 use crate::{Thread, Word};
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
-
+use std::sync::{Condvar, Mutex};
 const CARD_SIZE: usize = 512;
 const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
 const FORWARDED_FLAG: u64 = 1 << 10;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum StorageCondition {
-    CapacityExceeded,
-    InvalidSize,
-    ThreadNotRegistered,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PageKind {
-    Cons,
-    HeaderObject,
-    Large,
-    Code,
-    Static,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct TypeTag {
-    pub widetag: u8,
-}
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ReferenceLayout {
-    pub reference_words: Vec<usize>,
-}
-#[derive(Debug)]
-pub struct LayoutError;
-#[derive(Clone, Copy, Debug)]
-pub struct HeapConfig {
-    pub dynamic_space_size: usize,
-    pub bytes_considered_between_gcs: usize,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Weakness {
-    Key,
-    Value,
-    KeyAndValue,
-    KeyOrValue,
-}
-pub type Finalizer = fn(Word);
-
-#[derive(Debug)]
-struct Object {
-    words: Box<[u64]>,
-    kind: PageKind,
-    generation: u8,
-    survived: u8,
-    pinned: bool,
-    weak: Option<Weakness>,
-    finalizer: Option<(Finalizer, bool)>,
-    alive: bool,
-    forwarded_to: Option<usize>,
-}
-#[derive(Debug)]
-struct State {
-    used: usize,
-    objects: Vec<Object>,
-    layouts: HashMap<u8, ReferenceLayout>,
-    threads: Vec<*mut Thread>,
-    dirty_cards: HashSet<(usize, usize)>,
-    roots: Vec<*mut Word>,
-    finalizers: Vec<(Word, Finalizer)>,
-    after_gc_hooks: Vec<fn()>,
-}
 #[derive(Debug)]
 pub struct Heap {
     config: HeapConfig,
     state: Mutex<State>,
+    pub(crate) stop_world: Mutex<crate::stw::StopWorld>,
+    pub(crate) stop_world_ready: Condvar,
 }
 impl Default for HeapConfig {
     fn default() -> Self {
@@ -96,6 +40,8 @@ impl Heap {
                 finalizers: Vec::new(),
                 after_gc_hooks: Vec::new(),
             }),
+            stop_world: Mutex::new(crate::stw::StopWorld::default()),
+            stop_world_ready: Condvar::new(),
         }
     }
     pub const fn dynamic_space_size(&self) -> usize {
@@ -104,10 +50,8 @@ impl Heap {
     pub const fn bytes_considered_between_gcs(&self) -> usize {
         self.config.bytes_considered_between_gcs
     }
-    ///
     /// # Errors
-    ///
-    /// Returns `LayoutError` when a layout for `widetag` is already registered.
+    /// Returns `LayoutError` when the widetag is already registered.
     pub fn register_layout(&self, widetag: u8, layout: ReferenceLayout) -> Result<(), LayoutError> {
         let mut state = self.lock_state();
         if state.layouts.insert(widetag, layout).is_some() {
@@ -131,6 +75,28 @@ impl Heap {
         let mut state = self.lock_state();
         let pointer = std::ptr::from_ref(thread).cast_mut();
         state.threads.retain(|item| *item != pointer);
+        drop(state);
+        let mut stop_world = self
+            .stop_world
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        stop_world.parked.remove(&(pointer as usize));
+        drop(stop_world);
+        self.stop_world_ready.notify_all();
+    }
+    pub(crate) fn active_mutators(&self) -> usize {
+        let state = self.lock_state();
+        state
+            .threads
+            .iter()
+            .filter(|candidate| {
+                // SAFETY: registered thread pointers are valid until unregister_thread.
+                unsafe {
+                    let pointer = **candidate;
+                    (&*pointer).native_state() != crate::NativeState::Native
+                }
+            })
+            .count()
     }
     pub(crate) fn alloc(
         &self,
@@ -279,6 +245,19 @@ impl Heap {
         }
         state.objects[index].alive.then_some(index)
     }
+    fn find_conservative(state: &State, value: Word) -> Option<usize> {
+        let expected = if value.is_list() {
+            PageKind::Cons
+        } else if value.lowtag() == crate::LowTag::OtherPointer as u8 {
+            PageKind::HeaderObject
+        } else {
+            return None;
+        };
+        let index = Self::find_raw(state, value)?;
+        let object = &state.objects[index];
+        (object.kind == expected && value.address() == object.words.as_ptr() as usize)
+            .then_some(index)
+    }
     fn layout(state: &State, index: usize) -> Vec<usize> {
         if state.objects[index].kind == PageKind::Cons {
             return vec![0, 1];
@@ -335,18 +314,29 @@ impl Heap {
             callback(Word::NIL);
         }
     }
-    #[allow(
-        clippy::too_many_lines,
-        reason = "collection phases share one lock to preserve forwarding invariants"
-    )]
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn collect(&self, full: bool) {
         let mut state = self.lock_state();
+        for object in &mut state.objects {
+            object.pinned = false;
+        }
         let mut live = HashSet::new();
         let mut stack = Vec::new();
         let mut root_slots = state.roots.clone();
+        let mut conservative_values = Vec::new();
         for thread in state.threads.iter().copied() {
             // SAFETY: registered thread pointers remain valid until unregister_thread.
-            root_slots.extend(unsafe { (*thread).roots.iter().copied() });
+            unsafe {
+                root_slots.extend((*thread).roots.iter().copied());
+                conservative_values.extend((*thread).conservative_snapshot());
+            }
+        }
+        let mut conservative_indices = Vec::new();
+        for value in conservative_values {
+            if let Some(index) = Self::find_conservative(&state, value) {
+                state.objects[index].pinned = true;
+                conservative_indices.push(index);
+            }
         }
         if !full {
             for (index, _) in state.dirty_cards.clone() {
@@ -364,6 +354,7 @@ impl Heap {
                 }
             }
         }
+        stack.extend(conservative_indices);
         while let Some(index) = stack.pop() {
             if !live.insert(index) {
                 continue;
@@ -429,7 +420,14 @@ impl Heap {
             if let Some(address) = Self::relocated_address(&state, &moved, value) {
                 // SAFETY: the root slot is registered and points to a valid Word.
                 unsafe {
-                    *root = Word::pointer(address, Self::pointer_tag(value));
+                    *root = Word::pointer(
+                        address,
+                        if value.is_list() {
+                            crate::LowTag::List
+                        } else {
+                            crate::LowTag::OtherPointer
+                        },
+                    );
                 }
             }
         }
@@ -448,8 +446,15 @@ impl Heap {
                     .map(Word::from_bits)
                     && let Some(address) = Self::relocated_address(&state, &moved, value)
                 {
-                    state.objects[index].words[slot] =
-                        Word::pointer(address, Self::pointer_tag(value)).bits();
+                    state.objects[index].words[slot] = Word::pointer(
+                        address,
+                        if value.is_list() {
+                            crate::LowTag::List
+                        } else {
+                            crate::LowTag::OtherPointer
+                        },
+                    )
+                    .bits();
                 }
             }
         }
@@ -499,6 +504,10 @@ impl Heap {
             .collect();
         state.dirty_cards = dirty_cards;
         let hooks = state.after_gc_hooks.clone();
+        for thread in state.threads.iter().copied() {
+            // SAFETY: collection owns the stop-the-world phase, so mutator snapshots are not changing.
+            unsafe { (*thread).conservative_roots.clear() };
+        }
         drop(state);
         for hook in hooks {
             hook();

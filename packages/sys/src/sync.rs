@@ -70,13 +70,13 @@ impl Semaphore {
 /// Wakeable wait queue used by interruptible blocking operations.
 #[derive(Debug)]
 pub struct WaitQueue {
-    state: Mutex<bool>,
+    state: Mutex<usize>,
     available: Condvar,
 }
 impl Default for WaitQueue {
     fn default() -> Self {
         Self {
-            state: Mutex::new(false),
+            state: Mutex::new(0),
             available: Condvar::default(),
         }
     }
@@ -84,17 +84,21 @@ impl Default for WaitQueue {
 impl WaitQueue {
     pub fn wait(&self) {
         let mut ready = self.state.lock();
-        while !*ready {
+        while *ready == 0 {
             ready = self.available.wait(ready);
         }
-        *ready = false;
+        *ready -= 1;
     }
     pub fn wake_one(&self) {
-        *self.state.lock() = true;
+        let mut state = self.state.lock();
+        if *state != usize::MAX {
+            *state += 1;
+        }
+        drop(state);
         self.available.notify_one();
     }
     pub fn wake_all(&self) {
-        *self.state.lock() = true;
+        *self.state.lock() = usize::MAX;
         self.available.notify_all();
     }
 }

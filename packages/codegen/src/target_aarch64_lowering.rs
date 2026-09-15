@@ -75,6 +75,35 @@ fn store_slot(
     )
 }
 
+pub(super) fn lower_call(
+    assembler: &mut Assembler,
+    callee: ValueId,
+    args: &[ValueId],
+    slots: &[(ValueId, u32)],
+) -> Result<(), CodegenError> {
+    if args.len() > 4 {
+        return Err(CodegenError::Unsupported(
+            "AArch64 calls support at most four register arguments".into(),
+        ));
+    }
+    load_slot(assembler, slots, callee, Reg(16))?;
+    emit(
+        assembler,
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(17)),
+            rn: RegOrSp::Reg(Reg(16)),
+        },
+    )?;
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(0), args.len() as u64) {
+        emit(assembler, instruction)?;
+    }
+    for (index, argument) in args.iter().enumerate() {
+        let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
+        load_slot(assembler, slots, *argument, register)?;
+    }
+    Ok(())
+}
+
 fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u64, CodegenError> {
     match constant {
         ncl_ir::Constant::Fixnum(value) => Ok(abi.encode_fixnum(*value).cast_unsigned()),
@@ -356,7 +385,18 @@ pub(super) fn lower_op(
             }
         }
         OpKind::Alloc { .. } | OpKind::Safepoint => emit(assembler, Inst::Nop)?,
-        OpKind::Call { .. } | OpKind::CallIndirect { .. } | OpKind::Builtin { .. } => {
+        OpKind::Call { function, args }
+        | OpKind::CallIndirect {
+            callee: function,
+            args,
+        } => {
+            lower_call(assembler, *function, args, slots)?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })?;
+            if let Some(result) = result {
+                store_slot(assembler, slots, result, Reg(0))?;
+            }
+        }
+        OpKind::Builtin { .. } => {
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
         }
     }

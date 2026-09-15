@@ -5,7 +5,7 @@ use ncl_ir::{Function, OpKind, Terminator};
 
 #[path = "target_aarch64_lowering.rs"]
 mod lowering;
-use lowering::{load_slot, lower_op, move_args, slots};
+use lowering::{load_slot, lower_call, lower_op, move_args, slots};
 
 #[allow(clippy::needless_pass_by_value)]
 fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
@@ -60,7 +60,7 @@ pub fn compile_function_aarch64(
             rt2: Reg(30),
             mem: MemOperand::PreIndex {
                 base: RegOrSp::Sp,
-                offset: -16,
+                offset: -32,
             },
         },
     )?;
@@ -71,7 +71,35 @@ pub fn compile_function_aarch64(
             rn: RegOrSp::Sp,
         },
     )?;
-    let body_bytes = frame.size_bytes().saturating_sub(16);
+    emit(
+        &mut assembler,
+        Inst::Str {
+            rt: Reg(17),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(29)),
+                offset: 16,
+            },
+        },
+    )?;
+    emit(
+        &mut assembler,
+        Inst::MovZ {
+            rd: Reg(16),
+            imm: 0,
+            shift: 0,
+        },
+    )?;
+    emit(
+        &mut assembler,
+        Inst::Str {
+            rt: Reg(16),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(29)),
+                offset: 24,
+            },
+        },
+    )?;
+    let body_bytes = frame.size_bytes().saturating_sub(32);
     if body_bytes > 0 {
         emit(
             &mut assembler,
@@ -202,19 +230,43 @@ pub fn compile_function_aarch64(
                         rt2: Reg(30),
                         mem: MemOperand::PostIndex {
                             base: RegOrSp::Sp,
-                            offset: 16,
+                            offset: 32,
                         },
                     },
                 )?;
                 emit(&mut assembler, Inst::Ret { rn: Reg(30) })?;
             }
-            Terminator::CallReturn { .. } | Terminator::TailCall { .. } => {
+            Terminator::CallReturn { function, args } | Terminator::TailCall { function, args } => {
+                lower_call(&mut assembler, *function, args, &value_slots)?;
                 emit(&mut assembler, Inst::Blr { rn: Reg(17) })?;
                 add_map(
                     &mut maps,
                     checked_u32(assembler.offset())?,
                     frame,
                     FLAG_CALL,
+                )?;
+                if body_bytes > 0 {
+                    emit(
+                        &mut assembler,
+                        Inst::AddImm {
+                            rd: RegOrSp::Sp,
+                            rn: RegOrSp::Sp,
+                            imm: u16::try_from(body_bytes)
+                                .map_err(|_| CodegenError::FrameOverflow)?,
+                            shift: false,
+                        },
+                    )?;
+                }
+                emit(
+                    &mut assembler,
+                    Inst::Ldp {
+                        rt: Reg(29),
+                        rt2: Reg(30),
+                        mem: MemOperand::PostIndex {
+                            base: RegOrSp::Sp,
+                            offset: 32,
+                        },
+                    },
                 )?;
                 emit(&mut assembler, Inst::Ret { rn: Reg(30) })?;
             }

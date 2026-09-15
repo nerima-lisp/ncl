@@ -381,9 +381,9 @@ pub fn encode(i: &Inst, _at: usize) -> Result<u32, EncodeError> {
         Inst::Csel { rd, rn, rm, cond } => {
             Ok(0x9A80_0000 | r(*rm) << 16 | cond.bits() << 12 | r(*rn) << 5 | r(*rd))
         }
-        Inst::Cset { rd, cond } => Ok(0x9A9F_07E0 | (!cond.bits() & 0xf) << 12 | r(*rd)),
+        Inst::Cset { rd, cond } => Ok(0x9A9F_07E0 | (cond.bits() ^ 1) << 12 | r(*rd)),
         Inst::Cinc { rd, rn, cond } => {
-            Ok(0x9A80_0400 | r(*rn) << 5 | (!cond.bits() & 0xf) << 12 | r(*rd))
+            Ok(0x9A80_0400 | r(*rn) << 5 | (cond.bits() ^ 1) << 12 | r(*rd))
         }
         Inst::Mul { rd, rn, rm } => Ok(0x9B00_7C00 | r(*rm) << 16 | r(*rn) << 5 | r(*rd)),
         Inst::Sdiv { rd, rn, rm } => Ok(0x9AC0_0C00 | r(*rm) << 16 | r(*rn) << 5 | r(*rd)),

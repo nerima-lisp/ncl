@@ -1,4 +1,5 @@
 //! Typed, safe values and runtime state for NCL.
+#![allow(missing_docs)]
 
 use ncl_sys::{
     Heap, HeapConfig, LowTag, ReferenceLayout, RootToken, StorageCondition, Thread, TypeTag, Word,
@@ -8,11 +9,14 @@ use std::sync::Mutex;
 
 pub mod hash_table;
 pub mod package;
+mod runtime_extensions;
+pub use runtime_extensions::MultipleValues;
 
 use package::Package;
 
 /// Object widetags used by the object layer.
 pub mod widetag {
+    //! Header widetag values.
     pub const SYMBOL: u8 = 1;
     pub const STRING: u8 = 2;
     pub const SIMPLE_VECTOR: u8 = 3;
@@ -34,6 +38,7 @@ pub mod widetag {
 
 /// Payload offsets for a symbol object.
 pub mod symbol_offset {
+    //! Symbol payload slot offsets.
     pub const VALUE: usize = 0;
     pub const FUNCTION: usize = 1;
     pub const PLIST: usize = 2;
@@ -108,6 +113,8 @@ pub struct Runtime {
     heap: Heap,
     functions: Mutex<HashMap<(String, String), Word>>,
     packages: Mutex<HashMap<String, Package>>,
+    classes: Mutex<HashMap<String, Word>>,
+    features: Mutex<Vec<String>>,
 }
 impl Runtime {
     /// Create a runtime with the default heap policy.
@@ -132,6 +139,8 @@ impl Runtime {
                 .into_iter()
                 .collect(),
             ),
+            classes: Mutex::new(HashMap::new()),
+            features: Mutex::new(Vec::new()),
         }
     }
     /// Register all object layouts supported by this layer.
@@ -213,6 +222,10 @@ pub struct ThreadContext {
     bindings: Vec<(u32, Word)>,
     values: Vec<Word>,
     pending: Option<ObjectError>,
+    non_local_exit: bool,
+    handler: Option<usize>,
+    cleanup: Option<usize>,
+    catch: Option<usize>,
 }
 impl ThreadContext {
     /// Create an unregistered context.
@@ -222,6 +235,10 @@ impl ThreadContext {
             bindings: Vec::new(),
             values: Vec::new(),
             pending: None,
+            non_local_exit: false,
+            handler: None,
+            cleanup: None,
+            catch: None,
         }
     }
     /// Register this context with a runtime.
@@ -429,7 +446,10 @@ pub enum NclStatus {
 pub struct Builtin {
     pub arity: u8,
     pub direct: bool,
+    pub lambda_list: &'static str,
 }
+/// A function object identity used by the registration API.
+pub type FunctionObject = Word;
 /// Function registration callback.
 pub type RegisterFn = fn(&Runtime);
 
@@ -443,6 +463,14 @@ macro_rules! builtin {
         pub const $name: $crate::Builtin = $crate::Builtin {
             arity: $arity,
             direct: true,
+            lambda_list: "",
+        };
+    };
+    ($name:ident, $arity:expr, $lambda_list:expr) => {
+        pub const $name: $crate::Builtin = $crate::Builtin {
+            arity: $arity,
+            direct: true,
+            lambda_list: $lambda_list,
         };
     };
 }

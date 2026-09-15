@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use ncl_object::{
     ObjectRef, Runtime, ThreadContext, builtin, car, classify, make_cons, make_symbol,
     set_symbol_value, symbol_name, symbol_value,

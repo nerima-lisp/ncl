@@ -94,18 +94,21 @@ pub fn widetag(heap: &Heap, object: Word) -> Option<u8> {
 }
 
 /// Read the widetag of a live object through a registered thread.
+#[must_use]
 pub fn object_widetag(thread: &Thread, object: Word) -> Option<u8> {
     let heap = thread.heap_ref()?;
     heap.widetag(object)
 }
 
 /// Read a cons payload word through a registered thread.
+#[must_use]
 pub fn read_cons_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {
     let heap = thread.heap_ref()?;
     heap.read_cons_word(object, slot)
 }
 
 /// Read a header-object payload word through a registered thread.
+#[must_use]
 pub fn read_object_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {
     let heap = thread.heap_ref()?;
     heap.read_word(object, slot + 1)

@@ -58,7 +58,10 @@ impl Thread {
         }
     }
     pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
-        self.heap.map(|heap| unsafe { &*heap })
+        self.heap.map(|heap| {
+            // SAFETY: registration stores this heap pointer for the thread lifetime.
+            unsafe { &*heap }
+        })
     }
     /// Push a precise root. The referenced slot must outlive the token.
     pub fn push_root(&mut self, value: &mut Word) -> RootToken {

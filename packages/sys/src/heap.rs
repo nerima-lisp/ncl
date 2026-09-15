@@ -73,7 +73,6 @@ pub struct Heap {
     config: HeapConfig,
     state: Mutex<State>,
 }
-
 impl Default for HeapConfig {
     fn default() -> Self {
         Self {
@@ -161,79 +160,48 @@ impl Heap {
         self.write_words(w, &[(0, car), (1, cdr)]);
         Ok(w)
     }
-
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
-        let address = object.address().checked_add(slot.checked_mul(8)?)? as *const u64;
         let state = self.lock_state();
-        let page = state.pages.iter().find(|page| {
-            let start = page.as_ptr() as usize;
-            let end = start.saturating_add(page.len().saturating_mul(8));
-            (address as usize) >= start
-                && (address as usize)
-                    .checked_add(8)
-                    .is_some_and(|end_pos| end_pos <= end)
-        })?;
-        let offset = (address as usize - page.as_ptr() as usize) / 8;
-        Some(Word::from_bits(page[offset]))
+        let index = Self::find(&state, object)?;
+        state.objects[index]
+            .words
+            .get(slot)
+            .copied()
+            .map(Word::from_bits)
     }
-
     pub(crate) fn read_cons_word(&self, object: Word, slot: usize) -> Option<Word> {
-        let address = object.address().checked_add(slot.checked_mul(8)?)? as *const u64;
         let state = self.lock_state();
-        let page = state.pages.iter().find(|page| {
-            let start = page.as_ptr() as usize;
-            let end = start.saturating_add(page.len().saturating_mul(8));
-            (address as usize) >= start
-                && (address as usize)
-                    .checked_add(8)
-                    .is_some_and(|end_pos| end_pos <= end)
-        })?;
-        let offset = (address as usize - page.as_ptr() as usize) / 8;
-        Some(Word::from_bits(page[offset]))
+        let index = Self::find(&state, object)?;
+        state.objects[index]
+            .words
+            .get(slot)
+            .copied()
+            .map(Word::from_bits)
     }
-
     pub(crate) fn write_cons_word(&self, object: Word, slot: usize, value: Word) -> bool {
         self.write_word_at(object, slot, value)
     }
-
     pub(crate) fn write_word(&self, object: Word, slot: usize, value: Word) -> bool {
         self.write_word_at(object, slot + 1, value)
     }
-
     fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
-        let address = match object.address().checked_add(slot.saturating_mul(8)) {
-            Some(address) => address as *mut u64,
-            None => return false,
-        };
         let mut state = self.lock_state();
-        let Some(page) = state.pages.iter_mut().find(|page| {
-            let start = page.as_ptr() as usize;
-            let end = start.saturating_add(page.len().saturating_mul(8));
-            (address as usize) >= start
-                && (address as usize)
-                    .checked_add(8)
-                    .is_some_and(|end_pos| end_pos <= end)
-        }) else {
-            return false;
-        };
-        let offset = (address as usize - page.as_ptr() as usize) / 8;
-        page[offset] = value.bits();
-        true
+        let result = Self::find(&state, object).is_some_and(|index| {
+            state.objects[index]
+                .words
+                .get_mut(slot)
+                .is_some_and(|slot| {
+                    *slot = value.bits();
+                    true
+                })
+        });
+        drop(state);
+        result
     }
-
     pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
-        let address = object.address() as *const u64;
         let state = self.lock_state();
-        let page = state.pages.iter().find(|page| {
-            let start = page.as_ptr() as usize;
-            let end = start.saturating_add(page.len().saturating_mul(8));
-            (address as usize) >= start
-                && (address as usize)
-                    .checked_add(8)
-                    .is_some_and(|end_pos| end_pos <= end)
-        })?;
-        let offset = (address as usize - page.as_ptr() as usize) / 8;
-        Some(page[offset] as u8)
+        let index = Self::find(&state, object)?;
+        Some(Self::object_widetag(&state.objects[index]))
     }
     fn allocate(
         &self,
@@ -373,7 +341,7 @@ impl Heap {
                 vec![0, 1]
             } else {
                 s.layouts
-                    .get(&Self::widetag(&s.objects[i]))
+                    .get(&Self::object_widetag(&s.objects[i]))
                     .map_or_else(Vec::new, |l| l.reference_words.clone())
             };
             for slot in layout {
@@ -451,7 +419,7 @@ impl Heap {
                 vec![0, 1]
             } else {
                 s.layouts
-                    .get(&Self::widetag(&s.objects[i]))
+                    .get(&Self::object_widetag(&s.objects[i]))
                     .map_or_else(Vec::new, |l| l.reference_words.clone())
             };
             for slot in layout {
@@ -514,7 +482,7 @@ impl Heap {
             crate::LowTag::OtherPointer
         }
     }
-    fn widetag(object: &Object) -> u8 {
+    fn object_widetag(object: &Object) -> u8 {
         u8::try_from(object.words[0] & WIDETAG_MASK).unwrap_or(0)
     }
     fn relocated_address(s: &State, moved: &HashMap<usize, usize>, value: Word) -> Option<usize> {
@@ -524,11 +492,7 @@ impl Heap {
         Some(new_base + (value.address() - old.words.as_ptr() as usize))
     }
 }
-// SAFETY: State is accessed only while holding Heap::state, and raw pointers are
-// registered roots whose owners guarantee their lifetime until unregistering.
 unsafe impl Send for State {}
-// SAFETY: The mutex serializes all State access; registered raw pointers are
-// dereferenced only during collection while their owners are stopped.
 unsafe impl Sync for State {}
 
 #[cfg(test)]

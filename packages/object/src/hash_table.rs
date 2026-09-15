@@ -68,6 +68,11 @@ impl HashTable {
     pub const fn len(&self) -> usize {
         self.len
     }
+    /// Return whether the table has no live entries.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
     /// Return the current capacity.
     #[must_use]
     pub const fn capacity(&self) -> usize {
@@ -117,7 +122,7 @@ impl HashTable {
         self.rehash(self.capacity());
     }
     fn insert_hashed(&mut self, key: Word, value: Word, hash: u64) {
-        let mut index = (hash as usize) & (self.capacity() - 1);
+        let mut index = usize::try_from(hash).unwrap_or(0) & (self.capacity() - 1);
         loop {
             match self.slots[index] {
                 Some(entry) if entry.live && equal(self.test, entry.key, key) => {
@@ -150,7 +155,7 @@ impl HashTable {
             .and_then(|index| self.slots[index])
     }
     fn find_index(&self, key: Word, hash: u64) -> Option<usize> {
-        let mut index = (hash as usize) & (self.capacity() - 1);
+        let mut index = usize::try_from(hash).unwrap_or(0) & (self.capacity() - 1);
         for _ in 0..self.capacity() {
             match self.slots[index] {
                 Some(entry)
@@ -178,8 +183,7 @@ impl HashTable {
 
 fn equal(test: HashTest, left: Word, right: Word) -> bool {
     match test {
-        HashTest::Eq => left == right,
-        HashTest::Eql | HashTest::Equal | HashTest::Equalp => left == right,
+        HashTest::Eq | HashTest::Eql | HashTest::Equal | HashTest::Equalp => left == right,
     }
 }
 
@@ -188,9 +192,9 @@ fn equal(test: HashTest, left: Word, right: Word) -> bool {
 pub const fn sxhash(word: Word) -> u64 {
     let mut x = word.bits();
     x ^= x >> 30;
-    x = x.wrapping_mul(0xbf58476d1ce4e5b9);
+    x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9);
     x ^= x >> 27;
-    x = x.wrapping_mul(0x94d049bb133111eb);
+    x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
     x ^ (x >> 31)
 }
 

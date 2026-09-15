@@ -1,53 +1,24 @@
 //! Typed, safe values and runtime state for NCL.
 #![allow(missing_docs)]
 
+pub use ncl_sys::Word;
 use ncl_sys::{
-    Heap, HeapConfig, LowTag, ReferenceLayout, RootToken, StorageCondition, Thread, TypeTag, Word,
+    Heap, HeapConfig, LowTag, ReferenceLayout, RootToken, StorageCondition, Thread, TypeTag,
 };
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+mod builtin;
+mod gc;
 pub mod hash_table;
+mod layout;
 pub mod package;
 mod runtime_extensions;
-pub use runtime_extensions::MultipleValues;
+pub use builtin::{Builtin, FunctionObject, MultipleValues, NclStatus, RegisterFn};
+pub use gc::register;
+pub use layout::{symbol_offset, widetag};
 
 use package::Package;
-
-/// Object widetags used by the object layer.
-pub mod widetag {
-    //! Header widetag values.
-    pub const SYMBOL: u8 = 1;
-    pub const STRING: u8 = 2;
-    pub const SIMPLE_VECTOR: u8 = 3;
-    pub const ARRAY: u8 = 4;
-    pub const HASH_TABLE: u8 = 5;
-    pub const STRUCTURE: u8 = 6;
-    pub const INSTANCE: u8 = 7;
-    pub const SIMPLE_FUN: u8 = 8;
-    pub const CLOSURE: u8 = 9;
-    pub const BIGNUM: u8 = 10;
-    pub const RATIO: u8 = 11;
-    pub const DOUBLE_FLOAT: u8 = 12;
-    pub const COMPLEX: u8 = 13;
-    pub const PACKAGE: u8 = 14;
-    pub const READTABLE: u8 = 15;
-    pub const STREAM: u8 = 16;
-    pub const CODE: u8 = 17;
-}
-
-/// Payload offsets for a symbol object.
-pub mod symbol_offset {
-    //! Symbol payload slot offsets.
-    pub const VALUE: usize = 0;
-    pub const FUNCTION: usize = 1;
-    pub const PLIST: usize = 2;
-    pub const PACKAGE: usize = 3;
-    pub const NAME: usize = 4;
-    pub const TLS_INDEX: usize = 5;
-    pub const HASH: usize = 6;
-    pub const FLAGS: usize = 7;
-}
 
 /// Classification of a tagged value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -64,12 +35,13 @@ pub enum ObjectRef {
 }
 
 /// Classify a tagged value using the information exposed by `ncl-sys`.
+#[must_use]
 pub fn classify(word: Word) -> ObjectRef {
     if let Some(value) = word.as_fixnum() {
         return ObjectRef::Fixnum(value);
     }
     if word.is_character() {
-        return ObjectRef::Character((word.bits() >> 4) as u32);
+        return ObjectRef::Character(u32::try_from(word.bits() >> 4).unwrap_or(0));
     }
     match word.lowtag() {
         x if x == LowTag::List as u8 => {
@@ -118,10 +90,12 @@ pub struct Runtime {
 }
 impl Runtime {
     /// Create a runtime with the default heap policy.
+    #[must_use]
     pub fn new() -> Self {
         Self::with_config(HeapConfig::default())
     }
     /// Create a runtime with an explicit heap policy.
+    #[must_use]
     pub fn with_config(config: HeapConfig) -> Self {
         Self {
             heap: Heap::new(config),
@@ -144,6 +118,10 @@ impl Runtime {
         }
     }
     /// Register all object layouts supported by this layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ObjectError::Layout`] when a widetag is already registered.
     pub fn register_layouts(&self) -> Result<(), ObjectError> {
         for (tag, reference_words) in [
             (widetag::SYMBOL, vec![0, 1, 2, 3, 4]),
@@ -229,7 +207,8 @@ pub struct ThreadContext {
 }
 impl ThreadContext {
     /// Create an unregistered context.
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             thread: Thread::new(),
             bindings: Vec::new(),
@@ -242,6 +221,10 @@ impl ThreadContext {
         }
     }
     /// Register this context with a runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns the storage condition reported by the heap.
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(Into::into)
     }
@@ -250,6 +233,10 @@ impl ThreadContext {
         self.bindings.push((index, value));
     }
     /// Remove the latest binding for an index.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ObjectError::Unbound`] when no binding exists.
     pub fn unbind(&mut self, index: u32) -> Result<Word, ObjectError> {
         if let Some(position) = self.bindings.iter().rposition(|(key, _)| *key == index) {
             Ok(self.bindings.remove(position).1)
@@ -263,16 +250,34 @@ impl ThreadContext {
         self.values.extend_from_slice(values);
     }
     /// Read multiple values.
+    #[must_use]
     pub fn values(&self) -> &[Word] {
         &self.values
     }
     /// Record a pending condition.
-    pub fn set_pending(&mut self, error: ObjectError) {
+    pub const fn set_pending(&mut self, error: ObjectError) {
         self.pending = Some(error);
     }
     /// Take the pending condition.
-    pub fn take_pending(&mut self) -> Option<ObjectError> {
+    pub const fn take_pending(&mut self) -> Option<ObjectError> {
         self.pending.take()
+    }
+
+    /// Run a collection for this registered context.
+    pub fn collect(&mut self, full: bool) {
+        ncl_sys::collect(&mut self.thread, full);
+    }
+
+    /// Mark an object as weak with the requested policy.
+    #[must_use]
+    pub fn make_weak(&self, value: Word, weakness: ncl_sys::Weakness) -> Word {
+        ncl_sys::make_weak(&self.thread, value, weakness)
+    }
+
+    /// Read the value slot of a weak object.
+    #[must_use]
+    pub fn weak_value(&self, value: Word) -> Word {
+        ncl_sys::weak_value(&self.thread, value)
     }
 }
 impl Default for ThreadContext {
@@ -282,6 +287,10 @@ impl Default for ThreadContext {
 }
 
 /// Allocate a cons cell.
+///
+/// # Errors
+///
+/// Returns the allocation failure reported by the heap.
 pub fn make_cons(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -291,6 +300,10 @@ pub fn make_cons(
     ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, car, cdr).map_err(Into::into)
 }
 /// Allocate a header object with a widetag and payload words.
+///
+/// # Errors
+///
+/// Returns the allocation failure reported by the heap.
 pub fn allocate(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -307,6 +320,10 @@ pub fn allocate(
 }
 
 /// Allocate a symbol with an initial name and unbound value/function cells.
+///
+/// # Errors
+///
+/// Returns the allocation or storage failure reported by the heap.
 pub fn make_symbol(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -345,11 +362,19 @@ fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, O
 }
 
 /// Read a symbol's value cell.
+///
+/// # Errors
+///
+/// Returns a type or storage error when the word is not a symbol.
 pub fn symbol_value(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::VALUE)
 }
 
 /// Set a symbol's value cell.
+///
+/// # Errors
+///
+/// Returns a type or storage error when the word is not a mutable symbol.
 pub fn set_symbol_value(
     ctx: &mut ThreadContext,
     symbol: Word,
@@ -366,16 +391,28 @@ pub fn set_symbol_value(
 }
 
 /// Read a symbol's function cell.
+///
+/// # Errors
+///
+/// Returns a type or storage error when the word is not a symbol.
 pub fn symbol_function(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::FUNCTION)
 }
 
 /// Read a symbol's property list.
+///
+/// # Errors
+///
+/// Returns a type or storage error when the word is not a symbol.
 pub fn symbol_plist(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::PLIST)
 }
 
 /// Read a symbol's name object.
+///
+/// # Errors
+///
+/// Returns a type or storage error when the word is not a symbol.
 pub fn symbol_name(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::NAME)
 }
@@ -388,17 +425,25 @@ pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
     ncl_sys::pop_root(&mut ctx.thread, token)
 }
 /// Return the car of a cons cell.
-pub fn car(_ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
+///
+/// # Errors
+///
+/// Returns a type or storage error when the word is not a cons.
+pub fn car(ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
     if word == Word::NIL {
         return Ok(Word::NIL);
     }
     if !word.is_cons() {
         return Err(ObjectError::TypeError);
     }
-    ncl_sys::read_cons_word(&_ctx.thread, word, 0)
+    ncl_sys::read_cons_word(&ctx.thread, word, 0)
         .ok_or(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
 }
 /// Return the cdr of a cons cell.
+///
+/// # Errors
+///
+/// Returns a type or storage error when the word is not a cons.
 pub fn cdr(ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
     if word == Word::NIL {
         return Ok(Word::NIL);
@@ -411,6 +456,10 @@ pub fn cdr(ctx: &mut ThreadContext, word: Word) -> Result<Word, ObjectError> {
 }
 
 /// Replace the car of a cons cell.
+///
+/// # Errors
+///
+/// Returns a type or storage error when the word is not a cons.
 pub fn rplaca(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, ObjectError> {
     if !word.is_cons() {
         return Err(ObjectError::TypeError);
@@ -423,6 +472,10 @@ pub fn rplaca(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, 
 }
 
 /// Replace the cdr of a cons cell.
+///
+/// # Errors
+///
+/// Returns a type or storage error when the word is not a cons.
 pub fn rplacd(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, ObjectError> {
     if !word.is_cons() {
         return Err(ObjectError::TypeError);
@@ -432,45 +485,4 @@ pub fn rplacd(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, 
     }
     ncl_sys::write_barrier(&mut ctx.thread, word, 1);
     Ok(word)
-}
-
-/// Calling convention status.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(i32)]
-pub enum NclStatus {
-    Ok = 0,
-    Error = 1,
-}
-/// Registered builtin function descriptor.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Builtin {
-    pub arity: u8,
-    pub direct: bool,
-    pub lambda_list: &'static str,
-}
-/// A function object identity used by the registration API.
-pub type FunctionObject = Word;
-/// Function registration callback.
-pub type RegisterFn = fn(&Runtime);
-
-/// Register the object layer's built-in definitions.
-pub fn register(_runtime: &Runtime) {}
-
-/// Declare fixed-arity builtin metadata.
-#[macro_export]
-macro_rules! builtin {
-    ($name:ident, $arity:expr) => {
-        pub const $name: $crate::Builtin = $crate::Builtin {
-            arity: $arity,
-            direct: true,
-            lambda_list: "",
-        };
-    };
-    ($name:ident, $arity:expr, $lambda_list:expr) => {
-        pub const $name: $crate::Builtin = $crate::Builtin {
-            arity: $arity,
-            direct: true,
-            lambda_list: $lambda_list,
-        };
-    };
 }

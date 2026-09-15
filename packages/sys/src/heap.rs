@@ -492,8 +492,9 @@ impl Heap {
         Some(new_base + (value.address() - old.words.as_ptr() as usize))
     }
 }
+// SAFETY: State access is mutex-protected; registered thread/root handles are heap-managed.
 unsafe impl Send for State {}
+// SAFETY: Shared State access is mutex-protected and pointers are registered heap handles.
 unsafe impl Sync for State {}
-
 #[cfg(test)]
 mod tests;

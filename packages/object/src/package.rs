@@ -46,7 +46,7 @@ impl Package {
     pub fn find_symbol(
         &self,
         name: &str,
-        packages: &HashMap<String, Package>,
+        packages: &HashMap<String, Self>,
     ) -> Option<(Word, FindStatus)> {
         if let Some(symbol) = self.symbols.get(name) {
             return Some((
@@ -70,6 +70,10 @@ impl Package {
         })
     }
     /// Intern a name, preserving the package's one-symbol-per-name invariant.
+    ///
+    /// # Errors
+    ///
+    /// Returns an object error when symbol allocation fails.
     pub fn intern(
         &mut self,
         ctx: &mut ThreadContext,
@@ -121,6 +125,10 @@ impl Package {
         }
     }
     /// Generate a fresh uninterned symbol placeholder.
+    ///
+    /// # Errors
+    ///
+    /// Returns an object error when symbol allocation fails.
     pub fn gensym(
         &mut self,
         ctx: &mut ThreadContext,

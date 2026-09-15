@@ -1,29 +1,6 @@
 use crate::{Runtime, ThreadContext};
 use ncl_sys::{HeapConfig, Word};
 
-/// A multiple-value result area passed to a variadic builtin.
-#[repr(C)]
-#[derive(Debug, Default)]
-pub struct MultipleValues {
-    values: Vec<Word>,
-}
-impl MultipleValues {
-    /// Create an empty result area.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self { values: Vec::new() }
-    }
-    /// Replace the result values.
-    pub fn set(&mut self, values: &[Word]) {
-        self.values = values.to_vec();
-    }
-    /// Borrow the result values.
-    #[must_use]
-    pub fn as_slice(&self) -> &[Word] {
-        &self.values
-    }
-}
-
 impl Runtime {
     /// Return the configured heap policy.
     #[must_use]

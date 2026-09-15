@@ -36,6 +36,41 @@ pub struct Thread {
     pub(crate) callee_saved: [u64; 16],
     pub(crate) safepoint_epoch: u64,
     pub(crate) conservative_roots: Vec<Word>,
+    pub(crate) tlab_bump: usize,
+    pub(crate) tlab_limit: usize,
+    pub(crate) mv: Vec<Word>,
+    pub(crate) handler: usize,
+    pub(crate) cleanup: usize,
+    pub(crate) catch: usize,
+    pub(crate) pending: bool,
+}
+
+/// Native offsets consumed by the code generator when addressing a thread context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ThreadLayout {
+    pub tlab_bump: usize,
+    pub tlab_limit: usize,
+    pub safepoint_state: usize,
+    pub pending: usize,
+    pub mv: usize,
+    pub handler: usize,
+    pub cleanup: usize,
+    pub catch: usize,
+}
+
+/// Return byte offsets for the machine-visible part of [`Thread`].
+#[must_use]
+pub const fn thread_layout() -> ThreadLayout {
+    ThreadLayout {
+        tlab_bump: std::mem::offset_of!(Thread, tlab_bump),
+        tlab_limit: std::mem::offset_of!(Thread, tlab_limit),
+        safepoint_state: std::mem::offset_of!(Thread, state),
+        pending: std::mem::offset_of!(Thread, pending),
+        mv: std::mem::offset_of!(Thread, mv),
+        handler: std::mem::offset_of!(Thread, handler),
+        cleanup: std::mem::offset_of!(Thread, cleanup),
+        catch: std::mem::offset_of!(Thread, catch),
+    }
 }
 
 impl Default for Thread {
@@ -59,6 +94,13 @@ impl Thread {
             callee_saved: [0; 16],
             safepoint_epoch: 0,
             conservative_roots: Vec::new(),
+            tlab_bump: 0,
+            tlab_limit: 0,
+            mv: Vec::new(),
+            handler: 0,
+            cleanup: 0,
+            catch: 0,
+            pending: false,
         }
     }
     pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {

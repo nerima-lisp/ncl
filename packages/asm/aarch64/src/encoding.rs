@@ -85,7 +85,8 @@ fn mem(
                 (_, true) => 0xF840_0000,
                 (_, false) => 0xF800_0000,
             };
-            let Ok(encoded) = u32::try_from(o) else {
+            let Ok(encoded) = i32::try_from(o).map(|value| u32::from_ne_bytes(value.to_ne_bytes()))
+            else {
                 return Err(EncodeError::ImmediateOutOfRange { value: o, bits: 9 });
             };
             Ok(base_opcode

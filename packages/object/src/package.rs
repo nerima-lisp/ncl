@@ -3,8 +3,7 @@
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::object_access::{get, put};
 use crate::widetag;
-use crate::{ObjectError, Runtime, ThreadContext, make_simple_vector, make_string, make_symbol};
-use crate::{string_length, string_ref};
+use crate::{ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol};
 use ncl_sys::Word;
 
 crate::word_newtype!(Package);
@@ -79,9 +78,21 @@ impl Package {
             return Ok(Some((symbol, FindStatus::Internal)));
         }
         let external = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
-        Ok(external
-            .get(ctx, name)?
-            .map(|symbol| (symbol, FindStatus::External)))
+        if let Some(symbol) = external.get(ctx, name)? {
+            return Ok(Some((symbol, FindStatus::External)));
+        }
+        let mut used = get(ctx, self.0, widetag::PACKAGE, USE_LIST)?;
+        while used != Word::NIL {
+            let package =
+                ncl_sys::read_cons_word(&ctx.thread, used, 0).ok_or(ObjectError::Layout)?;
+            let package = Package::from(package);
+            let external = HashTable::from(get(ctx, package.0, widetag::PACKAGE, EXTERNAL)?);
+            if let Some(symbol) = external.get(ctx, name)? {
+                return Ok(Some((symbol, FindStatus::Inherited)));
+            }
+            used = ncl_sys::read_cons_word(&ctx.thread, used, 1).ok_or(ObjectError::Layout)?;
+        }
+        Ok(None)
     }
     /// Intern a symbol by name, returning its symbol and status.
     ///
@@ -94,12 +105,6 @@ impl Package {
         name: &str,
     ) -> Result<(Word, FindStatus), ObjectError> {
         let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
-        for (key, symbol) in internal.map_entries(ctx)? {
-            if strings_equal(ctx, key, name_word)? {
-                return Ok((symbol, FindStatus::Internal));
-            }
-        }
         if let Some(found) = self.find_symbol(ctx, name_word)? {
             return Ok(found);
         }
@@ -127,6 +132,73 @@ impl Package {
             .insert(ctx, runtime, name, symbol)?;
         Ok(true)
     }
+    /// Remove a symbol from the external table and return it to internal visibility.
+    pub fn unexport(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        name: Word,
+    ) -> Result<bool, ObjectError> {
+        let external = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
+        let Some(symbol) = external.remove(ctx, runtime, name)? else {
+            return Ok(false);
+        };
+        HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?)
+            .insert(ctx, runtime, name, symbol)?;
+        Ok(true)
+    }
+    /// Import a symbol under a string name.
+    pub fn import(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        name: Word,
+        symbol: Word,
+    ) -> Result<(), ObjectError> {
+        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, self.0)?;
+        HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?)
+            .insert(ctx, runtime, name, symbol)
+    }
+    /// Add another package to this package's use list.
+    pub fn use_package(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        package: Word,
+    ) -> Result<bool, ObjectError> {
+        let mut list = get(ctx, self.0, widetag::PACKAGE, USE_LIST)?;
+        while list != Word::NIL {
+            if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(package) {
+                return Ok(false);
+            }
+            list = ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
+        }
+        let list = make_cons(
+            ctx,
+            runtime,
+            package,
+            get(ctx, self.0, widetag::PACKAGE, USE_LIST)?,
+        )?;
+        put(ctx, self.0, USE_LIST, list)?;
+        Ok(true)
+    }
+    /// Remove a symbol from internal or external visibility.
+    pub fn unintern(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        name: Word,
+    ) -> Result<bool, ObjectError> {
+        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
+        if internal.remove(ctx, runtime, name)?.is_some() {
+            return Ok(true);
+        }
+        Ok(
+            HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?)
+                .remove(ctx, runtime, name)?
+                .is_some(),
+        )
+    }
     /// Add a name to the package's shadowing list.
     ///
     /// # Errors
@@ -138,8 +210,8 @@ impl Package {
         name: Word,
     ) -> Result<(), ObjectError> {
         let list = get(ctx, self.0, widetag::PACKAGE, SHADOWING)?;
-        let vector = make_simple_vector(ctx, runtime, &[name, list])?;
-        put(ctx, self.0, SHADOWING, vector)
+        let list = make_cons(ctx, runtime, name, list)?;
+        put(ctx, self.0, SHADOWING, list)
     }
     /// Generate an uninterned symbol.
     ///
@@ -150,26 +222,10 @@ impl Package {
             .as_fixnum()
             .ok_or(ObjectError::Layout)?;
         put(ctx, self.0, GENSYM, Word::fixnum(number + 1))?;
-        make_symbol(ctx, runtime, Word::NIL)
+        let name = format!("G{}", number);
+        let name = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+        make_symbol(ctx, runtime, name)
     }
-}
-
-fn strings_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, ObjectError> {
-    if ncl_sys::object_widetag(&ctx.thread, left) != Some(widetag::STRING)
-        || ncl_sys::object_widetag(&ctx.thread, right) != Some(widetag::STRING)
-    {
-        return Ok(left == right);
-    }
-    let length = string_length(ctx, left)?;
-    if length != string_length(ctx, right)? {
-        return Ok(false);
-    }
-    for index in 0..length {
-        if string_ref(ctx, left, index)? != string_ref(ctx, right, index)? {
-            return Ok(false);
-        }
-    }
-    Ok(true)
 }
 
 /// Canonical static NIL value.

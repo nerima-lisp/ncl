@@ -315,7 +315,7 @@ impl Heap {
     pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
         let state = self.lock_state();
         let index = Self::find(&state, object)?;
-        Some(u8::try_from(state.objects[index].words[0] & WIDETAG_MASK).unwrap_or(0))
+        Some(Self::object_widetag(&state.objects[index]))
     }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
         let mut state = self.lock_state();
@@ -371,6 +371,9 @@ impl Heap {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+    fn object_widetag(object: &Object) -> u8 {
+        u8::try_from(object.words[0] & WIDETAG_MASK).unwrap_or(0)
     }
     fn relocated_address(
         state: &State,

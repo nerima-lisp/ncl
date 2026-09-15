@@ -40,6 +40,30 @@ fn golden_core_words() {
         ),
         Ok(0x9100_07FF)
     );
+    assert_eq!(
+        encode(
+            &Inst::Ldp {
+                rt: x(29),
+                rt2: x(30),
+                mem: ncl_asm_aarch64::MemOperand::PostIndex {
+                    base: RegOrSp::Sp,
+                    offset: 16,
+                },
+            },
+            0,
+        ),
+        Ok(0xA8C1_7BFD)
+    );
+    assert_eq!(
+        encode(
+            &Inst::Mov {
+                rd: RegOrSp::Reg(x(29)),
+                rn: RegOrSp::Sp,
+            },
+            0,
+        ),
+        Ok(0x9100_03FD)
+    );
 }
 
 #[test]

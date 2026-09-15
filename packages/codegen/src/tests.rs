@@ -1,3 +1,6 @@
+#[path = "tests_aarch64_fixtures.rs"]
+mod tests_aarch64_fixtures;
+
 use super::*;
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
@@ -45,6 +48,45 @@ fn constant_return(id: u32, name: &str, value: i64) -> ncl_ir::Function {
             .is_ok()
     );
     builder.finish()
+}
+
+#[derive(Clone, Copy)]
+struct Aarch64FixtureAbi;
+
+impl RuntimeAbi for Aarch64FixtureAbi {
+    fn encode_fixnum(&self, value: i64) -> i64 {
+        value << 3
+    }
+
+    fn encode_character(&self, value: u32) -> i64 {
+        i64::from(value) << 8 | 0x0f
+    }
+
+    fn builtin_address(&self, name: &str) -> Option<u64> {
+        (name == "identity").then_some(0x1000)
+    }
+
+    fn context_offset(&self, _field: &str) -> Option<i32> {
+        None
+    }
+
+    fn field_offset(&self, field: ContextField) -> Option<i32> {
+        let layout = ncl_sys::thread_layout();
+        let offset = match field {
+            ContextField::TlabBump => layout.tlab_bump,
+            ContextField::TlabLimit => layout.tlab_limit,
+            ContextField::SafepointRequest => layout.safepoint_state,
+            _ => return None,
+        };
+        i32::try_from(offset).ok()
+    }
+
+    fn runtime_address(&self, function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
+        match function {
+            RuntimeFunction::AllocateSlow | RuntimeFunction::SafepointSlow => Some(0x1000),
+            _ => None,
+        }
+    }
 }
 
 #[test]
@@ -290,6 +332,28 @@ fn golden_builtin_call_has_call_safepoint() {
             .iter()
             .any(|map| map.map_flags & FLAG_CALL != 0)
     );
+}
+
+fn assert_aarch64_fixture(function: &ncl_ir::Function) {
+    assert_aarch64_fixture_with_abi(function, &Aarch64FixtureAbi);
+}
+
+fn assert_aarch64_fixture_with_abi(function: &ncl_ir::Function, abi: &dyn RuntimeAbi) {
+    let result = compile_function_aarch64(function, abi);
+    assert!(result.is_ok(), "AArch64 fixture failed: {result:?}");
+    let Some(compiled) = result.ok() else {
+        return;
+    };
+    assert!(!compiled.code.is_empty());
+    assert_eq!(compiled.code.len() % 4, 0);
+    let (words, _) = compiled.code.as_chunks::<4>();
+    for word in words {
+        let encoded = u32::from_le_bytes([word[0], word[1], word[2], word[3]]);
+        assert!(
+            ncl_asm_aarch64::decode(encoded).is_ok(),
+            "unsupported AArch64 golden word: 0x{encoded:08x}"
+        );
+    }
 }
 
 #[test]

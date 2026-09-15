@@ -8,6 +8,9 @@ license.workspace = true
 [dependencies]
 ncl-ir = { path = "../ir" }
 ncl-asm-x86-64 = { path = "../asm/x86-64" }
+ncl-asm-aarch64 = { path = "../asm/aarch64" }
+ncl-object = { path = "../object" }
+ncl-sys = { path = "../sys" }
 
 [lints]
 workspace = true

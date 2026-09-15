@@ -7,12 +7,15 @@ mod lowering;
 mod machine;
 mod relocation;
 mod safepoint;
+mod target;
 mod templates;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_aarch64;
 
-pub use abi::{RegisterId, RuntimeAbi, X86_64Abi};
+pub use abi::{Aarch64Abi, ContextField, RegisterId, RuntimeAbi, RuntimeFunction, X86_64Abi};
 pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
 pub use lowering::compile_function;
 pub use machine::{Block, CompiledFunction, DebugLocation, MachineFunction, MachineOp};
@@ -21,6 +24,8 @@ pub use safepoint::{
     FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS, FLAG_LOOP_BACKEDGE, MapError,
     SafepointMap,
 };
+pub use target::{AArch64TargetIsa, TargetIsa, compile_function_aarch64};
+pub use templates::TemplateKind;
 
 pub(crate) fn checked_u32(value: usize) -> Result<u32, CodegenError> {
     u32::try_from(value).map_err(|_| CodegenError::FrameOverflow)

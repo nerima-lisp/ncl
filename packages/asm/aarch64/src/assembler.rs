@@ -91,6 +91,11 @@ impl Assembler {
         }
         Ok(())
     }
+    /// Returns the byte offset immediately after the last emitted instruction.
+    #[must_use]
+    pub const fn offset(&self) -> usize {
+        self.bytes.len()
+    }
     /// Resolves local labels and returns code plus retained fixups.
     ///
     /// # Errors

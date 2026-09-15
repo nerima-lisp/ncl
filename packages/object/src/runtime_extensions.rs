@@ -1,4 +1,5 @@
-use crate::{ObjectError, Runtime, ThreadContext};
+use crate::hash_table::HashTable;
+use crate::{ObjectError, Runtime, ThreadContext, make_string};
 use ncl_sys::{HeapConfig, StorageCondition, Word};
 
 impl Runtime {
@@ -12,19 +13,28 @@ impl Runtime {
     }
     /// Register a class object by name.
     pub fn define_class(&self, name: impl Into<String>, class: Word) {
-        self.classes
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(name.into(), class);
+        let Ok(mut context) = self.registry_context.lock() else {
+            return;
+        };
+        let Ok(table) = self.table(&self.classes) else {
+            return;
+        };
+        let name = name.into();
+        let Ok(name) = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()) else {
+            return;
+        };
+        let _ = HashTable::from(table).insert(&mut context, self, name, class);
     }
     /// Look up a class object.
     #[must_use]
     pub fn class(&self, name: &str) -> Option<Word> {
-        self.classes
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(name)
-            .copied()
+        let mut context = self.registry_context.lock().ok()?;
+        let table = self.table(&self.classes).ok()?;
+        let name = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
+        HashTable::from(table)
+            .get(&mut context, name)
+            .ok()
+            .flatten()
     }
     /// Add a feature name if absent.
     pub fn add_feature(&self, feature: impl Into<String>) {

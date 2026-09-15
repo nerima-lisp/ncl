@@ -2,6 +2,7 @@ use crate::{CodegenError, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 
+#[allow(clippy::needless_pass_by_value)]
 fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
     assembler
         .emit(&instruction)
@@ -86,7 +87,7 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u6
     }
 }
 
-fn compare_condition(op: Compare) -> Cond {
+const fn compare_condition(op: Compare) -> Cond {
     match op {
         Compare::Eq => Cond::Eq,
         Compare::Ne => Cond::Ne,
@@ -97,6 +98,7 @@ fn compare_condition(op: Compare) -> Cond {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn lower_prim(
     assembler: &mut Assembler,
     prim: &Prim,
@@ -229,6 +231,7 @@ fn lower_prim(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn lower_op(
     assembler: &mut Assembler,
     op: &Op,
@@ -354,7 +357,7 @@ pub(super) fn lower_op(
         }
         OpKind::Alloc { .. } | OpKind::Safepoint => emit(assembler, Inst::Nop)?,
         OpKind::Call { .. } | OpKind::CallIndirect { .. } | OpKind::Builtin { .. } => {
-            emit(assembler, Inst::Blr { rn: Reg(17) })?
+            emit(assembler, Inst::Blr { rn: Reg(17) })?;
         }
     }
     Ok(())

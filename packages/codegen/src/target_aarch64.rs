@@ -26,12 +26,13 @@ fn add_map(
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
 
-/// Lowers an IR function to AArch64 machine code using the native frame ABI.
+/// Lowers an IR function to `AArch64` machine code using the native frame ABI.
 ///
 /// # Errors
 ///
 /// Returns [`CodegenError`] when the function cannot be represented by the
 /// fixed frame and instruction templates.
+#[allow(clippy::too_many_lines)]
 pub fn compile_function_aarch64(
     function: &Function,
     abi: &dyn RuntimeAbi,

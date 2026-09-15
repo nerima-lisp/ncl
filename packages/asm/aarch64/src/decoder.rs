@@ -28,7 +28,7 @@ pub const fn decode(word: u32) -> Result<Inst, EncodeError> {
         }),
         _ if word & 0xFF80_0000 == 0xF800_0000 => {
             let raw = ((word >> 12) & 0x1ff) as i16;
-            let offset = (raw << 7 >> 7) as i16;
+            let offset = raw << 7 >> 7;
             let base = reg_or_sp(((word >> 5) & 0x1f) as u8);
             let mode = (word >> 10) & 0x3;
             let mem = match mode {

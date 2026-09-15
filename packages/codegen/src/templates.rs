@@ -40,7 +40,7 @@ pub struct Template {
 }
 
 impl Template {
-    pub fn op(kind: TemplateKind, op: OpKind) -> Self {
+    pub const fn op(kind: TemplateKind, op: OpKind) -> Self {
         Self {
             kind,
             op: Some(op),
@@ -48,7 +48,7 @@ impl Template {
         }
     }
 
-    pub fn terminator(kind: TemplateKind, terminator: Terminator) -> Self {
+    pub const fn terminator(kind: TemplateKind, terminator: Terminator) -> Self {
         Self {
             kind,
             op: None,
@@ -57,7 +57,7 @@ impl Template {
     }
 }
 
-pub fn op_template(op: &OpKind) -> TemplateKind {
+pub const fn op_template(op: &OpKind) -> TemplateKind {
     match op {
         OpKind::Const { .. } => TemplateKind::Const,
         OpKind::Move { .. } => TemplateKind::Move,
@@ -78,7 +78,7 @@ pub fn op_template(op: &OpKind) -> TemplateKind {
     }
 }
 
-pub fn terminator_template(terminator: &Terminator) -> TemplateKind {
+pub const fn terminator_template(terminator: &Terminator) -> TemplateKind {
     match terminator {
         Terminator::Jump { .. } => TemplateKind::Jump,
         Terminator::Branch { .. } => TemplateKind::Branch,

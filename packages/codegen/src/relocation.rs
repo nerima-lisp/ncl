@@ -40,6 +40,12 @@ impl TryFrom<Fixup> for Relocation {
     }
 }
 
+/// Converts assembler fixups into the codegen relocation representation.
+///
+/// # Errors
+///
+/// Returns an error if a fixup offset cannot be represented by the public
+/// relocation format.
 pub fn relocations_from_fixups(fixups: &[Fixup]) -> Result<Vec<Relocation>, RelocationError> {
     fixups.iter().copied().map(Relocation::try_from).collect()
 }

@@ -13,15 +13,26 @@ mod templates;
 mod tests;
 
 pub use abi::{RegisterId, RuntimeAbi, X86_64Abi};
-pub use frame::{FrameLayout, FRAME_HEADER_WORDS};
+pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
 pub use lowering::compile_function;
 pub use machine::{Block, CompiledFunction, DebugLocation, MachineFunction, MachineOp};
-pub use relocation::{relocations_from_fixups, Relocation, RelocationKind};
+pub use relocation::{Relocation, RelocationKind, relocations_from_fixups};
 pub use safepoint::{
-    MapError, SafepointMap, FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS,
-    FLAG_LOOP_BACKEDGE,
+    FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS, FLAG_LOOP_BACKEDGE, MapError,
+    SafepointMap,
 };
 
+pub(crate) fn checked_u32(value: usize) -> Result<u32, CodegenError> {
+    u32::try_from(value).map_err(|_| CodegenError::FrameOverflow)
+}
+
+pub(crate) fn checked_i64(value: usize) -> Result<i64, CodegenError> {
+    i64::try_from(value).map_err(|_| CodegenError::FrameOverflow)
+}
+
+pub(crate) fn checked_u16(value: u32) -> Result<u16, CodegenError> {
+    u16::try_from(value).map_err(|_| CodegenError::FrameOverflow)
+}
 /// Errors produced while constructing machine-level code-generation data.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodegenError {

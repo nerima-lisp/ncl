@@ -1,11 +1,12 @@
 //! Fixed-template x86-64 lowering.
 use crate::{
-    Block, CodegenError, CompiledFunction, FrameLayout, MachineFunction, MachineOp, RuntimeAbi,
-    SafepointMap, FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE,
+    Block, CodegenError, CompiledFunction, FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE,
+    FrameLayout, MachineFunction, MachineOp, RuntimeAbi, SafepointMap,
 };
+use crate::{checked_i64, checked_u16, checked_u32};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Compare, Constant, Function, Op, OpKind, Prim, Terminator, ValueId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 fn slots(function: &Function) -> (Vec<(ValueId, u32)>, u32) {
     let mut result = Vec::new();
     let mut next = 4;
@@ -24,6 +25,12 @@ fn slots(function: &Function) -> (Vec<(ValueId, u32)>, u32) {
     (result, next - 4)
 }
 /// Lowers one validated IR function using fixed stack-slot templates.
+///
+/// # Errors
+///
+/// Returns an error when the function is empty, references an unknown IR
+/// value or block, exceeds frame limits, or requires an unavailable runtime
+/// operation.
 pub fn compile_function(
     function: &Function,
     abi: &dyn RuntimeAbi,
@@ -32,8 +39,10 @@ pub fn compile_function(
         return Err(CodegenError::EmptyFunction);
     };
     let (value_slots, count) = slots(function);
-    let frame = FrameLayout::new(function.params.len() as u32, count, 0)?;
-    let known: HashMap<_, _> = function.blocks.iter().map(|block| (block.id, ())).collect();
+    let arguments =
+        u32::try_from(function.params.len()).map_err(|_| CodegenError::FrameOverflow)?;
+    let frame = FrameLayout::new(arguments, count, 0)?;
+    let known: HashSet<_> = function.blocks.iter().map(|block| block.id).collect();
     for block in &function.blocks {
         validate_targets(&block.terminator, &known)?;
     }
@@ -80,11 +89,11 @@ pub fn compile_function(
 }
 fn validate_targets(
     terminator: &Terminator,
-    known: &HashMap<ncl_ir::BlockId, ()>,
+    known: &HashSet<ncl_ir::BlockId>,
 ) -> Result<(), CodegenError> {
     let check = |id| {
         known
-            .contains_key(&id)
+            .contains(&id)
             .then_some(())
             .ok_or(CodegenError::UnknownBlock(id))
     };
@@ -113,13 +122,13 @@ fn slot(slots: &[(ValueId, u32)], value: ValueId) -> Result<u32, CodegenError> {
 #[rustfmt::skip]
 fn memory(slot: u32) -> Result<Mem, CodegenError> { let bytes = slot.checked_add(1).and_then(|v| v.checked_mul(8)).ok_or(CodegenError::FrameOverflow)?; Ok(Mem::base(Reg::Rbp, -i32::try_from(bytes).map_err(|_| CodegenError::FrameOverflow)?)) }
 #[rustfmt::skip]
-fn emit(assembler: &mut Assembler, inst: Inst) -> Result<(), CodegenError> { assembler.emit(&inst).map_err(|error| CodegenError::Encode(error.to_string())) }
+fn emit(assembler: &mut Assembler, inst: &Inst) -> Result<(), CodegenError> { assembler.emit(inst).map_err(|error| CodegenError::Encode(error.to_string())) }
 #[rustfmt::skip]
-fn load(assembler: &mut Assembler, slots: &[(ValueId, u32)], value: ValueId, register: Reg) -> Result<(), CodegenError> { emit(assembler, Inst::MovRM(register, memory(slot(slots, value)?)?)) }
+fn load(assembler: &mut Assembler, slots: &[(ValueId, u32)], value: ValueId, register: Reg) -> Result<(), CodegenError> { emit(assembler, &Inst::MovRM(register, memory(slot(slots, value)?)?)) }
 #[rustfmt::skip]
-fn store(assembler: &mut Assembler, slots: &[(ValueId, u32)], value: ValueId, register: Reg) -> Result<(), CodegenError> { emit(assembler, Inst::MovMR(memory(slot(slots, value)?)?, register)) }
+fn store(assembler: &mut Assembler, slots: &[(ValueId, u32)], value: ValueId, register: Reg) -> Result<(), CodegenError> { emit(assembler, &Inst::MovMR(memory(slot(slots, value)?)?, register)) }
 #[rustfmt::skip]
-fn compare_condition(op: Compare) -> Cond { match op { Compare::Eq => Cond::E, Compare::Ne => Cond::Ne, Compare::Lt => Cond::L, Compare::Le => Cond::Le, Compare::Gt => Cond::G, Compare::Ge => Cond::Ge } }
+const fn compare_condition(op: Compare) -> Cond { match op { Compare::Eq => Cond::E, Compare::Ne => Cond::Ne, Compare::Lt => Cond::L, Compare::Le => Cond::Le, Compare::Gt => Cond::G, Compare::Ge => Cond::Ge } }
 fn constant_value(constant: &Constant, abi: &dyn RuntimeAbi) -> Result<i64, CodegenError> {
     match constant {
         Constant::Fixnum(value) => Ok(abi.encode_fixnum(*value)),
@@ -133,6 +142,7 @@ fn constant_value(constant: &Constant, abi: &dyn RuntimeAbi) -> Result<i64, Code
         ),
     }
 }
+#[allow(clippy::too_many_lines)]
 fn lower_op(
     assembler: &mut Assembler,
     op: &Op,
@@ -151,7 +161,7 @@ fn lower_op(
                 .ok_or_else(|| CodegenError::Unsupported("constant index out of range".into()))?;
             emit(
                 assembler,
-                Inst::MovRI(Reg::R10, Imm::I64(constant_value(value, abi)?)),
+                &Inst::MovRI(Reg::R10, Imm::I64(constant_value(value, abi)?)),
             )?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::R10)?;
@@ -165,7 +175,7 @@ fn lower_op(
         }
         OpKind::Load { address } => {
             load(assembler, slots, *address, Reg::R10)?;
-            emit(assembler, Inst::MovRM(Reg::R10, Mem::base(Reg::R10, 0)))?;
+            emit(assembler, &Inst::MovRM(Reg::R10, Mem::base(Reg::R10, 0)))?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::R10)?;
             }
@@ -173,7 +183,7 @@ fn lower_op(
         OpKind::Store { address, value } => {
             load(assembler, slots, *address, Reg::R10)?;
             load(assembler, slots, *value, Reg::R11)?;
-            emit(assembler, Inst::MovMR(Mem::base(Reg::R10, 0), Reg::R11))?;
+            emit(assembler, &Inst::MovMR(Mem::base(Reg::R10, 0), Reg::R11))?;
         }
         OpKind::LoadField { object, field } => {
             load(assembler, slots, *object, Reg::R10)?;
@@ -181,7 +191,7 @@ fn lower_op(
                 .map_err(|_| CodegenError::FrameOverflow)?;
             emit(
                 assembler,
-                Inst::MovRM(Reg::R10, Mem::base(Reg::R10, offset)),
+                &Inst::MovRM(Reg::R10, Mem::base(Reg::R10, offset)),
             )?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::R10)?;
@@ -198,11 +208,11 @@ fn lower_op(
                 .map_err(|_| CodegenError::FrameOverflow)?;
             emit(
                 assembler,
-                Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11),
+                &Inst::MovMR(Mem::base(Reg::R10, offset), Reg::R11),
             )?;
         }
         OpKind::Alloc { .. } => {
-            emit(assembler, Inst::Nop(1))?;
+            emit(assembler, &Inst::Nop(1))?;
             add_map(assembler, frame, slots, maps, FLAG_ALLOCATION_SLOW)?;
         }
         OpKind::LoadArg { index } => {
@@ -215,7 +225,7 @@ fn lower_op(
                     )
                 })?;
             if let Some(result) = result {
-                emit(assembler, Inst::MovRR(Reg::R10, register))?;
+                emit(assembler, &Inst::MovRR(Reg::R10, register))?;
                 store(assembler, slots, result, Reg::R10)?;
             }
         }
@@ -224,7 +234,7 @@ fn lower_op(
         }
         | OpKind::CallIndirect { callee, .. } => {
             load(assembler, slots, *callee, Reg::R11)?;
-            emit(assembler, Inst::CallReg(Reg::R11))?;
+            emit(assembler, &Inst::CallReg(Reg::R11))?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::Rax)?;
             }
@@ -234,8 +244,11 @@ fn lower_op(
             let address = abi.builtin_address(name).ok_or_else(|| {
                 CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
             })?;
-            emit(assembler, Inst::MovRI(Reg::R11, Imm::I64(address as i64)))?;
-            emit(assembler, Inst::CallReg(Reg::R11))?;
+            emit(
+                assembler,
+                &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),
+            )?;
+            emit(assembler, &Inst::CallReg(Reg::R11))?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::Rax)?;
             }
@@ -245,8 +258,8 @@ fn lower_op(
         OpKind::Compare { op, left, right } => {
             load(assembler, slots, *left, Reg::R10)?;
             load(assembler, slots, *right, Reg::R11)?;
-            emit(assembler, Inst::CmpRR(Reg::R10, Reg::R11))?;
-            emit(assembler, Inst::Setcc(compare_condition(*op), Reg::R10))?;
+            emit(assembler, &Inst::CmpRR(Reg::R10, Reg::R11))?;
+            emit(assembler, &Inst::Setcc(compare_condition(*op), Reg::R10))?;
             if let Some(result) = result {
                 store(assembler, slots, result, Reg::R10)?;
             }
@@ -254,7 +267,7 @@ fn lower_op(
         OpKind::SetMultipleValues { values } => {
             emit(
                 assembler,
-                Inst::MovRI(Reg::Rdx, Imm::I64(values.len() as i64)),
+                &Inst::MovRI(Reg::Rdx, Imm::I64(checked_i64(values.len())?)),
             )?;
             if let (Some(first), Some(result)) = (values.first(), result) {
                 load(assembler, slots, *first, Reg::Rax)?;
@@ -265,6 +278,7 @@ fn lower_op(
     }
     Ok(())
 }
+#[rustfmt::skip]
 fn lower_prim(
     assembler: &mut Assembler,
     prim: &Prim,
@@ -282,31 +296,18 @@ fn lower_prim(
         load(assembler, slots, *second, Reg::R11)?;
     }
     match prim {
-        Prim::FixnumAdd => emit(assembler, Inst::BinRR(BinOp::Add, Reg::R10, Reg::R11))?,
-        Prim::FixnumSub => emit(assembler, Inst::BinRR(BinOp::Sub, Reg::R10, Reg::R11))?,
-        Prim::FixnumMul => emit(assembler, Inst::ImulRR(Reg::R10, Reg::R11))?,
-        Prim::FixnumEq | Prim::Eq | Prim::Eql => {
-            emit(assembler, Inst::CmpRR(Reg::R10, Reg::R11))?;
-            emit(assembler, Inst::Setcc(Cond::E, Reg::R10))?;
-        }
-        Prim::FixnumLt => {
-            emit(assembler, Inst::CmpRR(Reg::R10, Reg::R11))?;
-            emit(assembler, Inst::Setcc(Cond::L, Reg::R10))?;
-        }
-        Prim::FixnumLe => {
-            emit(assembler, Inst::CmpRR(Reg::R10, Reg::R11))?;
-            emit(assembler, Inst::Setcc(Cond::Le, Reg::R10))?;
-        }
-        Prim::Car | Prim::Cdr | Prim::Svref | Prim::Aref => {
-            emit(assembler, Inst::MovRM(Reg::R10, Mem::base(Reg::R10, 0)))?
-        }
-        Prim::Rplaca | Prim::Rplacd | Prim::Aset => {
-            emit(assembler, Inst::MovMR(Mem::base(Reg::R10, 0), Reg::R11))?
-        }
+        Prim::FixnumAdd => emit(assembler, &Inst::BinRR(BinOp::Add, Reg::R10, Reg::R11))?,
+        Prim::FixnumSub => emit(assembler, &Inst::BinRR(BinOp::Sub, Reg::R10, Reg::R11))?,
+        Prim::FixnumMul => emit(assembler, &Inst::ImulRR(Reg::R10, Reg::R11))?,
+        Prim::FixnumEq | Prim::Eq | Prim::Eql => { emit(assembler, &Inst::CmpRR(Reg::R10, Reg::R11))?; emit(assembler, &Inst::Setcc(Cond::E, Reg::R10))?; }
+        Prim::FixnumLt => { emit(assembler, &Inst::CmpRR(Reg::R10, Reg::R11))?; emit(assembler, &Inst::Setcc(Cond::L, Reg::R10))?; }
+        Prim::FixnumLe => { emit(assembler, &Inst::CmpRR(Reg::R10, Reg::R11))?; emit(assembler, &Inst::Setcc(Cond::Le, Reg::R10))?; }
+        Prim::Car | Prim::Cdr | Prim::Svref | Prim::Aref => { emit(assembler, &Inst::MovRM(Reg::R10, Mem::base(Reg::R10, 0)))?; }
+        Prim::Rplaca | Prim::Rplacd | Prim::Aset => { emit(assembler, &Inst::MovMR(Mem::base(Reg::R10, 0), Reg::R11))?; }
         Prim::FixnumDiv | Prim::Typep | Prim::CharacterPredicate(_) | Prim::StructureSlot(_) => {
             return Err(CodegenError::Unsupported(format!(
                 "primitive is not available in fixed templates: {prim:?}"
-            )))
+            )));
         }
     }
     if let Some(result) = result {
@@ -321,12 +322,15 @@ fn add_map(
     maps: &mut Vec<SafepointMap>,
     flags: u32,
 ) -> Result<(), CodegenError> {
-    let live: Vec<u16> = slots.iter().map(|(_, slot)| *slot as u16).collect();
+    let live: Vec<u16> = slots
+        .iter()
+        .map(|(_, slot)| u16::try_from(*slot).map_err(|_| CodegenError::FrameOverflow))
+        .collect::<Result<_, _>>()?;
     maps.push(
         SafepointMap::new(
-            assembler.bytes().len() as u32,
-            frame.frame_words as u16,
-            frame.frame_words as u16,
+            checked_u32(assembler.bytes().len())?,
+            checked_u16(frame.frame_words)?,
+            checked_u16(frame.frame_words)?,
             &live,
             &[],
             flags,
@@ -346,15 +350,19 @@ fn emit_return(
     } else {
         emit(
             assembler,
-            Inst::MovRI(Reg::Rax, Imm::I64(abi.encode_fixnum(0))),
+            &Inst::MovRI(Reg::Rax, Imm::I64(abi.encode_fixnum(0))),
         )?;
     }
     emit(
         assembler,
-        Inst::MovRI(Reg::Rdx, Imm::I64(values.len().saturating_sub(1) as i64)),
+        &Inst::MovRI(
+            Reg::Rdx,
+            Imm::I64(checked_i64(values.len().saturating_sub(1))?),
+        ),
     )?;
-    emit(assembler, Inst::Ret)
+    emit(assembler, &Inst::Ret)
 }
+#[allow(clippy::too_many_lines)]
 fn encode(
     function: &Function,
     mut machine: MachineFunction,
@@ -368,16 +376,20 @@ fn encode(
         .collect();
     let mut maps = Vec::new();
     let mut debug = Vec::new();
-    emit(&mut assembler, Inst::Push(Reg::Rbp))?;
-    emit(&mut assembler, Inst::MovRR(Reg::Rsp, Reg::Rbp))?;
+    emit(&mut assembler, &Inst::Push(Reg::Rbp))?;
+    emit(&mut assembler, &Inst::MovRR(Reg::Rsp, Reg::Rbp))?;
     emit(
         &mut assembler,
-        Inst::BinRI(BinOp::Sub, Reg::Rsp, machine.frame.size_bytes() as i32),
+        &Inst::BinRI(
+            BinOp::Sub,
+            Reg::Rsp,
+            machine.frame.size_bytes().cast_signed(),
+        ),
     )?;
-    let entry_offset = assembler.bytes().len() as u32;
+    let entry_offset = checked_u32(assembler.bytes().len())?;
     for block in &mut machine.blocks {
         assembler.bind(labels[&block.id]);
-        block.offset = assembler.bytes().len() as u32;
+        block.offset = checked_u32(assembler.bytes().len())?;
         let source = function
             .blocks
             .iter()
@@ -394,16 +406,16 @@ fn encode(
                 &mut maps,
             )?;
             debug.push(crate::DebugLocation {
-                pc_offset: assembler.bytes().len() as u32,
+                pc_offset: checked_u32(assembler.bytes().len())?,
                 location: op.loc,
             });
         }
         match &source.terminator {
             Terminator::Return { values } => {
-                emit_return(&mut assembler, values, &machine.slots, abi)?
+                emit_return(&mut assembler, values, &machine.slots, abi)?;
             }
             Terminator::Jump { target, .. } => {
-                emit(&mut assembler, Inst::Jmp(labels[target]))?;
+                emit(&mut assembler, &Inst::Jmp(labels[target]))?;
                 if *target == block.id {
                     add_map(
                         &assembler,
@@ -421,9 +433,9 @@ fn encode(
                 ..
             } => {
                 load(&mut assembler, &machine.slots, *condition, Reg::R10)?;
-                emit(&mut assembler, Inst::CmpRI(Reg::R10, 0))?;
-                emit(&mut assembler, Inst::Jcc(Cond::Ne, labels[then_target]))?;
-                emit(&mut assembler, Inst::Jmp(labels[else_target]))?;
+                emit(&mut assembler, &Inst::CmpRI(Reg::R10, 0))?;
+                emit(&mut assembler, &Inst::Jcc(Cond::Ne, labels[then_target]))?;
+                emit(&mut assembler, &Inst::Jmp(labels[else_target]))?;
             }
             Terminator::Switch {
                 value,
@@ -433,10 +445,16 @@ fn encode(
             } => {
                 load(&mut assembler, &machine.slots, *value, Reg::R10)?;
                 for (case, target, _) in cases {
-                    emit(&mut assembler, Inst::CmpRI(Reg::R10, *case as i32))?;
-                    emit(&mut assembler, Inst::Jcc(Cond::E, labels[target]))?;
+                    emit(
+                        &mut assembler,
+                        &Inst::CmpRI(
+                            Reg::R10,
+                            i32::try_from(*case).map_err(|_| CodegenError::FrameOverflow)?,
+                        ),
+                    )?;
+                    emit(&mut assembler, &Inst::Jcc(Cond::E, labels[target]))?;
                 }
-                emit(&mut assembler, Inst::Jmp(labels[default]))?;
+                emit(&mut assembler, &Inst::Jmp(labels[default]))?;
             }
             Terminator::CallReturn {
                 function: callee, ..
@@ -445,7 +463,7 @@ fn encode(
                 function: callee, ..
             } => {
                 load(&mut assembler, &machine.slots, *callee, Reg::R11)?;
-                emit(&mut assembler, Inst::CallReg(Reg::R11))?;
+                emit(&mut assembler, &Inst::CallReg(Reg::R11))?;
                 add_map(
                     &assembler,
                     machine.frame,
@@ -455,7 +473,7 @@ fn encode(
                 )?;
                 emit_return(&mut assembler, &[], &machine.slots, abi)?;
             }
-            Terminator::Throw { .. } | Terminator::Unreachable => emit(&mut assembler, Inst::Ud2)?,
+            Terminator::Throw { .. } | Terminator::Unreachable => emit(&mut assembler, &Inst::Ud2)?,
         }
     }
     let blob = assembler

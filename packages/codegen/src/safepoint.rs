@@ -50,6 +50,12 @@ impl fmt::Display for MapError {
 impl std::error::Error for MapError {}
 
 impl SafepointMap {
+    /// Constructs a safepoint map using the fixed 16-byte header format.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when frame, slot, bitmap, or register limits are
+    /// exceeded or the register list contains a duplicate.
     pub fn new(
         pc_offset: u32,
         frame_words: u16,
@@ -75,7 +81,7 @@ impl SafepointMap {
         }
         let mut register_mask = 0u16;
         for &register in registers {
-            if register >= u16::BITS as u16 {
+            if u32::from(register) >= u16::BITS {
                 return Err(MapError::RegisterCountOutOfRange);
             }
             let bit = 1u16 << register;
@@ -88,7 +94,8 @@ impl SafepointMap {
             pc_offset,
             frame_words,
             slot_words,
-            word_slot_count: u16::try_from(live_slots.len()).unwrap_or(u16::MAX),
+            word_slot_count: u16::try_from(live_slots.len())
+                .map_err(|_| MapError::SlotCountOutOfRange)?,
             register_mask,
             map_flags,
             bitmap,
@@ -96,6 +103,11 @@ impl SafepointMap {
         })
     }
 
+    /// Serializes the map into its wire representation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the map violates the fixed wire format.
     pub fn encode(&self) -> Result<Vec<u8>, MapError> {
         self.validate()?;
         let mut bytes =
@@ -126,7 +138,7 @@ impl SafepointMap {
         {
             return Err(MapError::InvalidBitmap);
         }
-        if self.registers.len() > usize::from(u16::BITS as u16)
+        if self.registers.len() > usize::from(u16::MAX) + 1
             || self.registers.len() != self.register_mask.count_ones() as usize
         {
             return Err(MapError::InvalidHeader);

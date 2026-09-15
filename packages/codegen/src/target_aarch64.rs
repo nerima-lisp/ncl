@@ -1,11 +1,11 @@
 use crate::{CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, SafepointMap};
 use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
-use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp};
+use ncl_asm_aarch64::{Assembler, Inst, MemOperand, Reg, RegOrSp};
 use ncl_ir::{Function, OpKind, Terminator};
 
 #[path = "target_aarch64_lowering.rs"]
 mod lowering;
-use lowering::{load_slot, lower_op, slots};
+use lowering::{load_slot, lower_op, move_args, slots};
 
 #[allow(clippy::needless_pass_by_value)]
 fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
@@ -104,7 +104,13 @@ pub fn compile_function_aarch64(
             }
         }
         match &block.terminator {
-            Terminator::Jump { target, .. } => {
+            Terminator::Jump { target, args } => {
+                let destination = function
+                    .blocks
+                    .iter()
+                    .find(|candidate| candidate.id == *target)
+                    .ok_or(CodegenError::UnknownBlock(*target))?;
+                move_args(&mut assembler, &value_slots, args, &destination.params)?;
                 emit(
                     &mut assembler,
                     Inst::B {
@@ -117,17 +123,32 @@ pub fn compile_function_aarch64(
                 }
             }
             Terminator::Branch {
+                condition,
                 then_target,
+                then_args,
                 else_target,
-                ..
+                else_args,
             } => {
+                load_slot(&mut assembler, &value_slots, *condition, Reg(16))?;
+                let then_block = function
+                    .blocks
+                    .iter()
+                    .find(|candidate| candidate.id == *then_target)
+                    .ok_or(CodegenError::UnknownBlock(*then_target))?;
+                move_args(&mut assembler, &value_slots, then_args, &then_block.params)?;
                 emit(
                     &mut assembler,
-                    Inst::BCond {
-                        cond: Cond::Ne,
+                    Inst::Cbnz {
+                        rt: Reg(16),
                         label: labels[then_target],
                     },
                 )?;
+                let else_block = function
+                    .blocks
+                    .iter()
+                    .find(|candidate| candidate.id == *else_target)
+                    .ok_or(CodegenError::UnknownBlock(*else_target))?;
+                move_args(&mut assembler, &value_slots, else_args, &else_block.params)?;
                 emit(
                     &mut assembler,
                     Inst::B {

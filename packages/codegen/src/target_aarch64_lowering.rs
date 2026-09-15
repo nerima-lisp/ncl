@@ -1,6 +1,6 @@
 use crate::{CodegenError, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
-use ncl_ir::{Compare, Function, Op, OpKind, Prim, ValueId};
+use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 
 fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
     assembler
@@ -356,6 +356,24 @@ pub(super) fn lower_op(
         OpKind::Call { .. } | OpKind::CallIndirect { .. } | OpKind::Builtin { .. } => {
             emit(assembler, Inst::Blr { rn: Reg(17) })?
         }
+    }
+    Ok(())
+}
+
+pub(super) fn move_args(
+    assembler: &mut Assembler,
+    slots: &[(ValueId, u32)],
+    args: &[ValueId],
+    params: &[BlockParam],
+) -> Result<(), CodegenError> {
+    if args.len() != params.len() {
+        return Err(CodegenError::Unsupported(
+            "block argument arity mismatch".into(),
+        ));
+    }
+    for (argument, parameter) in args.iter().zip(params) {
+        load_slot(assembler, slots, *argument, Reg(17))?;
+        store_slot(assembler, slots, parameter.value, Reg(17))?;
     }
     Ok(())
 }

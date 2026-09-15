@@ -115,26 +115,27 @@ impl Heap {
         }
         let code = owned.as_ref().ok_or(CodeError::NotRegistered)?;
         self.begin_collection(thread);
+        let registered = {
+            let state = self.lock_state();
+            state.code_registry.find(code.address()).is_some()
+        };
+        if !registered {
+            self.end_collection();
+            return Err(CodeError::NotRegistered);
+        }
         let live = {
             let state = self.lock_state();
-            if state.code_registry.find(code.address()).is_none() {
-                false
-            } else {
-                state.threads.iter().copied().any(|candidate| {
-                    // SAFETY: collection has stopped registered mutators.
-                    unsafe {
-                        (*candidate)
-                            .frame_chain
-                            .iter()
-                            .skip(1)
-                            .step_by(5)
-                            .any(|return_pc| {
-                                let pc = return_pc.address();
-                                pc >= code.address() && pc < code.address() + code.len()
-                            })
-                    }
-                })
-            }
+            state.threads.iter().copied().any(|candidate| {
+                // SAFETY: collection has stopped registered mutators.
+                unsafe {
+                    crate::walk_frame_headers(&(*candidate).frame_chain, 0, usize::MAX)
+                        .iter()
+                        .any(|header| {
+                            let pc = header.return_pc;
+                            pc >= code.address() && pc < code.address() + code.len()
+                        })
+                }
+            })
         };
         if live {
             self.end_collection();
@@ -144,7 +145,7 @@ impl Heap {
         let removed = self.lock_state().code_registry.unregister(&code);
         self.end_collection();
         if removed.is_none() {
-            drop(code);
+            *owned = Some(code);
             return Err(CodeError::NotRegistered);
         }
         drop(code);

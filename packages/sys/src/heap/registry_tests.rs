@@ -11,7 +11,9 @@ fn collection_scans_frames_across_registered_code_objects() {
     assert_eq!(h.register_thread(&mut t), Ok(()));
     let mut codes = Vec::new();
     for register_id in 0..3_u16 {
-        let Ok(mut code) = crate::alloc_code(16) else {
+        let code_result = crate::alloc_code(16);
+        assert!(code_result.is_ok(), "alloc_code failed: {code_result:?}");
+        let Ok(mut code) = code_result else {
             return;
         };
         assert!(crate::publish_code(&mut code).is_ok());
@@ -22,7 +24,12 @@ fn collection_scans_frames_across_registered_code_objects() {
         bytes[10..12].copy_from_slice(&(1_u16 << register_id).to_le_bytes());
         bytes.push(0b0001_0100);
         bytes.extend_from_slice(&register_id.to_le_bytes());
-        let Ok(map) = crate::SafepointMap::decode(&bytes, 1) else {
+        let map_result = crate::SafepointMap::decode(&bytes, 1);
+        assert!(
+            map_result.is_ok(),
+            "safepoint map decode failed: {map_result:?}"
+        );
+        let Ok(map) = map_result else {
             return;
         };
         assert!(
@@ -162,4 +169,99 @@ fn release_code_waits_for_registered_frames_to_quiesce() {
     t.set_frame_snapshot(Vec::new(), Vec::new());
     assert!(h.release_code(&mut t, &mut owned).is_ok());
     assert!(owned.is_none());
+}
+
+#[test]
+fn release_code_follows_variable_width_frame_chain() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    let code_result = crate::alloc_code(32);
+    assert!(code_result.is_ok(), "alloc_code failed: {code_result:?}");
+    let Ok(mut code) = code_result else {
+        return;
+    };
+    assert!(crate::publish_code(&mut code).is_ok());
+    assert!(
+        h.register_code(
+            &code,
+            crate::CodeObjectMetadata {
+                entry_offset: 0,
+                size: code.len(),
+                frame_words: 8,
+                function_name: "wide-release-test".to_string(),
+                source_locations: Vec::new(),
+                constant_slots: Vec::new(),
+                safepoint_map: crate::SafepointMap::default(),
+                debug_table: Vec::new(),
+            }
+        )
+        .is_ok()
+    );
+    t.set_frame_snapshot(
+        vec![
+            Word::pointer(8, crate::LowTag::OtherPointer),
+            Word::from_bits(0),
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+            Word::from_bits(0),
+            Word::from_bits(code.address() as u64),
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+            Word::NIL,
+        ],
+        Vec::new(),
+    );
+    let mut owned = Some(code);
+    assert_eq!(
+        h.release_code(&mut t, &mut owned),
+        Err(crate::CodeError::CodeInUse)
+    );
+    assert!(owned.is_some());
+    t.set_frame_snapshot(Vec::new(), Vec::new());
+    assert_eq!(h.release_code(&mut t, &mut owned), Ok(()));
+    assert!(owned.is_none());
+}
+
+#[test]
+fn release_code_keeps_owned_code_when_unregistered() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    let code_result = crate::alloc_code(16);
+    assert!(code_result.is_ok(), "alloc_code failed: {code_result:?}");
+    let Ok(mut code) = code_result else {
+        return;
+    };
+    assert!(crate::publish_code(&mut code).is_ok());
+    assert!(
+        h.register_code(
+            &code,
+            crate::CodeObjectMetadata {
+                entry_offset: 0,
+                size: code.len(),
+                frame_words: 5,
+                function_name: "unregistered-release-test".to_string(),
+                source_locations: Vec::new(),
+                constant_slots: Vec::new(),
+                safepoint_map: crate::SafepointMap::default(),
+                debug_table: Vec::new(),
+            }
+        )
+        .is_ok()
+    );
+    assert!(h.unregister_code(&code).is_some());
+    let mut owned = Some(code);
+    assert_eq!(
+        h.release_code(&mut t, &mut owned),
+        Err(crate::CodeError::NotRegistered)
+    );
+    assert!(owned.is_some());
 }

@@ -198,3 +198,13 @@ pub fn register_finalizer(thread: &Thread, object: Word, callback: Finalizer) {
         }
     }
 }
+
+/// Run finalizers queued by completed collections.
+pub fn run_pending_finalizers(thread: &Thread) {
+    if let Some(heap) = thread.heap {
+        // SAFETY: the heap pointer is installed only by register_thread.
+        unsafe {
+            (*heap).run_pending_finalizers();
+        }
+    }
+}

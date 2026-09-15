@@ -16,7 +16,7 @@ tagged words, heap, precise roots, safepoints, and platform surface.
   root set. Conservative scanning is a safety net, not a replacement.
 - A write barrier records stores from old objects in the remembered set.
 - Weak values are cleared after reachability is computed. Finalizers are
-  one-shot callbacks drained after the collector releases its heap lock.
+  queued once and run by `run_pending_finalizers` after collection releases its heap lock.
 - Native frames use a four-word header and safepoint maps use the fixed
   16-byte little-endian header followed by bitmap and `u16` register IDs.
 

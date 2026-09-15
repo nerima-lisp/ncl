@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn tags_round_trip() {
@@ -121,4 +122,144 @@ fn unreachable_nursery_is_reclaimed_and_raw_layout_words_are_unchanged() {
     assert!(state.used < before);
     drop(state);
     assert!(t.pop_root(token));
+}
+
+#[test]
+fn dirty_card_keeps_old_to_young_reference() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    assert!(
+        h.register_layout(
+            12,
+            ReferenceLayout {
+                reference_words: vec![1]
+            }
+        )
+        .is_ok()
+    );
+    let mut old = h
+        .alloc(&mut t, TypeTag { widetag: 12 }, 1)
+        .unwrap_or(Word::NIL);
+    let token = t.push_root(&mut old);
+    h.collect(false);
+    h.collect(false);
+    let child = h
+        .alloc_cons(&mut t, Word::fixnum(99), Word::NIL)
+        .unwrap_or(Word::NIL);
+    h.write_words(old, &[(1, child)]);
+    h.barrier(old, 1);
+    h.collect(false);
+    let state = h.lock_state();
+    let index = Heap::find(&state, old).unwrap_or(usize::MAX);
+    let retained = Word::from_bits(state.objects[index].words[1]);
+    assert!(Heap::find(&state, retained).is_some());
+    assert_eq!(state.objects[index].generation, 2);
+    drop(state);
+    assert!(t.pop_root(token));
+}
+
+#[test]
+fn aging_promotes_after_two_minor_collections() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    let mut value = h
+        .alloc_cons(&mut t, Word::fixnum(1), Word::NIL)
+        .unwrap_or(Word::NIL);
+    let token = t.push_root(&mut value);
+    h.collect(false);
+    let state = h.lock_state();
+    assert_eq!(
+        state.objects[Heap::find(&state, value).unwrap_or(usize::MAX)].generation,
+        1
+    );
+    drop(state);
+    h.collect(false);
+    let state = h.lock_state();
+    assert_eq!(
+        state.objects[Heap::find(&state, value).unwrap_or(usize::MAX)].generation,
+        2
+    );
+    assert!(t.pop_root(token));
+}
+
+#[test]
+fn full_collection_reclaims_old_cycle() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    let mut first = h
+        .alloc_cons(&mut t, Word::NIL, Word::NIL)
+        .unwrap_or(Word::NIL);
+    let second = h.alloc_cons(&mut t, first, Word::NIL).unwrap_or(Word::NIL);
+    h.write_words(first, &[(1, second)]);
+    let token = t.push_root(&mut first);
+    h.collect(false);
+    h.collect(false);
+    first = Word::NIL;
+    assert_eq!(first, Word::NIL);
+    assert!(t.pop_root(token));
+    h.collect(true);
+    let state = h.lock_state();
+    assert_eq!(
+        state.objects.iter().filter(|object| object.alive).count(),
+        0
+    );
+}
+
+#[test]
+fn large_objects_start_in_old_generation() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    let value = h
+        .alloc_large(&mut t, TypeTag { widetag: 13 }, 1023)
+        .unwrap_or(Word::NIL);
+    let state = h.lock_state();
+    let index = Heap::find(&state, value).unwrap_or(usize::MAX);
+    assert_eq!(state.objects[index].generation, 2);
+    assert_eq!(state.objects[index].kind, PageKind::Large);
+}
+
+#[test]
+fn weak_value_clears_and_finalizer_runs_once() {
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+    fn callback(_: Word) {
+        CALLS.fetch_add(1, Ordering::SeqCst);
+    }
+    CALLS.store(0, Ordering::SeqCst);
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    assert!(
+        h.register_layout(
+            14,
+            ReferenceLayout {
+                reference_words: vec![1]
+            }
+        )
+        .is_ok()
+    );
+    let mut weak = h
+        .alloc(&mut t, TypeTag { widetag: 14 }, 1)
+        .unwrap_or(Word::NIL);
+    let referent = h
+        .alloc_cons(&mut t, Word::fixnum(7), Word::NIL)
+        .unwrap_or(Word::NIL);
+    h.write_words(weak, &[(1, referent)]);
+    let token = t.push_root(&mut weak);
+    let _ = crate::make_weak(&t, weak, Weakness::Value);
+    h.collect(false);
+    assert_eq!(crate::weak_value(&t, weak), Word::NIL);
+    assert!(t.pop_root(token));
+    let finalizable = h
+        .alloc_cons(&mut t, Word::NIL, Word::NIL)
+        .unwrap_or(Word::NIL);
+    crate::register_finalizer(&t, finalizable, callback);
+    h.collect(false);
+    crate::run_pending_finalizers(&t);
+    h.collect(false);
+    crate::run_pending_finalizers(&t);
+    assert_eq!(CALLS.load(Ordering::SeqCst), 1);
 }

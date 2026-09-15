@@ -1,0 +1,18 @@
+format: ELF64 relocatable
+machine: EM_X86_64
+sections:
+  - .text
+  - .rodata
+  - .ncl
+  - .rela.text
+  - .rela.ncl
+  - .symtab
+  - .strtab
+  - .shstrtab
+relocations:
+  - R_X86_64_64
+  - R_X86_64_PC32
+  - R_X86_64_PLT32
+symbols:
+  - ncl_entry
+  - ncl_external

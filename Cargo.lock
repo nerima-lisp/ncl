@@ -28,5 +28,16 @@ name = "ncl-ir"
 version = "0.1.0"
 
 [[package]]
+name = "ncl-object"
+version = "0.1.0"
+dependencies = [
+ "ncl-sys",
+]
+
+[[package]]
+name = "ncl-objfile"
+version = "0.1.0"
+
+[[package]]
 name = "ncl-sys"
 version = "0.1.0"

@@ -15,14 +15,15 @@ mod word;
 
 pub use code::{
     CodeError, CodeObjectMetadata, CodePtr, CodeRegistry, FrameHeader, Safepoint, SafepointMap,
-    alloc_code, free_code, publish_code, scan_frame, walk_frame_headers, write_code,
+    alloc_code, free_code, publish_code, scan_frame, scan_frame_chain, walk_frame_headers,
+    write_code,
 };
 pub use heap::{
     Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,
 };
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
-pub use thread::{NativeState, RootToken, SafepointState, Thread};
+pub use thread::{NativeState, RootToken, SafepointState, Thread, ThreadLayout, thread_layout};
 pub use word::{LowTag, Word};
 
 #[cfg(target_arch = "aarch64")]

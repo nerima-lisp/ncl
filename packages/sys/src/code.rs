@@ -426,64 +426,31 @@ pub fn scan_frame(
     Some(updated)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn code_lifecycle_and_write_bounds() {
-        let Ok(mut code) = alloc_code(4) else {
-            return;
-        };
-        assert!(!code.is_published());
-        assert_eq!(code.write_code(0, &[1, 2, 3, 4]), Ok(()));
-        assert_eq!(code.write_code(3, &[5, 6]), Err(CodeError::OutOfBounds));
-        assert!(publish_code(&mut code).is_ok());
-        assert!(code.is_published());
-        assert_eq!(code.write_code(0, &[1]), Err(CodeError::AlreadyPublished));
+/// Scan a chain of mapped four-word frames and forward precise roots in place.
+pub fn scan_frame_chain(
+    words: &mut [Word],
+    first: usize,
+    code_base: usize,
+    maps: &SafepointMap,
+    mut forward: impl FnMut(Word) -> Word,
+) -> Option<usize> {
+    let mut at = first;
+    let mut updated = 0;
+    let mut frames = 0;
+    while at.checked_add(3).is_some_and(|end| end < words.len()) {
+        let return_pc = words[at + 1].address();
+        let offset = return_pc.checked_sub(code_base)?;
+        let map = maps.find_map(u32::try_from(offset).ok()?)?;
+        updated += scan_frame(words, at, map, &mut forward)?;
+        frames += 1;
+        let previous = words[at].address();
+        if previous == 0 || previous == at {
+            break;
+        }
+        at = previous;
     }
-    #[test]
-    fn map_decode_lookup_and_scan() {
-        let mut bytes = vec![0; 16];
-        bytes[0..4].copy_from_slice(&7u32.to_le_bytes());
-        bytes[4..6].copy_from_slice(&8u16.to_le_bytes());
-        bytes[6..8].copy_from_slice(&5u16.to_le_bytes());
-        bytes[8..10].copy_from_slice(&5u16.to_le_bytes());
-        bytes[10..12].copy_from_slice(&1u16.to_le_bytes());
-        bytes.push(0b0001_0100);
-        bytes.extend_from_slice(&3u16.to_le_bytes());
-        let Ok(map) = SafepointMap::decode(&bytes, 1) else {
-            return;
-        };
-        let Some(entry) = map.find_map(8) else {
-            return;
-        };
-        assert_eq!(entry.register_ids, [3]);
-        let mut frame = [Word::NIL; 8];
-        frame[2] = Word::fixnum(1);
-        frame[4] = Word::fixnum(2);
-        assert_eq!(
-            scan_frame(&mut frame, 0, entry, |word| Word::fixnum(
-                word.as_fixnum().unwrap_or(0) + 1
-            )),
-            Some(2)
-        );
-        assert_eq!(frame[2].as_fixnum(), Some(2));
-        assert_eq!(frame[4].as_fixnum(), Some(3));
-    }
-    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-    #[test]
-    fn published_machine_code_returns_42() {
-        #[cfg(target_arch = "aarch64")]
-        let bytes = [0x40, 0x05, 0x80, 0xd2, 0xc0, 0x03, 0x5f, 0xd6];
-        #[cfg(target_arch = "x86_64")]
-        let bytes = [0xb8, 0x2a, 0, 0, 0, 0, 0xc3];
-        let Ok(mut code) = alloc_code(bytes.len()) else {
-            return;
-        };
-        assert!(code.write_code(0, &bytes).is_ok());
-        assert!(publish_code(&mut code).is_ok());
-        // SAFETY: the mapping is published RX and contains a target-specific function returning u64.
-        let function: extern "C" fn() -> u64 = unsafe { core::mem::transmute(code.address()) };
-        assert_eq!(function(), 42);
-    }
+    (frames > 0).then_some(updated)
 }
+
+#[cfg(test)]
+mod tests;

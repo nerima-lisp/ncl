@@ -23,12 +23,22 @@ const MAP_ANON: i32 = 0x20;
 /// Errors from executable code-space operations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CodeError {
+    /// The requested mapping has zero bytes.
     EmptyAllocation,
+    /// A range or address arithmetic operation exceeded the allocation.
     OutOfBounds,
+    /// Publication was requested after executable publication.
     AlreadyPublished,
+    /// A registry operation requires published code.
     NotPublished,
+    /// The operating system rejected the mapping request.
     MappingFailed,
+    /// The operating system rejected executable page permissions.
     ProtectionFailed,
+    /// A live registered frame still returns into the code allocation.
+    CodeInUse,
+    /// The code allocation is not present in the heap registry.
+    NotRegistered,
 }
 
 /// A page-backed, non-moving code allocation.
@@ -183,7 +193,10 @@ pub fn alloc_code(bytes: usize) -> Result<CodePtr, CodeError> {
     })
 }
 
-/// Release code storage.
+/// Release code storage that was never registered with [`crate::Heap`].
+///
+/// Registered code must be released through [`crate::Heap::release_code`], which
+/// performs the stop-the-world quiescence check before dropping the mapping.
 pub fn free_code(code: CodePtr) {
     drop(code);
 }
@@ -209,15 +222,24 @@ pub fn write_code(code: &mut CodePtr, offset: usize, bytes: &[u8]) -> Result<(),
 /// One decoded safepoint entry.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Safepoint {
+    /// Code-relative return-PC offset selected by this entry.
     pub pc_offset: u32,
+    /// Number of words occupied by the complete frame.
     pub frame_words: u16,
+    /// Number of frame words covered by the bitmap.
     pub slot_words: u16,
+    /// Number of bitmap slots that contain Lisp words.
     pub word_slot_count: u16,
+    /// Bit mask identifying callee-saved registers to scan.
     pub register_mask: u16,
+    /// Backend-specific flags associated with this safepoint.
     pub map_flags: u32,
+    /// Bitset of live frame slots, indexed from the frame header.
     pub slot_bitmap: Vec<u8>,
+    /// Register indices corresponding to set bits in `register_mask`.
     pub register_ids: Vec<u16>,
 }
+/// Sorted safepoint metadata for one published code object.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SafepointMap {
     entries: Vec<Safepoint>,
@@ -225,9 +247,13 @@ pub struct SafepointMap {
 /// The fixed four-word native frame header.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FrameHeader {
+    /// Word index of the caller frame, or zero at the chain terminus.
     pub previous: usize,
+    /// Native return address used to resolve the code object and map.
     pub return_pc: usize,
+    /// Function object associated with this invocation.
     pub function: Word,
+    /// Backend-defined frame flags.
     pub flags: u64,
 }
 
@@ -341,6 +367,7 @@ impl SafepointMap {
         self.lookup(pc_offset)
     }
     #[must_use]
+    /// Find the map selected by a code-relative PC offset.
     pub fn lookup(&self, pc_offset: u32) -> Option<&Safepoint> {
         self.entries[..]
             .binary_search_by_key(&pc_offset, |entry| entry.pc_offset)
@@ -350,10 +377,12 @@ impl SafepointMap {
             )
     }
     #[must_use]
+    /// Return all entries in increasing PC order.
     pub fn entries(&self) -> &[Safepoint] {
         &self.entries
     }
     #[must_use]
+    /// Test whether a frame slot is a live Lisp word for this map.
     pub fn is_slot_live(map: &Safepoint, slot: usize) -> bool {
         slot < usize::from(map.word_slot_count)
             && map

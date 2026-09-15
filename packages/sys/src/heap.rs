@@ -15,6 +15,7 @@ const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
 const FORWARDED_FLAG: u64 = 1 << 10;
 #[derive(Debug)]
+/// Moving heap and its stop-the-world coordination state.
 pub struct Heap {
     config: HeapConfig,
     state: Mutex<State>,
@@ -31,6 +32,7 @@ impl Default for HeapConfig {
 }
 impl Heap {
     #[must_use]
+    /// Construct an empty heap with the supplied capacity policy.
     pub fn new(config: HeapConfig) -> Self {
         Self {
             config,
@@ -49,9 +51,11 @@ impl Heap {
             stop_world_ready: Condvar::new(),
         }
     }
+    /// Return the configured dynamic-space capacity in bytes.
     pub const fn dynamic_space_size(&self) -> usize {
         self.config.dynamic_space_size
     }
+    /// Return the allocation debt threshold that triggers collection.
     pub const fn bytes_considered_between_gcs(&self) -> usize {
         self.config.bytes_considered_between_gcs
     }
@@ -91,6 +95,60 @@ impl Heap {
     /// Remove code metadata before releasing its non-moving allocation.
     pub fn unregister_code(&self, code: &CodePtr) -> Option<CodeObjectMetadata> {
         self.lock_state().code_registry.unregister(code)
+    }
+    /// Quiesce all registered mutators, then unregister and release executable code.
+    ///
+    /// `code` remains in `owned` when a published return PC is still present, so
+    /// the caller can retry after the owning frames have unwound.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CodeError::CodeInUse`] while a stopped frame still points into
+    /// the mapping, or [`CodeError::NotRegistered`] when the registry has no entry.
+    pub fn release_code(
+        &self,
+        thread: &mut Thread,
+        owned: &mut Option<CodePtr>,
+    ) -> Result<(), CodeError> {
+        if thread.heap != Some(self) {
+            return Err(CodeError::NotRegistered);
+        }
+        let code = owned.as_ref().ok_or(CodeError::NotRegistered)?;
+        self.begin_collection(thread);
+        let live = {
+            let state = self.lock_state();
+            if state.code_registry.find(code.address()).is_none() {
+                false
+            } else {
+                state.threads.iter().copied().any(|candidate| {
+                    // SAFETY: collection has stopped registered mutators.
+                    unsafe {
+                        (*candidate)
+                            .frame_chain
+                            .iter()
+                            .skip(1)
+                            .step_by(5)
+                            .any(|return_pc| {
+                                let pc = return_pc.address();
+                                pc >= code.address() && pc < code.address() + code.len()
+                            })
+                    }
+                })
+            }
+        };
+        if live {
+            self.end_collection();
+            return Err(CodeError::CodeInUse);
+        }
+        let code = owned.take().ok_or(CodeError::NotRegistered)?;
+        let removed = self.lock_state().code_registry.unregister(&code);
+        self.end_collection();
+        if removed.is_none() {
+            drop(code);
+            return Err(CodeError::NotRegistered);
+        }
+        drop(code);
+        Ok(())
     }
     pub(crate) fn unregister_thread(&self, thread: &Thread) {
         let mut state = self.lock_state();
@@ -362,5 +420,8 @@ impl Heap {
 unsafe impl Send for State {}
 // SAFETY: Heap::state serializes access and collection runs while mutators are stopped.
 unsafe impl Sync for State {}
+#[cfg(test)]
+#[path = "heap/registry_tests.rs"]
+mod registry_tests;
 #[cfg(test)]
 mod tests;

@@ -48,7 +48,7 @@ impl Heap {
         thread.state = SafepointState::Running;
     }
 
-    fn begin_collection(&self, thread: &mut Thread) {
+    pub(crate) fn begin_collection(&self, thread: &mut Thread) {
         let pointer = std::ptr::from_mut(thread) as usize;
         self.request_epoch();
         let mut stop_world = self
@@ -66,7 +66,7 @@ impl Heap {
         drop(stop_world);
     }
 
-    fn end_collection(&self) {
+    pub(crate) fn end_collection(&self) {
         let mut stop_world = self
             .stop_world
             .lock()

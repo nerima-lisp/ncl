@@ -4,16 +4,23 @@ use std::ptr;
 /// Native transition state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeState {
+    /// The mutator is executing Lisp code.
     Lisp,
+    /// The mutator is executing outside the managed heap.
     Native,
 }
 /// Cooperative safepoint state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SafepointState {
+    /// The mutator may continue running.
     Running,
+    /// A collector has requested a safepoint.
     PollRequested,
+    /// The mutator has published its root snapshot.
     Published,
+    /// The collector is scanning this mutator.
     Collecting,
+    /// The mutator is outside the managed heap and safe to stop.
     Safe,
 }
 /// A LIFO shadow-root handle.
@@ -56,13 +63,21 @@ pub struct Thread {
 /// Native offsets consumed by the code generator when addressing a thread context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ThreadLayout {
+    /// Offset of the TLAB allocation cursor.
     pub tlab_bump: usize,
+    /// Offset of the TLAB allocation limit.
     pub tlab_limit: usize,
+    /// Offset of the safepoint state word.
     pub safepoint_state: usize,
+    /// Offset of the pending interrupt flag.
     pub pending: usize,
+    /// Offset of the multiple-value return vector.
     pub mv: usize,
+    /// Offset of the handler chain.
     pub handler: usize,
+    /// Offset of the cleanup chain.
     pub cleanup: usize,
+    /// Offset of the catch chain.
     pub catch: usize,
 }
 

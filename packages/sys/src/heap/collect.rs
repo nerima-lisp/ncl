@@ -1,7 +1,6 @@
 use super::{FORWARDED_FLAG, HashMap, HashSet, Object, PageKind, Word, scan};
 
 impl super::Heap {
-    #[allow(clippy::too_many_lines)]
     pub(crate) fn collect(&self, full: bool) {
         let mut state = self.lock_state();
         for object in &mut state.objects {
@@ -79,6 +78,18 @@ impl super::Heap {
                 }
             }
         }
+        let moved = Self::move_live_objects(&mut state, &mut live);
+        let hooks = Self::finish_collection(&mut state, &root_slots, &moved, &live, full);
+        drop(state);
+        for hook in hooks {
+            hook();
+        }
+    }
+
+    fn move_live_objects(
+        state: &mut super::State,
+        live: &mut HashSet<usize>,
+    ) -> HashMap<usize, usize> {
         let mut moved = HashMap::new();
         let original_len = state.objects.len();
         for index in 0..original_len {
@@ -116,13 +127,20 @@ impl super::Heap {
             state.objects.push(copy);
             live.insert(new_index);
         }
-        for root in root_slots.iter().copied() {
-            if root.is_null() {
-                continue;
-            }
+        moved
+    }
+
+    fn finish_collection(
+        state: &mut super::State,
+        root_slots: &[*mut Word],
+        moved: &HashMap<usize, usize>,
+        live: &HashSet<usize>,
+        full: bool,
+    ) -> Vec<fn()> {
+        for root in root_slots.iter().copied().filter(|root| !root.is_null()) {
             // SAFETY: registered root slots remain valid and uniquely mutable by their owner.
             let value = unsafe { *root };
-            if let Some(address) = Self::relocated_address(&state, &moved, value) {
+            if let Some(address) = Self::relocated_address(state, moved, value) {
                 // SAFETY: the root slot is registered and points to a valid Word.
                 unsafe {
                     *root = Self::relocated_word(value, address);
@@ -138,7 +156,7 @@ impl super::Heap {
                     &state.code_registry,
                     &mut (*thread).frame_registers,
                     |value| {
-                        Self::relocated_address(&state, &moved, value)
+                        Self::relocated_address(state, moved, value)
                             .map_or(value, |address| Self::relocated_word(value, address))
                     },
                 );
@@ -148,7 +166,7 @@ impl super::Heap {
             if !state.objects[index].alive {
                 continue;
             }
-            for slot in scan::layout(&state, index) {
+            for slot in scan::layout(state, index) {
                 if state.objects[index].weak.is_some() && slot == 1 {
                     continue;
                 }
@@ -157,45 +175,13 @@ impl super::Heap {
                     .get(slot)
                     .copied()
                     .map(Word::from_bits)
-                    && let Some(address) = Self::relocated_address(&state, &moved, value)
+                    && let Some(address) = Self::relocated_address(state, moved, value)
                 {
                     state.objects[index].words[slot] = Self::relocated_word(value, address).bits();
                 }
             }
         }
-        for index in 0..state.objects.len() {
-            if !state.objects[index].alive || state.objects[index].weak.is_none() {
-                continue;
-            }
-            let value = state.objects[index]
-                .words
-                .get(1)
-                .copied()
-                .map_or(Word::NIL, Word::from_bits);
-            let retained = Self::find(&state, value).is_some_and(|target| {
-                full || live.contains(&target) || state.objects[target].generation >= 2
-            });
-            if !retained {
-                state.objects[index].words[1] = Word::NIL.bits();
-            }
-        }
-        for index in 0..state.objects.len() {
-            if !state.objects[index].alive {
-                continue;
-            }
-            let collect = !live.contains(&index) && (full || state.objects[index].generation < 2);
-            if !collect {
-                continue;
-            }
-            if let Some((callback, false)) = state.objects[index].finalizer {
-                state.finalizers.push((Word::NIL, callback));
-                state.objects[index].finalizer = Some((callback, true));
-            }
-            state.used = state
-                .used
-                .saturating_sub(state.objects[index].words.len() * 8);
-            state.objects[index].alive = false;
-        }
+        Self::clear_dead_weak_and_collect(state, live, full);
         state.dirty_cards = state
             .dirty_cards
             .iter()
@@ -212,9 +198,41 @@ impl super::Heap {
             // SAFETY: collection owns the stop-the-world phase, so mutator snapshots are not changing.
             unsafe { (*thread).conservative_roots.clear() };
         }
-        drop(state);
-        for hook in hooks {
-            hook();
+        hooks
+    }
+
+    fn clear_dead_weak_and_collect(state: &mut super::State, live: &HashSet<usize>, full: bool) {
+        for index in 0..state.objects.len() {
+            if !state.objects[index].alive || state.objects[index].weak.is_none() {
+                continue;
+            }
+            let value = state.objects[index]
+                .words
+                .get(1)
+                .copied()
+                .map_or(Word::NIL, Word::from_bits);
+            let retained = Self::find(state, value).is_some_and(|target| {
+                full || live.contains(&target) || state.objects[target].generation >= 2
+            });
+            if !retained {
+                state.objects[index].words[1] = Word::NIL.bits();
+            }
+        }
+        for index in 0..state.objects.len() {
+            if !state.objects[index].alive || live.contains(&index) {
+                continue;
+            }
+            if !full && state.objects[index].generation >= 2 {
+                continue;
+            }
+            if let Some((callback, false)) = state.objects[index].finalizer {
+                state.finalizers.push((Word::NIL, callback));
+                state.objects[index].finalizer = Some((callback, true));
+            }
+            state.used = state
+                .used
+                .saturating_sub(state.objects[index].words.len() * 8);
+            state.objects[index].alive = false;
         }
     }
 }

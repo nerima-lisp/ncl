@@ -34,12 +34,6 @@ impl CodeRegistry {
             .remove(&code.address())
             .map(|(_, metadata)| metadata)
     }
-    /// Unregister and release a code allocation after the lookup table is clear.
-    pub fn release(&mut self, code: CodePtr) -> Option<CodeObjectMetadata> {
-        let metadata = self.unregister(&code);
-        drop(code);
-        metadata
-    }
     /// Resolve a PC to its containing code object and relative offset.
     #[must_use]
     pub fn find(&self, pc: usize) -> Option<(&CodeObjectMetadata, u32)> {

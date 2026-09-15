@@ -19,7 +19,9 @@ legacy tests for later migration.
   ABI として固定します。上位の `ThreadContext` は `Thread` を先頭に置き、
   `*mut ThreadContext` を `*mut Thread` として渡す契約です。
 - code object metadata は frame size、function name、source locations を保持し、
-  `CodeRegistry::release` は lookup table から除去してから mapping を解放します。
+  `Heap::release_code(&mut thread, &mut owned_code)` は STW 下で全登録スレッドの
+  frame chain を検査し、lookup table から除去してから mapping を解放します。
+  live PC が残る間は `CodeError::CodeInUse` を返し、`owned_code` を保持します。
 - `Heap::collect` は登録された code registry と frame snapshot を使い、return PC
   ごとの safepoint map、function object、live slots、callee-saved registers を更新します。
 

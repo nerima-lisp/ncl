@@ -2,40 +2,58 @@
 #![allow(missing_docs)]
 
 pub use ncl_sys::Word;
-use ncl_sys::{
-    Heap, HeapConfig, LowTag, ReferenceLayout, RootToken, StorageCondition, Thread, TypeTag,
-};
+use ncl_sys::{Heap, HeapConfig, LowTag, RootToken, StorageCondition, Thread, TypeTag};
 use std::collections::HashMap;
 use std::sync::Mutex;
-
 pub mod array;
 mod builtin;
+mod code;
 pub mod cons;
+mod function;
 mod gc;
 pub mod hash_table;
+mod instance;
 mod layout;
+mod number;
 pub mod package;
+mod readtable;
+mod remaining;
 mod runtime_extensions;
 mod specialized_array;
+mod stream;
+mod structure;
 pub use array::{
     ArrayElementType, ArrayOptions, array_dimensions, array_row_major_ref, array_row_major_set,
     make_array, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
     simple_vector_set, string_length, string_ref, string_set,
 };
 pub use builtin::{Builtin, FunctionObject, MultipleValues, NclStatus, RegisterFn};
+pub use code::{CodeObject, make_code_object};
 pub use cons::{rplaca, rplacd};
-pub use gc::register;
-pub use layout::{
-    array_offset, simple_vector_offset, specialized_array_offset, string_offset, symbol_offset,
-    widetag,
+pub use function::{
+    Function, closure_ref, function_entry, function_name, make_closure, make_simple_fun,
 };
+pub use gc::{register, register_layouts};
+pub use instance::{Instance, instance_class, make_instance, slot_ref, slot_set};
+pub use layout::{
+    array_offset, code_offset, function_offset, instance_offset, number_offset, readtable_offset,
+    simple_vector_offset, specialized_array_offset, stream_offset, string_offset, structure_offset,
+    symbol_offset, widetag,
+};
+pub use number::{
+    Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,
+    make_complex, make_double, make_ratio,
+};
+pub use readtable::{Readtable, make_readtable};
+pub use remaining::layout;
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
     specialized_array_set,
 };
+pub use stream::{Stream, make_stream, stream_state};
+pub use structure::{StructureLayout, make_structure, structure_ref, structure_set};
 
 use package::Package;
-
 /// Classification of a tagged value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -53,7 +71,6 @@ pub enum ObjectRef {
     Other { word: Word, widetag: u8 },
     Immediate(Word),
 }
-
 /// Classify a tagged value using the information exposed by `ncl-sys`.
 #[must_use]
 pub fn classify(word: Word) -> ObjectRef {
@@ -77,7 +94,6 @@ pub fn classify(word: Word) -> ObjectRef {
         _ => ObjectRef::Other { word, widetag: 0 },
     }
 }
-
 /// Classify a heap object when a registered context can provide its widetag.
 #[must_use]
 pub fn classify_object(ctx: &ThreadContext, word: Word) -> ObjectRef {
@@ -86,11 +102,12 @@ pub fn classify_object(ctx: &ThreadContext, word: Word) -> ObjectRef {
         Some(widetag::SIMPLE_VECTOR) => ObjectRef::SimpleVector(word),
         Some(widetag::SPECIALIZED_ARRAY) => ObjectRef::SpecializedArray(word),
         Some(widetag::ARRAY | widetag::NON_SIMPLE_ARRAY) => ObjectRef::Array(word),
+        Some(widetag::STRUCTURE | widetag::INSTANCE) => ObjectRef::Instance(word),
+        Some(widetag::SIMPLE_FUN | widetag::CLOSURE) => ObjectRef::Function(word),
         Some(tag) => ObjectRef::Other { word, widetag: tag },
         None => classify(word),
     }
 }
-
 /// Object-layer failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObjectError {
@@ -111,7 +128,6 @@ impl From<StorageCondition> for ObjectError {
         Self::Storage(value)
     }
 }
-
 /// Shared runtime heap and registries.
 #[derive(Debug)]
 pub struct Runtime {
@@ -120,6 +136,8 @@ pub struct Runtime {
     packages: Mutex<HashMap<String, Package>>,
     classes: Mutex<HashMap<String, Word>>,
     features: Mutex<Vec<String>>,
+    layouts: Mutex<HashMap<u32, usize>>,
+    next_layout: Mutex<u32>,
 }
 impl Runtime {
     /// Create a runtime with the default heap policy.
@@ -148,6 +166,8 @@ impl Runtime {
             ),
             classes: Mutex::new(HashMap::new()),
             features: Mutex::new(Vec::new()),
+            layouts: Mutex::new(HashMap::new()),
+            next_layout: Mutex::new(1),
         }
     }
     /// Register all object layouts supported by this layer.
@@ -156,31 +176,7 @@ impl Runtime {
     ///
     /// Returns [`ObjectError::Layout`] when a widetag is already registered.
     pub fn register_layouts(&self) -> Result<(), ObjectError> {
-        for (tag, reference_words) in [
-            (widetag::SYMBOL, vec![0, 1, 2, 3, 4]),
-            (widetag::STRING, vec![]),
-            (widetag::SIMPLE_VECTOR, vec![1]),
-            (widetag::ARRAY, vec![0, 1, 2]),
-            (widetag::HASH_TABLE, vec![0, 1]),
-            (widetag::STRUCTURE, vec![0]),
-            (widetag::INSTANCE, vec![0, 1]),
-            (widetag::SIMPLE_FUN, vec![0, 1]),
-            (widetag::CLOSURE, vec![0, 1, 2]),
-            (widetag::BIGNUM, vec![]),
-            (widetag::RATIO, vec![0, 1]),
-            (widetag::DOUBLE_FLOAT, vec![]),
-            (widetag::COMPLEX, vec![0, 1]),
-            (widetag::PACKAGE, vec![0, 1, 2]),
-            (widetag::READTABLE, vec![0]),
-            (widetag::STREAM, vec![0, 1]),
-            (widetag::CODE, vec![0]),
-            (widetag::SPECIALIZED_ARRAY, vec![]),
-            (widetag::NON_SIMPLE_ARRAY, vec![4]),
-        ] {
-            ncl_sys::register_layout(&self.heap, tag, ReferenceLayout { reference_words })
-                .map_err(|_| ObjectError::Layout)?;
-        }
-        Ok(())
+        gc::register_layouts(self)
     }
     /// Return the underlying heap.
     pub const fn heap(&self) -> &Heap {

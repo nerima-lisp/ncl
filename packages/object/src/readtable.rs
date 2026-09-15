@@ -1,5 +1,5 @@
 use crate::object_access::{get, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, widetag};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, readtable_offset, widetag};
 use ncl_sys::Word;
 
 crate::word_newtype!(Readtable);
@@ -32,3 +32,30 @@ pub fn readtable_slot(
 ) -> Result<Word, ObjectError> {
     get(ctx, object.into(), widetag::READTABLE, slot)
 }
+
+macro_rules! readtable_accessor {
+    ($name:ident, $slot:expr, $doc:literal) => {
+        #[doc = $doc]
+        ///
+        /// # Errors
+        /// Returns an error when the object is not a readtable.
+        pub fn $name(ctx: &ThreadContext, object: Readtable) -> Result<Word, ObjectError> {
+            readtable_slot(ctx, object, $slot)
+        }
+    };
+}
+readtable_accessor!(
+    readtable_syntax,
+    readtable_offset::SYNTAX,
+    "Read a readtable syntax table."
+);
+readtable_accessor!(
+    readtable_dispatch,
+    readtable_offset::DISPATCH,
+    "Read a readtable dispatch table."
+);
+readtable_accessor!(
+    readtable_case,
+    readtable_offset::CASE,
+    "Read a readtable case mode."
+);

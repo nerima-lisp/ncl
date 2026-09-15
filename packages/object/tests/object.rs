@@ -293,8 +293,8 @@ fn remaining_object_kinds_round_trip() {
     let bignum = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, -0x1_0000_0001)
         .unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::bignum_limbs(&ctx, bignum), Ok(vec![1, 1]));
-    let double = ncl_object::make_double(&mut ctx, &runtime, 1.25)
-        .unwrap_or_else(|_| Word::NIL.into());
+    let double =
+        ncl_object::make_double(&mut ctx, &runtime, 1.25).unwrap_or_else(|_| Word::NIL.into());
     assert_eq!(ncl_object::double_value(&ctx, double), Ok(1.25));
     let code =
         ncl_object::make_code_object(&mut ctx, &runtime, 7, 4, Word::NIL, Word::NIL, Word::NIL)

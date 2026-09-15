@@ -28,7 +28,9 @@ pub use array::{
 };
 pub use builtin::{Builtin, FunctionObject, MultipleValues, NclStatus, RegisterFn};
 pub use code::code_slot;
-pub use code::{CodeObject, make_code_object};
+pub use code::{
+    CodeObject, code_constants, code_debug, code_entry, code_size, code_stack_map, make_code_object,
+};
 pub use cons::{rplaca, rplacd};
 pub use function::{
     Function, closure_ref, function_entry, function_name, make_closure, make_simple_fun,
@@ -49,13 +51,18 @@ pub use number::{
 pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
 use package::Package;
 pub use readtable::readtable_slot;
-pub use readtable::{Readtable, make_readtable};
+pub use readtable::{
+    Readtable, make_readtable, readtable_case, readtable_dispatch, readtable_syntax,
+};
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
     specialized_array_set,
 };
 pub use stream::stream_slot;
-pub use stream::{Stream, make_stream, stream_state};
+pub use stream::{
+    Stream, make_stream, stream_direction, stream_element_type, stream_external_format,
+    stream_implementation, stream_state,
+};
 pub use structure::structure_layout;
 pub use structure::{StructureLayout, make_structure, structure_ref, structure_set};
 /// Classification of a tagged value.
@@ -66,12 +73,15 @@ pub enum ObjectRef {
     Character(u32),
     Cons(Word),
     Symbol(Word),
+    HashTable(Word),
     String(Word),
     SimpleVector(Word),
     SpecializedArray(Word),
     Array(Word),
     Function(Word),
+    Closure(Word),
     Instance(Word),
+    Structure(Word),
     Bignum(Word),
     Ratio(Word),
     DoubleFloat(Word),
@@ -110,12 +120,16 @@ pub fn classify(word: Word) -> ObjectRef {
 #[must_use]
 pub fn classify_object(ctx: &ThreadContext, word: Word) -> ObjectRef {
     match ncl_sys::object_widetag(&ctx.thread, word) {
+        Some(widetag::SYMBOL) => ObjectRef::Symbol(word),
         Some(widetag::STRING) => ObjectRef::String(word),
         Some(widetag::SIMPLE_VECTOR) => ObjectRef::SimpleVector(word),
         Some(widetag::SPECIALIZED_ARRAY) => ObjectRef::SpecializedArray(word),
         Some(widetag::NON_SIMPLE_ARRAY) => ObjectRef::Array(word),
-        Some(widetag::STRUCTURE | widetag::INSTANCE) => ObjectRef::Instance(word),
-        Some(widetag::SIMPLE_FUN | widetag::CLOSURE) => ObjectRef::Function(word),
+        Some(widetag::HASH_TABLE) => ObjectRef::HashTable(word),
+        Some(widetag::STRUCTURE) => ObjectRef::Structure(word),
+        Some(widetag::INSTANCE) => ObjectRef::Instance(word),
+        Some(widetag::SIMPLE_FUN) => ObjectRef::Function(word),
+        Some(widetag::CLOSURE) => ObjectRef::Closure(word),
         Some(widetag::BIGNUM) => ObjectRef::Bignum(word),
         Some(widetag::RATIO) => ObjectRef::Ratio(word),
         Some(widetag::DOUBLE_FLOAT) => ObjectRef::DoubleFloat(word),

@@ -46,3 +46,35 @@ pub fn stream_state(ctx: &ThreadContext, object: Stream) -> Result<Word, ObjectE
 pub fn stream_slot(ctx: &ThreadContext, object: Stream, slot: usize) -> Result<Word, ObjectError> {
     get(ctx, object.into(), widetag::STREAM, slot)
 }
+
+macro_rules! stream_accessor {
+    ($name:ident, $slot:expr, $doc:literal) => {
+        #[doc = $doc]
+        ///
+        /// # Errors
+        /// Returns an error when the object is not a stream.
+        pub fn $name(ctx: &ThreadContext, object: Stream) -> Result<Word, ObjectError> {
+            stream_slot(ctx, object, $slot)
+        }
+    };
+}
+stream_accessor!(
+    stream_direction,
+    stream_offset::DIRECTION,
+    "Read a stream direction."
+);
+stream_accessor!(
+    stream_element_type,
+    stream_offset::ELEMENT_TYPE,
+    "Read a stream element type."
+);
+stream_accessor!(
+    stream_external_format,
+    stream_offset::EXTERNAL_FORMAT,
+    "Read a stream external format."
+);
+stream_accessor!(
+    stream_implementation,
+    stream_offset::IMPLEMENTATION,
+    "Read a stream implementation."
+);

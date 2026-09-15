@@ -16,7 +16,7 @@ impl Runtime {
         let Ok(mut context) = self.registry_context.lock() else {
             return;
         };
-        let Ok(table) = self.table(&self.classes) else {
+        let Ok(table) = Self::table(&self.classes) else {
             return;
         };
         let name = name.into();
@@ -29,12 +29,14 @@ impl Runtime {
     #[must_use]
     pub fn class(&self, name: &str) -> Option<Word> {
         let mut context = self.registry_context.lock().ok()?;
-        let table = self.table(&self.classes).ok()?;
+        let table = Self::table(&self.classes).ok()?;
         let name = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
-        HashTable::from(table)
+        let result = HashTable::from(table)
             .get(&mut context, name)
             .ok()
-            .flatten()
+            .flatten();
+        drop(context);
+        result
     }
     /// Add a feature name if absent.
     pub fn add_feature(&self, feature: impl Into<String>) {
@@ -70,6 +72,7 @@ impl ThreadContext {
         value: Word,
     ) -> Result<(), ObjectError> {
         if ncl_sys::write_object_word(&mut self.thread, object, slot, value) {
+            ncl_sys::write_barrier(&mut self.thread, object, slot);
             Ok(())
         } else {
             Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered))

@@ -92,14 +92,15 @@ impl From<StorageCondition> for ObjectError {
 /// Shared runtime heap and registries.
 #[derive(Debug)]
 pub struct Runtime {
-    heap: Heap,
-    registry_context: Mutex<ThreadContext>,
+    heap: Box<Heap>,
+    registry_context: Mutex<Box<ThreadContext>>,
     functions: Mutex<Option<RootedTable>>,
     packages: Mutex<Option<RootedTable>>,
     classes: Mutex<Option<RootedTable>>,
     features: Mutex<Vec<String>>,
     layouts: Mutex<HashMap<u32, usize>>,
     next_layout: Mutex<u32>,
+    layouts_registered: Mutex<bool>,
 }
 
 #[derive(Debug)]
@@ -117,14 +118,15 @@ impl Runtime {
     #[must_use]
     pub fn with_config(config: HeapConfig) -> Self {
         let runtime = Self {
-            heap: Heap::new(config),
-            registry_context: Mutex::new(ThreadContext::new()),
+            heap: Box::new(Heap::new(config)),
+            registry_context: Mutex::new(Box::new(ThreadContext::new())),
             functions: Mutex::new(None),
             packages: Mutex::new(None),
             classes: Mutex::new(None),
             features: Mutex::new(Vec::new()),
             layouts: Mutex::new(HashMap::new()),
             next_layout: Mutex::new(1),
+            layouts_registered: Mutex::new(false),
         };
         let _ = runtime.register_layouts();
         let mut context = runtime
@@ -144,6 +146,7 @@ impl Runtime {
                 _token: token,
             });
         }
+        ncl_sys::enter_native(&mut context.thread);
         drop(context);
         runtime
     }
@@ -153,7 +156,17 @@ impl Runtime {
     ///
     /// Returns [`ObjectError::Layout`] when a widetag is already registered.
     pub fn register_layouts(&self) -> Result<(), ObjectError> {
-        gc::register_layouts(self)
+        let mut registered = self
+            .layouts_registered
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *registered {
+            return Ok(());
+        }
+        gc::register_layouts(self)?;
+        *registered = true;
+        drop(registered);
+        Ok(())
     }
     /// Return the underlying heap.
     pub const fn heap(&self) -> &Heap {
@@ -169,32 +182,35 @@ impl Runtime {
             .registry_context
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let table = self.table(&self.packages)?;
+        let table = Self::table(&self.packages)?;
         let name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>())?;
         if let Some(package) = HashTable::from(table).get(&mut context, name_word)? {
             return Ok(package);
         }
         let package = Package::new(&mut context, self, name)?.as_word();
         HashTable::from(table).insert(&mut context, self, name_word, package)?;
+        drop(context);
         Ok(package)
     }
     /// Find a package by its canonical name.
     #[must_use]
     pub fn find_package(&self, name: &str) -> Option<Word> {
         let mut context = self.registry_context.lock().ok()?;
-        let table = self.table(&self.packages).ok()?;
+        let table = Self::table(&self.packages).ok()?;
         let name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
-        HashTable::from(table)
+        let result = HashTable::from(table)
             .get(&mut context, name_word)
             .ok()
-            .flatten()
+            .flatten();
+        drop(context);
+        result
     }
     /// Register a function object under a package and name.
     pub fn define_function(&self, package: &str, name: &str, function: Word) {
         let Ok(mut context) = self.registry_context.lock() else {
             return;
         };
-        let Ok(table) = self.table(&self.functions) else {
+        let Ok(table) = Self::table(&self.functions) else {
             return;
         };
         let key = format!("{package}::{name}");
@@ -207,13 +223,15 @@ impl Runtime {
     #[must_use]
     pub fn function(&self, package: &str, name: &str) -> Option<Word> {
         let mut context = self.registry_context.lock().ok()?;
-        let table = self.table(&self.functions).ok()?;
+        let table = Self::table(&self.functions).ok()?;
         let key = format!("{package}::{name}");
         let key = make_string(&mut context, self, &key.chars().collect::<Vec<_>>()).ok()?;
-        HashTable::from(table).get(&mut context, key).ok().flatten()
+        let result = HashTable::from(table).get(&mut context, key).ok().flatten();
+        drop(context);
+        result
     }
 
-    fn table(&self, registry: &Mutex<Option<RootedTable>>) -> Result<Word, ObjectError> {
+    fn table(registry: &Mutex<Option<RootedTable>>) -> Result<Word, ObjectError> {
         registry
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?
@@ -381,6 +399,7 @@ pub fn make_symbol(
         if !ncl_sys::write_object_word(&mut ctx.thread, symbol, slot, value) {
             return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
         }
+        ncl_sys::write_barrier(&mut ctx.thread, symbol, slot);
     }
     Ok(symbol)
 }

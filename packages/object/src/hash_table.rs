@@ -387,7 +387,8 @@ fn numeric_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, O
                 && crate::bignum_limbs(ctx, left.into())? == crate::bignum_limbs(ctx, right.into())?
         }
         Some(widetag::DOUBLE_FLOAT) => {
-            crate::double_value(ctx, left.into())? == crate::double_value(ctx, right.into())?
+            crate::double_value(ctx, left.into())?.to_bits()
+                == crate::double_value(ctx, right.into())?.to_bits()
         }
         Some(widetag::RATIO) => {
             numeric_equal(
@@ -434,7 +435,7 @@ fn content_hash(
         return Ok(0);
     }
     if ncl_sys::object_widetag(&ctx.thread, word) == Some(widetag::STRING) {
-        let mut hash = 0xcbf29ce484222325;
+        let mut hash = 0xcbf2_9ce4_8422_2325;
         for index in 0..string_length(ctx, word)? {
             let character = string_ref(ctx, word, index)?;
             let character = if fold {
@@ -442,7 +443,7 @@ fn content_hash(
             } else {
                 character
             };
-            hash = (hash ^ u64::from(character as u32)).wrapping_mul(0x100000001b3);
+            hash = (hash ^ u64::from(character as u32)).wrapping_mul(0x0100_0000_01b3);
         }
         return Ok(hash);
     }
@@ -464,7 +465,7 @@ fn cons_part(ctx: &ThreadContext, word: Word, slot: usize) -> Result<Word, Objec
 fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectError> {
     Ok(match ncl_sys::object_widetag(&ctx.thread, word) {
         Some(widetag::BIGNUM) => Some(crate::bignum_limbs(ctx, word.into())?.into_iter().fold(
-            crate::bignum_sign(ctx, word.into())? as u64,
+            u64::from(crate::bignum_sign(ctx, word.into())?),
             |hash, limb| hash.rotate_left(5) ^ u64::from(limb),
         )),
         Some(widetag::DOUBLE_FLOAT) => Some(crate::double_value(ctx, word.into())?.to_bits()),

@@ -85,7 +85,7 @@ impl Package {
         while used != Word::NIL {
             let package =
                 ncl_sys::read_cons_word(&ctx.thread, used, 0).ok_or(ObjectError::Layout)?;
-            let package = Package::from(package);
+            let package = Self::from(package);
             let external = HashTable::from(get(ctx, package.0, widetag::PACKAGE, EXTERNAL)?);
             if let Some(symbol) = external.get(ctx, name)? {
                 return Ok(Some((symbol, FindStatus::Inherited)));
@@ -133,6 +133,9 @@ impl Package {
         Ok(true)
     }
     /// Remove a symbol from the external table and return it to internal visibility.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
     pub fn unexport(
         self,
         ctx: &mut ThreadContext,
@@ -148,6 +151,9 @@ impl Package {
         Ok(true)
     }
     /// Import a symbol under a string name.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
     pub fn import(
         self,
         ctx: &mut ThreadContext,
@@ -160,6 +166,9 @@ impl Package {
             .insert(ctx, runtime, name, symbol)
     }
     /// Add another package to this package's use list.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
     pub fn use_package(
         self,
         ctx: &mut ThreadContext,
@@ -183,6 +192,9 @@ impl Package {
         Ok(true)
     }
     /// Remove a symbol from internal or external visibility.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
     pub fn unintern(
         self,
         ctx: &mut ThreadContext,
@@ -222,7 +234,7 @@ impl Package {
             .as_fixnum()
             .ok_or(ObjectError::Layout)?;
         put(ctx, self.0, GENSYM, Word::fixnum(number + 1))?;
-        let name = format!("G{}", number);
+        let name = format!("G{number}");
         let name = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
         make_symbol(ctx, runtime, name)
     }

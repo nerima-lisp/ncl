@@ -335,9 +335,9 @@ pub fn bignum_limbs(ctx: &ThreadContext, object: Bignum) -> Result<Vec<u32>, Obj
         .map(|i| {
             let bits = get(ctx, object, widetag::BIGNUM, number_offset::LIMBS + i / 2)?.bits();
             let limb = if i % 2 == 0 {
-                u32::try_from(bits).map_err(|_| ObjectError::Layout)?
+                u32::try_from(bits & u64::from(u32::MAX)).map_err(|_| ObjectError::Layout)?
             } else {
-                (bits >> 32) as u32
+                u32::try_from(bits >> 32).map_err(|_| ObjectError::Layout)?
             };
             Ok(limb)
         })

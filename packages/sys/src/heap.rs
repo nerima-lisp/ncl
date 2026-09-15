@@ -375,4 +375,7 @@ unsafe impl Send for State {}
 // SAFETY: Heap::state serializes access and collection runs while mutators are stopped.
 unsafe impl Sync for State {}
 #[cfg(test)]
+#[path = "heap/registry_tests.rs"]
+mod registry_tests;
+#[cfg(test)]
 mod tests;

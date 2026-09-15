@@ -193,9 +193,9 @@ pub fn alloc_code(bytes: usize) -> Result<CodePtr, CodeError> {
     })
 }
 
-/// Release code storage that was never registered with a [`Heap`].
+/// Release code storage that was never registered with [`crate::Heap`].
 ///
-/// Registered code must be released through [`Heap::release_code`], which
+/// Registered code must be released through [`crate::Heap::release_code`], which
 /// performs the stop-the-world quiescence check before dropping the mapping.
 pub fn free_code(code: CodePtr) {
     drop(code);

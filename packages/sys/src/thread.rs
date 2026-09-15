@@ -2,6 +2,7 @@ use crate::word::Word;
 use std::ptr;
 
 /// Native transition state.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeState {
     /// The mutator is executing Lisp code.
@@ -10,6 +11,7 @@ pub enum NativeState {
     Native,
 }
 /// Cooperative safepoint state.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SafepointState {
     /// The mutator may continue running.
@@ -42,6 +44,7 @@ pub struct Thread {
     pub(crate) heap: Option<*const crate::heap::Heap>,
     pub(crate) state: SafepointState,
     native: NativeState,
+    pub(crate) safepoint_request: u64,
     pub(crate) tlab: Vec<u64>,
     pub(crate) bytes_cons: usize,
     interrupt: bool,
@@ -55,7 +58,7 @@ pub struct Thread {
     pub(crate) handler: usize,
     pub(crate) cleanup: usize,
     pub(crate) catch: usize,
-    pub(crate) pending: bool,
+    pub(crate) pending: u64,
     pub(crate) frame_chain: Vec<Word>,
     pub(crate) frame_registers: Vec<Word>,
 }
@@ -67,9 +70,9 @@ pub struct ThreadLayout {
     pub tlab_bump: usize,
     /// Offset of the TLAB allocation limit.
     pub tlab_limit: usize,
-    /// Offset of the safepoint state word.
-    pub safepoint_state: usize,
-    /// Offset of the pending interrupt flag.
+    /// Offset of the eight-byte safepoint request word read by generated code.
+    pub safepoint_request: usize,
+    /// Offset of the eight-byte pending interrupt word.
     pub pending: usize,
     /// Offset of the multiple-value return vector.
     pub mv: usize,
@@ -87,7 +90,7 @@ pub const fn thread_layout() -> ThreadLayout {
     ThreadLayout {
         tlab_bump: std::mem::offset_of!(Thread, tlab_bump),
         tlab_limit: std::mem::offset_of!(Thread, tlab_limit),
-        safepoint_state: std::mem::offset_of!(Thread, state),
+        safepoint_request: std::mem::offset_of!(Thread, safepoint_request),
         pending: std::mem::offset_of!(Thread, pending),
         mv: std::mem::offset_of!(Thread, mv),
         handler: std::mem::offset_of!(Thread, handler),
@@ -110,6 +113,7 @@ impl Thread {
             heap: None,
             state: SafepointState::Running,
             native: NativeState::Lisp,
+            safepoint_request: 0,
             tlab: Vec::new(),
             bytes_cons: 0,
             interrupt: false,
@@ -123,7 +127,7 @@ impl Thread {
             handler: 0,
             cleanup: 0,
             catch: 0,
-            pending: false,
+            pending: 0,
             frame_chain: Vec::new(),
             frame_registers: Vec::new(),
         }
@@ -167,6 +171,7 @@ impl Thread {
             return;
         }
         if self.state == SafepointState::PollRequested || self.heap.is_some() {
+            self.safepoint_request = 0;
             self.publish_snapshot();
             if let Some(heap) = self.heap {
                 // SAFETY: the heap pointer is installed by register_thread and remains valid while registered.
@@ -179,6 +184,7 @@ impl Thread {
     pub(crate) fn request_safepoint(&mut self) {
         if self.state == SafepointState::Running {
             self.state = SafepointState::PollRequested;
+            self.safepoint_request = 1;
             if let Some(heap) = self.heap {
                 // SAFETY: the heap pointer is installed by register_thread and remains valid while registered.
                 unsafe { (*heap).request_epoch() };
@@ -223,6 +229,7 @@ impl Thread {
     pub const fn request_interrupt(&mut self) {
         self.interrupt = true;
         self.state = SafepointState::PollRequested;
+        self.safepoint_request = 1;
     }
     /// Whether an interrupt is pending, consuming the request.
     pub const fn take_interrupt(&mut self) -> bool {
@@ -289,11 +296,39 @@ mod tests {
         let layout = thread_layout();
         assert_eq!(layout.tlab_bump, std::mem::offset_of!(Thread, tlab_bump));
         assert_eq!(layout.tlab_limit, std::mem::offset_of!(Thread, tlab_limit));
-        assert_eq!(layout.safepoint_state, std::mem::offset_of!(Thread, state));
+        assert_eq!(
+            layout.safepoint_request,
+            std::mem::offset_of!(Thread, safepoint_request)
+        );
         assert_eq!(layout.pending, std::mem::offset_of!(Thread, pending));
         assert_eq!(layout.mv, std::mem::offset_of!(Thread, mv));
         assert_eq!(layout.handler, std::mem::offset_of!(Thread, handler));
         assert_eq!(layout.cleanup, std::mem::offset_of!(Thread, cleanup));
         assert_eq!(layout.catch, std::mem::offset_of!(Thread, catch));
+    }
+
+    #[test]
+    fn machine_visible_fields_are_aligned_single_words() {
+        let thread = Thread::new();
+        let layout = thread_layout();
+        let fields = [
+            (layout.tlab_bump, std::mem::size_of_val(&thread.tlab_bump)),
+            (layout.tlab_limit, std::mem::size_of_val(&thread.tlab_limit)),
+            (
+                layout.safepoint_request,
+                std::mem::size_of_val(&thread.safepoint_request),
+            ),
+            (layout.pending, std::mem::size_of_val(&thread.pending)),
+            (layout.handler, std::mem::size_of_val(&thread.handler)),
+            (layout.cleanup, std::mem::size_of_val(&thread.cleanup)),
+            (layout.catch, std::mem::size_of_val(&thread.catch)),
+        ];
+        for (offset, size) in fields {
+            assert_eq!(offset % 8, 0);
+            assert_eq!(size, 8);
+        }
+        // `mv` is a Vec descriptor, not a generated-code scalar word field.
+        assert_eq!(layout.mv % 8, 0);
+        assert_ne!(std::mem::size_of::<Vec<Word>>(), 8);
     }
 }

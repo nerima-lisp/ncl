@@ -27,13 +27,15 @@ pub struct RootToken {
 pub struct Thread {
     pub(crate) roots: Vec<*mut Word>,
     pub(crate) heap: Option<*const crate::heap::Heap>,
-    state: SafepointState,
+    pub(crate) state: SafepointState,
     native: NativeState,
     pub(crate) tlab: Vec<u64>,
     pub(crate) bytes_cons: usize,
     interrupt: bool,
     pub(crate) stack_bounds: Option<(usize, usize)>,
     pub(crate) callee_saved: [u64; 16],
+    pub(crate) safepoint_epoch: u64,
+    pub(crate) conservative_roots: Vec<Word>,
 }
 
 impl Default for Thread {
@@ -55,6 +57,8 @@ impl Thread {
             interrupt: false,
             stack_bounds: None,
             callee_saved: [0; 16],
+            safepoint_epoch: 0,
+            conservative_roots: Vec::new(),
         }
     }
     pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
@@ -77,6 +81,10 @@ impl Thread {
         token.index + token.count == self.roots.len()
             && (0..token.count).all(|_| self.roots.pop().is_some())
     }
+    /// Publish a word found by conservative stack or register scanning.
+    pub fn publish_conservative_root(&mut self, value: Word) {
+        self.conservative_roots.push(value);
+    }
     /// Return the current safepoint state.
     #[must_use]
     pub const fn safepoint_state(&self) -> SafepointState {
@@ -88,14 +96,26 @@ impl Thread {
         self.native
     }
     pub(crate) fn poll_safepoint(&mut self) {
-        if self.state == SafepointState::PollRequested {
-            self.state = SafepointState::Published;
-            self.state = SafepointState::Running;
+        if self.native == NativeState::Native {
+            return;
+        }
+        if self.state == SafepointState::PollRequested || self.heap.is_some() {
+            self.publish_snapshot();
+            if let Some(heap) = self.heap {
+                // SAFETY: the heap pointer is installed by register_thread and remains valid while registered.
+                unsafe { (*heap).poll_thread(self) };
+            } else {
+                self.state = SafepointState::Running;
+            }
         }
     }
     pub(crate) fn request_safepoint(&mut self) {
         if self.state == SafepointState::Running {
             self.state = SafepointState::PollRequested;
+            if let Some(heap) = self.heap {
+                // SAFETY: the heap pointer is installed by register_thread and remains valid while registered.
+                unsafe { (*heap).request_epoch() };
+            }
         }
     }
     pub(crate) fn publish_snapshot(&mut self) {
@@ -116,7 +136,7 @@ impl Thread {
         if let Some(heap) = self.heap {
             // SAFETY: registration stores this thread's heap pointer for its lifetime.
             unsafe {
-                (*heap).collect(full);
+                (*heap).collect_with_thread(self, full);
             }
         }
         self.state = SafepointState::Collecting;
@@ -134,3 +154,6 @@ impl Thread {
         pending
     }
 }
+
+// SAFETY: a Thread is an owner-local mutator context and is transferred to one OS thread at a time.
+unsafe impl Send for Thread {}

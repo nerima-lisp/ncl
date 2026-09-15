@@ -15,6 +15,7 @@ const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
 const FORWARDED_FLAG: u64 = 1 << 10;
 #[derive(Debug)]
+/// Moving heap and its stop-the-world coordination state.
 pub struct Heap {
     config: HeapConfig,
     state: Mutex<State>,
@@ -31,6 +32,7 @@ impl Default for HeapConfig {
 }
 impl Heap {
     #[must_use]
+    /// Construct an empty heap with the supplied capacity policy.
     pub fn new(config: HeapConfig) -> Self {
         Self {
             config,
@@ -49,9 +51,11 @@ impl Heap {
             stop_world_ready: Condvar::new(),
         }
     }
+    /// Return the configured dynamic-space capacity in bytes.
     pub const fn dynamic_space_size(&self) -> usize {
         self.config.dynamic_space_size
     }
+    /// Return the allocation debt threshold that triggers collection.
     pub const fn bytes_considered_between_gcs(&self) -> usize {
         self.config.bytes_considered_between_gcs
     }

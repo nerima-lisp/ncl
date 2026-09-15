@@ -134,6 +134,41 @@ impl Heap {
         self.write_words(value, &[(0, car), (1, cdr)]);
         Ok(value)
     }
+    pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
+        let state = self.lock_state();
+        let index = Self::find(&state, object)?;
+        state.objects[index]
+            .words
+            .get(slot)
+            .copied()
+            .map(Word::from_bits)
+    }
+    pub(crate) fn read_cons_word(&self, object: Word, slot: usize) -> Option<Word> {
+        self.read_word(object, slot)
+    }
+    pub(crate) fn write_cons_word(&self, object: Word, slot: usize, value: Word) -> bool {
+        self.write_word_at(object, slot, value)
+    }
+    pub(crate) fn write_word(&self, object: Word, slot: usize, value: Word) -> bool {
+        self.write_word_at(object, slot, value)
+    }
+    fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
+        let mut state = self.lock_state();
+        Self::find(&state, object).is_some_and(|index| {
+            state.objects[index]
+                .words
+                .get_mut(slot)
+                .is_some_and(|target| {
+                    *target = value.bits();
+                    true
+                })
+        })
+    }
+    pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
+        let state = self.lock_state();
+        let index = Self::find(&state, object)?;
+        Some(Self::object_widetag(&state.objects[index]))
+    }
     fn allocate(
         &self,
         thread: &mut Thread,
@@ -208,7 +243,7 @@ impl Heap {
         }
         state
             .layouts
-            .get(&Self::widetag(&state.objects[index]))
+            .get(&Self::object_widetag(&state.objects[index]))
             .map_or_else(Vec::new, |layout| layout.reference_words.clone())
     }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
@@ -465,7 +500,7 @@ impl Heap {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
-    fn widetag(object: &Object) -> u8 {
+    fn object_widetag(object: &Object) -> u8 {
         u8::try_from(object.words[0] & WIDETAG_MASK).unwrap_or(0)
     }
     fn relocated_address(

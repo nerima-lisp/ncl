@@ -23,7 +23,7 @@ nix develop '<worktree>' --command cargo test --release -p ncl-codegen --test ex
 ```
 
 The test invokes `fib(25)` ten times and reports the wall-clock median. At
-commit `c2b09e7d`, the median on macOS arm64 was `656416 ns`.
+commit `f10b581a`, the median on macOS arm64 was `687875 ns`.
 
 ## Contract differences
 
@@ -47,9 +47,10 @@ for GC metadata and debugging.
 
 ## Module layout
 
-The lowering is split between `target_aarch64.rs` and
-`target_aarch64_lowering.rs`; ABI and safepoint metadata live in `abi.rs` and
-`safepoint.rs`. AArch64 execution coverage is kept in
-`tests/exec_aarch64.rs`, while decoder-oriented fixtures are in
-`tests.rs` and `tests_aarch64.rs`. This keeps each Rust source module below
-the repository's 500-line limit.
+The lowering is split between `target_aarch64.rs`,
+`target_aarch64_lowering.rs`, and its `target_aarch64_lowering/ops.rs` child;
+ABI and safepoint metadata live in `abi.rs` and `safepoint.rs`. AArch64
+execution coverage is split across `tests/exec_aarch64.rs` and its fixture
+children, while decoder-oriented fixtures are split between `tests.rs`,
+`tests_aarch64.rs`, and `tests_aarch64_fixtures.rs`. Each Rust source module
+stays below the repository's 500-line limit.

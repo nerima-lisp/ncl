@@ -1,0 +1,10 @@
+[package]
+name = "ncl-asm-aarch64"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Dependency-free AArch64 instruction encoder for NCL"
+
+[lints]
+workspace = true

@@ -34,7 +34,7 @@ pub const fn decode(word: u32) -> Result<Inst, EncodeError> {
         _ if word & 0xFF00_0000 == 0xA900_0000 => {
             let load = word & 0x0040_0000 != 0;
             let mode = (word >> 23) & 0x3;
-            let offset = (((word >> 15) & 0x7f) as i16) << 9 >> 9;
+            let offset = ((((word >> 15) & 0x7f) as i16) << 9 >> 9) * 8;
             let base = match ((word >> 5) & 0x1f) as u8 {
                 31 => crate::RegOrSp::Sp,
                 value => crate::RegOrSp::Reg(Reg(value)),

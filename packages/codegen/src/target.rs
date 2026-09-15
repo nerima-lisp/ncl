@@ -167,7 +167,7 @@ pub fn compile_function_aarch64(
                             ));
                         }
                     };
-                    for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), word) {
+                    for instruction in ncl_asm_aarch64::mov_imm64(Reg(0), word) {
                         emit(&mut assembler, instruction)?;
                         pc = pc.saturating_add(4);
                     }

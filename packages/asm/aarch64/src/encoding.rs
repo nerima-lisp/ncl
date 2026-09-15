@@ -143,9 +143,18 @@ fn pair(m: crate::MemOperand, rt: Reg, rt2: Reg, load: bool) -> Result<u32, Enco
             offset,
             scale,
         } if scale == 8 && offset % 8 == 0 => (rs(base), i64::from(offset / 8), 0),
-        crate::MemOperand::Unscaled { base, offset } => (rs(base), i64::from(offset), 0),
-        crate::MemOperand::PreIndex { base, offset } => (rs(base), i64::from(offset), 3),
-        crate::MemOperand::PostIndex { base, offset } => (rs(base), i64::from(offset), 1),
+        crate::MemOperand::Unscaled { base, offset }
+        | crate::MemOperand::PreIndex { base, offset }
+        | crate::MemOperand::PostIndex { base, offset }
+            if offset % 8 == 0 =>
+        {
+            let mode = match m {
+                crate::MemOperand::PreIndex { .. } => 3,
+                crate::MemOperand::PostIndex { .. } => 1,
+                _ => 0,
+            };
+            (rs(base), i64::from(offset / 8), mode)
+        }
         _ => return Err(EncodeError::ImmediateOutOfRange { value: 0, bits: 7 }),
     };
     if !(-64..=63).contains(&offset) {

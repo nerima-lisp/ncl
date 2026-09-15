@@ -31,9 +31,9 @@ make_array(&mut ThreadContext, &Runtime, &[usize], ArrayElementType, Word, bool,
 array_dimensions/array_row_major_ref/array_row_major_set
 ```
 
-`Runtime::new`, `Runtime::with_config`, `Runtime::register_layouts`、`Runtime::define_function`、`Runtime::function`、`Runtime::ensure_package`、`Runtime::define_class`、`Runtime::class`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config` が runtime の登録・照会 API です。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
+`Runtime::new`, `Runtime::with_config`, `Runtime::register_layouts`、`Runtime::define_function`、`Runtime::function`、`Runtime::ensure_package`、`Runtime::find_package`、`Runtime::define_class`、`Runtime::class`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config` が runtime の登録・照会 API です。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
 
-`HashTable::new`、`insert`、`get`、`remove`、`gc_cleared`、`rehash_after_gc` と `sxhash` が hash table API です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`import`、`shadow`、`use_package`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
+`HashTable::new`、`insert`、`get`、`remove`、`map_entries` と `sxhash` が hash table API です。`Eq` は identity、`Eql` は数値値、`Equal` は文字列内容と cons、`Equalp` はそれらに ASCII case folding を加えた比較です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`unexport`、`import`、`shadow`、`use_package`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
 
 ## builtin!
 
@@ -75,7 +75,7 @@ let _ = car(ctx, value)?;
 assert!(pop_root(ctx, token));
 ```
 
-`RootToken` は LIFO です。トークンを逆順に pop し、token が有効な間は参照先の slot を move、resize、drop しないでください。`Word` を Rust メモリに保存したまま GC 後も使う必要がある場合は、その所有構造を heap object として設計し、参照 layout を `Runtime::register_layouts` 相当の登録経路に追加します。
+`RootToken` は LIFO です。トークンを逆順に pop し、token が有効な間は参照先の slot を move、resize、drop しないでください。Runtime の package、class、function registry は heap hash table で、Runtime が保持する managed Word は移動しない `Box<Word>` root slot とその `RootToken` だけです。未登録の Rust `Vec`、`HashMap`、package registry に managed Word を保存しないでください。
 
 ## 実装状況
 
@@ -83,14 +83,18 @@ assert!(pop_root(ctx, token));
 | --- | --- | --- |
 | widetag、固定 layout、cons/symbol accessor | 済 | layout の payload offset は header を含まない |
 | Runtime、ThreadContext、RootToken、builtin metadata | 済 | special binding と多値の高水準 ABI は利用可能 |
-| hash table、package intern、GC symbol registration | 済 | Rust 内 hash table の Word は caller が root を管理する |
-| generational GC を跨ぐ object root 更新 | 部分 | package/hash table の移動参照更新統合は下流で要確認 |
+| hash table、package intern、GC symbol registration | 済 | test 別の hash/equality、package の internal/external/use-list を heap object で保持する |
+| generational GC を跨ぐ object root 更新 | 済 | Runtime registry は安定 root slot、hash table/package payload は layout 登録済み |
 | string、simple-vector、特殊化配列、非 simple 配列の typed accessor/constructor | 済 | `ArrayElementType` と row-major accessor を使用する |
 | structure、CLOS instance、simple-fun、closure、bignum、ratio、double、complex、stream、readtable、code object | 部分 | payload accessor と layout は揃っている。可変長 closure は sys の `boxed_from` 接続後に GC 検証する |
 
 ## 契約との差分
 
 double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` は `repr(C)` で `Thread` を先頭に持つ。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
+
+hash table のスカラー metadata は参照語より前に置き、参照語は KV/INDEX の後半にまとめています。PACKAGE は参照 payload 0..7、HASH_TABLE は KV/INDEX payload 6..7 だけを scan します。これにより fixnum metadata を boxed reference として走査しません。全参照 store は write barrier 経由です。
+
+`ncl-sys` の conservative `find_raw` は lowtag を検証しないため、object 側は payload 語順と `boxed_from` を使ってこの段階の誤走査を回避しています。lowtag 検証そのものは sys 側の残課題です。weakness enum/API は登録済みですが、weak table の key/value clearing の完全な CL semantics は下流実装で補完します。
 
 | 種別 | layout | accessor | ctor | GC test |
 | --- | --- | --- | --- | --- |

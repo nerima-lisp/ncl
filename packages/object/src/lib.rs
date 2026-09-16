@@ -21,6 +21,7 @@ mod object_access;
 pub mod package;
 mod readtable;
 mod registry_extensions;
+mod roots;
 mod specialized_array;
 mod stream;
 mod structure;
@@ -54,12 +55,13 @@ pub use number::{
     make_complex, make_double, make_ratio,
 };
 pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
-pub use package::FindStatus;
-pub use package::Package;
+pub use package::{FindStatus, Package};
 pub use readtable::readtable_slot;
 pub use readtable::{
     Readtable, make_readtable, readtable_case, readtable_dispatch, readtable_syntax,
 };
+pub(crate) use roots::{finish_root, with_root};
+pub use roots::{pop_root, push_root, try_pop_root, try_push_root};
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
     specialized_array_set,
@@ -69,8 +71,9 @@ pub use stream::{
     Stream, make_stream, stream_direction, stream_element_type, stream_external_format,
     stream_implementation, stream_state,
 };
-pub use structure::structure_layout;
-pub use structure::{StructureLayout, make_structure, structure_ref, structure_set};
+pub use structure::{
+    StructureLayout, make_structure, structure_layout, structure_ref, structure_set,
+};
 pub use symbol_extensions::{
     set_symbol_value, symbol_function, symbol_name, symbol_plist, symbol_value,
 };
@@ -230,7 +233,6 @@ impl Runtime {
     }
 }
 /// Per-mutator object-layer context.
-///
 /// The address of this value may be passed to generated code as a
 /// `*mut ncl_sys::Thread`. Generated code may access only the leading `Thread`
 /// portion.
@@ -360,9 +362,7 @@ impl Default for ThreadContext {
     }
 }
 /// Allocate a cons cell.
-///
 /// # Errors
-///
 /// Returns the allocation failure reported by the heap.
 pub fn make_cons(
     ctx: &mut ThreadContext,
@@ -374,9 +374,7 @@ pub fn make_cons(
     ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, car, cdr).map_err(Into::into)
 }
 /// Allocate a header object with a widetag and payload words.
-///
 /// # Errors
-///
 /// Returns the allocation failure reported by the heap.
 pub fn allocate(
     ctx: &mut ThreadContext,
@@ -394,7 +392,6 @@ pub fn allocate(
     .map_err(Into::into)
 }
 /// Allocate a symbol with an initial name and unbound value/function cells.
-///
 /// # Errors
 ///
 /// Returns the allocation or storage failure reported by the heap.
@@ -420,60 +417,6 @@ pub fn make_symbol(
         ncl_sys::write_barrier(&mut ctx.thread, symbol, slot);
     }
     Ok(symbol)
-}
-/// Push a precise root.
-pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {
-    ncl_sys::push_root(&mut ctx.thread, value)
-}
-/// Pop a precise root.
-pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
-    ncl_sys::pop_root(&mut ctx.thread, token)
-}
-/// Push a precise root after validating the context address.
-///
-/// # Errors
-/// Returns [`ObjectError::ContextMoved`] when the context moved after registration.
-pub fn try_push_root(ctx: &mut ThreadContext, value: &mut Word) -> Result<RootToken, ObjectError> {
-    ctx.check_registered_address()?;
-    Ok(push_root(ctx, value))
-}
-/// Pop a precise root after validating the context address.
-///
-/// # Errors
-/// Returns [`ObjectError::ContextMoved`] when the context moved after registration.
-pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, ObjectError> {
-    ctx.check_registered_address()?;
-    Ok(pop_root(ctx, token))
-}
-
-pub(crate) fn with_root<T>(
-    ctx: &mut ThreadContext,
-    value: &mut Word,
-    f: impl FnOnce(&mut ThreadContext, Word) -> Result<T, ObjectError>,
-) -> Result<T, ObjectError> {
-    let token = try_push_root(ctx, value)?;
-    let result = f(ctx, *value);
-    finish_root(ctx, token, result)
-}
-
-/// Pop a root and return the callback result.
-///
-/// The callback result is discarded if cleanup detects a moved context.
-///
-/// # Errors
-/// Returns [`ObjectError::ContextMoved`] when the context moved after registration.
-///
-/// # Panics
-/// Panics if the root token is not at the top of the root stack.
-pub(crate) fn finish_root<T>(
-    ctx: &mut ThreadContext,
-    token: RootToken,
-    result: Result<T, ObjectError>,
-) -> Result<T, ObjectError> {
-    let popped = pop_root(ctx, token);
-    assert!(popped, "root token popped out of stack order");
-    ctx.check_registered_address()?;
-    result
 }
 /// Return the car of a cons cell.
 ///

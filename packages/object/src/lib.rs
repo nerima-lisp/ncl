@@ -140,7 +140,7 @@ impl Runtime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         ncl_sys::register_thread(&runtime.heap, &mut context.thread).map_err(ObjectError::from)?;
-        context.registered_thread_address = Some((&context.thread as *const Thread) as usize);
+        context.registered_thread_address = Some((&raw const context.thread) as usize);
         for target in [&runtime.functions, &runtime.packages, &runtime.classes] {
             let table =
                 HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)?.as_word();
@@ -274,7 +274,7 @@ impl ThreadContext {
     /// Returns the storage condition reported by the heap.
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
-        self.registered_thread_address = Some((&self.thread as *const Thread) as usize);
+        self.registered_thread_address = Some((&raw const self.thread) as usize);
         for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
             runtime.ensure_package(name)?;
         }
@@ -315,6 +315,9 @@ impl ThreadContext {
         self.pending.take()
     }
     /// Run a collection for this registered context.
+    ///
+    /// # Errors
+    /// Returns a storage error if this context was moved after registration.
     pub fn collect(&mut self, full: bool) -> Result<(), ObjectError> {
         self.check_registered_address()?;
         ncl_sys::collect(&mut self.thread, full);
@@ -332,7 +335,7 @@ impl ThreadContext {
     }
 
     fn check_registered_address(&self) -> Result<(), ObjectError> {
-        if self.registered_thread_address == Some((&self.thread as *const Thread) as usize) {
+        if self.registered_thread_address == Some((&raw const self.thread) as usize) {
             Ok(())
         } else {
             Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered))

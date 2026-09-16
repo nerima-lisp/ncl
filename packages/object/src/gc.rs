@@ -111,6 +111,9 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
 }
 
 /// Register the 14 SB-EXT GC, weak-pointer, and finalizer symbols owned here.
+///
+/// # Errors
+/// Returns an allocation, layout, or storage error from function registration.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     for name in [
         "*AFTER-GC-HOOKS*",

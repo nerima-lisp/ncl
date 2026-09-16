@@ -54,6 +54,9 @@ impl HashTable {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn new(
         ctx: &mut ThreadContext,
         runtime: &Runtime,
@@ -153,6 +156,9 @@ impl HashTable {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn insert(
         self,
         ctx: &mut ThreadContext,
@@ -167,7 +173,7 @@ impl HashTable {
         let mut value = value;
         let value_token = crate::push_root(ctx, &mut value);
         let result = (|| {
-            let mut table = HashTable::from(table_word);
+            let mut table = Self::from(table_word);
             table.rehash_if_needed(ctx)?;
             let capacity = table.read_usize(ctx, CAPACITY)?;
             if table.read_usize(ctx, OCCUPIED)? + 1 >= capacity * 7 / 8 {
@@ -181,7 +187,7 @@ impl HashTable {
                         capacity * 2
                     },
                 )?;
-                table = HashTable::from(table_word);
+                table = Self::from(table_word);
             }
             let count = table.count(ctx)?;
             let (index, kv) = table.storage(ctx)?;

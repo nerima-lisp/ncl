@@ -87,9 +87,9 @@ impl HashTable {
         ] {
             put(ctx, table, slot, value)?;
         }
-        let _ = crate::pop_root(ctx, index_token);
-        let _ = crate::pop_root(ctx, kv_token);
-        let _ = crate::pop_root(ctx, marker_token);
+        assert!(crate::pop_root(ctx, index_token));
+        assert!(crate::pop_root(ctx, kv_token));
+        assert!(crate::pop_root(ctx, marker_token));
         Ok(table.into())
     }
     /// Return the comparison mode.
@@ -225,9 +225,9 @@ impl HashTable {
             }
             Ok(())
         })();
-        let _ = crate::pop_root(ctx, value_token);
-        let _ = crate::pop_root(ctx, key_token);
-        let _ = crate::pop_root(ctx, table_token);
+        assert!(crate::pop_root(ctx, value_token));
+        assert!(crate::pop_root(ctx, key_token));
+        assert!(crate::pop_root(ctx, table_token));
         result
     }
     /// Remove a key and return its value when present.
@@ -367,8 +367,8 @@ impl HashTable {
         put(ctx, self.0, FREE_HEAD, Word::fixnum(EMPTY))?;
         put(ctx, self.0, HIGH_WATER, fix(new_position)?)?;
         put(ctx, self.0, OCCUPIED, fix(new_position)?)?;
-        let _ = crate::pop_root(ctx, index_token);
-        let _ = crate::pop_root(ctx, kv_token);
+        assert!(crate::pop_root(ctx, index_token));
+        assert!(crate::pop_root(ctx, kv_token));
         Ok(())
     }
     fn rehash_if_needed(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {

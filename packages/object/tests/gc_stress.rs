@@ -18,6 +18,22 @@ fn assert_symbol_name(ctx: &ThreadContext, symbol: Word) {
         assert_eq!(ncl_object::string_ref(ctx, name, index), Ok(expected));
     }
 }
+
+fn assert_registry_entries(ctx: &mut ThreadContext, runtime: &Runtime, symbol: Word) {
+    let class_name = "STRESS-CLASS";
+    runtime
+        .define_class(ctx, class_name, symbol)
+        .unwrap_or_else(|error| panic!("class: {error:?}"));
+    assert_eq!(runtime.class(ctx, class_name), Some(symbol));
+    runtime
+        .define_function(ctx, "NCL", "STRESS-FUNCTION", symbol)
+        .unwrap_or_else(|error| panic!("function: {error:?}"));
+    assert_eq!(
+        runtime.function(ctx, "NCL", "STRESS-FUNCTION"),
+        Some(symbol)
+    );
+}
+
 #[test]
 fn allocation_paths_survive_collection_before_every_allocation() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -102,18 +118,7 @@ fn allocation_paths_survive_collection_before_every_allocation() {
         .into();
     let instance_token = ncl_object::push_root(&mut ctx, &mut instance);
     assert_eq!(slot_ref(&ctx, instance.into(), 0), Ok(cons));
-    let class_name = "STRESS-CLASS".to_owned();
-    runtime
-        .define_class(&mut ctx, class_name.clone(), symbol)
-        .unwrap_or_else(|error| panic!("class: {error:?}"));
-    assert_eq!(runtime.class(&mut ctx, &class_name), Some(symbol));
-    runtime
-        .define_function(&mut ctx, "NCL", "STRESS-FUNCTION", symbol)
-        .unwrap_or_else(|error| panic!("function: {error:?}"));
-    assert_eq!(
-        runtime.function(&mut ctx, "NCL", "STRESS-FUNCTION"),
-        Some(symbol)
-    );
+    assert_registry_entries(&mut ctx, &runtime, symbol);
     assert!(ncl_object::pop_root(&mut ctx, instance_token));
     assert!(ncl_object::pop_root(&mut ctx, interned_token));
     assert!(ncl_object::pop_root(&mut ctx, package_token));

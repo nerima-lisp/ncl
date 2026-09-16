@@ -100,12 +100,24 @@ fn golden_aarch64_prologue_spills_register_arguments() {
         ],
         vec![],
     );
-    builder.push_op(ncl_ir::OpKind::Safepoint, &[]).unwrap();
-    builder
-        .terminate(ncl_ir::Terminator::Return { values: Vec::new() })
-        .unwrap();
-    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi).unwrap();
-    let word = |offset| u32::from_le_bytes(compiled.code[offset..offset + 4].try_into().unwrap());
+    assert!(builder.push_op(ncl_ir::OpKind::Safepoint, &[]).is_ok());
+    assert!(
+        builder
+            .terminate(ncl_ir::Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    let compiled_result = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi);
+    assert!(compiled_result.is_ok());
+    let Some(compiled) = compiled_result.ok() else {
+        return;
+    };
+    let word = |offset| {
+        u32::from_le_bytes(
+            compiled.code[offset..offset + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        )
+    };
     assert_eq!(
         ncl_asm_aarch64::decode(word(24)),
         Ok(ncl_asm_aarch64::Inst::Str {

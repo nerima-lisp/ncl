@@ -423,11 +423,18 @@ impl Package {
                     if let Some((symbol, _)) = Self::from(*package).find_symbol(ctx, *name)? {
                         symbol
                     } else {
-                        let symbol = make_symbol(ctx, runtime, *name)?;
-                        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, *package)?;
-                        HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
-                            .insert(ctx, runtime, *name, symbol)?;
-                        symbol
+                        let mut symbol = make_symbol(ctx, runtime, *name)?;
+                        crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                            put(
+                                ctx,
+                                *symbol,
+                                crate::layout::symbol_offset::PACKAGE,
+                                *package,
+                            )?;
+                            HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                                .insert(ctx, runtime, *name, *symbol)?;
+                            Ok(*symbol)
+                        })?
                     };
                 let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
                 while list != Word::NIL {

@@ -163,7 +163,8 @@ const fn fixup(i: &Inst) -> Option<(FixupKind, Label)> {
         _ => None,
     }
 }
-fn patch_signed(
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+const fn patch_signed(
     word: u32,
     delta: i64,
     bits: u8,
@@ -183,7 +184,8 @@ fn patch_signed(
     Ok(word | ((v as u32) & ((1 << bits) - 1)) << lsb)
 }
 
-fn patch_pc_relative21(word: u32, delta: i64, fixup: Fixup) -> Result<u32, EncodeError> {
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+const fn patch_pc_relative21(word: u32, delta: i64, fixup: Fixup) -> Result<u32, EncodeError> {
     let min = -(1_i64 << 20);
     let max = (1_i64 << 20) - 1;
     if delta < min || delta > max {

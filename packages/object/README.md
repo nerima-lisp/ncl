@@ -119,3 +119,5 @@ registry は専用の `registry_context` を Native 状態で保持します。s
 下流レーンは `Word` の lowtag を直接判定せず `classify` または typed accessor を使い、allocation を跨ぐ引数は `RootToken` で保護してください。
 
 残課題: `Runtime::function` と `class` の照会では検索キー文字列を毎回 heap allocation しています。キー文字列を一時 allocation なしで照会する仕組みは未実施です。`find_package` は registry の package 名と nickname を既存の heap 値から照合します。lowtag 検証と weak table の完全な Common Lisp semantics も sys/下流実装の課題です。
+残課題: CLHS が要求する `unintern` 時の name-conflict 検出は未対応です。
+残課題: `Runtime::class`/`function` の lookup は検索キー文字列を heap allocation します。

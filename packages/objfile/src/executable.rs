@@ -273,7 +273,7 @@ pub fn write_mach_executable(
             segment: "__TEXT",
             vmaddr: 0x1_0000_0000,
             fileoff: 0,
-            vmsize: 0x1000,
+            vmsize: u64::try_from(layout.data_offset).unwrap_or(u64::MAX),
             filesize: u64::try_from(layout.code_end).unwrap_or(u64::MAX),
             maxprot: 7,
             initprot: 5,
@@ -331,15 +331,12 @@ struct ExecutableLayout {
 }
 
 fn executable_layout(image: &ExecutableImage) -> Result<(Vec<u8>, ExecutableLayout), ObjectError> {
-    let header = 32usize;
     let segment_size = 72usize + 80;
     let dylinker_size = 32usize;
-    let build_size = 24usize;
+    let build_size = 32usize;
     let main_size = 24usize;
     let commands = segment_size * 2 + dylinker_size + build_size + main_size;
-    let code_offset = header
-        .checked_add(commands)
-        .ok_or(ObjectError::InvalidStructure("Mach-O command overflow"))?;
+    let code_offset = 0x1000usize;
     let code_end = code_offset
         .checked_add(image.code.len())
         .ok_or(ObjectError::InvalidStructure("executable size overflow"))?;
@@ -397,7 +394,7 @@ fn write_mach_tail(out: &mut [u8], layout: &ExecutableLayout, image: &Executable
     write_dylinker(out, dylinker_at);
     let build_at = dylinker_at + 32;
     write_build_version(out, build_at);
-    let main_at = build_at + 24;
+    let main_at = build_at + 32;
     out[main_at..main_at + 4].copy_from_slice(&0x8000_0028_u32.to_le_bytes());
     out[main_at + 4..main_at + 8].copy_from_slice(&24u32.to_le_bytes());
     out[main_at + 8..main_at + 16].copy_from_slice(
@@ -411,10 +408,11 @@ fn write_mach_tail(out: &mut [u8], layout: &ExecutableLayout, image: &Executable
 
 fn write_build_version(out: &mut [u8], at: usize) {
     out[at..at + 4].copy_from_slice(&0x32u32.to_le_bytes());
-    out[at + 4..at + 8].copy_from_slice(&24u32.to_le_bytes());
+    out[at + 4..at + 8].copy_from_slice(&32u32.to_le_bytes());
     out[at + 8..at + 12].copy_from_slice(&1u32.to_le_bytes());
     out[at + 12..at + 16].copy_from_slice(&0x000d_0000u32.to_le_bytes());
     out[at + 16..at + 20].copy_from_slice(&0x000d_0000u32.to_le_bytes());
+    out[at + 20..at + 24].copy_from_slice(&1u32.to_le_bytes());
 }
 
 fn write_dylinker(out: &mut [u8], at: usize) {

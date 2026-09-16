@@ -137,7 +137,7 @@ impl Thread {
 
     /// Return the heap this thread is registered with.
     #[must_use]
-    pub fn heap(&self) -> Option<&crate::heap::Heap> {
+    pub(crate) fn heap(&self) -> Option<&crate::heap::Heap> {
         self.heap.map(|heap| {
             // SAFETY: registration stores this heap pointer for the thread lifetime.
             unsafe { &*heap }
@@ -264,11 +264,32 @@ impl Thread {
     }
 
     /// Capture the current generated frame header for collection.
-    pub fn set_native_frame(&mut self, frame_fp: usize) {
+    pub fn set_native_frame(&mut self, frame_fp: usize, return_pc: usize) {
         let words = frame_fp as *const Word;
         // SAFETY: the generated frame owns four published header words at the supplied frame pointer.
         self.frame_chain = unsafe { std::slice::from_raw_parts(words, 4).to_vec() };
+        self.stack_bounds = None;
+        self.callee_saved = [0; 16];
+        self.frame_chain[1] = Word::from_bits(return_pc as u64);
         self.frame_address = Some(frame_fp);
+    }
+
+    /// Capture the generated caller's continuation at a runtime callback entry.
+    #[cfg(target_arch = "aarch64")]
+    #[inline(always)]
+    pub fn capture_return_address() -> usize {
+        let address: usize;
+        // SAFETY: x30 contains the generated caller's continuation at callback entry.
+        unsafe {
+            core::arch::asm!("mov {0}, x30", out(reg) address, options(nostack, preserves_flags));
+        }
+        address
+    }
+
+    #[cfg(not(target_arch = "aarch64"))]
+    #[inline(always)]
+    pub fn capture_return_address() -> usize {
+        0
     }
 
     /// Return the current value of a captured real frame word.
@@ -287,7 +308,9 @@ impl Thread {
         // SAFETY: the captured generated frame remains active during collection and write-back.
         unsafe {
             for (index, word) in self.frame_chain.iter().copied().enumerate() {
-                ((address as *mut Word).add(index)).write(word);
+                if index != 1 {
+                    ((address as *mut Word).add(index)).write(word);
+                }
             }
         }
     }

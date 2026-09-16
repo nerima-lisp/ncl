@@ -43,7 +43,9 @@ fn labels_are_patched() {
     assert!(a.emit(&Inst::Jmp(l)).is_ok());
     assert!(a.emit(&Inst::Nop(1)).is_ok());
     a.bind(l);
-    let blob = a.finish().expect("bound forward label must finish");
+    let Ok(blob) = a.finish() else {
+        panic!("bound forward label must finish")
+    };
     assert_eq!(blob.bytes, &[0xe9, 1, 0, 0, 0, 0x90]);
     assert_eq!(blob.fixups.first().map(|f| f.kind), Some(FixupKind::Rel32));
 }
@@ -57,7 +59,9 @@ fn backward_branches_are_patched() {
     let jcc_target = a.new_label();
     a.bind(jcc_target);
     assert!(a.emit(&Inst::Jcc(Cond::Ne, jcc_target)).is_ok());
-    let blob = a.finish().expect("bound backward labels must finish");
+    let Ok(blob) = a.finish() else {
+        panic!("bound backward labels must finish")
+    };
     assert_eq!(
         blob.bytes,
         &[

@@ -27,6 +27,8 @@ commit `f10b581a`, the median on macOS arm64 was `687875 ns`.
 
 ## Contract differences
 
+The stable ABI and frame/map contracts are specified in [Calling convention](../../docs/src/design/calling-convention.md) and [Native backend](../../docs/src/design/native-backend.md). The notes below are implementation observations for the Phase 1a fixture.
+
 - The third native frame-header word currently stores the function entry code
   address. The contract names this word as a function object.
 - `alloc_slow` receives `(ctx, words)` and returns an untagged address. The

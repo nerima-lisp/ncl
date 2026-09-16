@@ -91,6 +91,8 @@ assert!(pop_root(ctx, token));
 
 ## 契約との差分
 
+Object payload ordering, `ReferenceLayout`, runtime roots, hash tests, and write-barrier requirements are specified in [Object layout](../../docs/src/design/object-layout.md) and [GC interface](../../docs/src/design/gc-interface.md). The following notes retain Phase 1 implementation details and known gaps.
+
 double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` は `repr(C)` で `Thread` を先頭に持つ。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
 
 hash table と PACKAGE の payload はスカラー metadata を先頭、参照語を末尾に置き、`boxed_from` は最初の参照語（header 込み index）です。HASH_TABLE はスカラー payload 0..5、参照 payload 6..7、PACKAGE はスカラー payload 0..1、参照 payload 2..9 の順序で、fixnum metadata を boxed reference として走査しません。全参照 store は write barrier 経由です。

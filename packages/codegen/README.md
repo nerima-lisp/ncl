@@ -41,6 +41,8 @@ The stable ABI and frame/map contracts are specified in [Calling convention](../
   shared `value << 3` representation.
 - Safepoint maps for allocation and polling point immediately after the slow
   path `blr`. The decoder tests inspect those emitted instructions.
+- When multiple registered threads share one OS thread, every thread other
+  than the collector must be in native state during collection.
 
 ## Module layout
 

@@ -291,7 +291,6 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     )
     .expect("function object")
     .into();
-
     let mut thread = Thread::new();
     ncl_sys::register_thread(runtime.heap(), &mut thread).expect("register thread");
     let _root = ncl_sys::push_root(&mut thread, &mut function);

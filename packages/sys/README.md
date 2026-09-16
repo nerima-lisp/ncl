@@ -25,6 +25,8 @@ tagged words, heap, precise roots, safepoints, and platform surface.
 - `Thread::capture_current_frame_snapshot` and
   `Thread::write_back_frame_snapshot` expose the snapshot collector's
   forwarded native frame values back to the active generated frame.
+- When multiple registered threads share one OS thread, every thread other
+  than the collector must be in native state during collection.
 
 ## Platform scope
 

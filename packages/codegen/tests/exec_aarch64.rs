@@ -37,7 +37,7 @@ extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
 
 extern "C" fn safepoint_slow(ctx: &mut Thread) {
     SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
-    if COLLECT_IN_SAFEPOINT.load(Ordering::SeqCst) {
+    if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) {
         ctx.capture_current_frame_snapshot();
         FRAME_WORD_BEFORE.store(
             ctx.frame_word(2)
@@ -49,6 +49,7 @@ extern "C" fn safepoint_slow(ctx: &mut Thread) {
         ctx.enter_native();
         ncl_sys::collect(ctx, true);
         ctx.leave_native();
+        ctx.clear_safepoint_request();
         FRAME_WORD_AFTER.store(
             ctx.frame_word(2)
                 .expect("written-back frame function object")

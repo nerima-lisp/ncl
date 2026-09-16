@@ -218,9 +218,18 @@ impl Package {
         name: Word,
         symbol: Word,
     ) -> Result<(), ObjectError> {
-        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, self.0)?;
-        HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?)
-            .insert(ctx, runtime, name, symbol)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let mut symbol = symbol;
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    put(ctx, *symbol, crate::layout::symbol_offset::PACKAGE, *package)?;
+                    HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                        .insert(ctx, runtime, *name, *symbol)
+                })
+            })
+        })
     }
     /// Add another package to this package's use list.
     ///

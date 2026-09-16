@@ -1,5 +1,5 @@
 use crate::array::{length, read, write};
-use crate::{ArrayElementType, ObjectError, Runtime, ThreadContext, allocate, layout};
+use crate::{ArrayElementType, ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
 
 use ncl_sys::Word;
 
@@ -36,6 +36,7 @@ pub fn make_specialized_array(
     for value in values.iter().copied() {
         validate(element_type, value)?;
     }
+    with_roots(ctx, values, |ctx, values| {
     let object = allocate(
         ctx,
         runtime,
@@ -66,6 +67,7 @@ pub fn make_specialized_array(
         )?;
     }
     Ok(object)
+    })
 }
 
 /// Return a specialized array's element type.

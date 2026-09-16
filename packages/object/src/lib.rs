@@ -60,7 +60,7 @@ pub use readtable::readtable_slot;
 pub use readtable::{
     Readtable, make_readtable, readtable_case, readtable_dispatch, readtable_syntax,
 };
-pub(crate) use roots::{finish_root, with_root};
+pub(crate) use roots::{finish_root, with_root, with_roots};
 pub use roots::{pop_root, push_root, try_pop_root, try_push_root};
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
@@ -201,10 +201,10 @@ impl Runtime {
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         let key = format!("{package}::{name}");
-        let mut key = make_string(&mut context, self, &key.chars().collect::<Vec<_>>())?;
         let mut function = function;
-        let result = with_root(&mut context, &mut key, |context, key| {
-            with_root(context, &mut function, |context, function| {
+        let result = with_root(&mut context, &mut function, |context, function| {
+            let mut key = make_string(context, self, &key.chars().collect::<Vec<_>>())?;
+            with_root(context, &mut key, |context, key| {
                 HashTable::from(Self::table(&self.functions)?)
                     .insert(context, self, *key, *function)
             })
@@ -419,23 +419,26 @@ pub fn make_symbol(
     runtime: &Runtime,
     name: Word,
 ) -> Result<Word, ObjectError> {
-    let symbol = allocate(ctx, runtime, widetag::SYMBOL, 8)?;
-    for (slot, value) in [
-        (symbol_offset::VALUE, Word::UNBOUND),
-        (symbol_offset::FUNCTION, Word::UNBOUND),
-        (symbol_offset::PLIST, Word::NIL),
-        (symbol_offset::PACKAGE, Word::NIL),
-        (symbol_offset::NAME, name),
-        (symbol_offset::TLS_INDEX, Word::fixnum(0)),
-        (symbol_offset::HASH, Word::fixnum(0)),
-        (symbol_offset::FLAGS, Word::fixnum(0)),
-    ] {
-        if !ncl_sys::write_object_word(&mut ctx.thread, symbol, slot, value) {
-            return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+    let mut name = name;
+    crate::with_root(ctx, &mut name, |ctx, name| {
+        let symbol = allocate(ctx, runtime, widetag::SYMBOL, 8)?;
+        for (slot, value) in [
+            (symbol_offset::VALUE, Word::UNBOUND),
+            (symbol_offset::FUNCTION, Word::UNBOUND),
+            (symbol_offset::PLIST, Word::NIL),
+            (symbol_offset::PACKAGE, Word::NIL),
+            (symbol_offset::NAME, *name),
+            (symbol_offset::TLS_INDEX, Word::fixnum(0)),
+            (symbol_offset::HASH, Word::fixnum(0)),
+            (symbol_offset::FLAGS, Word::fixnum(0)),
+        ] {
+            if !ncl_sys::write_object_word(&mut ctx.thread, symbol, slot, value) {
+                return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+            }
+            ncl_sys::write_barrier(&mut ctx.thread, symbol, slot);
         }
-        ncl_sys::write_barrier(&mut ctx.thread, symbol, slot);
-    }
-    Ok(symbol)
+        Ok(symbol)
+    })
 }
 /// Return the car of a cons cell.
 ///

@@ -39,6 +39,31 @@ pub fn with_root<T>(
     finish_root(ctx, token, result)
 }
 
+pub(crate) fn with_roots<T>(
+    ctx: &mut ThreadContext,
+    values: &[Word],
+    f: impl FnOnce(&mut ThreadContext, &[Word]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut rooted_values = values.to_vec();
+    let mut tokens = Vec::with_capacity(rooted_values.len());
+    for value in &mut rooted_values {
+        match try_push_root(ctx, value) {
+            Ok(token) => tokens.push(token),
+            Err(error) => {
+                for token in tokens.into_iter().rev() {
+                    let _ = try_pop_root(ctx, token);
+                }
+                return Err(error);
+            }
+        }
+    }
+    let result = f(ctx, &rooted_values);
+    for token in tokens.into_iter().rev() {
+        assert!(try_pop_root(ctx, token).unwrap_or(false));
+    }
+    result
+}
+
 /// Pop a root and return the callback result.
 ///
 /// The callback result is discarded if cleanup detects a moved context.

@@ -1,4 +1,4 @@
-use crate::{ObjectError, Runtime, ThreadContext, allocate, layout};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
 use crate::{specialized_array_ref, specialized_array_set};
 use ncl_sys::Word;
 /// Options for constructing a non-simple array.
@@ -191,23 +191,18 @@ pub fn make_simple_vector(
     runtime: &Runtime,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
-    let mut rooted_values = values.to_vec();
-    let mut tokens = Vec::with_capacity(rooted_values.len());
-    for value in &mut rooted_values {
-        tokens.push(crate::push_root(ctx, value));
-    }
-    let result = (|| {
+    with_roots(ctx, values, |ctx, rooted_values| {
         let object = allocate(
             ctx,
             runtime,
             layout::widetag::SIMPLE_VECTOR,
-            values.len().checked_add(1).ok_or(ObjectError::Layout)?,
+            rooted_values.len().checked_add(1).ok_or(ObjectError::Layout)?,
         )?;
         write(
             ctx,
             object,
             0,
-            Word::fixnum(i64::try_from(values.len()).map_err(|_| ObjectError::Layout)?),
+            Word::fixnum(i64::try_from(rooted_values.len()).map_err(|_| ObjectError::Layout)?),
             layout::widetag::SIMPLE_VECTOR,
         )?;
         for (index, value) in rooted_values.iter().copied().enumerate() {
@@ -220,11 +215,7 @@ pub fn make_simple_vector(
             )?;
         }
         Ok(object)
-    })();
-    for token in tokens.into_iter().rev() {
-        assert!(crate::pop_root(ctx, token));
-    }
-    result
+    })
 }
 
 /// Return a simple vector's length.
@@ -306,6 +297,9 @@ pub fn make_array(
     }
     let rank = dimensions.len();
     let data_offset = metadata_offset(rank, 4);
+    let displaced = displaced_to.is_some();
+    let displaced_to = displaced_to.unwrap_or(Word::NIL);
+    with_roots(ctx, &[initial_element, displaced_to], |ctx, rooted| {
     let object = allocate(
         ctx,
         runtime,
@@ -336,7 +330,7 @@ pub fn make_array(
     write_meta(
         ctx,
         metadata_offset(rank, 1),
-        displaced_to.unwrap_or(Word::NIL),
+        rooted[1],
     )?;
     write_meta(
         ctx,
@@ -350,7 +344,7 @@ pub fn make_array(
     if fill_pointer.is_some() {
         flags |= layout::array_offset::FLAG_HAS_FILL_POINTER;
     }
-    if displaced_to.is_some() {
+    if displaced {
         flags |= layout::array_offset::FLAG_DISPLACED;
     }
     write_meta(
@@ -359,9 +353,10 @@ pub fn make_array(
         Word::fixnum(i64::try_from(flags).map_err(|_| ObjectError::Layout)?),
     )?;
     for index in 0..total {
-        write_meta(ctx, metadata_offset(rank, 4) + index, initial_element)?;
+        write_meta(ctx, metadata_offset(rank, 4) + index, rooted[0])?;
     }
     Ok(object)
+    })
 }
 
 const fn metadata_offset(rank: usize, field: usize) -> usize {

@@ -1,5 +1,5 @@
 use crate::object_access::{get, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, stream_offset, widetag};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, stream_offset, widetag, with_roots};
 use ncl_sys::Word;
 
 crate::word_newtype!(Stream);
@@ -17,20 +17,17 @@ pub fn make_stream(
     state: Word,
     implementation: Word,
 ) -> Result<Stream, ObjectError> {
-    let object = allocate(ctx, runtime, widetag::STREAM, 5)?;
-    for (i, v) in [
-        direction,
-        element_type,
-        external_format,
-        state,
-        implementation,
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        put(ctx, object, i, v)?;
-    }
-    Ok(object.into())
+    with_roots(
+        ctx,
+        &[direction, element_type, external_format, state, implementation],
+        |ctx, values| {
+            let object = allocate(ctx, runtime, widetag::STREAM, 5)?;
+            for (i, v) in values.iter().copied().enumerate() {
+                put(ctx, object, i, v)?;
+            }
+            Ok(object.into())
+        },
+    )
 }
 /// Read stream state.
 ///

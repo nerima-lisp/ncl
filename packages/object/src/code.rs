@@ -1,5 +1,5 @@
 use crate::object_access::{fix, get, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, widetag};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, widetag, with_root};
 use ncl_sys::Word;
 
 crate::word_newtype!(CodeObject);
@@ -17,14 +17,23 @@ pub fn make_code_object(
     stack_map: Word,
     debug: Word,
 ) -> Result<CodeObject, ObjectError> {
-    let object = allocate(ctx, runtime, widetag::CODE, 5)?;
-    for (i, v) in [fix(entry)?, fix(size)?, constants, stack_map, debug]
-        .into_iter()
-        .enumerate()
-    {
-        put(ctx, object, i, v)?;
-    }
-    Ok(object.into())
+    let mut constants = constants;
+    let mut stack_map = stack_map;
+    let mut debug = debug;
+    with_root(ctx, &mut constants, |ctx, constants| {
+        with_root(ctx, &mut stack_map, |ctx, stack_map| {
+            with_root(ctx, &mut debug, |ctx, debug| {
+                let object = allocate(ctx, runtime, widetag::CODE, 5)?;
+                for (i, v) in [fix(entry)?, fix(size)?, *constants, *stack_map, *debug]
+                    .into_iter()
+                    .enumerate()
+                {
+                    put(ctx, object, i, v)?;
+                }
+                Ok(object.into())
+            })
+        })
+    })
 }
 /// Read a raw code object slot.
 ///

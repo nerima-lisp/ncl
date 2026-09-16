@@ -60,10 +60,10 @@ impl Runtime {
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         let name = name.into();
-        let mut name = make_string(&mut context, self, &name.chars().collect::<Vec<_>>())?;
         let mut class = class;
-        let result = crate::with_root(&mut context, &mut name, |context, name| {
-            crate::with_root(context, &mut class, |context, class| {
+        let result = crate::with_root(&mut context, &mut class, |context, class| {
+            let mut name = make_string(context, self, &name.chars().collect::<Vec<_>>())?;
+            crate::with_root(context, &mut name, |context, name| {
                 let table = Self::table(&self.classes)?;
                 HashTable::from(table).insert(context, self, *name, *class)
             })

@@ -1,5 +1,5 @@
 use crate::object_access::{get, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, readtable_offset, widetag};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, readtable_offset, widetag, with_roots};
 use ncl_sys::Word;
 
 crate::word_newtype!(Readtable);
@@ -15,11 +15,13 @@ pub fn make_readtable(
     dispatch: Word,
     case_mode: Word,
 ) -> Result<Readtable, ObjectError> {
-    let object = allocate(ctx, runtime, widetag::READTABLE, 3)?;
-    for (i, v) in [syntax, dispatch, case_mode].into_iter().enumerate() {
-        put(ctx, object, i, v)?;
-    }
-    Ok(object.into())
+    with_roots(ctx, &[syntax, dispatch, case_mode], |ctx, values| {
+        let object = allocate(ctx, runtime, widetag::READTABLE, 3)?;
+        for (i, v) in values.iter().copied().enumerate() {
+            put(ctx, object, i, v)?;
+        }
+        Ok(object.into())
+    })
 }
 /// Read a raw readtable slot.
 ///

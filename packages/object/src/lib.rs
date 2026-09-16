@@ -86,6 +86,7 @@ pub enum ObjectError {
     Layout,
     Unbound,
     Unsupported,
+    PackageConflict,
 }
 impl std::fmt::Display for ObjectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

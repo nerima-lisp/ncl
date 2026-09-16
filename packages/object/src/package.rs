@@ -3,7 +3,7 @@
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::object_access::{get, put};
 use crate::widetag;
-use crate::{ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol};
+use crate::{ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol, rplacd};
 use ncl_sys::Word;
 
 crate::word_newtype!(Package);
@@ -87,6 +87,36 @@ impl Package {
     pub fn name(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
         get(ctx, self.0, widetag::PACKAGE, NAME)
     }
+    /// Add a nickname to this package.
+    pub fn add_nickname(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        nickname: Word,
+    ) -> Result<bool, ObjectError> {
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut nickname = nickname;
+            crate::with_root(ctx, &mut nickname, |ctx, nickname| {
+                let mut names = get(ctx, *package, widetag::PACKAGE, NICKNAMES)?;
+                while names != Word::NIL {
+                    if ncl_sys::read_cons_word(&ctx.thread, names, 0) == Some(*nickname) {
+                        return Ok(false);
+                    }
+                    names = ncl_sys::read_cons_word(&ctx.thread, names, 1)
+                        .ok_or(ObjectError::Layout)?;
+                }
+                let names = make_cons(
+                    ctx,
+                    runtime,
+                    *nickname,
+                    get(ctx, *package, widetag::PACKAGE, NICKNAMES)?,
+                )?;
+                put(ctx, *package, NICKNAMES, names)?;
+                Ok(true)
+            })
+        })
+    }
     /// Find an accessible symbol in this package.
     ///
     /// # Errors
@@ -168,8 +198,24 @@ impl Package {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let internal = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
-                let Some(mut symbol) = internal.remove(ctx, runtime, *name)? else {
-                    return Ok(false);
+                let mut symbol = match internal.remove(ctx, runtime, *name)? {
+                    Some(symbol) => symbol,
+                    None => {
+                        let external =
+                            HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                        if external.get(ctx, *name)?.is_some() {
+                            return Ok(true);
+                        }
+                        let Some((symbol, FindStatus::Inherited)) =
+                            Self::from(*package).find_symbol(ctx, *name)?
+                        else {
+                            return Ok(false);
+                        };
+                        Self::from(*package).import(ctx, runtime, *name, symbol)?;
+                        HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                            .remove(ctx, runtime, *name)?
+                            .ok_or(ObjectError::Layout)?
+                    }
                 };
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
                     let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
@@ -224,12 +270,31 @@ impl Package {
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let mut symbol = symbol;
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    put(
+                    let home = get(
                         ctx,
                         *symbol,
+                        widetag::SYMBOL,
                         crate::layout::symbol_offset::PACKAGE,
-                        *package,
                     )?;
+                    if home == Word::NIL {
+                        put(
+                            ctx,
+                            *symbol,
+                            crate::layout::symbol_offset::PACKAGE,
+                            *package,
+                        )?;
+                    }
+                    if let Some((existing, status)) =
+                        Self::from(*package).find_symbol(ctx, *name)?
+                    {
+                        if existing == *symbol {
+                            if status != FindStatus::Inherited {
+                                return Ok(());
+                            }
+                        } else {
+                            return Err(ObjectError::PackageConflict);
+                        }
+                    }
                     HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                         .insert(ctx, runtime, *name, *symbol)
                 })
@@ -265,6 +330,40 @@ impl Package {
                     get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?,
                 )?;
                 put(ctx, *package_self, USE_LIST, list)?;
+                let mut used_by = get(ctx, *package, widetag::PACKAGE, USED_BY)?;
+                while used_by != Word::NIL {
+                    if ncl_sys::read_cons_word(&ctx.thread, used_by, 0) == Some(*package_self) {
+                        return Ok(true);
+                    }
+                    used_by = ncl_sys::read_cons_word(&ctx.thread, used_by, 1)
+                        .ok_or(ObjectError::Layout)?;
+                }
+                let used_by = make_cons(
+                    ctx,
+                    runtime,
+                    *package_self,
+                    get(ctx, *package, widetag::PACKAGE, USED_BY)?,
+                )?;
+                put(ctx, *package, USED_BY, used_by)?;
+                Ok(true)
+            })
+        })
+    }
+    /// Remove another package from this package's use list.
+    pub fn unuse_package(
+        self,
+        ctx: &mut ThreadContext,
+        package: Word,
+    ) -> Result<bool, ObjectError> {
+        let mut package_self = self.0;
+        crate::with_root(ctx, &mut package_self, |ctx, package_self| {
+            let mut package = package;
+            crate::with_root(ctx, &mut package, |ctx, package| {
+                let removed = remove_from_list(ctx, *package_self, USE_LIST, *package)?;
+                if !removed {
+                    return Ok(false);
+                }
+                remove_from_list(ctx, *package, USED_BY, *package_self)?;
                 Ok(true)
             })
         })
@@ -279,15 +378,54 @@ impl Package {
         runtime: &Runtime,
         name: Word,
     ) -> Result<bool, ObjectError> {
-        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
-        if internal.remove(ctx, runtime, name)?.is_some() {
-            return Ok(true);
-        }
-        Ok(
-            HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?)
-                .remove(ctx, runtime, name)?
-                .is_some(),
-        )
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let symbol = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                    .remove(ctx, runtime, *name)?
+                    .or(
+                        HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?)
+                            .remove(ctx, runtime, *name)?,
+                    );
+                let Some(mut symbol) = symbol else {
+                    return Ok(false);
+                };
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    if get(
+                        ctx,
+                        *symbol,
+                        widetag::SYMBOL,
+                        crate::layout::symbol_offset::PACKAGE,
+                    )? == *package
+                    {
+                        put(
+                            ctx,
+                            *symbol,
+                            crate::layout::symbol_offset::PACKAGE,
+                            Word::NIL,
+                        )?;
+                    }
+                    let mut current = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
+                    let mut previous = Word::NIL;
+                    while current != Word::NIL {
+                        let next = ncl_sys::read_cons_word(&ctx.thread, current, 1)
+                            .ok_or(ObjectError::Layout)?;
+                        if ncl_sys::read_cons_word(&ctx.thread, current, 0) == Some(*symbol) {
+                            if previous == Word::NIL {
+                                put(ctx, *package, SHADOWING, next)?;
+                            } else {
+                                rplacd(ctx, previous, next)?;
+                            }
+                            break;
+                        }
+                        previous = current;
+                        current = next;
+                    }
+                    Ok(true)
+                })
+            })
+        })
     }
     /// Add a name to the package's shadowing list.
     ///
@@ -303,8 +441,30 @@ impl Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
-                let list = make_cons(ctx, runtime, *name, list)?;
+                let symbol = match Self::from(*package).find_symbol(ctx, *name)? {
+                    Some((symbol, _)) => symbol,
+                    None => {
+                        let symbol = make_symbol(ctx, runtime, *name)?;
+                        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, *package)?;
+                        HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                            .insert(ctx, runtime, *name, symbol)?;
+                        symbol
+                    }
+                };
+                let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
+                while list != Word::NIL {
+                    if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(symbol) {
+                        return Ok(());
+                    }
+                    list =
+                        ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
+                }
+                let list = make_cons(
+                    ctx,
+                    runtime,
+                    symbol,
+                    get(ctx, *package, widetag::PACKAGE, SHADOWING)?,
+                )?;
                 put(ctx, *package, SHADOWING, list)
             })
         })
@@ -325,6 +485,30 @@ impl Package {
             make_symbol(ctx, runtime, name)
         })
     }
+}
+
+fn remove_from_list(
+    ctx: &mut ThreadContext,
+    object: Word,
+    slot: usize,
+    target: Word,
+) -> Result<bool, ObjectError> {
+    let mut current = get(ctx, object, widetag::PACKAGE, slot)?;
+    let mut previous = Word::NIL;
+    while current != Word::NIL {
+        let next = ncl_sys::read_cons_word(&ctx.thread, current, 1).ok_or(ObjectError::Layout)?;
+        if ncl_sys::read_cons_word(&ctx.thread, current, 0) == Some(target) {
+            if previous == Word::NIL {
+                put(ctx, object, slot, next)?;
+            } else {
+                rplacd(ctx, previous, next)?;
+            }
+            return Ok(true);
+        }
+        previous = current;
+        current = next;
+    }
+    Ok(false)
 }
 
 /// Canonical static NIL value.

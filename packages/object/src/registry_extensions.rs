@@ -1,5 +1,5 @@
 use crate::hash_table::HashTable;
-use crate::{ObjectError, Package, Runtime, make_string};
+use crate::{ObjectError, Package, Runtime, make_string, string_length, string_ref};
 use ncl_sys::{HeapConfig, StorageCondition, Word};
 
 impl Runtime {
@@ -39,13 +39,51 @@ impl Runtime {
 
     #[must_use]
     pub fn find_package(&self, name: &str) -> Option<Word> {
-        let mut context = self.registry_context.lock().ok()?;
-        let name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
+        let context = self.registry_context.lock().ok()?;
         let table = Self::table(&self.packages).ok()?;
-        let result = HashTable::from(table)
-            .get(&mut context, name_word)
-            .ok()
-            .flatten();
+        let name_chars = name.chars().collect::<Vec<_>>();
+        let mut result = None;
+        HashTable::from(table)
+            .for_each_entry(&context, |_, package| {
+                if result.is_some() {
+                    return;
+                }
+                let package = Package::from(package);
+                let matches = |word: Word| {
+                    string_length(&context, word).ok() == Some(name_chars.len())
+                        && name_chars
+                            .iter()
+                            .enumerate()
+                            .all(|(i, c)| string_ref(&context, word, i) == Ok(*c))
+                };
+                if package.name(&context).is_ok_and(matches) {
+                    result = Some(package.as_word());
+                    return;
+                }
+                let mut nicknames = Package::from(package.as_word())
+                    .name(&context)
+                    .ok()
+                    .and_then(|_| {
+                        crate::object_access::get(
+                            &context,
+                            package.as_word(),
+                            crate::widetag::PACKAGE,
+                            crate::package::NICKNAMES,
+                        )
+                        .ok()
+                    })
+                    .unwrap_or(Word::NIL);
+                while nicknames != Word::NIL {
+                    let nickname = ncl_sys::read_cons_word(&context.thread, nicknames, 0);
+                    if nickname.is_some_and(matches) {
+                        result = Some(package.as_word());
+                        break;
+                    }
+                    nicknames =
+                        ncl_sys::read_cons_word(&context.thread, nicknames, 1).unwrap_or(Word::NIL);
+                }
+            })
+            .ok()?;
         drop(context);
         result
     }

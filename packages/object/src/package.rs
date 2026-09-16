@@ -136,8 +136,8 @@ impl Package {
         put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, package)?;
         let table = HashTable::from(get(ctx, package, widetag::PACKAGE, INTERNAL)?);
         let result = table.insert(ctx, runtime, name_word, symbol);
-        let _ = crate::pop_root(ctx, package_token);
         let _ = crate::pop_root(ctx, symbol_token);
+        let _ = crate::pop_root(ctx, package_token);
         result?;
         let _ = crate::pop_root(ctx, name_token);
         Ok((symbol, FindStatus::Internal))

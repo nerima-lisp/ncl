@@ -237,7 +237,6 @@ impl Runtime {
             .ok_or(ObjectError::Layout)
     }
 }
-/// Per-mutator object-layer context.
 /// Per-mutator object-layer context. Generated code obtains its stable thread
 /// pointer with [`ThreadContext::thread_mut`].
 #[derive(Debug)]
@@ -273,6 +272,8 @@ impl ThreadContext {
     /// Register this context with a runtime.
     ///
     /// The thread state is heap allocated, so moving this context after registration is safe.
+    /// The `runtime` must outlive every registered context: dropping it while a context is
+    /// still registered would leave the thread's heap reference dangling.
     ///
     /// # Errors
     ///
@@ -362,6 +363,12 @@ impl ThreadContext {
         Ok(())
     }
 }
+/// Unregister the context from its heap.
+///
+/// `ncl_sys::unregister_thread` resolves the heap through the `Thread`'s stored
+/// heap reference, so the `Runtime` that owns the heap must outlive every
+/// registered `ThreadContext`. Dropping a `Runtime` while a registered context
+/// is still alive would dereference freed heap.
 impl Drop for ThreadContext {
     fn drop(&mut self) {
         if self.registered {

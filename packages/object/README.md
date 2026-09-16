@@ -31,7 +31,7 @@ make_array(&mut ThreadContext, &Runtime, &[usize], ArrayOptions) -> Result<Word,
 array_dimensions/array_row_major_ref/array_row_major_set
 ```
 
-`Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function(&mut ThreadContext, ...)`、`Runtime::function(&mut ThreadContext, ...)`、`Runtime::ensure_package(&mut ThreadContext, ...)`、`Runtime::find_package(&mut ThreadContext, ...)`、`Runtime::define_class(&mut ThreadContext, ...)`、`Runtime::class(&mut ThreadContext, ...)`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config`、`Runtime::set_strict_forwarding` が runtime の登録・照会・GC API です。registry 操作は呼び出し側 context を使います。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
+`Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function(&mut ThreadContext, ...)`、`Runtime::function(&mut ThreadContext, ...)`、`Runtime::ensure_package(&mut ThreadContext, ...)`、`Runtime::find_package(&ThreadContext, ...)`、`Runtime::define_class(&mut ThreadContext, ...)`、`Runtime::class(&mut ThreadContext, ...)`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config`、`Runtime::set_strict_forwarding` が runtime の登録・照会・GC API です。registry 操作は呼び出し側 context を使います。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
 
 `ThreadContext::register` 後もコンテキストの move は安全です。`Thread` は Box で固定され、heap が保持するアドレスは変わりません。生成コードへは `thread_mut()` で得た `&mut Thread` から `*mut Thread` を渡します。Drop 時に登録解除されます。未登録 context は `collect`、allocation、`make_cons` を拒否します。
 
@@ -80,7 +80,7 @@ assert!(pop_root(ctx, token));
 
 `RootToken` は LIFO です。トークンを逆順に pop し、token が有効な間は参照先の slot を move、resize、drop しないでください。Runtime の package、class、function registry は heap hash table で、Runtime が保持する managed Word は移動しない `Box<Word>` root slot とその `RootToken` だけです。未登録の Rust `Vec`、`HashMap`、package registry に managed Word を保存しないでください。
 
-確保関数が値で受け取る managed 引数は、その関数自身が確保を跨いで root 化します。managed Word を含む slice/Vec は確保を跨いで保持せず、必要なら各要素を root 化してから確保します。`ThreadContext::set_gc_stress(true)` または `Runtime::set_gc_stress(true)` を使うと、確保ごとの GC でこの契約をテストできます。
+確保関数が値で受け取る managed 引数は、その関数自身が確保を跨いで root 化します。managed Word を含む slice/Vec は確保を跨いで保持せず、必要なら各要素を root 化してから確保します。`ThreadContext::set_gc_stress(true)` を使うと、確保ごとの GC でこの契約をテストできます。stale-word 検査は `ThreadContext::set_strict_forwarding(true)` または heap 全体に効く `Runtime::set_strict_forwarding(true)` で有効化します。
 
 constructor は値で受け取った managed 引数と slice の各要素を、内部の確保より前に root 化し、確保後は更新済みの root slot から読み取ります。
 
@@ -100,6 +100,8 @@ constructor は値で受け取った managed 引数と slice の各要素を、�
 Object payload ordering, `ReferenceLayout`, runtime roots, hash tests, and write-barrier requirements are specified in [Object layout](../../docs/src/design/object-layout.md) and [GC interface](../../docs/src/design/gc-interface.md). The following notes retain Phase 1 implementation details and known gaps.
 
 double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` のレイアウトを下流 ABI に公開せず、生成コードへは `thread_mut()` で得た `Thread` のポインタを渡す。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
+
+`ThreadContext` の Drop は登録解除に `ncl_sys::unregister_thread` を使います。`unregister_thread` は `Thread` が保持する heap 参照から heap を引くため、`Runtime`（heap の所有者）は登録済みの全 `ThreadContext` より長生きしなければなりません。登録済み context が生きているうちに `Runtime` を drop すると解放済み heap を参照します。
 
 hash table と PACKAGE の payload はスカラー metadata を先頭、参照語を末尾に置き、`boxed_from` は最初の参照語（header 込み index）です。HASH_TABLE はスカラー payload 0..7、参照 payload 8..10、PACKAGE はスカラー payload 0..1、参照 payload 2..9 の順序で、fixnum metadata を boxed reference として走査しません。HASH_TABLE の 5..7 は順にフリーリスト先頭、高水位、occupied（live と tombstone の合計）です。KV の空き key slot は予約 tagged word、対応する value slot は次の空き position です。新規 position は高水位から切り出し、削除 position はフリーリストから O(1) で再利用します。insert/remove/get は平均 O(1)、rehash は O(n)、resize は O(n) です。全参照 store は write barrier 経由です。
 

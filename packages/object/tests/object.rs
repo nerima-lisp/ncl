@@ -63,7 +63,8 @@ fn builtin_abi_expands_for_fixed_and_variadic_forms() {
 fn gc_extensions_register_the_owned_symbols() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
     assert!(register(&mut ctx, &runtime).is_ok());
     for name in [
         "*AFTER-GC-HOOKS*",

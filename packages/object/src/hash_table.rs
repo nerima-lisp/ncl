@@ -1,7 +1,7 @@
 //! Heap-resident open-addressed hash tables.
 
 use crate::object_access::{fix, get, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, make_simple_vector};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, finish_root, make_simple_vector};
 use crate::{simple_vector_length, simple_vector_ref, simple_vector_set, widetag};
 use ncl_sys::Word;
 
@@ -100,13 +100,13 @@ impl HashTable {
                     }
                     Ok(table.into())
                 })();
-                assert!(crate::try_pop_root(ctx, index_token)?);
+                let result = finish_root(ctx, index_token, result);
                 result
             })();
-            assert!(crate::try_pop_root(ctx, kv_token)?);
+            let result = finish_root(ctx, kv_token, result);
             result
         })();
-        assert!(crate::try_pop_root(ctx, marker_token)?);
+        let result = finish_root(ctx, marker_token, result);
         result
     }
     /// Return the comparison mode.
@@ -415,13 +415,13 @@ impl HashTable {
                     put(ctx, table_word, OCCUPIED, fix(new_position)?)?;
                     Ok(())
                 })();
-                assert!(crate::try_pop_root(ctx, index_token)?);
+                let result = finish_root(ctx, index_token, result);
                 result
             })();
-            assert!(crate::try_pop_root(ctx, kv_token)?);
+            let result = finish_root(ctx, kv_token, result);
             result
         })();
-        assert!(crate::try_pop_root(ctx, table_token)?);
+        let result = finish_root(ctx, table_token, result);
         result
     }
     fn rehash_if_needed(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {

@@ -318,7 +318,7 @@ impl ThreadContext {
     /// # Errors
     /// Returns a storage error if this context was moved after registration.
     pub fn collect(&mut self, full: bool) -> Result<(), ObjectError> {
-        self.check_registered_address()?;
+        self.require_registered()?;
         ncl_sys::collect(&mut self.thread, full);
         Ok(())
     }
@@ -334,13 +334,20 @@ impl ThreadContext {
     }
 
     pub(crate) fn check_registered_address(&self) -> Result<(), ObjectError> {
-        if self.registered_thread_address.is_none()
-            || self.registered_thread_address == Some((&raw const self.thread) as usize)
+        if let Some(address) = self.registered_thread_address
+            && address != (&raw const self.thread) as usize
         {
-            Ok(())
-        } else {
-            Err(ObjectError::ContextMoved)
+            return Err(ObjectError::ContextMoved);
         }
+        Ok(())
+    }
+
+    fn require_registered(&self) -> Result<(), ObjectError> {
+        self.check_registered_address()?;
+        if self.registered_thread_address.is_none() {
+            return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+        }
+        Ok(())
     }
 }
 impl Default for ThreadContext {
@@ -359,7 +366,7 @@ pub fn make_cons(
     car: Word,
     cdr: Word,
 ) -> Result<Word, ObjectError> {
-    ctx.check_registered_address()?;
+    ctx.require_registered()?;
     ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, car, cdr).map_err(Into::into)
 }
 /// Allocate a header object with a widetag and payload words.
@@ -373,7 +380,7 @@ pub fn allocate(
     tag: u8,
     words: usize,
 ) -> Result<Word, ObjectError> {
-    ctx.check_registered_address()?;
+    ctx.require_registered()?;
     ncl_sys::alloc(
         &mut ctx.thread,
         &runtime.heap,
@@ -442,8 +449,19 @@ pub(crate) fn with_root<T>(
 ) -> Result<T, ObjectError> {
     let token = try_push_root(ctx, value)?;
     let result = f(ctx, *value);
-    let popped = try_pop_root(ctx, token)?;
-    assert!(popped);
+    finish_root(ctx, token, result)
+}
+
+pub(crate) fn finish_root<T>(
+    ctx: &mut ThreadContext,
+    token: RootToken,
+    result: Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let popped = pop_root(ctx, token);
+    ctx.check_registered_address()?;
+    if !popped {
+        return Err(ObjectError::Layout);
+    }
     result
 }
 /// Return the car of a cons cell.

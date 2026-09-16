@@ -46,41 +46,38 @@ impl Package {
     /// # Errors
     /// Returns an allocation or layout error.
     ///
-    /// # Panics
-    /// Panics if a root token cannot be removed in stack order.
-    ///
-    /// # Panics
-    /// Panics if a root token cannot be removed in stack order.
     pub fn new(
         ctx: &mut ThreadContext,
         runtime: &Runtime,
         name: &str,
     ) -> Result<Self, ObjectError> {
         let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        let name_token = crate::push_root(ctx, &mut name_word);
-        let mut internal = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
-        let internal_token = crate::push_root(ctx, &mut internal);
-        let mut external = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
-        let external_token = crate::push_root(ctx, &mut external);
-        let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 10)?;
-        for (slot, value) in [
-            (LOCK, Word::fixnum(0)),
-            (GENSYM, Word::fixnum(0)),
-            (NAME, name_word),
-            (NICKNAMES, Word::NIL),
-            (USE_LIST, Word::NIL),
-            (USED_BY, Word::NIL),
-            (INTERNAL, internal),
-            (EXTERNAL, external),
-            (SHADOWING, Word::NIL),
-            (LOCAL_NICKNAMES, Word::NIL),
-        ] {
-            put(ctx, object, slot, value)?;
-        }
-        assert!(crate::pop_root(ctx, external_token));
-        assert!(crate::pop_root(ctx, internal_token));
-        assert!(crate::pop_root(ctx, name_token));
-        Ok(object.into())
+        crate::with_root(ctx, &mut name_word, |ctx, name_word| {
+            let mut internal =
+                HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+            crate::with_root(ctx, &mut internal, |ctx, internal| {
+                let mut external =
+                    HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+                crate::with_root(ctx, &mut external, |ctx, external| {
+                    let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 10)?;
+                    for (slot, value) in [
+                        (LOCK, Word::fixnum(0)),
+                        (GENSYM, Word::fixnum(0)),
+                        (NAME, name_word),
+                        (NICKNAMES, Word::NIL),
+                        (USE_LIST, Word::NIL),
+                        (USED_BY, Word::NIL),
+                        (INTERNAL, internal),
+                        (EXTERNAL, external),
+                        (SHADOWING, Word::NIL),
+                        (LOCAL_NICKNAMES, Word::NIL),
+                    ] {
+                        put(ctx, object, slot, value)?;
+                    }
+                    Ok(object.into())
+                })
+            })
+        })
     }
     /// Return the package name object.
     ///
@@ -133,23 +130,21 @@ impl Package {
         name: &str,
     ) -> Result<(Word, FindStatus), ObjectError> {
         let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        let name_token = crate::push_root(ctx, &mut name_word);
-        if let Some(found) = self.find_symbol(ctx, name_word)? {
-            assert!(crate::pop_root(ctx, name_token));
-            return Ok(found);
-        }
-        let mut package = self.0;
-        let package_token = crate::push_root(ctx, &mut package);
-        let mut symbol = make_symbol(ctx, runtime, name_word)?;
-        let symbol_token = crate::push_root(ctx, &mut symbol);
-        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, package)?;
-        let table = HashTable::from(get(ctx, package, widetag::PACKAGE, INTERNAL)?);
-        let result = table.insert(ctx, runtime, name_word, symbol);
-        assert!(crate::pop_root(ctx, symbol_token));
-        assert!(crate::pop_root(ctx, package_token));
-        result?;
-        assert!(crate::pop_root(ctx, name_token));
-        Ok((symbol, FindStatus::Internal))
+        crate::with_root(ctx, &mut name_word, |ctx, name_word| {
+            if let Some(found) = self.find_symbol(ctx, name_word)? {
+                return Ok(found);
+            }
+            let mut package = self.0;
+            crate::with_root(ctx, &mut package, |ctx, package| {
+                let mut symbol = make_symbol(ctx, runtime, name_word)?;
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, package)?;
+                    let table = HashTable::from(get(ctx, package, widetag::PACKAGE, INTERNAL)?);
+                    table.insert(ctx, runtime, name_word, symbol)?;
+                    Ok((symbol, FindStatus::Internal))
+                })
+            })
+        })
     }
     /// Export an internal symbol by moving it to the external table.
     ///

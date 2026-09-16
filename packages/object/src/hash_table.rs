@@ -1,14 +1,15 @@
 //! Heap-resident open-addressed hash tables.
 
-pub use crate::hash_support::sxhash;
-use crate::hash_support::{decode_test, decode_weakness, probe};
 use crate::object_access::{fix, get, put};
 use crate::{ObjectError, Runtime, ThreadContext, allocate, make_simple_vector};
 use crate::{simple_vector_length, simple_vector_ref, simple_vector_set, widetag};
 use ncl_sys::Word;
 
 mod equality;
+mod support;
 use equality::{equal, hash_key};
+pub use support::sxhash;
+use support::{decode_test, decode_weakness, probe};
 
 crate::word_newtype!(HashTable);
 

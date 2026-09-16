@@ -1,12 +1,12 @@
+use super::{HashTest, Weakness};
 use crate::ObjectError;
-use crate::hash_table::{HashTest, Weakness};
 use ncl_sys::Word;
 
-pub fn probe(hash: u64, step: usize, capacity: usize) -> usize {
+pub(super) fn probe(hash: u64, step: usize, capacity: usize) -> usize {
     (usize::try_from(hash).unwrap_or(0).wrapping_add(step)) & (capacity - 1)
 }
 
-pub const fn decode_test(word: Word) -> Result<HashTest, ObjectError> {
+pub(super) const fn decode_test(word: Word) -> Result<HashTest, ObjectError> {
     match word.as_fixnum() {
         Some(0) => Ok(HashTest::Eq),
         Some(1) => Ok(HashTest::Eql),
@@ -16,7 +16,7 @@ pub const fn decode_test(word: Word) -> Result<HashTest, ObjectError> {
     }
 }
 
-pub const fn decode_weakness(word: Word) -> Result<Weakness, ObjectError> {
+pub(super) const fn decode_weakness(word: Word) -> Result<Weakness, ObjectError> {
     match word.as_fixnum() {
         Some(0) => Ok(Weakness::None),
         Some(1) => Ok(Weakness::Key),

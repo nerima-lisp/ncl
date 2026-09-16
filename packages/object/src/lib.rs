@@ -13,7 +13,6 @@ pub mod cons;
 mod control_extensions;
 mod function;
 pub(crate) mod gc;
-mod hash_support;
 pub mod hash_table;
 mod instance;
 mod layout;

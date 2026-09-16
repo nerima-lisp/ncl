@@ -35,7 +35,6 @@ pub fn invoke_entry_with_function(
     unsafe {
         core::arch::asm!(
             "str x21, [sp, #-16]!",
-            "mov x21, x16",
             "blr x17",
             "ldr x21, [sp], #16",
             in("x16") function_object,

@@ -170,6 +170,7 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
 
 #[test]
 fn executes_cons_allocation_on_slow_path() {
+    let _guard = TEST_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
     ALLOC_SLOW_CALLS.store(0, Ordering::SeqCst);
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(7),
@@ -207,6 +208,7 @@ fn executes_cons_allocation_on_slow_path() {
 
 #[test]
 fn executes_safepoint_poll_without_and_with_request() {
+    let _guard = TEST_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(8),
         "safepoint",
@@ -314,6 +316,7 @@ fn forwards_function_object_from_generated_frame_map_simulation() {
 
 #[test]
 fn forwards_function_object_from_real_frame_after_safepoint_collection() {
+    let _guard = TEST_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
     let runtime = ncl_object::Runtime::new().expect("runtime");
     let mut object_context = ncl_object::ThreadContext::new();
     object_context

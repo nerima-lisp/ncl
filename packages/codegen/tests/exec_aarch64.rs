@@ -16,6 +16,7 @@ use ncl_sys::{
     publish_code, request_safepoint, set_tlab, thread_layout, tlab_bump, write_code,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
 static ALLOC_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static SAFEPOINT_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -23,6 +24,7 @@ static COLLECT_IN_SAFEPOINT: AtomicBool = AtomicBool::new(false);
 static FRAME_WORD_BEFORE: AtomicU64 = AtomicU64::new(0);
 static FRAME_WORD_AFTER: AtomicU64 = AtomicU64::new(0);
 static SLOW_STORAGE: [u64; 8] = [0; 8];
+static TEST_SERIAL: Mutex<()> = Mutex::new(());
 
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
     left + right

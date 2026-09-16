@@ -16,16 +16,29 @@ pub enum FindStatus {
     Inherited,
 }
 
-const NAME: usize = 0;
-const NICKNAMES: usize = 1;
-const USE_LIST: usize = 2;
-const USED_BY: usize = 3;
-const INTERNAL: usize = 4;
-const EXTERNAL: usize = 5;
-const SHADOWING: usize = 6;
-const LOCAL_NICKNAMES: usize = 7;
-const LOCK: usize = 8;
-const GENSYM: usize = 9;
+pub(crate) const LOCK: usize = 0;
+pub(crate) const GENSYM: usize = 1;
+pub(crate) const NAME: usize = 2;
+pub(crate) const NICKNAMES: usize = 3;
+pub(crate) const USE_LIST: usize = 4;
+pub(crate) const USED_BY: usize = 5;
+pub(crate) const INTERNAL: usize = 6;
+pub(crate) const EXTERNAL: usize = 7;
+pub(crate) const SHADOWING: usize = 8;
+pub(crate) const LOCAL_NICKNAMES: usize = 9;
+
+pub(crate) fn reference_words() -> Vec<usize> {
+    vec![
+        NAME,
+        NICKNAMES,
+        USE_LIST,
+        USED_BY,
+        INTERNAL,
+        EXTERNAL,
+        SHADOWING,
+        LOCAL_NICKNAMES,
+    ]
+}
 
 impl Package {
     /// Allocate an empty package and its internal and external symbol tables.
@@ -37,11 +50,16 @@ impl Package {
         runtime: &Runtime,
         name: &str,
     ) -> Result<Self, ObjectError> {
-        let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        let internal = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
-        let external = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+        let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+        let name_token = crate::push_root(ctx, &mut name_word);
+        let mut internal = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+        let internal_token = crate::push_root(ctx, &mut internal);
+        let mut external = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+        let external_token = crate::push_root(ctx, &mut external);
         let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 10)?;
         for (slot, value) in [
+            (LOCK, Word::fixnum(0)),
+            (GENSYM, Word::fixnum(0)),
             (NAME, name_word),
             (NICKNAMES, Word::NIL),
             (USE_LIST, Word::NIL),
@@ -50,11 +68,12 @@ impl Package {
             (EXTERNAL, external),
             (SHADOWING, Word::NIL),
             (LOCAL_NICKNAMES, Word::NIL),
-            (LOCK, Word::fixnum(0)),
-            (GENSYM, Word::fixnum(0)),
         ] {
             put(ctx, object, slot, value)?;
         }
+        let _ = crate::pop_root(ctx, external_token);
+        let _ = crate::pop_root(ctx, internal_token);
+        let _ = crate::pop_root(ctx, name_token);
         Ok(object.into())
     }
     /// Return the package name object.
@@ -110,10 +129,16 @@ impl Package {
             let _ = crate::pop_root(ctx, name_token);
             return Ok(found);
         }
-        let symbol = make_symbol(ctx, runtime, name_word)?;
-        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, self.0)?;
-        let table = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
-        table.insert(ctx, runtime, name_word, symbol)?;
+        let mut package = self.0;
+        let package_token = crate::push_root(ctx, &mut package);
+        let mut symbol = make_symbol(ctx, runtime, name_word)?;
+        let symbol_token = crate::push_root(ctx, &mut symbol);
+        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, package)?;
+        let table = HashTable::from(get(ctx, package, widetag::PACKAGE, INTERNAL)?);
+        let result = table.insert(ctx, runtime, name_word, symbol);
+        let _ = crate::pop_root(ctx, package_token);
+        let _ = crate::pop_root(ctx, symbol_token);
+        result?;
         let _ = crate::pop_root(ctx, name_token);
         Ok((symbol, FindStatus::Internal))
     }
@@ -131,8 +156,15 @@ impl Package {
         let Some(symbol) = internal.remove(ctx, runtime, name)? else {
             return Ok(false);
         };
-        HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?)
-            .insert(ctx, runtime, name, symbol)?;
+        let mut name = name;
+        let name_token = crate::push_root(ctx, &mut name);
+        let mut symbol = symbol;
+        let symbol_token = crate::push_root(ctx, &mut symbol);
+        let result = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?)
+            .insert(ctx, runtime, name, symbol);
+        let _ = crate::pop_root(ctx, symbol_token);
+        let _ = crate::pop_root(ctx, name_token);
+        result?;
         Ok(true)
     }
     /// Remove a symbol from the external table and return it to internal visibility.
@@ -149,8 +181,15 @@ impl Package {
         let Some(symbol) = external.remove(ctx, runtime, name)? else {
             return Ok(false);
         };
-        HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?)
-            .insert(ctx, runtime, name, symbol)?;
+        let mut name = name;
+        let name_token = crate::push_root(ctx, &mut name);
+        let mut symbol = symbol;
+        let symbol_token = crate::push_root(ctx, &mut symbol);
+        let result = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?)
+            .insert(ctx, runtime, name, symbol);
+        let _ = crate::pop_root(ctx, symbol_token);
+        let _ = crate::pop_root(ctx, name_token);
+        result?;
         Ok(true)
     }
     /// Import a symbol under a string name.

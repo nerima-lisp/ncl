@@ -7,21 +7,23 @@ impl Runtime {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    pub fn ensure_package(&self, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
-        let _ = ctx;
+    pub fn ensure_package(&self, name: &str) -> Result<Word, ObjectError> {
         let mut context = self
             .registry_context
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let table = Self::table(&self.packages)?;
         let mut name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>())?;
         let token = crate::push_root(&mut context, &mut name_word);
+        let table = Self::table(&self.packages)?;
         if let Some(package) = HashTable::from(table).get(&mut context, name_word)? {
             let _ = crate::pop_root(&mut context, token);
             return Ok(package);
         }
-        let package = Package::new(&mut context, self, name)?.as_word();
+        let mut package = Package::new(&mut context, self, name)?.as_word();
+        let package_token = crate::push_root(&mut context, &mut package);
+        let table = Self::table(&self.packages)?;
         HashTable::from(table).insert(&mut context, self, name_word, package)?;
+        let _ = crate::pop_root(&mut context, package_token);
         let _ = crate::pop_root(&mut context, token);
         drop(context);
         Ok(package)
@@ -30,8 +32,8 @@ impl Runtime {
     #[must_use]
     pub fn find_package(&self, name: &str) -> Option<Word> {
         let mut context = self.registry_context.lock().ok()?;
-        let table = Self::table(&self.packages).ok()?;
         let name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
+        let table = Self::table(&self.packages).ok()?;
         let result = HashTable::from(table)
             .get(&mut context, name_word)
             .ok()
@@ -48,25 +50,28 @@ impl Runtime {
         }
     }
     /// Register a class object by name.
-    pub fn define_class(&self, name: impl Into<String>, class: Word) {
-        let Ok(mut context) = self.registry_context.lock() else {
-            return;
-        };
-        let Ok(table) = Self::table(&self.classes) else {
-            return;
-        };
+    pub fn define_class(&self, name: impl Into<String>, class: Word) -> Result<(), ObjectError> {
+        let mut context = self
+            .registry_context
+            .lock()
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         let name = name.into();
-        let Ok(name) = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()) else {
-            return;
-        };
-        let _ = HashTable::from(table).insert(&mut context, self, name, class);
+        let mut name = make_string(&mut context, self, &name.chars().collect::<Vec<_>>())?;
+        let name_token = crate::push_root(&mut context, &mut name);
+        let mut class = class;
+        let class_token = crate::push_root(&mut context, &mut class);
+        let table = Self::table(&self.classes)?;
+        let result = HashTable::from(table).insert(&mut context, self, name, class);
+        let _ = crate::pop_root(&mut context, class_token);
+        let _ = crate::pop_root(&mut context, name_token);
+        result
     }
     /// Look up a class object.
     #[must_use]
     pub fn class(&self, name: &str) -> Option<Word> {
         let mut context = self.registry_context.lock().ok()?;
-        let table = Self::table(&self.classes).ok()?;
         let name = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
+        let table = Self::table(&self.classes).ok()?;
         let result = HashTable::from(table)
             .get(&mut context, name)
             .ok()

@@ -112,12 +112,12 @@ struct RootedTable {
 impl Runtime {
     /// Create a runtime with the default heap policy.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, ObjectError> {
         Self::with_config(HeapConfig::default())
     }
     /// Create a runtime with an explicit heap policy.
     #[must_use]
-    pub fn with_config(config: HeapConfig) -> Self {
+    pub fn with_config(config: HeapConfig) -> Result<Self, ObjectError> {
         let runtime = Self {
             heap: Box::new(Heap::new(config)),
             registry_context: Mutex::new(Box::new(ThreadContext::new())),
@@ -129,15 +129,15 @@ impl Runtime {
             next_layout: Mutex::new(1),
             layouts_registered: Mutex::new(false),
         };
-        let _ = runtime.register_layouts();
+        runtime.register_layouts()?;
         let mut context = runtime
             .registry_context
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _ = ncl_sys::register_thread(&runtime.heap, &mut context.thread);
+        ncl_sys::register_thread(&runtime.heap, &mut context.thread).map_err(ObjectError::from)?;
         for target in [&runtime.functions, &runtime.packages, &runtime.classes] {
-            let table = HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)
-                .map_or(Word::NIL, HashTable::as_word);
+            let table =
+                HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)?.as_word();
             let mut slot = Box::new(table);
             let token = ncl_sys::push_heap_root(&runtime.heap, &mut slot);
             *target
@@ -147,9 +147,8 @@ impl Runtime {
                 _token: token,
             });
         }
-        ncl_sys::enter_native(&mut context.thread);
         drop(context);
-        runtime
+        Ok(runtime)
     }
     /// Register all object layouts supported by this layer.
     ///
@@ -174,26 +173,34 @@ impl Runtime {
         &self.heap
     }
     /// Register a function object under a package and name.
-    pub fn define_function(&self, package: &str, name: &str, function: Word) {
-        let Ok(mut context) = self.registry_context.lock() else {
-            return;
-        };
-        let Ok(table) = Self::table(&self.functions) else {
-            return;
-        };
+    pub fn define_function(
+        &self,
+        package: &str,
+        name: &str,
+        function: Word,
+    ) -> Result<(), ObjectError> {
+        let mut context = self
+            .registry_context
+            .lock()
+            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         let key = format!("{package}::{name}");
-        let Ok(key) = make_string(&mut context, self, &key.chars().collect::<Vec<_>>()) else {
-            return;
-        };
-        let _ = HashTable::from(table).insert(&mut context, self, key, function);
+        let mut key = make_string(&mut context, self, &key.chars().collect::<Vec<_>>())?;
+        let key_token = push_root(&mut context, &mut key);
+        let mut function = function;
+        let function_token = push_root(&mut context, &mut function);
+        let table = Self::table(&self.functions)?;
+        let result = HashTable::from(table).insert(&mut context, self, key, function);
+        let _ = pop_root(&mut context, function_token);
+        let _ = pop_root(&mut context, key_token);
+        result
     }
     /// Look up a registered function object.
     #[must_use]
     pub fn function(&self, package: &str, name: &str) -> Option<Word> {
         let mut context = self.registry_context.lock().ok()?;
-        let table = Self::table(&self.functions).ok()?;
         let key = format!("{package}::{name}");
         let key = make_string(&mut context, self, &key.chars().collect::<Vec<_>>()).ok()?;
+        let table = Self::table(&self.functions).ok()?;
         let result = HashTable::from(table).get(&mut context, key).ok().flatten();
         drop(context);
         result
@@ -206,11 +213,6 @@ impl Runtime {
             .as_ref()
             .map(|root| *root.slot)
             .ok_or(ObjectError::Layout)
-    }
-}
-impl Default for Runtime {
-    fn default() -> Self {
-        Self::new()
     }
 }
 /// Per-mutator object-layer context.
@@ -253,7 +255,7 @@ impl ThreadContext {
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
         for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
-            runtime.ensure_package(self, name)?;
+            runtime.ensure_package(name)?;
         }
         Ok(())
     }

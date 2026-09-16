@@ -27,7 +27,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
         (widetag::STRING, vec![]),
         (widetag::SIMPLE_VECTOR, vec![simple_vector_offset::DATA]),
-        (widetag::HASH_TABLE, vec![6, 7]),
+        (widetag::HASH_TABLE, reference_words(&[6, 7])),
         (widetag::STRUCTURE, vec![structure_offset::SLOTS]),
         (
             widetag::INSTANCE,
@@ -62,7 +62,10 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
             widetag::COMPLEX,
             vec![number_offset::COMPLEX_REAL, number_offset::COMPLEX_IMAG],
         ),
-        (widetag::PACKAGE, (0..8).collect()),
+        (
+            widetag::PACKAGE,
+            reference_words(&crate::package::reference_words()),
+        ),
         (
             widetag::READTABLE,
             vec![readtable_offset::SYNTAX, readtable_offset::DISPATCH],
@@ -98,6 +101,8 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
                     widetag::NON_SIMPLE_ARRAY => Some(1),
                     widetag::STRUCTURE => Some(structure_offset::SLOTS + 1),
                     widetag::CLOSURE => Some(function_offset::CAPTURES + 1),
+                    widetag::HASH_TABLE => Some(7),
+                    widetag::PACKAGE => Some(crate::package::NAME + 1),
                     _ => None,
                 },
             },
@@ -125,6 +130,6 @@ pub fn register(runtime: &Runtime) {
         "WEAK-POINTER-VALUE",
         "WEAK-VECTOR-P",
     ] {
-        runtime.define_function("SB-EXT", name, Word::UNBOUND);
+        let _ = runtime.define_function("SB-EXT", name, Word::UNBOUND);
     }
 }

@@ -57,8 +57,10 @@ impl HashTable {
         weakness: Weakness,
     ) -> Result<Self, ObjectError> {
         let capacity = 8_usize;
-        let kv = make_simple_vector(ctx, runtime, &vec![Word::UNBOUND; capacity * 2])?;
-        let index = make_simple_vector(ctx, runtime, &vec![Word::fixnum(-1); capacity])?;
+        let mut kv = make_simple_vector(ctx, runtime, &vec![Word::UNBOUND; capacity * 2])?;
+        let kv_token = crate::push_root(ctx, &mut kv);
+        let mut index = make_simple_vector(ctx, runtime, &vec![Word::fixnum(-1); capacity])?;
+        let index_token = crate::push_root(ctx, &mut index);
         let table = allocate(ctx, runtime, widetag::HASH_TABLE, 8)?;
         let epoch = ncl_sys::heap_epoch(&ctx.thread);
         for (slot, value) in [
@@ -76,6 +78,8 @@ impl HashTable {
         ] {
             put(ctx, table, slot, value)?;
         }
+        let _ = crate::pop_root(ctx, index_token);
+        let _ = crate::pop_root(ctx, kv_token);
         Ok(table.into())
     }
     /// Return the comparison mode.

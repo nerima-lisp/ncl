@@ -100,14 +100,11 @@ impl HashTable {
                     }
                     Ok(table.into())
                 })();
-                let result = finish_root(ctx, index_token, result);
-                result
+                finish_root(ctx, index_token, result)
             })();
-            let result = finish_root(ctx, kv_token, result);
-            result
+            finish_root(ctx, kv_token, result)
         })();
-        let result = finish_root(ctx, marker_token, result);
-        result
+        finish_root(ctx, marker_token, result)
     }
     /// Return the comparison mode.
     ///
@@ -415,14 +412,11 @@ impl HashTable {
                     put(ctx, table_word, OCCUPIED, fix(new_position)?)?;
                     Ok(())
                 })();
-                let result = finish_root(ctx, index_token, result);
-                result
+                finish_root(ctx, index_token, result)
             })();
-            let result = finish_root(ctx, kv_token, result);
-            result
+            finish_root(ctx, kv_token, result)
         })();
-        let result = finish_root(ctx, table_token, result);
-        result
+        finish_root(ctx, table_token, result)
     }
     fn rehash_if_needed(self, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
         let test = self.test(ctx)?;

@@ -40,7 +40,11 @@ const CAPACITY: usize = 4;
 const EPOCH: usize = 5;
 const KV: usize = 6;
 const INDEX: usize = 7;
+const EMPTY: i64 = -1;
+const TOMBSTONE: i64 = -2;
 
+// Index entries are EMPTY, TOMBSTONE, or positions into live key/value pairs.
+// Removed pairs are UNBOUND, and count tracks live pairs; resize repacks them.
 impl HashTable {
     /// Allocate an empty heap hash table.
     ///
@@ -56,13 +60,17 @@ impl HashTable {
         let kv = make_simple_vector(ctx, runtime, &vec![Word::UNBOUND; capacity * 2])?;
         let index = make_simple_vector(ctx, runtime, &vec![Word::fixnum(-1); capacity])?;
         let table = allocate(ctx, runtime, widetag::HASH_TABLE, 8)?;
+        let epoch = ncl_sys::heap_epoch(&ctx.thread);
         for (slot, value) in [
             (TEST, Word::fixnum(test as i64)),
             (WEAKNESS, Word::fixnum(weakness as i64)),
             (FLAGS, Word::fixnum(0)),
             (COUNT, Word::fixnum(0)),
             (CAPACITY, to_fixnum(capacity)?),
-            (EPOCH, Word::fixnum(0)),
+            (
+                EPOCH,
+                to_fixnum(usize::try_from(epoch).map_err(|_| ObjectError::Layout)?)?,
+            ),
             (KV, kv),
             (INDEX, index),
         ] {
@@ -106,8 +114,11 @@ impl HashTable {
             let entry = simple_vector_ref(ctx, index, slot)?
                 .as_fixnum()
                 .ok_or(ObjectError::Layout)?;
-            if entry < 0 {
+            if entry == EMPTY {
                 return Ok(None);
+            }
+            if entry == TOMBSTONE {
+                continue;
             }
             let position = usize::try_from(entry).map_err(|_| ObjectError::Layout)?;
             let stored = simple_vector_ref(ctx, kv, position * 2)?;
@@ -131,7 +142,7 @@ impl HashTable {
         self.rehash_if_needed(ctx)?;
         let count = self.count(ctx)?;
         let capacity = read_usize(ctx, self.0, CAPACITY)?;
-        if (count + 1) * 8 >= capacity * 7 {
+        if self.occupied_slots(ctx)? + 1 >= capacity * 7 / 8 {
             self.resize(ctx, runtime, capacity * 2)?;
         }
         let (index, kv) = self.storage(ctx)?;
@@ -141,7 +152,9 @@ impl HashTable {
             .as_fixnum()
             .unwrap_or(-1);
         let position = if entry < 0 {
-            count
+            (0..simple_vector_length(ctx, kv)? / 2)
+                .find(|position| simple_vector_ref(ctx, kv, position * 2) == Ok(Word::UNBOUND))
+                .ok_or(ObjectError::Layout)?
         } else {
             usize::try_from(entry).map_err(|_| ObjectError::Layout)?
         };
@@ -175,7 +188,7 @@ impl HashTable {
                 .ok_or(ObjectError::Layout)?,
         )
         .map_err(|_| ObjectError::Layout)?;
-        simple_vector_set(ctx, index, slot, Word::fixnum(-1))?;
+        simple_vector_set(ctx, index, slot, Word::fixnum(TOMBSTONE))?;
         simple_vector_set(ctx, kv, position * 2, Word::UNBOUND)?;
         simple_vector_set(ctx, kv, position * 2 + 1, Word::UNBOUND)?;
         put(ctx, self.0, COUNT, to_fixnum(self.count(ctx)? - 1)?)?;
@@ -211,24 +224,32 @@ impl HashTable {
         test: HashTest,
     ) -> Result<usize, ObjectError> {
         let capacity = simple_vector_length(ctx, index)?;
+        let mut first_tombstone = None;
         for step in 0..capacity {
             let slot = probe(hash, step, capacity);
             let entry = simple_vector_ref(ctx, index, slot)?
                 .as_fixnum()
                 .ok_or(ObjectError::Layout)?;
-            if entry < 0
-                || equal(
+            if entry == TOMBSTONE {
+                if first_tombstone.is_none() {
+                    first_tombstone = Some(slot);
+                }
+                continue;
+            }
+            if entry == EMPTY {
+                return Ok(first_tombstone.unwrap_or(slot));
+            }
+            if equal(
+                ctx,
+                test,
+                simple_vector_ref(
                     ctx,
-                    test,
-                    simple_vector_ref(
-                        ctx,
-                        kv,
-                        usize::try_from(entry).map_err(|_| ObjectError::Layout)? * 2,
-                    )?,
-                    key,
-                    0,
-                )?
-            {
+                    kv,
+                    usize::try_from(entry).map_err(|_| ObjectError::Layout)? * 2,
+                )?,
+                key,
+                0,
+            )? {
                 return Ok(slot);
             }
         }
@@ -295,6 +316,17 @@ impl HashTable {
         }
         Ok(())
     }
+
+    fn occupied_slots(self, ctx: &ThreadContext) -> Result<usize, ObjectError> {
+        let (index, _) = self.storage(ctx)?;
+        let mut occupied = 0;
+        for slot in 0..simple_vector_length(ctx, index)? {
+            if simple_vector_ref(ctx, index, slot)?.as_fixnum() != Some(EMPTY) {
+                occupied += 1;
+            }
+        }
+        Ok(occupied)
+    }
 }
 
 fn equal(
@@ -320,20 +352,20 @@ fn equal(
                     && right.is_cons()
                     && equal(
                         ctx,
-                        HashTest::Equal,
+                        test,
                         cons_part(ctx, left, 0)?,
                         cons_part(ctx, right, 0)?,
                         depth + 1,
                     )?
                     && equal(
                         ctx,
-                        HashTest::Equal,
+                        test,
                         cons_part(ctx, left, 1)?,
                         cons_part(ctx, right, 1)?,
                         depth + 1,
                     )?);
             }
-            numeric_equal(ctx, left, right)
+            Ok(left == right || numeric_equal(ctx, left, right)?)
         }
     }
 }

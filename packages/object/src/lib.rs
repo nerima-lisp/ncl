@@ -328,7 +328,7 @@ impl ThreadContext {
         Ok(())
     }
     /// Force a full collection before every object allocation when enabled.
-    pub fn set_gc_stress(&mut self, on: bool) {
+    pub const fn set_gc_stress(&mut self, on: bool) {
         self.gc_stress = on;
     }
     /// Mark an object as weak with the requested policy.

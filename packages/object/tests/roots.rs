@@ -37,7 +37,7 @@ fn try_pop_root_rejects_a_context_moved_after_registration() {
     let (_runtime, mut ctx) = setup();
     let mut value = Word::NIL;
     let token = push_root(&mut ctx, &mut value);
-    let mut moved = Box::new(ctx);
+    let mut moved = Box::new(*ctx);
 
     assert_eq!(
         try_pop_root(&mut moved, token),

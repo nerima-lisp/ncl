@@ -1,8 +1,6 @@
 use crate::{ObjectError, Runtime, ThreadContext, allocate, layout};
 use crate::{specialized_array_ref, specialized_array_set};
-
 use ncl_sys::Word;
-
 /// Options for constructing a non-simple array.
 #[derive(Clone, Copy, Debug)]
 pub struct ArrayOptions {
@@ -13,7 +11,6 @@ pub struct ArrayOptions {
     pub displaced_to: Option<Word>,
     pub displaced_index_offset: usize,
 }
-
 /// Element representations supported by the object layer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -28,7 +25,6 @@ pub enum ArrayElementType {
     SingleFloat = 7,
     DoubleFloat = 8,
 }
-
 impl ArrayElementType {
     pub(crate) fn from_word(word: Word) -> Result<Self, ObjectError> {
         match word.as_fixnum().and_then(|n| u8::try_from(n).ok()) {
@@ -45,7 +41,6 @@ impl ArrayElementType {
         }
     }
 }
-
 pub(crate) fn read(
     ctx: &ThreadContext,
     object: Word,
@@ -62,7 +57,6 @@ pub(crate) fn read(
         ncl_sys::StorageCondition::ThreadNotRegistered,
     ))
 }
-
 pub(crate) fn write(
     ctx: &mut ThreadContext,
     object: Word,
@@ -188,10 +182,10 @@ pub fn string_set(
 }
 
 /// Allocate a simple vector with contiguous Lisp values.
-///
 /// # Errors
-///
 /// Returns [`ObjectError`] when allocation or layout encoding fails.
+/// # Panics
+/// Panics if root cleanup detects a corrupted root stack.
 pub fn make_simple_vector(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -203,29 +197,29 @@ pub fn make_simple_vector(
         tokens.push(crate::push_root(ctx, value));
     }
     let result = (|| {
-    let object = allocate(
-        ctx,
-        runtime,
-        layout::widetag::SIMPLE_VECTOR,
-        values.len().checked_add(1).ok_or(ObjectError::Layout)?,
-    )?;
-    write(
-        ctx,
-        object,
-        0,
-        Word::fixnum(i64::try_from(values.len()).map_err(|_| ObjectError::Layout)?),
-        layout::widetag::SIMPLE_VECTOR,
-    )?;
-    for (index, value) in rooted_values.iter().copied().enumerate() {
+        let object = allocate(
+            ctx,
+            runtime,
+            layout::widetag::SIMPLE_VECTOR,
+            values.len().checked_add(1).ok_or(ObjectError::Layout)?,
+        )?;
         write(
             ctx,
             object,
-            1 + index,
-            value,
+            0,
+            Word::fixnum(i64::try_from(values.len()).map_err(|_| ObjectError::Layout)?),
             layout::widetag::SIMPLE_VECTOR,
         )?;
-    }
-    Ok(object)
+        for (index, value) in rooted_values.iter().copied().enumerate() {
+            write(
+                ctx,
+                object,
+                1 + index,
+                value,
+                layout::widetag::SIMPLE_VECTOR,
+            )?;
+        }
+        Ok(object)
     })();
     for token in tokens.into_iter().rev() {
         assert!(crate::pop_root(ctx, token));
@@ -236,7 +230,6 @@ pub fn make_simple_vector(
 /// Return a simple vector's length.
 ///
 /// # Errors
-///
 /// Returns [`ObjectError`] for a non-vector or malformed layout.
 pub fn simple_vector_length(ctx: &ThreadContext, object: Word) -> Result<usize, ObjectError> {
     length(ctx, object, layout::widetag::SIMPLE_VECTOR, 0)
@@ -245,7 +238,6 @@ pub fn simple_vector_length(ctx: &ThreadContext, object: Word) -> Result<usize, 
 /// Read a simple-vector element.
 ///
 /// # Errors
-///
 /// Returns [`ObjectError`] for a non-vector or out-of-bounds index.
 pub fn simple_vector_ref(
     ctx: &ThreadContext,
@@ -261,7 +253,6 @@ pub fn simple_vector_ref(
 /// Write a simple-vector element.
 ///
 /// # Errors
-///
 /// Returns [`ObjectError`] for a non-vector or out-of-bounds index.
 pub fn simple_vector_set(
     ctx: &mut ThreadContext,

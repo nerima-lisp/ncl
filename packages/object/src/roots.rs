@@ -66,18 +66,20 @@ mod tests {
 
     #[test]
     fn with_root_reads_the_moved_word_after_collection() {
-        let runtime = Runtime::new().expect("runtime allocation failed");
+        let runtime = Runtime::new()
+            .unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
         let mut ctx = ThreadContext::new();
-        ctx.register(&runtime).expect("context registration failed");
+        assert!(ctx.register(&runtime).is_ok());
         let mut word =
-            make_string(&mut ctx, &runtime, &['x'; 64]).expect("string allocation failed");
+            make_string(&mut ctx, &runtime, &['x'; 64])
+                .unwrap_or_else(|error| panic!("string allocation failed: {error:?}"));
         let before = word;
 
         let returned = with_root(&mut ctx, &mut word, |ctx, word| {
             ctx.collect(true)?;
             Ok(*word)
         })
-        .expect("collection failed");
+        .unwrap_or_else(|error| panic!("collection failed: {error:?}"));
 
         assert_eq!(returned, word);
         assert_ne!(before, word);
@@ -85,14 +87,15 @@ mod tests {
 
     #[test]
     fn instance_slot_vector_survives_collection() {
-        let runtime = Runtime::new().expect("runtime allocation failed");
+        let runtime = Runtime::new()
+            .unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
         let mut ctx = ThreadContext::new();
-        ctx.register(&runtime).expect("context registration failed");
+        assert!(ctx.register(&runtime).is_ok());
         let instance = make_instance(&mut ctx, &runtime, Word::NIL, &[Word::fixnum(7)])
-            .expect("instance allocation failed");
+            .unwrap_or_else(|error| panic!("instance allocation failed: {error:?}"));
         let mut instance_word = instance.as_word();
         let token = push_root(&mut ctx, &mut instance_word);
-        ctx.collect(true).expect("collection failed");
+        assert!(ctx.collect(true).is_ok());
         assert_eq!(
             slot_ref(&ctx, crate::Instance::from(instance_word), 0),
             Ok(Word::fixnum(7))

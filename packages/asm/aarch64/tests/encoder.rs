@@ -321,7 +321,7 @@ where
     let mut assembler = Assembler::new();
     let label = assembler.new_label();
     assembler.bind(label).unwrap();
-    for _ in 0..(max_delta / 4 + 1) {
+    for _ in 0..=(max_delta / 4) {
         assembler.emit(&Inst::Nop).unwrap();
     }
     assembler.emit(&make(label)).unwrap();

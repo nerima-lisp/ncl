@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+#![allow(missing_docs, clippy::unwrap_used)]
 
 use crate::{ContextField, RuntimeAbi, RuntimeFunction, compile_function_aarch64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};

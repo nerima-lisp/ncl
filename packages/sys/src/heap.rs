@@ -130,9 +130,13 @@ impl Heap {
         self.lock_state().code_registry.register(code, metadata)
     }
     pub(crate) fn safepoint_map_for_pc(&self, pc: usize) -> Option<crate::Safepoint> {
-        let state = self.lock_state();
-        let (metadata, offset) = state.code_registry.find(pc)?;
-        metadata.safepoint_map.find_map(offset).cloned()
+        {
+            let state = self.lock_state();
+            let (metadata, offset) = state.code_registry.find(pc)?;
+            let map = metadata.safepoint_map.find_map(offset).cloned();
+            drop(state);
+            map
+        }
     }
     /// Remove code metadata before releasing its non-moving allocation.
     pub fn unregister_code(&self, code: &CodePtr) -> Option<CodeObjectMetadata> {

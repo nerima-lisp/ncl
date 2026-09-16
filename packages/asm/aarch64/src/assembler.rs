@@ -132,9 +132,9 @@ impl Assembler {
                 }
                 FixupKind::Adrp21 => {
                     let d = (target_i64 / 4096) - (place / 4096);
-                    patch_signed(word, d, 21, 0, 5, *f)?
+                    patch_pc_relative21(word, d, *f)?
                 }
-                FixupKind::Adr21 => patch_signed(word, delta, 21, 0, 5, *f)?,
+                FixupKind::Adr21 => patch_pc_relative21(word, delta, *f)?,
                 FixupKind::TestBranch14 => patch_signed(word, delta, 14, 2, 5, *f)?,
                 FixupKind::Abs64 | FixupKind::Add12 => word,
             };
@@ -180,11 +180,18 @@ fn patch_signed(
             target: fixup.target,
         });
     }
-    let Ok(narrowed) = u32::try_from(v) else {
+    Ok(word | ((v as u32) & ((1 << bits) - 1)) << lsb)
+}
+
+fn patch_pc_relative21(word: u32, delta: i64, fixup: Fixup) -> Result<u32, EncodeError> {
+    let min = -(1_i64 << 20);
+    let max = (1_i64 << 20) - 1;
+    if delta < min || delta > max {
         return Err(EncodeError::RelocationOutOfRange {
             offset: fixup.offset,
             target: fixup.target,
         });
-    };
-    Ok(word | (narrowed & ((1 << bits) - 1)) << lsb)
+    }
+    let imm = delta as u32 & 0x1f_ffff;
+    Ok(word | (imm & 0x3) << 29 | ((imm >> 2) & 0x7_ffff) << 5)
 }

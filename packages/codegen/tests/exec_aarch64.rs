@@ -35,10 +35,10 @@ extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
     SLOW_STORAGE.as_ptr() as u64
 }
 
-extern "C" fn safepoint_slow(ctx: &mut Thread) {
+extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize) {
     SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
     if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) {
-        ctx.capture_current_frame_snapshot();
+        ctx.set_native_frame(frame_fp);
         FRAME_WORD_BEFORE.store(
             ctx.frame_word(2)
                 .expect("captured frame function object")

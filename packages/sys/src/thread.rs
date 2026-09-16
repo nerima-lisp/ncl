@@ -264,19 +264,11 @@ impl Thread {
     }
 
     /// Capture the current generated frame header for collection.
-    pub fn capture_current_frame_snapshot(&mut self) {
-        #[cfg(target_arch = "aarch64")]
-        {
-            let address: usize;
-            // SAFETY: x29 points at the active generated frame while this runtime callback runs.
-            unsafe {
-                core::arch::asm!("mov {0}, x29", out(reg) address, options(nostack, preserves_flags));
-            }
-            let words = address as *const Word;
-            // SAFETY: the generated frame owns four published header words at x29.
-            self.frame_chain = unsafe { std::slice::from_raw_parts(words, 4).to_vec() };
-            self.frame_address = Some(address);
-        }
+    pub fn set_native_frame(&mut self, frame_fp: usize) {
+        let words = frame_fp as *const Word;
+        // SAFETY: the generated frame owns four published header words at the supplied frame pointer.
+        self.frame_chain = unsafe { std::slice::from_raw_parts(words, 4).to_vec() };
+        self.frame_address = Some(frame_fp);
     }
 
     /// Return the current value of a captured real frame word.

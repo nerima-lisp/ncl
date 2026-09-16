@@ -1,7 +1,9 @@
 #![allow(missing_docs)]
 
 use ncl_object::package::{FindStatus, Package};
-use ncl_object::{Runtime, ThreadContext, Word, make_string, symbol_name, symbol_package};
+use ncl_object::{
+    Runtime, ThreadContext, Word, make_string, string_ref, symbol_name, symbol_package,
+};
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
     make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
@@ -193,4 +195,7 @@ fn symbol_name_round_trip_is_preserved() {
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     let name = symbol_name(&ctx, symbol).unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(ncl_object::string_length(&ctx, name), Ok(9));
+    for (index, expected) in "ROUNDTRIP".chars().enumerate() {
+        assert_eq!(string_ref(&ctx, name, index), Ok(expected));
+    }
 }

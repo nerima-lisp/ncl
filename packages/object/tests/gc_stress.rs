@@ -14,6 +14,9 @@ use ncl_object::{
 fn assert_symbol_name(ctx: &ThreadContext, symbol: Word) {
     let name = symbol_name(ctx, symbol).unwrap_or_else(|error| panic!("symbol name: {error:?}"));
     assert_eq!(ncl_object::string_length(ctx, name), Ok(4));
+    for (index, expected) in ['N', 'A', 'M', 'E'].into_iter().enumerate() {
+        assert_eq!(ncl_object::string_ref(ctx, name, index), Ok(expected));
+    }
 }
 #[test]
 fn allocation_paths_survive_collection_before_every_allocation() {
@@ -129,7 +132,7 @@ fn constructors_and_registry_survive_gc_stress() {
         .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let mut name = name;
     let name_token = ncl_object::push_root(&mut ctx, &mut name);
-    let lambda = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1)])
+    let lambda = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(1)])
         .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let mut lambda = lambda;
     let lambda_token = ncl_object::push_root(&mut ctx, &mut lambda);
@@ -195,12 +198,15 @@ fn constructors_and_registry_survive_gc_stress() {
             initial_element: name,
             adjustable: false,
             fill_pointer: None,
-            displaced_to: None,
+            displaced_to: Some(lambda),
             displaced_index_offset: 0,
         },
     )
     .unwrap_or_else(|error| panic!("array: {error:?}"));
-    assert_eq!(ncl_object::array_row_major_ref(&ctx, array, 0), Ok(name));
+    assert_eq!(
+        ncl_object::array_row_major_ref(&ctx, array, 0),
+        Ok(Word::fixnum(1))
+    );
     assert!(ncl_object::pop_root(&mut ctx, closure_token));
     assert!(ncl_object::pop_root(&mut ctx, function_token));
     assert!(ncl_object::pop_root(&mut ctx, code_token));

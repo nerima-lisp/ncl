@@ -3,6 +3,10 @@ use crate::{ObjectError, Package, Runtime, make_string};
 use ncl_sys::{HeapConfig, StorageCondition, Word};
 
 impl Runtime {
+    /// Create a package if it does not already exist.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error.
     pub fn ensure_package(&self, name: &str) -> Result<Word, ObjectError> {
         let mut context = self
             .registry_context
@@ -13,6 +17,7 @@ impl Runtime {
         let table = Self::table(&self.packages)?;
         if let Some(package) = HashTable::from(table).get(&mut context, name_word)? {
             let _ = crate::pop_root(&mut context, token);
+            drop(context);
             return Ok(package);
         }
         let mut package = Package::new(&mut context, self, name)?.as_word();
@@ -21,6 +26,7 @@ impl Runtime {
         HashTable::from(table).insert(&mut context, self, name_word, package)?;
         let _ = crate::pop_root(&mut context, package_token);
         let _ = crate::pop_root(&mut context, token);
+        drop(context);
         Ok(package)
     }
 
@@ -29,10 +35,12 @@ impl Runtime {
         let mut context = self.registry_context.lock().ok()?;
         let name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
         let table = Self::table(&self.packages).ok()?;
-        HashTable::from(table)
+        let result = HashTable::from(table)
             .get(&mut context, name_word)
             .ok()
-            .flatten()
+            .flatten();
+        drop(context);
+        result
     }
 
     #[must_use]
@@ -43,6 +51,10 @@ impl Runtime {
         }
     }
 
+    /// Register a class object by name.
+    ///
+    /// # Errors
+    /// Returns an allocation, layout, or storage error.
     pub fn define_class(&self, name: impl Into<String>, class: Word) -> Result<(), ObjectError> {
         let mut context = self
             .registry_context
@@ -57,6 +69,7 @@ impl Runtime {
         let result = HashTable::from(table).insert(&mut context, self, name, class);
         let _ = crate::pop_root(&mut context, class_token);
         let _ = crate::pop_root(&mut context, name_token);
+        drop(context);
         result
     }
 
@@ -65,10 +78,12 @@ impl Runtime {
         let mut context = self.registry_context.lock().ok()?;
         let name = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
         let table = Self::table(&self.classes).ok()?;
-        HashTable::from(table)
+        let result = HashTable::from(table)
             .get(&mut context, name)
             .ok()
-            .flatten()
+            .flatten();
+        drop(context);
+        result
     }
 
     pub fn add_feature(&self, feature: impl Into<String>) {

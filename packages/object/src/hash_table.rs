@@ -117,6 +117,9 @@ impl HashTable {
         self.read_usize(ctx, COUNT)
     }
     /// Return the number of index slots.
+    ///
+    /// # Errors
+    /// Returns an error for an invalid heap layout.
     pub fn capacity(self, ctx: &ThreadContext) -> Result<usize, ObjectError> {
         self.read_usize(ctx, CAPACITY)
     }

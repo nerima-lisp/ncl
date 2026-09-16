@@ -2,6 +2,10 @@ use crate::{ObjectError, ThreadContext};
 use ncl_sys::{StorageCondition, Word};
 
 impl ThreadContext {
+    /// Write a payload slot through the write barrier.
+    ///
+    /// # Errors
+    /// Returns a storage error when the thread is not registered.
     pub fn write_object_slot(
         &mut self,
         object: Word,

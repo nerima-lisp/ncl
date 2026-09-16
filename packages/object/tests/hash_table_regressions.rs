@@ -176,12 +176,14 @@ fn repeated_remove_insert_reuses_kv_positions_without_resize() {
     for key in &keys[..5] {
         table
             .insert(&mut ctx, &runtime, key_word(*key), key_word(*key))
-            .unwrap();
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
     }
-    let capacity = table.capacity(&ctx).unwrap();
+    let capacity = table
+        .capacity(&ctx)
+        .unwrap_or_else(|error| panic!("capacity failed: {error:?}"));
     for round in 0..1_000_i64 {
-        let old = keys[usize::try_from(round).unwrap()];
-        let replacement = keys[usize::try_from(round + 5).unwrap()];
+        let old = keys[usize::try_from(round).unwrap_or(usize::MAX)];
+        let replacement = keys[usize::try_from(round + 5).unwrap_or(usize::MAX)];
         assert_eq!(
             table.remove(&mut ctx, &runtime, key_word(old)),
             Ok(Some(key_word(old)))
@@ -193,7 +195,7 @@ fn repeated_remove_insert_reuses_kv_positions_without_resize() {
                 key_word(replacement),
                 key_word(replacement),
             )
-            .unwrap();
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
         assert_eq!(table.capacity(&ctx), Ok(capacity));
     }
 }
@@ -208,7 +210,7 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     for key in 0..8_192_i64 {
         HashTable::from(table_word)
             .insert(&mut ctx, &runtime, key_word(key), key_word(key))
-            .unwrap();
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
     }
     for key in (0..8_192_i64).step_by(2) {
         assert_eq!(
@@ -219,7 +221,7 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     for key in 8_192..12_288_i64 {
         HashTable::from(table_word)
             .insert(&mut ctx, &runtime, key_word(key), key_word(key))
-            .unwrap();
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
     }
     ctx.collect(true);
     for key in 1..8_192_i64 {

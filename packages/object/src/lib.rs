@@ -456,16 +456,23 @@ pub(crate) fn with_root<T>(
     finish_root(ctx, token, result)
 }
 
+/// Pop a root and return the callback result.
+///
+/// The callback result is discarded if cleanup detects a moved context.
+///
+/// # Errors
+/// Returns [`ObjectError::ContextMoved`] when the context moved after registration.
+///
+/// # Panics
+/// Panics if the root token is not at the top of the root stack.
 pub(crate) fn finish_root<T>(
     ctx: &mut ThreadContext,
     token: RootToken,
     result: Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
     let popped = pop_root(ctx, token);
+    assert!(popped, "root token popped out of stack order");
     ctx.check_registered_address()?;
-    if !popped {
-        return Err(ObjectError::Layout);
-    }
     result
 }
 /// Return the car of a cons cell.

@@ -335,6 +335,55 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     assert!(ncl_object::pop_root(&mut ctx, table_token));
 }
 
+#[test]
+fn moving_keys_are_rehashed_in_every_table() {
+    let (runtime, mut ctx) = setup();
+    let mut first_table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
+        .as_word();
+    let first_table_token = ncl_object::push_root(&mut ctx, &mut first_table);
+    let mut second_table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
+        .as_word();
+    let second_table_token = ncl_object::push_root(&mut ctx, &mut second_table);
+    let mut keys = Vec::with_capacity(64);
+    let mut key_tokens = Vec::with_capacity(64);
+
+    for index in 0..64_i64 {
+        let mut key = Box::new(string(&mut ctx, &runtime, &format!("KEY-{index}")));
+        let token = ncl_object::push_root(&mut ctx, key.as_mut());
+        for (table, offset) in [(first_table, 0), (second_table, 1_000)] {
+            HashTable::from(table)
+                .insert(&mut ctx, &runtime, *key, key_word(index + offset))
+                .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+        }
+        keys.push(key);
+        key_tokens.push(token);
+    }
+    let old_addresses = keys.iter().map(|key| key.address()).collect::<Vec<_>>();
+
+    assert!(ctx.collect(true).is_ok());
+
+    for (index, key) in keys.iter().enumerate() {
+        assert_ne!(key.address(), old_addresses[index]);
+        let index = i64::try_from(index).unwrap_or(i64::MAX);
+        assert_eq!(
+            HashTable::from(first_table).get(&mut ctx, **key),
+            Ok(Some(key_word(index)))
+        );
+        assert_eq!(
+            HashTable::from(second_table).get(&mut ctx, **key),
+            Ok(Some(key_word(index + 1_000)))
+        );
+    }
+
+    for token in key_tokens.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+    assert!(ncl_object::pop_root(&mut ctx, second_table_token));
+    assert!(ncl_object::pop_root(&mut ctx, first_table_token));
+}
+
 const fn key_word(value: i64) -> Word {
     Word::fixnum(value)
 }

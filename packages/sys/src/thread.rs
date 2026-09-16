@@ -135,7 +135,9 @@ impl Thread {
         }
     }
 
-    pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
+    /// Return the heap this thread is registered with.
+    #[must_use]
+    pub fn heap(&self) -> Option<&crate::heap::Heap> {
         self.heap.map(|heap| {
             // SAFETY: registration stores this heap pointer for the thread lifetime.
             unsafe { &*heap }

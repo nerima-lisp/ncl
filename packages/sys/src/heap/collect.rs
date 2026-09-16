@@ -16,7 +16,9 @@ impl super::Heap {
             // SAFETY: registered thread pointers remain valid until unregister_thread.
             unsafe {
                 root_slots.extend((*thread).roots.iter().copied());
-                conservative_values.extend((*thread).conservative_snapshot());
+                if (*thread).native_state() == crate::NativeState::Lisp {
+                    conservative_values.extend((*thread).conservative_snapshot());
+                }
                 let mut values = Vec::new();
                 let _ = crate::scan_frame_chain_with_registry(
                     &mut (*thread).frame_chain,

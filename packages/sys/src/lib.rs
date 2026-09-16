@@ -118,27 +118,27 @@ pub fn widetag(heap: &Heap, object: Word) -> Option<u8> {
 /// Read the widetag of a live object through a registered thread.
 #[must_use]
 pub fn object_widetag(thread: &Thread, object: Word) -> Option<u8> {
-    let heap = thread.heap_ref()?;
+    let heap = thread.heap()?;
     heap.widetag(object)
 }
 
 /// Read a cons payload word through a registered thread.
 #[must_use]
 pub fn read_cons_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {
-    let heap = thread.heap_ref()?;
+    let heap = thread.heap()?;
     heap.read_word(object, slot)
 }
 
 /// Read a header-object payload word through a registered thread.
 #[must_use]
 pub fn read_object_word(thread: &Thread, object: Word, slot: usize) -> Option<Word> {
-    let heap = thread.heap_ref()?;
+    let heap = thread.heap()?;
     heap.read_word(object, slot + 1)
 }
 
 /// Write a header-object payload word through a registered thread.
 pub fn write_object_word(thread: &mut Thread, object: Word, slot: usize, value: Word) -> bool {
-    let Some(heap) = thread.heap_ref() else {
+    let Some(heap) = thread.heap() else {
         return false;
     };
     heap.write_word(object, slot, value)
@@ -146,7 +146,7 @@ pub fn write_object_word(thread: &mut Thread, object: Word, slot: usize, value: 
 
 /// Write a cons payload word through a registered thread.
 pub fn write_cons_word(thread: &mut Thread, object: Word, slot: usize, value: Word) -> bool {
-    let Some(heap) = thread.heap_ref() else {
+    let Some(heap) = thread.heap() else {
         return false;
     };
     heap.write_word_at(object, slot, value)
@@ -163,14 +163,14 @@ pub fn register_thread(heap: &Heap, thread: &mut Thread) -> Result<(), StorageCo
 
 /// Configure strict stale-word checking for a registered thread's heap.
 pub fn set_strict_forwarding(thread: &Thread, on: bool) {
-    if let Some(heap) = thread.heap_ref() {
+    if let Some(heap) = thread.heap() {
         heap.set_strict_forwarding(on);
     }
 }
 
 /// Remove a mutator from a heap.
 pub fn unregister_thread(thread: &Thread) {
-    if let Some(heap) = thread.heap_ref() {
+    if let Some(heap) = thread.heap() {
         heap.unregister_thread(thread);
     }
 }
@@ -274,7 +274,7 @@ pub fn collect(thread: &mut Thread, full: bool) {
 /// Return the collection epoch of the thread's heap.
 #[must_use]
 pub fn heap_epoch(thread: &Thread) -> u64 {
-    thread.heap_ref().map_or(0, Heap::gc_epoch)
+    thread.heap().map_or(0, Heap::gc_epoch)
 }
 
 /// Mark an object as weak with the specified weakness policy.

@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use ncl_object::package::{FindStatus, Package};
-use ncl_object::{Runtime, ThreadContext, Word, make_string, symbol_name};
+use ncl_object::{Runtime, ThreadContext, Word, make_string, symbol_name, symbol_package};
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
     make_string(ctx, runtime, &value.chars().collect::<Vec<_>>())
@@ -37,6 +37,7 @@ fn import_preserves_home_and_rejects_accessible_conflicts() {
         Package::from(target).import(&mut ctx, &runtime, name, other),
         Err(ncl_object::ObjectError::PackageConflict)
     );
+    assert_eq!(symbol_package(&ctx, other), Ok(Word::NIL));
 }
 
 #[test]
@@ -52,11 +53,14 @@ fn unintern_clears_home_and_shadowing_but_not_inherited() {
         .unwrap_or_else(|error| panic!("test failure: {error:?}"))
         .as_word();
     let name = string(&mut ctx, &runtime, "NAME");
-    let (_symbol, _) = Package::from(base)
+    let (symbol, _) = Package::from(base)
         .intern(&mut ctx, &runtime, "NAME")
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     Package::from(base)
         .export(&mut ctx, &runtime, name)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    Package::from(base)
+        .shadow(&mut ctx, &runtime, name)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     Package::from(user)
         .use_package(&mut ctx, &runtime, base)
@@ -72,6 +76,8 @@ fn unintern_clears_home_and_shadowing_but_not_inherited() {
             .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert_eq!(Package::from(base).find_symbol(&mut ctx, name), Ok(None));
+    assert_eq!(symbol_package(&ctx, symbol), Ok(Word::NIL));
+    assert_eq!(Package::from(base).shadowing_symbols(&ctx), Ok(Word::NIL));
 }
 
 #[test]

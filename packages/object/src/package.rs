@@ -262,14 +262,6 @@ impl Package {
                         widetag::SYMBOL,
                         crate::layout::symbol_offset::PACKAGE,
                     )?;
-                    if home == Word::NIL {
-                        put(
-                            ctx,
-                            *symbol,
-                            crate::layout::symbol_offset::PACKAGE,
-                            *package,
-                        )?;
-                    }
                     if let Some((existing, status)) =
                         Self::from(*package).find_symbol(ctx, *name)?
                     {
@@ -280,6 +272,14 @@ impl Package {
                         } else {
                             return Err(ObjectError::PackageConflict);
                         }
+                    }
+                    if home == Word::NIL {
+                        put(
+                            ctx,
+                            *symbol,
+                            crate::layout::symbol_offset::PACKAGE,
+                            *package,
+                        )?;
                     }
                     HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                         .insert(ctx, runtime, *name, *symbol)

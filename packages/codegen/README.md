@@ -15,7 +15,7 @@ and cooperative safepoint polls.
 | (d) Builtin call and rest argument | `executes_builtin_call_with_context_and_arguments`, `loads_fifth_argument_from_rest_storage` | Pass |
 | (e) Safepoint poll | `executes_safepoint_poll_without_and_with_request` | Pass |
 | (e2) Function object root forwarding | `forwards_function_object_from_generated_frame_map_simulation`, `forwards_function_object_from_real_frame_after_safepoint_collection` | Pass (debug/release) |
-| (f) Recursive call and `fib(25)` | `executes_recursive_fib_twenty_five_with_four_word_frames` | Pass, 75025 |
+| (f) Recursive call and `fib(25)` | `executes_recursive_fib_twenty_five` | Pass, 75025, 20-word frames |
 
 The release measurement command was:
 
@@ -23,8 +23,8 @@ The release measurement command was:
 nix develop '<worktree>' --command cargo test --release -p ncl-codegen --test exec_aarch64 -- --nocapture
 ```
 
-The test invokes `fib(25)` ten times and reports the wall-clock median. At
-commit `f10b581a`, the median on macOS arm64 was `687875 ns`.
+The test invokes `fib(25)` ten times and reports the wall-clock median. The
+current release measurement on macOS arm64 is `825458 ns`, with 20-word frames.
 
 ## Contract differences
 
@@ -41,6 +41,9 @@ The stable ABI and frame/map contracts are specified in [Calling convention](../
   shared `value << 3` representation.
 - Safepoint maps for allocation and polling point immediately after the slow
   path `blr`. The decoder tests inspect those emitted instructions.
+- The prologue spills every declared argument into the argument area below
+  `x29`. `LoadArg` reads those slots, so an entry safepoint may clobber all
+  caller-saved argument registers without changing the function's inputs.
 - A safepoint slow path receives the registered context in `x0`, the active
   generated frame pointer in `x1`, and the continuation PC in `x2`. The
   continuation PC is the address immediately after `blr`, which is also the

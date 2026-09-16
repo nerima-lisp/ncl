@@ -172,6 +172,7 @@ fn executes_fixnum_add_of_two_arguments() {
 #[test]
 fn preserves_arguments_across_entry_safepoint() {
     let _guard = TEST_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+    SAFEPOINT_SLOW_CALLS.store(0, Ordering::SeqCst);
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(27),
         "entry-safepoint-add",
@@ -427,7 +428,7 @@ fn executes_both_branch_paths_with_block_arguments() {
 
 #[test]
 #[allow(clippy::too_many_lines)]
-fn executes_recursive_fib_twenty_five_with_four_word_frames() {
+fn executes_recursive_fib_twenty_five() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(3),
         "fib",
@@ -546,6 +547,11 @@ fn executes_recursive_fib_twenty_five_with_four_word_frames() {
 
     let abi = Aarch64Abi;
     let compiled = compile_function_aarch64(&builder.finish(), &abi).expect("lowering");
+    let frame_words = compiled
+        .safepoint_maps
+        .first()
+        .expect("fib safepoint map")
+        .frame_words;
     let mut code = alloc_code(compiled.code.len()).expect("code allocation");
     write_code(&mut code, 0, &compiled.code).expect("code write");
     publish_code(&mut code).expect("code publication");
@@ -566,7 +572,10 @@ fn executes_recursive_fib_twenty_five_with_four_word_frames() {
         assert_eq!(count, 1);
     }
     samples.sort_unstable();
-    println!("fib(25) median: {} ns", samples[samples.len() / 2]);
+    println!(
+        "fib(25) frame words: {frame_words}, median: {} ns",
+        samples[samples.len() / 2]
+    );
 }
 #[path = "exec_aarch64/cons.rs"]
 mod cons;

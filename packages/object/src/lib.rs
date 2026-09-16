@@ -140,6 +140,7 @@ impl Runtime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         ncl_sys::register_thread(&runtime.heap, &mut context.thread).map_err(ObjectError::from)?;
+        context.registered_thread_address = Some((&context.thread as *const Thread) as usize);
         for target in [&runtime.functions, &runtime.packages, &runtime.classes] {
             let table =
                 HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)?.as_word();
@@ -234,6 +235,7 @@ impl Runtime {
 #[derive(Debug)]
 pub struct ThreadContext {
     pub(crate) thread: Thread,
+    registered_thread_address: Option<usize>,
     bindings: Vec<(u32, Word)>,
     values: Vec<Word>,
     pending: Option<ObjectError>,
@@ -248,6 +250,7 @@ impl ThreadContext {
     pub const fn new() -> Self {
         Self {
             thread: Thread::new(),
+            registered_thread_address: None,
             bindings: Vec::new(),
             values: Vec::new(),
             pending: None,
@@ -259,11 +262,15 @@ impl ThreadContext {
     }
     /// Register this context with a runtime.
     ///
+    /// After registration, do not move this context. Keep it in a stable
+    /// stack location or put it in a `Box<ThreadContext>` before registering.
+    ///
     /// # Errors
     ///
     /// Returns the storage condition reported by the heap.
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
+        self.registered_thread_address = Some((&self.thread as *const Thread) as usize);
         for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
             runtime.ensure_package(name)?;
         }
@@ -304,8 +311,10 @@ impl ThreadContext {
         self.pending.take()
     }
     /// Run a collection for this registered context.
-    pub fn collect(&mut self, full: bool) {
+    pub fn collect(&mut self, full: bool) -> Result<(), ObjectError> {
+        self.check_registered_address()?;
         ncl_sys::collect(&mut self.thread, full);
+        Ok(())
     }
     /// Mark an object as weak with the requested policy.
     #[must_use]
@@ -316,6 +325,14 @@ impl ThreadContext {
     #[must_use]
     pub fn weak_value(&self, value: Word) -> Word {
         ncl_sys::weak_value(&self.thread, value)
+    }
+
+    fn check_registered_address(&self) -> Result<(), ObjectError> {
+        if self.registered_thread_address == Some((&self.thread as *const Thread) as usize) {
+            Ok(())
+        } else {
+            Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
+        }
     }
 }
 impl Default for ThreadContext {
@@ -334,6 +351,9 @@ pub fn make_cons(
     car: Word,
     cdr: Word,
 ) -> Result<Word, ObjectError> {
+    debug_assert!(
+        ctx.registered_thread_address.is_none() || ctx.check_registered_address().is_ok()
+    );
     ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, car, cdr).map_err(Into::into)
 }
 /// Allocate a header object with a widetag and payload words.
@@ -347,6 +367,9 @@ pub fn allocate(
     tag: u8,
     words: usize,
 ) -> Result<Word, ObjectError> {
+    debug_assert!(
+        ctx.registered_thread_address.is_none() || ctx.check_registered_address().is_ok()
+    );
     ncl_sys::alloc(
         &mut ctx.thread,
         &runtime.heap,

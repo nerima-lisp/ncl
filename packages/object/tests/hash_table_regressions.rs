@@ -4,11 +4,25 @@ use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
 use ncl_object::{Runtime, ThreadContext, make_cons, make_string, make_symbol};
 use ncl_sys::Word;
 
-fn setup() -> (Runtime, ThreadContext) {
+fn setup() -> (Runtime, Box<ThreadContext>) {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = Box::new(ThreadContext::new());
+    assert!(ctx.register(&runtime).is_ok());
+    (runtime, ctx)
+}
+
+#[test]
+fn moved_registered_context_returns_error_instead_of_crashing() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
-    (runtime, ctx)
+    let mut ctx = Box::new(ctx);
+    assert_eq!(
+        ctx.collect(true),
+        Err(ncl_object::ObjectError::Storage(
+            ncl_sys::StorageCondition::ThreadNotRegistered,
+        ))
+    );
 }
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
@@ -223,7 +237,7 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
             .insert(&mut ctx, &runtime, key_word(key), key_word(key))
             .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
     }
-    ctx.collect(true);
+    assert!(ctx.collect(true).is_ok());
     for key in 1..8_192_i64 {
         if key % 2 == 1 {
             assert_eq!(

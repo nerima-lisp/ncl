@@ -60,7 +60,7 @@ fn eql_matches_bignum_values_and_eq_rehashes_after_gc() {
     let mut symbol_root = symbol;
     let symbol_token = ncl_object::push_root(&mut ctx, &mut symbol_root);
     assert!(eq.insert(&mut ctx, &runtime, symbol, Word::TRUE).is_ok());
-    ctx.collect(true);
+    assert!(ctx.collect(true).is_ok());
     assert_eq!(
         HashTable::from(eq_table_word).get(&mut ctx, symbol_root),
         Ok(Some(Word::TRUE))
@@ -110,7 +110,7 @@ fn package_registry_survives_vector_reallocation_and_gc() {
         let name = format!("P{index}");
         assert!(runtime.ensure_package(&name).is_ok());
     }
-    ctx.collect(true);
+    assert!(ctx.collect(true).is_ok());
     for index in 0..24 {
         let name = format!("P{index}");
         assert!(runtime.find_package(&name).is_some());

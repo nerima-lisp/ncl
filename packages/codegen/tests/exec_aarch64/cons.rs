@@ -347,7 +347,7 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     let result = invoke_entry_with_function(
         &code,
         compiled.entry_offset as usize,
-        &mut thread as *mut Thread,
+        std::ptr::from_mut(&mut thread),
         old,
         0,
         [0; 4],

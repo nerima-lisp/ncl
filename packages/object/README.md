@@ -97,7 +97,7 @@ Object payload ordering, `ReferenceLayout`, runtime roots, hash tests, and write
 
 double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` は `repr(C)` で `Thread` を先頭に持つ。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
 
-hash table と PACKAGE の payload はスカラー metadata を先頭、参照語を末尾に置き、`boxed_from` は最初の参照語（header 込み index）です。HASH_TABLE はスカラー payload 0..7、参照 payload 8..9、PACKAGE はスカラー payload 0..1、参照 payload 2..9 の順序で、fixnum metadata を boxed reference として走査しません。HASH_TABLE の 5..7 は順にフリーリスト先頭、高水位、occupied（live と tombstone の合計）です。KV の空き key slot は予約 tagged word、対応する value slot は次の空き position です。新規 position は高水位から切り出し、削除 position はフリーリストから O(1) で再利用します。insert/remove/get は平均 O(1)、rehash は O(n)、resize は O(n) です。全参照 store は write barrier 経由です。
+hash table と PACKAGE の payload はスカラー metadata を先頭、参照語を末尾に置き、`boxed_from` は最初の参照語（header 込み index）です。HASH_TABLE はスカラー payload 0..7、参照 payload 8..10、PACKAGE はスカラー payload 0..1、参照 payload 2..9 の順序で、fixnum metadata を boxed reference として走査しません。HASH_TABLE の 5..7 は順にフリーリスト先頭、高水位、occupied（live と tombstone の合計）です。KV の空き key slot は予約 tagged word、対応する value slot は次の空き position です。新規 position は高水位から切り出し、削除 position はフリーリストから O(1) で再利用します。insert/remove/get は平均 O(1)、rehash は O(n)、resize は O(n) です。全参照 store は write barrier 経由です。
 
 hash table の削除は tombstone を使います。空 slot はプローブ連鎖の終端、tombstone は連鎖を維持したまま insert が再利用できる slot です。lookup は tombstone を越えて続行し、load factor は tombstone を含めて計算します。resize は KV を高水位順に読み、旧エントリの Vec を保持せず新しい KV/INDEX に再配置して tombstone を掃除します。
 

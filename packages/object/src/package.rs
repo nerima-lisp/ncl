@@ -45,6 +45,12 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn new(
         ctx: &mut ThreadContext,
         runtime: &Runtime,
@@ -117,6 +123,9 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn intern(
         self,
         ctx: &mut ThreadContext,
@@ -146,6 +155,9 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn export(
         self,
         ctx: &mut ThreadContext,
@@ -171,6 +183,9 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn unexport(
         self,
         ctx: &mut ThreadContext,
@@ -196,6 +211,9 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn import(
         self,
         ctx: &mut ThreadContext,
@@ -211,6 +229,9 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn use_package(
         self,
         ctx: &mut ThreadContext,
@@ -237,6 +258,9 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn unintern(
         self,
         ctx: &mut ThreadContext,
@@ -257,6 +281,9 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn shadow(
         self,
         ctx: &mut ThreadContext,
@@ -271,6 +298,9 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn gensym(self, ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
         let number = get(ctx, self.0, widetag::PACKAGE, GENSYM)?
             .as_fixnum()

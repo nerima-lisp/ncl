@@ -11,6 +11,9 @@ crate::word_newtype!(Instance);
 ///
 /// # Errors
 /// Returns an error when either allocation fails.
+///
+/// # Panics
+/// Panics if a root token cannot be removed in stack order.
 pub fn make_instance(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

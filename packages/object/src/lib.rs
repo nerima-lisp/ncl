@@ -420,11 +420,17 @@ pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
     ncl_sys::pop_root(&mut ctx.thread, token)
 }
 /// Push a precise root after validating the context address.
+///
+/// # Errors
+/// Returns [`ObjectError::ContextMoved`] when the context moved after registration.
 pub fn try_push_root(ctx: &mut ThreadContext, value: &mut Word) -> Result<RootToken, ObjectError> {
     ctx.check_registered_address()?;
     Ok(push_root(ctx, value))
 }
 /// Pop a precise root after validating the context address.
+///
+/// # Errors
+/// Returns [`ObjectError::ContextMoved`] when the context moved after registration.
 pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, ObjectError> {
     ctx.check_registered_address()?;
     Ok(pop_root(ctx, token))

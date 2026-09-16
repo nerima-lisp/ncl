@@ -78,6 +78,8 @@ Code allocation is non-moving. A code range is writable while it is constructed,
 
 The collector increments the heap epoch for a collection and exposes that epoch to registered mutators. Native frame scanning uses the registered `SafepointMap`: the function object in header word 2 and live slots/registers are forwarded, while the return PC is left unchanged because it points into non-moving code. (`packages/sys/src/heap_state.rs`, `gc_epoch`; `packages/sys/src/code.rs`, `scan_frame_chain_with_registry`.)
 
+In Phase 1, a real generated frame is scanned through a snapshot of the top frame that the safepoint slow path handed to the collector: `set_native_frame` copies the four-word header at the passed frame pointer into the thread snapshot, and `write_back_frame_snapshot` forwards header word 2 and the live slots back into that frame. The return PC is matched by its raw bits, `Word::bits()`, without masking the low three tag bits, and resolved through the code registry. (`packages/sys/src/code.rs`, `scan_frame_chain_with_registry`; `packages/sys/src/thread.rs`, `set_native_frame`.)
+
 Object-layer allocation functions root managed arguments received by value and each element of a `&[Word]` before allocating, then re-read those values from the rooted slots after allocation. (`packages/object/src/roots.rs`, `with_root`, `with_roots`; `packages/object/src/lib.rs`.)
 
 `ThreadContext::set_gc_stress` selects a test-only mode that forces `collect(true)` on every allocation. The sys heap resolves stale addresses through forwarding, so a stale word cannot be detected, and the basis of correctness rests on static audit. (`packages/object/src/lib.rs`, `ThreadContext::set_gc_stress`; `packages/object/tests/gc_stress.rs`.)

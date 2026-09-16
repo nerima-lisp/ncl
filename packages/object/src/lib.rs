@@ -102,7 +102,6 @@ impl From<StorageCondition> for ObjectError {
 #[derive(Debug)]
 pub struct Runtime {
     heap: Box<Heap>,
-    registry_context: Mutex<Box<ThreadContext>>,
     functions: Mutex<Option<RootedTable>>,
     packages: Mutex<Option<RootedTable>>,
     classes: Mutex<Option<RootedTable>>,
@@ -132,7 +131,6 @@ impl Runtime {
     pub fn with_config(config: HeapConfig) -> Result<Self, ObjectError> {
         let runtime = Self {
             heap: Box::new(Heap::new(config)),
-            registry_context: Mutex::new(Box::new(ThreadContext::new())),
             functions: Mutex::new(None),
             packages: Mutex::new(None),
             classes: Mutex::new(None),
@@ -142,10 +140,7 @@ impl Runtime {
             layouts_registered: Mutex::new(false),
         };
         runtime.register_layouts()?;
-        let mut context = runtime
-            .registry_context
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut context = ThreadContext::new();
         ncl_sys::register_thread(&runtime.heap, &mut context.thread).map_err(ObjectError::from)?;
         context.registered = true;
         for target in [&runtime.functions, &runtime.packages, &runtime.classes] {
@@ -160,8 +155,9 @@ impl Runtime {
                 _token: token,
             });
         }
-        ncl_sys::enter_native(&mut context.thread);
-        drop(context);
+        for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
+            runtime.ensure_package(&mut context, name)?;
+        }
         Ok(runtime)
     }
     /// Register all object layouts supported by this layer.
@@ -201,11 +197,6 @@ impl Runtime {
     /// Configure strict stale-word checking for this runtime heap.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.heap.set_strict_forwarding(on);
-        let context = self
-            .registry_context
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        ncl_sys::set_strict_forwarding(&context.thread, on);
     }
     /// Register a function object under a package and name.
     ///
@@ -213,36 +204,29 @@ impl Runtime {
     /// Returns an allocation, layout, or storage error.
     pub fn define_function(
         &self,
+        ctx: &mut ThreadContext,
         package: &str,
         name: &str,
         function: Word,
     ) -> Result<(), ObjectError> {
-        let mut context = self
-            .registry_context
-            .lock()
-            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         let key = format!("{package}::{name}");
         let mut function = function;
-        let result = with_root(&mut context, &mut function, |context, function| {
+        let result = with_root(ctx, &mut function, |context, function| {
             let mut key = make_string(context, self, &key.chars().collect::<Vec<_>>())?;
             with_root(context, &mut key, |context, key| {
                 HashTable::from(Self::table(&self.functions)?)
                     .insert(context, self, *key, *function)
             })
         });
-        drop(context);
         result
     }
     /// Look up a registered function object.
     #[must_use]
-    pub fn function(&self, package: &str, name: &str) -> Option<Word> {
-        let mut context = self.registry_context.lock().ok()?;
+    pub fn function(&self, ctx: &mut ThreadContext, package: &str, name: &str) -> Option<Word> {
         let key = format!("{package}::{name}");
-        let key = make_string(&mut context, self, &key.chars().collect::<Vec<_>>()).ok()?;
+        let key = make_string(ctx, self, &key.chars().collect::<Vec<_>>()).ok()?;
         let table = Self::table(&self.functions).ok()?;
-        let result = HashTable::from(table).get(&mut context, key).ok().flatten();
-        drop(context);
-        result
+        HashTable::from(table).get(ctx, key).ok().flatten()
     }
 
     fn table(registry: &Mutex<Option<RootedTable>>) -> Result<Word, ObjectError> {
@@ -255,10 +239,8 @@ impl Runtime {
     }
 }
 /// Per-mutator object-layer context.
-/// The address of this value may be passed to generated code as a
-/// `*mut ncl_sys::Thread`. Generated code may access only the leading `Thread`
-/// portion.
-#[repr(C)]
+/// Per-mutator object-layer context. Generated code obtains its stable thread
+/// pointer with [`ThreadContext::thread_mut`].
 #[derive(Debug)]
 pub struct ThreadContext {
     pub(crate) thread: Box<Thread>,
@@ -300,7 +282,7 @@ impl ThreadContext {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
         self.registered = true;
         for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
-            runtime.ensure_package(name)?;
+            runtime.ensure_package(self, name)?;
         }
         Ok(())
     }
@@ -355,6 +337,10 @@ impl ThreadContext {
     pub fn set_strict_forwarding(&self, on: bool) {
         ncl_sys::set_strict_forwarding(&self.thread, on);
     }
+    /// Return the stable thread pointer used by generated code.
+    pub fn thread_mut(&mut self) -> &mut Thread {
+        &mut self.thread
+    }
     /// Mark an object as weak with the requested policy.
     ///
     /// This low-level operation does not validate registration or context movement.
@@ -375,6 +361,14 @@ impl ThreadContext {
             return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
         }
         Ok(())
+    }
+}
+impl Drop for ThreadContext {
+    fn drop(&mut self) {
+        if self.registered {
+            ncl_sys::unregister_thread(&self.thread);
+            self.registered = false;
+        }
     }
 }
 impl Default for ThreadContext {

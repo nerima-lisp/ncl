@@ -35,8 +35,8 @@ pub struct RootToken {
 /// Machine-visible mutator context.
 ///
 /// This type is `repr(C)` so the offsets returned by [`thread_layout`] are a
-/// stable ABI. The object lane's `ThreadContext` places this type first and
-/// passes `*mut ThreadContext` to generated code as `*mut Thread`.
+/// stable ABI. The `*mut Thread` passed to generated code must remain stable
+/// until the thread is unregistered.
 #[repr(C)]
 #[derive(Debug)]
 pub struct Thread {

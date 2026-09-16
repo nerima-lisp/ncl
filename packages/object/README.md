@@ -31,9 +31,9 @@ make_array(&mut ThreadContext, &Runtime, &[usize], ArrayOptions) -> Result<Word,
 array_dimensions/array_row_major_ref/array_row_major_set
 ```
 
-`Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function`、`Runtime::function`、`Runtime::ensure_package`、`Runtime::find_package`、`Runtime::define_class`、`Runtime::class`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config`、`Runtime::set_gc_stress` が runtime の登録・照会・GC stress API です。`define_function` と `define_class` も登録失敗を `Result` で返します。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
+`Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function(&mut ThreadContext, ...)`、`Runtime::function(&mut ThreadContext, ...)`、`Runtime::ensure_package(&mut ThreadContext, ...)`、`Runtime::find_package(&mut ThreadContext, ...)`、`Runtime::define_class(&mut ThreadContext, ...)`、`Runtime::class(&mut ThreadContext, ...)`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config`、`Runtime::set_strict_forwarding` が runtime の登録・照会・GC API です。registry 操作は呼び出し側 context を使います。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
 
-`ThreadContext::register` 後もコンテキストの move は安全です。`Thread` は Box で固定され、heap が保持するアドレスは変わりません。未登録 context は `collect`、allocation、`make_cons` を拒否します。
+`ThreadContext::register` 後もコンテキストの move は安全です。`Thread` は Box で固定され、heap が保持するアドレスは変わりません。生成コードへは `thread_mut()` で得た `&mut Thread` から `*mut Thread` を渡します。Drop 時に登録解除されます。未登録 context は `collect`、allocation、`make_cons` を拒否します。
 
 `HashTable::new`、`insert`、`get`、`remove`、`for_each_entry`、`capacity` と `sxhash` が hash table API です。`Eq` は identity、`Eql` は数値値、`Equal` は文字列内容と cons、`Equalp` はそれらに ASCII case folding を加えた比較です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`unexport`、`import`、`shadow`、`use_package`、`unuse_package`、`add_nickname`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
 
@@ -99,13 +99,13 @@ constructor は値で受け取った managed 引数と slice の各要素を、�
 
 Object payload ordering, `ReferenceLayout`, runtime roots, hash tests, and write-barrier requirements are specified in [Object layout](../../docs/src/design/object-layout.md) and [GC interface](../../docs/src/design/gc-interface.md). The following notes retain Phase 1 implementation details and known gaps.
 
-double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` は `repr(C)` で `Thread` を先頭に持つ。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
+double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` のレイアウトを下流 ABI に公開せず、生成コードへは `thread_mut()` で得た `Thread` のポインタを渡す。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
 
 hash table と PACKAGE の payload はスカラー metadata を先頭、参照語を末尾に置き、`boxed_from` は最初の参照語（header 込み index）です。HASH_TABLE はスカラー payload 0..7、参照 payload 8..10、PACKAGE はスカラー payload 0..1、参照 payload 2..9 の順序で、fixnum metadata を boxed reference として走査しません。HASH_TABLE の 5..7 は順にフリーリスト先頭、高水位、occupied（live と tombstone の合計）です。KV の空き key slot は予約 tagged word、対応する value slot は次の空き position です。新規 position は高水位から切り出し、削除 position はフリーリストから O(1) で再利用します。insert/remove/get は平均 O(1)、rehash は O(n)、resize は O(n) です。全参照 store は write barrier 経由です。
 
 hash table の削除は tombstone を使います。空 slot はプローブ連鎖の終端、tombstone は連鎖を維持したまま insert が再利用できる slot です。lookup は tombstone を越えて続行し、load factor は tombstone を含めて計算します。resize は KV を高水位順に読み、旧エントリの Vec を保持せず新しい KV/INDEX に再配置して tombstone を掃除します。
 
-registry は専用の `registry_context` を Native 状態で保持します。sys の STW 判定では Native mutator は `active_mutators` から除外され、現在の `allocate` は GC を起動せず容量超過を返すため、現行実装では STW と整合します。将来 allocation が GC を起動する場合は、Native 状態を一時的に Lisp 状態へ戻す公開 sys API、または allocation 中も STW 対象にする sys 側変更が必要です。registry が保持する Word は root slot から allocation 後に再読します。
+registry は専用 context を保持せず、各操作が呼び出し側の登録済み context を受け取ります。registry が保持する Word は root slot から allocation 後に再読します。
 
 `ncl-sys` の conservative `find_raw` は lowtag を検証しないため、object 側は payload 語順と `boxed_from` を使ってこの段階の誤走査を回避しています。lowtag 検証そのものは sys 側の残課題です。weakness enum/API は登録済みですが、weak table の key/value clearing の完全な CL semantics は下流実装で補完します。
 
@@ -120,4 +120,3 @@ registry は専用の `registry_context` を Native 状態で保持します。s
 
 残課題: `Runtime::function` と `class` の照会では検索キー文字列を毎回 heap allocation しています。キー文字列を一時 allocation なしで照会する仕組みは未実施です。`find_package` は registry の package 名と nickname を既存の heap 値から照合します。lowtag 検証と weak table の完全な Common Lisp semantics も sys/下流実装の課題です。
 残課題: CLHS が要求する `unintern` 時の name-conflict 検出は未対応です。
-残課題: `Runtime::class`/`function` の lookup は検索キー文字列を heap allocation します。

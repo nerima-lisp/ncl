@@ -25,7 +25,7 @@ fn allocation_paths_survive_collection_before_every_allocation() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     ctx.set_gc_stress(true);
-    runtime.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
     let mut string = make_string(&mut ctx, &runtime, &['S', 'T', 'R', 'E', 'S', 'S'])
         .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let string_token = ncl_object::push_root(&mut ctx, &mut string);
@@ -104,13 +104,16 @@ fn allocation_paths_survive_collection_before_every_allocation() {
     assert_eq!(slot_ref(&ctx, instance.into(), 0), Ok(cons));
     let class_name = "STRESS-CLASS".to_owned();
     runtime
-        .define_class(class_name.clone(), symbol)
+        .define_class(&mut ctx, class_name.clone(), symbol)
         .unwrap_or_else(|error| panic!("class: {error:?}"));
-    assert_eq!(runtime.class(&class_name), Some(symbol));
+    assert_eq!(runtime.class(&mut ctx, &class_name), Some(symbol));
     runtime
-        .define_function("NCL", "STRESS-FUNCTION", symbol)
+        .define_function(&mut ctx, "NCL", "STRESS-FUNCTION", symbol)
         .unwrap_or_else(|error| panic!("function: {error:?}"));
-    assert_eq!(runtime.function("NCL", "STRESS-FUNCTION"), Some(symbol));
+    assert_eq!(
+        runtime.function(&mut ctx, "NCL", "STRESS-FUNCTION"),
+        Some(symbol)
+    );
     assert!(ncl_object::pop_root(&mut ctx, instance_token));
     assert!(ncl_object::pop_root(&mut ctx, interned_token));
     assert!(ncl_object::pop_root(&mut ctx, package_token));
@@ -123,11 +126,11 @@ fn allocation_paths_survive_collection_before_every_allocation() {
 #[test]
 fn constructors_and_registry_survive_gc_stress() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-    runtime.set_gc_stress(true);
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
     let name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])
         .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let mut name = name;
@@ -216,18 +219,18 @@ fn constructors_and_registry_survive_gc_stress() {
 #[test]
 fn registry_package_operations_survive_gc_stress() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-    runtime.set_gc_stress(true);
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
     let package = runtime
-        .ensure_package("STRESS-A")
+        .ensure_package(&mut ctx, "STRESS-A")
         .unwrap_or_else(|error| panic!("package: {error:?}"));
     let mut package = package;
     let package_token = ncl_object::push_root(&mut ctx, &mut package);
     let used = runtime
-        .ensure_package("STRESS-B")
+        .ensure_package(&mut ctx, "STRESS-B")
         .unwrap_or_else(|error| panic!("package: {error:?}"));
     let mut used = used;
     let used_token = ncl_object::push_root(&mut ctx, &mut used);
@@ -271,7 +274,7 @@ fn registry_package_operations_survive_gc_stress() {
         Package::from(package).find_symbol(&mut ctx, lookup),
         Ok(Some((symbol, FindStatus::Inherited)))
     );
-    assert_eq!(runtime.ensure_package("STRESS-A"), Ok(package));
+    assert_eq!(runtime.ensure_package(&mut ctx, "STRESS-A"), Ok(package));
     assert!(ncl_object::pop_root(&mut ctx, symbol_token));
     assert!(ncl_object::pop_root(&mut ctx, imported_token));
     assert!(ncl_object::pop_root(&mut ctx, import_name_token));
@@ -285,6 +288,7 @@ fn hash_table_resize_tombstones_and_reinsertion_survive_gc_stress() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
     let mut table = HashTable::new(&mut ctx, &runtime, HashTest::Equal, Weakness::None)
         .unwrap_or_else(|error| panic!("table: {error:?}"))
         .as_word();

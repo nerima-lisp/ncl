@@ -323,11 +323,15 @@ impl ThreadContext {
         Ok(())
     }
     /// Mark an object as weak with the requested policy.
+    ///
+    /// This low-level operation does not validate registration or context movement.
     #[must_use]
     pub fn make_weak(&self, value: Word, weakness: ncl_sys::Weakness) -> Word {
         ncl_sys::make_weak(&self.thread, value, weakness)
     }
     /// Read the value slot of a weak object.
+    ///
+    /// This low-level operation does not validate registration or context movement.
     #[must_use]
     pub fn weak_value(&self, value: Word) -> Word {
         ncl_sys::weak_value(&self.thread, value)

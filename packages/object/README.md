@@ -33,7 +33,7 @@ array_dimensions/array_row_major_ref/array_row_major_set
 
 `Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function`、`Runtime::function`、`Runtime::ensure_package`、`Runtime::find_package`、`Runtime::define_class`、`Runtime::class`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config` が runtime の登録・照会 API です。`define_function` と `define_class` も登録失敗を `Result` で返します。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
 
-`ThreadContext::register` 後はコンテキストを move してはいけません。登録前に `Box<ThreadContext>` に入れるか、スタック上の同じ場所で使い続けてください。登録後の move は `collect`、allocation、root 操作、object read/write、write barrier 経路で検査され、`ObjectError::ContextMoved` を返します。
+`ThreadContext::register` 後はコンテキストを move してはいけません。登録前に `Box<ThreadContext>` に入れるか、スタック上の同じ場所で使い続けてください。登録後の move は `collect`、allocation、`make_cons`、try root 操作、object read/write、write barrier 経路で検査され、`ObjectError::ContextMoved` を返します。未登録 context は `collect`、allocation、`make_cons` を拒否します。低レベルの `push_root`/`pop_root` と weak 操作は登録検査を行いません。
 
 `HashTable::new`、`insert`、`get`、`remove`、`for_each_entry`、`capacity` と `sxhash` が hash table API です。`Eq` は identity、`Eql` は数値値、`Equal` は文字列内容と cons、`Equalp` はそれらに ASCII case folding を加えた比較です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`unexport`、`import`、`shadow`、`use_package`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
 

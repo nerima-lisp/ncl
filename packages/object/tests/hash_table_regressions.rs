@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
-use ncl_object::{Runtime, ThreadContext, make_cons, make_string, make_symbol};
+use ncl_object::{Package, Runtime, ThreadContext, allocate, make_cons, make_string, make_symbol};
+use ncl_sys::StorageCondition;
 use ncl_sys::Word;
 
 fn setup() -> (Runtime, Box<ThreadContext>) {
@@ -19,6 +20,50 @@ fn moved_registered_context_returns_error_instead_of_crashing() {
     let mut ctx = Box::new(ctx);
     assert_eq!(
         ctx.collect(true),
+        Err(ncl_object::ObjectError::ContextMoved)
+    );
+}
+
+#[test]
+fn package_failure_releases_all_roots_before_collection() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    while allocate(&mut ctx, &runtime, 0x7f, 64).is_ok() {}
+    let mut sentinel = Word::NIL;
+    let sentinel_token = ncl_object::push_root(&mut ctx, &mut sentinel);
+    let result = Package::new(&mut ctx, &runtime, "ROOT-FAILURE");
+    assert_eq!(
+        result,
+        Err(ncl_object::ObjectError::Storage(
+            StorageCondition::CapacityExceeded
+        ))
+    );
+    assert!(ncl_object::pop_root(&mut ctx, sentinel_token));
+    assert!(ctx.collect(true).is_ok());
+}
+
+#[test]
+fn moved_registered_context_rejects_allocation() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    let mut ctx = Box::new(ctx);
+    assert_eq!(
+        make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL),
+        Err(ncl_object::ObjectError::ContextMoved)
+    );
+}
+
+#[test]
+fn moved_registered_context_rejects_try_push_root() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    let mut ctx = Box::new(ctx);
+    let mut value = Word::NIL;
+    assert_eq!(
+        ncl_object::try_push_root(&mut ctx, &mut value),
         Err(ncl_object::ObjectError::ContextMoved)
     );
 }

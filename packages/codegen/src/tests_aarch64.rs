@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+#![allow(missing_docs, clippy::unwrap_used)]
 
 use crate::{ContextField, RuntimeAbi, RuntimeFunction, compile_function_aarch64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
@@ -79,6 +79,63 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
         Ok(ncl_asm_aarch64::Inst::Adr {
             rd: ncl_asm_aarch64::Reg(2),
             label: ncl_asm_aarch64::Label(0),
+        })
+    );
+}
+
+#[test]
+fn golden_aarch64_prologue_spills_register_arguments() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(28),
+        "spill-arguments",
+        vec![
+            ncl_ir::Param {
+                name: "left".into(),
+                ty: ncl_ir::Ty::Word,
+            },
+            ncl_ir::Param {
+                name: "right".into(),
+                ty: ncl_ir::Ty::Word,
+            },
+        ],
+        vec![],
+    );
+    assert!(builder.push_op(ncl_ir::OpKind::Safepoint, &[]).is_ok());
+    assert!(
+        builder
+            .terminate(ncl_ir::Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    let compiled_result = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi);
+    assert!(compiled_result.is_ok());
+    let Some(compiled) = compiled_result.ok() else {
+        return;
+    };
+    let word = |offset| {
+        u32::from_le_bytes(
+            compiled.code[offset..offset + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        )
+    };
+    assert_eq!(
+        ncl_asm_aarch64::decode(word(24)),
+        Ok(ncl_asm_aarch64::Inst::Str {
+            rt: ncl_asm_aarch64::Reg(1),
+            mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(29)),
+                offset: -8,
+            },
+        })
+    );
+    assert_eq!(
+        ncl_asm_aarch64::decode(word(28)),
+        Ok(ncl_asm_aarch64::Inst::Str {
+            rt: ncl_asm_aarch64::Reg(2),
+            mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(29)),
+                offset: -16,
+            },
         })
     );
 }

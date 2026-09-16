@@ -18,16 +18,23 @@ impl super::Heap {
                 root_slots.extend((*thread).roots.iter().copied());
                 conservative_values.extend((*thread).conservative_snapshot());
                 let mut values = Vec::new();
-                let _ = crate::scan_frame_chain_with_registry(
-                    &mut (*thread).frame_chain,
-                    0,
-                    &state.code_registry,
-                    &mut (*thread).frame_registers,
-                    |value| {
+                if (*thread).has_native_frame_snapshot() {
+                    let _ = (*thread).scan_native_frame(&state.code_registry, |value| {
                         values.push(value);
                         value
-                    },
-                );
+                    });
+                } else {
+                    let _ = crate::scan_frame_chain_with_registry(
+                        &mut (*thread).frame_chain,
+                        0,
+                        &state.code_registry,
+                        &mut (*thread).frame_registers,
+                        |value| {
+                            values.push(value);
+                            value
+                        },
+                    );
+                }
                 frame_values.extend(values);
             }
         }
@@ -151,16 +158,23 @@ impl super::Heap {
         for thread in state.threads.iter().copied() {
             // SAFETY: collection owns the stop-the-world phase, so frame snapshots are stable.
             unsafe {
-                let _ = crate::scan_frame_chain_with_registry(
-                    &mut (*thread).frame_chain,
-                    0,
-                    &state.code_registry,
-                    &mut (*thread).frame_registers,
-                    |value| {
+                if (*thread).has_native_frame_snapshot() {
+                    let _ = (*thread).scan_native_frame(&state.code_registry, |value| {
                         Self::relocated_address(state, moved, value)
                             .map_or(value, |address| Self::relocated_word(value, address))
-                    },
-                );
+                    });
+                } else {
+                    let _ = crate::scan_frame_chain_with_registry(
+                        &mut (*thread).frame_chain,
+                        0,
+                        &state.code_registry,
+                        &mut (*thread).frame_registers,
+                        |value| {
+                            Self::relocated_address(state, moved, value)
+                                .map_or(value, |address| Self::relocated_word(value, address))
+                        },
+                    );
+                }
             }
         }
         for index in 0..state.objects.len() {

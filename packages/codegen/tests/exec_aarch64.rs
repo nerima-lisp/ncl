@@ -16,13 +16,17 @@ use ncl_sys::{
     publish_code, request_safepoint, set_tlab, thread_layout, tlab_bump, write_code,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
 static ALLOC_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static SAFEPOINT_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static COLLECT_IN_SAFEPOINT: AtomicBool = AtomicBool::new(false);
 static FRAME_WORD_BEFORE: AtomicU64 = AtomicU64::new(0);
 static FRAME_WORD_AFTER: AtomicU64 = AtomicU64::new(0);
+static FRAME_LOCAL_BEFORE: AtomicU64 = AtomicU64::new(0);
+static FRAME_LOCAL_AFTER: AtomicU64 = AtomicU64::new(0);
 static SLOW_STORAGE: [u64; 8] = [0; 8];
+static TEST_SERIAL: Mutex<()> = Mutex::new(());
 
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
     left + right
@@ -35,11 +39,15 @@ extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
 extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize) {
     SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
     if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) {
-        ctx.set_native_frame(frame_fp, return_pc);
+        ctx.capture_native_frame(frame_fp, return_pc);
         FRAME_WORD_BEFORE.store(
             ctx.frame_word(2)
                 .expect("captured frame function object")
                 .bits(),
+            Ordering::SeqCst,
+        );
+        FRAME_LOCAL_BEFORE.store(
+            ctx.frame_word(5).expect("captured live local").bits(),
             Ordering::SeqCst,
         );
         ctx.clear_safepoint_request();
@@ -47,12 +55,17 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
         ncl_sys::collect(ctx, true);
         ctx.leave_native();
         ctx.clear_safepoint_request();
-        FRAME_WORD_AFTER.store(
-            ctx.frame_word(2)
-                .expect("written-back frame function object")
+        let after = ctx
+            .last_written_frame_word(2)
+            .expect("written-back frame function object");
+        FRAME_WORD_AFTER.store(after.bits(), Ordering::SeqCst);
+        FRAME_LOCAL_AFTER.store(
+            ctx.last_written_frame_word(5)
+                .expect("written-back live local")
                 .bits(),
             Ordering::SeqCst,
         );
+        assert!(ctx.frame_word(2).is_none());
         println!(
             "frame word 2: before=0x{:x}, after=0x{:x}",
             FRAME_WORD_BEFORE.load(Ordering::SeqCst),
@@ -154,6 +167,70 @@ fn executes_fixnum_add_of_two_arguments() {
     );
     assert_eq!(value, abi.encode_fixnum(3) as u64);
     assert_eq!(count, 1);
+}
+
+#[test]
+fn preserves_arguments_across_entry_safepoint() {
+    let _guard = TEST_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+    SAFEPOINT_SLOW_CALLS.store(0, Ordering::SeqCst);
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(27),
+        "entry-safepoint-add",
+        vec![
+            Param {
+                name: "left".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "right".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
+    let left = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("left")[0];
+    let right = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .expect("right")[0];
+    let sum = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![left, right],
+                condition: None,
+            },
+            &[Ty::Word],
+        )
+        .expect("sum")[0];
+    builder
+        .terminate(Terminator::Return { values: vec![sum] })
+        .expect("return");
+    let compiled = compile_function_aarch64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let mut thread = Thread::new();
+    request_safepoint(&mut thread);
+    let abi = BuiltinAbi;
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        2,
+        [
+            abi.encode_fixnum(11) as u64,
+            abi.encode_fixnum(31) as u64,
+            0,
+            0,
+        ],
+        0,
+    );
+    assert_eq!(value, abi.encode_fixnum(42) as u64);
+    assert_eq!(count, 1);
+    assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 1);
 }
 
 #[test]
@@ -349,151 +426,11 @@ fn executes_both_branch_paths_with_block_arguments() {
     assert_eq!(invoke(2), (abi.encode_fixnum(2) as u64, 1));
 }
 
-#[test]
-#[allow(clippy::too_many_lines)]
-fn executes_recursive_fib_twenty_five_with_four_word_frames() {
-    let mut builder = FunctionBuilder::new(
-        ncl_ir::FunctionId(3),
-        "fib",
-        vec![
-            Param {
-                name: "callee".into(),
-                ty: Ty::Address,
-            },
-            Param {
-                name: "n".into(),
-                ty: Ty::Word,
-            },
-        ],
-        vec![Ty::Word],
-    );
-    let callee = builder
-        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Address])
-        .expect("callee argument")[0];
-    let n = builder
-        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
-        .expect("n argument")[0];
-    let one = builder.add_constant(Constant::Fixnum(1));
-    let one = builder
-        .push_op(OpKind::Const { result: one }, &[Ty::Word])
-        .expect("one")[0];
-    let two = builder.add_constant(Constant::Fixnum(2));
-    let two = builder
-        .push_op(OpKind::Const { result: two }, &[Ty::Word])
-        .expect("two")[0];
-    let condition = builder
-        .push_op(
-            OpKind::Compare {
-                op: Compare::Le,
-                left: n,
-                right: one,
-            },
-            &[Ty::Word],
-        )
-        .expect("base comparison")[0];
-    let base_n = builder.fresh_value();
-    let recursive_callee = builder.fresh_value();
-    let recursive_n = builder.fresh_value();
-    let base = builder.create_block(vec![(Ty::Word, base_n)]);
-    let recursive = builder.create_block(vec![
-        (Ty::Address, recursive_callee),
-        (Ty::Word, recursive_n),
-    ]);
-    builder.position_at(ncl_ir::BlockId(0)).expect("entry");
-    builder
-        .terminate(Terminator::Branch {
-            condition,
-            then_target: base,
-            then_args: vec![n],
-            else_target: recursive,
-            else_args: vec![callee, n],
-        })
-        .expect("branch");
-    builder.position_at(base).expect("base");
-    builder
-        .terminate(Terminator::Return {
-            values: vec![base_n],
-        })
-        .expect("base return");
-    builder.position_at(recursive).expect("recursive");
-    let n_minus_one = builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::FixnumSub,
-                args: vec![recursive_n, one],
-                condition: None,
-            },
-            &[Ty::Word],
-        )
-        .expect("n minus one")[0];
-    let first = builder
-        .push_op(
-            OpKind::Call {
-                function: recursive_callee,
-                args: vec![recursive_callee, n_minus_one],
-            },
-            &[Ty::Word],
-        )
-        .expect("first recursive call")[0];
-    let n_minus_two = builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::FixnumSub,
-                args: vec![recursive_n, two],
-                condition: None,
-            },
-            &[Ty::Word],
-        )
-        .expect("n minus two")[0];
-    let second = builder
-        .push_op(
-            OpKind::Call {
-                function: recursive_callee,
-                args: vec![recursive_callee, n_minus_two],
-            },
-            &[Ty::Word],
-        )
-        .expect("second recursive call")[0];
-    let sum = builder
-        .push_op(
-            OpKind::Prim {
-                op: Prim::FixnumAdd,
-                args: vec![first, second],
-                condition: None,
-            },
-            &[Ty::Word],
-        )
-        .expect("sum")[0];
-    builder
-        .terminate(Terminator::Return { values: vec![sum] })
-        .expect("recursive return");
-
-    let abi = Aarch64Abi;
-    let compiled = compile_function_aarch64(&builder.finish(), &abi).expect("lowering");
-    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
-    write_code(&mut code, 0, &compiled.code).expect("code write");
-    publish_code(&mut code).expect("code publication");
-    let mut thread = Thread::new();
-    let mut samples = Vec::with_capacity(10);
-    for _ in 0..10 {
-        let started = Instant::now();
-        let (value, count) = invoke_entry(
-            &code,
-            compiled.entry_offset as usize,
-            &mut thread,
-            2,
-            [code.address() as u64, abi.encode_fixnum(25) as u64, 0, 0],
-            0,
-        );
-        samples.push(started.elapsed().as_nanos());
-        assert_eq!(value, abi.encode_fixnum(75_025) as u64);
-        assert_eq!(count, 1);
-    }
-    samples.sort_unstable();
-    println!("fib(25) median: {} ns", samples[samples.len() / 2]);
-}
 #[path = "exec_aarch64/cons.rs"]
 mod cons;
+
+#[path = "exec_aarch64/fib.rs"]
+mod fib;
 
 #[path = "exec_aarch64/basic.rs"]
 mod basic;

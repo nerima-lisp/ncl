@@ -238,29 +238,19 @@ pub fn lower_op(
         }
         OpKind::LoadArg { index } => {
             if let Some(result) = result {
-                if *index < 4 {
-                    emit(
-                        assembler,
-                        Inst::Mov {
-                            rd: RegOrSp::Reg(Reg(16)),
-                            rn: RegOrSp::Reg(Reg(1 + *index)),
+                let offset = i16::from(*index + 1)
+                    .checked_mul(-8)
+                    .ok_or(CodegenError::FrameOverflow)?;
+                emit(
+                    assembler,
+                    Inst::Ldr {
+                        rt: Reg(16),
+                        mem: MemOperand::Unscaled {
+                            base: RegOrSp::Reg(Reg(29)),
+                            offset,
                         },
-                    )?;
-                } else {
-                    let offset = i16::from(*index - 4)
-                        .checked_mul(8)
-                        .ok_or(CodegenError::FrameOverflow)?;
-                    emit(
-                        assembler,
-                        Inst::Ldr {
-                            rt: Reg(16),
-                            mem: MemOperand::Unscaled {
-                                base: RegOrSp::Reg(Reg(5)),
-                                offset,
-                            },
-                        },
-                    )?;
-                }
+                    },
+                )?;
                 store_slot(assembler, slots, result, Reg(16))?;
             }
         }

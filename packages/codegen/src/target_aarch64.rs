@@ -21,9 +21,53 @@ fn add_map(
     flags: u32,
 ) -> Result<(), CodegenError> {
     let slots = u16::try_from(frame.frame_words).map_err(|_| CodegenError::FrameOverflow)?;
-    SafepointMap::new(pc, slots, slots, &[], &[0], flags)
+    let live_slots = (4..slots).collect::<Vec<_>>();
+    SafepointMap::new(pc, slots, slots, &live_slots, &[0], flags)
         .map(|map| maps.push(map))
         .map_err(|error| CodegenError::Encode(error.to_string()))
+}
+
+fn spill_arguments(assembler: &mut Assembler, argument_words: u32) -> Result<(), CodegenError> {
+    for index in 0..argument_words {
+        let offset = i16::try_from((index + 1).saturating_mul(8))
+            .map_err(|_| CodegenError::FrameOverflow)?;
+        if index < 4 {
+            emit(
+                assembler,
+                Inst::Str {
+                    rt: Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(29)),
+                        offset: -offset,
+                    },
+                },
+            )?;
+        } else {
+            let source_offset = i16::try_from((index - 4).saturating_mul(8))
+                .map_err(|_| CodegenError::FrameOverflow)?;
+            emit(
+                assembler,
+                Inst::Ldr {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(5)),
+                        offset: source_offset,
+                    },
+                },
+            )?;
+            emit(
+                assembler,
+                Inst::Str {
+                    rt: Reg(16),
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(29)),
+                        offset: -offset,
+                    },
+                },
+            )?;
+        }
+    }
+    Ok(())
 }
 
 /// Lowers an IR function to `AArch64` machine code using the native frame ABI.
@@ -40,12 +84,10 @@ pub fn compile_function_aarch64(
     let Some(_entry) = function.blocks.first() else {
         return Err(CodegenError::EmptyFunction);
     };
-    let (value_slots, local_words) = slots(function);
-    let frame = FrameLayout::new(
-        u32::try_from(function.params.len()).map_err(|_| CodegenError::FrameOverflow)?,
-        local_words,
-        0,
-    )?;
+    let argument_words =
+        u32::try_from(function.params.len()).map_err(|_| CodegenError::FrameOverflow)?;
+    let (value_slots, local_words) = slots(function, argument_words);
+    let frame = FrameLayout::new(argument_words, local_words, 0)?;
     let mut assembler = Assembler::new();
     let labels = function
         .blocks
@@ -111,6 +153,7 @@ pub fn compile_function_aarch64(
             },
         )?;
     }
+    spill_arguments(&mut assembler, argument_words)?;
     for block in &function.blocks {
         assembler
             .bind(labels[&block.id])

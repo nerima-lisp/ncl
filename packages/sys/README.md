@@ -24,9 +24,17 @@ tagged words, heap, precise roots, safepoints, and platform surface.
   [Threads](../../docs/src/design/threads.md) and [Calling convention](../../docs/src/design/calling-convention.md).
 - `Thread::set_native_frame` receives the active generated frame pointer and
   the continuation PC supplied by generated code. Rust does not read the
-  continuation from a link register. It snapshots the four-word header, while
-  the collector forwards precise roots and writes them back to the active
-  generated frame.
+  continuation from a link register. The PC is resolved through the registered
+  code object, then the complete mapped `frame_words` snapshot is captured:
+  header words are read above `x29` and argument/local slots below `x29`.
+  An unresolved PC sets `frame_snapshot_failed` and triggers `debug_assert!` in
+  debug builds, so precise scanning failure is observable. After write-back,
+  `frame_address`, `frame_chain`, and `frame_registers` are cleared, and a
+  second collection cannot reuse the old snapshot.
+- A snapshot captured from a real generated frame is intentionally scanned as
+  one frame. Its word-zero native address is not interpreted as a `Vec` index;
+  synthetic frame-chain tests cover the separate multi-frame scanner. Chained
+  real-frame traversal remains Phase 1b.
 - When multiple registered threads share one OS thread, every thread other
   than the collector must be in native state during collection.
 

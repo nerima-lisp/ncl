@@ -45,7 +45,8 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn new(
         ctx: &mut ThreadContext,
         runtime: &Runtime,
@@ -120,7 +121,8 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn intern(
         self,
         ctx: &mut ThreadContext,
@@ -153,7 +155,8 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn export(
         self,
         ctx: &mut ThreadContext,
@@ -178,7 +181,8 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn unexport(
         self,
         ctx: &mut ThreadContext,

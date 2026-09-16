@@ -61,6 +61,7 @@ pub struct Thread {
     pub(crate) pending: u64,
     pub(crate) frame_chain: Vec<Word>,
     pub(crate) frame_registers: Vec<Word>,
+    frame_address: Option<usize>,
 }
 
 /// Native offsets consumed by the code generator when addressing a thread context.
@@ -130,6 +131,7 @@ impl Thread {
             pending: 0,
             frame_chain: Vec::new(),
             frame_registers: Vec::new(),
+            frame_address: None,
         }
     }
     pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
@@ -224,6 +226,7 @@ impl Thread {
                 (*heap).collect_with_thread(self, full);
             }
         }
+        self.write_back_frame_snapshot();
     }
     /// Request delivery of an interrupt at the next safepoint.
     pub const fn request_interrupt(&mut self) {
@@ -241,6 +244,44 @@ impl Thread {
     pub fn set_frame_snapshot(&mut self, frames: Vec<Word>, registers: Vec<Word>) {
         self.frame_chain = frames;
         self.frame_registers = registers;
+        self.frame_address = None;
+    }
+
+    /// Capture the current generated frame header for collection.
+    pub fn capture_current_frame_snapshot(&mut self) {
+        #[cfg(target_arch = "aarch64")]
+        {
+            let address: usize;
+            // SAFETY: x29 points at the active generated frame while this runtime callback runs.
+            unsafe {
+                core::arch::asm!("mov {0}, x29", out(reg) address, options(nostack, preserves_flags));
+            }
+            let words = address as *const Word;
+            // SAFETY: the generated frame owns four published header words at x29.
+            self.frame_chain = unsafe { std::slice::from_raw_parts(words, 4).to_vec() };
+            self.frame_address = Some(address);
+        }
+    }
+
+    /// Return the current value of a captured real frame word.
+    #[must_use]
+    pub fn frame_word(&self, index: usize) -> Option<Word> {
+        let address = self.frame_address?;
+        // SAFETY: the captured generated frame remains active until its runtime callback returns.
+        Some(unsafe { ((address as *const Word).add(index)).read() })
+    }
+
+    /// Write collection's forwarded snapshot values back to the generated frame.
+    pub fn write_back_frame_snapshot(&mut self) {
+        let Some(address) = self.frame_address else {
+            return;
+        };
+        // SAFETY: the captured generated frame remains active during collection and write-back.
+        unsafe {
+            for (index, word) in self.frame_chain.iter().copied().enumerate() {
+                ((address as *mut Word).add(index)).write(word);
+            }
+        }
     }
 }
 

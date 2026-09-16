@@ -131,20 +131,21 @@ impl Package {
     ) -> Result<(Word, FindStatus), ObjectError> {
         let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
         crate::with_root(ctx, &mut name_word, |ctx, name_word| {
-            if let Some(found) = self.find_symbol(ctx, *name_word)? {
-                return Ok(found);
-            }
             let mut package = self.0;
             crate::with_root(ctx, &mut package, |ctx, package| {
+                let package = Self::from(*package);
+                if let Some(found) = package.find_symbol(ctx, *name_word)? {
+                    return Ok(found);
+                }
                 let mut symbol = make_symbol(ctx, runtime, *name_word)?;
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
                     put(
                         ctx,
                         *symbol,
                         crate::layout::symbol_offset::PACKAGE,
-                        *package,
+                        package.0,
                     )?;
-                    let table = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                    let table = HashTable::from(get(ctx, package.0, widetag::PACKAGE, INTERNAL)?);
                     table.insert(ctx, runtime, *name_word, *symbol)?;
                     Ok((*symbol, FindStatus::Internal))
                 })
@@ -163,19 +164,21 @@ impl Package {
         runtime: &Runtime,
         name: Word,
     ) -> Result<bool, ObjectError> {
-        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
-        let Some(symbol) = internal.remove(ctx, runtime, name)? else {
-            return Ok(false);
-        };
-        let external = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
-        let mut name = name;
-        crate::with_root(ctx, &mut name, |ctx, name| {
-            let mut symbol = symbol;
-            crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                external.insert(ctx, runtime, *name, *symbol)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let internal = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                let Some(mut symbol) = internal.remove(ctx, runtime, *name)? else {
+                    return Ok(false);
+                };
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                    external.insert(ctx, runtime, *name, *symbol)
+                })?;
+                Ok(true)
             })
-        })?;
-        Ok(true)
+        })
     }
     /// Remove a symbol from the external table and return it to internal visibility.
     ///
@@ -189,19 +192,21 @@ impl Package {
         runtime: &Runtime,
         name: Word,
     ) -> Result<bool, ObjectError> {
-        let external = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
-        let Some(symbol) = external.remove(ctx, runtime, name)? else {
-            return Ok(false);
-        };
-        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
-        let mut name = name;
-        crate::with_root(ctx, &mut name, |ctx, name| {
-            let mut symbol = symbol;
-            crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                internal.insert(ctx, runtime, *name, *symbol)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                let Some(mut symbol) = external.remove(ctx, runtime, *name)? else {
+                    return Ok(false);
+                };
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    let internal = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                    internal.insert(ctx, runtime, *name, *symbol)
+                })?;
+                Ok(true)
             })
-        })?;
-        Ok(true)
+        })
     }
     /// Import a symbol under a string name.
     ///

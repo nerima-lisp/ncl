@@ -82,3 +82,48 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
         })
     );
 }
+
+#[test]
+fn golden_aarch64_prologue_spills_register_arguments() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(28),
+        "spill-arguments",
+        vec![
+            ncl_ir::Param {
+                name: "left".into(),
+                ty: ncl_ir::Ty::Word,
+            },
+            ncl_ir::Param {
+                name: "right".into(),
+                ty: ncl_ir::Ty::Word,
+            },
+        ],
+        vec![],
+    );
+    builder.push_op(ncl_ir::OpKind::Safepoint, &[]).unwrap();
+    builder
+        .terminate(ncl_ir::Terminator::Return { values: Vec::new() })
+        .unwrap();
+    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi).unwrap();
+    let word = |offset| u32::from_le_bytes(compiled.code[offset..offset + 4].try_into().unwrap());
+    assert_eq!(
+        ncl_asm_aarch64::decode(word(24)),
+        Ok(ncl_asm_aarch64::Inst::Str {
+            rt: ncl_asm_aarch64::Reg(1),
+            mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(29)),
+                offset: -8,
+            },
+        })
+    );
+    assert_eq!(
+        ncl_asm_aarch64::decode(word(28)),
+        Ok(ncl_asm_aarch64::Inst::Str {
+            rt: ncl_asm_aarch64::Reg(2),
+            mem: ncl_asm_aarch64::MemOperand::Unscaled {
+                base: ncl_asm_aarch64::RegOrSp::Reg(ncl_asm_aarch64::Reg(29)),
+                offset: -16,
+            },
+        })
+    );
+}

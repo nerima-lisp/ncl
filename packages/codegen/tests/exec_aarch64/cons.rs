@@ -353,9 +353,15 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(10),
         "real-function-object-frame",
-        Vec::new(),
+        vec![Param {
+            name: "function".into(),
+            ty: Ty::Word,
+        }],
         vec![],
     );
+    builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("live local");
     builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
     builder
         .terminate(Terminator::Return { values: Vec::new() })
@@ -376,8 +382,8 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
         compiled.entry_offset as usize,
         std::ptr::from_mut(&mut thread),
         old,
-        0,
-        [0; 4],
+        1,
+        [old, 0, 0, 0],
         0,
     );
     COLLECT_IN_SAFEPOINT.store(false, Ordering::SeqCst);
@@ -389,6 +395,8 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     assert_ne!(old, after);
     assert_eq!(FRAME_WORD_BEFORE.load(Ordering::SeqCst), old);
     assert_eq!(FRAME_WORD_AFTER.load(Ordering::SeqCst), after);
+    assert_eq!(FRAME_LOCAL_BEFORE.load(Ordering::SeqCst), old);
+    assert_eq!(FRAME_LOCAL_AFTER.load(Ordering::SeqCst), after);
     assert_eq!(
         ncl_object::function_name(&object_context, (*function).into()),
         Ok(Word::NIL)

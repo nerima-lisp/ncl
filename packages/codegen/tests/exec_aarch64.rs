@@ -23,6 +23,8 @@ static SAFEPOINT_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static COLLECT_IN_SAFEPOINT: AtomicBool = AtomicBool::new(false);
 static FRAME_WORD_BEFORE: AtomicU64 = AtomicU64::new(0);
 static FRAME_WORD_AFTER: AtomicU64 = AtomicU64::new(0);
+static FRAME_LOCAL_BEFORE: AtomicU64 = AtomicU64::new(0);
+static FRAME_LOCAL_AFTER: AtomicU64 = AtomicU64::new(0);
 static SLOW_STORAGE: [u64; 8] = [0; 8];
 static TEST_SERIAL: Mutex<()> = Mutex::new(());
 
@@ -37,12 +39,15 @@ extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
 extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize) {
     SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
     if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) {
-        // SAFETY: the callback receives the live generated frame FP and its mapped continuation PC.
-        unsafe { ctx.set_native_frame(frame_fp, return_pc) };
+        ctx.capture_native_frame(frame_fp, return_pc);
         FRAME_WORD_BEFORE.store(
             ctx.frame_word(2)
                 .expect("captured frame function object")
                 .bits(),
+            Ordering::SeqCst,
+        );
+        FRAME_LOCAL_BEFORE.store(
+            ctx.frame_word(5).expect("captured live local").bits(),
             Ordering::SeqCst,
         );
         ctx.clear_safepoint_request();
@@ -50,9 +55,16 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
         ncl_sys::collect(ctx, true);
         ctx.leave_native();
         ctx.clear_safepoint_request();
-        // SAFETY: the generated frame remains live until this callback returns and the capture map covers word 2.
-        let after = unsafe { ((frame_fp as *const Word).add(2)).read() };
+        let after = ctx
+            .last_written_frame_word(2)
+            .expect("written-back frame function object");
         FRAME_WORD_AFTER.store(after.bits(), Ordering::SeqCst);
+        FRAME_LOCAL_AFTER.store(
+            ctx.last_written_frame_word(5)
+                .expect("written-back live local")
+                .bits(),
+            Ordering::SeqCst,
+        );
         assert!(ctx.frame_word(2).is_none());
         println!(
             "frame word 2: before=0x{:x}, after=0x{:x}",
@@ -155,6 +167,69 @@ fn executes_fixnum_add_of_two_arguments() {
     );
     assert_eq!(value, abi.encode_fixnum(3) as u64);
     assert_eq!(count, 1);
+}
+
+#[test]
+fn preserves_arguments_across_entry_safepoint() {
+    let _guard = TEST_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(27),
+        "entry-safepoint-add",
+        vec![
+            Param {
+                name: "left".into(),
+                ty: Ty::Word,
+            },
+            Param {
+                name: "right".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![Ty::Word],
+    );
+    builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
+    let left = builder
+        .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
+        .expect("left")[0];
+    let right = builder
+        .push_op(OpKind::LoadArg { index: 1 }, &[Ty::Word])
+        .expect("right")[0];
+    let sum = builder
+        .push_op(
+            OpKind::Prim {
+                op: Prim::FixnumAdd,
+                args: vec![left, right],
+                condition: None,
+            },
+            &[Ty::Word],
+        )
+        .expect("sum")[0];
+    builder
+        .terminate(Terminator::Return { values: vec![sum] })
+        .expect("return");
+    let compiled = compile_function_aarch64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    let mut thread = Thread::new();
+    request_safepoint(&mut thread);
+    let abi = BuiltinAbi;
+    let (value, count) = invoke_entry(
+        &code,
+        compiled.entry_offset as usize,
+        &mut thread,
+        2,
+        [
+            abi.encode_fixnum(11) as u64,
+            abi.encode_fixnum(31) as u64,
+            0,
+            0,
+        ],
+        0,
+    );
+    assert_eq!(value, abi.encode_fixnum(42) as u64);
+    assert_eq!(count, 1);
+    assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 1);
 }
 
 #[test]

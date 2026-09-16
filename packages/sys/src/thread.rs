@@ -63,6 +63,7 @@ pub struct Thread {
     pub(crate) frame_registers: Vec<Word>,
     frame_address: Option<usize>,
     frame_snapshot_failed: bool,
+    frame_last_written: Vec<Word>,
 }
 
 /// Native offsets consumed by the code generator when addressing a thread context.
@@ -134,6 +135,7 @@ impl Thread {
             frame_registers: Vec::new(),
             frame_address: None,
             frame_snapshot_failed: false,
+            frame_last_written: Vec::new(),
         }
     }
 
@@ -264,6 +266,7 @@ impl Thread {
         self.frame_registers = registers;
         self.frame_address = None;
         self.frame_snapshot_failed = false;
+        self.frame_last_written.clear();
     }
 
     /// Capture the current generated frame header for collection.
@@ -304,6 +307,12 @@ impl Thread {
         self.frame_snapshot_failed = false;
     }
 
+    /// Capture a callback-provided generated frame.
+    pub fn capture_native_frame(&mut self, frame_fp: usize, return_pc: usize) {
+        // SAFETY: this entry point is called by the generated safepoint callback with its live frame.
+        unsafe { self.set_native_frame(frame_fp, return_pc) };
+    }
+
     /// Return the current value of a captured real frame word.
     #[must_use]
     pub fn frame_word(&self, index: usize) -> Option<Word> {
@@ -335,9 +344,16 @@ impl Thread {
                 }
             }
         }
+        self.frame_last_written = self.frame_chain.clone();
         self.frame_address = None;
         self.frame_chain.clear();
         self.frame_registers.clear();
+    }
+
+    /// Return a word written by the most recent native-frame snapshot.
+    #[must_use]
+    pub fn last_written_frame_word(&self, index: usize) -> Option<Word> {
+        self.frame_last_written.get(index).copied()
     }
 }
 

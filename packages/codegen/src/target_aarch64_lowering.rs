@@ -9,9 +9,9 @@ fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
 
-pub(super) fn slots(function: &Function) -> (Vec<(ValueId, u32)>, u32) {
+pub(super) fn slots(function: &Function, argument_words: u32) -> (Vec<(ValueId, u32)>, u32) {
     let mut result = Vec::new();
-    let mut next = 0_u32;
+    let mut next = argument_words;
     for block in &function.blocks {
         for parameter in &block.params {
             result.push((parameter.value, next));
@@ -24,7 +24,7 @@ pub(super) fn slots(function: &Function) -> (Vec<(ValueId, u32)>, u32) {
             }
         }
     }
-    (result, next)
+    (result, next.saturating_sub(argument_words))
 }
 
 fn slot(slots: &[(ValueId, u32)], value: ValueId) -> Result<u32, CodegenError> {

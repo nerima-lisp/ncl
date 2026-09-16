@@ -2,7 +2,7 @@
 #![allow(missing_docs)]
 use crate::hash_table::{HashTable, HashTest, Weakness};
 pub use ncl_sys::Word;
-use ncl_sys::{Heap, HeapConfig, LowTag, RootToken, StorageCondition, Thread, TypeTag};
+use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition, Thread, TypeTag};
 use std::collections::HashMap;
 use std::sync::Mutex;
 pub mod array;
@@ -10,6 +10,7 @@ mod builtin;
 mod classify;
 mod code;
 pub mod cons;
+mod control_extensions;
 mod function;
 pub(crate) mod gc;
 mod hash_support;
@@ -20,10 +21,11 @@ mod number;
 mod object_access;
 pub mod package;
 mod readtable;
-mod runtime_extensions;
+mod registry_extensions;
 mod specialized_array;
 mod stream;
 mod structure;
+mod symbol_extensions;
 pub use array::{
     ArrayElementType, ArrayOptions, array_dimensions, array_row_major_ref, array_row_major_set,
     make_array, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
@@ -70,6 +72,9 @@ pub use stream::{
 };
 pub use structure::structure_layout;
 pub use structure::{StructureLayout, make_structure, structure_ref, structure_set};
+pub use symbol_extensions::{
+    set_symbol_value, symbol_function, symbol_name, symbol_plist, symbol_value,
+};
 /// Object-layer failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObjectError {
@@ -139,6 +144,7 @@ impl Runtime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         ncl_sys::register_thread(&runtime.heap, &mut context.thread).map_err(ObjectError::from)?;
+        context.registered_thread_address = Some((&raw const context.thread) as usize);
         for target in [&runtime.functions, &runtime.packages, &runtime.classes] {
             let table =
                 HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)?.as_word();
@@ -196,8 +202,12 @@ impl Runtime {
         let key_token = push_root(&mut context, &mut key);
         let mut function = function;
         let function_token = push_root(&mut context, &mut function);
-        let table = Self::table(&self.functions)?;
-        let result = HashTable::from(table).insert(&mut context, self, key, function);
+        let result = HashTable::from(Self::table(&self.functions)?).insert(
+            &mut context,
+            self,
+            key,
+            function,
+        );
         let _ = pop_root(&mut context, function_token);
         let _ = pop_root(&mut context, key_token);
         drop(context);
@@ -233,6 +243,7 @@ impl Runtime {
 #[derive(Debug)]
 pub struct ThreadContext {
     pub(crate) thread: Thread,
+    registered_thread_address: Option<usize>,
     bindings: Vec<(u32, Word)>,
     values: Vec<Word>,
     pending: Option<ObjectError>,
@@ -247,6 +258,7 @@ impl ThreadContext {
     pub const fn new() -> Self {
         Self {
             thread: Thread::new(),
+            registered_thread_address: None,
             bindings: Vec::new(),
             values: Vec::new(),
             pending: None,
@@ -258,11 +270,15 @@ impl ThreadContext {
     }
     /// Register this context with a runtime.
     ///
+    /// After registration, do not move this context. Keep it in a stable
+    /// stack location or put it in a `Box<ThreadContext>` before registering.
+    ///
     /// # Errors
     ///
     /// Returns the storage condition reported by the heap.
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
+        self.registered_thread_address = Some((&raw const self.thread) as usize);
         for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
             runtime.ensure_package(name)?;
         }
@@ -303,8 +319,13 @@ impl ThreadContext {
         self.pending.take()
     }
     /// Run a collection for this registered context.
-    pub fn collect(&mut self, full: bool) {
+    ///
+    /// # Errors
+    /// Returns a storage error if this context was moved after registration.
+    pub fn collect(&mut self, full: bool) -> Result<(), ObjectError> {
+        self.check_registered_address()?;
         ncl_sys::collect(&mut self.thread, full);
+        Ok(())
     }
     /// Mark an object as weak with the requested policy.
     #[must_use]
@@ -315,6 +336,14 @@ impl ThreadContext {
     #[must_use]
     pub fn weak_value(&self, value: Word) -> Word {
         ncl_sys::weak_value(&self.thread, value)
+    }
+
+    fn check_registered_address(&self) -> Result<(), ObjectError> {
+        if self.registered_thread_address == Some((&raw const self.thread) as usize) {
+            Ok(())
+        } else {
+            Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
+        }
     }
 }
 impl Default for ThreadContext {
@@ -333,6 +362,9 @@ pub fn make_cons(
     car: Word,
     cdr: Word,
 ) -> Result<Word, ObjectError> {
+    debug_assert!(
+        ctx.registered_thread_address.is_none() || ctx.check_registered_address().is_ok()
+    );
     ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, car, cdr).map_err(Into::into)
 }
 /// Allocate a header object with a widetag and payload words.
@@ -346,6 +378,9 @@ pub fn allocate(
     tag: u8,
     words: usize,
 ) -> Result<Word, ObjectError> {
+    debug_assert!(
+        ctx.registered_thread_address.is_none() || ctx.check_registered_address().is_ok()
+    );
     ncl_sys::alloc(
         &mut ctx.thread,
         &runtime.heap,
@@ -381,70 +416,6 @@ pub fn make_symbol(
         ncl_sys::write_barrier(&mut ctx.thread, symbol, slot);
     }
     Ok(symbol)
-}
-fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, ObjectError> {
-    if symbol != Word::NIL
-        && (symbol.lowtag() != LowTag::OtherPointer as u8
-            || ncl_sys::object_widetag(&ctx.thread, symbol) != Some(widetag::SYMBOL))
-    {
-        return Err(ObjectError::TypeError);
-    }
-    if symbol == Word::NIL {
-        return Ok(Word::NIL);
-    }
-    ncl_sys::read_object_word(&ctx.thread, symbol, slot)
-        .ok_or(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
-}
-/// Read a symbol's value cell.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a symbol.
-pub fn symbol_value(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::VALUE)
-}
-/// Set a symbol's value cell.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a mutable symbol.
-pub fn set_symbol_value(
-    ctx: &mut ThreadContext,
-    symbol: Word,
-    value: Word,
-) -> Result<(), ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::VALUE)?;
-    if symbol == Word::NIL
-        || !ncl_sys::write_object_word(&mut ctx.thread, symbol, symbol_offset::VALUE, value)
-    {
-        return Err(ObjectError::TypeError);
-    }
-    ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::VALUE);
-    Ok(())
-}
-/// Read a symbol's function cell.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a symbol.
-pub fn symbol_function(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::FUNCTION)
-}
-/// Read a symbol's property list.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a symbol.
-pub fn symbol_plist(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::PLIST)
-}
-/// Read a symbol's name object.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a symbol.
-pub fn symbol_name(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::NAME)
 }
 /// Push a precise root.
 pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {

@@ -4,11 +4,25 @@ use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
 use ncl_object::{Runtime, ThreadContext, make_cons, make_string, make_symbol};
 use ncl_sys::Word;
 
-fn setup() -> (Runtime, ThreadContext) {
+fn setup() -> (Runtime, Box<ThreadContext>) {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = Box::new(ThreadContext::new());
+    assert!(ctx.register(&runtime).is_ok());
+    (runtime, ctx)
+}
+
+#[test]
+fn moved_registered_context_returns_error_instead_of_crashing() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
-    (runtime, ctx)
+    let mut ctx = Box::new(ctx);
+    assert_eq!(
+        ctx.collect(true),
+        Err(ncl_object::ObjectError::Storage(
+            ncl_sys::StorageCondition::ThreadNotRegistered,
+        ))
+    );
 }
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
@@ -162,6 +176,115 @@ fn repeated_remove_insert_keeps_all_live_entries_consistent() {
             );
         }
     }
+}
+
+#[test]
+fn repeated_remove_insert_reuses_kv_positions_without_resize() {
+    let (runtime, mut ctx) = setup();
+    let table = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"));
+    let keys = (0..10_000_i64)
+        .filter(|key| sxhash(key_word(*key)) & 7 == sxhash(key_word(0)) & 7)
+        .take(1_005)
+        .collect::<Vec<_>>();
+    for key in &keys[..5] {
+        table
+            .insert(&mut ctx, &runtime, key_word(*key), key_word(*key))
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    }
+    let capacity = table
+        .capacity(&ctx)
+        .unwrap_or_else(|error| panic!("capacity failed: {error:?}"));
+    for round in 0..1_000_i64 {
+        let old = keys[usize::try_from(round).unwrap_or(usize::MAX)];
+        let replacement = keys[usize::try_from(round + 5).unwrap_or(usize::MAX)];
+        assert_eq!(
+            table.remove(&mut ctx, &runtime, key_word(old)),
+            Ok(Some(key_word(old)))
+        );
+        table
+            .insert(
+                &mut ctx,
+                &runtime,
+                key_word(replacement),
+                key_word(replacement),
+            )
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+        assert_eq!(table.capacity(&ctx), Ok(capacity));
+    }
+}
+
+#[test]
+fn tombstones_do_not_double_capacity_when_live_count_is_low() {
+    let (runtime, mut ctx) = setup();
+    let table = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"));
+    let mut live = [0_i64, 1, 2, 3];
+    for key in live {
+        table
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    }
+    let capacity = table.capacity(&ctx).unwrap_or(0);
+    for round in 0..3_000_i64 {
+        let index = usize::try_from(round).unwrap_or(0) % live.len();
+        let old = live[index];
+        let replacement = 10_000 + round;
+        table
+            .remove(&mut ctx, &runtime, key_word(old))
+            .unwrap_or_else(|error| panic!("remove failed: {error:?}"));
+        table
+            .insert(
+                &mut ctx,
+                &runtime,
+                key_word(replacement),
+                key_word(replacement),
+            )
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+        live[index] = replacement;
+    }
+    assert_eq!(table.capacity(&ctx), Ok(capacity));
+}
+
+#[test]
+fn thousands_of_entries_survive_reuse_and_gc_rehash() {
+    let (runtime, mut ctx) = setup();
+    let mut table_word = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
+        .as_word();
+    let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
+    for key in 0..8_192_i64 {
+        HashTable::from(table_word)
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    }
+    for key in (0..8_192_i64).step_by(2) {
+        assert_eq!(
+            HashTable::from(table_word).remove(&mut ctx, &runtime, key_word(key)),
+            Ok(Some(key_word(key)))
+        );
+    }
+    for key in 8_192..12_288_i64 {
+        HashTable::from(table_word)
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    }
+    assert!(ctx.collect(true).is_ok());
+    for key in 1..8_192_i64 {
+        if key % 2 == 1 {
+            assert_eq!(
+                HashTable::from(table_word).get(&mut ctx, key_word(key)),
+                Ok(Some(key_word(key)))
+            );
+        }
+    }
+    for key in 8_192..12_288_i64 {
+        assert_eq!(
+            HashTable::from(table_word).get(&mut ctx, key_word(key)),
+            Ok(Some(key_word(key)))
+        );
+    }
+    assert!(ncl_object::pop_root(&mut ctx, table_token));
 }
 
 const fn key_word(value: i64) -> Word {

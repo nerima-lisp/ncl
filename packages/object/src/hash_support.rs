@@ -1,34 +1,9 @@
+use crate::ObjectError;
 use crate::hash_table::{HashTest, Weakness};
-use crate::object_access::get;
-use crate::{ObjectError, ThreadContext, widetag};
 use ncl_sys::Word;
 
 pub fn probe(hash: u64, step: usize, capacity: usize) -> usize {
     (usize::try_from(hash).unwrap_or(0).wrapping_add(step)) & (capacity - 1)
-}
-
-pub fn to_fixnum(value: usize) -> Result<Word, ObjectError> {
-    Ok(Word::fixnum(
-        i64::try_from(value).map_err(|_| ObjectError::Layout)?,
-    ))
-}
-
-pub fn read_usize(ctx: &ThreadContext, object: Word, slot: usize) -> Result<usize, ObjectError> {
-    usize::try_from(
-        get(ctx, object, widetag::HASH_TABLE, slot)?
-            .as_fixnum()
-            .ok_or(ObjectError::Layout)?,
-    )
-    .map_err(|_| ObjectError::Layout)
-}
-
-pub fn read_u64(ctx: &ThreadContext, object: Word, slot: usize) -> Result<u64, ObjectError> {
-    u64::try_from(
-        get(ctx, object, widetag::HASH_TABLE, slot)?
-            .as_fixnum()
-            .ok_or(ObjectError::Layout)?,
-    )
-    .map_err(|_| ObjectError::Layout)
 }
 
 pub const fn decode_test(word: Word) -> Result<HashTest, ObjectError> {

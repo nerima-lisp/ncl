@@ -62,7 +62,7 @@ fn builtin_abi_expands_for_fixed_and_variadic_forms() {
 #[test]
 fn gc_extensions_register_the_owned_symbols() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
-    register(&runtime);
+    assert!(register(&runtime).is_ok());
     for name in [
         "*AFTER-GC-HOOKS*",
         "*GC-REAL-TIME*",
@@ -141,7 +141,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
             .is_ok()
     );
 
-    ctx.collect(false);
+    assert!(ctx.collect(false).is_ok());
     assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
     assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
     assert_eq!(symbol_value(&ctx, roots[1_001]), Ok(Word::UNBOUND));
@@ -157,7 +157,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
         Ok(roots[1_001])
     );
 
-    ctx.collect(true);
+    assert!(ctx.collect(true).is_ok());
     assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
     let table = HashTable::from(table_word);
     assert_eq!(table.get(&mut ctx, table_key), Ok(Some(Word::fixnum(99))));
@@ -273,8 +273,8 @@ fn non_simple_array_references_survive_minor_and_full_gc() {
     let _rank_one_token = ncl_object::push_root(&mut ctx, &mut rank_one_root);
     let mut rank_three_root = rank_three;
     let _rank_three_token = ncl_object::push_root(&mut ctx, &mut rank_three_root);
-    ctx.collect(false);
-    ctx.collect(true);
+    assert!(ctx.collect(false).is_ok());
+    assert!(ctx.collect(true).is_ok());
     assert_eq!(
         array_row_major_ref(&ctx, rank_one_root, 0),
         Ok(Word::fixnum(11))
@@ -401,9 +401,9 @@ fn remaining_object_kinds_round_trip() {
         let suffix = u8::try_from(index % 26).unwrap_or(0);
         let _ = make_string(&mut ctx, &runtime, &[char::from(b'a' + suffix)]);
     }
-    ctx.collect(false);
+    assert!(ctx.collect(false).is_ok());
     assert_eq!(classify_object(&ctx, roots[2]), ObjectRef::Bignum(roots[2]));
-    ctx.collect(true);
+    assert!(ctx.collect(true).is_ok());
     assert_eq!(
         ncl_object::bignum_limbs(&ctx, roots[2].into()),
         Ok(vec![1, 1])

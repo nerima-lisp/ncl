@@ -14,22 +14,25 @@ fn import_preserves_home_and_rejects_accessible_conflicts() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
-    let home = Package::new(&mut ctx, &runtime, "HOME").unwrap().as_word();
+    let home = Package::new(&mut ctx, &runtime, "HOME")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"))
+        .as_word();
     let target = Package::new(&mut ctx, &runtime, "TARGET")
-        .unwrap()
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"))
         .as_word();
     let name = string(&mut ctx, &runtime, "NAME");
     let (symbol, _) = Package::from(home)
         .intern(&mut ctx, &runtime, "NAME")
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     Package::from(target)
         .import(&mut ctx, &runtime, name, symbol)
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(
         Package::from(target).find_symbol(&mut ctx, name),
         Ok(Some((symbol, FindStatus::Internal)))
     );
-    let other = ncl_object::make_symbol(&mut ctx, &runtime, name).unwrap();
+    let other = ncl_object::make_symbol(&mut ctx, &runtime, name)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(
         Package::from(target).import(&mut ctx, &runtime, name, other),
         Err(ncl_object::ObjectError::PackageConflict)
@@ -38,64 +41,74 @@ fn import_preserves_home_and_rejects_accessible_conflicts() {
 
 #[test]
 fn unintern_clears_home_and_shadowing_but_not_inherited() {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("test failure: {error:?}"));
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    let base = Package::new(&mut ctx, &runtime, "BASE").unwrap().as_word();
-    let user = Package::new(&mut ctx, &runtime, "USER").unwrap().as_word();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    let base = Package::new(&mut ctx, &runtime, "BASE")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"))
+        .as_word();
+    let user = Package::new(&mut ctx, &runtime, "USER")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"))
+        .as_word();
     let name = string(&mut ctx, &runtime, "NAME");
     let (_symbol, _) = Package::from(base)
         .intern(&mut ctx, &runtime, "NAME")
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     Package::from(base)
         .export(&mut ctx, &runtime, name)
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     Package::from(user)
         .use_package(&mut ctx, &runtime, base)
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert!(
         !Package::from(user)
             .unintern(&mut ctx, &runtime, name)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert!(
         Package::from(base)
             .unintern(&mut ctx, &runtime, name)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert_eq!(Package::from(base).find_symbol(&mut ctx, name), Ok(None));
 }
 
 #[test]
 fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("test failure: {error:?}"));
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    let base = Package::new(&mut ctx, &runtime, "BASE").unwrap().as_word();
-    let user = Package::new(&mut ctx, &runtime, "USER").unwrap().as_word();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    let base = Package::new(&mut ctx, &runtime, "BASE")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"))
+        .as_word();
+    let user = Package::new(&mut ctx, &runtime, "USER")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"))
+        .as_word();
     let name = string(&mut ctx, &runtime, "NAME");
     let (symbol, _) = Package::from(base)
         .intern(&mut ctx, &runtime, "NAME")
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert!(
         Package::from(base)
             .export(&mut ctx, &runtime, name)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert!(
         Package::from(base)
             .export(&mut ctx, &runtime, name)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert!(
         Package::from(user)
             .use_package(&mut ctx, &runtime, base)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert!(
         !Package::from(user)
             .use_package(&mut ctx, &runtime, base)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert_eq!(
         Package::from(user).find_symbol(&mut ctx, name),
@@ -104,20 +117,28 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
     assert!(
         Package::from(user)
             .export(&mut ctx, &runtime, name)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert_eq!(
         Package::from(user).find_symbol(&mut ctx, name),
         Ok(Some((symbol, FindStatus::External)))
     );
-    assert!(Package::from(user).unuse_package(&mut ctx, base).unwrap());
-    assert!(!Package::from(user).unuse_package(&mut ctx, base).unwrap());
+    assert!(
+        Package::from(user)
+            .unuse_package(&mut ctx, base)
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
+    );
+    assert!(
+        !Package::from(user)
+            .unuse_package(&mut ctx, base)
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
+    );
     Package::from(base)
         .shadow(&mut ctx, &runtime, name)
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     Package::from(base)
         .shadow(&mut ctx, &runtime, name)
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(
         Package::from(base).find_symbol(&mut ctx, name),
         Ok(Some((symbol, FindStatus::External)))
@@ -125,39 +146,45 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
     assert!(
         Package::from(base)
             .unexport(&mut ctx, &runtime, name)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     assert!(
         !Package::from(base)
             .unexport(&mut ctx, &runtime, name)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
 
     let nickname = string(&mut ctx, &runtime, "B");
     Package::from(base)
         .add_nickname(&mut ctx, &runtime, nickname)
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert!(
         !Package::from(base)
             .add_nickname(&mut ctx, &runtime, nickname)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
-    let mut registered = runtime.ensure_package("REGISTERED").unwrap();
+    let mut registered = runtime
+        .ensure_package("REGISTERED")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     let token = ncl_object::push_root(&mut ctx, &mut registered);
     Package::from(registered)
         .add_nickname(&mut ctx, &runtime, nickname)
-        .unwrap();
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(runtime.find_package("B"), Some(registered));
     assert!(ncl_object::pop_root(&mut ctx, token));
 }
 
 #[test]
 fn symbol_name_round_trip_is_preserved() {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("test failure: {error:?}"));
     let mut ctx = ThreadContext::new();
-    ctx.register(&runtime).unwrap();
-    let package = Package::new(&mut ctx, &runtime, "NAMES").unwrap();
-    let (symbol, _) = package.intern(&mut ctx, &runtime, "ROUNDTRIP").unwrap();
-    let name = symbol_name(&ctx, symbol).unwrap();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    let package = Package::new(&mut ctx, &runtime, "NAMES")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    let (symbol, _) = package
+        .intern(&mut ctx, &runtime, "ROUNDTRIP")
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    let name = symbol_name(&ctx, symbol).unwrap_or_else(|error| panic!("test failure: {error:?}"));
     assert_eq!(ncl_object::string_length(&ctx, name), Ok(9));
 }

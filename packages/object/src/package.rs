@@ -1,13 +1,10 @@
 //! Heap-resident package namespaces.
-
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::object_access::{get, put};
 use crate::widetag;
 use crate::{ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol, rplacd};
 use ncl_sys::Word;
-
 crate::word_newtype!(Package);
-
 /// Result of looking up a name in a package.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FindStatus {
@@ -15,7 +12,6 @@ pub enum FindStatus {
     External,
     Inherited,
 }
-
 pub(crate) const LOCK: usize = 0;
 pub(crate) const GENSYM: usize = 1;
 pub(crate) const NAME: usize = 2;
@@ -26,7 +22,6 @@ pub(crate) const INTERNAL: usize = 6;
 pub(crate) const EXTERNAL: usize = 7;
 pub(crate) const SHADOWING: usize = 8;
 pub(crate) const LOCAL_NICKNAMES: usize = 9;
-
 pub(crate) fn reference_words() -> Vec<usize> {
     vec![
         NAME,
@@ -39,14 +34,10 @@ pub(crate) fn reference_words() -> Vec<usize> {
         LOCAL_NICKNAMES,
     ]
 }
-
 impl Package {
     /// Allocate an empty package and its internal and external symbol tables.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
-    /// # Panics
-    /// Panics if a root token cannot be removed in stack order.
     pub fn new(
         ctx: &mut ThreadContext,
         runtime: &Runtime,
@@ -83,11 +74,12 @@ impl Package {
     /// Return the package name object.
     ///
     /// # Errors
-    /// Returns an error for an invalid heap layout.
     pub fn name(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
         get(ctx, self.0, widetag::PACKAGE, NAME)
     }
     /// Add a nickname to this package.
+    ///
+    /// # Errors
     pub fn add_nickname(
         self,
         ctx: &mut ThreadContext,
@@ -120,7 +112,6 @@ impl Package {
     /// Find an accessible symbol in this package.
     ///
     /// # Errors
-    /// Returns an error for an invalid heap layout.
     pub fn find_symbol(
         self,
         ctx: &mut ThreadContext,
@@ -150,9 +141,6 @@ impl Package {
     /// Intern a symbol by name, returning its symbol and status.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
-    /// # Panics
-    /// Panics if a root token cannot be removed in stack order.
     pub fn intern(
         self,
         ctx: &mut ThreadContext,
@@ -184,9 +172,6 @@ impl Package {
     /// Export an internal symbol by moving it to the external table.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
-    /// # Panics
-    /// Panics if a root token cannot be removed in stack order.
     pub fn export(
         self,
         ctx: &mut ThreadContext,
@@ -198,24 +183,22 @@ impl Package {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let internal = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
-                let mut symbol = match internal.remove(ctx, runtime, *name)? {
-                    Some(symbol) => symbol,
-                    None => {
-                        let external =
-                            HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
-                        if external.get(ctx, *name)?.is_some() {
-                            return Ok(true);
-                        }
-                        let Some((symbol, FindStatus::Inherited)) =
-                            Self::from(*package).find_symbol(ctx, *name)?
-                        else {
-                            return Ok(false);
-                        };
-                        Self::from(*package).import(ctx, runtime, *name, symbol)?;
-                        HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
-                            .remove(ctx, runtime, *name)?
-                            .ok_or(ObjectError::Layout)?
+                let mut symbol = if let Some(symbol) = internal.remove(ctx, runtime, *name)? {
+                    symbol
+                } else {
+                    let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                    if external.get(ctx, *name)?.is_some() {
+                        return Ok(true);
                     }
+                    let Some((symbol, FindStatus::Inherited)) =
+                        Self::from(*package).find_symbol(ctx, *name)?
+                    else {
+                        return Ok(false);
+                    };
+                    Self::from(*package).import(ctx, runtime, *name, symbol)?;
+                    HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                        .remove(ctx, runtime, *name)?
+                        .ok_or(ObjectError::Layout)?
                 };
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
                     let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
@@ -228,9 +211,6 @@ impl Package {
     /// Remove a symbol from the external table and return it to internal visibility.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
-    /// # Panics
-    /// Panics if a root token cannot be removed in stack order.
     pub fn unexport(
         self,
         ctx: &mut ThreadContext,
@@ -256,7 +236,6 @@ impl Package {
     /// Import a symbol under a string name.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
     pub fn import(
         self,
         ctx: &mut ThreadContext,
@@ -304,7 +283,6 @@ impl Package {
     /// Add another package to this package's use list.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
     pub fn use_package(
         self,
         ctx: &mut ThreadContext,
@@ -350,6 +328,8 @@ impl Package {
         })
     }
     /// Remove another package from this package's use list.
+    ///
+    /// # Errors
     pub fn unuse_package(
         self,
         ctx: &mut ThreadContext,
@@ -371,7 +351,6 @@ impl Package {
     /// Remove a symbol from internal or external visibility.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
     pub fn unintern(
         self,
         ctx: &mut ThreadContext,
@@ -430,7 +409,6 @@ impl Package {
     /// Add a name to the package's shadowing list.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
     pub fn shadow(
         self,
         ctx: &mut ThreadContext,
@@ -441,16 +419,16 @@ impl Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let symbol = match Self::from(*package).find_symbol(ctx, *name)? {
-                    Some((symbol, _)) => symbol,
-                    None => {
+                let symbol =
+                    if let Some((symbol, _)) = Self::from(*package).find_symbol(ctx, *name)? {
+                        symbol
+                    } else {
                         let symbol = make_symbol(ctx, runtime, *name)?;
                         put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, *package)?;
                         HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                             .insert(ctx, runtime, *name, symbol)?;
                         symbol
-                    }
-                };
+                    };
                 let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
                 while list != Word::NIL {
                     if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(symbol) {
@@ -472,7 +450,6 @@ impl Package {
     /// Generate an uninterned symbol.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
     pub fn gensym(self, ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {
@@ -486,7 +463,6 @@ impl Package {
         })
     }
 }
-
 fn remove_from_list(
     ctx: &mut ThreadContext,
     object: Word,
@@ -510,7 +486,6 @@ fn remove_from_list(
     }
     Ok(false)
 }
-
 /// Canonical static NIL value.
 #[must_use]
 pub const fn nil() -> Word {

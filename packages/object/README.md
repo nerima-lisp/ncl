@@ -80,6 +80,8 @@ assert!(pop_root(ctx, token));
 
 `RootToken` は LIFO です。トークンを逆順に pop し、token が有効な間は参照先の slot を move、resize、drop しないでください。Runtime の package、class、function registry は heap hash table で、Runtime が保持する managed Word は移動しない `Box<Word>` root slot とその `RootToken` だけです。未登録の Rust `Vec`、`HashMap`、package registry に managed Word を保存しないでください。
 
+確保関数が値で受け取る managed 引数は、その関数自身が確保を跨いで root 化します。managed Word を含む slice/Vec は確保を跨いで保持せず、必要なら各要素を root 化してから確保します。`ThreadContext::set_gc_stress(true)` を使うと、確保ごとの GC でこの契約をテストできます。
+
 ## 実装状況
 
 | 範囲 | 状態 | 下流への注意 |

@@ -211,7 +211,6 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    ///
     pub fn import(
         self,
         ctx: &mut ThreadContext,
@@ -227,7 +226,6 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    ///
     pub fn use_package(
         self,
         ctx: &mut ThreadContext,
@@ -243,9 +241,15 @@ impl Package {
                     if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(*package) {
                         return Ok(false);
                     }
-                    list = ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
+                    list =
+                        ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
                 }
-                let list = make_cons(ctx, runtime, *package, get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?)?;
+                let list = make_cons(
+                    ctx,
+                    runtime,
+                    *package,
+                    get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?,
+                )?;
                 put(ctx, *package_self, USE_LIST, list)?;
                 Ok(true)
             })
@@ -255,7 +259,6 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    ///
     pub fn unintern(
         self,
         ctx: &mut ThreadContext,
@@ -276,7 +279,6 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    ///
     pub fn shadow(
         self,
         ctx: &mut ThreadContext,
@@ -297,7 +299,6 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    ///
     pub fn gensym(self, ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {

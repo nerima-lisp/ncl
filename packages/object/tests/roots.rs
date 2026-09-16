@@ -34,8 +34,7 @@ fn try_root_operations_round_trip_a_registered_context() {
 
 #[test]
 fn try_pop_root_rejects_a_context_moved_after_registration() {
-    let (_runtime, ctx) = setup();
-    let mut ctx = *ctx;
+    let (_runtime, mut ctx) = setup();
     let mut value = Word::NIL;
     let token = push_root(&mut ctx, &mut value);
     let mut moved = Box::new(ctx);

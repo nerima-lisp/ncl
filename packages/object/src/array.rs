@@ -197,6 +197,12 @@ pub fn make_simple_vector(
     runtime: &Runtime,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
+    let mut rooted_values = values.to_vec();
+    let mut tokens = Vec::with_capacity(rooted_values.len());
+    for value in &mut rooted_values {
+        tokens.push(crate::push_root(ctx, value));
+    }
+    let result = (|| {
     let object = allocate(
         ctx,
         runtime,
@@ -210,7 +216,7 @@ pub fn make_simple_vector(
         Word::fixnum(i64::try_from(values.len()).map_err(|_| ObjectError::Layout)?),
         layout::widetag::SIMPLE_VECTOR,
     )?;
-    for (index, value) in values.iter().copied().enumerate() {
+    for (index, value) in rooted_values.iter().copied().enumerate() {
         write(
             ctx,
             object,
@@ -220,6 +226,11 @@ pub fn make_simple_vector(
         )?;
     }
     Ok(object)
+    })();
+    for token in tokens.into_iter().rev() {
+        assert!(crate::pop_root(ctx, token));
+    }
+    result
 }
 
 /// Return a simple vector's length.

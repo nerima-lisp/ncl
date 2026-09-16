@@ -19,8 +19,8 @@ pub fn make_instance(
     mut class: Word,
     slots: &[Word],
 ) -> Result<Instance, ObjectError> {
-    let mut vector = make_simple_vector(ctx, runtime, slots)?;
     crate::with_root(ctx, &mut class, |ctx, class| {
+        let mut vector = make_simple_vector(ctx, runtime, slots)?;
         crate::with_root(ctx, &mut vector, |ctx, vector| {
             let object = allocate(ctx, runtime, widetag::INSTANCE, 3)?;
             put(ctx, object, instance_offset::CLASS, *class)?;

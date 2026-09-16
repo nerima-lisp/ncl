@@ -129,12 +129,11 @@ impl Package {
         runtime: &Runtime,
         name: &str,
     ) -> Result<(Word, FindStatus), ObjectError> {
-        let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        crate::with_root(ctx, &mut name_word, |ctx, name_word| {
-            let mut package = self.0;
-            crate::with_root(ctx, &mut package, |ctx, package| {
-                let package = Self::from(*package);
-                if let Some(found) = package.find_symbol(ctx, *name_word)? {
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+            crate::with_root(ctx, &mut name_word, |ctx, name_word| {
+                if let Some(found) = Self::from(*package).find_symbol(ctx, *name_word)? {
                     return Ok(found);
                 }
                 let mut symbol = make_symbol(ctx, runtime, *name_word)?;
@@ -143,9 +142,9 @@ impl Package {
                         ctx,
                         *symbol,
                         crate::layout::symbol_offset::PACKAGE,
-                        package.0,
+                        *package,
                     )?;
-                    let table = HashTable::from(get(ctx, package.0, widetag::PACKAGE, INTERNAL)?);
+                    let table = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
                     table.insert(ctx, runtime, *name_word, *symbol)?;
                     Ok((*symbol, FindStatus::Internal))
                 })
@@ -235,21 +234,22 @@ impl Package {
         runtime: &Runtime,
         package: Word,
     ) -> Result<bool, ObjectError> {
-        let mut list = get(ctx, self.0, widetag::PACKAGE, USE_LIST)?;
-        while list != Word::NIL {
-            if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(package) {
-                return Ok(false);
-            }
-            list = ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
-        }
-        let list = make_cons(
-            ctx,
-            runtime,
-            package,
-            get(ctx, self.0, widetag::PACKAGE, USE_LIST)?,
-        )?;
-        put(ctx, self.0, USE_LIST, list)?;
-        Ok(true)
+        let mut package_self = self.0;
+        crate::with_root(ctx, &mut package_self, |ctx, package_self| {
+            let mut package = package;
+            crate::with_root(ctx, &mut package, |ctx, package| {
+                let mut list = get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?;
+                while list != Word::NIL {
+                    if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(*package) {
+                        return Ok(false);
+                    }
+                    list = ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
+                }
+                let list = make_cons(ctx, runtime, *package, get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?)?;
+                put(ctx, *package_self, USE_LIST, list)?;
+                Ok(true)
+            })
+        })
     }
     /// Remove a symbol from internal or external visibility.
     ///
@@ -283,9 +283,15 @@ impl Package {
         runtime: &Runtime,
         name: Word,
     ) -> Result<(), ObjectError> {
-        let list = get(ctx, self.0, widetag::PACKAGE, SHADOWING)?;
-        let list = make_cons(ctx, runtime, name, list)?;
-        put(ctx, self.0, SHADOWING, list)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
+                let list = make_cons(ctx, runtime, *name, list)?;
+                put(ctx, *package, SHADOWING, list)
+            })
+        })
     }
     /// Generate an uninterned symbol.
     ///
@@ -293,13 +299,16 @@ impl Package {
     /// Returns an allocation or layout error.
     ///
     pub fn gensym(self, ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
-        let number = get(ctx, self.0, widetag::PACKAGE, GENSYM)?
-            .as_fixnum()
-            .ok_or(ObjectError::Layout)?;
-        put(ctx, self.0, GENSYM, Word::fixnum(number + 1))?;
-        let name = format!("G{number}");
-        let name = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        make_symbol(ctx, runtime, name)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let number = get(ctx, *package, widetag::PACKAGE, GENSYM)?
+                .as_fixnum()
+                .ok_or(ObjectError::Layout)?;
+            put(ctx, *package, GENSYM, Word::fixnum(number + 1))?;
+            let name = format!("G{number}");
+            let name = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+            make_symbol(ctx, runtime, name)
+        })
     }
 }
 

@@ -57,3 +57,46 @@ pub fn finish_root<T>(
     ctx.check_registered_address()?;
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{pop_root, push_root, with_root};
+    use crate::{Runtime, ThreadContext, make_instance, make_string, slot_ref};
+    use ncl_sys::Word;
+
+    #[test]
+    fn with_root_reads_the_moved_word_after_collection() {
+        let runtime = Runtime::new().expect("runtime allocation failed");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("context registration failed");
+        let mut word =
+            make_string(&mut ctx, &runtime, &['x'; 64]).expect("string allocation failed");
+        let before = word;
+
+        let returned = with_root(&mut ctx, &mut word, |ctx, word| {
+            ctx.collect(true)?;
+            Ok(*word)
+        })
+        .expect("collection failed");
+
+        assert_eq!(returned, word);
+        assert_ne!(before, word);
+    }
+
+    #[test]
+    fn instance_slot_vector_survives_collection() {
+        let runtime = Runtime::new().expect("runtime allocation failed");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("context registration failed");
+        let instance = make_instance(&mut ctx, &runtime, Word::NIL, &[Word::fixnum(7)])
+            .expect("instance allocation failed");
+        let mut instance_word = instance.as_word();
+        let token = push_root(&mut ctx, &mut instance_word);
+        ctx.collect(true).expect("collection failed");
+        assert_eq!(
+            slot_ref(&ctx, crate::Instance::from(instance_word), 0),
+            Ok(Word::fixnum(7))
+        );
+        assert!(pop_root(&mut ctx, token));
+    }
+}

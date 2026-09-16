@@ -2,7 +2,7 @@
 #![allow(missing_docs)]
 use crate::hash_table::{HashTable, HashTest, Weakness};
 pub use ncl_sys::Word;
-use ncl_sys::{Heap, HeapConfig, LowTag, RootToken, StorageCondition, Thread, TypeTag};
+use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition, Thread, TypeTag};
 use std::collections::HashMap;
 use std::sync::Mutex;
 pub mod array;
@@ -25,6 +25,7 @@ mod registry_extensions;
 mod specialized_array;
 mod stream;
 mod structure;
+mod symbol_extensions;
 pub use array::{
     ArrayElementType, ArrayOptions, array_dimensions, array_row_major_ref, array_row_major_set,
     make_array, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
@@ -71,6 +72,9 @@ pub use stream::{
 };
 pub use structure::structure_layout;
 pub use structure::{StructureLayout, make_structure, structure_ref, structure_set};
+pub use symbol_extensions::{
+    set_symbol_value, symbol_function, symbol_name, symbol_plist, symbol_value,
+};
 /// Object-layer failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObjectError {
@@ -412,70 +416,6 @@ pub fn make_symbol(
         ncl_sys::write_barrier(&mut ctx.thread, symbol, slot);
     }
     Ok(symbol)
-}
-fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, ObjectError> {
-    if symbol != Word::NIL
-        && (symbol.lowtag() != LowTag::OtherPointer as u8
-            || ncl_sys::object_widetag(&ctx.thread, symbol) != Some(widetag::SYMBOL))
-    {
-        return Err(ObjectError::TypeError);
-    }
-    if symbol == Word::NIL {
-        return Ok(Word::NIL);
-    }
-    ncl_sys::read_object_word(&ctx.thread, symbol, slot)
-        .ok_or(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
-}
-/// Read a symbol's value cell.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a symbol.
-pub fn symbol_value(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::VALUE)
-}
-/// Set a symbol's value cell.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a mutable symbol.
-pub fn set_symbol_value(
-    ctx: &mut ThreadContext,
-    symbol: Word,
-    value: Word,
-) -> Result<(), ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::VALUE)?;
-    if symbol == Word::NIL
-        || !ncl_sys::write_object_word(&mut ctx.thread, symbol, symbol_offset::VALUE, value)
-    {
-        return Err(ObjectError::TypeError);
-    }
-    ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::VALUE);
-    Ok(())
-}
-/// Read a symbol's function cell.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a symbol.
-pub fn symbol_function(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::FUNCTION)
-}
-/// Read a symbol's property list.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a symbol.
-pub fn symbol_plist(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::PLIST)
-}
-/// Read a symbol's name object.
-///
-/// # Errors
-///
-/// Returns a type or storage error when the word is not a symbol.
-pub fn symbol_name(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
-    symbol_slot(ctx, symbol, symbol_offset::NAME)
 }
 /// Push a precise root.
 pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {

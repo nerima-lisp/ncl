@@ -24,7 +24,7 @@ impl Runtime {
     }
 
     #[must_use]
-    pub fn find_package(&self, context: &mut ThreadContext, name: &str) -> Option<Word> {
+    pub fn find_package(&self, context: &ThreadContext, name: &str) -> Option<Word> {
         let table = Self::table(&self.packages).ok()?;
         let name_chars = name.chars().collect::<Vec<_>>();
         let mut result = None;

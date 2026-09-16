@@ -64,6 +64,9 @@ fn unintern_clears_home_and_shadowing_but_not_inherited() {
     Package::from(base)
         .shadow(&mut ctx, &runtime, name)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    Package::from(base)
+        .shadow(&mut ctx, &runtime, name)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     let shadowing = Package::from(base)
         .shadowing_symbols(&ctx)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
@@ -183,7 +186,7 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
     Package::from(registered)
         .add_nickname(&mut ctx, &runtime, nickname)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
-    assert_eq!(runtime.find_package(&mut ctx, "B"), Some(registered));
+    assert_eq!(runtime.find_package(&ctx, "B"), Some(registered));
     assert!(ncl_object::pop_root(&mut ctx, token));
 }
 

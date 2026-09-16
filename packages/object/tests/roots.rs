@@ -7,6 +7,7 @@ fn setup() -> (Runtime, Box<ThreadContext>) {
     let mut ctx = Box::new(ThreadContext::new());
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register failed: {error:?}"));
+    ctx.set_strict_forwarding(true);
     (runtime, ctx)
 }
 

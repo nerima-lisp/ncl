@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![allow(clippy::unwrap_used)]
 
 use ncl_asm_aarch64::{Assembler, Inst, Label, Reg, RegOrSp, Shift, decode, encode, mov_imm64};
 

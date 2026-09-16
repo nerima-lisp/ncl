@@ -368,12 +368,13 @@ impl Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let symbol = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                let symbol = match HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                     .remove(ctx, runtime, *name)?
-                    .or(
-                        HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?)
-                            .remove(ctx, runtime, *name)?,
-                    );
+                {
+                    Some(symbol) => Some(symbol),
+                    None => HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?)
+                        .remove(ctx, runtime, *name)?,
+                };
                 let Some(mut symbol) = symbol else {
                     return Ok(false);
                 };
@@ -500,6 +501,59 @@ fn remove_from_list(
     }
     Ok(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unintern_does_not_remove_external_when_internal_matches() {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register: {error:?}"));
+        let package = Package::new(&mut ctx, &runtime, "DUPLICATES")
+            .unwrap_or_else(|error| panic!("package: {error:?}"));
+        let name = make_string(&mut ctx, &runtime, &['D', 'U', 'P'])
+            .unwrap_or_else(|error| panic!("name: {error:?}"));
+        let internal = make_symbol(&mut ctx, &runtime, name)
+            .unwrap_or_else(|error| panic!("internal: {error:?}"));
+        let external = make_symbol(&mut ctx, &runtime, name)
+            .unwrap_or_else(|error| panic!("external: {error:?}"));
+        put(
+            &mut ctx,
+            internal,
+            crate::layout::symbol_offset::PACKAGE,
+            package.as_word(),
+        )
+        .unwrap_or_else(|error| panic!("internal home: {error:?}"));
+        put(
+            &mut ctx,
+            external,
+            crate::layout::symbol_offset::PACKAGE,
+            package.as_word(),
+        )
+        .unwrap_or_else(|error| panic!("external home: {error:?}"));
+        HashTable::from(get(&ctx, package.as_word(), widetag::PACKAGE, INTERNAL).unwrap())
+            .insert(&mut ctx, &runtime, name, internal)
+            .unwrap_or_else(|error| panic!("internal insert: {error:?}"));
+        HashTable::from(get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL).unwrap())
+            .insert(&mut ctx, &runtime, name, external)
+            .unwrap_or_else(|error| panic!("external insert: {error:?}"));
+
+        assert!(
+            package
+                .unintern(&mut ctx, &runtime, name)
+                .unwrap_or_else(|error| panic!("unintern: {error:?}"))
+        );
+        assert_eq!(
+            HashTable::from(get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL).unwrap())
+                .get(&mut ctx, name),
+            Ok(Some(external))
+        );
+    }
+}
+
 /// Canonical static NIL value.
 #[must_use]
 pub const fn nil() -> Word {

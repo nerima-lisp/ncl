@@ -56,8 +56,6 @@ impl HashTable {
     /// # Errors
     /// Returns an allocation or layout error.
     ///
-    /// # Panics
-    /// Panics if a root token cannot be removed in stack order.
     pub fn new(
         ctx: &mut ThreadContext,
         runtime: &Runtime,

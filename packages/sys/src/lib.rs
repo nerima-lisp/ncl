@@ -161,6 +161,29 @@ pub fn register_thread(heap: &Heap, thread: &mut Thread) -> Result<(), StorageCo
     heap.register_thread(thread)
 }
 
+/// Register a mutator with the heap already associated with another thread.
+pub fn register_thread_with_thread(
+    reference: &Thread,
+    thread: &mut Thread,
+) -> Result<(), StorageCondition> {
+    reference
+        .heap()
+        .ok_or(StorageCondition::ThreadNotRegistered)?
+        .register_thread(thread)
+}
+
+/// Register published code metadata through a registered thread.
+pub fn register_code(
+    thread: &Thread,
+    code: &CodePtr,
+    metadata: CodeObjectMetadata,
+) -> Result<(), CodeError> {
+    thread
+        .heap()
+        .ok_or(CodeError::NotRegistered)?
+        .register_code(code, metadata)
+}
+
 /// Configure strict stale-word checking for a registered thread's heap.
 pub fn set_strict_forwarding(thread: &Thread, on: bool) {
     if let Some(heap) = thread.heap() {

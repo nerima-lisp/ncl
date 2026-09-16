@@ -281,23 +281,22 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
         ncl_sys::Word::NIL,
     )
     .expect("code object");
-    let mut function = ncl_object::make_simple_fun(
-        &mut object_context,
-        &runtime,
-        0,
-        ncl_sys::Word::NIL,
-        ncl_sys::Word::NIL,
-        code_object,
-    )
-    .expect("function object")
-    .into();
+    let mut function = Box::new(
+        ncl_object::make_simple_fun(
+            &mut object_context,
+            &runtime,
+            0,
+            ncl_sys::Word::NIL,
+            ncl_sys::Word::NIL,
+            code_object,
+        )
+        .expect("function object")
+        .into(),
+    );
     ncl_sys::enter_native(object_context.thread_mut());
-    let heap = object_context
-        .thread_mut()
-        .heap()
-        .expect("registered object context");
     let mut thread = Thread::new();
-    ncl_sys::register_thread(heap, &mut thread).expect("register generated thread");
+    ncl_sys::register_thread_with_thread(object_context.thread_mut(), &mut thread)
+        .expect("register generated thread");
     let _root = ncl_sys::push_root(&mut thread, &mut function);
 
     let mut builder = FunctionBuilder::new(
@@ -315,7 +314,8 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     write_code(&mut code, 0, &compiled.code).expect("code write");
     publish_code(&mut code).expect("code publication");
     let map = compiled.safepoint_maps.first().expect("safepoint map");
-    heap.register_code(
+    ncl_sys::register_code(
+        &thread,
         &code,
         ncl_sys::CodeObjectMetadata {
             entry_offset: compiled.entry_offset as usize,
@@ -343,6 +343,7 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     )
     .expect("register code metadata");
 
+    ncl_sys::unregister_thread(object_context.thread_mut());
     COLLECT_IN_SAFEPOINT.store(true, Ordering::SeqCst);
     thread.request_poll();
     let old = function.bits();
@@ -356,6 +357,8 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
         0,
     );
     COLLECT_IN_SAFEPOINT.store(false, Ordering::SeqCst);
+    ncl_sys::register_thread_with_thread(&thread, object_context.thread_mut())
+        .expect("re-register object context");
     assert_eq!(result, (0, 0));
     assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 1);
     let after = function.bits();
@@ -363,7 +366,7 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     assert_eq!(FRAME_WORD_BEFORE.load(Ordering::SeqCst), old);
     assert_eq!(FRAME_WORD_AFTER.load(Ordering::SeqCst), after);
     assert_eq!(
-        ncl_object::function_name(&object_context, function.into()),
+        ncl_object::function_name(&object_context, (*function).into()),
         Ok(Word::NIL)
     );
 }

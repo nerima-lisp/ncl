@@ -62,6 +62,7 @@ pub struct Thread {
     pub(crate) frame_chain: Vec<Word>,
     pub(crate) frame_registers: Vec<Word>,
     frame_address: Option<usize>,
+    frame_snapshot_failed: bool,
 }
 
 /// Native offsets consumed by the code generator when addressing a thread context.
@@ -132,6 +133,7 @@ impl Thread {
             frame_chain: Vec::new(),
             frame_registers: Vec::new(),
             frame_address: None,
+            frame_snapshot_failed: false,
         }
     }
 
@@ -261,25 +263,57 @@ impl Thread {
         self.frame_chain = frames;
         self.frame_registers = registers;
         self.frame_address = None;
+        self.frame_snapshot_failed = false;
     }
 
     /// Capture the current generated frame header for collection.
-    pub fn set_native_frame(&mut self, frame_fp: usize, return_pc: usize) {
+    ///
+    /// # Safety
+    ///
+    /// `frame_fp` must point to a live generated frame whose `frame_words`
+    /// words are readable, and `return_pc` must be that frame's continuation PC.
+    pub unsafe fn set_native_frame(&mut self, frame_fp: usize, return_pc: usize) {
+        let map = self
+            .heap()
+            .and_then(|heap| heap.safepoint_map_for_pc(return_pc));
+        let Some(map) = map else {
+            self.frame_snapshot_failed = true;
+            debug_assert!(false, "safepoint continuation PC is not registered");
+            self.frame_chain.clear();
+            self.frame_registers.clear();
+            self.frame_address = None;
+            return;
+        };
+        let frame_words = usize::from(map.frame_words);
         let words = frame_fp as *const Word;
-        // SAFETY: the generated frame owns four published header words at the supplied frame pointer.
-        self.frame_chain = unsafe { std::slice::from_raw_parts(words, 4).to_vec() };
+        let mut snapshot = Vec::with_capacity(frame_words);
+        // SAFETY: the caller guarantees the generated frame has the mapped width.
+        unsafe {
+            for index in 0..4 {
+                snapshot.push(words.add(index).read());
+            }
+            for index in 4..frame_words {
+                snapshot.push(words.sub(index - 3).read());
+            }
+        }
+        self.frame_chain = snapshot;
         self.stack_bounds = None;
         self.callee_saved = [0; 16];
         self.frame_chain[1] = Word::from_bits(return_pc as u64);
         self.frame_address = Some(frame_fp);
+        self.frame_snapshot_failed = false;
     }
 
     /// Return the current value of a captured real frame word.
     #[must_use]
     pub fn frame_word(&self, index: usize) -> Option<Word> {
-        let address = self.frame_address?;
-        // SAFETY: the captured generated frame remains active until its runtime callback returns.
-        Some(unsafe { ((address as *const Word).add(index)).read() })
+        self.frame_chain.get(index).copied()
+    }
+
+    /// Whether the latest native-frame capture could not resolve its PC map.
+    #[must_use]
+    pub const fn frame_snapshot_failed(&self) -> bool {
+        self.frame_snapshot_failed
     }
 
     /// Write collection's forwarded snapshot values back to the generated frame.
@@ -289,12 +323,21 @@ impl Thread {
         };
         // SAFETY: the captured generated frame remains active during collection and write-back.
         unsafe {
+            let frame = address as *mut Word;
             for (index, word) in self.frame_chain.iter().copied().enumerate() {
-                if index != 1 {
-                    ((address as *mut Word).add(index)).write(word);
+                if index == 1 {
+                    continue;
+                }
+                if index < 4 {
+                    frame.add(index).write(word);
+                } else {
+                    frame.sub(index - 3).write(word);
                 }
             }
         }
+        self.frame_address = None;
+        self.frame_chain.clear();
+        self.frame_registers.clear();
     }
 }
 
@@ -384,5 +427,21 @@ mod tests {
         // `mv` is a Vec descriptor, not a generated-code scalar word field.
         assert_eq!(layout.mv % 8, 0);
         assert_ne!(std::mem::size_of::<Vec<Word>>(), 8);
+    }
+
+    #[test]
+    fn frame_snapshot_write_back_consumes_snapshot() {
+        let mut frame = vec![Word::fixnum(10); 8].into_boxed_slice();
+        let address = frame.as_mut_ptr() as usize;
+        let mut thread = Thread::new();
+        thread.frame_address = Some(address);
+        thread.frame_chain = vec![Word::fixnum(1); 8];
+        thread.write_back_frame_snapshot();
+        assert!(thread.frame_address.is_none());
+        assert!(thread.frame_chain.is_empty());
+        assert!(thread.frame_registers.is_empty());
+        let first = frame[0];
+        thread.write_back_frame_snapshot();
+        assert_eq!(frame[0], first);
     }
 }

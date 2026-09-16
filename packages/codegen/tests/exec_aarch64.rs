@@ -37,7 +37,8 @@ extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
 extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize) {
     SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
     if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) {
-        ctx.set_native_frame(frame_fp, return_pc);
+        // SAFETY: the callback receives the live generated frame FP and its mapped continuation PC.
+        unsafe { ctx.set_native_frame(frame_fp, return_pc) };
         FRAME_WORD_BEFORE.store(
             ctx.frame_word(2)
                 .expect("captured frame function object")
@@ -49,12 +50,10 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
         ncl_sys::collect(ctx, true);
         ctx.leave_native();
         ctx.clear_safepoint_request();
-        FRAME_WORD_AFTER.store(
-            ctx.frame_word(2)
-                .expect("written-back frame function object")
-                .bits(),
-            Ordering::SeqCst,
-        );
+        // SAFETY: the generated frame remains live until this callback returns and the capture map covers word 2.
+        let after = unsafe { ((frame_fp as *const Word).add(2)).read() };
+        FRAME_WORD_AFTER.store(after.bits(), Ordering::SeqCst);
+        assert!(ctx.frame_word(2).is_none());
         println!(
             "frame word 2: before=0x{:x}, after=0x{:x}",
             FRAME_WORD_BEFORE.load(Ordering::SeqCst),

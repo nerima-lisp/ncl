@@ -164,6 +164,81 @@ fn repeated_remove_insert_keeps_all_live_entries_consistent() {
     }
 }
 
+#[test]
+fn repeated_remove_insert_reuses_kv_positions_without_resize() {
+    let (runtime, mut ctx) = setup();
+    let table = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"));
+    let keys = (0..10_000_i64)
+        .filter(|key| sxhash(key_word(*key)) & 7 == sxhash(key_word(0)) & 7)
+        .take(1_005)
+        .collect::<Vec<_>>();
+    for key in &keys[..5] {
+        table
+            .insert(&mut ctx, &runtime, key_word(*key), key_word(*key))
+            .unwrap();
+    }
+    let capacity = table.capacity(&ctx).unwrap();
+    for round in 0..1_000_i64 {
+        let old = keys[usize::try_from(round).unwrap()];
+        let replacement = keys[usize::try_from(round + 5).unwrap()];
+        assert_eq!(
+            table.remove(&mut ctx, &runtime, key_word(old)),
+            Ok(Some(key_word(old)))
+        );
+        table
+            .insert(
+                &mut ctx,
+                &runtime,
+                key_word(replacement),
+                key_word(replacement),
+            )
+            .unwrap();
+        assert_eq!(table.capacity(&ctx), Ok(capacity));
+    }
+}
+
+#[test]
+fn thousands_of_entries_survive_reuse_and_gc_rehash() {
+    let (runtime, mut ctx) = setup();
+    let mut table_word = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
+        .as_word();
+    let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
+    for key in 0..8_192_i64 {
+        HashTable::from(table_word)
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap();
+    }
+    for key in (0..8_192_i64).step_by(2) {
+        assert_eq!(
+            HashTable::from(table_word).remove(&mut ctx, &runtime, key_word(key)),
+            Ok(Some(key_word(key)))
+        );
+    }
+    for key in 8_192..12_288_i64 {
+        HashTable::from(table_word)
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap();
+    }
+    ctx.collect(true);
+    for key in 1..8_192_i64 {
+        if key % 2 == 1 {
+            assert_eq!(
+                HashTable::from(table_word).get(&mut ctx, key_word(key)),
+                Ok(Some(key_word(key)))
+            );
+        }
+    }
+    for key in 8_192..12_288_i64 {
+        assert_eq!(
+            HashTable::from(table_word).get(&mut ctx, key_word(key)),
+            Ok(Some(key_word(key)))
+        );
+    }
+    assert!(ncl_object::pop_root(&mut ctx, table_token));
+}
+
 const fn key_word(value: i64) -> Word {
     Word::fixnum(value)
 }

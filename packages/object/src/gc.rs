@@ -1,5 +1,6 @@
 //! SB-EXT garbage-collection symbol ownership.
 
+use crate::hash_table::{INDEX, KV, MARKER};
 use crate::{
     ObjectError, Runtime, Word,
     layout::{
@@ -27,7 +28,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
         (widetag::STRING, vec![]),
         (widetag::SIMPLE_VECTOR, vec![simple_vector_offset::DATA]),
-        (widetag::HASH_TABLE, reference_words(&[6, 7])),
+        (widetag::HASH_TABLE, reference_words(&[MARKER, KV, INDEX])),
         (widetag::STRUCTURE, vec![structure_offset::SLOTS]),
         (
             widetag::INSTANCE,
@@ -101,7 +102,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
                     widetag::NON_SIMPLE_ARRAY => Some(1),
                     widetag::STRUCTURE => Some(structure_offset::SLOTS + 1),
                     widetag::CLOSURE => Some(function_offset::CAPTURES + 1),
-                    widetag::HASH_TABLE => Some(7),
+                    widetag::HASH_TABLE => Some(MARKER + 1),
                     widetag::PACKAGE => Some(crate::package::NAME + 1),
                     _ => None,
                 },

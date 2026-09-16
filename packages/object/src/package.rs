@@ -163,15 +163,14 @@ impl Package {
         let Some(symbol) = internal.remove(ctx, runtime, name)? else {
             return Ok(false);
         };
+        let external = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
         let mut name = name;
-        let name_token = crate::push_root(ctx, &mut name);
-        let mut symbol = symbol;
-        let symbol_token = crate::push_root(ctx, &mut symbol);
-        let result = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?)
-            .insert(ctx, runtime, name, symbol);
-        assert!(crate::pop_root(ctx, symbol_token));
-        assert!(crate::pop_root(ctx, name_token));
-        result?;
+        crate::with_root(ctx, &mut name, |ctx, name| {
+            let mut symbol = symbol;
+            crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                external.insert(ctx, runtime, name, symbol)
+            })
+        })?;
         Ok(true)
     }
     /// Remove a symbol from the external table and return it to internal visibility.
@@ -191,15 +190,14 @@ impl Package {
         let Some(symbol) = external.remove(ctx, runtime, name)? else {
             return Ok(false);
         };
+        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
         let mut name = name;
-        let name_token = crate::push_root(ctx, &mut name);
-        let mut symbol = symbol;
-        let symbol_token = crate::push_root(ctx, &mut symbol);
-        let result = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?)
-            .insert(ctx, runtime, name, symbol);
-        assert!(crate::pop_root(ctx, symbol_token));
-        assert!(crate::pop_root(ctx, name_token));
-        result?;
+        crate::with_root(ctx, &mut name, |ctx, name| {
+            let mut symbol = symbol;
+            crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                internal.insert(ctx, runtime, name, symbol)
+            })
+        })?;
         Ok(true)
     }
     /// Import a symbol under a string name.

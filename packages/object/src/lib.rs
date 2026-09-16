@@ -13,7 +13,6 @@ pub mod cons;
 mod control_extensions;
 mod function;
 pub(crate) mod gc;
-mod hash_support;
 pub mod hash_table;
 mod instance;
 mod layout;
@@ -22,6 +21,7 @@ mod object_access;
 pub mod package;
 mod readtable;
 mod registry_extensions;
+mod roots;
 mod specialized_array;
 mod stream;
 mod structure;
@@ -55,12 +55,13 @@ pub use number::{
     make_complex, make_double, make_ratio,
 };
 pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
-pub use package::FindStatus;
-pub use package::Package;
+pub use package::{FindStatus, Package};
 pub use readtable::readtable_slot;
 pub use readtable::{
     Readtable, make_readtable, readtable_case, readtable_dispatch, readtable_syntax,
 };
+pub(crate) use roots::{finish_root, with_root, with_roots};
+pub use roots::{pop_root, push_root, try_pop_root, try_push_root};
 pub use specialized_array::{
     make_specialized_array, specialized_array_element_type, specialized_array_ref,
     specialized_array_set,
@@ -70,8 +71,9 @@ pub use stream::{
     Stream, make_stream, stream_direction, stream_element_type, stream_external_format,
     stream_implementation, stream_state,
 };
-pub use structure::structure_layout;
-pub use structure::{StructureLayout, make_structure, structure_ref, structure_set};
+pub use structure::{
+    StructureLayout, make_structure, structure_layout, structure_ref, structure_set,
+};
 pub use symbol_extensions::{
     set_symbol_value, symbol_function, symbol_name, symbol_plist, symbol_value,
 };
@@ -79,6 +81,7 @@ pub use symbol_extensions::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObjectError {
     TypeError,
+    ContextMoved,
     Storage(StorageCondition),
     Layout,
     Unbound,
@@ -198,18 +201,14 @@ impl Runtime {
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         let key = format!("{package}::{name}");
-        let mut key = make_string(&mut context, self, &key.chars().collect::<Vec<_>>())?;
-        let key_token = push_root(&mut context, &mut key);
         let mut function = function;
-        let function_token = push_root(&mut context, &mut function);
-        let result = HashTable::from(Self::table(&self.functions)?).insert(
-            &mut context,
-            self,
-            key,
-            function,
-        );
-        let _ = pop_root(&mut context, function_token);
-        let _ = pop_root(&mut context, key_token);
+        let result = with_root(&mut context, &mut function, |context, function| {
+            let mut key = make_string(context, self, &key.chars().collect::<Vec<_>>())?;
+            with_root(context, &mut key, |context, key| {
+                HashTable::from(Self::table(&self.functions)?)
+                    .insert(context, self, *key, *function)
+            })
+        });
         drop(context);
         result
     }
@@ -235,7 +234,6 @@ impl Runtime {
     }
 }
 /// Per-mutator object-layer context.
-///
 /// The address of this value may be passed to generated code as a
 /// `*mut ncl_sys::Thread`. Generated code may access only the leading `Thread`
 /// portion.
@@ -251,6 +249,7 @@ pub struct ThreadContext {
     handler: Option<usize>,
     cleanup: Option<usize>,
     catch: Option<usize>,
+    gc_stress: bool,
 }
 impl ThreadContext {
     /// Create an unregistered context.
@@ -266,6 +265,7 @@ impl ThreadContext {
             handler: None,
             cleanup: None,
             catch: None,
+            gc_stress: false,
         }
     }
     /// Register this context with a runtime.
@@ -323,27 +323,44 @@ impl ThreadContext {
     /// # Errors
     /// Returns a storage error if this context was moved after registration.
     pub fn collect(&mut self, full: bool) -> Result<(), ObjectError> {
-        self.check_registered_address()?;
+        self.require_registered()?;
         ncl_sys::collect(&mut self.thread, full);
         Ok(())
     }
+    /// Force a full collection before every object allocation when enabled.
+    pub const fn set_gc_stress(&mut self, on: bool) {
+        self.gc_stress = on;
+    }
     /// Mark an object as weak with the requested policy.
+    ///
+    /// This low-level operation does not validate registration or context movement.
     #[must_use]
     pub fn make_weak(&self, value: Word, weakness: ncl_sys::Weakness) -> Word {
         ncl_sys::make_weak(&self.thread, value, weakness)
     }
     /// Read the value slot of a weak object.
+    ///
+    /// This low-level operation does not validate registration or context movement.
     #[must_use]
     pub fn weak_value(&self, value: Word) -> Word {
         ncl_sys::weak_value(&self.thread, value)
     }
 
-    fn check_registered_address(&self) -> Result<(), ObjectError> {
-        if self.registered_thread_address == Some((&raw const self.thread) as usize) {
-            Ok(())
-        } else {
-            Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
+    pub(crate) fn check_registered_address(&self) -> Result<(), ObjectError> {
+        if let Some(address) = self.registered_thread_address
+            && address != (&raw const self.thread) as usize
+        {
+            return Err(ObjectError::ContextMoved);
         }
+        Ok(())
+    }
+
+    fn require_registered(&self) -> Result<(), ObjectError> {
+        self.check_registered_address()?;
+        if self.registered_thread_address.is_none() {
+            return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+        }
+        Ok(())
     }
 }
 impl Default for ThreadContext {
@@ -352,9 +369,7 @@ impl Default for ThreadContext {
     }
 }
 /// Allocate a cons cell.
-///
 /// # Errors
-///
 /// Returns the allocation failure reported by the heap.
 pub fn make_cons(
     ctx: &mut ThreadContext,
@@ -362,15 +377,20 @@ pub fn make_cons(
     car: Word,
     cdr: Word,
 ) -> Result<Word, ObjectError> {
-    debug_assert!(
-        ctx.registered_thread_address.is_none() || ctx.check_registered_address().is_ok()
-    );
-    ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, car, cdr).map_err(Into::into)
+    ctx.require_registered()?;
+    let mut car = car;
+    crate::with_root(ctx, &mut car, |ctx, car| {
+        let mut cdr = cdr;
+        crate::with_root(ctx, &mut cdr, |ctx, cdr| {
+            if ctx.gc_stress {
+                ctx.collect(true)?;
+            }
+            ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, *car, *cdr).map_err(Into::into)
+        })
+    })
 }
 /// Allocate a header object with a widetag and payload words.
-///
 /// # Errors
-///
 /// Returns the allocation failure reported by the heap.
 pub fn allocate(
     ctx: &mut ThreadContext,
@@ -378,9 +398,10 @@ pub fn allocate(
     tag: u8,
     words: usize,
 ) -> Result<Word, ObjectError> {
-    debug_assert!(
-        ctx.registered_thread_address.is_none() || ctx.check_registered_address().is_ok()
-    );
+    ctx.require_registered()?;
+    if ctx.gc_stress {
+        ctx.collect(true)?;
+    }
     ncl_sys::alloc(
         &mut ctx.thread,
         &runtime.heap,
@@ -390,7 +411,6 @@ pub fn allocate(
     .map_err(Into::into)
 }
 /// Allocate a symbol with an initial name and unbound value/function cells.
-///
 /// # Errors
 ///
 /// Returns the allocation or storage failure reported by the heap.
@@ -399,31 +419,26 @@ pub fn make_symbol(
     runtime: &Runtime,
     name: Word,
 ) -> Result<Word, ObjectError> {
-    let symbol = allocate(ctx, runtime, widetag::SYMBOL, 8)?;
-    for (slot, value) in [
-        (symbol_offset::VALUE, Word::UNBOUND),
-        (symbol_offset::FUNCTION, Word::UNBOUND),
-        (symbol_offset::PLIST, Word::NIL),
-        (symbol_offset::PACKAGE, Word::NIL),
-        (symbol_offset::NAME, name),
-        (symbol_offset::TLS_INDEX, Word::fixnum(0)),
-        (symbol_offset::HASH, Word::fixnum(0)),
-        (symbol_offset::FLAGS, Word::fixnum(0)),
-    ] {
-        if !ncl_sys::write_object_word(&mut ctx.thread, symbol, slot, value) {
-            return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+    let mut name = name;
+    crate::with_root(ctx, &mut name, |ctx, name| {
+        let symbol = allocate(ctx, runtime, widetag::SYMBOL, 8)?;
+        for (slot, value) in [
+            (symbol_offset::VALUE, Word::UNBOUND),
+            (symbol_offset::FUNCTION, Word::UNBOUND),
+            (symbol_offset::PLIST, Word::NIL),
+            (symbol_offset::PACKAGE, Word::NIL),
+            (symbol_offset::NAME, *name),
+            (symbol_offset::TLS_INDEX, Word::fixnum(0)),
+            (symbol_offset::HASH, Word::fixnum(0)),
+            (symbol_offset::FLAGS, Word::fixnum(0)),
+        ] {
+            if !ncl_sys::write_object_word(&mut ctx.thread, symbol, slot, value) {
+                return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
+            }
+            ncl_sys::write_barrier(&mut ctx.thread, symbol, slot);
         }
-        ncl_sys::write_barrier(&mut ctx.thread, symbol, slot);
-    }
-    Ok(symbol)
-}
-/// Push a precise root.
-pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {
-    ncl_sys::push_root(&mut ctx.thread, value)
-}
-/// Pop a precise root.
-pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
-    ncl_sys::pop_root(&mut ctx.thread, token)
+        Ok(symbol)
+    })
 }
 /// Return the car of a cons cell.
 ///

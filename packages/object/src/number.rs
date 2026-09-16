@@ -1,7 +1,7 @@
 #![allow(clippy::useless_conversion)]
 
 use crate::object_access::{fix, get, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, number_offset, widetag};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, number_offset, widetag, with_roots};
 use ncl_sys::Word;
 
 crate::word_newtype!(Bignum);
@@ -93,10 +93,12 @@ pub fn make_ratio(
     numerator: Word,
     denominator: Word,
 ) -> Result<Ratio, ObjectError> {
-    let object = allocate(ctx, runtime, widetag::RATIO, 2)?;
-    put(ctx, object, number_offset::RATIO_NUMERATOR, numerator)?;
-    put(ctx, object, number_offset::RATIO_DENOMINATOR, denominator)?;
-    Ok(object.into())
+    with_roots(ctx, &[numerator, denominator], |ctx, values| {
+        let object = allocate(ctx, runtime, widetag::RATIO, 2)?;
+        put(ctx, object, number_offset::RATIO_NUMERATOR, values[0])?;
+        put(ctx, object, number_offset::RATIO_DENOMINATOR, values[1])?;
+        Ok(object.into())
+    })
 }
 /// Allocate a binary64 object.
 ///
@@ -141,10 +143,12 @@ pub fn make_complex(
     real: Word,
     imag: Word,
 ) -> Result<Complex, ObjectError> {
-    let object = allocate(ctx, runtime, widetag::COMPLEX, 2)?;
-    put(ctx, object, number_offset::COMPLEX_REAL, real)?;
-    put(ctx, object, number_offset::COMPLEX_IMAG, imag)?;
-    Ok(object.into())
+    with_roots(ctx, &[real, imag], |ctx, values| {
+        let object = allocate(ctx, runtime, widetag::COMPLEX, 2)?;
+        put(ctx, object, number_offset::COMPLEX_REAL, values[0])?;
+        put(ctx, object, number_offset::COMPLEX_IMAG, values[1])?;
+        Ok(object.into())
+    })
 }
 /// Read a ratio numerator.
 ///

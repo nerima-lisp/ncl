@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
-use ncl_object::{Runtime, ThreadContext, make_cons, make_string, make_symbol};
+use ncl_object::{Package, Runtime, ThreadContext, allocate, make_cons, make_string, make_symbol};
+use ncl_sys::StorageCondition;
 use ncl_sys::Word;
 
 fn setup() -> (Runtime, Box<ThreadContext>) {
@@ -19,9 +20,64 @@ fn moved_registered_context_returns_error_instead_of_crashing() {
     let mut ctx = Box::new(ctx);
     assert_eq!(
         ctx.collect(true),
+        Err(ncl_object::ObjectError::ContextMoved)
+    );
+}
+
+#[test]
+fn unregistered_context_rejects_collection_and_allocation() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    let error = ncl_object::ObjectError::Storage(StorageCondition::ThreadNotRegistered);
+    assert_eq!(ctx.collect(true), Err(error));
+    assert_eq!(
+        make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL),
+        Err(error)
+    );
+    assert_eq!(allocate(&mut ctx, &runtime, 0x7f, 1), Err(error));
+}
+
+#[test]
+fn package_failure_releases_all_roots_before_collection() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    while allocate(&mut ctx, &runtime, 0x7f, 64).is_ok() {}
+    let mut sentinel = Word::NIL;
+    let sentinel_token = ncl_object::push_root(&mut ctx, &mut sentinel);
+    let result = Package::new(&mut ctx, &runtime, "ROOT-FAILURE");
+    assert_eq!(
+        result,
         Err(ncl_object::ObjectError::Storage(
-            ncl_sys::StorageCondition::ThreadNotRegistered,
+            StorageCondition::CapacityExceeded
         ))
+    );
+    assert!(ncl_object::pop_root(&mut ctx, sentinel_token));
+    assert!(ctx.collect(true).is_ok());
+}
+
+#[test]
+fn moved_registered_context_rejects_allocation() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    let mut ctx = Box::new(ctx);
+    assert_eq!(
+        make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL),
+        Err(ncl_object::ObjectError::ContextMoved)
+    );
+}
+
+#[test]
+fn moved_registered_context_rejects_try_push_root() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    assert!(ctx.register(&runtime).is_ok());
+    let mut ctx = Box::new(ctx);
+    let mut value = Word::NIL;
+    assert_eq!(
+        ncl_object::try_push_root(&mut ctx, &mut value),
+        Err(ncl_object::ObjectError::ContextMoved)
     );
 }
 
@@ -247,6 +303,56 @@ fn tombstones_do_not_double_capacity_when_live_count_is_low() {
 }
 
 #[test]
+fn gc_rehash_normalizes_occupied_slots_before_insert() {
+    let (runtime, mut ctx) = setup();
+    let mut table_word = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
+        .as_word();
+    let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
+    for key in 0..27_i64 {
+        HashTable::from(table_word)
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    }
+    let capacity = HashTable::from(table_word)
+        .capacity(&ctx)
+        .unwrap_or_else(|error| panic!("capacity failed: {error:?}"));
+    for key in 0..11_i64 {
+        assert_eq!(
+            HashTable::from(table_word).remove(&mut ctx, &runtime, key_word(key)),
+            Ok(Some(key_word(key)))
+        );
+    }
+    assert!(ctx.collect(true).is_ok());
+    HashTable::from(table_word)
+        .insert(&mut ctx, &runtime, key_word(100), key_word(100))
+        .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    assert_eq!(HashTable::from(table_word).capacity(&ctx), Ok(capacity));
+    assert!(ncl_object::pop_root(&mut ctx, table_token));
+}
+
+#[test]
+fn replacing_existing_key_does_not_resize() {
+    let (runtime, mut ctx) = setup();
+    let table = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"));
+    for key in 0..6_i64 {
+        table
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    }
+    let capacity = table
+        .capacity(&ctx)
+        .unwrap_or_else(|error| panic!("capacity failed: {error:?}"));
+    table
+        .insert(&mut ctx, &runtime, key_word(0), key_word(100))
+        .unwrap_or_else(|error| panic!("replacement failed: {error:?}"));
+    assert_eq!(table.capacity(&ctx), Ok(capacity));
+    assert_eq!(table.count(&ctx), Ok(6));
+    assert_eq!(table.get(&mut ctx, key_word(0)), Ok(Some(key_word(100))));
+}
+
+#[test]
 fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     let (runtime, mut ctx) = setup();
     let mut table_word = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
@@ -285,6 +391,55 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
         );
     }
     assert!(ncl_object::pop_root(&mut ctx, table_token));
+}
+
+#[test]
+fn moving_keys_are_rehashed_in_every_table() {
+    let (runtime, mut ctx) = setup();
+    let mut first_table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
+        .as_word();
+    let first_table_token = ncl_object::push_root(&mut ctx, &mut first_table);
+    let mut second_table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
+        .as_word();
+    let second_table_token = ncl_object::push_root(&mut ctx, &mut second_table);
+    let mut keys = Vec::with_capacity(64);
+    let mut key_tokens = Vec::with_capacity(64);
+
+    for index in 0..64_i64 {
+        let mut key = Box::new(string(&mut ctx, &runtime, &format!("KEY-{index}")));
+        let token = ncl_object::push_root(&mut ctx, key.as_mut());
+        for (table, offset) in [(first_table, 0), (second_table, 1_000)] {
+            HashTable::from(table)
+                .insert(&mut ctx, &runtime, *key, key_word(index + offset))
+                .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+        }
+        keys.push(key);
+        key_tokens.push(token);
+    }
+    let old_addresses = keys.iter().map(|key| key.address()).collect::<Vec<_>>();
+
+    assert!(ctx.collect(true).is_ok());
+
+    for (index, key) in keys.iter().enumerate() {
+        assert_ne!(key.address(), old_addresses[index]);
+        let index = i64::try_from(index).unwrap_or(i64::MAX);
+        assert_eq!(
+            HashTable::from(first_table).get(&mut ctx, **key),
+            Ok(Some(key_word(index)))
+        );
+        assert_eq!(
+            HashTable::from(second_table).get(&mut ctx, **key),
+            Ok(Some(key_word(index + 1_000)))
+        );
+    }
+
+    for token in key_tokens.into_iter().rev() {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+    assert!(ncl_object::pop_root(&mut ctx, second_table_token));
+    assert!(ncl_object::pop_root(&mut ctx, first_table_token));
 }
 
 const fn key_word(value: i64) -> Word {

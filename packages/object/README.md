@@ -33,7 +33,7 @@ array_dimensions/array_row_major_ref/array_row_major_set
 
 `Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function`、`Runtime::function`、`Runtime::ensure_package`、`Runtime::find_package`、`Runtime::define_class`、`Runtime::class`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config` が runtime の登録・照会 API です。`define_function` と `define_class` も登録失敗を `Result` で返します。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
 
-`ThreadContext::register` 後はコンテキストを move してはいけません。登録前に `Box<ThreadContext>` に入れるか、スタック上の同じ場所で使い続けてください。
+`ThreadContext::register` 後はコンテキストを move してはいけません。登録前に `Box<ThreadContext>` に入れるか、スタック上の同じ場所で使い続けてください。登録後の move は `collect`、allocation、`make_cons`、try root 操作、`get`/`put`、write barrier 経路で検査され、`ObjectError::ContextMoved` を返します。未登録 context は `collect`、allocation、`make_cons` を拒否します。低レベルの `push_root`/`pop_root` と weak 操作は登録検査を行いません。
 
 `HashTable::new`、`insert`、`get`、`remove`、`for_each_entry`、`capacity` と `sxhash` が hash table API です。`Eq` は identity、`Eql` は数値値、`Equal` は文字列内容と cons、`Equalp` はそれらに ASCII case folding を加えた比較です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`unexport`、`import`、`shadow`、`use_package`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
 
@@ -79,6 +79,10 @@ assert!(pop_root(ctx, token));
 ```
 
 `RootToken` は LIFO です。トークンを逆順に pop し、token が有効な間は参照先の slot を move、resize、drop しないでください。Runtime の package、class、function registry は heap hash table で、Runtime が保持する managed Word は移動しない `Box<Word>` root slot とその `RootToken` だけです。未登録の Rust `Vec`、`HashMap`、package registry に managed Word を保存しないでください。
+
+確保関数が値で受け取る managed 引数は、その関数自身が確保を跨いで root 化します。managed Word を含む slice/Vec は確保を跨いで保持せず、必要なら各要素を root 化してから確保します。`ThreadContext::set_gc_stress(true)` を使うと、確保ごとの GC でこの契約をテストできます。
+
+constructor は値で受け取った managed 引数と slice の各要素を、内部の確保より前に root 化し、確保後は更新済みの root slot から読み取ります。
 
 ## 実装状況
 

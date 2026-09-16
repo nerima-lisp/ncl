@@ -1,6 +1,8 @@
 use crate::code::CodeObject;
 use crate::object_access::{fix, get_function, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, function_offset, widetag};
+use crate::{
+    ObjectError, Runtime, ThreadContext, allocate, function_offset, widetag, with_root, with_roots,
+};
 use ncl_sys::Word;
 
 crate::word_newtype!(Function);
@@ -17,12 +19,21 @@ pub fn make_simple_fun(
     lambda_list: Word,
     code: CodeObject,
 ) -> Result<Function, ObjectError> {
-    let object = allocate(ctx, runtime, widetag::SIMPLE_FUN, 4)?;
-    put(ctx, object, function_offset::ENTRY, fix(entry)?)?;
-    put(ctx, object, function_offset::NAME, name)?;
-    put(ctx, object, function_offset::LAMBDA_LIST, lambda_list)?;
-    put(ctx, object, function_offset::CODE, code.into())?;
-    Ok(object.into())
+    let mut name = name;
+    let mut lambda_list = lambda_list;
+    let mut code = code.into();
+    with_root(ctx, &mut name, |ctx, name| {
+        with_root(ctx, &mut lambda_list, |ctx, lambda_list| {
+            with_root(ctx, &mut code, |ctx, code| {
+                let object = allocate(ctx, runtime, widetag::SIMPLE_FUN, 4)?;
+                put(ctx, object, function_offset::ENTRY, fix(entry)?)?;
+                put(ctx, object, function_offset::NAME, *name)?;
+                put(ctx, object, function_offset::LAMBDA_LIST, *lambda_list)?;
+                put(ctx, object, function_offset::CODE, *code)?;
+                Ok(object.into())
+            })
+        })
+    })
 }
 
 /// Allocate a closure with inline captured values.
@@ -38,24 +49,35 @@ pub fn make_closure(
     code: CodeObject,
     values: &[Word],
 ) -> Result<Function, ObjectError> {
-    let object = allocate(
-        ctx,
-        runtime,
-        widetag::CLOSURE,
-        function_offset::CAPTURES + values.len(),
-    )?;
-    for (slot, value) in [
-        (function_offset::ENTRY, fix(entry)?),
-        (function_offset::NAME, name),
-        (function_offset::LAMBDA_LIST, lambda_list),
-        (function_offset::CODE, code.into()),
-    ] {
-        put(ctx, object, slot, value)?;
-    }
-    for (index, value) in values.iter().copied().enumerate() {
-        put(ctx, object, function_offset::CAPTURES + index, value)?;
-    }
-    Ok(object.into())
+    let mut name = name;
+    let mut lambda_list = lambda_list;
+    let mut code = code.into();
+    with_root(ctx, &mut name, |ctx, name| {
+        with_root(ctx, &mut lambda_list, |ctx, lambda_list| {
+            with_root(ctx, &mut code, |ctx, code| {
+                with_roots(ctx, values, |ctx, values| {
+                    let object = allocate(
+                        ctx,
+                        runtime,
+                        widetag::CLOSURE,
+                        function_offset::CAPTURES + values.len(),
+                    )?;
+                    for (slot, value) in [
+                        (function_offset::ENTRY, fix(entry)?),
+                        (function_offset::NAME, *name),
+                        (function_offset::LAMBDA_LIST, *lambda_list),
+                        (function_offset::CODE, *code),
+                    ] {
+                        put(ctx, object, slot, value)?;
+                    }
+                    for (index, value) in values.iter().copied().enumerate() {
+                        put(ctx, object, function_offset::CAPTURES + index, value)?;
+                    }
+                    Ok(object.into())
+                })
+            })
+        })
+    })
 }
 
 /// Read a function entry address.

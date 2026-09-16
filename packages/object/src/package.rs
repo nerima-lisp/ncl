@@ -45,36 +45,40 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn new(
         ctx: &mut ThreadContext,
         runtime: &Runtime,
         name: &str,
     ) -> Result<Self, ObjectError> {
         let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        let name_token = crate::push_root(ctx, &mut name_word);
-        let mut internal = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
-        let internal_token = crate::push_root(ctx, &mut internal);
-        let mut external = HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
-        let external_token = crate::push_root(ctx, &mut external);
-        let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 10)?;
-        for (slot, value) in [
-            (LOCK, Word::fixnum(0)),
-            (GENSYM, Word::fixnum(0)),
-            (NAME, name_word),
-            (NICKNAMES, Word::NIL),
-            (USE_LIST, Word::NIL),
-            (USED_BY, Word::NIL),
-            (INTERNAL, internal),
-            (EXTERNAL, external),
-            (SHADOWING, Word::NIL),
-            (LOCAL_NICKNAMES, Word::NIL),
-        ] {
-            put(ctx, object, slot, value)?;
-        }
-        let _ = crate::pop_root(ctx, external_token);
-        let _ = crate::pop_root(ctx, internal_token);
-        let _ = crate::pop_root(ctx, name_token);
-        Ok(object.into())
+        crate::with_root(ctx, &mut name_word, |ctx, name_word| {
+            let mut internal =
+                HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+            crate::with_root(ctx, &mut internal, |ctx, internal| {
+                let mut external =
+                    HashTable::new(ctx, runtime, HashTest::Equal, Weakness::None)?.as_word();
+                crate::with_root(ctx, &mut external, |ctx, external| {
+                    let object = crate::allocate(ctx, runtime, widetag::PACKAGE, 10)?;
+                    for (slot, value) in [
+                        (LOCK, Word::fixnum(0)),
+                        (GENSYM, Word::fixnum(0)),
+                        (NAME, *name_word),
+                        (NICKNAMES, Word::NIL),
+                        (USE_LIST, Word::NIL),
+                        (USED_BY, Word::NIL),
+                        (INTERNAL, *internal),
+                        (EXTERNAL, *external),
+                        (SHADOWING, Word::NIL),
+                        (LOCAL_NICKNAMES, Word::NIL),
+                    ] {
+                        put(ctx, object, slot, value)?;
+                    }
+                    Ok(object.into())
+                })
+            })
+        })
     }
     /// Return the package name object.
     ///
@@ -117,80 +121,91 @@ impl Package {
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn intern(
         self,
         ctx: &mut ThreadContext,
         runtime: &Runtime,
         name: &str,
     ) -> Result<(Word, FindStatus), ObjectError> {
-        let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        let name_token = crate::push_root(ctx, &mut name_word);
-        if let Some(found) = self.find_symbol(ctx, name_word)? {
-            let _ = crate::pop_root(ctx, name_token);
-            return Ok(found);
-        }
         let mut package = self.0;
-        let package_token = crate::push_root(ctx, &mut package);
-        let mut symbol = make_symbol(ctx, runtime, name_word)?;
-        let symbol_token = crate::push_root(ctx, &mut symbol);
-        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, package)?;
-        let table = HashTable::from(get(ctx, package, widetag::PACKAGE, INTERNAL)?);
-        let result = table.insert(ctx, runtime, name_word, symbol);
-        let _ = crate::pop_root(ctx, symbol_token);
-        let _ = crate::pop_root(ctx, package_token);
-        result?;
-        let _ = crate::pop_root(ctx, name_token);
-        Ok((symbol, FindStatus::Internal))
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+            crate::with_root(ctx, &mut name_word, |ctx, name_word| {
+                if let Some(found) = Self::from(*package).find_symbol(ctx, *name_word)? {
+                    return Ok(found);
+                }
+                let mut symbol = make_symbol(ctx, runtime, *name_word)?;
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    put(
+                        ctx,
+                        *symbol,
+                        crate::layout::symbol_offset::PACKAGE,
+                        *package,
+                    )?;
+                    let table = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                    table.insert(ctx, runtime, *name_word, *symbol)?;
+                    Ok((*symbol, FindStatus::Internal))
+                })
+            })
+        })
     }
     /// Export an internal symbol by moving it to the external table.
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn export(
         self,
         ctx: &mut ThreadContext,
         runtime: &Runtime,
         name: Word,
     ) -> Result<bool, ObjectError> {
-        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
-        let Some(symbol) = internal.remove(ctx, runtime, name)? else {
-            return Ok(false);
-        };
-        let mut name = name;
-        let name_token = crate::push_root(ctx, &mut name);
-        let mut symbol = symbol;
-        let symbol_token = crate::push_root(ctx, &mut symbol);
-        let result = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?)
-            .insert(ctx, runtime, name, symbol);
-        let _ = crate::pop_root(ctx, symbol_token);
-        let _ = crate::pop_root(ctx, name_token);
-        result?;
-        Ok(true)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let internal = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                let Some(mut symbol) = internal.remove(ctx, runtime, *name)? else {
+                    return Ok(false);
+                };
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                    external.insert(ctx, runtime, *name, *symbol)
+                })?;
+                Ok(true)
+            })
+        })
     }
     /// Remove a symbol from the external table and return it to internal visibility.
     ///
     /// # Errors
     /// Returns an allocation or layout error.
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn unexport(
         self,
         ctx: &mut ThreadContext,
         runtime: &Runtime,
         name: Word,
     ) -> Result<bool, ObjectError> {
-        let external = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
-        let Some(symbol) = external.remove(ctx, runtime, name)? else {
-            return Ok(false);
-        };
-        let mut name = name;
-        let name_token = crate::push_root(ctx, &mut name);
-        let mut symbol = symbol;
-        let symbol_token = crate::push_root(ctx, &mut symbol);
-        let result = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?)
-            .insert(ctx, runtime, name, symbol);
-        let _ = crate::pop_root(ctx, symbol_token);
-        let _ = crate::pop_root(ctx, name_token);
-        result?;
-        Ok(true)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                let Some(mut symbol) = external.remove(ctx, runtime, *name)? else {
+                    return Ok(false);
+                };
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    let internal = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                    internal.insert(ctx, runtime, *name, *symbol)
+                })?;
+                Ok(true)
+            })
+        })
     }
     /// Import a symbol under a string name.
     ///
@@ -203,9 +218,23 @@ impl Package {
         name: Word,
         symbol: Word,
     ) -> Result<(), ObjectError> {
-        put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, self.0)?;
-        HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?)
-            .insert(ctx, runtime, name, symbol)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let mut symbol = symbol;
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    put(
+                        ctx,
+                        *symbol,
+                        crate::layout::symbol_offset::PACKAGE,
+                        *package,
+                    )?;
+                    HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                        .insert(ctx, runtime, *name, *symbol)
+                })
+            })
+        })
     }
     /// Add another package to this package's use list.
     ///
@@ -217,21 +246,28 @@ impl Package {
         runtime: &Runtime,
         package: Word,
     ) -> Result<bool, ObjectError> {
-        let mut list = get(ctx, self.0, widetag::PACKAGE, USE_LIST)?;
-        while list != Word::NIL {
-            if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(package) {
-                return Ok(false);
-            }
-            list = ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
-        }
-        let list = make_cons(
-            ctx,
-            runtime,
-            package,
-            get(ctx, self.0, widetag::PACKAGE, USE_LIST)?,
-        )?;
-        put(ctx, self.0, USE_LIST, list)?;
-        Ok(true)
+        let mut package_self = self.0;
+        crate::with_root(ctx, &mut package_self, |ctx, package_self| {
+            let mut package = package;
+            crate::with_root(ctx, &mut package, |ctx, package| {
+                let mut list = get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?;
+                while list != Word::NIL {
+                    if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(*package) {
+                        return Ok(false);
+                    }
+                    list =
+                        ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
+                }
+                let list = make_cons(
+                    ctx,
+                    runtime,
+                    *package,
+                    get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?,
+                )?;
+                put(ctx, *package_self, USE_LIST, list)?;
+                Ok(true)
+            })
+        })
     }
     /// Remove a symbol from internal or external visibility.
     ///
@@ -263,22 +299,31 @@ impl Package {
         runtime: &Runtime,
         name: Word,
     ) -> Result<(), ObjectError> {
-        let list = get(ctx, self.0, widetag::PACKAGE, SHADOWING)?;
-        let list = make_cons(ctx, runtime, name, list)?;
-        put(ctx, self.0, SHADOWING, list)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                let list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
+                let list = make_cons(ctx, runtime, *name, list)?;
+                put(ctx, *package, SHADOWING, list)
+            })
+        })
     }
     /// Generate an uninterned symbol.
     ///
     /// # Errors
     /// Returns an allocation or layout error.
     pub fn gensym(self, ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
-        let number = get(ctx, self.0, widetag::PACKAGE, GENSYM)?
-            .as_fixnum()
-            .ok_or(ObjectError::Layout)?;
-        put(ctx, self.0, GENSYM, Word::fixnum(number + 1))?;
-        let name = format!("G{number}");
-        let name = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-        make_symbol(ctx, runtime, name)
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let number = get(ctx, *package, widetag::PACKAGE, GENSYM)?
+                .as_fixnum()
+                .ok_or(ObjectError::Layout)?;
+            put(ctx, *package, GENSYM, Word::fixnum(number + 1))?;
+            let name = format!("G{number}");
+            let name = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
+            make_symbol(ctx, runtime, name)
+        })
     }
 }
 

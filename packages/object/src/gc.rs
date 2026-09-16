@@ -10,6 +10,20 @@ use crate::{
     },
 };
 
+fn hash_table_layout() -> ncl_sys::ReferenceLayout {
+    ncl_sys::ReferenceLayout {
+        reference_words: reference_words(&[MARKER, KV, INDEX]),
+        boxed_from: Some(MARKER + 1),
+    }
+}
+
+fn package_layout() -> ncl_sys::ReferenceLayout {
+    ncl_sys::ReferenceLayout {
+        reference_words: reference_words(&crate::package::reference_words()),
+        boxed_from: Some(crate::package::NAME + 1),
+    }
+}
+
 /// Register every header-object reference layout owned by ncl-object.
 ///
 /// # Errors
@@ -89,10 +103,10 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
         (widetag::SPECIALIZED_ARRAY, vec![]),
         (widetag::NON_SIMPLE_ARRAY, vec![]),
     ] {
-        ncl_sys::register_layout(
-            runtime.heap(),
-            tag,
-            ncl_sys::ReferenceLayout {
+        let layout = match tag {
+            widetag::HASH_TABLE => hash_table_layout(),
+            widetag::PACKAGE => package_layout(),
+            _ => ncl_sys::ReferenceLayout {
                 reference_words: reference_words(&slots),
                 boxed_from: match tag {
                     widetag::SIMPLE_VECTOR => Some(simple_vector_offset::DATA + 1),
@@ -104,8 +118,8 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
                     _ => None,
                 },
             },
-        )
-        .map_err(|_| ObjectError::Layout)?;
+        };
+        ncl_sys::register_layout(runtime.heap(), tag, layout).map_err(|_| ObjectError::Layout)?;
     }
     Ok(())
 }
@@ -143,20 +157,14 @@ mod tests {
     #[test]
     fn hash_table_and_package_layouts_use_header_inclusive_references() {
         assert_eq!(
-            reference_words(&[MARKER, KV, INDEX]),
+            hash_table_layout().reference_words,
             [MARKER + 1, KV + 1, INDEX + 1]
         );
         assert_eq!(
-            reference_words(&crate::package::reference_words()),
-            crate::package::reference_words()
-                .into_iter()
-                .map(|slot| slot + 1)
-                .collect::<Vec<_>>()
+            package_layout().reference_words,
+            reference_words(&crate::package::reference_words())
         );
-        assert_eq!(Some(MARKER + 1), Some(MARKER + 1));
-        assert_eq!(
-            Some(crate::package::NAME + 1),
-            Some(crate::package::NAME + 1)
-        );
+        assert_eq!(hash_table_layout().boxed_from, Some(MARKER + 1));
+        assert_eq!(package_layout().boxed_from, Some(crate::package::NAME + 1));
     }
 }

@@ -1,8 +1,6 @@
-use crate::{ObjectError, Runtime, ThreadContext, allocate, layout};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
 use crate::{specialized_array_ref, specialized_array_set};
-
 use ncl_sys::Word;
-
 /// Options for constructing a non-simple array.
 #[derive(Clone, Copy, Debug)]
 pub struct ArrayOptions {
@@ -13,7 +11,6 @@ pub struct ArrayOptions {
     pub displaced_to: Option<Word>,
     pub displaced_index_offset: usize,
 }
-
 /// Element representations supported by the object layer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -28,7 +25,6 @@ pub enum ArrayElementType {
     SingleFloat = 7,
     DoubleFloat = 8,
 }
-
 impl ArrayElementType {
     pub(crate) fn from_word(word: Word) -> Result<Self, ObjectError> {
         match word.as_fixnum().and_then(|n| u8::try_from(n).ok()) {
@@ -45,13 +41,13 @@ impl ArrayElementType {
         }
     }
 }
-
 pub(crate) fn read(
     ctx: &ThreadContext,
     object: Word,
     slot: usize,
     tag: u8,
 ) -> Result<Word, ObjectError> {
+    ctx.check_registered_address()?;
     if object.lowtag() != ncl_sys::LowTag::OtherPointer as u8
         || ncl_sys::object_widetag(&ctx.thread, object) != Some(tag)
     {
@@ -61,7 +57,6 @@ pub(crate) fn read(
         ncl_sys::StorageCondition::ThreadNotRegistered,
     ))
 }
-
 pub(crate) fn write(
     ctx: &mut ThreadContext,
     object: Word,
@@ -69,6 +64,7 @@ pub(crate) fn write(
     value: Word,
     tag: u8,
 ) -> Result<(), ObjectError> {
+    ctx.check_registered_address()?;
     read(ctx, object, slot, tag)?;
     if !ncl_sys::write_object_word(&mut ctx.thread, object, slot, value) {
         return Err(ObjectError::Storage(
@@ -186,44 +182,48 @@ pub fn string_set(
 }
 
 /// Allocate a simple vector with contiguous Lisp values.
-///
 /// # Errors
-///
 /// Returns [`ObjectError`] when allocation or layout encoding fails.
+/// # Panics
+/// Panics if root cleanup detects a corrupted root stack.
 pub fn make_simple_vector(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
-    let object = allocate(
-        ctx,
-        runtime,
-        layout::widetag::SIMPLE_VECTOR,
-        values.len().checked_add(1).ok_or(ObjectError::Layout)?,
-    )?;
-    write(
-        ctx,
-        object,
-        0,
-        Word::fixnum(i64::try_from(values.len()).map_err(|_| ObjectError::Layout)?),
-        layout::widetag::SIMPLE_VECTOR,
-    )?;
-    for (index, value) in values.iter().copied().enumerate() {
+    with_roots(ctx, values, |ctx, rooted_values| {
+        let object = allocate(
+            ctx,
+            runtime,
+            layout::widetag::SIMPLE_VECTOR,
+            rooted_values
+                .len()
+                .checked_add(1)
+                .ok_or(ObjectError::Layout)?,
+        )?;
         write(
             ctx,
             object,
-            1 + index,
-            value,
+            0,
+            Word::fixnum(i64::try_from(rooted_values.len()).map_err(|_| ObjectError::Layout)?),
             layout::widetag::SIMPLE_VECTOR,
         )?;
-    }
-    Ok(object)
+        for (index, value) in rooted_values.iter().copied().enumerate() {
+            write(
+                ctx,
+                object,
+                1 + index,
+                value,
+                layout::widetag::SIMPLE_VECTOR,
+            )?;
+        }
+        Ok(object)
+    })
 }
 
 /// Return a simple vector's length.
 ///
 /// # Errors
-///
 /// Returns [`ObjectError`] for a non-vector or malformed layout.
 pub fn simple_vector_length(ctx: &ThreadContext, object: Word) -> Result<usize, ObjectError> {
     length(ctx, object, layout::widetag::SIMPLE_VECTOR, 0)
@@ -232,7 +232,6 @@ pub fn simple_vector_length(ctx: &ThreadContext, object: Word) -> Result<usize, 
 /// Read a simple-vector element.
 ///
 /// # Errors
-///
 /// Returns [`ObjectError`] for a non-vector or out-of-bounds index.
 pub fn simple_vector_ref(
     ctx: &ThreadContext,
@@ -248,7 +247,6 @@ pub fn simple_vector_ref(
 /// Write a simple-vector element.
 ///
 /// # Errors
-///
 /// Returns [`ObjectError`] for a non-vector or out-of-bounds index.
 pub fn simple_vector_set(
     ctx: &mut ThreadContext,
@@ -302,62 +300,62 @@ pub fn make_array(
     }
     let rank = dimensions.len();
     let data_offset = metadata_offset(rank, 4);
-    let object = allocate(
-        ctx,
-        runtime,
-        layout::widetag::NON_SIMPLE_ARRAY,
-        data_offset.checked_add(total).ok_or(ObjectError::Layout)?,
-    )?;
-    let write_meta = |ctx: &mut ThreadContext, slot: usize, value: Word| {
-        write(ctx, object, slot, value, layout::widetag::NON_SIMPLE_ARRAY)
-    };
-    write_meta(ctx, 0, Word::fixnum(i64::from(element_type as u8)))?;
-    write_meta(
-        ctx,
-        1,
-        Word::fixnum(i64::try_from(dimensions.len()).map_err(|_| ObjectError::Layout)?),
-    )?;
-    for (index, dimension) in dimensions.iter().copied().enumerate() {
+    let displaced = displaced_to.is_some();
+    let displaced_to = displaced_to.unwrap_or(Word::NIL);
+    with_roots(ctx, &[initial_element, displaced_to], |ctx, rooted| {
+        let object = allocate(
+            ctx,
+            runtime,
+            layout::widetag::NON_SIMPLE_ARRAY,
+            data_offset.checked_add(total).ok_or(ObjectError::Layout)?,
+        )?;
+        let write_meta = |ctx: &mut ThreadContext, slot: usize, value: Word| {
+            write(ctx, object, slot, value, layout::widetag::NON_SIMPLE_ARRAY)
+        };
+        write_meta(ctx, 0, Word::fixnum(i64::from(element_type as u8)))?;
         write_meta(
             ctx,
-            2 + index,
-            Word::fixnum(i64::try_from(dimension).map_err(|_| ObjectError::Layout)?),
+            1,
+            Word::fixnum(i64::try_from(dimensions.len()).map_err(|_| ObjectError::Layout)?),
         )?;
-    }
-    let fp = match fill_pointer {
-        Some(value) => i64::try_from(value).map_err(|_| ObjectError::Layout)?,
-        None => -1,
-    };
-    write_meta(ctx, metadata_offset(rank, 0), Word::fixnum(fp))?;
-    write_meta(
-        ctx,
-        metadata_offset(rank, 1),
-        displaced_to.unwrap_or(Word::NIL),
-    )?;
-    write_meta(
-        ctx,
-        metadata_offset(rank, 2),
-        Word::fixnum(i64::try_from(displaced_index_offset).map_err(|_| ObjectError::Layout)?),
-    )?;
-    let mut flags = 0;
-    if adjustable {
-        flags |= layout::array_offset::FLAG_ADJUSTABLE;
-    }
-    if fill_pointer.is_some() {
-        flags |= layout::array_offset::FLAG_HAS_FILL_POINTER;
-    }
-    if displaced_to.is_some() {
-        flags |= layout::array_offset::FLAG_DISPLACED;
-    }
-    write_meta(
-        ctx,
-        metadata_offset(rank, 3),
-        Word::fixnum(i64::try_from(flags).map_err(|_| ObjectError::Layout)?),
-    )?;
-    for index in 0..total {
-        write_meta(ctx, metadata_offset(rank, 4) + index, initial_element)?;
-    }
-    Ok(object)
+        for (index, dimension) in dimensions.iter().copied().enumerate() {
+            write_meta(
+                ctx,
+                2 + index,
+                Word::fixnum(i64::try_from(dimension).map_err(|_| ObjectError::Layout)?),
+            )?;
+        }
+        let fp = match fill_pointer {
+            Some(value) => i64::try_from(value).map_err(|_| ObjectError::Layout)?,
+            None => -1,
+        };
+        write_meta(ctx, metadata_offset(rank, 0), Word::fixnum(fp))?;
+        write_meta(ctx, metadata_offset(rank, 1), rooted[1])?;
+        write_meta(
+            ctx,
+            metadata_offset(rank, 2),
+            Word::fixnum(i64::try_from(displaced_index_offset).map_err(|_| ObjectError::Layout)?),
+        )?;
+        let mut flags = 0;
+        if adjustable {
+            flags |= layout::array_offset::FLAG_ADJUSTABLE;
+        }
+        if fill_pointer.is_some() {
+            flags |= layout::array_offset::FLAG_HAS_FILL_POINTER;
+        }
+        if displaced {
+            flags |= layout::array_offset::FLAG_DISPLACED;
+        }
+        write_meta(
+            ctx,
+            metadata_offset(rank, 3),
+            Word::fixnum(i64::try_from(flags).map_err(|_| ObjectError::Layout)?),
+        )?;
+        for index in 0..total {
+            write_meta(ctx, metadata_offset(rank, 4) + index, rooted[0])?;
+        }
+        Ok(object)
+    })
 }
 
 const fn metadata_offset(rank: usize, field: usize) -> usize {

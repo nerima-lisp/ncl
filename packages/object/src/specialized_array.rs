@@ -1,5 +1,5 @@
 use crate::array::{length, read, write};
-use crate::{ArrayElementType, ObjectError, Runtime, ThreadContext, allocate, layout};
+use crate::{ArrayElementType, ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
 
 use ncl_sys::Word;
 
@@ -36,36 +36,38 @@ pub fn make_specialized_array(
     for value in values.iter().copied() {
         validate(element_type, value)?;
     }
-    let object = allocate(
-        ctx,
-        runtime,
-        layout::widetag::SPECIALIZED_ARRAY,
-        values.len().checked_add(2).ok_or(ObjectError::Layout)?,
-    )?;
-    write(
-        ctx,
-        object,
-        0,
-        Word::fixnum(i64::from(element_type as u8)),
-        layout::widetag::SPECIALIZED_ARRAY,
-    )?;
-    write(
-        ctx,
-        object,
-        1,
-        Word::fixnum(i64::try_from(values.len()).map_err(|_| ObjectError::Layout)?),
-        layout::widetag::SPECIALIZED_ARRAY,
-    )?;
-    for (index, value) in values.iter().copied().enumerate() {
+    with_roots(ctx, values, |ctx, values| {
+        let object = allocate(
+            ctx,
+            runtime,
+            layout::widetag::SPECIALIZED_ARRAY,
+            values.len().checked_add(2).ok_or(ObjectError::Layout)?,
+        )?;
         write(
             ctx,
             object,
-            2 + index,
-            value,
+            0,
+            Word::fixnum(i64::from(element_type as u8)),
             layout::widetag::SPECIALIZED_ARRAY,
         )?;
-    }
-    Ok(object)
+        write(
+            ctx,
+            object,
+            1,
+            Word::fixnum(i64::try_from(values.len()).map_err(|_| ObjectError::Layout)?),
+            layout::widetag::SPECIALIZED_ARRAY,
+        )?;
+        for (index, value) in values.iter().copied().enumerate() {
+            write(
+                ctx,
+                object,
+                2 + index,
+                value,
+                layout::widetag::SPECIALIZED_ARRAY,
+            )?;
+        }
+        Ok(object)
+    })
 }
 
 /// Return a specialized array's element type.

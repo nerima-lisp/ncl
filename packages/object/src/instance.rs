@@ -1,7 +1,7 @@
 use crate::object_access::{get, put};
 use crate::{
-    ObjectError, Runtime, ThreadContext, allocate, instance_offset, make_simple_vector, pop_root,
-    push_root, simple_vector_ref, simple_vector_set, widetag,
+    ObjectError, Runtime, ThreadContext, allocate, instance_offset, make_simple_vector,
+    simple_vector_ref, simple_vector_set, widetag,
 };
 use ncl_sys::Word;
 
@@ -11,26 +11,24 @@ crate::word_newtype!(Instance);
 ///
 /// # Errors
 /// Returns an error when either allocation fails.
+/// # Panics
+/// Panics if a root token cannot be removed in stack order.
 pub fn make_instance(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    class: Word,
+    mut class: Word,
     slots: &[Word],
 ) -> Result<Instance, ObjectError> {
-    let mut vector = make_simple_vector(ctx, runtime, slots)?;
-    let token = push_root(ctx, &mut vector);
-    let object = match allocate(ctx, runtime, widetag::INSTANCE, 3) {
-        Ok(object) => object,
-        Err(error) => {
-            let _ = pop_root(ctx, token);
-            return Err(error);
-        }
-    };
-    put(ctx, object, instance_offset::CLASS, class)?;
-    put(ctx, object, instance_offset::SLOT_VECTOR, vector)?;
-    put(ctx, object, instance_offset::GENERATION, Word::fixnum(0))?;
-    let _ = pop_root(ctx, token);
-    Ok(object.into())
+    crate::with_root(ctx, &mut class, |ctx, class| {
+        let mut vector = make_simple_vector(ctx, runtime, slots)?;
+        crate::with_root(ctx, &mut vector, |ctx, vector| {
+            let object = allocate(ctx, runtime, widetag::INSTANCE, 3)?;
+            put(ctx, object, instance_offset::CLASS, *class)?;
+            put(ctx, object, instance_offset::SLOT_VECTOR, *vector)?;
+            put(ctx, object, instance_offset::GENERATION, Word::fixnum(0))?;
+            Ok(object.into())
+        })
+    })
 }
 
 /// Read an instance class.

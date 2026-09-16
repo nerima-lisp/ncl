@@ -15,7 +15,7 @@ use ncl_sys::{
     Thread, Word, alloc_code, enter_native, invoke_entry, invoke_entry_with_function, leave_native,
     publish_code, request_safepoint, set_tlab, thread_layout, tlab_bump, write_code,
 };
-use std::sync::atomic::{AtomicU64, AtomicUsize, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
 static ALLOC_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -40,7 +40,9 @@ extern "C" fn safepoint_slow(ctx: &mut Thread) {
     if COLLECT_IN_SAFEPOINT.load(Ordering::SeqCst) {
         ctx.capture_current_frame_snapshot();
         FRAME_WORD_BEFORE.store(
-            ctx.frame_word(2).expect("captured frame function object").bits(),
+            ctx.frame_word(2)
+                .expect("captured frame function object")
+                .bits(),
             Ordering::SeqCst,
         );
         ctx.clear_safepoint_request();
@@ -48,7 +50,9 @@ extern "C" fn safepoint_slow(ctx: &mut Thread) {
         ncl_sys::collect(ctx, true);
         ctx.leave_native();
         FRAME_WORD_AFTER.store(
-            ctx.frame_word(2).expect("written-back frame function object").bits(),
+            ctx.frame_word(2)
+                .expect("written-back frame function object")
+                .bits(),
             Ordering::SeqCst,
         );
         println!(

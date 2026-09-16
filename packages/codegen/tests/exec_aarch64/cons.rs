@@ -268,7 +268,9 @@ fn forwards_function_object_from_generated_frame_map_simulation() {
 fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     let runtime = ncl_object::Runtime::new().expect("runtime");
     let mut object_context = ncl_object::ThreadContext::new();
-    object_context.register(&runtime).expect("register object context");
+    object_context
+        .register(&runtime)
+        .expect("register object context");
     let code_object = ncl_object::make_code_object(
         &mut object_context,
         &runtime,
@@ -359,5 +361,8 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     assert_ne!(old, after);
     assert_eq!(FRAME_WORD_BEFORE.load(Ordering::SeqCst), old);
     assert_eq!(FRAME_WORD_AFTER.load(Ordering::SeqCst), after);
-    assert_eq!(ncl_object::function_name(&object_context, function.into()), Ok(Word::NIL));
+    assert_eq!(
+        ncl_object::function_name(&object_context, function.into()),
+        Ok(Word::NIL)
+    );
 }

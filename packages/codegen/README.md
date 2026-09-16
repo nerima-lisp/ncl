@@ -14,6 +14,7 @@ and cooperative safepoint polls.
 | (c) Branch paths and block arguments | `executes_both_branch_paths_with_block_arguments` | Pass |
 | (d) Builtin call and rest argument | `executes_builtin_call_with_context_and_arguments`, `loads_fifth_argument_from_rest_storage` | Pass |
 | (e) Safepoint poll | `executes_safepoint_poll_without_and_with_request` | Pass |
+| (e2) Function object root forwarding | `forwards_function_object_from_generated_frame_map` | Pass |
 | (f) Recursive call and `fib(25)` | `executes_recursive_fib_twenty_five_with_four_word_frames` | Pass, 75025 |
 
 The release measurement command was:

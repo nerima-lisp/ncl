@@ -119,7 +119,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
                 },
             },
         };
-        ncl_sys::register_layout(runtime.heap(), tag, layout).map_err(|_| ObjectError::Layout)?;
+        runtime.register_layout(tag, layout)?;
     }
     Ok(())
 }

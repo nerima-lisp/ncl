@@ -11,21 +11,19 @@ pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
     ncl_sys::pop_root(&mut ctx.thread, token)
 }
 
-/// Push a precise root after validating the context address.
+/// Push a precise root and return its token.
 ///
 /// # Errors
-/// Returns [`ObjectError::ContextMoved`] when the context moved after registration.
+/// This compatibility wrapper currently always returns a token.
 pub fn try_push_root(ctx: &mut ThreadContext, value: &mut Word) -> Result<RootToken, ObjectError> {
-    ctx.check_registered_address()?;
     Ok(push_root(ctx, value))
 }
 
-/// Pop a precise root after validating the context address.
+/// Pop a precise root and return whether the token was valid.
 ///
 /// # Errors
-/// Returns [`ObjectError::ContextMoved`] when the context moved after registration.
+/// This compatibility wrapper currently always returns the pop result.
 pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, ObjectError> {
-    ctx.check_registered_address()?;
     Ok(pop_root(ctx, token))
 }
 
@@ -66,11 +64,6 @@ pub fn with_roots<T>(
 
 /// Pop a root and return the callback result.
 ///
-/// The callback result is discarded if cleanup detects a moved context.
-///
-/// # Errors
-/// Returns [`ObjectError::ContextMoved`] when the context moved after registration.
-///
 /// # Panics
 /// Panics if the root token is not at the top of the root stack.
 pub fn finish_root<T>(
@@ -79,7 +72,6 @@ pub fn finish_root<T>(
     result: Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
     assert!(pop_root(ctx, token), "root token popped out of stack order");
-    ctx.check_registered_address()?;
     result
 }
 

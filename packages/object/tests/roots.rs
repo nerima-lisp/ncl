@@ -34,15 +34,11 @@ fn try_root_operations_round_trip_a_registered_context() {
 }
 
 #[test]
-fn try_pop_root_rejects_a_context_moved_after_registration() {
+fn try_pop_root_allows_a_context_moved_after_registration() {
     let (_runtime, mut ctx) = setup();
     let mut value = Word::NIL;
     let token = push_root(&mut ctx, &mut value);
     let mut moved = Box::new(*ctx);
 
-    assert_eq!(
-        try_pop_root(&mut moved, token),
-        Err(ncl_object::ObjectError::ContextMoved)
-    );
-    // Do not collect after intentionally moving a registered context.
+    assert_eq!(try_pop_root(&mut moved, token), Ok(true));
 }

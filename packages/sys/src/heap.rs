@@ -5,6 +5,7 @@ pub use crate::heap_types::{
 };
 use crate::{CodeError, CodeObjectMetadata, CodePtr, Thread, Word};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 #[path = "heap/collect.rs"]
 mod collect;
@@ -19,6 +20,7 @@ const FORWARDED_FLAG: u64 = 1 << 10;
 pub struct Heap {
     config: HeapConfig,
     state: Mutex<State>,
+    strict_forwarding: AtomicBool,
     pub(crate) stop_world: Mutex<crate::stw::StopWorld>,
     pub(crate) stop_world_ready: Condvar,
 }
@@ -48,6 +50,7 @@ impl Heap {
                 after_gc_hooks: Vec::new(),
                 code_registry: crate::CodeRegistry::default(),
             }),
+            strict_forwarding: AtomicBool::new(false),
             stop_world: Mutex::new(crate::stw::StopWorld::default()),
             stop_world_ready: Condvar::new(),
         }
@@ -64,6 +67,10 @@ impl Heap {
     #[must_use]
     pub fn gc_epoch(&self) -> u64 {
         self.lock_state().gc_epoch
+    }
+    /// Reject forwarded from-space words passed through mutator accessors.
+    pub fn set_strict_forwarding(&self, on: bool) {
+        self.strict_forwarding.store(on, Ordering::Relaxed);
     }
     /// Register a heap-owned precise root slot.
     ///
@@ -312,6 +319,19 @@ impl Heap {
         }
         state.objects[index].alive.then_some(index)
     }
+    fn find_for_mutator(&self, state: &State, value: Word) -> Option<usize> {
+        let index = Self::find_raw(state, value)?;
+        if self.strict_forwarding.load(Ordering::Relaxed)
+            && state.objects[index].forwarded_to.is_some()
+        {
+            return None;
+        }
+        let mut index = index;
+        while let Some(next) = state.objects[index].forwarded_to {
+            index = next;
+        }
+        state.objects[index].alive.then_some(index)
+    }
     fn find_conservative(state: &State, value: Word) -> Option<usize> {
         let expected = if value.is_list() {
             PageKind::Cons
@@ -327,7 +347,7 @@ impl Heap {
     }
     pub(crate) fn read_word(&self, object: Word, slot: usize) -> Option<Word> {
         let state = self.lock_state();
-        state.objects[Self::find(&state, object)?]
+        state.objects[self.find_for_mutator(&state, object)?]
             .words
             .get(slot)
             .map(|value| Word::from_bits(*value))
@@ -337,19 +357,19 @@ impl Heap {
     }
     pub(crate) fn write_word_at(&self, object: Word, slot: usize, value: Word) -> bool {
         let mut state = self.lock_state();
-        Self::find(&state, object)
+        self.find_for_mutator(&state, object)
             .and_then(|index| state.objects[index].words.get_mut(slot))
             .map(|target| *target = value.bits())
             .is_some()
     }
     pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
         let state = self.lock_state();
-        let index = Self::find(&state, object)?;
+        let index = self.find_for_mutator(&state, object)?;
         Some(Self::object_widetag(&state.objects[index]))
     }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
         let mut state = self.lock_state();
-        if let Some(index) = Self::find(&state, object) {
+        if let Some(index) = self.find_for_mutator(&state, object) {
             for (slot, value) in values {
                 if *slot < state.objects[index].words.len() {
                     state.objects[index].words[*slot] = value.bits();
@@ -359,7 +379,7 @@ impl Heap {
     }
     pub(crate) fn barrier(&self, object: Word, slot: usize) {
         let mut state = self.lock_state();
-        if let Some(index) = Self::find(&state, object)
+        if let Some(index) = self.find_for_mutator(&state, object)
             && state.objects[index].generation > 0
             && slot < state.objects[index].words.len()
         {
@@ -369,20 +389,20 @@ impl Heap {
     }
     pub(crate) fn make_weak(&self, value: Word, weakness: Weakness) -> Word {
         let mut state = self.lock_state();
-        if let Some(index) = Self::find(&state, value) {
+        if let Some(index) = self.find_for_mutator(&state, value) {
             state.objects[index].weak = Some(weakness);
         }
         value
     }
     pub(crate) fn weak_value(&self, value: Word) -> Word {
         let state = self.lock_state();
-        Self::find(&state, value)
+        self.find_for_mutator(&state, value)
             .and_then(|i| state.objects[i].words.get(1).copied())
             .map_or(Word::NIL, Word::from_bits)
     }
     pub(crate) fn register_finalizer(&self, object: Word, callback: Finalizer) {
         let mut state = self.lock_state();
-        if let Some(index) = Self::find(&state, object) {
+        if let Some(index) = self.find_for_mutator(&state, object) {
             state.objects[index].finalizer = Some((callback, false));
         }
     }

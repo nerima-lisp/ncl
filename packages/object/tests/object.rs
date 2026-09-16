@@ -90,15 +90,15 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     assert!(ctx.register(&runtime).is_ok());
     assert!(runtime.register_layouts().is_ok());
     assert!(
-        ncl_sys::register_layout(
-            runtime.heap(),
-            99,
-            ncl_sys::ReferenceLayout {
-                reference_words: vec![1],
-                boxed_from: None,
-            },
-        )
-        .is_ok()
+        runtime
+            .register_layout(
+                99,
+                ncl_sys::ReferenceLayout {
+                    reference_words: vec![1],
+                    boxed_from: None,
+                },
+            )
+            .is_ok()
     );
 
     let mut list = Word::NIL;
@@ -129,7 +129,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
         .iter_mut()
         .map(|value| ncl_object::push_root(&mut ctx, value))
         .collect::<Vec<_>>();
-    assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
+    assert_eq!(runtime.widetag(roots[1_001]), Some(1));
     let table_key = Word::fixnum(42);
     let table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
         .unwrap_or_else(|error| panic!("HashTable allocation failed: {error:?}"));
@@ -143,7 +143,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
 
     assert!(ctx.collect(false).is_ok());
     assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
-    assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
+    assert_eq!(runtime.widetag(roots[1_001]), Some(1));
     assert_eq!(symbol_value(&ctx, roots[1_001]), Ok(Word::UNBOUND));
     assert_eq!(
         HashTable::from(table_word).get(&mut ctx, table_key),

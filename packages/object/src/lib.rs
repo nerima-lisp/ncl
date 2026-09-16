@@ -81,7 +81,6 @@ pub use symbol_extensions::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObjectError {
     TypeError,
-    ContextMoved,
     Storage(StorageCondition),
     Layout,
     Unbound,
@@ -147,7 +146,7 @@ impl Runtime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         ncl_sys::register_thread(&runtime.heap, &mut context.thread).map_err(ObjectError::from)?;
-        context.registered_thread_address = Some((&raw const context.thread) as usize);
+        context.registered = true;
         for target in [&runtime.functions, &runtime.packages, &runtime.classes] {
             let table =
                 HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)?.as_word();
@@ -182,9 +181,30 @@ impl Runtime {
         drop(registered);
         Ok(())
     }
-    /// Return the underlying heap.
-    pub const fn heap(&self) -> &Heap {
-        &self.heap
+    /// Register a low-level object layout with this runtime's heap.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::Layout`] if the widetag is already registered.
+    pub fn register_layout(
+        &self,
+        widetag: u8,
+        layout: ncl_sys::ReferenceLayout,
+    ) -> Result<(), ObjectError> {
+        ncl_sys::register_layout(&self.heap, widetag, layout).map_err(|_| ObjectError::Layout)
+    }
+    /// Return the widetag of an object, if it is valid for this runtime.
+    #[must_use]
+    pub fn widetag(&self, object: Word) -> Option<u8> {
+        ncl_sys::widetag(&self.heap, object)
+    }
+    /// Configure strict stale-word checking for this runtime heap.
+    pub fn set_strict_forwarding(&self, on: bool) {
+        self.heap.set_strict_forwarding(on);
+        let context = self
+            .registry_context
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        ncl_sys::set_strict_forwarding(&context.thread, on);
     }
     /// Register a function object under a package and name.
     ///
@@ -240,8 +260,8 @@ impl Runtime {
 #[repr(C)]
 #[derive(Debug)]
 pub struct ThreadContext {
-    pub(crate) thread: Thread,
-    registered_thread_address: Option<usize>,
+    pub(crate) thread: Box<Thread>,
+    registered: bool,
     bindings: Vec<(u32, Word)>,
     values: Vec<Word>,
     pending: Option<ObjectError>,
@@ -254,10 +274,10 @@ pub struct ThreadContext {
 impl ThreadContext {
     /// Create an unregistered context.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            thread: Thread::new(),
-            registered_thread_address: None,
+            thread: Box::new(Thread::new()),
+            registered: false,
             bindings: Vec::new(),
             values: Vec::new(),
             pending: None,
@@ -270,15 +290,14 @@ impl ThreadContext {
     }
     /// Register this context with a runtime.
     ///
-    /// After registration, do not move this context. Keep it in a stable
-    /// stack location or put it in a `Box<ThreadContext>` before registering.
+    /// The thread state is heap allocated, so moving this context after registration is safe.
     ///
     /// # Errors
     ///
     /// Returns the storage condition reported by the heap.
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
-        self.registered_thread_address = Some((&raw const self.thread) as usize);
+        self.registered = true;
         for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
             runtime.ensure_package(name)?;
         }
@@ -321,7 +340,7 @@ impl ThreadContext {
     /// Run a collection for this registered context.
     ///
     /// # Errors
-    /// Returns a storage error if this context was moved after registration.
+    /// Returns a storage error if this context is not registered.
     pub fn collect(&mut self, full: bool) -> Result<(), ObjectError> {
         self.require_registered()?;
         ncl_sys::collect(&mut self.thread, full);
@@ -330,6 +349,10 @@ impl ThreadContext {
     /// Force a full collection before every object allocation when enabled.
     pub const fn set_gc_stress(&mut self, on: bool) {
         self.gc_stress = on;
+    }
+    /// Configure strict stale-word checking for this context's heap.
+    pub fn set_strict_forwarding(&self, on: bool) {
+        ncl_sys::set_strict_forwarding(&self.thread, on);
     }
     /// Mark an object as weak with the requested policy.
     ///
@@ -346,18 +369,8 @@ impl ThreadContext {
         ncl_sys::weak_value(&self.thread, value)
     }
 
-    pub(crate) fn check_registered_address(&self) -> Result<(), ObjectError> {
-        if let Some(address) = self.registered_thread_address
-            && address != (&raw const self.thread) as usize
-        {
-            return Err(ObjectError::ContextMoved);
-        }
-        Ok(())
-    }
-
-    fn require_registered(&self) -> Result<(), ObjectError> {
-        self.check_registered_address()?;
-        if self.registered_thread_address.is_none() {
+    const fn require_registered(&self) -> Result<(), ObjectError> {
+        if !self.registered {
             return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
         }
         Ok(())

@@ -291,7 +291,6 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     )
     .expect("function object")
     .into();
-    Thread::enter_native_at((&mut object_context as *mut ncl_object::ThreadContext).cast());
 
     let mut thread = Thread::new();
     ncl_sys::register_thread(runtime.heap(), &mut thread).expect("register thread");

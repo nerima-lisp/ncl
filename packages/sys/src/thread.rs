@@ -135,11 +135,6 @@ impl Thread {
         }
     }
 
-    /// Mark a leading `Thread` embedded in an FFI context as native.
-    pub fn enter_native_at(pointer: *mut Self) {
-        // SAFETY: callers provide a live pointer to a leading Thread field.
-        unsafe { (*pointer).enter_native() };
-    }
     pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
         self.heap.map(|heap| {
             // SAFETY: registration stores this heap pointer for the thread lifetime.

@@ -178,6 +178,19 @@ impl HashTable {
         let result = (|| {
             let mut table = Self::from(table_word);
             table.rehash_if_needed(ctx)?;
+            let (index, kv) = table.storage(ctx)?;
+            let test = table.test(ctx)?;
+            let hash = hash_key(ctx, test, key)?;
+            let slot = Self::find_slot(ctx, index, kv, key, hash, test)?;
+            let entry = simple_vector_ref(ctx, index, slot)?
+                .as_fixnum()
+                .ok_or(ObjectError::Layout)?;
+            if entry >= 0 {
+                let position = usize::try_from(entry).map_err(|_| ObjectError::Layout)?;
+                simple_vector_set(ctx, kv, position * 2, key)?;
+                simple_vector_set(ctx, kv, position * 2 + 1, value)?;
+                return Ok(());
+            }
             let capacity = table.read_usize(ctx, CAPACITY)?;
             if table.read_usize(ctx, OCCUPIED)? + 1 >= capacity * 7 / 8 {
                 let count = table.count(ctx)?;
@@ -400,6 +413,7 @@ impl HashTable {
                 let slot = Self::find_slot(ctx, index, kv, key, hash_key(ctx, test, key)?, test)?;
                 simple_vector_set(ctx, index, slot, fix(position)?)?;
             }
+            put(ctx, self.0, OCCUPIED, fix(self.count(ctx)?)?)?;
             put(
                 ctx,
                 self.0,

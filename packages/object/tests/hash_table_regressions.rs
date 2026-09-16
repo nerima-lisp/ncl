@@ -245,6 +245,56 @@ fn tombstones_do_not_double_capacity_when_live_count_is_low() {
 }
 
 #[test]
+fn gc_rehash_normalizes_occupied_slots_before_insert() {
+    let (runtime, mut ctx) = setup();
+    let mut table_word = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
+        .as_word();
+    let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
+    for key in 0..27_i64 {
+        HashTable::from(table_word)
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    }
+    let capacity = HashTable::from(table_word)
+        .capacity(&ctx)
+        .unwrap_or_else(|error| panic!("capacity failed: {error:?}"));
+    for key in 0..11_i64 {
+        assert_eq!(
+            HashTable::from(table_word).remove(&mut ctx, &runtime, key_word(key)),
+            Ok(Some(key_word(key)))
+        );
+    }
+    assert!(ctx.collect(true).is_ok());
+    HashTable::from(table_word)
+        .insert(&mut ctx, &runtime, key_word(100), key_word(100))
+        .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    assert_eq!(HashTable::from(table_word).capacity(&ctx), Ok(capacity));
+    assert!(ncl_object::pop_root(&mut ctx, table_token));
+}
+
+#[test]
+fn replacing_existing_key_does_not_resize() {
+    let (runtime, mut ctx) = setup();
+    let table = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"));
+    for key in 0..6_i64 {
+        table
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    }
+    let capacity = table
+        .capacity(&ctx)
+        .unwrap_or_else(|error| panic!("capacity failed: {error:?}"));
+    table
+        .insert(&mut ctx, &runtime, key_word(0), key_word(100))
+        .unwrap_or_else(|error| panic!("replacement failed: {error:?}"));
+    assert_eq!(table.capacity(&ctx), Ok(capacity));
+    assert_eq!(table.count(&ctx), Ok(6));
+    assert_eq!(table.get(&mut ctx, key_word(0)), Ok(Some(key_word(100))));
+}
+
+#[test]
 fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     let (runtime, mut ctx) = setup();
     let mut table_word = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)

@@ -25,6 +25,19 @@ fn moved_registered_context_returns_error_instead_of_crashing() {
 }
 
 #[test]
+fn unregistered_context_rejects_collection_and_allocation() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    let error = ncl_object::ObjectError::Storage(StorageCondition::ThreadNotRegistered);
+    assert_eq!(ctx.collect(true), Err(error));
+    assert_eq!(
+        make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL),
+        Err(error)
+    );
+    assert_eq!(allocate(&mut ctx, &runtime, 0x7f, 1), Err(error));
+}
+
+#[test]
 fn package_failure_releases_all_roots_before_collection() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();

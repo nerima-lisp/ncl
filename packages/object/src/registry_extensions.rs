@@ -43,9 +43,10 @@ impl Runtime {
         let table = Self::table(&self.packages).ok()?;
         let name_chars = name.chars().collect::<Vec<_>>();
         let mut result = None;
+        let mut failure = None;
         HashTable::from(table)
             .for_each_entry(&context, |_, package| {
-                if result.is_some() {
+                if result.is_some() || failure.is_some() {
                     return;
                 }
                 let package = Package::from(package);
@@ -56,34 +57,54 @@ impl Runtime {
                             .enumerate()
                             .all(|(i, c)| string_ref(&context, word, i) == Ok(*c))
                 };
-                if package.name(&context).is_ok_and(matches) {
+                let package_name = match package.name(&context) {
+                    Ok(package_name) => package_name,
+                    Err(error) => {
+                        failure = Some(error);
+                        return;
+                    }
+                };
+                if matches(package_name) {
                     result = Some(package.as_word());
                     return;
                 }
-                let mut nicknames = Package::from(package.as_word())
-                    .name(&context)
-                    .ok()
-                    .and_then(|_| {
-                        crate::object_access::get(
-                            &context,
-                            package.as_word(),
-                            crate::widetag::PACKAGE,
-                            crate::package::NICKNAMES,
-                        )
-                        .ok()
-                    })
-                    .unwrap_or(Word::NIL);
+                let mut nicknames = match crate::object_access::get(
+                    &context,
+                    package.as_word(),
+                    crate::widetag::PACKAGE,
+                    crate::package::NICKNAMES,
+                ) {
+                    Ok(nicknames) => nicknames,
+                    Err(error) => {
+                        failure = Some(error);
+                        return;
+                    }
+                };
                 while nicknames != Word::NIL {
-                    let nickname = ncl_sys::read_cons_word(&context.thread, nicknames, 0);
-                    if nickname.is_some_and(matches) {
+                    let nickname = match ncl_sys::read_cons_word(&context.thread, nicknames, 0) {
+                        Some(nickname) => nickname,
+                        None => {
+                            failure = Some(ObjectError::Layout);
+                            return;
+                        }
+                    };
+                    if matches(nickname) {
                         result = Some(package.as_word());
                         break;
                     }
-                    nicknames =
-                        ncl_sys::read_cons_word(&context.thread, nicknames, 1).unwrap_or(Word::NIL);
+                    nicknames = match ncl_sys::read_cons_word(&context.thread, nicknames, 1) {
+                        Some(nicknames) => nicknames,
+                        None => {
+                            failure = Some(ObjectError::Layout);
+                            return;
+                        }
+                    };
                 }
             })
             .ok()?;
+        if failure.is_some() {
+            return None;
+        }
         drop(context);
         result
     }

@@ -39,7 +39,7 @@ pub fn with_root<T>(
     finish_root(ctx, token, result)
 }
 
-pub(crate) fn with_roots<T>(
+pub fn with_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
     f: impl FnOnce(&mut ThreadContext, &[Word]) -> Result<T, ObjectError>,

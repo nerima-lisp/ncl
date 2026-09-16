@@ -71,7 +71,12 @@ pub fn make_structure(
     }
     with_roots(ctx, slots, |ctx, slots| {
         let object = allocate(ctx, runtime, widetag::STRUCTURE, 1 + slots.len())?;
-        put(ctx, object, structure_offset::LAYOUT, fix(layout.0 as usize)?)?;
+        put(
+            ctx,
+            object,
+            structure_offset::LAYOUT,
+            fix(layout.0 as usize)?,
+        )?;
         for (index, value) in slots.iter().copied().enumerate() {
             put(ctx, object, structure_offset::SLOTS + index, value)?;
         }

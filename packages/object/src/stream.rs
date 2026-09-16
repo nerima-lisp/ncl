@@ -19,7 +19,13 @@ pub fn make_stream(
 ) -> Result<Stream, ObjectError> {
     with_roots(
         ctx,
-        &[direction, element_type, external_format, state, implementation],
+        &[
+            direction,
+            element_type,
+            external_format,
+            state,
+            implementation,
+        ],
         |ctx, values| {
             let object = allocate(ctx, runtime, widetag::STREAM, 5)?;
             for (i, v) in values.iter().copied().enumerate() {

@@ -3,11 +3,11 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, CodeObject, Function, Runtime, ThreadContext, Word, car, code_constants,
-    code_debug, code_stack_map, complex_imag, complex_real, function_code, function_lambda_list,
-    function_name, make_array, make_closure, make_code_object, make_complex, make_cons,
-    make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector, make_stream,
-    make_string, make_structure, make_symbol, ratio_denominator, ratio_numerator,
+    ArrayElementType, ArrayOptions, CodeObject, Function, Runtime, ThreadContext, Word, car,
+    code_constants, code_debug, code_stack_map, complex_imag, complex_real, function_code,
+    function_lambda_list, function_name, make_array, make_closure, make_code_object, make_complex,
+    make_cons, make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector,
+    make_stream, make_string, make_structure, make_symbol, ratio_denominator, ratio_numerator,
     set_symbol_value, simple_vector_ref, simple_vector_set, slot_ref, stream_state,
 };
 
@@ -128,20 +128,11 @@ fn constructors_and_registry_survive_gc_stress() {
     let name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E']).unwrap_or(Word::NIL);
     let mut name = name;
     let name_token = ncl_object::push_root(&mut ctx, &mut name);
-    let lambda = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1)])
-        .unwrap_or(Word::NIL);
+    let lambda = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1)]).unwrap_or(Word::NIL);
     let mut lambda = lambda;
     let lambda_token = ncl_object::push_root(&mut ctx, &mut lambda);
-    let code = make_code_object(
-        &mut ctx,
-        &runtime,
-        10,
-        2,
-        name,
-        lambda,
-        Word::NIL,
-    )
-    .unwrap_or_else(|error| panic!("code: {error:?}"));
+    let code = make_code_object(&mut ctx, &runtime, 10, 2, name, lambda, Word::NIL)
+        .unwrap_or_else(|error| panic!("code: {error:?}"));
     let mut code_word = code.into();
     let code_token = ncl_object::push_root(&mut ctx, &mut code_word);
     let function = make_simple_fun(&mut ctx, &runtime, 1, name, lambda, code)
@@ -207,8 +198,26 @@ fn constructors_and_registry_survive_gc_stress() {
         },
     )
     .unwrap_or_else(|error| panic!("array: {error:?}"));
-    assert_eq!(ncl_object::array_row_major_ref(&ctx, array, 0), Ok(Word::fixnum(1)));
+    assert_eq!(
+        ncl_object::array_row_major_ref(&ctx, array, 0),
+        Ok(Word::fixnum(1))
+    );
 
+    assert!(ncl_object::pop_root(&mut ctx, closure_token));
+    assert!(ncl_object::pop_root(&mut ctx, function_token));
+    assert!(ncl_object::pop_root(&mut ctx, code_token));
+    assert!(ncl_object::pop_root(&mut ctx, lambda_token));
+    assert!(ncl_object::pop_root(&mut ctx, name_token));
+}
+
+#[test]
+fn registry_package_operations_survive_gc_stress() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    runtime.set_gc_stress(true);
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    ctx.set_gc_stress(true);
     let package = runtime
         .ensure_package("STRESS-A")
         .unwrap_or_else(|error| panic!("package: {error:?}"));
@@ -219,9 +228,9 @@ fn constructors_and_registry_survive_gc_stress() {
         .unwrap_or_else(|error| panic!("package: {error:?}"));
     let mut used = used;
     let used_token = ncl_object::push_root(&mut ctx, &mut used);
-    let import_name = make_string(&mut ctx, &runtime, &['I', 'M', 'P', 'O', 'R', 'T'])
-        .unwrap_or(Word::NIL);
-    let imported = make_symbol(&mut ctx, &runtime, name)
+    let import_name =
+        make_string(&mut ctx, &runtime, &['I', 'M', 'P', 'O', 'R', 'T']).unwrap_or(Word::NIL);
+    let imported = make_symbol(&mut ctx, &runtime, Word::NIL)
         .unwrap_or_else(|error| panic!("symbol: {error:?}"));
     Package::from(used)
         .import(&mut ctx, &runtime, import_name, imported)
@@ -243,18 +252,20 @@ fn constructors_and_registry_survive_gc_stress() {
     Package::from(package)
         .use_package(&mut ctx, &runtime, used)
         .unwrap_or_else(|error| panic!("use: {error:?}"));
-    let lookup = make_string(&mut ctx, &runtime, &['I', 'N', 'H', 'E', 'R', 'I', 'T', 'E', 'D'])
-        .unwrap_or(Word::NIL);
-    assert_eq!(Package::from(package).find_symbol(&mut ctx, lookup), Ok(Some((symbol, FindStatus::Inherited))));
+    let lookup = make_string(
+        &mut ctx,
+        &runtime,
+        &['I', 'N', 'H', 'E', 'R', 'I', 'T', 'E', 'D'],
+    )
+    .unwrap_or(Word::NIL);
+    assert_eq!(
+        Package::from(package).find_symbol(&mut ctx, lookup),
+        Ok(Some((symbol, FindStatus::Inherited)))
+    );
     assert_eq!(runtime.ensure_package("STRESS-A"), Ok(package));
     assert!(ncl_object::pop_root(&mut ctx, symbol_token));
     assert!(ncl_object::pop_root(&mut ctx, used_token));
     assert!(ncl_object::pop_root(&mut ctx, package_token));
-    assert!(ncl_object::pop_root(&mut ctx, closure_token));
-    assert!(ncl_object::pop_root(&mut ctx, function_token));
-    assert!(ncl_object::pop_root(&mut ctx, code_token));
-    assert!(ncl_object::pop_root(&mut ctx, lambda_token));
-    assert!(ncl_object::pop_root(&mut ctx, name_token));
 }
 
 #[test]

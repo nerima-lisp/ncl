@@ -82,6 +82,8 @@ assert!(pop_root(ctx, token));
 
 確保関数が値で受け取る managed 引数は、その関数自身が確保を跨いで root 化します。managed Word を含む slice/Vec は確保を跨いで保持せず、必要なら各要素を root 化してから確保します。`ThreadContext::set_gc_stress(true)` を使うと、確保ごとの GC でこの契約をテストできます。
 
+constructor は値で受け取った managed 引数と slice の各要素を、内部の確保より前に root 化し、確保後は更新済みの root slot から読み取ります。
+
 ## 実装状況
 
 | 範囲 | 状態 | 下流への注意 |

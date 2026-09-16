@@ -224,7 +224,12 @@ impl Package {
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let mut symbol = symbol;
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    put(ctx, *symbol, crate::layout::symbol_offset::PACKAGE, *package)?;
+                    put(
+                        ctx,
+                        *symbol,
+                        crate::layout::symbol_offset::PACKAGE,
+                        *package,
+                    )?;
                     HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                         .insert(ctx, runtime, *name, *symbol)
                 })

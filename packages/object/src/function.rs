@@ -1,6 +1,8 @@
 use crate::code::CodeObject;
 use crate::object_access::{fix, get_function, put};
-use crate::{ObjectError, Runtime, ThreadContext, allocate, function_offset, widetag, with_root, with_roots};
+use crate::{
+    ObjectError, Runtime, ThreadContext, allocate, function_offset, widetag, with_root, with_roots,
+};
 use ncl_sys::Word;
 
 crate::word_newtype!(Function);

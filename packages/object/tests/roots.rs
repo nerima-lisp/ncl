@@ -5,7 +5,8 @@ use ncl_object::{Runtime, ThreadContext, Word, pop_root, push_root, try_pop_root
 fn setup() -> (Runtime, Box<ThreadContext>) {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = Box::new(ThreadContext::new());
-    assert!(ctx.register(&runtime).is_ok());
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register failed: {error:?}"));
     (runtime, ctx)
 }
 
@@ -43,4 +44,5 @@ fn try_pop_root_rejects_a_context_moved_after_registration() {
         try_pop_root(&mut moved, token),
         Err(ncl_object::ObjectError::ContextMoved)
     );
+    // Do not collect after intentionally moving a registered context.
 }

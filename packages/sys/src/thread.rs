@@ -217,6 +217,25 @@ impl Thread {
         }
         values
     }
+    pub(crate) fn scan_native_frame(
+        &mut self,
+        registry: &crate::CodeRegistry,
+        forward: impl FnMut(Word) -> Word,
+    ) -> Option<usize> {
+        let return_pc = usize::try_from(self.frame_chain.get(1)?.bits()).ok()?;
+        let (metadata, offset) = registry.find(return_pc)?;
+        let map = metadata.safepoint_map.find_map(offset)?;
+        crate::scan_frame_with_registers(
+            &mut self.frame_chain,
+            0,
+            map,
+            &mut self.frame_registers,
+            forward,
+        )
+    }
+    pub(crate) const fn has_native_frame_snapshot(&self) -> bool {
+        self.frame_address.is_some()
+    }
     /// Enter the native runtime state.
     pub const fn enter_native(&mut self) {
         self.native = NativeState::Native;
@@ -448,7 +467,8 @@ mod tests {
     #[test]
     fn frame_snapshot_write_back_consumes_snapshot() {
         let mut frame = vec![Word::fixnum(10); 8].into_boxed_slice();
-        let address = frame.as_mut_ptr() as usize;
+        // SAFETY: the pointer is kept within the boxed allocation, with four words of slot space before it.
+        let address = unsafe { frame.as_mut_ptr().add(4) } as usize;
         let mut thread = Thread::new();
         thread.frame_address = Some(address);
         thread.frame_chain = vec![Word::fixnum(1); 8];

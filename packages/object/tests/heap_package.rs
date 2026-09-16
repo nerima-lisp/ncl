@@ -7,7 +7,7 @@ use ncl_sys::Word;
 
 #[test]
 fn equal_tables_match_string_contents_and_equalp_folds_case() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     for (test, left, right) in [
@@ -15,7 +15,7 @@ fn equal_tables_match_string_contents_and_equalp_folds_case() {
         (HashTest::Equalp, "same", "SAME"),
     ] {
         let table = HashTable::new(&mut ctx, &runtime, test, Weakness::None)
-            .unwrap_or_else(|_| HashTable::from(Word::NIL));
+            .unwrap_or_else(|error| panic!("HashTable allocation failed: {error:?}"));
         let mut table_word = table.as_word();
         let token = ncl_object::push_root(&mut ctx, &mut table_word);
         let left =
@@ -23,22 +23,25 @@ fn equal_tables_match_string_contents_and_equalp_folds_case() {
         let right = make_string(&mut ctx, &runtime, &right.chars().collect::<Vec<_>>())
             .unwrap_or(Word::NIL);
         assert!(
-            table
+            HashTable::from(table_word)
                 .insert(&mut ctx, &runtime, left, Word::fixnum(7))
                 .is_ok()
         );
-        assert_eq!(table.get(&mut ctx, right), Ok(Some(Word::fixnum(7))));
+        assert_eq!(
+            HashTable::from(table_word).get(&mut ctx, right),
+            Ok(Some(Word::fixnum(7)))
+        );
         assert!(ncl_object::pop_root(&mut ctx, token));
     }
 }
 
 #[test]
 fn eql_matches_bignum_values_and_eq_rehashes_after_gc() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     let eql = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
-        .unwrap_or_else(|_| HashTable::from(Word::NIL));
+        .unwrap_or_else(|error| panic!("HashTable allocation failed: {error:?}"));
     let mut eql_word = eql.as_word();
     let eql_token = ncl_object::push_root(&mut ctx, &mut eql_word);
     let first =
@@ -50,7 +53,7 @@ fn eql_matches_bignum_values_and_eq_rehashes_after_gc() {
     assert!(ncl_object::pop_root(&mut ctx, eql_token));
 
     let eq = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
-        .unwrap_or_else(|_| HashTable::from(Word::NIL));
+        .unwrap_or_else(|error| panic!("HashTable allocation failed: {error:?}"));
     let mut eq_table_word = eq.as_word();
     let eq_table_token = ncl_object::push_root(&mut ctx, &mut eq_table_word);
     let symbol = make_symbol(&mut ctx, &runtime, Word::NIL).unwrap_or(Word::NIL);
@@ -68,13 +71,13 @@ fn eql_matches_bignum_values_and_eq_rehashes_after_gc() {
 
 #[test]
 fn package_export_and_use_list_return_inherited_symbol() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
-    let base =
-        Package::new(&mut ctx, &runtime, "BASE").unwrap_or_else(|_| Package::from(Word::NIL));
-    let user =
-        Package::new(&mut ctx, &runtime, "USER").unwrap_or_else(|_| Package::from(Word::NIL));
+    let base = Package::new(&mut ctx, &runtime, "BASE")
+        .unwrap_or_else(|error| panic!("Package allocation failed: {error:?}"));
+    let user = Package::new(&mut ctx, &runtime, "USER")
+        .unwrap_or_else(|error| panic!("Package allocation failed: {error:?}"));
     let mut base_word = base.as_word();
     let mut user_word = user.as_word();
     let base_token = ncl_object::push_root(&mut ctx, &mut base_word);
@@ -100,12 +103,12 @@ fn package_export_and_use_list_return_inherited_symbol() {
 
 #[test]
 fn package_registry_survives_vector_reallocation_and_gc() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     for index in 0..24 {
         let name = format!("P{index}");
-        assert!(runtime.ensure_package(&mut ctx, &name).is_ok());
+        assert!(runtime.ensure_package(&name).is_ok());
     }
     ctx.collect(true);
     for index in 0..24 {

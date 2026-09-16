@@ -14,7 +14,7 @@ use ncl_sys::Word;
 fn classify_and_allocate() {
     assert_eq!(classify(Word::fixnum(-2)), ObjectRef::Fixnum(-2));
     assert_eq!(classify(Word::NIL), ObjectRef::Symbol(Word::NIL));
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).is_err());
     assert!(ctx.register(&runtime).is_ok());
@@ -24,7 +24,7 @@ fn classify_and_allocate() {
 
 #[test]
 fn symbols_and_bindings() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     let symbol = make_symbol(&mut ctx, &runtime, Word::NIL).unwrap_or(Word::NIL);
@@ -61,7 +61,7 @@ fn builtin_abi_expands_for_fixed_and_variadic_forms() {
 
 #[test]
 fn gc_extensions_register_the_owned_symbols() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     register(&runtime);
     for name in [
         "*AFTER-GC-HOOKS*",
@@ -85,7 +85,7 @@ fn gc_extensions_register_the_owned_symbols() {
 
 #[test]
 fn gc_preserves_object_accessors_and_weak_entries() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     assert!(runtime.register_layouts().is_ok());
@@ -109,8 +109,8 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     for _ in 0..1_000 {
         symbols.push(make_symbol(&mut ctx, &runtime, Word::NIL).unwrap_or(Word::NIL));
     }
-    let package =
-        Package::new(&mut ctx, &runtime, "GC-TEST").unwrap_or_else(|_| Package::from(Word::NIL));
+    let package = Package::new(&mut ctx, &runtime, "GC-TEST")
+        .unwrap_or_else(|error| panic!("Package allocation failed: {error:?}"));
     let mut package_word = package.as_word();
     let package_token = ncl_object::push_root(&mut ctx, &mut package_word);
     let package = Package::from(package_word);
@@ -132,12 +132,11 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
     let table_key = Word::fixnum(42);
     let table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
-        .unwrap_or_else(|_| HashTable::from(Word::NIL));
+        .unwrap_or_else(|error| panic!("HashTable allocation failed: {error:?}"));
     let mut table_word = table.as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
-    let table = HashTable::from(table_word);
     assert!(
-        table
+        HashTable::from(table_word)
             .insert(&mut ctx, &runtime, table_key, Word::fixnum(99))
             .is_ok()
     );
@@ -146,7 +145,10 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
     assert_eq!(ncl_sys::widetag(runtime.heap(), roots[1_001]), Some(1));
     assert_eq!(symbol_value(&ctx, roots[1_001]), Ok(Word::UNBOUND));
-    assert_eq!(table.get(&mut ctx, table_key), Ok(Some(Word::fixnum(99))));
+    assert_eq!(
+        HashTable::from(table_word).get(&mut ctx, table_key),
+        Ok(Some(Word::fixnum(99)))
+    );
     let package = Package::from(package_word);
     assert_eq!(
         package
@@ -169,7 +171,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
 
 #[test]
 fn strings_and_simple_vectors_have_typed_accessors() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     let string = make_string(&mut ctx, &runtime, &['a', 'λ']).unwrap_or(Word::NIL);
@@ -185,7 +187,7 @@ fn strings_and_simple_vectors_have_typed_accessors() {
 
 #[test]
 fn specialized_arrays_validate_element_type() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     let array = make_specialized_array(
@@ -208,7 +210,7 @@ fn specialized_arrays_validate_element_type() {
 
 #[test]
 fn non_simple_arrays_store_dimensions_and_row_major_values() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     let array = make_array(
@@ -233,7 +235,7 @@ fn non_simple_arrays_store_dimensions_and_row_major_values() {
 
 #[test]
 fn non_simple_array_references_survive_minor_and_full_gc() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     assert!(runtime.register_layouts().is_ok());
@@ -284,7 +286,7 @@ fn non_simple_array_references_survive_minor_and_full_gc() {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn remaining_object_kinds_round_trip() {
-    let runtime = Runtime::new();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     assert!(runtime.register_layouts().is_ok());

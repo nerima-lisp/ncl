@@ -31,7 +31,7 @@ make_array(&mut ThreadContext, &Runtime, &[usize], ArrayElementType, Word, bool,
 array_dimensions/array_row_major_ref/array_row_major_set
 ```
 
-`Runtime::new`, `Runtime::with_config`, `Runtime::register_layouts`、`Runtime::define_function`、`Runtime::function`、`Runtime::ensure_package`、`Runtime::find_package`、`Runtime::define_class`、`Runtime::class`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config` が runtime の登録・照会 API です。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
+`Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function`、`Runtime::function`、`Runtime::ensure_package`、`Runtime::find_package`、`Runtime::define_class`、`Runtime::class`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config` が runtime の登録・照会 API です。`define_function` と `define_class` も登録失敗を `Result` で返します。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
 
 `HashTable::new`、`insert`、`get`、`remove`、`map_entries` と `sxhash` が hash table API です。`Eq` は identity、`Eql` は数値値、`Equal` は文字列内容と cons、`Equalp` はそれらに ASCII case folding を加えた比較です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`unexport`、`import`、`shadow`、`use_package`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
 
@@ -56,8 +56,9 @@ builtin!(CAR_BUILTIN, 1, "object", car_direct, car_variadic);
 登録関数は `RegisterFn = fn(&Runtime)` です。
 
 ```rust
-fn register_my_functions(runtime: &Runtime) {
-    runtime.define_function("NCL", "MY-FUNCTION", function_object);
+fn register_my_functions(runtime: &Runtime) -> Result<(), ObjectError> {
+    runtime.define_function("NCL", "MY-FUNCTION", function_object)?;
+    Ok(())
 }
 ```
 
@@ -92,7 +93,11 @@ assert!(pop_root(ctx, token));
 
 double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` は `repr(C)` で `Thread` を先頭に持つ。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
 
-hash table のスカラー metadata は参照語より前に置き、参照語は KV/INDEX の後半にまとめています。PACKAGE は参照 payload 0..7、HASH_TABLE は KV/INDEX payload 6..7 だけを scan します。これにより fixnum metadata を boxed reference として走査しません。全参照 store は write barrier 経由です。
+hash table と PACKAGE の payload はスカラー metadata を先頭、参照語を末尾に置き、`boxed_from` は最初の参照語（header 込み index）です。HASH_TABLE はスカラー payload 0..5、参照 payload 6..7、PACKAGE はスカラー payload 0..1、参照 payload 2..9 の順序で、fixnum metadata を boxed reference として走査しません。全参照 store は write barrier 経由です。
+
+hash table の削除は tombstone を使います。空 slot はプローブ連鎖の終端、tombstone は連鎖を維持したまま insert が再利用できる slot です。lookup は tombstone を越えて続行し、load factor は tombstone を含めて計算します。KV の削除済み位置も再利用せず、index と KV の対応を壊さないまま、resize/rehash で再パックして tombstone を掃除します。
+
+registry は専用の `registry_context` を使いますが、その context は heap allocation 前に native 状態へ移行していません。sys の STW 判定では Native mutator は `active_mutators` から除外されるため、registry context を allocation に使う契約とは矛盾しません。registry が保持する Word は root slot から allocation 後に再読します。
 
 `ncl-sys` の conservative `find_raw` は lowtag を検証しないため、object 側は payload 語順と `boxed_from` を使ってこの段階の誤走査を回避しています。lowtag 検証そのものは sys 側の残課題です。weakness enum/API は登録済みですが、weak table の key/value clearing の完全な CL semantics は下流実装で補完します。
 
@@ -104,3 +109,5 @@ hash table のスカラー metadata は参照語より前に置き、参照語�
 | stream / readtable / code | 済 | 部分 | 済 | 未実施 |
 
 下流レーンは `Word` の lowtag を直接判定せず `classify` または typed accessor を使い、allocation を跨ぐ引数は `RootToken` で保護してください。
+
+残課題: `Runtime::function`、`class`、`find_package` などの照会で検索キー文字列を毎回 heap allocation しています。キー文字列を一時 allocation なしで照会する仕組みは未実施です。lowtag 検証と weak table の完全な Common Lisp semantics も sys/下流実装の課題です。

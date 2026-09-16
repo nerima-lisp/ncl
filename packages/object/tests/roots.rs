@@ -7,6 +7,7 @@ fn setup() -> (Runtime, Box<ThreadContext>) {
     let mut ctx = Box::new(ThreadContext::new());
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register failed: {error:?}"));
+    ctx.set_strict_forwarding(true);
     (runtime, ctx)
 }
 
@@ -31,6 +32,22 @@ fn try_root_operations_round_trip_a_registered_context() {
         .unwrap_or_else(|error| panic!("push failed: {error:?}"));
 
     assert_eq!(try_pop_root(&mut ctx, token), Ok(true));
+}
+
+#[test]
+fn dropping_registered_context_removes_heap_thread() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register failed: {error:?}"));
+    drop(ctx);
+    let mut replacement = ThreadContext::new();
+    replacement
+        .register(&runtime)
+        .unwrap_or_else(|error| panic!("replacement register failed: {error:?}"));
+    replacement
+        .collect(true)
+        .unwrap_or_else(|error| panic!("collect failed: {error:?}"));
 }
 
 #[test]

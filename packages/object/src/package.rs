@@ -357,53 +357,73 @@ mod tests {
         let mut ctx = ThreadContext::new();
         ctx.register(&runtime)
             .unwrap_or_else(|error| panic!("register: {error:?}"));
-        let package = Package::new(&mut ctx, &runtime, "DUPLICATES")
-            .unwrap_or_else(|error| panic!("package: {error:?}"));
+        let mut package = Package::new(&mut ctx, &runtime, "DUPLICATES")
+            .unwrap_or_else(|error| panic!("package: {error:?}"))
+            .as_word();
+        let package_token = crate::push_root(&mut ctx, &mut package);
         let name = make_string(&mut ctx, &runtime, &['D', 'U', 'P'])
             .unwrap_or_else(|error| panic!("name: {error:?}"));
+        let mut name = name;
+        let name_token = crate::push_root(&mut ctx, &mut name);
         let internal = make_symbol(&mut ctx, &runtime, name)
             .unwrap_or_else(|error| panic!("internal: {error:?}"));
+        let mut internal = internal;
+        let internal_token = crate::push_root(&mut ctx, &mut internal);
         let external = make_symbol(&mut ctx, &runtime, name)
             .unwrap_or_else(|error| panic!("external: {error:?}"));
+        let mut external = external;
+        let external_token = crate::push_root(&mut ctx, &mut external);
         put(
             &mut ctx,
             internal,
             crate::layout::symbol_offset::PACKAGE,
-            package.as_word(),
+            package,
         )
         .unwrap_or_else(|error| panic!("internal home: {error:?}"));
         put(
             &mut ctx,
             external,
             crate::layout::symbol_offset::PACKAGE,
-            package.as_word(),
+            package,
         )
         .unwrap_or_else(|error| panic!("external home: {error:?}"));
         HashTable::from(
-            get(&ctx, package.as_word(), widetag::PACKAGE, INTERNAL)
+            get(&ctx, package, widetag::PACKAGE, INTERNAL)
                 .unwrap_or_else(|error| panic!("internal table: {error:?}")),
         )
         .insert(&mut ctx, &runtime, name, internal)
         .unwrap_or_else(|error| panic!("internal insert: {error:?}"));
         HashTable::from(
-            get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL)
+            get(&ctx, package, widetag::PACKAGE, EXTERNAL)
                 .unwrap_or_else(|error| panic!("external table: {error:?}")),
         )
         .insert(&mut ctx, &runtime, name, external)
         .unwrap_or_else(|error| panic!("external insert: {error:?}"));
 
         assert!(
-            package
+            Package::from(package)
                 .unintern(&mut ctx, &runtime, name)
                 .unwrap_or_else(|error| panic!("unintern: {error:?}"))
         );
         assert_eq!(
             HashTable::from(
-                get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL)
+                get(&ctx, package, widetag::PACKAGE, EXTERNAL)
                     .unwrap_or_else(|error| panic!("external table: {error:?}")),
             )
             .get(&mut ctx, name),
             Ok(Some(external))
         );
+        assert_eq!(
+            HashTable::from(
+                get(&ctx, package, widetag::PACKAGE, INTERNAL)
+                    .unwrap_or_else(|error| panic!("internal table: {error:?}")),
+            )
+            .get(&mut ctx, name),
+            Ok(None)
+        );
+        assert!(crate::pop_root(&mut ctx, external_token));
+        assert!(crate::pop_root(&mut ctx, internal_token));
+        assert!(crate::pop_root(&mut ctx, name_token));
+        assert!(crate::pop_root(&mut ctx, package_token));
     }
 }

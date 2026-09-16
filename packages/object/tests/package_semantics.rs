@@ -2,7 +2,7 @@
 
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    Runtime, ThreadContext, Word, make_string, string_ref, symbol_name, symbol_package,
+    Runtime, ThreadContext, Word, cdr, make_string, string_ref, symbol_name, symbol_package,
 };
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
@@ -64,6 +64,14 @@ fn unintern_clears_home_and_shadowing_but_not_inherited() {
     Package::from(base)
         .shadow(&mut ctx, &runtime, name)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    Package::from(base)
+        .shadow(&mut ctx, &runtime, name)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    let shadowing = Package::from(base)
+        .shadowing_symbols(&ctx)
+        .unwrap_or_else(|error| panic!("test failure: {error:?}"));
+    assert_ne!(shadowing, Word::NIL);
+    assert_eq!(cdr(&mut ctx, shadowing), Ok(Word::NIL));
     Package::from(user)
         .use_package(&mut ctx, &runtime, base)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
@@ -172,13 +180,13 @@ fn export_unexport_use_unuse_shadow_and_nickname_are_idempotent() {
             .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
     let mut registered = runtime
-        .ensure_package("REGISTERED")
+        .ensure_package(&mut ctx, "REGISTERED")
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
     let token = ncl_object::push_root(&mut ctx, &mut registered);
     Package::from(registered)
         .add_nickname(&mut ctx, &runtime, nickname)
         .unwrap_or_else(|error| panic!("test failure: {error:?}"));
-    assert_eq!(runtime.find_package("B"), Some(registered));
+    assert_eq!(runtime.find_package(&ctx, "B"), Some(registered));
     assert!(ncl_object::pop_root(&mut ctx, token));
 }
 

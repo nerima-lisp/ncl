@@ -1,27 +1,15 @@
 use crate::hash_table::HashTable;
-use crate::{ObjectError, Package, Runtime, make_string, string_length, string_ref};
-use ncl_sys::{HeapConfig, StorageCondition, Word};
+use crate::{ObjectError, Package, Runtime, ThreadContext, make_string, string_length, string_ref};
+use ncl_sys::{HeapConfig, Word};
 
 impl Runtime {
-    pub fn set_gc_stress(&self, on: bool) {
-        let mut context = self
-            .registry_context
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        context.set_gc_stress(on);
-    }
-
     /// Create a package if it does not already exist.
     ///
     /// # Errors
     /// Returns an allocation or layout error.
-    pub fn ensure_package(&self, name: &str) -> Result<Word, ObjectError> {
-        let mut context = self
-            .registry_context
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>())?;
-        let result = crate::with_root(&mut context, &mut name_word, |context, name_word| {
+    pub fn ensure_package(&self, ctx: &mut ThreadContext, name: &str) -> Result<Word, ObjectError> {
+        let mut name_word = make_string(ctx, self, &name.chars().collect::<Vec<_>>())?;
+        crate::with_root(ctx, &mut name_word, |context, name_word| {
             let table = Self::table(&self.packages)?;
             if let Some(package) = HashTable::from(table).get(context, *name_word)? {
                 return Ok(package);
@@ -32,32 +20,29 @@ impl Runtime {
                     .insert(context, self, *name_word, *package)
             })?;
             Ok(package)
-        });
-        drop(context);
-        result
+        })
     }
 
     #[must_use]
-    pub fn find_package(&self, name: &str) -> Option<Word> {
-        let context = self.registry_context.lock().ok()?;
+    pub fn find_package(&self, context: &ThreadContext, name: &str) -> Option<Word> {
         let table = Self::table(&self.packages).ok()?;
         let name_chars = name.chars().collect::<Vec<_>>();
         let mut result = None;
         let mut failure = None;
         HashTable::from(table)
-            .for_each_entry(&context, |_, package| {
+            .for_each_entry(context, |_, package| {
                 if result.is_some() || failure.is_some() {
                     return;
                 }
                 let package = Package::from(package);
                 let matches = |word: Word| {
-                    string_length(&context, word).ok() == Some(name_chars.len())
+                    string_length(context, word).ok() == Some(name_chars.len())
                         && name_chars
                             .iter()
                             .enumerate()
-                            .all(|(i, c)| string_ref(&context, word, i) == Ok(*c))
+                            .all(|(i, c)| string_ref(context, word, i) == Ok(*c))
                 };
-                let package_name = match package.name(&context) {
+                let package_name = match package.name(context) {
                     Ok(package_name) => package_name,
                     Err(error) => {
                         failure = Some(error);
@@ -69,7 +54,7 @@ impl Runtime {
                     return;
                 }
                 let mut nicknames = match crate::object_access::get(
-                    &context,
+                    context,
                     package.as_word(),
                     crate::widetag::PACKAGE,
                     crate::package::NICKNAMES,
@@ -101,7 +86,6 @@ impl Runtime {
         if failure.is_some() {
             return None;
         }
-        drop(context);
         result
     }
 
@@ -117,35 +101,28 @@ impl Runtime {
     ///
     /// # Errors
     /// Returns an allocation, layout, or storage error.
-    pub fn define_class(&self, name: impl Into<String>, class: Word) -> Result<(), ObjectError> {
-        let mut context = self
-            .registry_context
-            .lock()
-            .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
+    pub fn define_class(
+        &self,
+        ctx: &mut ThreadContext,
+        name: impl Into<String>,
+        class: Word,
+    ) -> Result<(), ObjectError> {
         let name = name.into();
         let mut class = class;
-        let result = crate::with_root(&mut context, &mut class, |context, class| {
+        crate::with_root(ctx, &mut class, |context, class| {
             let mut name = make_string(context, self, &name.chars().collect::<Vec<_>>())?;
             crate::with_root(context, &mut name, |context, name| {
                 let table = Self::table(&self.classes)?;
                 HashTable::from(table).insert(context, self, *name, *class)
             })
-        });
-        drop(context);
-        result
+        })
     }
 
     #[must_use]
-    pub fn class(&self, name: &str) -> Option<Word> {
-        let mut context = self.registry_context.lock().ok()?;
-        let name = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
+    pub fn class(&self, ctx: &mut ThreadContext, name: &str) -> Option<Word> {
+        let name = make_string(ctx, self, &name.chars().collect::<Vec<_>>()).ok()?;
         let table = Self::table(&self.classes).ok()?;
-        let result = HashTable::from(table)
-            .get(&mut context, name)
-            .ok()
-            .flatten();
-        drop(context);
-        result
+        HashTable::from(table).get(ctx, name).ok().flatten()
     }
 
     pub fn add_feature(&self, feature: impl Into<String>) {

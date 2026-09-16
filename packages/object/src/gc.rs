@@ -128,7 +128,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
 ///
 /// # Errors
 /// Returns an allocation, layout, or storage error from function registration.
-pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
+pub fn register(ctx: &mut crate::ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     for name in [
         "*AFTER-GC-HOOKS*",
         "*GC-REAL-TIME*",
@@ -145,7 +145,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         "WEAK-POINTER-VALUE",
         "WEAK-VECTOR-P",
     ] {
-        runtime.define_function("SB-EXT", name, Word::UNBOUND)?;
+        runtime.define_function(ctx, "SB-EXT", name, Word::UNBOUND)?;
     }
     Ok(())
 }

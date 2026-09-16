@@ -108,11 +108,11 @@ fn package_registry_survives_vector_reallocation_and_gc() {
     assert!(ctx.register(&runtime).is_ok());
     for index in 0..24 {
         let name = format!("P{index}");
-        assert!(runtime.ensure_package(&name).is_ok());
+        assert!(runtime.ensure_package(&mut ctx, &name).is_ok());
     }
     assert!(ctx.collect(true).is_ok());
     for index in 0..24 {
         let name = format!("P{index}");
-        assert!(runtime.find_package(&name).is_some());
+        assert!(runtime.find_package(&ctx, &name).is_some());
     }
 }

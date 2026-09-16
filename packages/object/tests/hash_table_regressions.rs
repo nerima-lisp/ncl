@@ -19,9 +19,7 @@ fn moved_registered_context_returns_error_instead_of_crashing() {
     let mut ctx = Box::new(ctx);
     assert_eq!(
         ctx.collect(true),
-        Err(ncl_object::ObjectError::Storage(
-            ncl_sys::StorageCondition::ThreadNotRegistered,
-        ))
+        Err(ncl_object::ObjectError::ContextMoved)
     );
 }
 

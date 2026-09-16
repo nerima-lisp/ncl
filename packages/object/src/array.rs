@@ -52,6 +52,7 @@ pub(crate) fn read(
     slot: usize,
     tag: u8,
 ) -> Result<Word, ObjectError> {
+    ctx.check_registered_address()?;
     if object.lowtag() != ncl_sys::LowTag::OtherPointer as u8
         || ncl_sys::object_widetag(&ctx.thread, object) != Some(tag)
     {
@@ -69,6 +70,7 @@ pub(crate) fn write(
     value: Word,
     tag: u8,
 ) -> Result<(), ObjectError> {
+    ctx.check_registered_address()?;
     read(ctx, object, slot, tag)?;
     if !ncl_sys::write_object_word(&mut ctx.thread, object, slot, value) {
         return Err(ObjectError::Storage(

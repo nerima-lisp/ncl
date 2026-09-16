@@ -66,8 +66,11 @@ impl HashTable {
         let capacity = 8_usize;
         let mut marker = make_simple_vector(ctx, runtime, &[])?;
         let marker_token = crate::push_root(ctx, &mut marker);
-        let mut kv = make_simple_vector(ctx, runtime, &vec![marker; capacity * 2])?;
+        let mut kv = make_simple_vector(ctx, runtime, &vec![Word::NIL; capacity * 2])?;
         let kv_token = crate::push_root(ctx, &mut kv);
+        for position in 0..capacity * 2 {
+            simple_vector_set(ctx, kv, position, marker)?;
+        }
         let mut index = make_simple_vector(ctx, runtime, &vec![Word::fixnum(-1); capacity])?;
         let index_token = crate::push_root(ctx, &mut index);
         let table = allocate(ctx, runtime, widetag::HASH_TABLE, 11)?;
@@ -181,6 +184,7 @@ impl HashTable {
                 table.resize(
                     ctx,
                     runtime,
+                    table_word,
                     if count < capacity / 2 {
                         capacity
                     } else {
@@ -334,16 +338,17 @@ impl HashTable {
                 return Ok(slot);
             }
         }
-        Err(ObjectError::Layout)
+        first_tombstone.ok_or(ObjectError::Layout)
     }
     fn resize(
         self,
         ctx: &mut ThreadContext,
         runtime: &Runtime,
+        table_word: Word,
         capacity: usize,
     ) -> Result<(), ObjectError> {
-        let marker = get(ctx, self.0, widetag::HASH_TABLE, MARKER)?;
-        let mut new_kv = make_simple_vector(ctx, runtime, &vec![marker; capacity * 2])?;
+        let marker = get(ctx, table_word, widetag::HASH_TABLE, MARKER)?;
+        let mut new_kv = make_simple_vector(ctx, runtime, &vec![Word::NIL; capacity * 2])?;
         let kv_token = crate::push_root(ctx, &mut new_kv);
         let mut new_index = make_simple_vector(ctx, runtime, &vec![Word::fixnum(EMPTY); capacity])?;
         let index_token = crate::push_root(ctx, &mut new_index);
@@ -366,13 +371,13 @@ impl HashTable {
                 new_position += 1;
             }
         }
-        put(ctx, self.0, KV, new_kv)?;
-        put(ctx, self.0, INDEX, new_index)?;
-        put(ctx, self.0, CAPACITY, fix(capacity)?)?;
-        put(ctx, self.0, COUNT, fix(new_position)?)?;
-        put(ctx, self.0, FREE_HEAD, Word::fixnum(EMPTY))?;
-        put(ctx, self.0, HIGH_WATER, fix(new_position)?)?;
-        put(ctx, self.0, OCCUPIED, fix(new_position)?)?;
+        put(ctx, table_word, KV, new_kv)?;
+        put(ctx, table_word, INDEX, new_index)?;
+        put(ctx, table_word, CAPACITY, fix(capacity)?)?;
+        put(ctx, table_word, COUNT, fix(new_position)?)?;
+        put(ctx, table_word, FREE_HEAD, Word::fixnum(EMPTY))?;
+        put(ctx, table_word, HIGH_WATER, fix(new_position)?)?;
+        put(ctx, table_word, OCCUPIED, fix(new_position)?)?;
         assert!(crate::pop_root(ctx, index_token));
         assert!(crate::pop_root(ctx, kv_token));
         Ok(())

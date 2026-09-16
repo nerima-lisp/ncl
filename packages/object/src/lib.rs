@@ -79,6 +79,7 @@ pub use symbol_extensions::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObjectError {
     TypeError,
+    ContextMoved,
     Storage(StorageCondition),
     Layout,
     Unbound,
@@ -199,17 +200,12 @@ impl Runtime {
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         let key = format!("{package}::{name}");
         let mut key = make_string(&mut context, self, &key.chars().collect::<Vec<_>>())?;
-        let key_token = push_root(&mut context, &mut key);
         let mut function = function;
-        let function_token = push_root(&mut context, &mut function);
-        let result = HashTable::from(Self::table(&self.functions)?).insert(
-            &mut context,
-            self,
-            key,
-            function,
-        );
-        let _ = pop_root(&mut context, function_token);
-        let _ = pop_root(&mut context, key_token);
+        let result = with_root(&mut context, &mut key, |context, key| {
+            with_root(context, &mut function, |context, function| {
+                HashTable::from(Self::table(&self.functions)?).insert(context, self, key, function)
+            })
+        });
         drop(context);
         result
     }
@@ -338,11 +334,13 @@ impl ThreadContext {
         ncl_sys::weak_value(&self.thread, value)
     }
 
-    fn check_registered_address(&self) -> Result<(), ObjectError> {
-        if self.registered_thread_address == Some((&raw const self.thread) as usize) {
+    pub(crate) fn check_registered_address(&self) -> Result<(), ObjectError> {
+        if self.registered_thread_address.is_none()
+            || self.registered_thread_address == Some((&raw const self.thread) as usize)
+        {
             Ok(())
         } else {
-            Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered))
+            Err(ObjectError::ContextMoved)
         }
     }
 }
@@ -362,9 +360,7 @@ pub fn make_cons(
     car: Word,
     cdr: Word,
 ) -> Result<Word, ObjectError> {
-    debug_assert!(
-        ctx.registered_thread_address.is_none() || ctx.check_registered_address().is_ok()
-    );
+    ctx.check_registered_address()?;
     ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, car, cdr).map_err(Into::into)
 }
 /// Allocate a header object with a widetag and payload words.
@@ -378,9 +374,7 @@ pub fn allocate(
     tag: u8,
     words: usize,
 ) -> Result<Word, ObjectError> {
-    debug_assert!(
-        ctx.registered_thread_address.is_none() || ctx.check_registered_address().is_ok()
-    );
+    ctx.check_registered_address()?;
     ncl_sys::alloc(
         &mut ctx.thread,
         &runtime.heap,
@@ -424,6 +418,28 @@ pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {
 /// Pop a precise root.
 pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
     ncl_sys::pop_root(&mut ctx.thread, token)
+}
+/// Push a precise root after validating the context address.
+pub fn try_push_root(ctx: &mut ThreadContext, value: &mut Word) -> Result<RootToken, ObjectError> {
+    ctx.check_registered_address()?;
+    Ok(push_root(ctx, value))
+}
+/// Pop a precise root after validating the context address.
+pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, ObjectError> {
+    ctx.check_registered_address()?;
+    Ok(pop_root(ctx, token))
+}
+
+pub(crate) fn with_root<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, Word) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let token = try_push_root(ctx, value)?;
+    let result = f(ctx, *value);
+    let popped = try_pop_root(ctx, token)?;
+    assert!(popped);
+    result
 }
 /// Return the car of a cons cell.
 ///

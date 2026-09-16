@@ -13,25 +13,20 @@ impl Runtime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>())?;
-        let token = crate::push_root(&mut context, &mut name_word);
-        let table = Self::table(&self.packages)?;
-        if let Some(package) = HashTable::from(table).get(&mut context, name_word)? {
-            let _ = crate::pop_root(&mut context, token);
-            drop(context);
-            return Ok(package);
-        }
-        let mut package = Package::new(&mut context, self, name)?.as_word();
-        let package_token = crate::push_root(&mut context, &mut package);
-        HashTable::from(Self::table(&self.packages)?).insert(
-            &mut context,
-            self,
-            name_word,
-            package,
-        )?;
-        let _ = crate::pop_root(&mut context, package_token);
-        let _ = crate::pop_root(&mut context, token);
+        let result = crate::with_root(&mut context, &mut name_word, |context, name_word| {
+            let table = Self::table(&self.packages)?;
+            if let Some(package) = HashTable::from(table).get(context, name_word)? {
+                return Ok(package);
+            }
+            let mut package = Package::new(context, self, name)?.as_word();
+            crate::with_root(context, &mut package, |context, package| {
+                HashTable::from(Self::table(&self.packages)?)
+                    .insert(context, self, name_word, package)
+            })?;
+            Ok(package)
+        });
         drop(context);
-        Ok(package)
+        result
     }
 
     #[must_use]
@@ -66,13 +61,13 @@ impl Runtime {
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         let name = name.into();
         let mut name = make_string(&mut context, self, &name.chars().collect::<Vec<_>>())?;
-        let name_token = crate::push_root(&mut context, &mut name);
         let mut class = class;
-        let class_token = crate::push_root(&mut context, &mut class);
-        let table = Self::table(&self.classes)?;
-        let result = HashTable::from(table).insert(&mut context, self, name, class);
-        let _ = crate::pop_root(&mut context, class_token);
-        let _ = crate::pop_root(&mut context, name_token);
+        let result = crate::with_root(&mut context, &mut name, |context, name| {
+            crate::with_root(context, &mut class, |context, class| {
+                let table = Self::table(&self.classes)?;
+                HashTable::from(table).insert(context, self, name, class)
+            })
+        });
         drop(context);
         result
     }

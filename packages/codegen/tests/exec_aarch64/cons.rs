@@ -1,5 +1,53 @@
 use super::*;
 
+fn sys_safepoint(map: &ncl_codegen::SafepointMap) -> ncl_sys::Safepoint {
+    ncl_sys::Safepoint {
+        pc_offset: map.pc_offset,
+        frame_words: map.frame_words,
+        slot_words: map.slot_words,
+        word_slot_count: map.word_slot_count,
+        register_mask: map.register_mask,
+        map_flags: map.map_flags,
+        slot_bitmap: map.bitmap.clone(),
+        register_ids: map.registers.clone(),
+    }
+}
+
+fn register_real_frame_code(
+    thread: &Thread,
+    code: &ncl_sys::CodePtr,
+    compiled: &ncl_codegen::CompiledFunction,
+) {
+    let map = compiled.safepoint_maps.first().expect("safepoint map");
+    let sys_map = sys_safepoint(map);
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&sys_map.pc_offset.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.frame_words.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.slot_words.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.word_slot_count.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.register_mask.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.map_flags.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.slot_bitmap);
+    for register in &sys_map.register_ids {
+        bytes.extend_from_slice(&register.to_le_bytes());
+    }
+    ncl_sys::register_code(
+        thread,
+        code,
+        ncl_sys::CodeObjectMetadata {
+            entry_offset: compiled.entry_offset as usize,
+            size: compiled.code.len(),
+            frame_words: map.frame_words,
+            function_name: "real-function-object-frame".into(),
+            source_locations: Vec::new(),
+            constant_slots: Vec::new(),
+            safepoint_map: ncl_sys::SafepointMap::decode(&bytes, 1).expect("decode safepoint map"),
+            debug_table: Vec::new(),
+        },
+    )
+    .expect("register code metadata");
+}
+
 fn build_cons_function() -> ncl_ir::Function {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(6),
@@ -313,35 +361,7 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     let mut code = alloc_code(compiled.code.len()).expect("code allocation");
     write_code(&mut code, 0, &compiled.code).expect("code write");
     publish_code(&mut code).expect("code publication");
-    let map = compiled.safepoint_maps.first().expect("safepoint map");
-    ncl_sys::register_code(
-        &thread,
-        &code,
-        ncl_sys::CodeObjectMetadata {
-            entry_offset: compiled.entry_offset as usize,
-            size: compiled.code.len(),
-            frame_words: map.frame_words,
-            function_name: "real-function-object-frame".into(),
-            source_locations: Vec::new(),
-            constant_slots: Vec::new(),
-            safepoint_map: {
-                let mut bytes = Vec::new();
-                bytes.extend_from_slice(&map.pc_offset.to_le_bytes());
-                bytes.extend_from_slice(&map.frame_words.to_le_bytes());
-                bytes.extend_from_slice(&map.slot_words.to_le_bytes());
-                bytes.extend_from_slice(&map.word_slot_count.to_le_bytes());
-                bytes.extend_from_slice(&map.register_mask.to_le_bytes());
-                bytes.extend_from_slice(&map.map_flags.to_le_bytes());
-                bytes.extend_from_slice(&map.bitmap);
-                for register in &map.registers {
-                    bytes.extend_from_slice(&register.to_le_bytes());
-                }
-                ncl_sys::SafepointMap::decode(&bytes, 1).expect("decode safepoint map")
-            },
-            debug_table: Vec::new(),
-        },
-    )
-    .expect("register code metadata");
+    register_real_frame_code(&thread, &code, &compiled);
 
     ncl_sys::unregister_thread(object_context.thread_mut());
     COLLECT_IN_SAFEPOINT.store(true, Ordering::SeqCst);

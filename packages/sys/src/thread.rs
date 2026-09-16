@@ -276,7 +276,8 @@ impl Thread {
 
     /// Capture the generated caller's continuation at a runtime callback entry.
     #[cfg(target_arch = "aarch64")]
-    #[inline(always)]
+    #[inline]
+    #[must_use]
     pub fn capture_return_address() -> usize {
         let address: usize;
         // SAFETY: x30 contains the generated caller's continuation at callback entry.
@@ -287,7 +288,8 @@ impl Thread {
     }
 
     #[cfg(not(target_arch = "aarch64"))]
-    #[inline(always)]
+    #[inline]
+    #[must_use]
     pub fn capture_return_address() -> usize {
         0
     }

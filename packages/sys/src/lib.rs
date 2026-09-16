@@ -162,6 +162,10 @@ pub fn register_thread(heap: &Heap, thread: &mut Thread) -> Result<(), StorageCo
 }
 
 /// Register a mutator with the heap already associated with another thread.
+///
+/// # Errors
+///
+/// Returns `ThreadNotRegistered` when the reference thread has no heap.
 pub fn register_thread_with_thread(
     reference: &Thread,
     thread: &mut Thread,
@@ -173,6 +177,10 @@ pub fn register_thread_with_thread(
 }
 
 /// Register published code metadata through a registered thread.
+///
+/// # Errors
+///
+/// Returns `CodeError::NotRegistered` when the thread has no heap.
 pub fn register_code(
     thread: &Thread,
     code: &CodePtr,

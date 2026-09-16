@@ -1,7 +1,9 @@
 #![allow(missing_docs)]
 #![allow(clippy::unwrap_used)]
 
-use ncl_asm_aarch64::{Assembler, Inst, Label, Reg, RegOrSp, Shift, decode, encode, mov_imm64};
+use ncl_asm_aarch64::{
+    Assembler, Cond, Inst, Label, Reg, RegOrSp, Shift, decode, encode, mov_imm64,
+};
 
 #[allow(
     clippy::option_if_let_else,
@@ -273,4 +275,130 @@ fn pc_relative_adr_rejects_out_of_range_target() {
         assembler.finish(),
         Err(ncl_asm_aarch64::EncodeError::RelocationOutOfRange { .. })
     ));
+}
+
+fn word_at(blob: &ncl_asm_aarch64::CodeBlob, offset: usize) -> u32 {
+    u32::from_le_bytes(blob.bytes[offset..offset + 4].try_into().unwrap())
+}
+
+fn assert_negative_delta<F>(make: F, expected: u32)
+where
+    F: FnOnce(Label) -> Inst,
+{
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.bind(label).unwrap();
+    assembler.emit(&Inst::Nop).unwrap();
+    assembler.emit(&make(label)).unwrap();
+    assert_eq!(word_at(&assembler.finish().unwrap(), 4), expected);
+}
+
+fn assert_boundary_deltas<F>(make: F, max_delta: usize)
+where
+    F: Fn(Label) -> Inst + Copy,
+{
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.emit(&make(label)).unwrap();
+    for _ in 0..(max_delta / 4 - 1) {
+        assembler.emit(&Inst::Nop).unwrap();
+    }
+    assembler.bind(label).unwrap();
+    assert!(assembler.finish().is_ok());
+
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.emit(&make(label)).unwrap();
+    for _ in 0..(max_delta / 4) {
+        assembler.emit(&Inst::Nop).unwrap();
+    }
+    assembler.bind(label).unwrap();
+    assert!(matches!(
+        assembler.finish(),
+        Err(ncl_asm_aarch64::EncodeError::RelocationOutOfRange { .. })
+    ));
+
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.bind(label).unwrap();
+    for _ in 0..(max_delta / 4 + 1) {
+        assembler.emit(&Inst::Nop).unwrap();
+    }
+    assembler.emit(&make(label)).unwrap();
+    assert!(assembler.finish().is_ok());
+
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.bind(label).unwrap();
+    for _ in 0..(max_delta / 4 + 2) {
+        assembler.emit(&Inst::Nop).unwrap();
+    }
+    assembler.emit(&make(label)).unwrap();
+    assert!(matches!(
+        assembler.finish(),
+        Err(ncl_asm_aarch64::EncodeError::RelocationOutOfRange { .. })
+    ));
+}
+
+#[test]
+fn conditional_fixups_encode_negative_four_bytes() {
+    assert_negative_delta(
+        |label| Inst::BCond {
+            cond: Cond::Eq,
+            label,
+        },
+        0x54ff_ffe0,
+    );
+    assert_negative_delta(|label| Inst::Cbz { rt: x(0), label }, 0xb4ff_ffe0);
+    assert_negative_delta(|label| Inst::Cbnz { rt: x(0), label }, 0xb5ff_ffe0);
+    assert_negative_delta(|label| Inst::LdrLiteral { rt: x(1), label }, 0x58ff_ffe1);
+    assert_negative_delta(
+        |label| Inst::Tbz {
+            rt: x(0),
+            bit: 0,
+            label,
+        },
+        0x3607_ffe0,
+    );
+    assert_negative_delta(
+        |label| Inst::Tbnz {
+            rt: x(0),
+            bit: 0,
+            label,
+        },
+        0x3707_ffe0,
+    );
+}
+
+#[test]
+fn conditional_fixups_reject_deltas_just_past_each_signed_limit() {
+    assert_boundary_deltas(
+        |label| Inst::BCond {
+            cond: Cond::Eq,
+            label,
+        },
+        4 * ((1 << 18) - 1),
+    );
+    assert_boundary_deltas(|label| Inst::Cbz { rt: x(0), label }, 4 * ((1 << 18) - 1));
+    assert_boundary_deltas(|label| Inst::Cbnz { rt: x(0), label }, 4 * ((1 << 18) - 1));
+    assert_boundary_deltas(
+        |label| Inst::LdrLiteral { rt: x(1), label },
+        4 * ((1 << 18) - 1),
+    );
+    assert_boundary_deltas(
+        |label| Inst::Tbz {
+            rt: x(0),
+            bit: 0,
+            label,
+        },
+        4 * ((1 << 13) - 1),
+    );
+    assert_boundary_deltas(
+        |label| Inst::Tbnz {
+            rt: x(0),
+            bit: 0,
+            label,
+        },
+        4 * ((1 << 13) - 1),
+    );
 }

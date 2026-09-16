@@ -161,9 +161,18 @@ pub fn register_thread(heap: &Heap, thread: &mut Thread) -> Result<(), StorageCo
     heap.register_thread(thread)
 }
 
+/// Configure strict stale-word checking for a registered thread's heap.
+pub fn set_strict_forwarding(thread: &Thread, on: bool) {
+    if let Some(heap) = thread.heap_ref() {
+        heap.set_strict_forwarding(on);
+    }
+}
+
 /// Remove a mutator from a heap.
-pub fn unregister_thread(heap: &Heap, thread: &Thread) {
-    heap.unregister_thread(thread);
+pub fn unregister_thread(thread: &Thread) {
+    if let Some(heap) = thread.heap_ref() {
+        heap.unregister_thread(thread);
+    }
 }
 
 /// Request and publish a safepoint if one is pending.

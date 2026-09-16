@@ -23,6 +23,9 @@ mutator 固有状態を ThreadContext に閉じ込めることで共有 Runtime 
 - TLS slot は 1 語、binding entry は 2 語、blocking call は native transition とする。
 - thread の登録、離脱、poll、root publication を独自の global state に置かない。
 - mutex 保持中に GC request を待つ実装を追加しない。
+- 同一 OS thread 上に複数の登録 `Thread` がある場合、`collect` を呼ぶ側以外は native 状態でなければならない（STW は active mutator の poll を待つため、poll できない登録 Thread があると停止する）。
+- `Runtime` の registry 操作は呼び出し側の `ThreadContext` で確保する（内部 ctx は持たない）。
+- `ncl_sys::unregister_thread` は `Thread` の heap 参照から heap を引くため、`Runtime`（heap の所有者）は登録済みの全 `ThreadContext` より長生きしなければならない。`ThreadContext` の Drop は登録済みなら unregister する。
 
 ## Poll state machine
 
@@ -39,3 +42,5 @@ The OS wrappers expose mutex lock/unlock, condition wait/signal/broadcast, semap
 `ncl-sys::Thread` is `repr(C)`. The fields consumed by generated code are dedicated machine words at offsets returned by `thread_layout()`: `tlab_bump`, `tlab_limit`, `safepoint_request`, `pending`, `mv`, `handler`, `cleanup`, and `catch`. The scalar fields consumed directly by generated code are eight bytes wide and eight-byte aligned. `mv` is a Rust `Vec<Word>` descriptor and is not a generated-code scalar word. (`packages/sys/src/thread.rs`, `ThreadLayout`, `thread_layout()`.)
 
 `SafepointState` and `NativeState` use `repr(u8)`, but this representation is not part of the generated-code ABI. Generated code reads the dedicated words only. `safepoint_request == 0` means no poll is pending; a nonzero value requests the slow path. Requesting a safepoint publishes the Rust state and sets the word, and polling consumes the request by clearing it. (`packages/sys/src/thread.rs`, `request_safepoint`, `poll_safepoint`.)
+
+`ThreadContext` pins `Thread` in a `Box`, so moving the context after registration is safe and the address passed to `register_thread` remains stable until unregistration. (`packages/object/src/lib.rs`, `ThreadContext.thread`; `packages/sys/src/lib.rs`, `register_thread`.)

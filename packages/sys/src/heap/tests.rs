@@ -141,6 +141,38 @@ fn roots_are_lifo() {
 }
 
 #[test]
+fn strict_forwarding_rejects_stale_mutator_words() {
+    let h = Heap::new(HeapConfig::default());
+    let mut t = Thread::new();
+    assert_eq!(h.register_thread(&mut t), Ok(()));
+    assert!(
+        h.register_layout(
+            12,
+            ReferenceLayout {
+                reference_words: Vec::new(),
+                boxed_from: None,
+            },
+        )
+        .is_ok()
+    );
+    let mut value = h
+        .alloc(&mut t, TypeTag { widetag: 12 }, 1)
+        .unwrap_or(Word::NIL);
+    let stale = value;
+    let token = t.push_root(&mut value);
+    h.collect(true);
+    assert_ne!(stale, value);
+    assert!(h.read_word(stale, 0).is_some());
+    h.set_strict_forwarding(true);
+    assert!(h.read_word(stale, 0).is_none());
+    assert!(!h.write_word(stale, 0, Word::fixnum(1)));
+    assert!(h.read_word(value, 0).is_some());
+    h.set_strict_forwarding(false);
+    assert!(h.read_word(stale, 0).is_some());
+    assert!(t.pop_root(token));
+}
+
+#[test]
 fn nursery_chain_is_copied_and_relinked() {
     let h = Heap::new(HeapConfig::default());
     let mut t = Thread::new();

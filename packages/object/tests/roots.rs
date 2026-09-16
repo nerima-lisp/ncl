@@ -7,6 +7,7 @@ fn setup() -> (Runtime, Box<ThreadContext>) {
     let mut ctx = Box::new(ThreadContext::new());
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register failed: {error:?}"));
+    ctx.set_strict_forwarding(true);
     (runtime, ctx)
 }
 
@@ -34,15 +35,27 @@ fn try_root_operations_round_trip_a_registered_context() {
 }
 
 #[test]
-fn try_pop_root_rejects_a_context_moved_after_registration() {
+fn dropping_registered_context_removes_heap_thread() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register failed: {error:?}"));
+    drop(ctx);
+    let mut replacement = ThreadContext::new();
+    replacement
+        .register(&runtime)
+        .unwrap_or_else(|error| panic!("replacement register failed: {error:?}"));
+    replacement
+        .collect(true)
+        .unwrap_or_else(|error| panic!("collect failed: {error:?}"));
+}
+
+#[test]
+fn try_pop_root_allows_a_context_moved_after_registration() {
     let (_runtime, mut ctx) = setup();
     let mut value = Word::NIL;
     let token = push_root(&mut ctx, &mut value);
     let mut moved = Box::new(*ctx);
 
-    assert_eq!(
-        try_pop_root(&mut moved, token),
-        Err(ncl_object::ObjectError::ContextMoved)
-    );
-    // Do not collect after intentionally moving a registered context.
+    assert_eq!(try_pop_root(&mut moved, token), Ok(true));
 }

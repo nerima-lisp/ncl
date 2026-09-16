@@ -7,7 +7,6 @@ use ncl_sys::{StorageCondition, Word};
 ///
 /// Returns [`ObjectError`] when the value is not a mutable cons cell.
 pub fn rplaca(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, ObjectError> {
-    ctx.check_registered_address()?;
     if !word.is_cons() {
         return Err(ObjectError::TypeError);
     }
@@ -24,7 +23,6 @@ pub fn rplaca(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, 
 ///
 /// Returns [`ObjectError`] when the value is not a mutable cons cell.
 pub fn rplacd(ctx: &mut ThreadContext, word: Word, value: Word) -> Result<Word, ObjectError> {
-    ctx.check_registered_address()?;
     if !word.is_cons() {
         return Err(ObjectError::TypeError);
     }

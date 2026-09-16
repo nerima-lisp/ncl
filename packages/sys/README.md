@@ -45,3 +45,5 @@ or register invariant it relies on. Allocation reports `StorageCondition` for
 invalid sizes, unregistered threads, and dynamic-space exhaustion. Collection
 does not intentionally panic; poisoned internal mutexes are recovered to keep
 the runtime from losing its heap state.
+
+`register_thread` に渡した `Thread` のアドレスは登録解除まで安定していなければならず、`ncl-object` は `Thread` を `Box` に固定してこの契約を満たします。

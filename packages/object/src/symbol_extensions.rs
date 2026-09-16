@@ -3,7 +3,6 @@ use crate::{ObjectError, ThreadContext, Word};
 use ncl_sys::{LowTag, StorageCondition};
 
 fn symbol_slot(ctx: &ThreadContext, symbol: Word, slot: usize) -> Result<Word, ObjectError> {
-    ctx.check_registered_address()?;
     if symbol != Word::NIL
         && (symbol.lowtag() != LowTag::OtherPointer as u8
             || ncl_sys::object_widetag(&ctx.thread, symbol) != Some(widetag::SYMBOL))
@@ -66,4 +65,12 @@ pub fn symbol_plist(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectErr
 /// Returns a type or storage error when the word is not a symbol.
 pub fn symbol_name(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::NAME)
+}
+
+/// Read a symbol's home package.
+///
+/// # Errors
+/// Returns a type or storage error when the word is not a symbol.
+pub fn symbol_package(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::PACKAGE)
 }

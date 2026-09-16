@@ -33,7 +33,7 @@ array_dimensions/array_row_major_ref/array_row_major_set
 
 `Runtime::new` と `Runtime::with_config` は `Result<Runtime, ObjectError>` を返します。`Runtime::register_layouts`、`Runtime::define_function`、`Runtime::function`、`Runtime::ensure_package`、`Runtime::find_package`、`Runtime::define_class`、`Runtime::class`、`Runtime::add_feature`、`Runtime::features`、`Runtime::gc_config` が runtime の登録・照会 API です。`define_function` と `define_class` も登録失敗を `Result` で返します。`ThreadContext::register` は heap への登録、`bind`/`unbind` は special 束縛、`set_values`/`values` は多値領域、`collect` は GC を提供します。
 
-`HashTable::new`、`insert`、`get`、`remove`、`map_entries` と `sxhash` が hash table API です。`Eq` は identity、`Eql` は数値値、`Equal` は文字列内容と cons、`Equalp` はそれらに ASCII case folding を加えた比較です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`unexport`、`import`、`shadow`、`use_package`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
+`HashTable::new`、`insert`、`get`、`remove`、`for_each_entry`、`capacity` と `sxhash` が hash table API です。`Eq` は identity、`Eql` は数値値、`Equal` は文字列内容と cons、`Equalp` はそれらに ASCII case folding を加えた比較です。`Package::new`、`find_symbol`、`intern`、`unintern`、`export`、`unexport`、`import`、`shadow`、`use_package`、`gensym` が package API です。`package::nil()` と `package::truth()` は静的 NIL/T です。
 
 ## builtin!
 
@@ -93,9 +93,9 @@ assert!(pop_root(ctx, token));
 
 double-float は binary64 の生ビット 1 語、bignum limb は little-endian の u32 2 個を 1 語に詰める。`ThreadContext` は `repr(C)` で `Thread` を先頭に持つ。下流は payload offset を raw heap index と混同せず、GC を跨ぐ参照を root 化する。
 
-hash table と PACKAGE の payload はスカラー metadata を先頭、参照語を末尾に置き、`boxed_from` は最初の参照語（header 込み index）です。HASH_TABLE はスカラー payload 0..5、参照 payload 6..7、PACKAGE はスカラー payload 0..1、参照 payload 2..9 の順序で、fixnum metadata を boxed reference として走査しません。全参照 store は write barrier 経由です。
+hash table と PACKAGE の payload はスカラー metadata を先頭、参照語を末尾に置き、`boxed_from` は最初の参照語（header 込み index）です。HASH_TABLE はスカラー payload 0..7、参照 payload 8..9、PACKAGE はスカラー payload 0..1、参照 payload 2..9 の順序で、fixnum metadata を boxed reference として走査しません。HASH_TABLE の 5..7 は順にフリーリスト先頭、高水位、occupied（live と tombstone の合計）です。KV の空き key slot は予約 tagged word、対応する value slot は次の空き position です。新規 position は高水位から切り出し、削除 position はフリーリストから O(1) で再利用します。insert/remove/get は平均 O(1)、rehash は O(n)、resize は O(n) です。全参照 store は write barrier 経由です。
 
-hash table の削除は tombstone を使います。空 slot はプローブ連鎖の終端、tombstone は連鎖を維持したまま insert が再利用できる slot です。lookup は tombstone を越えて続行し、load factor は tombstone を含めて計算します。KV の削除済み位置も再利用せず、index と KV の対応を壊さないまま、resize/rehash で再パックして tombstone を掃除します。
+hash table の削除は tombstone を使います。空 slot はプローブ連鎖の終端、tombstone は連鎖を維持したまま insert が再利用できる slot です。lookup は tombstone を越えて続行し、load factor は tombstone を含めて計算します。resize は KV を高水位順に読み、旧エントリの Vec を保持せず新しい KV/INDEX に再配置して tombstone を掃除します。
 
 registry は専用の `registry_context` を Native 状態で保持します。sys の STW 判定では Native mutator は `active_mutators` から除外され、現在の `allocate` は GC を起動せず容量超過を返すため、現行実装では STW と整合します。将来 allocation が GC を起動する場合は、Native 状態を一時的に Lisp 状態へ戻す公開 sys API、または allocation 中も STW 対象にする sys 側変更が必要です。registry が保持する Word は root slot から allocation 後に再読します。
 

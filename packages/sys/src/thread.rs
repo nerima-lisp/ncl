@@ -134,6 +134,12 @@ impl Thread {
             frame_address: None,
         }
     }
+
+    /// Mark a leading `Thread` embedded in an FFI context as native.
+    pub fn enter_native_at(pointer: *mut Self) {
+        // SAFETY: callers provide a live pointer to a leading Thread field.
+        unsafe { (*pointer).enter_native() };
+    }
     pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
         self.heap.map(|heap| {
             // SAFETY: registration stores this heap pointer for the thread lifetime.
@@ -210,11 +216,13 @@ impl Thread {
         }
         values
     }
-    pub(crate) const fn enter_native(&mut self) {
+    /// Enter the native runtime state.
+    pub const fn enter_native(&mut self) {
         self.native = NativeState::Native;
         self.state = SafepointState::Safe;
     }
-    pub(crate) fn leave_native(&mut self) {
+    /// Leave the native runtime state and deliver a pending poll.
+    pub fn leave_native(&mut self) {
         self.native = NativeState::Lisp;
         self.state = SafepointState::Running;
         self.poll_safepoint();
@@ -234,11 +242,22 @@ impl Thread {
         self.state = SafepointState::PollRequested;
         self.safepoint_request = 1;
     }
+
+    /// Request a local poll without starting a stop-the-world epoch.
+    pub const fn request_poll(&mut self) {
+        self.state = SafepointState::PollRequested;
+        self.safepoint_request = 1;
+    }
     /// Whether an interrupt is pending, consuming the request.
     pub const fn take_interrupt(&mut self) -> bool {
         let pending = self.interrupt;
         self.interrupt = false;
         pending
+    }
+
+    /// Clear a delivered cooperative safepoint request.
+    pub const fn clear_safepoint_request(&mut self) {
+        self.safepoint_request = 0;
     }
     /// Install a precise native frame and register snapshot for collection.
     pub fn set_frame_snapshot(&mut self, frames: Vec<Word>, registers: Vec<Word>) {

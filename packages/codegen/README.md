@@ -14,7 +14,7 @@ and cooperative safepoint polls.
 | (c) Branch paths and block arguments | `executes_both_branch_paths_with_block_arguments` | Pass |
 | (d) Builtin call and rest argument | `executes_builtin_call_with_context_and_arguments`, `loads_fifth_argument_from_rest_storage` | Pass |
 | (e) Safepoint poll | `executes_safepoint_poll_without_and_with_request` | Pass |
-| (e2) Function object root forwarding | `forwards_function_object_from_generated_frame_map` | Pass |
+| (e2) Function object root forwarding | `forwards_function_object_from_generated_frame_map_simulation`, `forwards_function_object_from_real_frame_after_safepoint_collection` | Pass |
 | (f) Recursive call and `fib(25)` | `executes_recursive_fib_twenty_five_with_four_word_frames` | Pass, 75025 |
 
 The release measurement command was:
@@ -41,6 +41,8 @@ The stable ABI and frame/map contracts are specified in [Calling convention](../
   shared `value << 3` representation.
 - Safepoint maps for allocation and polling point immediately after the slow
   path `blr`. The decoder tests inspect those emitted instructions.
+- A safepoint slow path receives the registered context in `x0` and the active
+  generated frame pointer in `x1`.
 - When multiple registered threads share one OS thread, every thread other
   than the collector must be in native state during collection.
 

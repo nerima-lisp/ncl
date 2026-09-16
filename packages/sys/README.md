@@ -22,9 +22,9 @@ tagged words, heap, precise roots, safepoints, and platform surface.
 - The machine-visible `Thread` layout, `ThreadLayout` offsets, enum
   representation boundary, and `safepoint_request` protocol are specified in
   [Threads](../../docs/src/design/threads.md) and [Calling convention](../../docs/src/design/calling-convention.md).
-- `Thread::capture_current_frame_snapshot` and
-  `Thread::write_back_frame_snapshot` expose the snapshot collector's
-  forwarded native frame values back to the active generated frame.
+- `Thread::set_native_frame` receives the active generated frame pointer and
+  snapshots its four-word header. The collector forwards precise roots and
+  writes them back to the active generated frame.
 - When multiple registered threads share one OS thread, every thread other
   than the collector must be in native state during collection.
 

@@ -8,6 +8,8 @@ front end は reader output を macroexpand、parse、declaration/type propagati
 
 段階は 1a 固定テンプレート展開、1b 線形走査レジスタ割当と spill、1c self tail call と一般 tail transfer および `&rest`/`&key` 専用プロローグ、2 fixnum/double の unbox、型推論接続、inline cache の順である。1a は値をスタックスロットに置き、scratch 2 本を使い、プロローグ、定数、return、呼び出し、分岐、割当、safepoint map、unwind を含む動く系とする。FASL の 64-byte header と section 構成は native backend の仕様を使い、対象不一致は load 前に拒否する。interpret evaluator は実装しない。
 
+Phase 1a execution coverage is recorded by the AArch64 integration fixture: constant/fixnum arithmetic, cons allocation on fast and slow TLAB paths, both branch paths, builtin and rest-argument calls, safepoint polling, and recursive `fib(25)` all have named tests. The fixture invokes `fib(25)` ten times and reports a wall-clock median; the recorded release measurement is an execution result, not a new performance contract. (`packages/codegen/README.md`, `Phase 1a execution status`; `packages/codegen/tests/exec_aarch64.rs`, `executes_recursive_fib_twenty_five_with_four_word_frames`.)
+
 ## 根拠
 
 独立 IR に handler、GC metadata、debug location を含めると front と backend の並行実装が可能になる。`MachineFunction -> encoder -> CodeBlob` を一本化すると JIT、FASL、image が同じ machine contract を共有できる。

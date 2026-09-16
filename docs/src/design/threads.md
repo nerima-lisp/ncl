@@ -33,3 +33,9 @@ ThreadContext fields are thread id, native stack bounds, current frame, TLAB bas
 The OS wrappers expose mutex lock/unlock, condition wait/signal/broadcast, semaphore wait/post, and waitqueue park/wake. The protocol is poll, inspect interrupt and deadline, enter native, park, wake, leave native, and poll again. `interrupt-thread` atomically sets interrupt and poll-request bits and wakes a waitqueue. Delivery occurs at a safepoint or native return.
 
 `with-deadline` pushes an absolute monotonic-nanosecond deadline. `with-timeout` derives one and installs a timeout condition. Poll, blocking waits, and builtin boundaries check it; expiration becomes a pending non-local exit after cleanup. A symbol value cell supplies the global default; each thread has one override word in TLS. Binding uses the old value and TLS index, and unbinding restores the old value before removing the entry.
+
+## Phase 1 machine-visible layout
+
+`ncl-sys::Thread` is `repr(C)`. The fields consumed by generated code are dedicated machine words at offsets returned by `thread_layout()`: `tlab_bump`, `tlab_limit`, `safepoint_request`, `pending`, `mv`, `handler`, `cleanup`, and `catch`. The scalar fields consumed directly by generated code are eight bytes wide and eight-byte aligned. `mv` is a Rust `Vec<Word>` descriptor and is not a generated-code scalar word. (`packages/sys/src/thread.rs`, `ThreadLayout`, `thread_layout()`.)
+
+`SafepointState` and `NativeState` use `repr(u8)`, but this representation is not part of the generated-code ABI. Generated code reads the dedicated words only. `safepoint_request == 0` means no poll is pending; a nonzero value requests the slow path. Requesting a safepoint publishes the Rust state and sets the word, and polling consumes the request by clearing it. (`packages/sys/src/thread.rs`, `request_safepoint`, `poll_safepoint`.)

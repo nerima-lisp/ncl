@@ -93,3 +93,11 @@ A full call creates a frame and publishes a safepoint. A local call uses the sam
 Multiple values return `v0` and count in the ABI registers; additional values are in the ThreadContext MV area. Direct Rust builtins use their fixed signature, while variadic or keyword builtins use the adapter returning `NclStatus`; both forms use a pending flag checked immediately after return.
 
 CatchRecord contains `{ tag, target_frame, target_pc, value_slot, depth, previous }`. CleanupRecord and HandlerRecord also contain their frame address and dynamic depth. ThreadContext holds the three current pointers. Unwind marks the pending exit, runs LIFO cleanup, restores binding and handler chains, then moves to the selected `target_pc` in the selected frame. Rust frames propagate `NclStatus` in two stages: adapter to builtin caller, then caller to the top NCL entry. Rust panic is abort.
+
+## Phase 1 runtime ABI binding
+
+`ncl-codegen::RuntimeAbi` is the only lowering-to-runtime boundary. Lowering asks the embedding runtime for typed byte offsets for TLAB bump/limit, the `safepoint_request` and `pending` words, multiple-value state, and the handler/cleanup/catch pointers. It asks for addresses of allocation and safepoint slow paths, unwind, builtins, and the constant table. An unavailable offset or address is reported as an unavailable operation; codegen does not infer an offset from a Rust layout or embed a runtime address. (`packages/codegen/src/abi.rs`, `RuntimeAbi`, `ContextField`, `RuntimeFunction`.)
+
+On AArch64, `x21` remains the pinned context register, `x0` is entry `argc` and the return value, `x1` is the multiple-value count, `x1..x4` carry the first four logical arguments, `x5` carries `rest`, and `x16`/`x17` are scratch. The machine-visible `ThreadLayout` offsets are the source of the context memory operands. (`packages/codegen/src/abi.rs`, `Aarch64Abi`; `packages/sys/src/thread.rs`, `ThreadLayout`.)
+
+The AArch64 builtin lowering supplies context in `x0`, loads at most four logical arguments into `x1..x4`, and calls the address returned by `builtin_address`. TLAB allocation first reads bump and limit, advances the bump by `words * 8` when the fast path fits, and otherwise calls the `(ctx, words)` allocation slow path. (`packages/codegen/src/target_aarch64_lowering.rs`, `lower_alloc`, `lower_builtin`.)

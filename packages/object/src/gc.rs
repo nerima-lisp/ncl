@@ -28,7 +28,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
         ),
         (widetag::STRING, vec![]),
         (widetag::SIMPLE_VECTOR, vec![simple_vector_offset::DATA]),
-        (widetag::HASH_TABLE, reference_words(&[MARKER, KV, INDEX])),
+        (widetag::HASH_TABLE, vec![MARKER, KV, INDEX]),
         (widetag::STRUCTURE, vec![structure_offset::SLOTS]),
         (
             widetag::INSTANCE,
@@ -63,10 +63,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
             widetag::COMPLEX,
             vec![number_offset::COMPLEX_REAL, number_offset::COMPLEX_IMAG],
         ),
-        (
-            widetag::PACKAGE,
-            reference_words(&crate::package::reference_words()),
-        ),
+        (widetag::PACKAGE, crate::package::reference_words()),
         (
             widetag::READTABLE,
             vec![readtable_offset::SYNTAX, readtable_offset::DISPATCH],
@@ -114,7 +111,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
 }
 
 /// Register the 14 SB-EXT GC, weak-pointer, and finalizer symbols owned here.
-pub fn register(runtime: &Runtime) {
+pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     for name in [
         "*AFTER-GC-HOOKS*",
         "*GC-REAL-TIME*",
@@ -131,6 +128,32 @@ pub fn register(runtime: &Runtime) {
         "WEAK-POINTER-VALUE",
         "WEAK-VECTOR-P",
     ] {
-        let _ = runtime.define_function("SB-EXT", name, Word::UNBOUND);
+        runtime.define_function("SB-EXT", name, Word::UNBOUND)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_table_and_package_layouts_use_header_inclusive_references() {
+        assert_eq!(
+            reference_words(&[MARKER, KV, INDEX]),
+            [MARKER + 1, KV + 1, INDEX + 1]
+        );
+        assert_eq!(
+            reference_words(&crate::package::reference_words()),
+            crate::package::reference_words()
+                .into_iter()
+                .map(|slot| slot + 1)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(Some(MARKER + 1), Some(MARKER + 1));
+        assert_eq!(
+            Some(crate::package::NAME + 1),
+            Some(crate::package::NAME + 1)
+        );
     }
 }

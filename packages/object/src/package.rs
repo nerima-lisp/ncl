@@ -335,6 +335,18 @@ impl Package {
     }
 }
 
+/// Canonical static NIL value.
+#[must_use]
+pub const fn nil() -> Word {
+    Word::NIL
+}
+
+/// Canonical static true value.
+#[must_use]
+pub const fn truth() -> Word {
+    Word::TRUE
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,12 +379,18 @@ mod tests {
             package.as_word(),
         )
         .unwrap_or_else(|error| panic!("external home: {error:?}"));
-        HashTable::from(get(&ctx, package.as_word(), widetag::PACKAGE, INTERNAL).unwrap())
-            .insert(&mut ctx, &runtime, name, internal)
-            .unwrap_or_else(|error| panic!("internal insert: {error:?}"));
-        HashTable::from(get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL).unwrap())
-            .insert(&mut ctx, &runtime, name, external)
-            .unwrap_or_else(|error| panic!("external insert: {error:?}"));
+        HashTable::from(
+            get(&ctx, package.as_word(), widetag::PACKAGE, INTERNAL)
+                .unwrap_or_else(|error| panic!("internal table: {error:?}")),
+        )
+        .insert(&mut ctx, &runtime, name, internal)
+        .unwrap_or_else(|error| panic!("internal insert: {error:?}"));
+        HashTable::from(
+            get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL)
+                .unwrap_or_else(|error| panic!("external table: {error:?}")),
+        )
+        .insert(&mut ctx, &runtime, name, external)
+        .unwrap_or_else(|error| panic!("external insert: {error:?}"));
 
         assert!(
             package
@@ -380,20 +398,12 @@ mod tests {
                 .unwrap_or_else(|error| panic!("unintern: {error:?}"))
         );
         assert_eq!(
-            HashTable::from(get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL).unwrap())
-                .get(&mut ctx, name),
+            HashTable::from(
+                get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL)
+                    .unwrap_or_else(|error| panic!("external table: {error:?}")),
+            )
+            .get(&mut ctx, name),
             Ok(Some(external))
         );
     }
-}
-
-/// Canonical static NIL value.
-#[must_use]
-pub const fn nil() -> Word {
-    Word::NIL
-}
-/// Canonical static true value.
-#[must_use]
-pub const fn truth() -> Word {
-    Word::TRUE
 }

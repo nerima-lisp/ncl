@@ -81,24 +81,20 @@ impl Runtime {
                     }
                 };
                 while nicknames != Word::NIL {
-                    let nickname = match ncl_sys::read_cons_word(&context.thread, nicknames, 0) {
-                        Some(nickname) => nickname,
-                        None => {
-                            failure = Some(ObjectError::Layout);
-                            return;
-                        }
+                    let Some(nickname) = ncl_sys::read_cons_word(&context.thread, nicknames, 0)
+                    else {
+                        failure = Some(ObjectError::Layout);
+                        return;
                     };
                     if matches(nickname) {
                         result = Some(package.as_word());
                         break;
                     }
-                    nicknames = match ncl_sys::read_cons_word(&context.thread, nicknames, 1) {
-                        Some(nicknames) => nicknames,
-                        None => {
-                            failure = Some(ObjectError::Layout);
-                            return;
-                        }
+                    let Some(next) = ncl_sys::read_cons_word(&context.thread, nicknames, 1) else {
+                        failure = Some(ObjectError::Layout);
+                        return;
                     };
+                    nicknames = next;
                 }
             })
             .ok()?;

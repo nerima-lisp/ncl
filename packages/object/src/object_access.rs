@@ -32,12 +32,10 @@ pub fn put(
     slot: usize,
     value: Word,
 ) -> Result<(), ObjectError> {
-    ctx.check_registered_address()?;
     ctx.write_object_slot(object, slot, value)
 }
 
 pub fn get(ctx: &ThreadContext, object: Word, tag: u8, slot: usize) -> Result<Word, ObjectError> {
-    ctx.check_registered_address()?;
     if ncl_sys::object_widetag(&ctx.thread, object) != Some(tag) {
         return Err(ObjectError::TypeError);
     }
@@ -53,7 +51,6 @@ pub fn fix(value: usize) -> Result<Word, ObjectError> {
 }
 
 pub fn get_function(ctx: &ThreadContext, object: Word, slot: usize) -> Result<Word, ObjectError> {
-    ctx.check_registered_address()?;
     match ncl_sys::object_widetag(&ctx.thread, object) {
         Some(crate::widetag::SIMPLE_FUN | crate::widetag::CLOSURE) => {
             ncl_sys::read_object_word(&ctx.thread, object, slot).ok_or(ObjectError::Layout)

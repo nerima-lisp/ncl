@@ -13,15 +13,12 @@ fn setup() -> (Runtime, Box<ThreadContext>) {
 }
 
 #[test]
-fn moved_registered_context_returns_error_instead_of_crashing() {
+fn moved_registered_context_remains_usable() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     let mut ctx = Box::new(ctx);
-    assert_eq!(
-        ctx.collect(true),
-        Err(ncl_object::ObjectError::ContextMoved)
-    );
+    assert!(ctx.collect(true).is_ok());
 }
 
 #[test]
@@ -57,28 +54,24 @@ fn package_failure_releases_all_roots_before_collection() {
 }
 
 #[test]
-fn moved_registered_context_rejects_allocation() {
+fn moved_registered_context_allows_allocation() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     let mut ctx = Box::new(ctx);
-    assert_eq!(
-        make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL),
-        Err(ncl_object::ObjectError::ContextMoved)
-    );
+    assert!(make_cons(&mut ctx, &runtime, Word::NIL, Word::NIL).is_ok());
 }
 
 #[test]
-fn moved_registered_context_rejects_try_push_root() {
+fn moved_registered_context_allows_try_push_root() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     let mut ctx = Box::new(ctx);
     let mut value = Word::NIL;
-    assert_eq!(
-        ncl_object::try_push_root(&mut ctx, &mut value),
-        Err(ncl_object::ObjectError::ContextMoved)
-    );
+    let token = ncl_object::try_push_root(&mut ctx, &mut value)
+        .unwrap_or_else(|error| panic!("push failed: {error:?}"));
+    assert!(ncl_object::try_pop_root(&mut ctx, token).is_ok());
 }
 
 fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {

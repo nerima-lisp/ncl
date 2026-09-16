@@ -12,7 +12,6 @@ impl ThreadContext {
         slot: usize,
         value: Word,
     ) -> Result<(), ObjectError> {
-        self.check_registered_address()?;
         if ncl_sys::write_object_word(&mut self.thread, object, slot, value) {
             ncl_sys::write_barrier(&mut self.thread, object, slot);
             Ok(())

@@ -215,6 +215,38 @@ fn repeated_remove_insert_reuses_kv_positions_without_resize() {
 }
 
 #[test]
+fn tombstones_do_not_double_capacity_when_live_count_is_low() {
+    let (runtime, mut ctx) = setup();
+    let table = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"));
+    let mut live = [0_i64, 1, 2, 3];
+    for key in live {
+        table
+            .insert(&mut ctx, &runtime, key_word(key), key_word(key))
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    }
+    let capacity = table.capacity(&ctx).unwrap_or(0);
+    for round in 0..3_000_i64 {
+        let index = usize::try_from(round).unwrap_or(0) % live.len();
+        let old = live[index];
+        let replacement = 10_000 + round;
+        table
+            .remove(&mut ctx, &runtime, key_word(old))
+            .unwrap_or_else(|error| panic!("remove failed: {error:?}"));
+        table
+            .insert(
+                &mut ctx,
+                &runtime,
+                key_word(replacement),
+                key_word(replacement),
+            )
+            .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+        live[index] = replacement;
+    }
+    assert_eq!(table.capacity(&ctx), Ok(capacity));
+}
+
+#[test]
 fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     let (runtime, mut ctx) = setup();
     let mut table_word = HashTable::new(&mut ctx, &runtime, HashTest::Eql, Weakness::None)

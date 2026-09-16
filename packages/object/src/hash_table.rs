@@ -63,11 +63,8 @@ impl HashTable {
         let capacity = 8_usize;
         let mut marker = make_simple_vector(ctx, runtime, &[])?;
         let marker_token = crate::push_root(ctx, &mut marker);
-        let mut kv = make_simple_vector(ctx, runtime, &vec![Word::UNBOUND; capacity * 2])?;
+        let mut kv = make_simple_vector(ctx, runtime, &vec![marker; capacity * 2])?;
         let kv_token = crate::push_root(ctx, &mut kv);
-        for position in 0..capacity * 2 {
-            simple_vector_set(ctx, kv, position, marker)?;
-        }
         let mut index = make_simple_vector(ctx, runtime, &vec![Word::fixnum(-1); capacity])?;
         let index_token = crate::push_root(ctx, &mut index);
         let table = allocate(ctx, runtime, widetag::HASH_TABLE, 11)?;
@@ -163,50 +160,75 @@ impl HashTable {
         key: Word,
         value: Word,
     ) -> Result<(), ObjectError> {
-        self.rehash_if_needed(ctx)?;
-        let capacity = self.read_usize(ctx, CAPACITY)?;
-        if self.read_usize(ctx, OCCUPIED)? + 1 >= capacity * 7 / 8 {
-            self.resize(ctx, runtime, capacity * 2)?;
-        }
-        let count = self.count(ctx)?;
-        let (index, kv) = self.storage(ctx)?;
-        let test = self.test(ctx)?;
-        let slot = Self::find_slot(ctx, index, kv, key, hash_key(ctx, test, key)?, test)?;
-        let entry = simple_vector_ref(ctx, index, slot)?
-            .as_fixnum()
-            .unwrap_or(-1);
-        let position = if entry < 0 {
-            let free = self.read_i64(ctx, FREE_HEAD)?;
-            if free >= 0 {
-                let position = usize::try_from(free).map_err(|_| ObjectError::Layout)?;
-                let next = simple_vector_ref(ctx, kv, position * 2 + 1)?
-                    .as_fixnum()
-                    .ok_or(ObjectError::Layout)?;
-                put(ctx, self.0, FREE_HEAD, Word::fixnum(next))?;
-                position
-            } else {
-                let position = self.read_usize(ctx, HIGH_WATER)?;
-                put(ctx, self.0, HIGH_WATER, fix(position + 1)?)?;
-                position
-            }
-        } else {
-            usize::try_from(entry).map_err(|_| ObjectError::Layout)?
-        };
-        simple_vector_set(ctx, kv, position * 2, key)?;
-        simple_vector_set(ctx, kv, position * 2 + 1, value)?;
-        if entry < 0 {
-            simple_vector_set(ctx, index, slot, fix(position)?)?;
-            put(ctx, self.0, COUNT, fix(count + 1)?)?;
-            if entry == EMPTY {
-                put(
+        let mut table_word = self.0;
+        let table_token = crate::push_root(ctx, &mut table_word);
+        let mut key = key;
+        let key_token = crate::push_root(ctx, &mut key);
+        let mut value = value;
+        let value_token = crate::push_root(ctx, &mut value);
+        let result = (|| {
+            let mut table = HashTable::from(table_word);
+            table.rehash_if_needed(ctx)?;
+            let capacity = table.read_usize(ctx, CAPACITY)?;
+            if table.read_usize(ctx, OCCUPIED)? + 1 >= capacity * 7 / 8 {
+                let count = table.count(ctx)?;
+                table.resize(
                     ctx,
-                    self.0,
-                    OCCUPIED,
-                    fix(self.read_usize(ctx, OCCUPIED)? + 1)?,
+                    runtime,
+                    if count < capacity / 2 {
+                        capacity
+                    } else {
+                        capacity * 2
+                    },
                 )?;
+                table = HashTable::from(table_word);
             }
-        }
-        Ok(())
+            let count = table.count(ctx)?;
+            let (index, kv) = table.storage(ctx)?;
+            let test = table.test(ctx)?;
+            let slot = Self::find_slot(ctx, index, kv, key, hash_key(ctx, test, key)?, test)?;
+            let entry = simple_vector_ref(ctx, index, slot)?
+                .as_fixnum()
+                .ok_or(ObjectError::Layout)?;
+            let position = match entry {
+                EMPTY | TOMBSTONE => {
+                    let free = table.read_i64(ctx, FREE_HEAD)?;
+                    if free >= 0 {
+                        let position = usize::try_from(free).map_err(|_| ObjectError::Layout)?;
+                        let next = simple_vector_ref(ctx, kv, position * 2 + 1)?
+                            .as_fixnum()
+                            .ok_or(ObjectError::Layout)?;
+                        put(ctx, table.0, FREE_HEAD, Word::fixnum(next))?;
+                        position
+                    } else {
+                        let position = table.read_usize(ctx, HIGH_WATER)?;
+                        put(ctx, table.0, HIGH_WATER, fix(position + 1)?)?;
+                        position
+                    }
+                }
+                entry if entry >= 0 => usize::try_from(entry).map_err(|_| ObjectError::Layout)?,
+                _ => return Err(ObjectError::Layout),
+            };
+            simple_vector_set(ctx, kv, position * 2, key)?;
+            simple_vector_set(ctx, kv, position * 2 + 1, value)?;
+            if entry < 0 {
+                simple_vector_set(ctx, index, slot, fix(position)?)?;
+                put(ctx, table.0, COUNT, fix(count + 1)?)?;
+                if entry == EMPTY {
+                    put(
+                        ctx,
+                        table.0,
+                        OCCUPIED,
+                        fix(table.read_usize(ctx, OCCUPIED)? + 1)?,
+                    )?;
+                }
+            }
+            Ok(())
+        })();
+        let _ = crate::pop_root(ctx, value_token);
+        let _ = crate::pop_root(ctx, key_token);
+        let _ = crate::pop_root(ctx, table_token);
+        result
     }
     /// Remove a key and return its value when present.
     ///
@@ -314,12 +336,12 @@ impl HashTable {
         runtime: &Runtime,
         capacity: usize,
     ) -> Result<(), ObjectError> {
-        let mut new_kv = make_simple_vector(ctx, runtime, &vec![Word::UNBOUND; capacity * 2])?;
+        let marker = get(ctx, self.0, widetag::HASH_TABLE, MARKER)?;
+        let mut new_kv = make_simple_vector(ctx, runtime, &vec![marker; capacity * 2])?;
         let kv_token = crate::push_root(ctx, &mut new_kv);
         let mut new_index = make_simple_vector(ctx, runtime, &vec![Word::fixnum(EMPTY); capacity])?;
         let index_token = crate::push_root(ctx, &mut new_index);
         let old_kv = get(ctx, self.0, widetag::HASH_TABLE, KV)?;
-        let marker = get(ctx, self.0, widetag::HASH_TABLE, MARKER)?;
         for position in 0..capacity * 2 {
             simple_vector_set(ctx, new_kv, position, marker)?;
         }

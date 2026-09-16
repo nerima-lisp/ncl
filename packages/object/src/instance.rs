@@ -22,14 +22,14 @@ pub fn make_instance(
     let object = match allocate(ctx, runtime, widetag::INSTANCE, 3) {
         Ok(object) => object,
         Err(error) => {
-            let _ = pop_root(ctx, token);
+            assert!(pop_root(ctx, token));
             return Err(error);
         }
     };
     put(ctx, object, instance_offset::CLASS, class)?;
     put(ctx, object, instance_offset::SLOT_VECTOR, vector)?;
     put(ctx, object, instance_offset::GENERATION, Word::fixnum(0))?;
-    let _ = pop_root(ctx, token);
+    assert!(pop_root(ctx, token));
     Ok(object.into())
 }
 

@@ -71,9 +71,9 @@ impl Package {
         ] {
             put(ctx, object, slot, value)?;
         }
-        let _ = crate::pop_root(ctx, external_token);
-        let _ = crate::pop_root(ctx, internal_token);
-        let _ = crate::pop_root(ctx, name_token);
+        assert!(crate::pop_root(ctx, external_token));
+        assert!(crate::pop_root(ctx, internal_token));
+        assert!(crate::pop_root(ctx, name_token));
         Ok(object.into())
     }
     /// Return the package name object.
@@ -126,7 +126,7 @@ impl Package {
         let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
         let name_token = crate::push_root(ctx, &mut name_word);
         if let Some(found) = self.find_symbol(ctx, name_word)? {
-            let _ = crate::pop_root(ctx, name_token);
+            assert!(crate::pop_root(ctx, name_token));
             return Ok(found);
         }
         let mut package = self.0;
@@ -136,10 +136,10 @@ impl Package {
         put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, package)?;
         let table = HashTable::from(get(ctx, package, widetag::PACKAGE, INTERNAL)?);
         let result = table.insert(ctx, runtime, name_word, symbol);
-        let _ = crate::pop_root(ctx, symbol_token);
-        let _ = crate::pop_root(ctx, package_token);
+        assert!(crate::pop_root(ctx, symbol_token));
+        assert!(crate::pop_root(ctx, package_token));
         result?;
-        let _ = crate::pop_root(ctx, name_token);
+        assert!(crate::pop_root(ctx, name_token));
         Ok((symbol, FindStatus::Internal))
     }
     /// Export an internal symbol by moving it to the external table.
@@ -162,8 +162,8 @@ impl Package {
         let symbol_token = crate::push_root(ctx, &mut symbol);
         let result = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?)
             .insert(ctx, runtime, name, symbol);
-        let _ = crate::pop_root(ctx, symbol_token);
-        let _ = crate::pop_root(ctx, name_token);
+        assert!(crate::pop_root(ctx, symbol_token));
+        assert!(crate::pop_root(ctx, name_token));
         result?;
         Ok(true)
     }
@@ -187,8 +187,8 @@ impl Package {
         let symbol_token = crate::push_root(ctx, &mut symbol);
         let result = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?)
             .insert(ctx, runtime, name, symbol);
-        let _ = crate::pop_root(ctx, symbol_token);
-        let _ = crate::pop_root(ctx, name_token);
+        assert!(crate::pop_root(ctx, symbol_token));
+        assert!(crate::pop_root(ctx, name_token));
         result?;
         Ok(true)
     }

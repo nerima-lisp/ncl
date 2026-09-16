@@ -30,9 +30,10 @@ commit `f10b581a`, the median on macOS arm64 was `687875 ns`.
 
 The stable ABI and frame/map contracts are specified in [Calling convention](../../docs/src/design/calling-convention.md) and [Native backend](../../docs/src/design/native-backend.md). The notes below are implementation observations for the Phase 1a fixture.
 
-- When the runtime supplies `RuntimeAbi::function_object_word`, the third
-  native frame-header word stores that function object Word. The entry code
-  address remains in `x17`, so the two values are available independently.
+- Native calls place the callee function object in `x16` and its published entry
+  address in `x17`; the callee prologue stores `x16` in frame-header word 2.
+  The sys snapshot collector forwards that word and writes the result back to
+  the active generated frame before the runtime callback returns.
 - `alloc_slow` receives `(ctx, words)` and returns an untagged address. The
   fast path advances `Thread`'s TLAB bump by `words * 8` and returns the old
   bump address.

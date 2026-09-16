@@ -151,6 +151,7 @@ impl Runtime {
                 _token: token,
             });
         }
+        ncl_sys::enter_native(&mut context.thread);
         drop(context);
         Ok(runtime)
     }

@@ -97,7 +97,7 @@ hash table と PACKAGE の payload はスカラー metadata を先頭、参照�
 
 hash table の削除は tombstone を使います。空 slot はプローブ連鎖の終端、tombstone は連鎖を維持したまま insert が再利用できる slot です。lookup は tombstone を越えて続行し、load factor は tombstone を含めて計算します。KV の削除済み位置も再利用せず、index と KV の対応を壊さないまま、resize/rehash で再パックして tombstone を掃除します。
 
-registry は専用の `registry_context` を使いますが、その context は heap allocation 前に native 状態へ移行していません。sys の STW 判定では Native mutator は `active_mutators` から除外されるため、registry context を allocation に使う契約とは矛盾しません。registry が保持する Word は root slot から allocation 後に再読します。
+registry は専用の `registry_context` を Native 状態で保持します。sys の STW 判定では Native mutator は `active_mutators` から除外され、現在の `allocate` は GC を起動せず容量超過を返すため、現行実装では STW と整合します。将来 allocation が GC を起動する場合は、Native 状態を一時的に Lisp 状態へ戻す公開 sys API、または allocation 中も STW 対象にする sys 側変更が必要です。registry が保持する Word は root slot から allocation 後に再読します。
 
 `ncl-sys` の conservative `find_raw` は lowtag を検証しないため、object 側は payload 語順と `boxed_from` を使ってこの段階の誤走査を回避しています。lowtag 検証そのものは sys 側の残課題です。weakness enum/API は登録済みですが、weak table の key/value clearing の完全な CL semantics は下流実装で補完します。
 

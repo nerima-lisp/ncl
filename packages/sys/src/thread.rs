@@ -274,26 +274,6 @@ impl Thread {
         self.frame_address = Some(frame_fp);
     }
 
-    /// Capture the generated caller's continuation at a runtime callback entry.
-    #[cfg(target_arch = "aarch64")]
-    #[inline]
-    #[must_use]
-    pub fn capture_return_address() -> usize {
-        let address: usize;
-        // SAFETY: x30 contains the generated caller's continuation at callback entry.
-        unsafe {
-            core::arch::asm!("mov {0}, x30", out(reg) address, options(nostack, preserves_flags));
-        }
-        address
-    }
-
-    #[cfg(not(target_arch = "aarch64"))]
-    #[inline]
-    #[must_use]
-    pub fn capture_return_address() -> usize {
-        0
-    }
-
     /// Return the current value of a captured real frame word.
     #[must_use]
     pub fn frame_word(&self, index: usize) -> Option<Word> {

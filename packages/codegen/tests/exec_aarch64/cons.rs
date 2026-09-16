@@ -314,9 +314,6 @@ fn forwards_function_object_from_generated_frame_map_simulation() {
 
 #[test]
 fn forwards_function_object_from_real_frame_after_safepoint_collection() {
-    if cfg!(debug_assertions) {
-        return;
-    }
     let runtime = ncl_object::Runtime::new().expect("runtime");
     let mut object_context = ncl_object::ThreadContext::new();
     object_context

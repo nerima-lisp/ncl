@@ -32,8 +32,7 @@ extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
     assert_eq!(words, 2);
     SLOW_STORAGE.as_ptr() as u64
 }
-extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize) {
-    let return_pc = Thread::capture_return_address();
+extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize) {
     SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
     if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) {
         ctx.set_native_frame(frame_fp, return_pc);

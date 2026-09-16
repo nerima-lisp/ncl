@@ -250,6 +250,13 @@ fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u3
     ) {
         emit(assembler, instruction)?;
     }
+    emit(
+        assembler,
+        Inst::Adr {
+            rd: Reg(2),
+            label: done,
+        },
+    )?;
     emit(assembler, Inst::Blr { rn: Reg(17) })?;
     let call_pc = u32::try_from(assembler.offset()).map_err(|_| CodegenError::FrameOverflow)?;
     assembler

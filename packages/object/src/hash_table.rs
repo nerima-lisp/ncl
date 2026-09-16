@@ -153,7 +153,7 @@ impl HashTable {
             .unwrap_or(-1);
         let position = if entry < 0 {
             (0..simple_vector_length(ctx, kv)? / 2)
-                .find(|position| simple_vector_ref(ctx, kv, position * 2) == Ok(Word::UNBOUND))
+                .find(|position| !Self::position_used(ctx, index, *position).unwrap_or(true))
                 .ok_or(ObjectError::Layout)?
         } else {
             usize::try_from(entry).map_err(|_| ObjectError::Layout)?
@@ -199,12 +199,18 @@ impl HashTable {
     /// # Errors
     /// Returns an error for an invalid heap layout.
     pub fn map_entries(self, ctx: &mut ThreadContext) -> Result<Vec<(Word, Word)>, ObjectError> {
-        let (_, kv) = self.storage(ctx)?;
+        let (index, kv) = self.storage(ctx)?;
         let mut entries = Vec::new();
-        for position in 0..(simple_vector_length(ctx, kv)? / 2) {
-            let key = simple_vector_ref(ctx, kv, position * 2)?;
-            if key != Word::UNBOUND {
-                entries.push((key, simple_vector_ref(ctx, kv, position * 2 + 1)?));
+        for slot in 0..simple_vector_length(ctx, index)? {
+            let entry = simple_vector_ref(ctx, index, slot)?
+                .as_fixnum()
+                .ok_or(ObjectError::Layout)?;
+            if entry >= 0 {
+                let position = usize::try_from(entry).map_err(|_| ObjectError::Layout)?;
+                entries.push((
+                    simple_vector_ref(ctx, kv, position * 2)?,
+                    simple_vector_ref(ctx, kv, position * 2 + 1)?,
+                ));
             }
         }
         Ok(entries)
@@ -293,16 +299,16 @@ impl HashTable {
         let test = self.test(ctx)?;
         if read_u64(ctx, self.0, EPOCH)? != ncl_sys::heap_epoch(&ctx.thread) {
             let (index, kv) = self.storage(ctx)?;
+            let entries = self.map_entries(ctx)?;
             for slot in 0..simple_vector_length(ctx, index)? {
                 simple_vector_set(ctx, index, slot, Word::fixnum(-1))?;
             }
-            for position in 0..(simple_vector_length(ctx, kv)? / 2) {
-                let key = simple_vector_ref(ctx, kv, position * 2)?;
-                if key != Word::UNBOUND {
-                    let slot =
-                        Self::find_slot(ctx, index, kv, key, hash_key(ctx, test, key)?, test)?;
-                    simple_vector_set(ctx, index, slot, to_fixnum(position)?)?;
-                }
+            for (key, _) in entries {
+                let position = (0..simple_vector_length(ctx, kv)? / 2)
+                    .find(|position| Self::position_key(ctx, kv, *position) == Ok(key))
+                    .ok_or(ObjectError::Layout)?;
+                let slot = Self::find_slot(ctx, index, kv, key, hash_key(ctx, test, key)?, test)?;
+                simple_vector_set(ctx, index, slot, to_fixnum(position)?)?;
             }
             put(
                 ctx,
@@ -326,6 +332,25 @@ impl HashTable {
             }
         }
         Ok(occupied)
+    }
+
+    fn position_used(
+        ctx: &ThreadContext,
+        index: Word,
+        position: usize,
+    ) -> Result<bool, ObjectError> {
+        for slot in 0..simple_vector_length(ctx, index)? {
+            if simple_vector_ref(ctx, index, slot)?.as_fixnum()
+                == Some(i64::try_from(position).map_err(|_| ObjectError::Layout)?)
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn position_key(ctx: &ThreadContext, kv: Word, position: usize) -> Result<Word, ObjectError> {
+        simple_vector_ref(ctx, kv, position * 2)
     }
 }
 

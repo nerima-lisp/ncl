@@ -211,14 +211,13 @@ impl Runtime {
     ) -> Result<(), ObjectError> {
         let key = format!("{package}::{name}");
         let mut function = function;
-        let result = with_root(ctx, &mut function, |context, function| {
+        with_root(ctx, &mut function, |context, function| {
             let mut key = make_string(context, self, &key.chars().collect::<Vec<_>>())?;
             with_root(context, &mut key, |context, key| {
                 HashTable::from(Self::table(&self.functions)?)
                     .insert(context, self, *key, *function)
             })
-        });
-        result
+        })
     }
     /// Look up a registered function object.
     #[must_use]

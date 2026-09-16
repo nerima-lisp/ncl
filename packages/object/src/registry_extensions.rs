@@ -30,19 +30,19 @@ impl Runtime {
         let mut result = None;
         let mut failure = None;
         HashTable::from(table)
-            .for_each_entry(&context, |_, package| {
+            .for_each_entry(context, |_, package| {
                 if result.is_some() || failure.is_some() {
                     return;
                 }
                 let package = Package::from(package);
                 let matches = |word: Word| {
-                    string_length(&context, word).ok() == Some(name_chars.len())
+                    string_length(context, word).ok() == Some(name_chars.len())
                         && name_chars
                             .iter()
                             .enumerate()
-                            .all(|(i, c)| string_ref(&context, word, i) == Ok(*c))
+                            .all(|(i, c)| string_ref(context, word, i) == Ok(*c))
                 };
-                let package_name = match package.name(&context) {
+                let package_name = match package.name(context) {
                     Ok(package_name) => package_name,
                     Err(error) => {
                         failure = Some(error);
@@ -54,7 +54,7 @@ impl Runtime {
                     return;
                 }
                 let mut nicknames = match crate::object_access::get(
-                    &context,
+                    context,
                     package.as_word(),
                     crate::widetag::PACKAGE,
                     crate::package::NICKNAMES,
@@ -122,8 +122,7 @@ impl Runtime {
     pub fn class(&self, ctx: &mut ThreadContext, name: &str) -> Option<Word> {
         let name = make_string(ctx, self, &name.chars().collect::<Vec<_>>()).ok()?;
         let table = Self::table(&self.classes).ok()?;
-        let result = HashTable::from(table).get(ctx, name).ok().flatten();
-        result
+        HashTable::from(table).get(ctx, name).ok().flatten()
     }
 
     pub fn add_feature(&self, feature: impl Into<String>) {

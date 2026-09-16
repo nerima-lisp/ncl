@@ -249,6 +249,7 @@ pub struct ThreadContext {
     handler: Option<usize>,
     cleanup: Option<usize>,
     catch: Option<usize>,
+    gc_stress: bool,
 }
 impl ThreadContext {
     /// Create an unregistered context.
@@ -264,6 +265,7 @@ impl ThreadContext {
             handler: None,
             cleanup: None,
             catch: None,
+            gc_stress: false,
         }
     }
     /// Register this context with a runtime.
@@ -325,6 +327,10 @@ impl ThreadContext {
         ncl_sys::collect(&mut self.thread, full);
         Ok(())
     }
+    /// Force a full collection before every object allocation when enabled.
+    pub fn set_gc_stress(&mut self, on: bool) {
+        self.gc_stress = on;
+    }
     /// Mark an object as weak with the requested policy.
     ///
     /// This low-level operation does not validate registration or context movement.
@@ -372,7 +378,16 @@ pub fn make_cons(
     cdr: Word,
 ) -> Result<Word, ObjectError> {
     ctx.require_registered()?;
-    ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, car, cdr).map_err(Into::into)
+    let mut car = car;
+    crate::with_root(ctx, &mut car, |ctx, car| {
+        let mut cdr = cdr;
+        crate::with_root(ctx, &mut cdr, |ctx, cdr| {
+            if ctx.gc_stress {
+                ctx.collect(true)?;
+            }
+            ncl_sys::alloc_cons(&mut ctx.thread, &runtime.heap, *car, *cdr).map_err(Into::into)
+        })
+    })
 }
 /// Allocate a header object with a widetag and payload words.
 /// # Errors
@@ -384,6 +399,9 @@ pub fn allocate(
     words: usize,
 ) -> Result<Word, ObjectError> {
     ctx.require_registered()?;
+    if ctx.gc_stress {
+        ctx.collect(true)?;
+    }
     ncl_sys::alloc(
         &mut ctx.thread,
         &runtime.heap,

@@ -1,5 +1,5 @@
 use crate::hash_table::HashTable;
-use crate::{ObjectError, Package, Runtime, make_string};
+use crate::{ObjectError, Package, Runtime, make_string, string_length, string_ref};
 use ncl_sys::{HeapConfig, StorageCondition, Word};
 
 impl Runtime {
@@ -39,13 +39,68 @@ impl Runtime {
 
     #[must_use]
     pub fn find_package(&self, name: &str) -> Option<Word> {
-        let mut context = self.registry_context.lock().ok()?;
-        let name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>()).ok()?;
+        let context = self.registry_context.lock().ok()?;
         let table = Self::table(&self.packages).ok()?;
-        let result = HashTable::from(table)
-            .get(&mut context, name_word)
-            .ok()
-            .flatten();
+        let name_chars = name.chars().collect::<Vec<_>>();
+        let mut result = None;
+        let mut failure = None;
+        HashTable::from(table)
+            .for_each_entry(&context, |_, package| {
+                if result.is_some() || failure.is_some() {
+                    return;
+                }
+                let package = Package::from(package);
+                let matches = |word: Word| {
+                    string_length(&context, word).ok() == Some(name_chars.len())
+                        && name_chars
+                            .iter()
+                            .enumerate()
+                            .all(|(i, c)| string_ref(&context, word, i) == Ok(*c))
+                };
+                let package_name = match package.name(&context) {
+                    Ok(package_name) => package_name,
+                    Err(error) => {
+                        failure = Some(error);
+                        return;
+                    }
+                };
+                if matches(package_name) {
+                    result = Some(package.as_word());
+                    return;
+                }
+                let mut nicknames = match crate::object_access::get(
+                    &context,
+                    package.as_word(),
+                    crate::widetag::PACKAGE,
+                    crate::package::NICKNAMES,
+                ) {
+                    Ok(nicknames) => nicknames,
+                    Err(error) => {
+                        failure = Some(error);
+                        return;
+                    }
+                };
+                while nicknames != Word::NIL {
+                    let Some(nickname) = ncl_sys::read_cons_word(&context.thread, nicknames, 0)
+                    else {
+                        failure = Some(ObjectError::Layout);
+                        return;
+                    };
+                    if matches(nickname) {
+                        result = Some(package.as_word());
+                        break;
+                    }
+                    let Some(next) = ncl_sys::read_cons_word(&context.thread, nicknames, 1) else {
+                        failure = Some(ObjectError::Layout);
+                        return;
+                    };
+                    nicknames = next;
+                }
+            })
+            .ok()?;
+        if failure.is_some() {
+            return None;
+        }
         drop(context);
         result
     }

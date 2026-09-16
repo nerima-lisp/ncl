@@ -49,7 +49,7 @@ pub fn with_roots<T>(
             Ok(token) => tokens.push(token),
             Err(error) => {
                 for token in tokens.into_iter().rev() {
-                    let _ = try_pop_root(ctx, token);
+                    assert!(try_pop_root(ctx, token).is_ok_and(|popped| popped));
                 }
                 return Err(error);
             }

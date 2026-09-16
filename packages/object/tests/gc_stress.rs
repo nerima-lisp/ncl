@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
@@ -8,9 +7,17 @@ use ncl_object::{
     function_lambda_list, function_name, make_array, make_closure, make_code_object, make_complex,
     make_cons, make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector,
     make_stream, make_string, make_structure, make_symbol, ratio_denominator, ratio_numerator,
-    set_symbol_value, simple_vector_ref, simple_vector_set, slot_ref, stream_state,
+    set_symbol_value, simple_vector_ref, simple_vector_set, slot_ref, stream_element_type,
+    stream_external_format, stream_implementation, stream_state, symbol_name,
 };
 
+fn assert_symbol_name(ctx: &ThreadContext, symbol: Word) {
+    let name = symbol_name(ctx, symbol).unwrap_or_else(|error| panic!("symbol name: {error:?}"));
+    assert_eq!(ncl_object::string_length(ctx, name), Ok(4));
+    for (index, expected) in ['N', 'A', 'M', 'E'].into_iter().enumerate() {
+        assert_eq!(ncl_object::string_ref(ctx, name, index), Ok(expected));
+    }
+}
 #[test]
 fn allocation_paths_survive_collection_before_every_allocation() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -19,28 +26,25 @@ fn allocation_paths_survive_collection_before_every_allocation() {
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     ctx.set_gc_stress(true);
     runtime.set_gc_stress(true);
-
-    let mut string =
-        make_string(&mut ctx, &runtime, &['S', 'T', 'R', 'E', 'S', 'S']).unwrap_or(Word::NIL);
+    let mut string = make_string(&mut ctx, &runtime, &['S', 'T', 'R', 'E', 'S', 'S'])
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let string_token = ncl_object::push_root(&mut ctx, &mut string);
     assert_eq!(ncl_object::string_ref(&ctx, string, 0), Ok('S'));
-
-    let mut cons = make_cons(&mut ctx, &runtime, string, Word::fixnum(7)).unwrap_or(Word::NIL);
+    let mut cons = make_cons(&mut ctx, &runtime, string, Word::fixnum(7))
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let cons_token = ncl_object::push_root(&mut ctx, &mut cons);
     assert_eq!(car(&mut ctx, cons), Ok(string));
-
     let mut vector = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(2)])
-        .unwrap_or(Word::NIL);
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let vector_token = ncl_object::push_root(&mut ctx, &mut vector);
     simple_vector_set(&mut ctx, vector, 1, cons)
         .unwrap_or_else(|error| panic!("vector set: {error:?}"));
     assert_eq!(simple_vector_ref(&ctx, vector, 1), Ok(cons));
-
-    let mut symbol = make_symbol(&mut ctx, &runtime, string).unwrap_or(Word::NIL);
+    let mut symbol = make_symbol(&mut ctx, &runtime, string)
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let symbol_token = ncl_object::push_root(&mut ctx, &mut symbol);
     set_symbol_value(&mut ctx, symbol, Word::fixnum(42))
         .unwrap_or_else(|error| panic!("symbol: {error:?}"));
-
     let mut table = HashTable::new(&mut ctx, &runtime, HashTest::Equal, Weakness::None)
         .unwrap_or_else(|error| panic!("table: {error:?}"))
         .as_word();
@@ -56,46 +60,48 @@ fn allocation_paths_survive_collection_before_every_allocation() {
         HashTable::from(table).remove(&mut ctx, &runtime, string),
         Ok(Some(symbol))
     );
-
     let mut package = Package::new(&mut ctx, &runtime, "STRESS")
         .unwrap_or_else(|error| panic!("package: {error:?}"))
         .as_word();
     let package_token = ncl_object::push_root(&mut ctx, &mut package);
-    let package = Package::from(package);
-    let (interned, status) = package
+    let (interned, status) = Package::from(package)
         .intern(&mut ctx, &runtime, "NAME")
         .unwrap_or_else(|error| panic!("intern: {error:?}"));
     assert_eq!(status, FindStatus::Internal);
     let mut interned = interned;
     let interned_token = ncl_object::push_root(&mut ctx, &mut interned);
-    let lookup_name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E']).unwrap_or(Word::NIL);
+    assert_symbol_name(&ctx, interned);
+    let lookup_name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     assert_eq!(
-        package.find_symbol(&mut ctx, lookup_name),
+        Package::from(package).find_symbol(&mut ctx, lookup_name),
         Ok(Some((interned, FindStatus::Internal)))
     );
-    let export_name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E']).unwrap_or(Word::NIL);
-    package
+    let export_name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
+    Package::from(package)
         .export(&mut ctx, &runtime, export_name)
         .unwrap_or_else(|error| panic!("export: {error:?}"));
-    let unexport_name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E']).unwrap_or(Word::NIL);
-    package
+    let unexport_name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
+    Package::from(package)
         .unexport(&mut ctx, &runtime, unexport_name)
         .unwrap_or_else(|error| panic!("unexport: {error:?}"));
-    package
+    Package::from(package)
         .shadow(&mut ctx, &runtime, string)
         .unwrap_or_else(|error| panic!("shadow: {error:?}"));
-    let gensym = package.gensym(&mut ctx, &runtime).unwrap_or(Word::NIL);
+    let gensym = Package::from(package)
+        .gensym(&mut ctx, &runtime)
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     assert_ne!(gensym, Word::NIL);
-    package
+    Package::from(package)
         .unintern(&mut ctx, &runtime, string)
         .unwrap_or_else(|error| panic!("unintern: {error:?}"));
-
     let mut instance = make_instance(&mut ctx, &runtime, symbol, &[cons])
         .unwrap_or_else(|error| panic!("instance: {error:?}"))
         .into();
     let instance_token = ncl_object::push_root(&mut ctx, &mut instance);
     assert_eq!(slot_ref(&ctx, instance.into(), 0), Ok(cons));
-
     let class_name = "STRESS-CLASS".to_owned();
     runtime
         .define_class(class_name.clone(), symbol)
@@ -105,7 +111,6 @@ fn allocation_paths_survive_collection_before_every_allocation() {
         .define_function("NCL", "STRESS-FUNCTION", symbol)
         .unwrap_or_else(|error| panic!("function: {error:?}"));
     assert_eq!(runtime.function("NCL", "STRESS-FUNCTION"), Some(symbol));
-
     assert!(ncl_object::pop_root(&mut ctx, instance_token));
     assert!(ncl_object::pop_root(&mut ctx, interned_token));
     assert!(ncl_object::pop_root(&mut ctx, package_token));
@@ -115,7 +120,6 @@ fn allocation_paths_survive_collection_before_every_allocation() {
     assert!(ncl_object::pop_root(&mut ctx, cons_token));
     assert!(ncl_object::pop_root(&mut ctx, string_token));
 }
-
 #[test]
 fn constructors_and_registry_survive_gc_stress() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -124,11 +128,12 @@ fn constructors_and_registry_survive_gc_stress() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     ctx.set_gc_stress(true);
-
-    let name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E']).unwrap_or(Word::NIL);
+    let name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E'])
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let mut name = name;
     let name_token = ncl_object::push_root(&mut ctx, &mut name);
-    let lambda = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1)]).unwrap_or(Word::NIL);
+    let lambda = make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(1)])
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     let mut lambda = lambda;
     let lambda_token = ncl_object::push_root(&mut ctx, &mut lambda);
     let code = make_code_object(&mut ctx, &runtime, 10, 2, name, lambda, Word::NIL)
@@ -153,7 +158,6 @@ fn constructors_and_registry_survive_gc_stress() {
     assert_eq!(code_constants(&ctx, code), Ok(name));
     assert_eq!(code_stack_map(&ctx, code), Ok(lambda));
     assert_eq!(code_debug(&ctx, code), Ok(Word::NIL));
-
     let ratio = make_ratio(&mut ctx, &runtime, name, lambda)
         .unwrap_or_else(|error| panic!("ratio: {error:?}"));
     assert_eq!(ratio_numerator(&ctx, ratio), Ok(name));
@@ -162,7 +166,6 @@ fn constructors_and_registry_survive_gc_stress() {
         .unwrap_or_else(|error| panic!("complex: {error:?}"));
     assert_eq!(complex_real(&ctx, complex), Ok(name));
     assert_eq!(complex_imag(&ctx, complex), Ok(lambda));
-
     let readtable = make_readtable(&mut ctx, &runtime, name, lambda, Word::fixnum(1))
         .unwrap_or_else(|error| panic!("readtable: {error:?}"));
     assert_eq!(ncl_object::readtable_syntax(&ctx, readtable), Ok(name));
@@ -177,7 +180,9 @@ fn constructors_and_registry_survive_gc_stress() {
     )
     .unwrap_or_else(|error| panic!("stream: {error:?}"));
     assert_eq!(stream_state(&ctx, stream), Ok(Word::NIL));
-
+    assert_eq!(stream_element_type(&ctx, stream), Ok(name));
+    assert_eq!(stream_external_format(&ctx, stream), Ok(lambda));
+    assert_eq!(stream_implementation(&ctx, stream), Ok(code.into()));
     let layout = runtime
         .register_structure_layout(1)
         .unwrap_or_else(|error| panic!("layout: {error:?}"));
@@ -202,14 +207,12 @@ fn constructors_and_registry_survive_gc_stress() {
         ncl_object::array_row_major_ref(&ctx, array, 0),
         Ok(Word::fixnum(1))
     );
-
     assert!(ncl_object::pop_root(&mut ctx, closure_token));
     assert!(ncl_object::pop_root(&mut ctx, function_token));
     assert!(ncl_object::pop_root(&mut ctx, code_token));
     assert!(ncl_object::pop_root(&mut ctx, lambda_token));
     assert!(ncl_object::pop_root(&mut ctx, name_token));
 }
-
 #[test]
 fn registry_package_operations_survive_gc_stress() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -228,13 +231,19 @@ fn registry_package_operations_survive_gc_stress() {
         .unwrap_or_else(|error| panic!("package: {error:?}"));
     let mut used = used;
     let used_token = ncl_object::push_root(&mut ctx, &mut used);
-    let import_name =
-        make_string(&mut ctx, &runtime, &['I', 'M', 'P', 'O', 'R', 'T']).unwrap_or(Word::NIL);
-    let imported = make_symbol(&mut ctx, &runtime, Word::NIL)
+    let mut import_name = make_string(&mut ctx, &runtime, &['I', 'M', 'P', 'O', 'R', 'T'])
+        .unwrap_or_else(|error| panic!("allocation: {error:?}"));
+    let import_name_token = ncl_object::push_root(&mut ctx, &mut import_name);
+    let mut imported = make_symbol(&mut ctx, &runtime, Word::NIL)
         .unwrap_or_else(|error| panic!("symbol: {error:?}"));
+    let imported_token = ncl_object::push_root(&mut ctx, &mut imported);
     Package::from(used)
         .import(&mut ctx, &runtime, import_name, imported)
         .unwrap_or_else(|error| panic!("import: {error:?}"));
+    assert_eq!(
+        Package::from(used).find_symbol(&mut ctx, import_name),
+        Ok(Some((imported, FindStatus::Internal)))
+    );
     let (symbol, _) = Package::from(used)
         .intern(&mut ctx, &runtime, "INHERITED")
         .unwrap_or_else(|error| panic!("intern: {error:?}"));
@@ -245,7 +254,7 @@ fn registry_package_operations_survive_gc_stress() {
         &runtime,
         &['I', 'N', 'H', 'E', 'R', 'I', 'T', 'E', 'D'],
     )
-    .unwrap_or(Word::NIL);
+    .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     Package::from(used)
         .export(&mut ctx, &runtime, inherited_name)
         .unwrap_or_else(|error| panic!("export: {error:?}"));
@@ -257,17 +266,18 @@ fn registry_package_operations_survive_gc_stress() {
         &runtime,
         &['I', 'N', 'H', 'E', 'R', 'I', 'T', 'E', 'D'],
     )
-    .unwrap_or(Word::NIL);
+    .unwrap_or_else(|error| panic!("allocation: {error:?}"));
     assert_eq!(
         Package::from(package).find_symbol(&mut ctx, lookup),
         Ok(Some((symbol, FindStatus::Inherited)))
     );
     assert_eq!(runtime.ensure_package("STRESS-A"), Ok(package));
     assert!(ncl_object::pop_root(&mut ctx, symbol_token));
+    assert!(ncl_object::pop_root(&mut ctx, imported_token));
+    assert!(ncl_object::pop_root(&mut ctx, import_name_token));
     assert!(ncl_object::pop_root(&mut ctx, used_token));
     assert!(ncl_object::pop_root(&mut ctx, package_token));
 }
-
 #[test]
 fn hash_table_resize_tombstones_and_reinsertion_survive_gc_stress() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -304,6 +314,14 @@ fn hash_table_resize_tombstones_and_reinsertion_survive_gc_stress() {
                 Word::fixnum(index + 100),
             )
             .unwrap_or_else(|error| panic!("reinsert {index}: {error:?}"));
+    }
+    for index in 0..24 {
+        if index % 2 == 1 || index >= 16 {
+            assert_eq!(
+                HashTable::from(table).get(&mut ctx, Word::fixnum(index)),
+                Ok(Some(Word::fixnum(index + 100)))
+            );
+        }
     }
     assert_eq!(HashTable::from(table).capacity(&ctx), Ok(32));
     assert!(ncl_object::pop_root(&mut ctx, table_token));

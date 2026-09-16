@@ -1,13 +1,11 @@
 //! Heap-resident package namespaces.
-
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::object_access::{get, put};
 use crate::widetag;
 use crate::{ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol};
 use ncl_sys::Word;
-
+mod lists;
 crate::word_newtype!(Package);
-
 /// Result of looking up a name in a package.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FindStatus {
@@ -15,7 +13,6 @@ pub enum FindStatus {
     External,
     Inherited,
 }
-
 pub(crate) const LOCK: usize = 0;
 pub(crate) const GENSYM: usize = 1;
 pub(crate) const NAME: usize = 2;
@@ -26,7 +23,6 @@ pub(crate) const INTERNAL: usize = 6;
 pub(crate) const EXTERNAL: usize = 7;
 pub(crate) const SHADOWING: usize = 8;
 pub(crate) const LOCAL_NICKNAMES: usize = 9;
-
 pub(crate) fn reference_words() -> Vec<usize> {
     vec![
         NAME,
@@ -39,12 +35,12 @@ pub(crate) fn reference_words() -> Vec<usize> {
         LOCAL_NICKNAMES,
     ]
 }
-
 impl Package {
     /// Allocate an empty package and its internal and external symbol tables.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
+    /// Returns an allocation or layout error when package objects cannot be built.
+    ///
     /// # Panics
     /// Panics if a root token cannot be removed in stack order.
     pub fn new(
@@ -83,14 +79,57 @@ impl Package {
     /// Return the package name object.
     ///
     /// # Errors
-    /// Returns an error for an invalid heap layout.
+    /// Returns a layout error when the package object is malformed.
     pub fn name(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
         get(ctx, self.0, widetag::PACKAGE, NAME)
+    }
+    /// Return this package's shadowing symbol list.
+    ///
+    /// # Errors
+    /// Returns a layout error when the package object is malformed.
+    pub fn shadowing_symbols(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
+        get(ctx, self.0, widetag::PACKAGE, SHADOWING)
+    }
+    /// Add a nickname to this package.
+    ///
+    /// # Errors
+    /// Returns an allocation or layout error when the nickname list is malformed.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
+    pub fn add_nickname(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        nickname: Word,
+    ) -> Result<bool, ObjectError> {
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut nickname = nickname;
+            crate::with_root(ctx, &mut nickname, |ctx, nickname| {
+                let mut names = get(ctx, *package, widetag::PACKAGE, NICKNAMES)?;
+                while names != Word::NIL {
+                    if ncl_sys::read_cons_word(&ctx.thread, names, 0) == Some(*nickname) {
+                        return Ok(false);
+                    }
+                    names = ncl_sys::read_cons_word(&ctx.thread, names, 1)
+                        .ok_or(ObjectError::Layout)?;
+                }
+                let names = make_cons(
+                    ctx,
+                    runtime,
+                    *nickname,
+                    get(ctx, *package, widetag::PACKAGE, NICKNAMES)?,
+                )?;
+                put(ctx, *package, NICKNAMES, names)?;
+                Ok(true)
+            })
+        })
     }
     /// Find an accessible symbol in this package.
     ///
     /// # Errors
-    /// Returns an error for an invalid heap layout.
+    /// Returns a layout error when an accessible symbol or package list is malformed.
     pub fn find_symbol(
         self,
         ctx: &mut ThreadContext,
@@ -120,7 +159,8 @@ impl Package {
     /// Intern a symbol by name, returning its symbol and status.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
+    /// Returns an allocation or layout error when the symbol tables are malformed.
+    ///
     /// # Panics
     /// Panics if a root token cannot be removed in stack order.
     pub fn intern(
@@ -154,7 +194,8 @@ impl Package {
     /// Export an internal symbol by moving it to the external table.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
+    /// Returns an allocation or layout error when the symbol tables are malformed.
+    ///
     /// # Panics
     /// Panics if a root token cannot be removed in stack order.
     pub fn export(
@@ -168,8 +209,22 @@ impl Package {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let internal = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
-                let Some(mut symbol) = internal.remove(ctx, runtime, *name)? else {
-                    return Ok(false);
+                let mut symbol = if let Some(symbol) = internal.remove(ctx, runtime, *name)? {
+                    symbol
+                } else {
+                    let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                    if external.get(ctx, *name)?.is_some() {
+                        return Ok(true);
+                    }
+                    let Some((symbol, FindStatus::Inherited)) =
+                        Self::from(*package).find_symbol(ctx, *name)?
+                    else {
+                        return Ok(false);
+                    };
+                    Self::from(*package).import(ctx, runtime, *name, symbol)?;
+                    HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                        .remove(ctx, runtime, *name)?
+                        .ok_or(ObjectError::Layout)?
                 };
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
                     let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
@@ -182,7 +237,8 @@ impl Package {
     /// Remove a symbol from the external table and return it to internal visibility.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
+    /// Returns an allocation or layout error when the symbol tables are malformed.
+    ///
     /// # Panics
     /// Panics if a root token cannot be removed in stack order.
     pub fn unexport(
@@ -210,7 +266,10 @@ impl Package {
     /// Import a symbol under a string name.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
+    /// Returns an allocation or layout error when the symbol tables are malformed.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn import(
         self,
         ctx: &mut ThreadContext,
@@ -224,95 +283,44 @@ impl Package {
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let mut symbol = symbol;
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    put(
+                    let home = get(
                         ctx,
                         *symbol,
+                        widetag::SYMBOL,
                         crate::layout::symbol_offset::PACKAGE,
-                        *package,
                     )?;
+                    if let Some((existing, status)) =
+                        Self::from(*package).find_symbol(ctx, *name)?
+                    {
+                        if existing == *symbol {
+                            if status != FindStatus::Inherited {
+                                return Ok(());
+                            }
+                        } else {
+                            return Err(ObjectError::PackageConflict);
+                        }
+                    }
+                    if home == Word::NIL {
+                        put(
+                            ctx,
+                            *symbol,
+                            crate::layout::symbol_offset::PACKAGE,
+                            *package,
+                        )?;
+                    }
                     HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                         .insert(ctx, runtime, *name, *symbol)
                 })
             })
         })
     }
-    /// Add another package to this package's use list.
-    ///
-    /// # Errors
-    /// Returns an allocation or layout error.
-    pub fn use_package(
-        self,
-        ctx: &mut ThreadContext,
-        runtime: &Runtime,
-        package: Word,
-    ) -> Result<bool, ObjectError> {
-        let mut package_self = self.0;
-        crate::with_root(ctx, &mut package_self, |ctx, package_self| {
-            let mut package = package;
-            crate::with_root(ctx, &mut package, |ctx, package| {
-                let mut list = get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?;
-                while list != Word::NIL {
-                    if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(*package) {
-                        return Ok(false);
-                    }
-                    list =
-                        ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
-                }
-                let list = make_cons(
-                    ctx,
-                    runtime,
-                    *package,
-                    get(ctx, *package_self, widetag::PACKAGE, USE_LIST)?,
-                )?;
-                put(ctx, *package_self, USE_LIST, list)?;
-                Ok(true)
-            })
-        })
-    }
-    /// Remove a symbol from internal or external visibility.
-    ///
-    /// # Errors
-    /// Returns an allocation or layout error.
-    pub fn unintern(
-        self,
-        ctx: &mut ThreadContext,
-        runtime: &Runtime,
-        name: Word,
-    ) -> Result<bool, ObjectError> {
-        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
-        if internal.remove(ctx, runtime, name)?.is_some() {
-            return Ok(true);
-        }
-        Ok(
-            HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?)
-                .remove(ctx, runtime, name)?
-                .is_some(),
-        )
-    }
-    /// Add a name to the package's shadowing list.
-    ///
-    /// # Errors
-    /// Returns an allocation or layout error.
-    pub fn shadow(
-        self,
-        ctx: &mut ThreadContext,
-        runtime: &Runtime,
-        name: Word,
-    ) -> Result<(), ObjectError> {
-        let mut package = self.0;
-        crate::with_root(ctx, &mut package, |ctx, package| {
-            let mut name = name;
-            crate::with_root(ctx, &mut name, |ctx, name| {
-                let list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
-                let list = make_cons(ctx, runtime, *name, list)?;
-                put(ctx, *package, SHADOWING, list)
-            })
-        })
-    }
     /// Generate an uninterned symbol.
     ///
     /// # Errors
-    /// Returns an allocation or layout error.
+    /// Returns an allocation or layout error when the gensym counter or symbol cannot be built.
+    ///
+    /// # Panics
+    /// Panics if a root token cannot be removed in stack order.
     pub fn gensym(self, ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {
@@ -332,8 +340,70 @@ impl Package {
 pub const fn nil() -> Word {
     Word::NIL
 }
+
 /// Canonical static true value.
 #[must_use]
 pub const fn truth() -> Word {
     Word::TRUE
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unintern_does_not_remove_external_when_internal_matches() {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("register: {error:?}"));
+        let package = Package::new(&mut ctx, &runtime, "DUPLICATES")
+            .unwrap_or_else(|error| panic!("package: {error:?}"));
+        let name = make_string(&mut ctx, &runtime, &['D', 'U', 'P'])
+            .unwrap_or_else(|error| panic!("name: {error:?}"));
+        let internal = make_symbol(&mut ctx, &runtime, name)
+            .unwrap_or_else(|error| panic!("internal: {error:?}"));
+        let external = make_symbol(&mut ctx, &runtime, name)
+            .unwrap_or_else(|error| panic!("external: {error:?}"));
+        put(
+            &mut ctx,
+            internal,
+            crate::layout::symbol_offset::PACKAGE,
+            package.as_word(),
+        )
+        .unwrap_or_else(|error| panic!("internal home: {error:?}"));
+        put(
+            &mut ctx,
+            external,
+            crate::layout::symbol_offset::PACKAGE,
+            package.as_word(),
+        )
+        .unwrap_or_else(|error| panic!("external home: {error:?}"));
+        HashTable::from(
+            get(&ctx, package.as_word(), widetag::PACKAGE, INTERNAL)
+                .unwrap_or_else(|error| panic!("internal table: {error:?}")),
+        )
+        .insert(&mut ctx, &runtime, name, internal)
+        .unwrap_or_else(|error| panic!("internal insert: {error:?}"));
+        HashTable::from(
+            get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL)
+                .unwrap_or_else(|error| panic!("external table: {error:?}")),
+        )
+        .insert(&mut ctx, &runtime, name, external)
+        .unwrap_or_else(|error| panic!("external insert: {error:?}"));
+
+        assert!(
+            package
+                .unintern(&mut ctx, &runtime, name)
+                .unwrap_or_else(|error| panic!("unintern: {error:?}"))
+        );
+        assert_eq!(
+            HashTable::from(
+                get(&ctx, package.as_word(), widetag::PACKAGE, EXTERNAL)
+                    .unwrap_or_else(|error| panic!("external table: {error:?}")),
+            )
+            .get(&mut ctx, name),
+            Ok(Some(external))
+        );
+    }
 }

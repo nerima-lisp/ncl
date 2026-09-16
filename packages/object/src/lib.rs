@@ -198,8 +198,12 @@ impl Runtime {
         let key_token = push_root(&mut context, &mut key);
         let mut function = function;
         let function_token = push_root(&mut context, &mut function);
-        let table = Self::table(&self.functions)?;
-        let result = HashTable::from(table).insert(&mut context, self, key, function);
+        let result = HashTable::from(Self::table(&self.functions)?).insert(
+            &mut context,
+            self,
+            key,
+            function,
+        );
         let _ = pop_root(&mut context, function_token);
         let _ = pop_root(&mut context, key_token);
         drop(context);

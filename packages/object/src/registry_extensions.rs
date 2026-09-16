@@ -22,8 +22,12 @@ impl Runtime {
         }
         let mut package = Package::new(&mut context, self, name)?.as_word();
         let package_token = crate::push_root(&mut context, &mut package);
-        let table = Self::table(&self.packages)?;
-        HashTable::from(table).insert(&mut context, self, name_word, package)?;
+        HashTable::from(Self::table(&self.packages)?).insert(
+            &mut context,
+            self,
+            name_word,
+            package,
+        )?;
         let _ = crate::pop_root(&mut context, package_token);
         let _ = crate::pop_root(&mut context, token);
         drop(context);

@@ -23,8 +23,10 @@ tagged words, heap, precise roots, safepoints, and platform surface.
   representation boundary, and `safepoint_request` protocol are specified in
   [Threads](../../docs/src/design/threads.md) and [Calling convention](../../docs/src/design/calling-convention.md).
 - `Thread::set_native_frame` receives the active generated frame pointer and
-  snapshots its four-word header. The collector forwards precise roots and
-  writes them back to the active generated frame.
+  the continuation PC supplied by generated code. Rust does not read the
+  continuation from a link register. It snapshots the four-word header, while
+  the collector forwards precise roots and writes them back to the active
+  generated frame.
 - When multiple registered threads share one OS thread, every thread other
   than the collector must be in native state during collection.
 

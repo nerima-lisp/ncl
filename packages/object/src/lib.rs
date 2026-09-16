@@ -205,7 +205,8 @@ impl Runtime {
         let mut function = function;
         let result = with_root(&mut context, &mut key, |context, key| {
             with_root(context, &mut function, |context, function| {
-                HashTable::from(Self::table(&self.functions)?).insert(context, self, key, function)
+                HashTable::from(Self::table(&self.functions)?)
+                    .insert(context, self, *key, *function)
             })
         });
         drop(context);

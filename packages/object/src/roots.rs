@@ -32,10 +32,10 @@ pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, O
 pub fn with_root<T>(
     ctx: &mut ThreadContext,
     value: &mut Word,
-    f: impl FnOnce(&mut ThreadContext, Word) -> Result<T, ObjectError>,
+    f: impl FnOnce(&mut ThreadContext, &mut Word) -> Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
     let token = try_push_root(ctx, value)?;
-    let result = f(ctx, *value);
+    let result = f(ctx, value);
     finish_root(ctx, token, result)
 }
 

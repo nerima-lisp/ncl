@@ -15,13 +15,13 @@ impl Runtime {
         let mut name_word = make_string(&mut context, self, &name.chars().collect::<Vec<_>>())?;
         let result = crate::with_root(&mut context, &mut name_word, |context, name_word| {
             let table = Self::table(&self.packages)?;
-            if let Some(package) = HashTable::from(table).get(context, name_word)? {
+            if let Some(package) = HashTable::from(table).get(context, *name_word)? {
                 return Ok(package);
             }
             let mut package = Package::new(context, self, name)?.as_word();
             crate::with_root(context, &mut package, |context, package| {
                 HashTable::from(Self::table(&self.packages)?)
-                    .insert(context, self, name_word, package)
+                    .insert(context, self, *name_word, *package)
             })?;
             Ok(package)
         });
@@ -65,7 +65,7 @@ impl Runtime {
         let result = crate::with_root(&mut context, &mut name, |context, name| {
             crate::with_root(context, &mut class, |context, class| {
                 let table = Self::table(&self.classes)?;
-                HashTable::from(table).insert(context, self, name, class)
+                HashTable::from(table).insert(context, self, *name, *class)
             })
         });
         drop(context);

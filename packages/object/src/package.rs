@@ -63,12 +63,12 @@ impl Package {
                     for (slot, value) in [
                         (LOCK, Word::fixnum(0)),
                         (GENSYM, Word::fixnum(0)),
-                        (NAME, name_word),
+                        (NAME, *name_word),
                         (NICKNAMES, Word::NIL),
                         (USE_LIST, Word::NIL),
                         (USED_BY, Word::NIL),
-                        (INTERNAL, internal),
-                        (EXTERNAL, external),
+                        (INTERNAL, *internal),
+                        (EXTERNAL, *external),
                         (SHADOWING, Word::NIL),
                         (LOCAL_NICKNAMES, Word::NIL),
                     ] {
@@ -129,17 +129,22 @@ impl Package {
     ) -> Result<(Word, FindStatus), ObjectError> {
         let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
         crate::with_root(ctx, &mut name_word, |ctx, name_word| {
-            if let Some(found) = self.find_symbol(ctx, name_word)? {
+            if let Some(found) = self.find_symbol(ctx, *name_word)? {
                 return Ok(found);
             }
             let mut package = self.0;
             crate::with_root(ctx, &mut package, |ctx, package| {
-                let mut symbol = make_symbol(ctx, runtime, name_word)?;
+                let mut symbol = make_symbol(ctx, runtime, *name_word)?;
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    put(ctx, symbol, crate::layout::symbol_offset::PACKAGE, package)?;
-                    let table = HashTable::from(get(ctx, package, widetag::PACKAGE, INTERNAL)?);
-                    table.insert(ctx, runtime, name_word, symbol)?;
-                    Ok((symbol, FindStatus::Internal))
+                    put(
+                        ctx,
+                        *symbol,
+                        crate::layout::symbol_offset::PACKAGE,
+                        *package,
+                    )?;
+                    let table = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                    table.insert(ctx, runtime, *name_word, *symbol)?;
+                    Ok((*symbol, FindStatus::Internal))
                 })
             })
         })
@@ -164,7 +169,7 @@ impl Package {
         crate::with_root(ctx, &mut name, |ctx, name| {
             let mut symbol = symbol;
             crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                external.insert(ctx, runtime, name, symbol)
+                external.insert(ctx, runtime, *name, *symbol)
             })
         })?;
         Ok(true)
@@ -189,7 +194,7 @@ impl Package {
         crate::with_root(ctx, &mut name, |ctx, name| {
             let mut symbol = symbol;
             crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                internal.insert(ctx, runtime, name, symbol)
+                internal.insert(ctx, runtime, *name, *symbol)
             })
         })?;
         Ok(true)

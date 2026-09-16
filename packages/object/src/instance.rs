@@ -15,16 +15,18 @@ crate::word_newtype!(Instance);
 pub fn make_instance(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    class: Word,
+    mut class: Word,
     slots: &[Word],
 ) -> Result<Instance, ObjectError> {
     let mut vector = make_simple_vector(ctx, runtime, slots)?;
-    crate::with_root(ctx, &mut vector, |ctx, vector| {
-        let object = allocate(ctx, runtime, widetag::INSTANCE, 3)?;
-        put(ctx, object, instance_offset::CLASS, class)?;
-        put(ctx, object, instance_offset::SLOT_VECTOR, vector)?;
-        put(ctx, object, instance_offset::GENERATION, Word::fixnum(0))?;
-        Ok(object.into())
+    crate::with_root(ctx, &mut class, |ctx, class| {
+        crate::with_root(ctx, &mut vector, |ctx, vector| {
+            let object = allocate(ctx, runtime, widetag::INSTANCE, 3)?;
+            put(ctx, object, instance_offset::CLASS, *class)?;
+            put(ctx, object, instance_offset::SLOT_VECTOR, *vector)?;
+            put(ctx, object, instance_offset::GENERATION, Word::fixnum(0))?;
+            Ok(object.into())
+        })
     })
 }
 

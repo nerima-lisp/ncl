@@ -94,8 +94,7 @@ impl SafepointMap {
             pc_offset,
             frame_words,
             slot_words,
-            word_slot_count: u16::try_from(live_slots.len())
-                .map_err(|_| MapError::SlotCountOutOfRange)?,
+            word_slot_count: slot_words,
             register_mask,
             map_flags,
             bitmap,

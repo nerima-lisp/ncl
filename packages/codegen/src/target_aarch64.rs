@@ -74,7 +74,7 @@ pub fn compile_function_aarch64(
     emit(
         &mut assembler,
         Inst::Str {
-            rt: Reg(17),
+            rt: Reg(16),
             mem: MemOperand::Unscaled {
                 base: RegOrSp::Reg(Reg(29)),
                 offset: 16,

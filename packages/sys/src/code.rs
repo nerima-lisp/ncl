@@ -265,7 +265,7 @@ pub fn walk_frame_headers(words: &[Word], first: usize, limit: usize) -> Vec<Fra
     while result.len() < limit && at.checked_add(3).is_some_and(|end| end < words.len()) {
         let header = FrameHeader {
             previous: words[at].address(),
-            return_pc: words[at + 1].address(),
+            return_pc: usize::try_from(words[at + 1].bits()).unwrap_or(0),
             function: words[at + 2],
             flags: words[at + 3].bits(),
         };
@@ -444,7 +444,7 @@ pub fn scan_frame_chain(
     let mut updated = 0;
     let mut frames = 0;
     while at.checked_add(3).is_some_and(|end| end < words.len()) {
-        let return_pc = words[at + 1].address();
+        let return_pc = usize::try_from(words[at + 1].bits()).ok()?;
         let offset = return_pc.checked_sub(code_base)?;
         let map = maps.find_map(u32::try_from(offset).ok()?)?;
         updated += scan_frame(words, at, map, &mut forward)?;
@@ -470,7 +470,7 @@ pub fn scan_frame_chain_with_registry(
     let mut updated = 0;
     let mut frames = 0;
     while at.checked_add(3).is_some_and(|end| end < words.len()) {
-        let return_pc = words[at + 1].address();
+        let return_pc = usize::try_from(words[at + 1].bits()).ok()?;
         let (metadata, offset) = registry.find(return_pc)?;
         let map = metadata.safepoint_map.find_map(offset)?;
         updated += scan_frame_with_registers(words, at, map, registers, &mut forward)?;

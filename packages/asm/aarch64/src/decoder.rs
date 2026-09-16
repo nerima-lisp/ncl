@@ -113,6 +113,14 @@ pub const fn decode(word: u32) -> Result<Inst, EncodeError> {
         _ if word & 0xFFFF_FC1F == 0xD63F_0000 => Ok(Inst::Blr {
             rn: Reg(((word >> 5) & 0x1f) as u8),
         }),
+        _ if word & 0x9F00_0000 == 0x1000_0000 => Ok(Inst::Adr {
+            rd: Reg((word & 0x1f) as u8),
+            label: crate::Label(0),
+        }),
+        _ if word & 0x9F00_0000 == 0x9000_0000 => Ok(Inst::Adrp {
+            rd: Reg((word & 0x1f) as u8),
+            label: crate::Label(0),
+        }),
         _ if word & 0x7F00_0000 == 0x3400_0000 => Ok(Inst::Cbz {
             rt: Reg((word & 0x1f) as u8),
             label: crate::Label(0),

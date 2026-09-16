@@ -73,4 +73,12 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
             rn: ncl_asm_aarch64::Reg(17)
         })
     );
+    let adr = u32::from_le_bytes(compiled.code[end - 8..end - 4].try_into().unwrap_or([0; 4]));
+    assert_eq!(
+        ncl_asm_aarch64::decode(adr),
+        Ok(ncl_asm_aarch64::Inst::Adr {
+            rd: ncl_asm_aarch64::Reg(2),
+            label: ncl_asm_aarch64::Label(0),
+        })
+    );
 }

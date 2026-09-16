@@ -61,6 +61,7 @@ pub struct Thread {
     pub(crate) pending: u64,
     pub(crate) frame_chain: Vec<Word>,
     pub(crate) frame_registers: Vec<Word>,
+    frame_address: Option<usize>,
 }
 
 /// Native offsets consumed by the code generator when addressing a thread context.
@@ -130,9 +131,13 @@ impl Thread {
             pending: 0,
             frame_chain: Vec::new(),
             frame_registers: Vec::new(),
+            frame_address: None,
         }
     }
-    pub(crate) fn heap_ref(&self) -> Option<&crate::heap::Heap> {
+
+    /// Return the heap this thread is registered with.
+    #[must_use]
+    pub(crate) fn heap(&self) -> Option<&crate::heap::Heap> {
         self.heap.map(|heap| {
             // SAFETY: registration stores this heap pointer for the thread lifetime.
             unsafe { &*heap }
@@ -208,11 +213,13 @@ impl Thread {
         }
         values
     }
-    pub(crate) const fn enter_native(&mut self) {
+    /// Enter the native runtime state.
+    pub const fn enter_native(&mut self) {
         self.native = NativeState::Native;
         self.state = SafepointState::Safe;
     }
-    pub(crate) fn leave_native(&mut self) {
+    /// Leave the native runtime state and deliver a pending poll.
+    pub fn leave_native(&mut self) {
         self.native = NativeState::Lisp;
         self.state = SafepointState::Running;
         self.poll_safepoint();
@@ -224,10 +231,17 @@ impl Thread {
                 (*heap).collect_with_thread(self, full);
             }
         }
+        self.write_back_frame_snapshot();
     }
     /// Request delivery of an interrupt at the next safepoint.
     pub const fn request_interrupt(&mut self) {
         self.interrupt = true;
+        self.state = SafepointState::PollRequested;
+        self.safepoint_request = 1;
+    }
+
+    /// Request a local poll without starting a stop-the-world epoch.
+    pub const fn request_poll(&mut self) {
         self.state = SafepointState::PollRequested;
         self.safepoint_request = 1;
     }
@@ -237,10 +251,50 @@ impl Thread {
         self.interrupt = false;
         pending
     }
+
+    /// Clear a delivered cooperative safepoint request.
+    pub const fn clear_safepoint_request(&mut self) {
+        self.safepoint_request = 0;
+    }
     /// Install a precise native frame and register snapshot for collection.
     pub fn set_frame_snapshot(&mut self, frames: Vec<Word>, registers: Vec<Word>) {
         self.frame_chain = frames;
         self.frame_registers = registers;
+        self.frame_address = None;
+    }
+
+    /// Capture the current generated frame header for collection.
+    pub fn set_native_frame(&mut self, frame_fp: usize, return_pc: usize) {
+        let words = frame_fp as *const Word;
+        // SAFETY: the generated frame owns four published header words at the supplied frame pointer.
+        self.frame_chain = unsafe { std::slice::from_raw_parts(words, 4).to_vec() };
+        self.stack_bounds = None;
+        self.callee_saved = [0; 16];
+        self.frame_chain[1] = Word::from_bits(return_pc as u64);
+        self.frame_address = Some(frame_fp);
+    }
+
+    /// Return the current value of a captured real frame word.
+    #[must_use]
+    pub fn frame_word(&self, index: usize) -> Option<Word> {
+        let address = self.frame_address?;
+        // SAFETY: the captured generated frame remains active until its runtime callback returns.
+        Some(unsafe { ((address as *const Word).add(index)).read() })
+    }
+
+    /// Write collection's forwarded snapshot values back to the generated frame.
+    pub fn write_back_frame_snapshot(&mut self) {
+        let Some(address) = self.frame_address else {
+            return;
+        };
+        // SAFETY: the captured generated frame remains active during collection and write-back.
+        unsafe {
+            for (index, word) in self.frame_chain.iter().copied().enumerate() {
+                if index != 1 {
+                    ((address as *mut Word).add(index)).write(word);
+                }
+            }
+        }
     }
 }
 

@@ -109,6 +109,32 @@ fn frame_chain_forwards_function_and_live_slots() {
     assert_eq!(frames[10].as_fixnum(), Some(3));
 }
 
+#[test]
+fn frame_chain_keeps_return_pc_low_bits_for_safepoint_lookup() {
+    let mut bytes = vec![0; 16];
+    bytes[0..4].copy_from_slice(&4u32.to_le_bytes());
+    bytes[4..6].copy_from_slice(&4u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&3u16.to_le_bytes());
+    bytes[8..10].copy_from_slice(&3u16.to_le_bytes());
+    bytes.push(0b0000_0100);
+    let Ok(map) = SafepointMap::decode(&bytes, 1) else {
+        return;
+    };
+    let mut frame = [
+        Word::from_bits(0),
+        Word::from_bits(0x1004),
+        Word::fixnum(1),
+        Word::NIL,
+    ];
+    assert_eq!(
+        scan_frame_chain(&mut frame, 0, 0x1000, &map, |word| {
+            Word::fixnum(word.as_fixnum().unwrap_or(0) + 1)
+        }),
+        Some(1)
+    );
+    assert_eq!(frame[2], Word::fixnum(2));
+}
+
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 #[test]
 fn published_machine_code_returns_42() {

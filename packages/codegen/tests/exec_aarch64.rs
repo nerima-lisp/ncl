@@ -12,32 +12,55 @@ use ncl_codegen::{
 };
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Param, Prim, Terminator, Ty};
 use ncl_sys::{
-    Thread, alloc_code, enter_native, invoke_entry, leave_native, publish_code, request_safepoint,
-    set_tlab, thread_layout, tlab_bump, write_code,
+    Thread, Word, alloc_code, enter_native, invoke_entry, invoke_entry_with_function, leave_native,
+    publish_code, request_safepoint, set_tlab, thread_layout, tlab_bump, write_code,
 };
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
-
 static ALLOC_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static SAFEPOINT_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
+static COLLECT_IN_SAFEPOINT: AtomicBool = AtomicBool::new(false);
+static FRAME_WORD_BEFORE: AtomicU64 = AtomicU64::new(0);
+static FRAME_WORD_AFTER: AtomicU64 = AtomicU64::new(0);
 static SLOW_STORAGE: [u64; 8] = [0; 8];
 
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
     left + right
 }
-
 extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
     ALLOC_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
     assert_eq!(words, 2);
     SLOW_STORAGE.as_ptr() as u64
 }
-
-extern "C" fn safepoint_slow(_ctx: *mut Thread) {
+extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize) {
     SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
+    if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) {
+        ctx.set_native_frame(frame_fp, return_pc);
+        FRAME_WORD_BEFORE.store(
+            ctx.frame_word(2)
+                .expect("captured frame function object")
+                .bits(),
+            Ordering::SeqCst,
+        );
+        ctx.clear_safepoint_request();
+        ctx.enter_native();
+        ncl_sys::collect(ctx, true);
+        ctx.leave_native();
+        ctx.clear_safepoint_request();
+        FRAME_WORD_AFTER.store(
+            ctx.frame_word(2)
+                .expect("written-back frame function object")
+                .bits(),
+            Ordering::SeqCst,
+        );
+        println!(
+            "frame word 2: before=0x{:x}, after=0x{:x}",
+            FRAME_WORD_BEFORE.load(Ordering::SeqCst),
+            FRAME_WORD_AFTER.load(Ordering::SeqCst)
+        );
+    }
 }
-
 struct BuiltinAbi;
-
 impl RuntimeAbi for BuiltinAbi {
     fn encode_fixnum(&self, value: i64) -> i64 {
         value << 3
@@ -74,7 +97,6 @@ impl RuntimeAbi for BuiltinAbi {
         }
     }
 }
-
 #[test]
 fn executes_fixnum_add_of_two_arguments() {
     let mut builder = FunctionBuilder::new(
@@ -470,7 +492,6 @@ fn executes_recursive_fib_twenty_five_with_four_word_frames() {
     samples.sort_unstable();
     println!("fib(25) median: {} ns", samples[samples.len() / 2]);
 }
-
 #[path = "exec_aarch64/cons.rs"]
 mod cons;
 

@@ -237,12 +237,26 @@ fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u3
             rn: RegOrSp::Reg(Reg(21)),
         },
     )?;
+    emit(
+        assembler,
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(1)),
+            rn: RegOrSp::Reg(Reg(29)),
+        },
+    )?;
     for instruction in ncl_asm_aarch64::mov_imm64(
         Reg(17),
         runtime_address(abi, RuntimeFunction::SafepointSlow)?,
     ) {
         emit(assembler, instruction)?;
     }
+    emit(
+        assembler,
+        Inst::Adr {
+            rd: Reg(2),
+            label: done,
+        },
+    )?;
     emit(assembler, Inst::Blr { rn: Reg(17) })?;
     let call_pc = u32::try_from(assembler.offset()).map_err(|_| CodegenError::FrameOverflow)?;
     assembler

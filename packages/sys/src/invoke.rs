@@ -13,6 +13,20 @@ pub fn invoke_entry(
     arguments: [u64; 4],
     rest: u64,
 ) -> (u64, u64) {
+    invoke_entry_with_function(code, entry_offset, ctx, 0, argc, arguments, rest)
+}
+
+/// Invoke published native code with an explicit callee function object in `x16`.
+#[cfg(target_arch = "aarch64")]
+pub fn invoke_entry_with_function(
+    code: &CodePtr,
+    entry_offset: usize,
+    ctx: *mut Thread,
+    function_object: u64,
+    argc: u64,
+    arguments: [u64; 4],
+    rest: u64,
+) -> (u64, u64) {
     let entry = code.address().saturating_add(entry_offset);
     let mut value = 0_u64;
     let mut count = 0_u64;
@@ -21,10 +35,10 @@ pub fn invoke_entry(
     unsafe {
         core::arch::asm!(
             "str x21, [sp, #-16]!",
-            "mov x21, x16",
             "blr x17",
             "ldr x21, [sp], #16",
-            in("x16") ctx,
+            in("x16") function_object,
+            in("x21") ctx,
             in("x17") entry,
             in("x0") argc,
             in("x1") arguments[0],
@@ -46,6 +60,19 @@ pub fn invoke_entry(
     _code: &CodePtr,
     _entry_offset: usize,
     _ctx: *mut Thread,
+    _argc: u64,
+    _arguments: [u64; 4],
+    _rest: u64,
+) -> (u64, u64) {
+    (0, 0)
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+pub fn invoke_entry_with_function(
+    _code: &CodePtr,
+    _entry_offset: usize,
+    _ctx: *mut Thread,
+    _function_object: u64,
     _argc: u64,
     _arguments: [u64; 4],
     _rest: u64,

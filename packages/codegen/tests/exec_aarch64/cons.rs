@@ -1,5 +1,53 @@
 use super::*;
 
+fn sys_safepoint(map: &ncl_codegen::SafepointMap) -> ncl_sys::Safepoint {
+    ncl_sys::Safepoint {
+        pc_offset: map.pc_offset,
+        frame_words: map.frame_words,
+        slot_words: map.slot_words,
+        word_slot_count: map.word_slot_count,
+        register_mask: map.register_mask,
+        map_flags: map.map_flags,
+        slot_bitmap: map.bitmap.clone(),
+        register_ids: map.registers.clone(),
+    }
+}
+
+fn register_real_frame_code(
+    thread: &Thread,
+    code: &ncl_sys::CodePtr,
+    compiled: &ncl_codegen::CompiledFunction,
+) {
+    let map = compiled.safepoint_maps.first().expect("safepoint map");
+    let sys_map = sys_safepoint(map);
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&sys_map.pc_offset.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.frame_words.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.slot_words.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.word_slot_count.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.register_mask.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.map_flags.to_le_bytes());
+    bytes.extend_from_slice(&sys_map.slot_bitmap);
+    for register in &sys_map.register_ids {
+        bytes.extend_from_slice(&register.to_le_bytes());
+    }
+    ncl_sys::register_code(
+        thread,
+        code,
+        ncl_sys::CodeObjectMetadata {
+            entry_offset: compiled.entry_offset as usize,
+            size: compiled.code.len(),
+            frame_words: map.frame_words,
+            function_name: "real-function-object-frame".into(),
+            source_locations: Vec::new(),
+            constant_slots: Vec::new(),
+            safepoint_map: ncl_sys::SafepointMap::decode(&bytes, 1).expect("decode safepoint map"),
+            debug_table: Vec::new(),
+        },
+    )
+    .expect("register code metadata");
+}
+
 fn build_cons_function() -> ncl_ir::Function {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(6),
@@ -225,5 +273,121 @@ fn executes_safepoint_poll_without_and_with_request() {
         Ok(ncl_asm_aarch64::Inst::Blr {
             rn: ncl_asm_aarch64::Reg(17)
         })
+    );
+}
+
+#[test]
+fn forwards_function_object_from_generated_frame_map_simulation() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(9),
+        "function-object-frame",
+        Vec::new(),
+        vec![],
+    );
+    builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("return");
+    let compiled = compile_function_aarch64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let map = compiled.safepoint_maps.first().expect("safepoint map");
+    let sys_map = ncl_sys::Safepoint {
+        pc_offset: map.pc_offset,
+        frame_words: map.frame_words,
+        slot_words: map.slot_words,
+        word_slot_count: map.word_slot_count,
+        register_mask: map.register_mask,
+        map_flags: map.map_flags,
+        slot_bitmap: map.bitmap.clone(),
+        register_ids: map.registers.clone(),
+    };
+    let old_function = ncl_sys::Word::from_bits(0x1000);
+    let moved_function = ncl_sys::Word::from_bits(0x2000);
+    let mut frame = vec![ncl_sys::Word::NIL; usize::from(map.frame_words)];
+    frame[2] = old_function;
+    let updated = ncl_sys::scan_frame(&mut frame, 0, &sys_map, |word| {
+        assert_eq!(word, old_function);
+        moved_function
+    });
+    assert_eq!(updated, Some(1));
+    assert_eq!(frame[2], moved_function);
+}
+
+#[test]
+fn forwards_function_object_from_real_frame_after_safepoint_collection() {
+    let runtime = ncl_object::Runtime::new().expect("runtime");
+    let mut object_context = ncl_object::ThreadContext::new();
+    object_context
+        .register(&runtime)
+        .expect("register object context");
+    let code_object = ncl_object::make_code_object(
+        &mut object_context,
+        &runtime,
+        0,
+        0,
+        ncl_sys::Word::NIL,
+        ncl_sys::Word::NIL,
+        ncl_sys::Word::NIL,
+    )
+    .expect("code object");
+    let mut function = Box::new(
+        ncl_object::make_simple_fun(
+            &mut object_context,
+            &runtime,
+            0,
+            ncl_sys::Word::NIL,
+            ncl_sys::Word::NIL,
+            code_object,
+        )
+        .expect("function object")
+        .into(),
+    );
+    ncl_sys::enter_native(object_context.thread_mut());
+    let mut thread = Thread::new();
+    ncl_sys::register_thread_with_thread(object_context.thread_mut(), &mut thread)
+        .expect("register generated thread");
+    let _root = ncl_sys::push_root(&mut thread, &mut function);
+
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(10),
+        "real-function-object-frame",
+        Vec::new(),
+        vec![],
+    );
+    builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("return");
+    let compiled = compile_function_aarch64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let mut code = alloc_code(compiled.code.len()).expect("code allocation");
+    write_code(&mut code, 0, &compiled.code).expect("code write");
+    publish_code(&mut code).expect("code publication");
+    register_real_frame_code(&thread, &code, &compiled);
+
+    ncl_sys::unregister_thread(object_context.thread_mut());
+    let slow_before = SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst);
+    COLLECT_IN_SAFEPOINT.store(true, Ordering::SeqCst);
+    thread.request_poll();
+    let old = function.bits();
+    let result = invoke_entry_with_function(
+        &code,
+        compiled.entry_offset as usize,
+        std::ptr::from_mut(&mut thread),
+        old,
+        0,
+        [0; 4],
+        0,
+    );
+    COLLECT_IN_SAFEPOINT.store(false, Ordering::SeqCst);
+    ncl_sys::register_thread_with_thread(&thread, object_context.thread_mut())
+        .expect("re-register object context");
+    assert_eq!(result, (0, 0));
+    assert!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst) > slow_before);
+    let after = function.bits();
+    assert_ne!(old, after);
+    assert_eq!(FRAME_WORD_BEFORE.load(Ordering::SeqCst), old);
+    assert_eq!(FRAME_WORD_AFTER.load(Ordering::SeqCst), after);
+    assert_eq!(
+        ncl_object::function_name(&object_context, (*function).into()),
+        Ok(Word::NIL)
     );
 }

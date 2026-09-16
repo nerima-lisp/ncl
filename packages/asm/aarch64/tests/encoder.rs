@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![allow(clippy::unwrap_used)]
 
 use ncl_asm_aarch64::{Assembler, Inst, Label, Reg, RegOrSp, Shift, decode, encode, mov_imm64};
 
@@ -200,4 +201,76 @@ fn branch_kinds_are_retained() {
     if let Ok(blob) = blob {
         assert_eq!(blob.fixups.len(), 2);
     }
+}
+
+#[test]
+fn pc_relative_fixups_use_signed_aarch64_layout() {
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.emit(&Inst::Adr { rd: x(2), label }).unwrap();
+    assembler.emit(&Inst::Nop).unwrap();
+    assembler.bind(label).unwrap();
+    assert_eq!(
+        assembler.finish().unwrap().bytes[..4],
+        [0x42, 0x00, 0x00, 0x10]
+    );
+
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.bind(label).unwrap();
+    assembler.emit(&Inst::Nop).unwrap();
+    assembler.emit(&Inst::Adr { rd: x(2), label }).unwrap();
+    assert_eq!(
+        assembler.finish().unwrap().bytes[4..8],
+        [0xe2, 0xff, 0xff, 0x10]
+    );
+
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.bind(label).unwrap();
+    assembler.emit(&Inst::Nop).unwrap();
+    assembler.emit(&Inst::B { label }).unwrap();
+    assert_eq!(
+        assembler.finish().unwrap().bytes[4..8],
+        [0xff, 0xff, 0xff, 0x17]
+    );
+
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.emit(&Inst::Adrp { rd: x(2), label }).unwrap();
+    for _ in 0..1024 {
+        assembler.emit(&Inst::Nop).unwrap();
+    }
+    assembler.bind(label).unwrap();
+    assert_eq!(
+        assembler.finish().unwrap().bytes[..4],
+        [0x02, 0x00, 0x00, 0xb0]
+    );
+
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.bind(label).unwrap();
+    for _ in 0..1024 {
+        assembler.emit(&Inst::Nop).unwrap();
+    }
+    assembler.emit(&Inst::Adrp { rd: x(2), label }).unwrap();
+    assert_eq!(
+        assembler.finish().unwrap().bytes[4096..4100],
+        [0xe2, 0xff, 0xff, 0xf0]
+    );
+}
+
+#[test]
+fn pc_relative_adr_rejects_out_of_range_target() {
+    let mut assembler = Assembler::new();
+    let label = assembler.new_label();
+    assembler.emit(&Inst::Adr { rd: x(2), label }).unwrap();
+    for _ in 0..262_144 {
+        assembler.emit(&Inst::Nop).unwrap();
+    }
+    assembler.bind(label).unwrap();
+    assert!(matches!(
+        assembler.finish(),
+        Err(ncl_asm_aarch64::EncodeError::RelocationOutOfRange { .. })
+    ));
 }

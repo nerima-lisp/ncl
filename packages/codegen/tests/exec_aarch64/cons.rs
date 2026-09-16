@@ -227,3 +227,39 @@ fn executes_safepoint_poll_without_and_with_request() {
         })
     );
 }
+
+#[test]
+fn forwards_function_object_from_generated_frame_map() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(9),
+        "function-object-frame",
+        Vec::new(),
+        vec![],
+    );
+    builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
+    builder
+        .terminate(Terminator::Return { values: Vec::new() })
+        .expect("return");
+    let compiled = compile_function_aarch64(&builder.finish(), &BuiltinAbi).expect("lowering");
+    let map = compiled.safepoint_maps.first().expect("safepoint map");
+    let sys_map = ncl_sys::Safepoint {
+        pc_offset: map.pc_offset,
+        frame_words: map.frame_words,
+        slot_words: map.slot_words,
+        word_slot_count: map.word_slot_count,
+        register_mask: map.register_mask,
+        map_flags: map.map_flags,
+        slot_bitmap: map.bitmap.clone(),
+        register_ids: map.registers.clone(),
+    };
+    let old_function = ncl_sys::Word::from_bits(0x1000);
+    let moved_function = ncl_sys::Word::from_bits(0x2000);
+    let mut frame = vec![ncl_sys::Word::NIL; usize::from(map.frame_words)];
+    frame[2] = old_function;
+    let updated = ncl_sys::scan_frame(&mut frame, 0, &sys_map, |word| {
+        assert_eq!(word, old_function);
+        moved_function
+    });
+    assert_eq!(updated, Some(1));
+    assert_eq!(frame[2], moved_function);
+}

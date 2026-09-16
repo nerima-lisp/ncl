@@ -239,3 +239,11 @@ The decoder reports unknown bytes instead of guessing an instruction.
 The backtrace printer never follows an unvalidated frame pointer.
 
 The conformance runner records target architecture with every backend fixture.
+
+### Codegen runtime ABI
+
+`ncl-codegen::RuntimeAbi` is the boundary between lowering and the runtime lanes. The code generator requests byte offsets for the TLAB bump and limit, safepoint request bits, pending condition state, multiple-value count and area, and the current handler, cleanup, and catch records. It requests addresses for the allocation slow path, safepoint slow path, non-local-exit unwinder, builtin entry, and constant table. The code generator does not assume a `ThreadContext` Rust layout or embed a runtime address.
+
+`ncl-object` supplies the typed `ThreadContext` view and builtin signatures. `ncl-sys` supplies code-space allocation and publication, safepoint delivery, heap allocation, and the eventual field layout used to implement these ABI requests. Until those fields are exposed as stable offsets, an embedding runtime must return `None` and codegen reports the operation as unavailable.
+
+The AArch64 target uses x21 for context, x0 for entry `argc` and return value, x1 for multiple-value count, x1..x4 for the first four logical arguments, x5 for `rest`, x16/x17 as scratch, and x29/x30 for frame and link. Its fixed-template backend emits four-byte aligned code and retains the same safepoint map wire format and frame header as x86-64.

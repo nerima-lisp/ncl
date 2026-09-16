@@ -15,6 +15,17 @@ name = "ncl-asm-x86-64"
 version = "0.1.0"
 
 [[package]]
+name = "ncl-codegen"
+version = "0.1.0"
+dependencies = [
+ "ncl-asm-aarch64",
+ "ncl-asm-x86-64",
+ "ncl-ir",
+ "ncl-object",
+ "ncl-sys",
+]
+
+[[package]]
 name = "ncl-ir"
 version = "0.1.0"
 
@@ -24,6 +35,10 @@ version = "0.1.0"
 dependencies = [
  "ncl-sys",
 ]
+
+[[package]]
+name = "ncl-objfile"
+version = "0.1.0"
 
 [[package]]
 name = "ncl-sys"

@@ -1,4 +1,8 @@
-use crate::{EncodeError, Inst, Reg, RegOrSp, Shift, VReg};
+use crate::{EncodeError, Inst, Reg, RegOrSp, VReg};
+use encoding_helpers::{addsub, reg3, wide};
+
+#[path = "encoding_helpers.rs"]
+mod encoding_helpers;
 fn r(r: Reg) -> u32 {
     u32::from(r.0)
 }
@@ -6,13 +10,6 @@ fn rs(value: RegOrSp) -> u32 {
     match value {
         RegOrSp::Reg(x) => r(x),
         RegOrSp::Sp => 31,
-    }
-}
-fn shift(s: Shift) -> (u32, u32) {
-    match s {
-        Shift::Lsl(n) => (0, u32::from(n)),
-        Shift::Lsr(n) => (1, u32::from(n)),
-        Shift::Asr(n) => (2, u32::from(n)),
     }
 }
 fn imm(value: i64, bits: u8) -> Result<u32, EncodeError> {
@@ -88,7 +85,8 @@ fn mem(
                 (_, true) => 0xF840_0000,
                 (_, false) => 0xF800_0000,
             };
-            let Ok(encoded) = u32::try_from(o) else {
+            let Ok(encoded) = i32::try_from(o).map(|value| u32::from_ne_bytes(value.to_ne_bytes()))
+            else {
                 return Err(EncodeError::ImmediateOutOfRange { value: o, bits: 9 });
             };
             Ok(base_opcode
@@ -143,9 +141,18 @@ fn pair(m: crate::MemOperand, rt: Reg, rt2: Reg, load: bool) -> Result<u32, Enco
             offset,
             scale,
         } if scale == 8 && offset % 8 == 0 => (rs(base), i64::from(offset / 8), 0),
-        crate::MemOperand::Unscaled { base, offset } => (rs(base), i64::from(offset), 0),
-        crate::MemOperand::PreIndex { base, offset } => (rs(base), i64::from(offset), 3),
-        crate::MemOperand::PostIndex { base, offset } => (rs(base), i64::from(offset), 1),
+        crate::MemOperand::Unscaled { base, offset }
+        | crate::MemOperand::PreIndex { base, offset }
+        | crate::MemOperand::PostIndex { base, offset }
+            if offset % 8 == 0 =>
+        {
+            let mode = match m {
+                crate::MemOperand::PreIndex { .. } => 3,
+                crate::MemOperand::PostIndex { .. } => 1,
+                _ => 0,
+            };
+            (rs(base), i64::from(offset / 8), mode)
+        }
         _ => return Err(EncodeError::ImmediateOutOfRange { value: 0, bits: 7 }),
     };
     if !(-64..=63).contains(&offset) {
@@ -161,7 +168,7 @@ fn pair(m: crate::MemOperand, rt: Reg, rt2: Reg, load: bool) -> Result<u32, Enco
         });
     };
     let encoded = u32::from_ne_bytes(offset.to_ne_bytes());
-    Ok((if load { 0xA940_0000 } else { 0xA900_0000 })
+    Ok((if load { 0xA840_0000 } else { 0xA800_0000 })
         | (encoded & 0x7f) << 15
         | u32::from(rt2.0) << 10
         | base << 5
@@ -290,6 +297,9 @@ pub fn encode(i: &Inst, _at: usize) -> Result<u32, EncodeError> {
         Inst::MovZ { rd, imm, shift: s } => wide(0xD280_0000, *rd, *imm, *s, 0),
         Inst::MovK { rd, imm, shift: s } => wide(0xF280_0000, *rd, *imm, *s, 1),
         Inst::MovN { rd, imm, shift: s } => wide(0x9280_0000, *rd, *imm, *s, 0),
+        Inst::Mov { rd, rn } if matches!(rd, RegOrSp::Sp) || matches!(rn, RegOrSp::Sp) => {
+            addsub(*rd, *rn, 0, false, false)
+        }
         Inst::Mov { rd, rn } => Ok(0xAA00_03E0 | rs(*rn) << 16 | rs(*rd)),
         Inst::AddImm {
             rd,
@@ -371,9 +381,9 @@ pub fn encode(i: &Inst, _at: usize) -> Result<u32, EncodeError> {
         Inst::Csel { rd, rn, rm, cond } => {
             Ok(0x9A80_0000 | r(*rm) << 16 | cond.bits() << 12 | r(*rn) << 5 | r(*rd))
         }
-        Inst::Cset { rd, cond } => Ok(0x9A9F_07E0 | (!cond.bits() & 0xf) << 12 | r(*rd)),
+        Inst::Cset { rd, cond } => Ok(0x9A9F_07E0 | (cond.bits() ^ 1) << 12 | r(*rd)),
         Inst::Cinc { rd, rn, cond } => {
-            Ok(0x9A80_0400 | r(*rn) << 5 | (!cond.bits() & 0xf) << 12 | r(*rd))
+            Ok(0x9A80_0400 | r(*rn) << 5 | (cond.bits() ^ 1) << 12 | r(*rd))
         }
         Inst::Mul { rd, rn, rm } => Ok(0x9B00_7C00 | r(*rm) << 16 | r(*rn) << 5 | r(*rd)),
         Inst::Sdiv { rd, rn, rm } => Ok(0x9AC0_0C00 | r(*rm) << 16 | r(*rn) << 5 | r(*rd)),
@@ -456,42 +466,4 @@ pub fn encode(i: &Inst, _at: usize) -> Result<u32, EncodeError> {
         Inst::LdrD { rt, mem: m } => float_mem(*m, *rt, true),
         Inst::StrD { rt, mem: m } => float_mem(*m, *rt, false),
     }
-}
-fn wide(base: u32, rd: Reg, immv: u16, s: u8, _k: u8) -> Result<u32, EncodeError> {
-    if !s.is_multiple_of(16) || s > 48 {
-        return Err(EncodeError::ImmediateOutOfRange {
-            value: i64::from(s),
-            bits: 6,
-        });
-    }
-    Ok(base | u32::from(immv) << 5 | u32::from(s / 16) << 21 | rs(rd.into()))
-}
-fn addsub(rd: RegOrSp, rn: RegOrSp, im: u16, s: bool, sub: bool) -> Result<u32, EncodeError> {
-    if im > 4095 {
-        return Err(EncodeError::ImmediateOutOfRange {
-            value: i64::from(im),
-            bits: 12,
-        });
-    }
-    Ok((if sub { 0xD100_0000 } else { 0x9100_0000 })
-        | if s { 1 << 22 } else { 0 }
-        | u32::from(im) << 10
-        | rs(rn) << 5
-        | rs(rd))
-}
-fn reg3<R: Into<RegOrSp>>(
-    base: u32,
-    rd: R,
-    rn: RegOrSp,
-    rm: Reg,
-    s: Shift,
-) -> Result<u32, EncodeError> {
-    let (k, n) = shift(s);
-    if n > 63 {
-        return Err(EncodeError::ImmediateOutOfRange {
-            value: i64::from(n),
-            bits: 6,
-        });
-    }
-    Ok(base | r(rm) << 16 | k << 22 | n << 10 | rs(rn) << 5 | rs(rd.into()))
 }

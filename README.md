@@ -22,6 +22,8 @@ legacy tests for later migration.
   `Heap::release_code(&mut thread, &mut owned_code)` は STW 下で全登録スレッドの
   frame chain を検査し、lookup table から除去してから mapping を解放します。
   live PC が残る間は `CodeError::CodeInUse` を返し、`owned_code` を保持します。
+  registry に登録されていない場合も `CodeError::NotRegistered` を返し、再試行できるよう
+  `owned_code` を保持します。frame chain は各フレームの `previous` リンクを辿って走査します。
 - `Heap::collect` は登録された code registry と frame snapshot を使い、return PC
   ごとの safepoint map、function object、live slots、callee-saved registers を更新します。
 

@@ -19,6 +19,12 @@ tagged words, heap, precise roots, safepoints, and platform surface.
   queued once and run by `run_pending_finalizers` after collection releases its heap lock.
 - Native frames use a four-word header and safepoint maps use the fixed
   16-byte little-endian header followed by bitmap and `u16` register IDs.
+- Fields of `Thread` read by generated code are dedicated eight-byte words at
+  eight-byte-aligned offsets. Generated code must not read Rust enum or `bool`
+  representations directly. The `safepoint_request` word is zero when no poll
+  is requested and nonzero when a poll is requested. `request_safepoint` sets
+  it while publishing the Rust safepoint state, and `poll_safepoint` clears it
+  when the request is consumed.
 
 ## Platform scope
 

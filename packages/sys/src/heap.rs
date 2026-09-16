@@ -145,26 +145,27 @@ impl Heap {
         }
         let code = owned.as_ref().ok_or(CodeError::NotRegistered)?;
         self.begin_collection(thread);
+        let registered = {
+            let state = self.lock_state();
+            state.code_registry.find(code.address()).is_some()
+        };
+        if !registered {
+            self.end_collection();
+            return Err(CodeError::NotRegistered);
+        }
         let live = {
             let state = self.lock_state();
-            if state.code_registry.find(code.address()).is_none() {
-                false
-            } else {
-                state.threads.iter().copied().any(|candidate| {
-                    // SAFETY: collection has stopped registered mutators.
-                    unsafe {
-                        (*candidate)
-                            .frame_chain
-                            .iter()
-                            .skip(1)
-                            .step_by(5)
-                            .any(|return_pc| {
-                                let pc = return_pc.address();
-                                pc >= code.address() && pc < code.address() + code.len()
-                            })
-                    }
-                })
-            }
+            state.threads.iter().copied().any(|candidate| {
+                // SAFETY: collection has stopped registered mutators.
+                unsafe {
+                    crate::walk_frame_headers(&(*candidate).frame_chain, 0, usize::MAX)
+                        .iter()
+                        .any(|header| {
+                            let pc = header.return_pc;
+                            pc >= code.address() && pc < code.address() + code.len()
+                        })
+                }
+            })
         };
         if live {
             self.end_collection();
@@ -174,7 +175,7 @@ impl Heap {
         let removed = self.lock_state().code_registry.unregister(&code);
         self.end_collection();
         if removed.is_none() {
-            drop(code);
+            *owned = Some(code);
             return Err(CodeError::NotRegistered);
         }
         drop(code);
@@ -344,7 +345,7 @@ impl Heap {
     pub(crate) fn widetag(&self, object: Word) -> Option<u8> {
         let state = self.lock_state();
         let index = Self::find(&state, object)?;
-        Some(u8::try_from(state.objects[index].words[0] & WIDETAG_MASK).unwrap_or(0))
+        Some(Self::object_widetag(&state.objects[index]))
     }
     fn write_words(&self, object: Word, values: &[(usize, Word)]) {
         let mut state = self.lock_state();
@@ -400,6 +401,9 @@ impl Heap {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+    fn object_widetag(object: &Object) -> u8 {
+        u8::try_from(object.words[0] & WIDETAG_MASK).unwrap_or(0)
     }
     fn relocated_address(
         state: &State,

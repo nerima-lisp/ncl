@@ -29,8 +29,9 @@ commit `f10b581a`, the median on macOS arm64 was `687875 ns`.
 
 The stable ABI and frame/map contracts are specified in [Calling convention](../../docs/src/design/calling-convention.md) and [Native backend](../../docs/src/design/native-backend.md). The notes below are implementation observations for the Phase 1a fixture.
 
-- The third native frame-header word currently stores the function entry code
-  address. The contract names this word as a function object.
+- When the runtime supplies `RuntimeAbi::function_object_word`, the third
+  native frame-header word stores that function object Word. The entry code
+  address remains in `x17`, so the two values are available independently.
 - `alloc_slow` receives `(ctx, words)` and returns an untagged address. The
   fast path advances `Thread`'s TLAB bump by `words * 8` and returns the old
   bump address.
@@ -38,14 +39,6 @@ The stable ABI and frame/map contracts are specified in [Calling convention](../
   shared `value << 3` representation.
 - Safepoint maps for allocation and polling point immediately after the slow
   path `blr`. The decoder tests inspect those emitted instructions.
-
-## Requested sys/object API
-
-The object layer should expose a safe operation that resolves a function
-object to its native entry address, for example
-`function_entry_address(function_object) -> Option<usize>`. Codegen can then
-put the resolved entry address in the frame header while retaining the object
-for GC metadata and debugging.
 
 ## Module layout
 

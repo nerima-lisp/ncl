@@ -114,6 +114,10 @@ pub trait RuntimeAbi {
     fn constant_word(&self, _name: &str) -> Option<i64> {
         None
     }
+    /// Returns the current function object Word for a native frame.
+    fn function_object_word(&self) -> Option<u64> {
+        None
+    }
 }
 
 /// Default x86-64 ABI policy used by tests and embedders.

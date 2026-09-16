@@ -71,16 +71,32 @@ pub fn compile_function_aarch64(
             rn: RegOrSp::Sp,
         },
     )?;
-    emit(
-        &mut assembler,
-        Inst::Str {
-            rt: Reg(17),
-            mem: MemOperand::Unscaled {
-                base: RegOrSp::Reg(Reg(29)),
-                offset: 16,
+    if let Some(function_object) = abi.function_object_word() {
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), function_object) {
+            emit(&mut assembler, instruction)?;
+        }
+        emit(
+            &mut assembler,
+            Inst::Str {
+                rt: Reg(16),
+                mem: MemOperand::Unscaled {
+                    base: RegOrSp::Reg(Reg(29)),
+                    offset: 16,
+                },
             },
-        },
-    )?;
+        )?;
+    } else {
+        emit(
+            &mut assembler,
+            Inst::Str {
+                rt: Reg(17),
+                mem: MemOperand::Unscaled {
+                    base: RegOrSp::Reg(Reg(29)),
+                    offset: 16,
+                },
+            },
+        )?;
+    }
     emit(
         &mut assembler,
         Inst::MovZ {

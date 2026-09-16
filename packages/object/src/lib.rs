@@ -182,6 +182,9 @@ impl Runtime {
         Ok(())
     }
     /// Register a low-level object layout with this runtime's heap.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::Layout`] if the widetag is already registered.
     pub fn register_layout(
         &self,
         widetag: u8,
@@ -366,7 +369,7 @@ impl ThreadContext {
         ncl_sys::weak_value(&self.thread, value)
     }
 
-    fn require_registered(&self) -> Result<(), ObjectError> {
+    const fn require_registered(&self) -> Result<(), ObjectError> {
         if !self.registered {
             return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));
         }

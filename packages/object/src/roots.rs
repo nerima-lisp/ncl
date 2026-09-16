@@ -12,11 +12,17 @@ pub fn pop_root(ctx: &mut ThreadContext, token: RootToken) -> bool {
 }
 
 /// Push a precise root and return its token.
+///
+/// # Errors
+/// This compatibility wrapper currently always returns a token.
 pub fn try_push_root(ctx: &mut ThreadContext, value: &mut Word) -> Result<RootToken, ObjectError> {
     Ok(push_root(ctx, value))
 }
 
 /// Pop a precise root and return whether the token was valid.
+///
+/// # Errors
+/// This compatibility wrapper currently always returns the pop result.
 pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, ObjectError> {
     Ok(pop_root(ctx, token))
 }

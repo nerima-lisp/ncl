@@ -75,7 +75,7 @@ pub use structure::{
     StructureLayout, make_structure, structure_layout, structure_ref, structure_set,
 };
 pub use symbol_extensions::{
-    set_symbol_value, symbol_function, symbol_name, symbol_plist, symbol_value,
+    set_symbol_value, symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value,
 };
 /// Object-layer failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

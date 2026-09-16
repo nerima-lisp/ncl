@@ -67,3 +67,11 @@ pub fn symbol_plist(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectErr
 pub fn symbol_name(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::NAME)
 }
+
+/// Read a symbol's home package.
+///
+/// # Errors
+/// Returns a type or storage error when the word is not a symbol.
+pub fn symbol_package(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::PACKAGE)
+}

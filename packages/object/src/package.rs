@@ -77,6 +77,13 @@ impl Package {
     pub fn name(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
         get(ctx, self.0, widetag::PACKAGE, NAME)
     }
+    /// Return this package's shadowing symbol list.
+    ///
+    /// # Errors
+    /// Returns a layout error when the package object is malformed.
+    pub fn shadowing_symbols(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
+        get(ctx, self.0, widetag::PACKAGE, SHADOWING)
+    }
     /// Add a nickname to this package.
     ///
     /// # Errors

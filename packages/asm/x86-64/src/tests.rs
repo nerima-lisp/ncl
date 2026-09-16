@@ -43,13 +43,77 @@ fn labels_are_patched() {
     assert!(a.emit(&Inst::Jmp(l)).is_ok());
     assert!(a.emit(&Inst::Nop(1)).is_ok());
     a.bind(l);
-    match a.finish() {
-        Ok(blob) => {
-            assert_eq!(blob.bytes, &[0xe9, 1, 0, 0, 0, 0x90]);
-            assert_eq!(blob.fixups.first().map(|f| f.kind), Some(FixupKind::Rel32));
+    let blob = match a.finish() {
+        Ok(blob) => blob,
+        Err(error) => {
+            assert!(false, "bound forward label must finish: {error:?}");
+            return;
         }
-        Err(error) => assert!(matches!(error, EncodeError::UnboundLabel(_))),
-    }
+    };
+    assert_eq!(blob.bytes, &[0xe9, 1, 0, 0, 0, 0x90]);
+    assert_eq!(blob.fixups.first().map(|f| f.kind), Some(FixupKind::Rel32));
+}
+
+#[test]
+fn backward_branches_are_patched() {
+    let mut a = Assembler::new();
+    let jmp_target = a.new_label();
+    a.bind(jmp_target);
+    assert!(a.emit(&Inst::Jmp(jmp_target)).is_ok());
+    let jcc_target = a.new_label();
+    a.bind(jcc_target);
+    assert!(a.emit(&Inst::Jcc(Cond::Ne, jcc_target)).is_ok());
+    let blob = match a.finish() {
+        Ok(blob) => blob,
+        Err(error) => {
+            assert!(false, "bound backward labels must finish: {error:?}");
+            return;
+        }
+    };
+    assert_eq!(
+        blob.bytes,
+        &[
+            0xe9, 0xfb, 0xff, 0xff, 0xff, 0x0f, 0x85, 0xfa, 0xff, 0xff, 0xff
+        ]
+    );
+}
+
+#[test]
+fn rip_relative_memory_uses_modrm_rm_five() {
+    let mut a = Assembler::new();
+    assert!(a.emit(&Inst::Lea(Reg::Rax, Mem::rip(0))).is_ok());
+    assert!(a.emit(&Inst::MovRM(Reg::Rax, Mem::rip(0x10))).is_ok());
+    assert_eq!(
+        a.bytes(),
+        &[
+            0x48, 0x8d, 0x05, 0, 0, 0, 0, 0x48, 0x8b, 0x05, 0x10, 0, 0, 0
+        ]
+    );
+}
+
+#[test]
+fn unsupported_fixup_kind_is_rejected() {
+    let mut a = Assembler::new();
+    let l = a.new_label();
+    a.bind(l);
+    a.add_test_fixup(Fixup {
+        offset: 0,
+        kind: FixupKind::Abs64,
+        target: l,
+    });
+    assert_eq!(
+        a.finish(),
+        Err(EncodeError::UnsupportedFixup(FixupKind::Abs64))
+    );
+}
+
+#[test]
+fn rel32_out_of_range_is_rejected() {
+    let mut a = Assembler::new();
+    let l = a.new_label();
+    assert!(a.emit(&Inst::Jmp(l)).is_ok());
+    a.set_test_label_position(l, i32::MAX as usize + 6);
+    assert_eq!(a.finish(), Err(EncodeError::Rel32OutOfRange));
 }
 
 #[test]

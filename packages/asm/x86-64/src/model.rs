@@ -95,6 +95,7 @@ pub struct Mem {
     pub index: Option<Reg>,
     pub scale: Scale,
     pub disp: i32,
+    pub rip: bool,
 }
 impl Mem {
     pub const fn base(base: Reg, disp: i32) -> Self {
@@ -103,6 +104,7 @@ impl Mem {
             index: None,
             scale: Scale::One,
             disp,
+            rip: false,
         }
     }
     pub const fn indexed(base: Reg, index: Reg, scale: Scale, disp: i32) -> Self {
@@ -111,6 +113,7 @@ impl Mem {
             index: Some(index),
             scale,
             disp,
+            rip: false,
         }
     }
     pub const fn rip(disp: i32) -> Self {
@@ -119,6 +122,7 @@ impl Mem {
             index: None,
             scale: Scale::One,
             disp,
+            rip: true,
         }
     }
 }

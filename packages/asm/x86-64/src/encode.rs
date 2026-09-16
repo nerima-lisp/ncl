@@ -25,6 +25,16 @@ fn i64v(b: &mut Vec<u8>, v: i64) {
     b.extend(v.to_le_bytes())
 }
 pub(crate) fn mem(b: &mut Vec<u8>, r: u8, m: Mem) -> Result<(), EncodeError> {
+    if m.rip {
+        if m.base.is_some() || m.index.is_some() {
+            return Err(EncodeError::InvalidOperand(
+                "rip-relative memory has base or index",
+            ));
+        }
+        modrm(b, 0, r, 5);
+        i32v(b, m.disp);
+        return Ok(());
+    }
     let Some(base) = m.base else {
         if m.index.is_some() {
             return Err(EncodeError::InvalidOperand("index without base"));

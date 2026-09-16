@@ -23,6 +23,9 @@ mutator 固有状態を ThreadContext に閉じ込めることで共有 Runtime 
 - TLS slot は 1 語、binding entry は 2 語、blocking call は native transition とする。
 - thread の登録、離脱、poll、root publication を独自の global state に置かない。
 - mutex 保持中に GC request を待つ実装を追加しない。
+- 同一 OS thread 上に複数の登録 `Thread` がある場合、`collect` を呼ぶ側以外は native 状態でなければならない（STW は active mutator の poll を待つため、poll できない登録 Thread があると停止する）。
+- `Runtime` の registry 操作は呼び出し側の `ThreadContext` で確保する（内部 ctx は持たない）。
+- `ncl_sys::unregister_thread` は `Thread` の heap 参照から heap を引くため、`Runtime`（heap の所有者）は登録済みの全 `ThreadContext` より長生きしなければならない。`ThreadContext` の Drop は登録済みなら unregister する。
 
 ## Poll state machine
 

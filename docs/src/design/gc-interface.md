@@ -80,6 +80,6 @@ The collector increments the heap epoch for a collection and exposes that epoch 
 
 Object-layer allocation functions root managed arguments received by value and each element of a `&[Word]` before allocating, then re-read those values from the rooted slots after allocation. (`packages/object/src/roots.rs`, `with_root`, `with_roots`; `packages/object/src/lib.rs`.)
 
-`ThreadContext::set_gc_stress` and `Runtime::set_gc_stress` select a test-only mode that forces `collect(true)` on every allocation. The sys heap resolves stale addresses through forwarding, so a stale word cannot be detected, and the basis of correctness rests on static audit. (`packages/object/src/lib.rs`, `set_gc_stress`; `packages/object/src/registry_extensions.rs`, `Runtime::set_gc_stress`; `packages/object/tests/gc_stress.rs`.)
+`ThreadContext::set_gc_stress` selects a test-only mode that forces `collect(true)` on every allocation. The sys heap resolves stale addresses through forwarding, so a stale word cannot be detected, and the basis of correctness rests on static audit. (`packages/object/src/lib.rs`, `ThreadContext::set_gc_stress`; `packages/object/tests/gc_stress.rs`.)
 
 `Heap::set_strict_forwarding` selects an opt-in mode that rejects a mutator reading or writing an already-forwarded stale word; the collector path is unaffected. (`packages/sys/src/heap.rs`, `set_strict_forwarding`; `packages/object/src/lib.rs`, `Runtime::set_strict_forwarding`, `ThreadContext::set_strict_forwarding`.)

@@ -72,7 +72,12 @@ fn removing_middle_of_probe_cluster_preserves_later_lookup() {
     for (index, key) in keys.into_iter().enumerate() {
         assert!(
             table
-                .insert(&mut ctx, &runtime, key, Word::fixnum(index as i64))
+                .insert(
+                    &mut ctx,
+                    &runtime,
+                    key,
+                    Word::fixnum(i64::try_from(index).unwrap_or(i64::MAX)),
+                )
                 .is_ok()
         );
     }
@@ -159,7 +164,7 @@ fn repeated_remove_insert_keeps_all_live_entries_consistent() {
     }
 }
 
-fn key_word(value: i64) -> Word {
+const fn key_word(value: i64) -> Word {
     Word::fixnum(value)
 }
 
@@ -168,13 +173,13 @@ fn equalp_recurses_with_case_folding_through_cons_keys() {
     let (runtime, mut ctx) = setup();
     let table = HashTable::new(&mut ctx, &runtime, HashTest::Equalp, Weakness::None)
         .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"));
-    let left_car = string(&mut ctx, &runtime, "A");
-    let left_cdr = string(&mut ctx, &runtime, "b");
-    let left = make_cons(&mut ctx, &runtime, left_car, left_cdr)
+    let first = string(&mut ctx, &runtime, "A");
+    let second = string(&mut ctx, &runtime, "b");
+    let left = make_cons(&mut ctx, &runtime, first, second)
         .unwrap_or_else(|error| panic!("cons allocation failed: {error:?}"));
-    let right_car = string(&mut ctx, &runtime, "a");
-    let right_cdr = string(&mut ctx, &runtime, "B");
-    let right = make_cons(&mut ctx, &runtime, right_car, right_cdr)
+    let first = string(&mut ctx, &runtime, "a");
+    let second = string(&mut ctx, &runtime, "B");
+    let right = make_cons(&mut ctx, &runtime, first, second)
         .unwrap_or_else(|error| panic!("cons allocation failed: {error:?}"));
 
     assert!(table.insert(&mut ctx, &runtime, left, Word::TRUE).is_ok());

@@ -111,12 +111,16 @@ struct RootedTable {
 }
 impl Runtime {
     /// Create a runtime with the default heap policy.
-    #[must_use]
+    ///
+    /// # Errors
+    /// Returns an allocation, layout, or thread-registration error.
     pub fn new() -> Result<Self, ObjectError> {
         Self::with_config(HeapConfig::default())
     }
     /// Create a runtime with an explicit heap policy.
-    #[must_use]
+    ///
+    /// # Errors
+    /// Returns an allocation, layout, or thread-registration error.
     pub fn with_config(config: HeapConfig) -> Result<Self, ObjectError> {
         let runtime = Self {
             heap: Box::new(Heap::new(config)),
@@ -173,6 +177,9 @@ impl Runtime {
         &self.heap
     }
     /// Register a function object under a package and name.
+    ///
+    /// # Errors
+    /// Returns an allocation, layout, or storage error.
     pub fn define_function(
         &self,
         package: &str,
@@ -192,6 +199,7 @@ impl Runtime {
         let result = HashTable::from(table).insert(&mut context, self, key, function);
         let _ = pop_root(&mut context, function_token);
         let _ = pop_root(&mut context, key_token);
+        drop(context);
         result
     }
     /// Look up a registered function object.

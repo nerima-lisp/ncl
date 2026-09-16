@@ -50,6 +50,9 @@ impl Runtime {
         }
     }
     /// Register a class object by name.
+    ///
+    /// # Errors
+    /// Returns an allocation, layout, or storage error.
     pub fn define_class(&self, name: impl Into<String>, class: Word) -> Result<(), ObjectError> {
         let mut context = self
             .registry_context
@@ -64,6 +67,7 @@ impl Runtime {
         let result = HashTable::from(table).insert(&mut context, self, name, class);
         let _ = crate::pop_root(&mut context, class_token);
         let _ = crate::pop_root(&mut context, name_token);
+        drop(context);
         result
     }
     /// Look up a class object.

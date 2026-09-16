@@ -3,6 +3,14 @@ use crate::{ObjectError, Package, Runtime, make_string};
 use ncl_sys::{HeapConfig, StorageCondition, Word};
 
 impl Runtime {
+    pub fn set_gc_stress(&self, on: bool) {
+        let mut context = self
+            .registry_context
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        context.set_gc_stress(on);
+    }
+
     /// Create a package if it does not already exist.
     ///
     /// # Errors

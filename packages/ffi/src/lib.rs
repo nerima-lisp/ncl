@@ -21,8 +21,10 @@ mod dynamic;
 mod error;
 mod funcall;
 mod memory;
+mod register;
 mod roots;
 mod sap;
+mod symbols;
 pub mod sys_requirements;
 
 pub use alien::{
@@ -41,4 +43,5 @@ pub use memory::{
     allocate_system_memory, deallocate_system_memory, memmove, sap_ref, sap_set,
     with_rooted_objects,
 };
+pub use register::register;
 pub use sap::{SystemAreaPointer, sap_eq, sap_ge, sap_gt, sap_le, sap_lt};

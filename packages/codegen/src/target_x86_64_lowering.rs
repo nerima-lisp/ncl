@@ -1,0 +1,257 @@
+use crate::isa_x86_64::{SCRATCH, THREAD_CONTEXT};
+use crate::{CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
+use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
+use ncl_ir::{Function, ValueId};
+
+/// Register carrying the callee function object on entry, stored as frame header word 2.
+pub(super) const FUNCTION_OBJECT: Reg = SCRATCH[0];
+/// Scratch register holding the indirect call target.
+pub(super) const ENTRY: Reg = SCRATCH[1];
+/// Frame pointer, pointing at frame header word 0.
+pub(super) const FRAME_POINTER: Reg = Reg::Rbp;
+/// Return value register.
+pub(super) const RETURN_VALUE: Reg = Reg::Rax;
+/// Multiple-value count register.
+pub(super) const VALUE_COUNT: Reg = Reg::Rdx;
+/// Argument count register.
+pub(super) const ARGUMENT_COUNT: Reg = Reg::Rdi;
+/// First four argument registers.
+pub(super) const ARGUMENT_REGISTERS: [Reg; 4] = [Reg::Rsi, Reg::Rdx, Reg::Rcx, Reg::R8];
+/// Rest-argument register, holding a pointer to arguments beyond the fourth.
+pub(super) const REST_ARGUMENT: Reg = Reg::R9;
+/// Bytes reserved below `rsp` before a call so the callee can write frame header words 2 and 3.
+const CALLEE_HEADER_RESERVE: i32 = 16;
+
+#[allow(clippy::needless_pass_by_value)]
+pub(super) fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
+    assembler
+        .emit(&instruction)
+        .map_err(|error| CodegenError::Encode(error.to_string()))
+}
+
+/// Loads a 64-bit word, preferring the sign-extending `mov r64, imm32` form when it fits.
+pub(super) fn load_immediate(
+    assembler: &mut Assembler,
+    register: Reg,
+    value: i64,
+) -> Result<(), CodegenError> {
+    let immediate = i32::try_from(value).map_or(Imm::I64(value), Imm::I32);
+    emit(assembler, Inst::MovRI(register, immediate))
+}
+
+pub(super) fn slots(function: &Function, argument_words: u32) -> (Vec<(ValueId, u32)>, u32) {
+    let mut result = Vec::new();
+    let mut next = argument_words;
+    for block in &function.blocks {
+        for parameter in &block.params {
+            result.push((parameter.value, next));
+            next = next.saturating_add(1);
+        }
+        for op in &block.ops {
+            for (value, _) in &op.results {
+                result.push((*value, next));
+                next = next.saturating_add(1);
+            }
+        }
+    }
+    (result, next.saturating_sub(argument_words))
+}
+
+fn slot(slots: &[(ValueId, u32)], value: ValueId) -> Result<u32, CodegenError> {
+    slots
+        .iter()
+        .find(|(id, _)| *id == value)
+        .map(|(_, index)| *index)
+        .ok_or(CodegenError::UnknownValue(value))
+}
+
+fn slot_mem(slots: &[(ValueId, u32)], value: ValueId) -> Result<Mem, CodegenError> {
+    let index = slot(slots, value)?;
+    let bytes = index
+        .checked_add(1)
+        .and_then(|value| value.checked_mul(8))
+        .ok_or(CodegenError::FrameOverflow)?;
+    Ok(Mem::base(
+        FRAME_POINTER,
+        -i32::try_from(bytes).map_err(|_| CodegenError::FrameOverflow)?,
+    ))
+}
+
+pub(super) fn load_slot(
+    assembler: &mut Assembler,
+    slots: &[(ValueId, u32)],
+    value: ValueId,
+    register: Reg,
+) -> Result<(), CodegenError> {
+    emit(assembler, Inst::MovRM(register, slot_mem(slots, value)?))
+}
+
+fn store_slot(
+    assembler: &mut Assembler,
+    slots: &[(ValueId, u32)],
+    value: ValueId,
+    register: Reg,
+) -> Result<(), CodegenError> {
+    emit(assembler, Inst::MovMR(slot_mem(slots, value)?, register))
+}
+
+/// Emits an indirect call that reserves the callee frame header words before returning.
+pub(super) fn emit_call(assembler: &mut Assembler) -> Result<(), CodegenError> {
+    emit(
+        assembler,
+        Inst::BinRI(BinOp::Sub, Reg::Rsp, CALLEE_HEADER_RESERVE),
+    )?;
+    emit(assembler, Inst::CallReg(ENTRY))?;
+    emit(
+        assembler,
+        Inst::BinRI(BinOp::Add, Reg::Rsp, CALLEE_HEADER_RESERVE),
+    )
+}
+
+pub(super) fn lower_call(
+    assembler: &mut Assembler,
+    callee: ValueId,
+    args: &[ValueId],
+    slots: &[(ValueId, u32)],
+) -> Result<(), CodegenError> {
+    if args.len() > ARGUMENT_REGISTERS.len() {
+        return Err(CodegenError::Unsupported(
+            "x86-64 calls support at most four register arguments".into(),
+        ));
+    }
+    load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
+    emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
+    load_immediate(
+        assembler,
+        ARGUMENT_COUNT,
+        i64::try_from(args.len()).map_err(|_| CodegenError::FrameOverflow)?,
+    )?;
+    for (index, argument) in args.iter().enumerate() {
+        load_slot(assembler, slots, *argument, ARGUMENT_REGISTERS[index])?;
+    }
+    Ok(())
+}
+
+fn context_mem(abi: &dyn RuntimeAbi, field: ContextField) -> Result<Mem, CodegenError> {
+    let offset = abi.field_offset(field).ok_or_else(|| {
+        CodegenError::Unsupported(format!("context offset is unavailable: {field:?}"))
+    })?;
+    Ok(Mem::base(THREAD_CONTEXT, offset))
+}
+
+fn runtime_address(abi: &dyn RuntimeAbi, function: RuntimeFunction) -> Result<i64, CodegenError> {
+    abi.runtime_address(function, None)
+        .map(u64::cast_signed)
+        .ok_or_else(|| {
+            CodegenError::Unsupported(format!("runtime address is unavailable: {function:?}"))
+        })
+}
+
+fn lower_alloc(
+    assembler: &mut Assembler,
+    words: u32,
+    result: Option<ValueId>,
+    slots: &[(ValueId, u32)],
+    abi: &dyn RuntimeAbi,
+) -> Result<u32, CodegenError> {
+    let bytes = words
+        .checked_mul(8)
+        .and_then(|value| i32::try_from(value).ok())
+        .ok_or(CodegenError::FrameOverflow)?;
+    let slow = assembler.new_label();
+    let done = assembler.new_label();
+    emit(
+        assembler,
+        Inst::MovRM(FUNCTION_OBJECT, context_mem(abi, ContextField::TlabBump)?),
+    )?;
+    emit(
+        assembler,
+        Inst::MovRM(ENTRY, context_mem(abi, ContextField::TlabLimit)?),
+    )?;
+    emit(
+        assembler,
+        Inst::Lea(RETURN_VALUE, Mem::base(FUNCTION_OBJECT, bytes)),
+    )?;
+    emit(assembler, Inst::CmpRR(RETURN_VALUE, ENTRY))?;
+    emit(assembler, Inst::Jcc(Cond::A, slow))?;
+    emit(
+        assembler,
+        Inst::MovMR(context_mem(abi, ContextField::TlabBump)?, RETURN_VALUE),
+    )?;
+    if let Some(result) = result {
+        store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
+    }
+    emit(assembler, Inst::Jmp(done))?;
+    assembler.bind(slow);
+    emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
+    load_immediate(assembler, Reg::Rsi, i64::from(words))?;
+    load_immediate(
+        assembler,
+        ENTRY,
+        runtime_address(abi, RuntimeFunction::AllocateSlow)?,
+    )?;
+    emit(assembler, Inst::CallReg(ENTRY))?;
+    let call_pc =
+        u32::try_from(assembler.bytes().len()).map_err(|_| CodegenError::FrameOverflow)?;
+    if let Some(result) = result {
+        store_slot(assembler, slots, result, RETURN_VALUE)?;
+    }
+    assembler.bind(done);
+    Ok(call_pc)
+}
+
+fn lower_safepoint(assembler: &mut Assembler, abi: &dyn RuntimeAbi) -> Result<u32, CodegenError> {
+    let done = assembler.new_label();
+    emit(
+        assembler,
+        Inst::MovRM(
+            FUNCTION_OBJECT,
+            context_mem(abi, ContextField::SafepointRequest)?,
+        ),
+    )?;
+    emit(assembler, Inst::CmpRI(FUNCTION_OBJECT, 0))?;
+    emit(assembler, Inst::Jcc(Cond::E, done))?;
+    emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
+    emit(assembler, Inst::MovRR(Reg::Rsi, FRAME_POINTER))?;
+    load_immediate(
+        assembler,
+        ENTRY,
+        runtime_address(abi, RuntimeFunction::SafepointSlow)?,
+    )?;
+    // The continuation PC is the address after the `call r11` below. That call is
+    // three bytes (REX.B + FF /2 + ModRM), so the RIP-relative displacement from
+    // the end of this `lea` to the instruction after the call is exactly three.
+    emit(assembler, Inst::Lea(VALUE_COUNT, Mem::rip(3)))?;
+    emit(assembler, Inst::CallReg(ENTRY))?;
+    let call_pc =
+        u32::try_from(assembler.bytes().len()).map_err(|_| CodegenError::FrameOverflow)?;
+    assembler.bind(done);
+    Ok(call_pc)
+}
+
+fn lower_builtin(
+    assembler: &mut Assembler,
+    name: &str,
+    args: &[ValueId],
+    slots: &[(ValueId, u32)],
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    if args.len() > ARGUMENT_REGISTERS.len() {
+        return Err(CodegenError::Unsupported(
+            "x86-64 builtins support at most four arguments".into(),
+        ));
+    }
+    let address = abi.builtin_address(name).ok_or_else(|| {
+        CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
+    })?;
+    emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
+    load_immediate(assembler, ENTRY, address.cast_signed())?;
+    for (index, argument) in args.iter().enumerate() {
+        load_slot(assembler, slots, *argument, ARGUMENT_REGISTERS[index])?;
+    }
+    Ok(())
+}
+
+#[path = "target_x86_64_lowering/ops.rs"]
+pub(super) mod ops;
+pub(super) use ops::{lower_op, move_args};

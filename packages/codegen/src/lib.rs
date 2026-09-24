@@ -8,12 +8,15 @@ mod machine;
 mod relocation;
 mod safepoint;
 mod target;
+mod target_x86_64;
 mod templates;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_aarch64;
+#[cfg(test)]
+mod tests_x86_64;
 
 pub use abi::{Aarch64Abi, ContextField, RegisterId, RuntimeAbi, RuntimeFunction, X86_64Abi};
 pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
@@ -25,6 +28,7 @@ pub use safepoint::{
     SafepointMap,
 };
 pub use target::{AArch64TargetIsa, TargetIsa, compile_function_aarch64};
+pub use target_x86_64::compile_function_x86_64;
 pub use templates::TemplateKind;
 
 pub(crate) fn checked_u32(value: usize) -> Result<u32, CodegenError> {

@@ -175,8 +175,52 @@ pub fn compile_function_x86_64(
                 move_args(&mut assembler, &value_slots, else_args, &else_block.params)?;
                 emit(&mut assembler, Inst::Jmp(labels[else_target]))?;
             }
-            Terminator::Switch { default, .. } => {
+            Terminator::Switch {
+                value,
+                cases,
+                default,
+                default_args,
+            } => {
+                load_slot(&mut assembler, &value_slots, *value, FUNCTION_OBJECT)?;
+                let case_labels = cases
+                    .iter()
+                    .map(|_| assembler.new_label())
+                    .collect::<Vec<_>>();
+                for ((case, _, _), case_label) in cases.iter().zip(&case_labels) {
+                    emit(
+                        &mut assembler,
+                        Inst::CmpRI(
+                            FUNCTION_OBJECT,
+                            i32::try_from(*case).map_err(|_| CodegenError::FrameOverflow)?,
+                        ),
+                    )?;
+                    emit(&mut assembler, Inst::Jcc(Cond::E, *case_label))?;
+                }
+                let default_block = function
+                    .blocks
+                    .iter()
+                    .find(|candidate| candidate.id == *default)
+                    .ok_or(CodegenError::UnknownBlock(*default))?;
+                move_args(
+                    &mut assembler,
+                    &value_slots,
+                    default_args,
+                    &default_block.params,
+                )?;
                 emit(&mut assembler, Inst::Jmp(labels[default]))?;
+                // Each case moves its own arguments in an out-of-line block, so a
+                // taken case cannot have its arguments overwritten by an earlier
+                // case's moves.
+                for ((_, target, args), case_label) in cases.iter().zip(&case_labels) {
+                    assembler.bind(*case_label);
+                    let case_block = function
+                        .blocks
+                        .iter()
+                        .find(|candidate| candidate.id == *target)
+                        .ok_or(CodegenError::UnknownBlock(*target))?;
+                    move_args(&mut assembler, &value_slots, args, &case_block.params)?;
+                    emit(&mut assembler, Inst::Jmp(labels[target]))?;
+                }
             }
             Terminator::Return { values } => {
                 if let Some(value) = values.first() {
@@ -193,13 +237,8 @@ pub fn compile_function_x86_64(
             }
             Terminator::CallReturn { function, args } | Terminator::TailCall { function, args } => {
                 lower_call(&mut assembler, *function, args, &value_slots)?;
-                emit_call(&mut assembler)?;
-                add_map(
-                    &mut maps,
-                    checked_u32(assembler.bytes().len())?,
-                    frame,
-                    FLAG_CALL,
-                )?;
+                let call_pc = emit_call(&mut assembler)?;
+                add_map(&mut maps, call_pc, frame, FLAG_CALL)?;
                 emit_epilogue(&mut assembler)?;
             }
             Terminator::Throw { .. } | Terminator::Unreachable => {

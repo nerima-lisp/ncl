@@ -95,17 +95,27 @@ fn store_slot(
     emit(assembler, Inst::MovMR(slot_mem(slots, value)?, register))
 }
 
-/// Emits an indirect call that reserves the callee frame header words before returning.
-pub(super) fn emit_call(assembler: &mut Assembler) -> Result<(), CodegenError> {
+/// Emits an indirect call and returns the offset of the callee's return address.
+///
+/// The caller reserves the callee's frame header words below `rsp` and releases
+/// the reservation after the call. The returned offset is the instruction
+/// immediately after the call, where the callee resumes, so that is where the
+/// call's safepoint map must be registered: the map lookup selects the nearest
+/// map at or before a PC, so a map placed after the result store would resolve a
+/// caller frame to an older map.
+pub(super) fn emit_call(assembler: &mut Assembler) -> Result<u32, CodegenError> {
     emit(
         assembler,
         Inst::BinRI(BinOp::Sub, Reg::Rsp, CALLEE_HEADER_RESERVE),
     )?;
     emit(assembler, Inst::CallReg(ENTRY))?;
+    let return_offset =
+        u32::try_from(assembler.bytes().len()).map_err(|_| CodegenError::FrameOverflow)?;
     emit(
         assembler,
         Inst::BinRI(BinOp::Add, Reg::Rsp, CALLEE_HEADER_RESERVE),
-    )
+    )?;
+    Ok(return_offset)
 }
 
 pub(super) fn lower_call(

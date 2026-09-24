@@ -202,14 +202,14 @@ pub fn lower_op(
             args,
         } => {
             lower_call(assembler, *function, args, slots)?;
-            emit_call(assembler)?;
+            call_pc = Some(emit_call(assembler)?);
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }
         }
         OpKind::Builtin { name, args } => {
             lower_builtin(assembler, name, args, slots, abi)?;
-            emit_call(assembler)?;
+            call_pc = Some(emit_call(assembler)?);
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }

@@ -1,6 +1,6 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
-use crate::{ContextField, RuntimeAbi, RuntimeFunction, compile_function_x86_64};
+use crate::{ContextField, FLAG_CALL, RuntimeAbi, RuntimeFunction, compile_function_x86_64};
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 struct X86_64FixtureAbi;
@@ -40,6 +40,13 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
         .any(|window| window == needle)
+}
+
+fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
+    haystack
+        .windows(needle.len())
+        .filter(|window| *window == needle)
+        .count()
 }
 
 #[test]
@@ -216,4 +223,96 @@ fn golden_x86_64_large_constant_uses_movabs() {
         &compiled.code,
         &[0x49, 0xBA, 0xC0, 0xB3, 0xA2, 0x91, 0x00, 0x00, 0x00, 0x00]
     ));
+}
+
+#[test]
+fn golden_x86_64_call_map_matches_return_address() {
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(32), "call-map", Vec::new(), vec![]);
+    let callee_constant = builder.add_constant(Constant::Fixnum(0));
+    let callee = builder.push_op(
+        OpKind::Const {
+            result: callee_constant,
+        },
+        &[Ty::Word],
+    );
+    assert!(callee.is_ok());
+    let callee = callee.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    assert!(
+        builder
+            .push_op(
+                OpKind::Call {
+                    function: callee,
+                    args: Vec::new(),
+                },
+                &[Ty::Word],
+            )
+            .is_ok()
+    );
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+    let compiled_result = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi);
+    assert!(compiled_result.is_ok());
+    let Some(compiled) = compiled_result.ok() else {
+        return;
+    };
+    let Some(map) = compiled.safepoint_maps.first() else {
+        return;
+    };
+    assert_ne!(map.map_flags & FLAG_CALL, 0);
+    let end = usize::try_from(map.pc_offset).unwrap_or(0);
+    // The map must sit on the callee's return address: the indirect call is the
+    // three bytes before it, and the caller releases its header reservation after.
+    assert_eq!(compiled.code[end - 3..end], [0x41, 0xFF, 0xD3]);
+    assert_eq!(compiled.code[end..end + 4], [0x48, 0x83, 0xC4, 0x10]);
+}
+
+#[test]
+fn golden_x86_64_switch_dispatches_on_value() {
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(33), "switch", Vec::new(), vec![]);
+    let selector_constant = builder.add_constant(Constant::Fixnum(1));
+    let selector = builder.push_op(
+        OpKind::Const {
+            result: selector_constant,
+        },
+        &[Ty::Word],
+    );
+    assert!(selector.is_ok());
+    let selector = selector.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let case_zero = builder.create_block(Vec::new());
+    let case_one = builder.create_block(Vec::new());
+    let fallback = builder.create_block(Vec::new());
+    assert!(builder.position_at(ncl_ir::BlockId(0)).is_ok());
+    assert!(
+        builder
+            .terminate(Terminator::Switch {
+                value: selector,
+                cases: vec![(0, case_zero, Vec::new()), (1, case_one, Vec::new())],
+                default: fallback,
+                default_args: Vec::new(),
+            })
+            .is_ok()
+    );
+    for block in [case_zero, case_one, fallback] {
+        assert!(builder.position_at(block).is_ok());
+        assert!(
+            builder
+                .terminate(Terminator::Return { values: Vec::new() })
+                .is_ok()
+        );
+    }
+    let compiled_result = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi);
+    assert!(
+        compiled_result.is_ok(),
+        "switch fixture failed: {compiled_result:?}"
+    );
+    let Some(compiled) = compiled_result.ok() else {
+        return;
+    };
+    // One compare per case, and one conditional branch per case.
+    assert!(contains(&compiled.code, &[0x49, 0x83, 0xFA, 0x00]));
+    assert!(contains(&compiled.code, &[0x49, 0x83, 0xFA, 0x01]));
+    assert_eq!(count_occurrences(&compiled.code, &[0x0F, 0x84]), 2);
 }

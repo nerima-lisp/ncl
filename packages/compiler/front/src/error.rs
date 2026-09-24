@@ -62,6 +62,13 @@ pub enum FrontError {
         /// A description of the offending form.
         detail: String,
     },
+    /// A special form is malformed in a way other than its argument count.
+    MalformedForm {
+        /// The operator symbol.
+        operator: SymbolRef,
+        /// A description of what is malformed.
+        detail: String,
+    },
     /// The object layer rejected a form while it was being read.
     Object(ObjectError),
 }
@@ -95,6 +102,9 @@ impl std::fmt::Display for FrontError {
                 write!(f, "macro expansion of {name} failed: {detail}")
             }
             Self::InvalidOperator { detail } => write!(f, "invalid operator: {detail}"),
+            Self::MalformedForm { operator, detail } => {
+                write!(f, "malformed {operator} form: {detail}")
+            }
             Self::Object(error) => write!(f, "object layer error: {error}"),
         }
     }

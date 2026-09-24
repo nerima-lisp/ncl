@@ -23,10 +23,12 @@ pub mod compiler_macro;
 pub mod declaration;
 pub mod env;
 pub mod error;
+pub mod expand;
 pub mod form;
 pub mod lambda_list;
 pub mod literal;
 pub mod macro_caller;
+pub mod special;
 pub mod symbols;
 pub mod types;
 
@@ -38,8 +40,10 @@ pub use compiler_macro::{ArityPattern, CompilerMacro, MacroExpander, MacroRegist
 pub use declaration::{Declaration, OptimizeQuality, Quality, parse_declare_form};
 pub use env::{LexicalEnv, VariableBinding};
 pub use error::FrontError;
+pub use expand::{Body, FormExpander, LambdaListKind};
 pub use lambda_list::{AuxParam, KeyParam, LambdaList, OptionalParam, ParamName};
 pub use literal::{Literal, NumberLiteral};
 pub use macro_caller::MacroCaller;
+pub use special::SpecialForm;
 pub use symbols::SymbolRef;
 pub use types::TypeSpecifier;

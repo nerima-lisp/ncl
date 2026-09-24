@@ -5,16 +5,18 @@
 //! an optional feature bit, matching the front-end contract. Compiler macros
 //! are consulted only when the head symbol is not already a macro.
 
+use ncl_object::{Runtime, ThreadContext, Word};
+
 use crate::error::FrontError;
-use crate::literal::Literal;
 use crate::symbols::SymbolRef;
 
 /// Expands a compiler-macro call.
 ///
-/// The callback receives the whole call form as a datum and returns the
-/// replacement, or `None` when it declines to expand. Returning a datum rather
-/// than an AST keeps the registry independent of the expander.
-pub type MacroExpander = fn(&Literal) -> Result<Option<Literal>, FrontError>;
+/// The callback receives the whole call form and returns the replacement form,
+/// or `None` when it declines to expand. It works on `Word` values, like
+/// [`MacroCaller`](crate::MacroCaller), so no lossy conversion between the heap
+/// representation and [`Literal`](crate::Literal) is needed.
+pub type MacroExpander = fn(&mut ThreadContext, &Runtime, Word) -> Result<Option<Word>, FrontError>;
 
 /// An accepted argument count for a compiler macro.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -45,6 +45,7 @@ dependencies = [
  "ncl-conditions",
  "ncl-ir",
  "ncl-object",
+ "ncl-ownership",
  "ncl-reader",
  "ncl-types",
 ]

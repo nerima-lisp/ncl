@@ -1,17 +1,18 @@
 //! Registration of the symbols this crate owns.
 //!
 //! `register` interns every Phase 1 symbol the ownership table assigns to
-//! `ncl-compiler-front` and sets the symbol-kind flag bits that describe the
-//! symbol: `macro`, `constant`, and `special`. The `function` and `class` rows
-//! are not registered here, because they require the actual functions and the
-//! `FUNCTION` class; the back-half lane (L12b) supplies them.
+//! `ncl-compiler-front` and registers the object each kind implies: the
+//! `macro`, `constant`, and `special` flag bits, a function object for each
+//! `function`-kind row, and the `FUNCTION` class. The function and class
+//! entries are `Word::UNBOUND` placeholders until `ncl-runtime` (L23) supplies
+//! the real function objects and `ncl-clos` (L18) the real class.
 
 use ncl_object::{
     ObjectError, Package, Runtime, ThreadContext, Word, set_symbol_constant, set_symbol_macro,
     set_symbol_special,
 };
 
-use crate::owned_symbols::{OWNED_SYMBOLS, SymbolKind};
+use crate::owned_symbols::{OWNED_SYMBOLS, OwnedSymbol, SymbolKind};
 
 /// Register every symbol this crate owns.
 ///
@@ -29,7 +30,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     for owned in OWNED_SYMBOLS {
         let package = runtime.ensure_package(&mut ctx, owned.package)?;
         let (symbol, _) = Package::from(package).intern(&mut ctx, runtime, owned.name)?;
-        apply_kinds(&mut ctx, symbol, owned.kinds)?;
+        apply_kinds(&mut ctx, runtime, symbol, owned)?;
     }
     Ok(())
 }
@@ -40,23 +41,44 @@ pub const fn owned_symbol_count() -> usize {
     OWNED_SYMBOLS.len()
 }
 
-/// Set the flag bit each kind implies.
+/// Register the object each kind implies.
 ///
-/// `class`, `condition`, `function`, `other`, `special-operator`, and `type`
-/// have no flag bit; the gate checks only that those symbols are interned.
+/// `macro`, `variable`, and `constant` set a symbol flag bit; the flag bits are
+/// applied before any registry call so no allocation can move `symbol` while it
+/// is still in use. `function` and `class`/`condition` register an object in the
+/// runtime registry, because the ownership gate looks those up by name; the
+/// value is `Word::UNBOUND` until the owning lane supplies the real object.
+/// `other`, `special-operator`, and `type` are interned only.
 fn apply_kinds(
     ctx: &mut ThreadContext,
+    runtime: &Runtime,
     symbol: Word,
-    kinds: &[SymbolKind],
+    owned: &OwnedSymbol,
 ) -> Result<(), ObjectError> {
-    for kind in kinds {
+    for kind in owned.kinds {
         match kind {
             SymbolKind::Constant => set_symbol_constant(ctx, symbol, true)?,
             SymbolKind::Variable => set_symbol_special(ctx, symbol, true)?,
             SymbolKind::Macro => set_symbol_macro(ctx, symbol, true)?,
-            SymbolKind::Class
+            SymbolKind::Function
+            | SymbolKind::Class
             | SymbolKind::Condition
-            | SymbolKind::Function
+            | SymbolKind::Other
+            | SymbolKind::SpecialOperator
+            | SymbolKind::Type => {}
+        }
+    }
+    for kind in owned.kinds {
+        match kind {
+            SymbolKind::Function => {
+                runtime.define_function(ctx, owned.package, owned.name, Word::UNBOUND)?;
+            }
+            SymbolKind::Class | SymbolKind::Condition => {
+                runtime.define_class(ctx, owned.name, Word::UNBOUND)?;
+            }
+            SymbolKind::Constant
+            | SymbolKind::Variable
+            | SymbolKind::Macro
             | SymbolKind::Other
             | SymbolKind::SpecialOperator
             | SymbolKind::Type => {}

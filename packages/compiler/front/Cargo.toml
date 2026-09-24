@@ -13,5 +13,8 @@ ncl-reader = { path = "../../reader" }
 ncl-conditions = { path = "../../conditions" }
 ncl-clos = { path = "../../clos" }
 
+[dev-dependencies]
+ncl-ownership = { path = "../../ownership" }
+
 [lints]
 workspace = true

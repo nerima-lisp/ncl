@@ -8,7 +8,43 @@ front end は reader output を macroexpand、parse、declaration/type propagati
 
 段階は 1a 固定テンプレート展開、1b 線形走査レジスタ割当と spill、1c self tail call と一般 tail transfer および `&rest`/`&key` 専用プロローグ、2 fixnum/double の unbox、型推論接続、inline cache の順である。1a は値をスタックスロットに置き、scratch 2 本を使い、プロローグ、定数、return、呼び出し、分岐、割当、safepoint map、unwind を含む動く系とする。FASL の 64-byte header と section 構成は native backend の仕様を使い、対象不一致は load 前に拒否する。interpret evaluator は実装しない。
 
+- Phase 3: `ncl-ir` 上の pass 群(inlining、escape analysis + stack allocation、GVN、SCCP、
+  LICM)と、`ncl-codegen` の SSA ベースレジスタ割当。IR 型と ABI は不変。受入は cl-bench
+  幾何平均が Phase 2 着地時の同機測定以下。
+- Phase 4: `ncl-sys` collector の parallel marking / evacuation。STW は維持。frame header、
+  SafepointMap、ABI は不変。remembered set と forwarding の並行安全化を伴う。受入は同一
+  ヒープ負荷で停止時間中央値が直列版未満。
+- Phase 5: tier-1 投機的最適化。deopt 着地先は tier-0(Phase 1a テンプレート層、全 SSA 値が
+  スタックスロットにある)。frame-state map は最適化フレームの各値から tier-0 スロットへの
+  写像で、FASL header version 2 の新 section に置く。OSR は tier-0 → tier-1 のループ入口
+  のみ。受入は全投機に対応する deopt テストがあり、deopt 後の結果が tier-0 と一致すること。
+- Phase 6: 特殊化配列ループの SIMD 命令選択。ベクトルレジスタを第一級値にするため
+  `RegisterId` と SafepointMap `register_mask` にレジスタクラスを加える契約変更を、Phase 3
+  着地後に別途凍結する。受入は対象カーネルの実行時間が非 SIMD 版以下。
+
 Phase 1a execution coverage is recorded by the AArch64 integration fixture: constant/fixnum arithmetic, cons allocation on fast and slow TLAB paths, both branch paths, builtin and rest-argument calls, safepoint polling, and recursive `fib(25)` all have named tests. The fixture invokes `fib(25)` ten times and reports a wall-clock median; the recorded release measurement is an execution result, not a new performance contract. (`packages/codegen/README.md`, `Phase 1a execution status`; `packages/codegen/tests/exec_aarch64.rs`, `executes_recursive_fib_twenty_five_with_four_word_frames`.)
+
+## front end の lowering 規則
+
+- 可変キャプチャ変数: 2 つ以上のクロージャから代入される変数は 1 語 cell object に
+  box し、クロージャは cell への参照を inline capture する。読み取り専用キャプチャは
+  値を直接 inline する。
+- クロージャ越えの `return-from`/`go`: 脱出しないと証明できない block/tagbody は catch
+  record(HandlerRegion + `Throw`)で実装する。同一関数内で完結するものは `Jump`。
+- `multiple-value-call`/`multiple-value-prog1`: variadic adapter ABI(`(ctx, argc, args,
+  mv) -> NclStatus`)経由。固定 arity の `Call` には使わない。
+- `progv` と special 変数の bind/unbind: `Builtin`。binding depth は record chain が持ち、
+  非局所脱出時の復元は runtime unwinder の責務。
+- `&optional`: front end が `LoadArg` + argc 比較 + default block を IR で生成する。codegen
+  プロローグの責務は `&rest`/`&key` のみ(calling-convention と一致)。
+- `Terminator::Throw` の operand は任意の `Word`。`(throw tag value)` の value も condition
+  object も同じ経路で、catch_tag が区別する。
+- `dynamic-extent` 宣言: Phase 3 の escape analysis が入るまで無視する(CLHS が許容)。
+  実スタック割当は Phase 3 で `Alloc` のスタック版と SafepointMap の拡張を伴う契約変更として
+  扱う。
+- コンパイル時マクロ展開: 標準マクロは Rust expander を Runtime registry に登録する。
+  ユーザー `defmacro` は native compile 後に `ncl-compiler-front` が定義する
+  `MacroCaller` trait(`ncl-runtime` が実装)経由で呼ぶ。front end は runtime に逆依存しない。
 
 ## 根拠
 

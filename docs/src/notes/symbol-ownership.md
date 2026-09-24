@@ -7,19 +7,19 @@ This note summarizes `conformance/ownership/symbols.tsv`. The checker is the sou
 | crate | phase 1 symbols | representative symbols | dependencies |
 | --- | ---: | --- | --- |
 | `ncl-clos` | 147 | ADD-METHOD, BUILT-IN-CLASS, CLASS, COPY-STRUCTURE, FIND-METHOD | ncl-object, ncl-types, ncl-conditions |
-| `ncl-compiler-front` | 151 | &KEY, BLOCK, COMPILE-FILE-LINE, DECLAIM, DEFCLASS, MAKE-LOAD-FORM, TRULY-THE | ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-ir |
+| `ncl-compiler-front` | 151 | &KEY, BLOCK, COMPILE-FILE-LINE, DECLAIM, DEFCLASS, MAKE-LOAD-FORM, TRULY-THE | ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-ir, ncl-clos |
 | `ncl-conditions` | 129 | *DEBUGGER-HOOK*, BREAK, DIVISION-BY-ZERO, NAME-CONFLICT, SYSTEM-CONDITION | ncl-object |
 | `ncl-ffi` | 106 | *, ADDR, ALIEN, DLOPEN-OR-LOSE, MEMMOVE, RUN-PROGRAM | ncl-object, ncl-conditions, ncl-sys |
 | `ncl-image` | 7 | *POSIX-ARGV*, EXIT, OS-COLD-INIT-OR-REINIT, QUIT, SAVE-LISP-AND-DIE | ncl-object, ncl-objfile, ncl-sys |
-| `ncl-lib-format` | 1 | FORMAT | ncl-object and standard-library lower layers |
-| `ncl-lib-hash-arrays` | 55 | ADJUSTABLE-ARRAY-P, AREF, ARRAY, ARRAY-DIMENSION, HASH-TABLE-SYNCHRONIZED-P, WITH-LOCKED-HASH-TABLE | ncl-object |
-| `ncl-lib-macros` | 97 | AND, APPLY, CONSTANTP, FUNCALL, MACROEXPAND, VALUES | ncl-object, ncl-types, ncl-reader, ncl-conditions |
-| `ncl-lib-numbers` | 164 | *, +, /, <, ASH, BOOLE-ANDC1, RANDOM, REM | ncl-object |
-| `ncl-lib-packages` | 58 | *GENSYM-COUNTER*, ADD-PACKAGE-LOCAL-NICKNAME, EXPORT, FIND-PACKAGE, GENTEMP | ncl-object |
-| `ncl-lib-pathnames` | 43 | *COMPILE-FILE-PATHNAME*, DELETE-DIRECTORY, NATIVE-NAMESTRING, PATHNAME | ncl-object |
-| `ncl-lib-sequences` | 150 | APPEND, BUTLAST, CAAAR, COPY-TREE, EQUAL, SUBLIS, TREE-EQUAL | ncl-object |
-| `ncl-lib-streams` | 121 | *DEBUG-IO*, FD-STREAM, MAKE-FD-STREAM, READ-BYTE, SERVE-EVENT, WRITE | ncl-object |
-| `ncl-lib-strings` | 108 | ALPHA-CHAR-P, CHAR=, CHAR-CODE, NAME-CHAR, STANDARD-CHAR-P | ncl-object |
+| `ncl-lib-format` | 1 | FORMAT | ncl-object, ncl-types, ncl-conditions, ncl-lib-streams, ncl-lib-strings, ncl-printer |
+| `ncl-lib-hash-arrays` | 55 | ADJUSTABLE-ARRAY-P, AREF, ARRAY, ARRAY-DIMENSION, HASH-TABLE-SYNCHRONIZED-P, WITH-LOCKED-HASH-TABLE | ncl-object, ncl-types, ncl-conditions |
+| `ncl-lib-macros` | 97 | AND, APPLY, CONSTANTP, FUNCALL, MACROEXPAND, VALUES | ncl-object, ncl-types, ncl-reader, ncl-conditions, ncl-lib-sequences |
+| `ncl-lib-numbers` | 164 | *, +, /, <, ASH, BOOLE-ANDC1, RANDOM, REM | ncl-object, ncl-types, ncl-conditions |
+| `ncl-lib-packages` | 58 | *GENSYM-COUNTER*, ADD-PACKAGE-LOCAL-NICKNAME, EXPORT, FIND-PACKAGE, GENTEMP | ncl-object, ncl-types, ncl-conditions |
+| `ncl-lib-pathnames` | 43 | *COMPILE-FILE-PATHNAME*, DELETE-DIRECTORY, NATIVE-NAMESTRING, PATHNAME | ncl-object, ncl-types, ncl-conditions, ncl-lib-strings, ncl-sys |
+| `ncl-lib-sequences` | 150 | APPEND, BUTLAST, CAAAR, COPY-TREE, EQUAL, SUBLIS, TREE-EQUAL | ncl-object, ncl-types, ncl-conditions |
+| `ncl-lib-streams` | 121 | *DEBUG-IO*, FD-STREAM, MAKE-FD-STREAM, READ-BYTE, SERVE-EVENT, WRITE | ncl-object, ncl-types, ncl-conditions, ncl-sys |
+| `ncl-lib-strings` | 108 | ALPHA-CHAR-P, CHAR=, CHAR-CODE, NAME-CHAR, STANDARD-CHAR-P | ncl-object, ncl-types, ncl-conditions |
 | `ncl-object` | 39 | *AFTER-GC-HOOKS*, GENERATION-AVERAGE-AGE, HEAP-ALLOCATED-P, PURIFY, WITH-PINNED-OBJECTS | ncl-sys |
 | `ncl-printer` | 24 | *PRINT-READABLY*, PPRINT, PRINT, PRINT-UNREADABLY, WRITE-TO-STRING | ncl-object |
 | `ncl-reader` | 23 | READ, READ-FROM-STRING, *READTABLE*, READTABLE, PARSE-INTEGER, READTABLE-CASE | ncl-object |

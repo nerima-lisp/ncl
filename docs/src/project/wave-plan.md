@@ -174,7 +174,7 @@ Wave 4 の kickoff commit で同じ規則により一括登録し、contrib レ�
 に触れない。
 
 W0-2 の受入: `cargo check --workspace` が全 30 crate を通し、`python3
-scripts/check_standards.py` の `manifests checked` が 30 になり violations none、
+scripts/check_standards.py` の `manifests checked` が 29 になり violations none、
 `cargo test --workspace` の結果が W0-2 前と同じ passed 数(現在 147)である。
 
 ## 4. W0-1〜W0-4 の実装仕様
@@ -194,10 +194,8 @@ W0-4 は別 worktree で並列に行えるが、ファイル集合の重なり�
 **`docs/src/design/crates.md`**
 
 - 「決定」節の `text` ブロックを §2 の表で差し替える。
-- 「Paths are ...」の文に `packages/stdlib`、`packages/ownership` を加え、`packages/lib/loop`
-  への言及があれば削除する。
-- 「Public API summary」表の `ncl-lib-*` 1 行を §2 の 11 行に置き換え、`ncl-ownership` と
-  `ncl-stdlib` の行を加える。
+- 「Paths are ...」の文に `packages/stdlib`、`packages/ownership` を加える。
+- 「Public API summary」表の `ncl-lib-*` 1 行を §2 の 11 行に置き換える。
 - 「Registration and ownership rules」に §2 末尾の 3 文を加える。
 - 「却下した代替案」に「`ncl-runtime` が `ncl-lib-*` へ直接依存する案は、登録順序という
   独立した関心を runtime に混ぜるため却下する」を加える。
@@ -359,20 +357,24 @@ macOS runner は加えない(D-24-4)。検証: ローカルで同スクリプト
 | L2 | ncl-reader | packages/reader | object | `ncl-reader`(23) | object-layout.md(symbol/package)、compiler-pipeline.md 「front end は reader output を...」 | 標準 readtable の全 macro char、`#.` `#+` `#-` `#'` `#\` `#(` `#*` `#:` `#|`、`*read-base*`、`read-from-string` 往復テスト、coverage | ready |
 | L3 | ncl-printer | packages/printer | object | `ncl-printer`(24) | object-layout.md | `*print-*` 変数群、`prin1`/`princ`/`pprint`、`write-to-string` が reader と往復、coverage | ready |
 | L4 | ncl-conditions | packages/conditions | object | `ncl-conditions`(129) | native-backend.md 「handler、cleanup、catch は ThreadContext の 3 本の現在ポインタで record chain」、calling-convention.md | handler/restart/cleanup record が契約の chain 形式、`handler-bind`/`handler-case`/`restart-case` の runtime 側、標準 condition 階層、coverage | ready |
-| L5 | ncl-lib-numbers | packages/lib/numbers | object, types(API) | `ncl-lib-numbers`(164) | object-layout.md(bignum/ratio/float/complex)、compiler-pipeline.md 直接展開 primitive | 数値塔の全演算、bignum 演算の往復、`ash`/`boole`/`random`、coverage | ready(L1 API 凍結後) |
-| L6 | ncl-lib-sequences | packages/lib/sequences | object, types(API) | `ncl-lib-sequences`(150) | object-layout.md | list/sequence/tree 関数、`equal`/`equalp`、`sort` 安定性、coverage | ready(L1 後) |
-| L7 | ncl-lib-strings | packages/lib/strings | object, types(API) | `ncl-lib-strings`(108) | object-layout.md(character、string) | 文字述語と変換、Unicode 名前表、coverage | ready(L1 後) |
-| L8 | ncl-lib-hash-arrays | packages/lib/hash-arrays | object, types(API) | `ncl-lib-hash-arrays`(55) | object-layout.md(array、hash table) | `aref`/`adjust-array`/fill pointer、hash table の 4 test、synchronized、coverage | ready(L1 後) |
-| L9 | ncl-lib-streams | packages/lib/streams | object, types(API), sys | `ncl-lib-streams`(121) | crates.md 「ncl-sys の OS surface」 | fd-stream の read/write、string stream、broadcast/concatenated/two-way、external format(utf-8/latin-1)、coverage | ready(L1 後) |
-| L10 | ncl-lib-pathnames | packages/lib/pathnames | object, types(API), strings(API), sys | `ncl-lib-pathnames`(43) | crates.md | pathname parse/merge/namestring、directory/probe-file、coverage | ready(L1、L7 後) |
-| L11 | ncl-lib-packages | packages/lib/packages | object, types(API) | `ncl-lib-packages`(58) | object-layout.md(symbol flags、package) | `defpackage` 相当の runtime 側、package-local nickname、package lock condition、coverage | ready(L1 後) |
-| L12a | ncl-compiler-front 前半 | packages/compiler/front(`env`、`expand`、`special` モジュール) | ir, object, reader(API), conditions(API) | `ncl-compiler-front`(151)のうち特殊形式、宣言、lambda list keyword | compiler-pipeline.md 「front end の lowering 規則」(W0-1 追記) | 全 25 特殊形式 + lambda list を内部 AST に解析、`MacroCaller` trait 定義、declaration/type propagation、最初の commit で内部 AST 契約を凍結 | ready |
+| L5 | ncl-lib-numbers | packages/lib/numbers | object, types(API), conditions(API) | `ncl-lib-numbers`(164) | object-layout.md(bignum/ratio/float/complex)、compiler-pipeline.md 直接展開 primitive | 数値塔の全演算、bignum 演算の往復、`ash`/`boole`/`random`、coverage | ready(L1 API 凍結後、L4 後) |
+| L6 | ncl-lib-sequences | packages/lib/sequences | object, types(API), conditions(API) | `ncl-lib-sequences`(150) | object-layout.md | list/sequence/tree 関数、`equal`/`equalp`、`sort` 安定性、coverage | ready(L1、L4 後) |
+| L7 | ncl-lib-strings | packages/lib/strings | object, types(API), conditions(API) | `ncl-lib-strings`(108) | object-layout.md(character、string) | 文字述語と変換、Unicode 名前表、coverage | ready(L1、L4 後) |
+| L8 | ncl-lib-hash-arrays | packages/lib/hash-arrays | object, types(API), conditions(API) | `ncl-lib-hash-arrays`(55) | object-layout.md(array、hash table) | `aref`/`adjust-array`/fill pointer、hash table の 4 test、synchronized、coverage | ready(L1、L4 後) |
+| L9 | ncl-lib-streams | packages/lib/streams | object, types(API), conditions(API), sys | `ncl-lib-streams`(121) | crates.md 「ncl-sys の OS surface」 | fd-stream の read/write、string stream、broadcast/concatenated/two-way、external format(utf-8/latin-1)、coverage | ready(L1、L4 後) |
+| L10 | ncl-lib-pathnames | packages/lib/pathnames | object, types(API), conditions(API), strings(API), sys | `ncl-lib-pathnames`(43) | crates.md | pathname parse/merge/namestring、directory/probe-file、coverage | ready(L1、L4、L7 後) |
+| L11 | ncl-lib-packages | packages/lib/packages | object, types(API), conditions(API) | `ncl-lib-packages`(58) | object-layout.md(symbol flags、package) | `defpackage` 相当の runtime 側、package-local nickname、package lock condition、coverage | ready(L1、L4 後) |
+| L12a | ncl-compiler-front 前半 | packages/compiler/front(`env`、`expand`、`special` モジュール) | ir, object, types(API), reader(API), conditions(API), clos | `ncl-compiler-front`(151)のうち特殊形式、宣言、lambda list keyword | compiler-pipeline.md 「front end の lowering 規則」(W0-1 追記) | 全 25 特殊形式 + lambda list を内部 AST に解析、`MacroCaller` trait 定義、declaration/type propagation、最初の commit で内部 AST 契約を凍結 | ready |
 | L12b | ncl-compiler-front 後半 | packages/compiler/front(`lower` モジュール) | L12a の AST 契約 | 同上の残り(compiler macro registry、`compile-file-line` など) | compiler-pipeline.md 「Complete IR contract」、ncl-ir の `verify` | AST → `ncl-ir` lowering。D4 の各規則(cell boxing、脱出 block、MV call、`&optional`)に 1 テストずつ、生成 IR が `verify()` を通る、coverage | ready(L12a の契約 commit 後) |
 | L13 | Phase 1b | packages/codegen(`frame.rs`、`machine.rs`、regalloc 新規モジュール)、packages/sys(`thread.rs`、`code.rs`、`heap/collect.rs`) | なし | なし | native-backend.md phase 1b、calling-convention.md | 線形走査割当 + spill、`fib(25)` フィクスチャが template 版より遅くない、深さ 10,000 再帰中の safepoint GC で全フレームの function object が forward される(制限 (b) 解消)。L14 の merge 後に rebase | ready |
 | L14 | x86-64 lowering | packages/codegen(`target_x86_64.rs`、`target_x86_64_lowering.rs`、`target_x86_64_lowering/ops.rs` 新規、`isa_x86_64.rs`)、`tests/exec_x86_64.rs` | なし | なし | native-backend.md 物理呼び出し規約表(x86-64 SysV 列)、calling-convention.md | AArch64 の Phase 1a 7 フィクスチャ((a)〜(f) と e2)が x86-64 Linux で通る。**Wave 1 先頭優先**: CI は x86-64 のみで、現状生成コードを 1 バイトも実行していない。このレーンが着地するまで CI 緑は生成コードの正しさを意味しない。共有ファイルは `codegen/src/lib.rs` の module 宣言のみで、L13 より先に merge する | ready |
 | L15 | ncl-threads | packages/threads | object, sys, conditions(API) | `ncl-threads`(130) | threads.md 全節、gc-interface.md(safepoint) | thread 生成/join、mutex/condvar/semaphore、deadline、`with-interrupts`、timer、2 スレッド並行 allocation 中の GC、coverage | ready |
 | L16 | ncl-ffi | packages/ffi | object, sys, conditions(API) | `ncl-ffi`(106) | crates.md 「ncl-ffi reaches dynamic loading only through ncl-sys」 | alien 型、`dlopen`/`dlsym` 経由の foreign call(libc `strlen` 相当を自前宣言で呼ぶ)、SAP、coverage | ready |
 | L17 | ncl-image | packages/image | object, objfile, sys | `ncl-image`(7) | native-backend.md(code space、FASL)、gc-interface.md | ヒープ + code space + symbol table の save/load 往復、load 後に GC が動く、coverage | ready |
+
+L12a/L12b 注: `ncl-compiler-front -> ncl-clos` は隣接表にあるが、`ncl-clos` は Wave 2 の
+レーン(L18)である。Wave 1 の compiler-front は W0-2 の空 `ncl-clos` スケルトンに対して
+コンパイルし、CLOS 依存機能の完成は L18 の着地後になる。
 
 ### Wave 2(5 レーン、依存先着地後)
 

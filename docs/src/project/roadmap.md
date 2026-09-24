@@ -1,9 +1,12 @@
 # Roadmap
 
-NCL is being rewritten. The current phase freezes the design contracts and
-retires the former core. See `docs/src/design/` for the active architecture.
+NCL is being rewritten. Implementation is organized into waves; the lane
+table and per-lane acceptance criteria are in the [wave plan](wave-plan.md).
 
-Phase 1a now includes the AArch64 codegen execution fixtures, safepoint frame
-handling, native object-file generation, and the workspace regression suite.
-The former core ended at commit `d9bbb4ec`; the active implementation is
-tracked on `main`.
+- Wave 0 freezes the design contracts, creates the crate skeletons, and lands the W0-1 to W0-4 gates.
+- Wave 1 has 17 lanes: one per library and language crate, plus the Phase 1b and x86-64 lowering lanes.
+- Wave 2 has 5 lanes.
+- Wave 3 is integration: `ncl-runtime` and the `ncl` binary, then `ncl-conformance`.
+- Wave 4 and later are the performance phases and the 20 contrib crates.
+
+Phase 1a has landed on AArch64. x86-64 lowering is Wave 1's L14.

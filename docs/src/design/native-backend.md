@@ -26,9 +26,9 @@ fixed builtin は直接 `extern "C" fn(ctx: *mut ThreadContext, a0: Word, a1: Wo
 
 ### metadata と object
 
-SafepointMap は 16-byte header、slot bitmap、`u16` register id 列である。header は `pc_offset u32, frame_words u16, slot_words u16, word_slot_count u16, register_mask u16, map_flags u32`。bitmap bit 0..3 は frame header 語 0..3、bit 2 は常に 1、他は常に 0、bit 4 は最初の local slot である。列挙するのは `Word` を持ちうるレジスタだけである。FASL header は 64 byte、magic `NCLFASL\0`、version 1、architecture、pointer width 8、little-endian、feature bitmap、各 section offset/size を固定する。
+SafepointMap は 16-byte header、slot bitmap、`u16` register id 列である。header は `pc_offset u32, frame_words u16, slot_words u16, word_slot_count u16, register_mask u16, map_flags u32`。bitmap bit 0..3 は frame header 語 0..3、bit 2 は常に 1、他は常に 0、bit 4 は最初の local slot である。列挙するのは `Word` を持ちうるレジスタだけである。FASL header は 64 byte、magic `NCLFASL\0`、version 1、architecture、pointer width 8、little-endian、feature bitmap、各 section offset/size を固定する。version 2 は frame-state section を加える(Phase 5)。version 1 の loader は version 2 を拒否する。
 
-phase は compiler-pipeline と同じく、1a 固定テンプレート展開、1b 線形走査レジスタ割当と spill、1c self tail call と一般 tail transfer および `&rest`/`&key` 専用プロローグ、2 fixnum/double の unbox、型推論接続、inline cache とする。1a はスタックスロット、scratch 2 本、プロローグ/定数/return/呼び出し/分岐/割当/safepoint map/unwind を含む動く系である。Phase 1 は性能を主張しない。tail transfer は frame header と dynamic records の条件を満たす場合だけ行い、active cleanup では禁止する。
+phase は compiler-pipeline と同じく、1a 固定テンプレート展開、1b 線形走査レジスタ割当と spill、1c self tail call と一般 tail transfer および `&rest`/`&key` 専用プロローグ、2 fixnum/double の unbox、型推論接続、inline cache とする。3〜6 は compiler-pipeline.md に記述されている。1a はスタックスロット、scratch 2 本、プロローグ/定数/return/呼び出し/分岐/割当/safepoint map/unwind を含む動く系である。Phase 1 は性能を主張しない。tail transfer は frame header と dynamic records の条件を満たす場合だけ行い、active cleanup では禁止する。
 
 ## 根拠
 
@@ -252,9 +252,6 @@ Phase 1a's AArch64 lowering has two allocation paths. The fast path loads `tlab_
 
 The four-word frame header and 16-byte alignment remain the native contract. Generated code stores the function object in header word 2: a native call places the callee function object in `x16`, and the callee prologue stores `x16` in word 2. The Phase 1 collector snapshots the top frame's four-word header from the frame pointer the slow path passed in, forwards header word 2 (the header slots the map marks live) and writes the forwarded values back into the real frame; locals and outgoing slots beyond the four-word header are not captured by the `set_native_frame` path in Phase 1 (`packages/sys/src/thread.rs`, `set_native_frame`, `write_back_frame_snapshot`.) Word 1 (the return PC) points into non-moving code space and is not written back. Walking older frames and forwarding register values are outside Phase 1 and remain Phase 1b work. The conformance test is `forwards_function_object_from_real_frame_after_safepoint_collection` (`packages/codegen/tests/exec_aarch64/cons.rs`.)
 
-Known limitations at the Phase 1 landing point (corrections are in progress and will be folded in by integration 14):
+Known limitations at the Phase 1 landing point ((b) は Phase 1b(L13)で解消する):
 
-- (a) the snapshot is the four-word header only, so a frame whose safepoint map declares `frame_words > 4` is not scanned precisely by `scan_frame` (it returns `None`) and, because `set_native_frame` clears `stack_bounds` and `callee_saved`, has no conservative fallback either;
 - (b) only the top frame is walked; the real previous-fp in word 0 is not followed;
-- (c) `lower_safepoint` overwrites `x0`–`x2` and calls a C ABI function while `LoadArg` still reads incoming arguments from `x1`–`x5`, so a safepoint placed before the arguments are loaded clobbers them (incoming arguments are not yet spilled in the prologue);
-- (d) the frame snapshot is not cleared after write-back.

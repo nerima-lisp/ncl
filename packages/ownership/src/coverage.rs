@@ -1,0 +1,202 @@
+//! Coverage checks that compare a live runtime against the ownership table.
+
+use ncl_object::{ObjectError, Package, Runtime, ThreadContext, make_string, pop_root, push_root};
+
+use crate::table::{Kind, Row, rows_for_crate};
+
+/// Implementation phase whose rows the gate requires a crate to register.
+const PHASE_ONE: u8 = 1;
+
+/// One owned symbol that a runtime did not register.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Missing {
+    /// Owning package name.
+    pub package: String,
+    /// Symbol name.
+    pub symbol: String,
+    /// Kinds that failed for the symbol.
+    pub kind: Vec<Kind>,
+    /// Why the symbol counts as missing.
+    pub reason: &'static str,
+}
+
+impl std::fmt::Display for Missing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kinds = self
+            .kind
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("+");
+        write!(
+            f,
+            "{}::{} ({}): {}",
+            self.package, self.symbol, kinds, self.reason
+        )
+    }
+}
+
+/// Failure of an ownership-table parse or a coverage check.
+#[derive(Clone, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum OwnershipError {
+    /// The table has no rows for the requested crate and phase.
+    NoRows {
+        /// Crate name that has no Phase 1 rows.
+        crate_name: String,
+    },
+    /// A table row could not be parsed.
+    BadRow {
+        /// One-based line number in `symbols.tsv`.
+        line: usize,
+        /// Why the line was rejected.
+        reason: &'static str,
+    },
+    /// An object-layer lookup failed while checking coverage.
+    Object(ObjectError),
+    /// One or more owned symbols are not registered.
+    Missing(Vec<Missing>),
+}
+
+impl OwnershipError {
+    /// Build a [`Self::BadRow`] failure.
+    pub(crate) const fn bad_row(line: usize, reason: &'static str) -> Self {
+        Self::BadRow { line, reason }
+    }
+}
+
+impl From<ObjectError> for OwnershipError {
+    fn from(error: ObjectError) -> Self {
+        Self::Object(error)
+    }
+}
+
+impl std::fmt::Display for OwnershipError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoRows { crate_name } => write!(f, "no Phase 1 rows for crate {crate_name}"),
+            Self::BadRow { line, reason } => write!(f, "symbols.tsv line {line}: {reason}"),
+            Self::Object(error) => write!(f, "object error: {error}"),
+            Self::Missing(missing) => {
+                let report = missing
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                f.write_str(&report)
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for OwnershipError {
+    /// Render the same report as [`Display`](std::fmt::Display) so that
+    /// `Result::unwrap` prints one line per missing symbol.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
+impl std::error::Error for OwnershipError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Object(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+/// Check that every Phase 1 symbol owned by `crate_name` is registered.
+///
+/// # Errors
+///
+/// Returns [`OwnershipError::NoRows`] when the crate has no Phase 1 rows, so an
+/// empty selection cannot pass vacuously, and [`OwnershipError::Missing`]
+/// listing every unregistered symbol. A failed object-layer lookup is returned
+/// as [`OwnershipError::Object`].
+pub fn assert_crate_coverage(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    crate_name: &str,
+) -> Result<(), OwnershipError> {
+    let rows = rows_for_crate(crate_name, PHASE_ONE)?;
+    if rows.is_empty() {
+        return Err(OwnershipError::NoRows {
+            crate_name: crate_name.to_owned(),
+        });
+    }
+    let mut missing = Vec::new();
+    for row in &rows {
+        check_row(runtime, ctx, row, &mut missing)?;
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(OwnershipError::Missing(missing))
+    }
+}
+
+/// Check one table row, appending every failure to `missing`.
+fn check_row(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    row: &Row,
+    missing: &mut Vec<Missing>,
+) -> Result<(), OwnershipError> {
+    let mut name = make_string(ctx, runtime, &row.symbol.chars().collect::<Vec<_>>())?;
+    let Some(package_word) = runtime.find_package(ctx, &row.package) else {
+        missing.push(row_missing(row, "package not found"));
+        return Ok(());
+    };
+    let mut package = package_word;
+    let name_token = push_root(ctx, &mut name);
+    let package_token = push_root(ctx, &mut package);
+    let found = Package::from(package).find_symbol(ctx, name);
+    let _ = pop_root(ctx, package_token);
+    let _ = pop_root(ctx, name_token);
+    if found?.is_none() {
+        missing.push(row_missing(row, "symbol not interned"));
+        return Ok(());
+    }
+    for kind in &row.kind {
+        match kind {
+            Kind::Function => {
+                if runtime.function(ctx, &row.package, &row.symbol).is_none() {
+                    missing.push(single_kind(row, *kind, "function not registered"));
+                }
+            }
+            Kind::Class | Kind::Condition => {
+                if runtime.class(ctx, &row.symbol).is_none() {
+                    missing.push(single_kind(row, *kind, "class not registered"));
+                }
+            }
+            Kind::Constant
+            | Kind::Macro
+            | Kind::Other
+            | Kind::SpecialOperator
+            | Kind::Type
+            | Kind::Variable => {}
+        }
+    }
+    Ok(())
+}
+
+/// Build a [`Missing`] that carries every kind of a row.
+fn row_missing(row: &Row, reason: &'static str) -> Missing {
+    Missing {
+        package: row.package.clone(),
+        symbol: row.symbol.clone(),
+        kind: row.kind.clone(),
+        reason,
+    }
+}
+
+/// Build a [`Missing`] that carries a single kind of a row.
+fn single_kind(row: &Row, kind: Kind, reason: &'static str) -> Missing {
+    Missing {
+        package: row.package.clone(),
+        symbol: row.symbol.clone(),
+        kind: vec![kind],
+        reason,
+    }
+}

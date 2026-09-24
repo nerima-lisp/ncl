@@ -119,7 +119,7 @@ fn golden_x86_64_prologue_spills_register_arguments() {
     // push rbp; mov rbp, rsp; mov [rbp+16], r10; mov r11, 0; mov [rbp+24], r11;
     // sub rsp, 32; mov [rbp-8], rsi; mov [rbp-16], rdx
     assert_eq!(compiled.code[0], 0x55);
-    assert_eq!(compiled.code[1..4], [0x48, 0x89, 0xEC]);
+    assert_eq!(compiled.code[1..4], [0x48, 0x89, 0xE5]);
     assert_eq!(compiled.code[4..8], [0x4C, 0x89, 0x55, 0x10]);
     assert_eq!(
         compiled.code[8..15],

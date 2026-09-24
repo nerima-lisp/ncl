@@ -39,9 +39,13 @@ pub fn skeleton(kind: TemplateKind) -> Vec<Inst> {
 }
 
 pub fn prologue() -> Vec<Inst> {
-    vec![Inst::Push(Reg::Rbp), Inst::MovRR(Reg::Rsp, Reg::Rbp)]
+    vec![Inst::Push(Reg::Rbp), Inst::MovRR(Reg::Rbp, Reg::Rsp)]
 }
 
 pub fn epilogue() -> Vec<Inst> {
-    vec![Inst::Pop(Reg::Rbp), Inst::Ret]
+    vec![
+        Inst::MovRR(Reg::Rsp, Reg::Rbp),
+        Inst::Pop(Reg::Rbp),
+        Inst::Ret,
+    ]
 }

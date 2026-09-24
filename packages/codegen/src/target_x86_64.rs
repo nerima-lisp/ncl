@@ -86,7 +86,7 @@ pub fn compile_function_x86_64(
         .collect::<std::collections::HashMap<_, _>>();
     let mut maps = Vec::new();
     emit(&mut assembler, Inst::Push(FRAME_POINTER))?;
-    emit(&mut assembler, Inst::MovRR(Reg::Rsp, FRAME_POINTER))?;
+    emit(&mut assembler, Inst::MovRR(FRAME_POINTER, Reg::Rsp))?;
     emit(
         &mut assembler,
         Inst::MovMR(

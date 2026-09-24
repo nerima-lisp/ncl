@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "conformance" / "sbcl" / "symbols"
 OWNERSHIP = ROOT / "conformance" / "ownership" / "symbols.tsv"
 KINDS = {"function", "macro", "special-operator", "variable", "constant", "type", "class", "condition", "generic-function", "declaration", "other"}
-BASE_CRATES = {"ncl-sys", "ncl-object", "ncl-ir", "ncl-types", "ncl-reader", "ncl-printer", "ncl-conditions", "ncl-clos", "ncl-compiler-front", "ncl-compiler-back", "ncl-threads", "ncl-ffi", "ncl-image", "ncl-runtime", "ncl-conformance", "ncl"}
-LIB_CRATES = {"ncl-lib-numbers", "ncl-lib-sequences", "ncl-lib-strings", "ncl-lib-hash-arrays", "ncl-lib-streams", "ncl-lib-pathnames", "ncl-lib-format", "ncl-lib-loop", "ncl-lib-packages", "ncl-lib-macros"}
+BASE_CRATES = {"ncl-sys", "ncl-object", "ncl-ir", "ncl-types", "ncl-reader", "ncl-printer", "ncl-conditions", "ncl-clos", "ncl-compiler-front", "ncl-compiler-back", "ncl-threads", "ncl-ffi", "ncl-image", "ncl-runtime", "ncl-conformance", "ncl-stdlib", "ncl-ownership", "ncl"}
+LIB_CRATES = {"ncl-lib-numbers", "ncl-lib-sequences", "ncl-lib-strings", "ncl-lib-hash-arrays", "ncl-lib-streams", "ncl-lib-pathnames", "ncl-lib-format", "ncl-lib-packages", "ncl-lib-macros"}
 
 def source_keys():
     keys = set()

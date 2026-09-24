@@ -21,6 +21,7 @@
 pub mod ast;
 pub mod compiler_macro;
 pub mod declaration;
+pub mod env;
 pub mod error;
 pub mod form;
 pub mod lambda_list;
@@ -35,6 +36,7 @@ pub use ast::{
 };
 pub use compiler_macro::{ArityPattern, CompilerMacro, MacroExpander, MacroRegistry};
 pub use declaration::{Declaration, OptimizeQuality, Quality, parse_declare_form};
+pub use env::{LexicalEnv, VariableBinding};
 pub use error::FrontError;
 pub use lambda_list::{AuxParam, KeyParam, LambdaList, OptionalParam, ParamName};
 pub use literal::{Literal, NumberLiteral};

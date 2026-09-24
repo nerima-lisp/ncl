@@ -74,13 +74,26 @@ fn parse_list(ctx: &mut ThreadContext, spec: Word) -> Result<TypeSpecifier, Type
 }
 
 fn operator_name(ctx: &ThreadContext, word: Word) -> Result<String, TypeError> {
+    if word == Word::NIL || !matches!(classify_object(ctx, word), ObjectRef::Symbol(_)) {
+        return Err(TypeError::InvalidSpecifier(word));
+    }
     string_to_upper(ctx, symbol_name(ctx, word)?)
 }
 
 fn parse_integer_range(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier, TypeError> {
     let (low, rest) = parse_bound(ctx, tail)?;
-    let (high, _rest) = parse_bound(ctx, rest)?;
+    let (high, rest) = parse_bound(ctx, rest)?;
+    expect_end(rest)?;
     Ok(TypeSpecifier::IntegerRange { low, high })
+}
+
+/// Reject a tail that still holds elements when the form takes no more.
+fn expect_end(list: Word) -> Result<(), TypeError> {
+    if list == Word::NIL {
+        Ok(())
+    } else {
+        Err(TypeError::InvalidSpecifier(list))
+    }
 }
 
 fn parse_bound(ctx: &mut ThreadContext, list: Word) -> Result<(Option<Word>, Word), TypeError> {
@@ -133,7 +146,8 @@ fn parse_satisfies(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier,
 #[allow(clippy::similar_names)]
 fn parse_cons(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier, TypeError> {
     let (rest, car_type) = parse_optional(ctx, tail)?;
-    let (_, cdr_type) = parse_optional(ctx, rest)?;
+    let (rest, cdr_type) = parse_optional(ctx, rest)?;
+    expect_end(rest)?;
     Ok(TypeSpecifier::Cons {
         car: Box::new(car_type),
         cdr: Box::new(cdr_type),
@@ -166,12 +180,8 @@ fn parse_vector(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier, Ty
 
 fn parse_function(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier, TypeError> {
     let (lambda_list, rest) = parse_lambda_list(ctx, tail)?;
-    let return_type = if rest == Word::NIL {
-        TypeSpecifier::Named(NamedType::T)
-    } else {
-        let item = car(ctx, rest)?;
-        parse_type_specifier(ctx, item)?
-    };
+    let (rest, return_type) = parse_optional(ctx, rest)?;
+    expect_end(rest)?;
     Ok(TypeSpecifier::Function {
         lambda_list,
         return_type: Box::new(return_type),
@@ -232,6 +242,7 @@ fn parse_dimensions(
         return Ok(None);
     }
     let first = car(ctx, list)?;
+    expect_end(cdr(ctx, list)?)?;
     if is_star(ctx, first)? {
         return Ok(Some(ArrayDimensions::Wild));
     }
@@ -260,7 +271,9 @@ fn single(ctx: &mut ThreadContext, tail: Word) -> Result<Word, TypeError> {
     if tail == Word::NIL {
         return Err(TypeError::InvalidSpecifier(Word::NIL));
     }
-    Ok(car(ctx, tail)?)
+    let item = car(ctx, tail)?;
+    expect_end(cdr(ctx, tail)?)?;
+    Ok(item)
 }
 
 fn list_to_words(ctx: &mut ThreadContext, list: Word) -> Result<Vec<Word>, TypeError> {
@@ -274,7 +287,7 @@ fn list_to_words(ctx: &mut ThreadContext, list: Word) -> Result<Vec<Word>, TypeE
 }
 
 fn is_star(ctx: &ThreadContext, word: Word) -> Result<bool, TypeError> {
-    if !matches!(classify_object(ctx, word), ObjectRef::Symbol(_)) {
+    if word == Word::NIL || !matches!(classify_object(ctx, word), ObjectRef::Symbol(_)) {
         return Ok(false);
     }
     Ok(string_to_upper(ctx, symbol_name(ctx, word)?)? == "*")

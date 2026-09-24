@@ -196,6 +196,55 @@ fn cons_and_function_parse() {
 }
 
 #[test]
+fn malformed_arity_is_rejected() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+
+    let not = intern(&mut ctx, &runtime, "NOT");
+    let integer = intern(&mut ctx, &runtime, "INTEGER");
+    let cons = intern(&mut ctx, &runtime, "CONS");
+    let function = intern(&mut ctx, &runtime, "FUNCTION");
+    let array = intern(&mut ctx, &runtime, "ARRAY");
+    let symbol = intern(&mut ctx, &runtime, "SYMBOL");
+    let one = Word::fixnum(1);
+    let two = Word::fixnum(2);
+    let three = Word::fixnum(3);
+
+    let cases = [
+        (
+            "(not symbol symbol)",
+            list(&mut ctx, &runtime, &[not, symbol, symbol]),
+        ),
+        (
+            "(integer 1 2 3)",
+            list(&mut ctx, &runtime, &[integer, one, two, three]),
+        ),
+        (
+            "(cons symbol symbol symbol)",
+            list(&mut ctx, &runtime, &[cons, symbol, symbol, symbol]),
+        ),
+        (
+            "(function nil symbol symbol)",
+            list(&mut ctx, &runtime, &[function, Word::NIL, symbol, symbol]),
+        ),
+        (
+            "(array symbol 2 3)",
+            list(&mut ctx, &runtime, &[array, symbol, two, three]),
+        ),
+    ];
+    for (label, form) in cases {
+        assert!(
+            matches!(
+                parse_type_specifier(&mut ctx, form),
+                Err(ncl_types::TypeError::InvalidSpecifier(_))
+            ),
+            "expected rejection for {label}"
+        );
+    }
+}
+
+#[test]
 fn non_symbol_non_list_is_invalid() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();

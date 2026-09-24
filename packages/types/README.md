@@ -58,3 +58,6 @@ and real builtin ABI bindings with `ncl-runtime` code objects.
   owned `constant` symbols (the predecessor interned them without the bit and
   the ownership gate rejected them), and the character family reports `false`
   rather than testing an unreachable `classify` arm. No public API change.
+- Post-freeze hardening: the fixed-arity forms (`not`, `eql`, `satisfies`,
+  `integer`, `cons`, `function`, `array`, `vector`) now reject a trailing
+  argument with `InvalidSpecifier` instead of silently ignoring it.

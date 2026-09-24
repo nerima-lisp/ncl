@@ -47,7 +47,7 @@ pub use expand::{Body, FormExpander, LambdaListKind};
 pub use lambda_list::{AuxParam, KeyParam, LambdaList, OptionalParam, ParamName};
 pub use literal::{Literal, NumberLiteral};
 pub use macro_caller::MacroCaller;
-pub use register::register;
+pub use register::{owned_symbol_count, register};
 pub use special::SpecialForm;
 pub use symbols::SymbolRef;
 pub use types::TypeSpecifier;

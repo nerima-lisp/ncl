@@ -2,11 +2,12 @@
 //! `catch`, `throw`, `unwind-protect`, `if`, `progn`, `locally`, `eval-when`,
 //! and `load-time-value`.
 
-use ncl_object::{ObjectRef, Word, classify_object};
+use ncl_object::{ObjectRef, Word};
 
 use crate::ast::{EvalSituation, Expr, TagbodyItem};
 use crate::error::FrontError;
 use crate::expand::FormExpander;
+use crate::form::classify_form;
 use crate::special::{self, SpecialForm};
 
 /// Parse one of the control special operators.
@@ -90,7 +91,7 @@ fn tagbody(
     let mut items = Vec::with_capacity(arguments.len());
     for argument in arguments {
         if matches!(
-            classify_object(expander.ctx(), argument),
+            classify_form(expander.ctx(), argument),
             ObjectRef::Symbol(_)
         ) {
             let tag = expander.symbol(argument)?;
@@ -268,7 +269,7 @@ fn load_time_value(
 
 /// Whether a word is a keyword symbol.
 fn is_keyword(expander: &mut FormExpander<'_>, word: Word) -> Result<bool, FrontError> {
-    if !matches!(classify_object(expander.ctx(), word), ObjectRef::Symbol(_)) {
+    if !matches!(classify_form(expander.ctx(), word), ObjectRef::Symbol(_)) {
         return Ok(false);
     }
     Ok(expander.symbol(word)?.is_keyword())

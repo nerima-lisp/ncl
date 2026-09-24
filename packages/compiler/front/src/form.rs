@@ -9,9 +9,10 @@ use std::collections::HashMap;
 
 use ncl_object::{
     Bignum, Complex, DoubleFloat, ObjectRef, Package, Ratio, ThreadContext, Word, array_dimensions,
-    array_row_major_ref, bignum_limbs, bignum_sign, car, cdr, classify_object, complex_imag,
-    complex_real, double_value, ratio_denominator, ratio_numerator, simple_vector_length,
-    simple_vector_ref, string_length, string_ref, symbol_name, symbol_package,
+    array_row_major_ref, bignum_limbs, bignum_sign, car, cdr, classify, classify_object,
+    complex_imag, complex_real, double_value, ratio_denominator, ratio_numerator,
+    simple_vector_length, simple_vector_ref, string_length, string_ref, symbol_name,
+    symbol_package,
 };
 
 use crate::error::FrontError;
@@ -46,6 +47,20 @@ impl UninternedTable {
         self.next = self.next.wrapping_add(1);
         self.identities.insert(symbol, identity);
         identity
+    }
+}
+
+/// Classify a word by its lowtag first, falling back to the widetag.
+///
+/// [`ncl_object::classify_object`] reads a widetag for every word, including
+/// conses and immediates, where no object header exists, so it reports a
+/// garbage widetag for them. This helper consults the lowtag first and reads a
+/// widetag only for a general heap pointer.
+#[must_use]
+pub fn classify_form(ctx: &ThreadContext, word: Word) -> ObjectRef {
+    match classify(word) {
+        ObjectRef::Other { .. } => classify_object(ctx, word),
+        other => other,
     }
 }
 
@@ -92,6 +107,9 @@ pub fn symbol_ref(
     table: &mut UninternedTable,
     word: Word,
 ) -> Result<SymbolRef, FrontError> {
+    if word == Word::NIL {
+        return Ok(SymbolRef::interned("COMMON-LISP", "NIL"));
+    }
     let name = word_string(ctx, symbol_name(ctx, word)?)?;
     let package = symbol_package(ctx, word)?;
     if package == Word::NIL {
@@ -114,7 +132,10 @@ pub fn literal(
     table: &mut UninternedTable,
     word: Word,
 ) -> Result<Literal, FrontError> {
-    match classify_object(ctx, word) {
+    if word == Word::NIL {
+        return Ok(Literal::Nil);
+    }
+    match classify_form(ctx, word) {
         ObjectRef::Fixnum(value) => Ok(Literal::fixnum(value)),
         ObjectRef::Character(value) => Ok(Literal::Character(value)),
         ObjectRef::Symbol(symbol) => symbol_literal(ctx, table, symbol),
@@ -138,7 +159,7 @@ pub fn literal(
 /// the literal set represents, and [`FrontError::Object`] for a malformed
 /// number.
 pub fn number_literal(ctx: &mut ThreadContext, word: Word) -> Result<NumberLiteral, FrontError> {
-    match classify_object(ctx, word) {
+    match classify_form(ctx, word) {
         ObjectRef::Fixnum(value) => Ok(NumberLiteral::Fixnum(value)),
         ObjectRef::Bignum(_) => {
             let object = Bignum::from(word);

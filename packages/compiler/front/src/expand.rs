@@ -4,14 +4,14 @@
 //! AST. Macroexpansion goes through [`MacroCaller`]; the expander never
 //! reverse-depends on the runtime.
 
-use ncl_object::{ObjectRef, Runtime, ThreadContext, Word, car, classify_object};
+use ncl_object::{ObjectRef, Runtime, ThreadContext, Word, car};
 
 use crate::ast::{Expr, LambdaExpr};
 use crate::compiler_macro::MacroRegistry;
 use crate::declaration::{Declaration, parse_declare_form};
 use crate::env::LexicalEnv;
 use crate::error::FrontError;
-use crate::form::{self, UninternedTable};
+use crate::form::{self, UninternedTable, classify_form};
 use crate::lambda_list::{LambdaList, ParamName};
 use crate::literal::Literal;
 use crate::macro_caller::MacroCaller;
@@ -344,7 +344,7 @@ impl<'a> FormExpander<'a> {
     ///
     /// Returns a [`FrontError`] when the object layer rejects a symbol.
     pub fn is_named(&mut self, word: Word, name: &str) -> Result<bool, FrontError> {
-        if !matches!(classify_object(self.ctx, word), ObjectRef::Symbol(_)) {
+        if !matches!(classify_form(self.ctx, word), ObjectRef::Symbol(_)) {
             return Ok(false);
         }
         Ok(self.symbol(word)?.name == name)
@@ -389,7 +389,7 @@ impl<'a> FormExpander<'a> {
 
     /// Read a leading docstring, if the word is a string.
     fn docstring(&self, word: Word) -> Result<Option<String>, FrontError> {
-        match classify_object(self.ctx, word) {
+        match classify_form(self.ctx, word) {
             ObjectRef::String(_) => Ok(Some(form::word_string(self.ctx, word)?)),
             _ => Ok(None),
         }

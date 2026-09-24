@@ -4,17 +4,22 @@
 //! `&environment`, required, `&optional`, `&rest` or `&body`, `&key`,
 //! `&allow-other-keys`, `&aux`) and rejects a repeated keyword or name.
 
-use ncl_object::{ObjectRef, Word, classify_object};
+use ncl_object::{ObjectRef, Word};
 
 use crate::error::FrontError;
 use crate::expand::{FormExpander, LambdaListKind};
+use crate::form::classify_form;
 use crate::lambda_list::{AuxParam, KeyParam, LambdaList, OptionalParam, ParamName};
 use crate::symbols::SymbolRef;
 
 /// The section a parameter belongs to.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Section {
-    /// Required parameters, which also follow `&whole` and `&environment`.
+    /// `&whole`.
+    Whole,
+    /// `&environment`.
+    Environment,
+    /// Required parameters.
     Required,
     /// `&optional`.
     Optional,
@@ -34,6 +39,8 @@ impl Section {
     /// The position of the section keyword in the lambda list.
     const fn rank(self) -> u8 {
         match self {
+            Self::Whole => 0,
+            Self::Environment => 1,
             Self::Required => 2,
             Self::Optional => 3,
             Self::Rest | Self::Body => 4,
@@ -46,7 +53,8 @@ impl Section {
     /// The section named by a lambda-list keyword.
     fn from_keyword(keyword: &str) -> Option<Self> {
         Some(match keyword {
-            "&WHOLE" | "&ENVIRONMENT" => Self::Required,
+            "&WHOLE" => Self::Whole,
+            "&ENVIRONMENT" => Self::Environment,
             "&OPTIONAL" => Self::Optional,
             "&REST" => Self::Rest,
             "&BODY" => Self::Body,
@@ -150,7 +158,7 @@ impl FormExpander<'_> {
         names: &mut Vec<SymbolRef>,
     ) -> Result<(), FrontError> {
         match section {
-            Section::Required => {
+            Section::Whole | Section::Environment | Section::Required => {
                 let name = self.parameter_name(kind, element)?;
                 record_names(&name, names)?;
                 list.required.push(name);
@@ -193,7 +201,7 @@ impl FormExpander<'_> {
 
     /// Read a lambda-list section keyword, if the word is one.
     fn lambda_list_keyword(&mut self, word: Word) -> Result<Option<String>, FrontError> {
-        if !matches!(classify_object(self.ctx(), word), ObjectRef::Symbol(_)) {
+        if !matches!(classify_form(self.ctx(), word), ObjectRef::Symbol(_)) {
             return Ok(None);
         }
         let name = self.symbol(word)?.name;

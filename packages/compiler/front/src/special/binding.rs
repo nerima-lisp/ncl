@@ -265,7 +265,7 @@ fn definition_name(
         });
     };
     if !matches!(
-        ncl_object::classify_object(expander.ctx(), *name),
+        crate::form::classify_form(expander.ctx(), *name),
         ncl_object::ObjectRef::Symbol(_)
     ) {
         return Err(FrontError::MalformedForm {

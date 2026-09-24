@@ -3,11 +3,12 @@
 //! These methods resolve one form to an [`Expr`] or to a replacement that must
 //! be expanded again. They live apart from `expand` to keep both files small.
 
-use ncl_object::{ObjectRef, Runtime, ThreadContext, Word, car, classify_object, symbol_is_macro};
+use ncl_object::{ObjectRef, Runtime, ThreadContext, Word, car, symbol_is_macro};
 
 use crate::ast::{Expr, LocalMacro, Operator};
 use crate::error::FrontError;
 use crate::expand::{FormExpander, SYMBOL_MACRO_LIMIT};
+use crate::form::classify_form;
 use crate::literal::Literal;
 use crate::macro_caller::MacroCaller;
 use crate::special::{self, SpecialForm};
@@ -29,7 +30,7 @@ pub(super) enum Step {
 impl<'a> FormExpander<'a> {
     /// Expand one step of a form.
     pub(super) fn expand_step(&mut self, form: Word) -> Result<Step, FrontError> {
-        match classify_object(self.ctx, form) {
+        match classify_form(self.ctx, form) {
             ObjectRef::Symbol(_) => self.expand_symbol(form),
             ObjectRef::Cons(_) => self.expand_cons(form),
             _ => {
@@ -41,6 +42,9 @@ impl<'a> FormExpander<'a> {
 
     /// Expand a symbol in value position.
     fn expand_symbol(&mut self, word: Word) -> Result<Step, FrontError> {
+        if word == Word::NIL {
+            return Ok(Step::Done(Expr::Constant(Literal::Nil)));
+        }
         let name = self.symbol(word)?;
         if let Some(expansion) = self.symbol_macro_expansion(&name) {
             return Ok(Step::Done(expansion));
@@ -87,7 +91,7 @@ impl<'a> FormExpander<'a> {
         if head.is_cons() {
             return self.expand_lambda_call(*head, arguments);
         }
-        if !matches!(classify_object(self.ctx, *head), ObjectRef::Symbol(_)) {
+        if !matches!(classify_form(self.ctx, *head), ObjectRef::Symbol(_)) {
             return Err(FrontError::InvalidOperator {
                 detail: "operator is not a symbol".to_owned(),
             });

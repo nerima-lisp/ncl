@@ -86,6 +86,11 @@ fn unary(b: &mut Vec<u8>, ext: u8, r: Reg) {
     b.push(0xf7);
     modrm(b, 3, ext, r.code())
 }
+fn indirect_branch(b: &mut Vec<u8>, ext: u8, r: Reg) {
+    rex(b, false, 0, 4, r.code());
+    b.push(0xff);
+    modrm(b, 3, ext, r.code())
+}
 fn rel(b: &mut Vec<u8>, f: &mut Vec<Fixup>, op: u8, l: Label) {
     b.push(op);
     let o = b.len();
@@ -346,8 +351,8 @@ pub(crate) fn encode_inst(
                 target: l,
             })
         }
-        Inst::JmpReg(r) => unary(b, 4, r),
-        Inst::CallReg(r) => unary(b, 2, r),
+        Inst::JmpReg(r) => indirect_branch(b, 4, r),
+        Inst::CallReg(r) => indirect_branch(b, 2, r),
         Inst::JmpMem(m) => {
             rex(
                 b,

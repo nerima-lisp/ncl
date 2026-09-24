@@ -9,6 +9,29 @@ fn common_register_encodings() {
 }
 
 #[test]
+fn indirect_call_and_jump_use_the_ff_opcode() {
+    let mut a = Assembler::new();
+    assert!(a.emit(&Inst::CallReg(Reg::Rax)).is_ok());
+    assert!(a.emit(&Inst::CallReg(Reg::R11)).is_ok());
+    assert!(a.emit(&Inst::JmpReg(Reg::R8)).is_ok());
+    assert!(a.emit(&Inst::JmpReg(Reg::R15)).is_ok());
+    assert_eq!(
+        a.bytes(),
+        &[
+            0xff, 0xd0, 0x41, 0xff, 0xd3, 0x41, 0xff, 0xe0, 0x41, 0xff, 0xe7
+        ]
+    );
+}
+
+#[test]
+fn unary_group_instructions_keep_the_f7_opcode() {
+    let mut a = Assembler::new();
+    assert!(a.emit(&Inst::Neg(Reg::Rax)).is_ok());
+    assert!(a.emit(&Inst::Not(Reg::R11)).is_ok());
+    assert_eq!(a.bytes(), &[0x48, 0xf7, 0xd8, 0x49, 0xf7, 0xd3]);
+}
+
+#[test]
 fn memory_addressing_boundaries() {
     let mut a = Assembler::new();
     assert!(

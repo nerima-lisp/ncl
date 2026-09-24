@@ -167,5 +167,7 @@ python3 scripts/reachability.py
 Tests: `tests/coverage.rs` checks the seven owned symbols;
 `tests/round_trip.rs` saves a cons/symbol/string/vector/hash-table/function
 graph, loads it into a fresh runtime, checks isomorphism, and runs a full
-collection on the loaded objects; `tests/code_image.rs` publishes machine code,
-saves it, reloads it, and invokes the republished entry.
+collection on the loaded objects; `tests/kinds.rs` round-trips specialized
+arrays, bignums, ratios, double floats, complex numbers, structures, instances,
+and closures; `tests/code_image.rs` publishes machine code, saves it, reloads
+it, and invokes the republished entry.

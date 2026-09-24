@@ -21,11 +21,12 @@ fn registry_guard() -> MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-fn body_ok(_runtime: &Runtime, _ctx: &mut ThreadContext) -> Result<(), ThreadError> {
+#[allow(clippy::unnecessary_wraps)]
+const fn body_ok(_runtime: &Runtime, _ctx: &mut ThreadContext) -> Result<(), ThreadError> {
     Ok(())
 }
 
-fn body_fail(_runtime: &Runtime, _ctx: &mut ThreadContext) -> Result<(), ThreadError> {
+const fn body_fail(_runtime: &Runtime, _ctx: &mut ThreadContext) -> Result<(), ThreadError> {
     Err(ThreadError::Timeout)
 }
 
@@ -111,7 +112,7 @@ fn terminate_releases_a_parked_thread() {
     let _guard = registry_guard();
     let runtime = runtime();
     let id = ncl_threads::spawn(&runtime, "idle", ncl_threads::idle_body).unwrap();
-    assert!(ncl_threads::should_terminate(id) == false);
+    assert!(!ncl_threads::should_terminate(id));
     ncl_threads::terminate(id).unwrap();
     assert!(ncl_threads::should_terminate(id));
     ncl_threads::join(id, Some(JOIN_TIMEOUT)).unwrap();

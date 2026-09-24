@@ -133,12 +133,9 @@ pub fn spawn(
     let started = std::thread::Builder::new()
         .name(name.to_owned())
         .spawn(move || run_thread(&child_runtime, id, body));
-    let handle = match started {
-        Ok(handle) => handle,
-        Err(_) => {
-            lock_registry().live.remove(&id);
-            return Err(ThreadError::SpawnFailed);
-        }
+    let Ok(handle) = started else {
+        lock_registry().live.remove(&id);
+        return Err(ThreadError::SpawnFailed);
     };
     drop(handle);
     Ok(ThreadId(id))

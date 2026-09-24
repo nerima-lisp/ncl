@@ -19,7 +19,7 @@ fn fixture() -> Fixture {
     ncl_threads::register(&runtime).unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
-    Fixture { runtime, ctx }
+    Fixture { ctx, runtime }
 }
 
 #[test]

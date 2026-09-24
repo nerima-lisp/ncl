@@ -17,13 +17,7 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-CRATES = [
-    REPO_ROOT / "packages/core/syntax",
-    REPO_ROOT / "packages/core/compiler",
-    REPO_ROOT / "packages/core/runtime",
-    REPO_ROOT,  # root package "ncl"
-]
+ROOT_MANIFEST = REPO_ROOT / "Cargo.toml"
 
 MOD_RE = re.compile(r'^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;', re.M)
 PATH_ATTR_RE = re.compile(r'#\[path\s*=\s*"([^"]+)"\]\s*\n?\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;', re.M)
@@ -32,6 +26,17 @@ INCLUDE_RE = re.compile(r'include!\s*\(\s*"([^"]+)"\s*\)\s*;', re.M)
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def workspace_members() -> list[Path]:
+    """Crate roots declared in the root manifest's [workspace] members array."""
+    match = re.search(r"^members\s*=\s*\[(.*?)\]", read(ROOT_MANIFEST), re.M | re.S)
+    if match is None:
+        raise SystemExit("reachability: no [workspace] members in root Cargo.toml")
+    members = re.findall(r'"([^"]+)"', match.group(1))
+    if not members:
+        raise SystemExit("reachability: empty [workspace] members in root Cargo.toml")
+    return [REPO_ROOT if member == "." else REPO_ROOT / member for member in members]
 
 
 def strip_line_comments(src: str) -> str:
@@ -152,10 +157,14 @@ def main():
         print("reachability self-test: ok")
         return
     any_orphan = False
-    for crate_root in CRATES:
+    scanned = 0
+    skipped = 0
+    for crate_root in workspace_members():
         src_root = crate_root / "src"
-        if not src_root.exists():
+        if not (src_root / "lib.rs").exists() and not (src_root / "main.rs").exists():
+            skipped += 1
             continue
+        scanned += 1
         reached, all_rs = scan_crate(src_root)
         orphans = sorted(all_rs - reached)
         rel_crate = crate_root.relative_to(REPO_ROOT)
@@ -164,6 +173,12 @@ def main():
             any_orphan = True
             lines = len(read(o).splitlines())
             print(f"  ORPHAN: {o.relative_to(REPO_ROOT)} ({lines} lines)")
+    print(f"crates scanned: {scanned}")
+    if skipped:
+        print(f"crates skipped (no src/lib.rs or src/main.rs): {skipped}")
+    if scanned == 0:
+        print("reachability: no crate entry points found", file=sys.stderr)
+        sys.exit(1)
     sys.exit(1 if any_orphan else 0)
 
 

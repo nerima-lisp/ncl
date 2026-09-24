@@ -44,13 +44,12 @@ passing vacuously.
 | symbol | `Package::find_symbol` interns it |
 | `function` | `Runtime::function` has a registered function |
 | `class`, `condition` | `Runtime::class` has a registered class |
-| `macro`, `variable`, `constant`, `type`, `special-operator`, `other` | interned only |
+| `macro` | `symbol_is_macro` is set |
+| `variable` | `symbol_is_special` is set |
+| `constant` | `symbol_is_constant` is set |
+| `type`, `special-operator`, `other` | interned only |
 
 ## Known gaps
 
-- `ncl-object` does not expose the symbol flags word, so the gate cannot yet
-  verify the special, constant, or macro bits. `packages/object/src/layout.rs`
-  defines `symbol_offset::FLAGS`, but there is no reader; those kinds are
-  verified as interned only.
 - Functions must be registered with `Runtime::define_function` and classes with
   `Runtime::define_class` for the gate to see them.

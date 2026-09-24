@@ -3,7 +3,7 @@
 //! Acceptance tests for the ownership gate against the embedded table.
 
 use ncl_object::{Package, Runtime, ThreadContext, Word};
-use ncl_ownership::{Kind, OwnershipError, assert_crate_coverage, rows, rows_for_crate};
+use ncl_ownership::{Kind, Missing, OwnershipError, assert_crate_coverage, rows, rows_for_crate};
 
 /// The table the crate embeds, read again to derive expected counts.
 const TABLE: &str = include_str!("../../../conformance/ownership/symbols.tsv");
@@ -152,4 +152,68 @@ fn registered_class_is_not_reported() {
         other => panic!("expected Missing, got {other}"),
     };
     assert!(!missing.iter().any(|entry| entry.symbol == row.symbol));
+}
+
+fn intern_symbol(runtime: &Runtime, ctx: &mut ThreadContext, package: &str, name: &str) -> Word {
+    Package::from(runtime.find_package(ctx, package).unwrap())
+        .intern(ctx, runtime, name)
+        .unwrap()
+        .0
+}
+
+fn missing_entries(runtime: &Runtime, ctx: &mut ThreadContext, crate_name: &str) -> Vec<Missing> {
+    let error = assert_crate_coverage(runtime, ctx, crate_name).unwrap_err();
+    match error {
+        OwnershipError::Missing(missing) => missing,
+        other => panic!("expected Missing, got {other}"),
+    }
+}
+
+#[test]
+fn macro_variable_and_constant_kinds_require_their_flag_bits() {
+    let cases = [
+        ("ncl-lib-macros", Kind::Macro, "macro bit not set"),
+        ("ncl-lib-streams", Kind::Variable, "special bit not set"),
+        (
+            "ncl-lib-hash-arrays",
+            Kind::Constant,
+            "constant bit not set",
+        ),
+    ];
+    for (crate_name, kind, reason) in cases {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let row = rows_for_crate(crate_name, 1)
+            .unwrap()
+            .into_iter()
+            .find(|row| row.kind == vec![kind])
+            .unwrap();
+        intern_symbol(&runtime, &mut ctx, &row.package, &row.symbol);
+        let missing = missing_entries(&runtime, &mut ctx, crate_name);
+        assert!(
+            missing
+                .iter()
+                .any(|entry| entry.symbol == row.symbol && entry.reason == reason),
+            "expected {reason:?} for {}::{}",
+            row.package,
+            row.symbol
+        );
+        let symbol = intern_symbol(&runtime, &mut ctx, &row.package, &row.symbol);
+        match kind {
+            Kind::Macro => ncl_object::set_symbol_macro(&mut ctx, symbol, true).unwrap(),
+            Kind::Variable => ncl_object::set_symbol_special(&mut ctx, symbol, true).unwrap(),
+            Kind::Constant => ncl_object::set_symbol_constant(&mut ctx, symbol, true).unwrap(),
+            _ => unreachable!(),
+        }
+        let missing = missing_entries(&runtime, &mut ctx, crate_name);
+        assert!(
+            !missing
+                .iter()
+                .any(|entry| entry.symbol == row.symbol && entry.reason == reason),
+            "{}::{} still missing after setting {kind:?}",
+            row.package,
+            row.symbol
+        );
+    }
 }

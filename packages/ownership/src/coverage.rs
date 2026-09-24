@@ -1,6 +1,9 @@
 //! Coverage checks that compare a live runtime against the ownership table.
 
-use ncl_object::{ObjectError, Package, Runtime, ThreadContext, make_string, pop_root, push_root};
+use ncl_object::{
+    ObjectError, Package, Runtime, ThreadContext, Word, make_string, pop_root, push_root,
+    symbol_is_constant, symbol_is_macro, symbol_is_special,
+};
 
 use crate::table::{Kind, Row, rows_for_crate};
 
@@ -154,10 +157,24 @@ fn check_row(
     let found = Package::from(package).find_symbol(ctx, name);
     let _ = pop_root(ctx, package_token);
     let _ = pop_root(ctx, name_token);
-    if found?.is_none() {
+    let Some((mut symbol, _status)) = found? else {
         missing.push(row_missing(row, "symbol not interned"));
         return Ok(());
-    }
+    };
+    let symbol_token = push_root(ctx, &mut symbol);
+    let result = check_kinds(runtime, ctx, row, symbol, missing);
+    let _ = pop_root(ctx, symbol_token);
+    result
+}
+
+/// Check each kind recorded for an interned symbol.
+fn check_kinds(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    row: &Row,
+    symbol: Word,
+    missing: &mut Vec<Missing>,
+) -> Result<(), OwnershipError> {
     for kind in &row.kind {
         match kind {
             Kind::Function => {
@@ -170,12 +187,22 @@ fn check_row(
                     missing.push(single_kind(row, *kind, "class not registered"));
                 }
             }
-            Kind::Constant
-            | Kind::Macro
-            | Kind::Other
-            | Kind::SpecialOperator
-            | Kind::Type
-            | Kind::Variable => {}
+            Kind::Macro => {
+                if !symbol_is_macro(ctx, symbol)? {
+                    missing.push(single_kind(row, *kind, "macro bit not set"));
+                }
+            }
+            Kind::Variable => {
+                if !symbol_is_special(ctx, symbol)? {
+                    missing.push(single_kind(row, *kind, "special bit not set"));
+                }
+            }
+            Kind::Constant => {
+                if !symbol_is_constant(ctx, symbol)? {
+                    missing.push(single_kind(row, *kind, "constant bit not set"));
+                }
+            }
+            Kind::Other | Kind::SpecialOperator | Kind::Type => {}
         }
     }
     Ok(())

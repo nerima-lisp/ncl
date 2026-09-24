@@ -291,16 +291,15 @@ direct-expansion, notes)。`docs/src/notes/symbol-ownership.md` はその要約�
     function cell を書く公開 API を持たない(`set_symbol_function` は無い)ため、
     `Runtime::define_function` の registry を検査する。
   - kind `class`/`condition` → `Runtime::class` が見つかること。
-  - kind `macro`/`variable`/`constant`/`type`/`special-operator`/`other` → intern 済みで
-    あることのみ。`ncl-object` は symbol flags word を読む公開 accessor を持たないため、
-    special/constant/macro ビットは現時点で検査できない(下記「既知の欠落」)。
+  - kind `macro` → `symbol_is_macro` が真、kind `variable` → `symbol_is_special` が真、
+    kind `constant` → `symbol_is_constant` が真であること。
+  - kind `type`/`special-operator`/`other` → intern 済みであることのみ。
 - `Missing { package, symbol, kind, reason }` を欠落ごとに 1 件返す。package/symbol 単位の
   欠落は行の全 kind を持つ 1 件、kind 単位の欠落は当該 kind を持つ 1 件とする。
 
-**既知の欠落**: `packages/object/src/layout.rs` は `symbol_offset::FLAGS`(bit 0 special、
-bit 1 constant、bit 2 macro)を定義するが、`packages/object/src/object_access.rs` は private
-で、flags を読む公開関数が無い。したがって macro/variable/constant は「intern 済み」まで
-しか検査しない。flags accessor が `ncl-object` に追加された時点でこのゲートを強化する。
+**symbol flags**: `ncl-object` が `symbol_flags` / `symbol_is_*` / `set_symbol_*` を公開し、
+`packages/object/src/layout.rs` の `symbol_flag`(bit 0 special、bit 1 constant、bit 2 macro、
+bit 3 package-lock)を読み書きする。macro/variable/constant の検査はこれらの accessor を使う。
 
 **使い方**: 各レーンは `tests/coverage.rs` に次の 1 テストを置く。
 

@@ -2,6 +2,7 @@
 
 use ncl_object::{Runtime, ThreadContext, Word};
 
+use crate::ast::LocalMacro;
 use crate::error::FrontError;
 use crate::symbols::SymbolRef;
 
@@ -27,4 +28,29 @@ pub trait MacroCaller {
         name: &SymbolRef,
         form: Word,
     ) -> Result<Word, FrontError>;
+
+    /// Expand a call of a `macrolet` definition.
+    ///
+    /// A local macro body is a Lisp form that must be evaluated at expansion
+    /// time, which the front end cannot do alone. A runtime that compiles the
+    /// definition's body overrides this method; the default reports that the
+    /// capability is unavailable, so a `macrolet` call without such a runtime
+    /// fails loudly instead of silently mis-expanding.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FrontError::MacroExpansion`] by default.
+    fn call_local_macro(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        definition: &LocalMacro,
+        form: Word,
+    ) -> Result<Word, FrontError> {
+        let _ = (ctx, runtime, form);
+        Err(FrontError::MacroExpansion {
+            name: definition.name.clone(),
+            detail: "local macro expansion is not available".to_owned(),
+        })
+    }
 }

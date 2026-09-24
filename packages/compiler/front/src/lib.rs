@@ -31,7 +31,7 @@ pub mod types;
 
 pub use ast::{
     EvalSituation, Expr, FunctionDesignator, LambdaExpr, LetBinding, LocalFunction, LocalMacro,
-    SymbolMacro, TagbodyItem,
+    Operator, SymbolMacro, TagbodyItem,
 };
 pub use compiler_macro::{ArityPattern, CompilerMacro, MacroExpander, MacroRegistry};
 pub use declaration::{Declaration, OptimizeQuality, Quality, parse_declare_form};

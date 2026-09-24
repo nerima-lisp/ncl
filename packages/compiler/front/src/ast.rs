@@ -6,7 +6,9 @@
 //! expressions, and declarations.
 //!
 //! `quote` and self-evaluating atoms both parse to [`Expr::Constant`]; a
-//! lowering lane loads a constant for either.
+//! lowering lane loads a constant for either. Declarations appear in the
+//! declaration-bearing forms named by CLHS 3.1.2.1.2: `lambda`, `let`, `let*`,
+//! `locally`, `flet`, `labels`, `macrolet`, and `symbol-macrolet`.
 
 use crate::declaration::Declaration;
 use crate::lambda_list::LambdaList;
@@ -22,10 +24,10 @@ pub enum Expr {
     Constant(Literal),
     /// A reference to a lexical or special variable.
     Variable(SymbolRef),
-    /// A call of a named function with evaluated arguments.
+    /// A call, `(operator argument*)`.
     Call {
-        /// The function name.
-        function: SymbolRef,
+        /// The operator position: a function name or a lambda expression.
+        operator: Operator,
         /// The argument forms.
         arguments: Vec<Self>,
     },
@@ -86,12 +88,14 @@ pub enum Expr {
         /// The cleanup forms.
         cleanup: Vec<Self>,
     },
-    /// `(let binding* form*)` or `(let* binding* form*)`.
+    /// `(let binding* declaration* form*)`, or `let*`.
     Let {
         /// Whether the bindings are sequential, which is true for `let*`.
         sequential: bool,
         /// The variable bindings.
         bindings: Vec<LetBinding>,
+        /// The declarations that open the body.
+        declarations: Vec<Declaration>,
         /// The body forms.
         body: Vec<Self>,
     },
@@ -148,34 +152,55 @@ pub enum Expr {
         /// The body forms.
         body: Vec<Self>,
     },
-    /// `(flet definition* form*)`.
+    /// `(flet definition* declaration* form*)`.
     Flet {
         /// The local function definitions.
         definitions: Vec<LocalFunction>,
+        /// The declarations that open the body.
+        declarations: Vec<Declaration>,
         /// The body forms.
         body: Vec<Self>,
     },
-    /// `(labels definition* form*)`.
+    /// `(labels definition* declaration* form*)`.
     Labels {
         /// The local function definitions.
         definitions: Vec<LocalFunction>,
+        /// The declarations that open the body.
+        declarations: Vec<Declaration>,
         /// The body forms.
         body: Vec<Self>,
     },
-    /// `(macrolet definition* form*)`.
+    /// `(macrolet definition* declaration* form*)`.
     Macrolet {
         /// The local macro definitions.
         definitions: Vec<LocalMacro>,
+        /// The declarations that open the body.
+        declarations: Vec<Declaration>,
         /// The body forms.
         body: Vec<Self>,
     },
-    /// `(symbol-macrolet definition* form*)`.
+    /// `(symbol-macrolet definition* declaration* form*)`.
     SymbolMacrolet {
         /// The local symbol-macro definitions.
         definitions: Vec<SymbolMacro>,
+        /// The declarations that open the body.
+        declarations: Vec<Declaration>,
         /// The body forms.
         body: Vec<Self>,
     },
+}
+
+/// The operator position of a call.
+///
+/// CLHS 3.1.2.1.2 restricts the operator to a symbol naming a function or a
+/// lambda expression.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum Operator {
+    /// A symbol naming a function.
+    Name(SymbolRef),
+    /// A lambda expression, as in `((lambda (x) x) 1)`.
+    Lambda(Box<LambdaExpr>),
 }
 
 /// A lambda expression: a lambda list, declarations, an optional docstring, and a body.
@@ -216,6 +241,8 @@ pub struct LocalMacro {
     pub name: SymbolRef,
     /// The macro lambda list.
     pub lambda_list: LambdaList,
+    /// The declarations that open the expander body.
+    pub declarations: Vec<Declaration>,
     /// The documentation string, if present.
     pub docstring: Option<String>,
     /// The expansion forms.

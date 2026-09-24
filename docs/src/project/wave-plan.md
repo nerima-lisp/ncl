@@ -278,44 +278,61 @@ direct-expansion, notes)。`docs/src/notes/symbol-ownership.md` はその要約�
 **設計**: `packages/ownership`(crate `ncl-ownership`、依存は `ncl-object` のみ)。
 
 - `include_str!` で `symbols.tsv` を取り込み、`Row { package, symbol, kind: Vec<Kind>,
-  crate_name, phase, direct_expansion }` に parse する。壊れた行は `OwnershipError` を返す。
-- `rows_for_crate(crate_name: &str, phase: u8) -> Vec<Row>`。
+  crate_name, phase, direct_expansion }` に parse する。`kind` 列は `class+function` のように
+  `+` で複数種を持つため `Vec<Kind>` とする。壊れた行(列数不足、不正 kind、不正 phase、
+  不正 direct-expansion)は `OwnershipError::BadRow` を返す。
+- `rows() -> Result<Vec<Row>, OwnershipError>`、`rows_for_crate(crate_name: &str, phase: u8)
+  -> Result<Vec<Row>, OwnershipError>`。
 - `assert_crate_coverage(runtime: &Runtime, ctx: &mut ThreadContext, crate_name: &str)
-  -> Result<(), Vec<Missing>>`。各 Phase 1 行について次を検査する。
+  -> Result<(), OwnershipError>`。各 Phase 1 行について次を検査する。
   - package が `Runtime::find_package` で見つかること。
-  - symbol が `Package::find_symbol` で intern 済みであること。
-  - kind `function` → `symbol_function` が unbound でない。
-  - kind `macro` → symbol flags word の macro bit(bit 2)が立っている。
-  - kind `variable` → special bit(bit 0)、`constant` → constant bit(bit 1)。
-  - kind `class`/`condition` → `Runtime::class` が見つかる。
-  - kind `type`/`special-operator`/`other` → intern 済みであることのみ(専用 registry は
-    各レーンが持つため、ここでは名前の存在だけを見る)。
-- `Missing { package, symbol, kind, reason }` を欠落ごとに 1 件返す。
+  - symbol が `Package::find_symbol` で intern 済みであること(`&mut ThreadContext` を取る)。
+  - kind `function` → `Runtime::function` に登録済みであること。`ncl-object` は symbol の
+    function cell を書く公開 API を持たない(`set_symbol_function` は無い)ため、
+    `Runtime::define_function` の registry を検査する。
+  - kind `class`/`condition` → `Runtime::class` が見つかること。
+  - kind `macro`/`variable`/`constant`/`type`/`special-operator`/`other` → intern 済みで
+    あることのみ。`ncl-object` は symbol flags word を読む公開 accessor を持たないため、
+    special/constant/macro ビットは現時点で検査できない(下記「既知の欠落」)。
+- `Missing { package, symbol, kind, reason }` を欠落ごとに 1 件返す。package/symbol 単位の
+  欠落は行の全 kind を持つ 1 件、kind 単位の欠落は当該 kind を持つ 1 件とする。
+
+**既知の欠落**: `packages/object/src/layout.rs` は `symbol_offset::FLAGS`(bit 0 special、
+bit 1 constant、bit 2 macro)を定義するが、`packages/object/src/object_access.rs` は private
+で、flags を読む公開関数が無い。したがって macro/variable/constant は「intern 済み」まで
+しか検査しない。flags accessor が `ncl-object` に追加された時点でこのゲートを強化する。
 
 **使い方**: 各レーンは `tests/coverage.rs` に次の 1 テストを置く。
 
 ```rust
 #[test]
 fn registers_every_owned_symbol() {
-    let runtime = Runtime::new().unwrap();   // tests 配下では unwrap 可
-    let mut ctx = runtime.new_thread_context().unwrap();
-    ncl_<crate>::register(&runtime).unwrap();
+    let runtime = ncl_object::Runtime::new().unwrap(); // tests 配下では unwrap 可
+    let mut ctx = ncl_object::ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ncl_<crate>::register(&runtime).unwrap(); // 各レーンが自 crate に実装
     ncl_ownership::assert_crate_coverage(&runtime, &mut ctx, "ncl-<crate>").unwrap();
 }
 ```
 
+`ncl_<crate>::register(&Runtime) -> Result<(), ObjectError>` は各レーンが自 crate に実装する
+登録関数で、`ncl-ownership` 側はこれを呼ばない。
+
 **失敗条件**: 欠落が 1 件でもあればテスト失敗。エラー表示は `package::symbol (kind):
-reason` を 1 行 1 件で並べる。**入力が空なら失敗**: 所有表に当該 crate の Phase 1 行が
-0 件のときは `OwnershipError::NoRows` を返し、空集合に対する偽の合格を防ぐ。
+reason` を 1 行 1 件で並べる(`OwnershipError` の `Display`/`Debug` が同じ形式を返す)。
+**入力が空なら失敗**: 所有表に当該 crate の Phase 1 行が 0 件のときは
+`OwnershipError::NoRows` を返し、空集合に対する偽の合格を防ぐ。
 
 **CI**: 通常の `cargo test --workspace` に含まれる。追加ジョブは不要。
 
-**W0-3 自身の検証**: `ncl-ownership` の単体テストで、(1) 所有表の全行が parse できる、
+**W0-3 自身の検証**: `ncl-ownership` のテストで、(1) 所有表の全行が parse できる、
 (2) `rows_for_crate("ncl-types", 1)` の件数が `grep -c $'\tncl-types\t1\t'
 conformance/ownership/symbols.tsv` と一致、(3) 空 Runtime に対する `assert_crate_coverage`
-が全行を Missing として返す、(4) 存在しない crate 名で `NoRows` が返る。`nix develop
---command cargo test -p ncl-ownership` exit 0。受入: 上記 4 テストが選択・実行され
-(`test result:` 行の passed が 4 以上)、`check_standards.py` が violations none。
+が全行を Missing として返す、(4) 存在しない crate 名で `NoRows` が返る。加えて
+`src/table.rs` の単体テストが parse のエラー分岐(列数不足、不正 kind、不正 phase、不正
+direct-expansion)を踏む。`nix develop --command cargo test -p ncl-ownership` exit 0。受入:
+上記 4 テストが選択・実行され(`tests/coverage.rs` の `test result:` 行の passed が 4)、
+`check_standards.py` が violations none。
 
 ### W0-4 CI 配線
 

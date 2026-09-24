@@ -8,5 +8,8 @@ license.workspace = true
 [dependencies]
 ncl-object = { path = "../object" }
 
+[dev-dependencies]
+ncl-ownership = { path = "../ownership" }
+
 [lints]
 workspace = true

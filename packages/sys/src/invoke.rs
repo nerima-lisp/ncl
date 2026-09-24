@@ -82,15 +82,16 @@ pub fn invoke_entry_with_function(
     let mut value = 0_u64;
     let mut count = 0_u64;
     // SAFETY: the caller supplies published code generated for x86-64 SysV, a live
-    // Thread, and an entry offset within that allocation. The 16-byte stack slot
-    // keeps the call 16-byte aligned and preserves the caller's `r15`.
+    // Thread, and an entry offset within that allocation. The 32-byte stack slot
+    // keeps the call 16-byte aligned, leaves the generated frame header's
+    // 16-byte reservation untouched, and preserves the caller's `r15`.
     unsafe {
         core::arch::asm!(
-            "sub rsp, 16",
-            "mov [rsp], r15",
+            "sub rsp, 32",
+            "mov [rsp + 16], r15",
             "call r11",
-            "mov r15, [rsp]",
-            "add rsp, 16",
+            "mov r15, [rsp + 16]",
+            "add rsp, 32",
             in("r10") function_object,
             in("r11") entry,
             in("r15") ctx,

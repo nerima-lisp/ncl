@@ -29,7 +29,7 @@ jobs:
           tool_versions="$(grep -m1 '^rust ' .tool-versions | perl -lane 'print $F[1]')"
           cargo_toml="$(grep -m1 '^rust-version' Cargo.toml | perl -pe 's/.*"(.*)".*/\1/')"
           flake_versions="$(grep -o 'rust-bin\.stable\."[0-9.]*"' flake.nix | perl -pe 's/.*"(.*)"/\1/' | sort -u)"
-          ci_versions="$(grep -A2 'dtolnay/rust-toolchain@stable' .github/workflows/ci.yml | grep 'toolchain:' | perl -lane 'print $F[1]' | sort -u)"
+          ci_versions="$(grep -A2 '^ *- uses: dtolnay/rust-toolchain@stable' .github/workflows/ci.yml | grep 'toolchain:' | perl -lane 'print $F[1]' | sort -u)"
           fail=0
           if [ "$tool_versions" != "$expected" ]; then
             echo "::error::.tool-versions rust=$tool_versions does not match rust-toolchain.toml channel=$expected"

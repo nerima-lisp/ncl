@@ -10,5 +10,8 @@ ncl-object = { path = "../object" }
 ncl-objfile = { path = "../objfile" }
 ncl-sys = { path = "../sys" }
 
+[dev-dependencies]
+ncl-ownership = { path = "../ownership" }
+
 [lints]
 workspace = true

@@ -82,6 +82,7 @@ version = "0.1.0"
 dependencies = [
  "ncl-object",
  "ncl-objfile",
+ "ncl-ownership",
  "ncl-sys",
 ]
 

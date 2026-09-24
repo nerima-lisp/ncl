@@ -66,6 +66,14 @@ pub mod symbol_offset {
     pub const FLAGS: usize = 7;
 }
 
+/// Flag bit positions in a symbol's flags word.
+pub mod symbol_flag {
+    pub const SPECIAL: u32 = 1;
+    pub const CONSTANT: u32 = 2;
+    pub const MACRO: u32 = 4;
+    pub const PACKAGE_LOCKED: u32 = 8;
+}
+
 pub mod structure_offset {
     pub const LAYOUT: usize = 0;
     pub const SLOTS: usize = 1;

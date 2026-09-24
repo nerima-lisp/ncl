@@ -68,6 +68,8 @@ Cons pages contain `(car, cdr)` with no header. Header-object pages contain the 
 
 Symbol flags are bit 0 special, bit 1 constant, bit 2 macro, bit 3 package-lock, with the rest reserved. NIL and T are statically allocated, scanned but never moved. NIL is list-lowtag compatible: its car and cdr positions point to NIL and align with symbol value/function cells. Symbols and instances keep identity hashes in slots. Other `eq` keys use address hashing and the hashed flag, with rehash notification after movement.
 
+The flag bits are read and written through the `ncl-object` accessors `symbol_flags`, `symbol_is_special` / `symbol_is_constant` / `symbol_is_macro` / `symbol_is_package_locked`, and `set_symbol_special` / `set_symbol_constant` / `set_symbol_macro` / `set_symbol_package_locked` (`packages/object/src/symbol_extensions.rs`; bit constants in `packages/object/src/layout.rs`, `symbol_flag`).
+
 ## Phase 1 payload and registration contract
 
 Header-object payload references are registered from payload-relative offsets by adding one header word. The collector consumes the resulting header-inclusive `reference_words` and optional `boxed_from`; scalar metadata must never be registered as a reference. References are placed after scalar metadata (scalars-first), and every reference store goes through the object access path and its write barrier. (`packages/object/src/layout.rs`, `reference_words`; `packages/object/src/gc.rs`, `register_layouts`; `packages/object/src/object_access.rs`.)

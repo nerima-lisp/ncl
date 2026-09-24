@@ -18,6 +18,9 @@ car/cdr(&mut ThreadContext, Word) -> Result<Word, ObjectError>
 rplaca/rplacd(&mut ThreadContext, Word, Word) -> Result<Word, ObjectError>
 symbol_value/symbol_function/symbol_plist/symbol_name(&ThreadContext, Word) -> Result<Word, ObjectError>
 set_symbol_value(&mut ThreadContext, Word, Word) -> Result<(), ObjectError>
+symbol_flags(&ThreadContext, Word) -> Result<u32, ObjectError>
+symbol_is_special/symbol_is_constant/symbol_is_macro/symbol_is_package_locked(&ThreadContext, Word) -> Result<bool, ObjectError>
+set_symbol_special/set_symbol_constant/set_symbol_macro/set_symbol_package_locked(&mut ThreadContext, Word, bool) -> Result<(), ObjectError>
 push_root(&mut ThreadContext, &mut Word) -> RootToken
 pop_root(&mut ThreadContext, RootToken) -> bool
 write_object_slot(&mut ThreadContext, Word, usize, Word) -> Result<(), ObjectError>

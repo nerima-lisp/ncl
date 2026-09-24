@@ -402,8 +402,8 @@ fn current_stack_bounds() -> Option<(usize, usize)> {
         if result == 0 {
             let result = crate::os::declarations::pthread_attr_getstack(
                 attr.as_ptr().cast(),
-                &mut start,
-                &mut size,
+                &raw mut start,
+                &raw mut size,
             );
             let _ = crate::os::declarations::pthread_attr_destroy(attr.as_mut_ptr().cast());
             result

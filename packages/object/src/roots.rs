@@ -1,5 +1,6 @@
 use crate::{ObjectError, ThreadContext};
-use ncl_sys::{RootToken, Word};
+use core::cell::Cell;
+use ncl_sys::{RootSlot, RootToken, Word};
 
 /// Push a precise root.
 pub fn push_root(ctx: &mut ThreadContext, value: &mut Word) -> RootToken {
@@ -30,22 +31,28 @@ pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, O
 pub fn with_root<T>(
     ctx: &mut ThreadContext,
     value: &mut Word,
-    f: impl FnOnce(&mut ThreadContext, &mut Word) -> Result<T, ObjectError>,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
-    let token = try_push_root(ctx, value)?;
-    let result = f(ctx, value);
+    // The root slot is interior-mutable so the optimizer cannot assume the
+    // collection preserves the value: the collector rewrites registered slots
+    // in place, and a plain `Word` behind `&mut` is otherwise treated as
+    // unmodified across the call that performs the collection.
+    let mut slot = Cell::new(*value);
+    let token = try_push_root(ctx, slot.get_mut())?;
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
     finish_root(ctx, token, result)
 }
 
 pub fn with_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],
-    f: impl FnOnce(&mut ThreadContext, &[Word]) -> Result<T, ObjectError>,
+    f: impl FnOnce(&mut ThreadContext, &[RootSlot<'_>]) -> Result<T, ObjectError>,
 ) -> Result<T, ObjectError> {
-    let mut rooted_values = values.to_vec();
-    let mut tokens = Vec::with_capacity(rooted_values.len());
-    for value in &mut rooted_values {
-        match try_push_root(ctx, value) {
+    let mut cells: Vec<Cell<Word>> = values.iter().copied().map(Cell::new).collect();
+    let mut tokens = Vec::with_capacity(cells.len());
+    for cell in &mut cells {
+        match try_push_root(ctx, cell.get_mut()) {
             Ok(token) => tokens.push(token),
             Err(error) => {
                 for token in tokens.into_iter().rev() {
@@ -55,7 +62,8 @@ pub fn with_roots<T>(
             }
         }
     }
-    let result = f(ctx, &rooted_values);
+    let slots: Vec<RootSlot<'_>> = cells.iter().map(RootSlot::new).collect();
+    let result = f(ctx, &slots);
     for token in tokens.into_iter().rev() {
         assert!(try_pop_root(ctx, token).unwrap_or(false));
     }

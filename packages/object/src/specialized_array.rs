@@ -62,7 +62,7 @@ pub fn make_specialized_array(
                 ctx,
                 object,
                 2 + index,
-                value,
+                *value,
                 layout::widetag::SPECIALIZED_ARRAY,
             )?;
         }

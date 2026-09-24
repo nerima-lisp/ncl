@@ -95,8 +95,8 @@ pub fn make_ratio(
 ) -> Result<Ratio, ObjectError> {
     with_roots(ctx, &[numerator, denominator], |ctx, values| {
         let object = allocate(ctx, runtime, widetag::RATIO, 2)?;
-        put(ctx, object, number_offset::RATIO_NUMERATOR, values[0])?;
-        put(ctx, object, number_offset::RATIO_DENOMINATOR, values[1])?;
+        put(ctx, object, number_offset::RATIO_NUMERATOR, *values[0])?;
+        put(ctx, object, number_offset::RATIO_DENOMINATOR, *values[1])?;
         Ok(object.into())
     })
 }
@@ -145,8 +145,8 @@ pub fn make_complex(
 ) -> Result<Complex, ObjectError> {
     with_roots(ctx, &[real, imag], |ctx, values| {
         let object = allocate(ctx, runtime, widetag::COMPLEX, 2)?;
-        put(ctx, object, number_offset::COMPLEX_REAL, values[0])?;
-        put(ctx, object, number_offset::COMPLEX_IMAG, values[1])?;
+        put(ctx, object, number_offset::COMPLEX_REAL, *values[0])?;
+        put(ctx, object, number_offset::COMPLEX_IMAG, *values[1])?;
         Ok(object.into())
     })
 }

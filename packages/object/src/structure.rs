@@ -78,7 +78,7 @@ pub fn make_structure(
             fix(layout.0 as usize)?,
         )?;
         for (index, value) in slots.iter().copied().enumerate() {
-            put(ctx, object, structure_offset::SLOTS + index, value)?;
+            put(ctx, object, structure_offset::SLOTS + index, *value)?;
         }
         Ok(object)
     })

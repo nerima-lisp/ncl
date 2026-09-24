@@ -211,7 +211,7 @@ pub fn make_simple_vector(
                 ctx,
                 object,
                 1 + index,
-                value,
+                *value,
                 layout::widetag::SIMPLE_VECTOR,
             )?;
         }
@@ -328,7 +328,7 @@ pub fn make_array(
             None => -1,
         };
         write_meta(ctx, metadata_offset(rank, 0), Word::fixnum(fp))?;
-        write_meta(ctx, metadata_offset(rank, 1), rooted[1])?;
+        write_meta(ctx, metadata_offset(rank, 1), *rooted[1])?;
         write_meta(
             ctx,
             metadata_offset(rank, 2),
@@ -350,7 +350,7 @@ pub fn make_array(
             Word::fixnum(i64::try_from(flags).map_err(|_| ObjectError::Layout)?),
         )?;
         for index in 0..total {
-            write_meta(ctx, metadata_offset(rank, 4) + index, rooted[0])?;
+            write_meta(ctx, metadata_offset(rank, 4) + index, *rooted[0])?;
         }
         Ok(object)
     })

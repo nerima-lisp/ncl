@@ -29,7 +29,7 @@ pub fn make_stream(
         |ctx, values| {
             let object = allocate(ctx, runtime, widetag::STREAM, 5)?;
             for (i, v) in values.iter().copied().enumerate() {
-                put(ctx, object, i, v)?;
+                put(ctx, object, i, *v)?;
             }
             Ok(object.into())
         },

@@ -85,7 +85,7 @@ assert!(pop_root(ctx, token));
 
 確保関数が値で受け取る managed 引数は、その関数自身が確保を跨いで root 化します。managed Word を含む slice/Vec は確保を跨いで保持せず、必要なら各要素を root 化してから確保します。`ThreadContext::set_gc_stress(true)` を使うと、確保ごとの GC でこの契約をテストできます。stale-word 検査は `ThreadContext::set_strict_forwarding(true)` または heap 全体に効く `Runtime::set_strict_forwarding(true)` で有効化します。
 
-constructor は値で受け取った managed 引数と slice の各要素を、内部の確保より前に root 化し、確保後は更新済みの root slot から読み取ります。
+constructor は値で受け取った managed 引数と slice の各要素を、内部の確保より前に root 化し、確保後は更新済みの root slot から読み取ります。crate 内部の `with_root` / `with_roots` は root slot を `Cell<Word>` に置き、closure には `ncl_sys::RootSlot` を渡します。slot を interior-mutable にしないと、release ビルドの最適化が collection 前の値を再利用します。
 
 ## 実装状況
 

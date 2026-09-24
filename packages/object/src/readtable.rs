@@ -18,7 +18,7 @@ pub fn make_readtable(
     with_roots(ctx, &[syntax, dispatch, case_mode], |ctx, values| {
         let object = allocate(ctx, runtime, widetag::READTABLE, 3)?;
         for (i, v) in values.iter().copied().enumerate() {
-            put(ctx, object, i, v)?;
+            put(ctx, object, i, *v)?;
         }
         Ok(object.into())
     })

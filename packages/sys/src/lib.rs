@@ -28,6 +28,34 @@ pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{NativeState, RootToken, SafepointState, Thread, ThreadLayout, thread_layout};
 pub use word::{LowTag, Word};
 
+/// A borrowed precise-root slot whose value the collector may rewrite in place.
+///
+/// A mutator reads a root through this handle after an allocation or collection.
+/// Because the slot is interior-mutable, the optimizer cannot reuse a value the
+/// mutator observed before the collection that forwarded it.
+#[derive(Clone, Copy, Debug)]
+pub struct RootSlot<'a> {
+    cell: &'a core::cell::Cell<Word>,
+}
+
+impl<'a> RootSlot<'a> {
+    /// Wrap a mutator-owned root cell.
+    #[must_use]
+    pub const fn new(cell: &'a core::cell::Cell<Word>) -> Self {
+        Self { cell }
+    }
+}
+
+impl core::ops::Deref for RootSlot<'_> {
+    type Target = Word;
+
+    fn deref(&self) -> &Word {
+        // SAFETY: the cell outlives this borrow, and the collector rewrites it
+        // only while no reference derived here is live.
+        unsafe { &*self.cell.as_ptr() }
+    }
+}
+
 #[cfg(target_arch = "aarch64")]
 fn snapshot_callee_saved() -> [u64; 16] {
     let mut values = [0_u64; 16];

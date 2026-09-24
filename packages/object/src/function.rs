@@ -71,7 +71,7 @@ pub fn make_closure(
                         put(ctx, object, slot, value)?;
                     }
                     for (index, value) in values.iter().copied().enumerate() {
-                        put(ctx, object, function_offset::CAPTURES + index, value)?;
+                        put(ctx, object, function_offset::CAPTURES + index, *value)?;
                     }
                     Ok(object.into())
                 })

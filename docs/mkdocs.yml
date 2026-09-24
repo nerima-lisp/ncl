@@ -66,6 +66,7 @@ nav:
   - Project:
       - Development: project/development.md
       - Roadmap: project/roadmap.md
+      - Wave plan: project/wave-plan.md
 
 not_in_nav: |
   notes/

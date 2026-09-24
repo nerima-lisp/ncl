@@ -1,6 +1,6 @@
 //! Symbol printing.
 
-use ncl_object::{Word, symbol_package};
+use ncl_object::{Package, Word, symbol_package};
 
 use crate::error::PrintError;
 use crate::options::PrintCase;
@@ -18,7 +18,10 @@ impl Printer<'_> {
             let rendered = render_name(&name, self.options.escape, self.options.case);
             return self.write_str(&rendered);
         }
-        let package_name = self.symbol_text(package)?;
+        let package_name = {
+            let name = Package::from(package).name(&*self.ctx)?;
+            self.string_text(name)?
+        };
         if package_name == "KEYWORD" {
             self.write_str(":")?;
         } else if package_name != "COMMON-LISP" {

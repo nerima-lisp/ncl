@@ -158,6 +158,20 @@ impl PrintOptions {
         self
     }
 
+    /// Return a copy with `SB-EXT:*PRINT-CIRCLE-NOT-SHARED*` replaced.
+    #[must_use]
+    pub const fn with_circle_not_shared(mut self, not_shared: bool) -> Self {
+        self.circle_not_shared = not_shared;
+        self
+    }
+
+    /// Return a copy with `SB-EXT:*PRINT-VECTOR-LENGTH*` replaced.
+    #[must_use]
+    pub const fn with_vector_length(mut self, length: Option<usize>) -> Self {
+        self.vector_length = length;
+        self
+    }
+
     /// Read the ambient `*print-*` specials, falling back to [`Self::new`].
     ///
     /// Most `*print-*` variables belong to `ncl-lib-streams`; a variable that

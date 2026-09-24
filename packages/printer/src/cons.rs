@@ -15,8 +15,10 @@ impl Printer<'_> {
             return self.print(quoted);
         }
         self.write_char('(')?;
+        let indent = self.column;
         let mut cursor = list;
         let mut count = 0usize;
+        let mut first = true;
         loop {
             if let Some(limit) = self.options.length
                 && count == limit
@@ -27,6 +29,10 @@ impl Printer<'_> {
                 self.write_str("...")?;
                 break;
             }
+            if !first {
+                self.separator(indent)?;
+            }
+            first = false;
             let head = car(self.ctx, cursor)?;
             self.print(head)?;
             count += 1;
@@ -34,8 +40,7 @@ impl Printer<'_> {
             if tail == Word::NIL {
                 break;
             }
-            if tail.is_cons() {
-                self.write_char(' ')?;
+            if tail.is_cons() && !self.tail_is_shared(tail) {
                 cursor = tail;
             } else {
                 self.write_str(" . ")?;

@@ -132,7 +132,8 @@ fn format_limbs(limbs: &[u32], negative: bool, base: u32) -> String {
 }
 
 fn digit_character(digit: u64) -> char {
-    char::from_digit(u32::try_from(digit).unwrap_or(0), 36).unwrap_or('0')
+    let character = char::from_digit(u32::try_from(digit).unwrap_or(0), 36).unwrap_or('0');
+    character.to_ascii_uppercase()
 }
 
 /// Render a double float so it reads back as the same value.

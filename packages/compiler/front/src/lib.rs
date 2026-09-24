@@ -28,9 +28,12 @@ pub mod form;
 pub mod lambda_list;
 pub mod literal;
 pub mod macro_caller;
+pub mod register;
 pub mod special;
 pub mod symbols;
 pub mod types;
+
+pub mod owned_symbols;
 
 pub use ast::{
     EvalSituation, Expr, FunctionDesignator, LambdaExpr, LetBinding, LocalFunction, LocalMacro,
@@ -44,6 +47,7 @@ pub use expand::{Body, FormExpander, LambdaListKind};
 pub use lambda_list::{AuxParam, KeyParam, LambdaList, OptionalParam, ParamName};
 pub use literal::{Literal, NumberLiteral};
 pub use macro_caller::MacroCaller;
+pub use register::register;
 pub use special::SpecialForm;
 pub use symbols::SymbolRef;
 pub use types::TypeSpecifier;

@@ -15,13 +15,17 @@ fn standard(runtime: &Runtime, ctx: &mut ThreadContext) -> ReadOptions {
 
 fn read_one(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> Word {
     let opts = standard(runtime, ctx);
-    read_from_string(ctx, runtime, text, &opts).unwrap().unwrap()
+    read_from_string(ctx, runtime, text, &opts)
+        .unwrap()
+        .unwrap()
 }
 
 fn name_of(ctx: &ThreadContext, word: Word) -> String {
     let name = symbol_name(ctx, word).unwrap();
     let length = string_length(ctx, name).unwrap();
-    (0..length).map(|i| string_ref(ctx, name, i).unwrap()).collect()
+    (0..length)
+        .map(|i| string_ref(ctx, name, i).unwrap())
+        .collect()
 }
 
 fn read_name(runtime: &Runtime, ctx: &mut ThreadContext, text: &str) -> String {
@@ -50,9 +54,18 @@ fn reads_fixnums() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
-    assert_eq!(classify(read_one(&runtime, &mut ctx, "42")), ObjectRef::Fixnum(42));
-    assert_eq!(classify(read_one(&runtime, &mut ctx, "-7")), ObjectRef::Fixnum(-7));
-    assert_eq!(classify(read_one(&runtime, &mut ctx, "+3")), ObjectRef::Fixnum(3));
+    assert_eq!(
+        classify(read_one(&runtime, &mut ctx, "42")),
+        ObjectRef::Fixnum(42)
+    );
+    assert_eq!(
+        classify(read_one(&runtime, &mut ctx, "-7")),
+        ObjectRef::Fixnum(-7)
+    );
+    assert_eq!(
+        classify(read_one(&runtime, &mut ctx, "+3")),
+        ObjectRef::Fixnum(3)
+    );
 }
 
 #[test]
@@ -72,9 +85,15 @@ fn reads_ratios_and_floats() {
     let ratio = read_one(&runtime, &mut ctx, "3/4");
     assert!(matches!(classify_object(&ctx, ratio), ObjectRef::Ratio(_)));
     let float = read_one(&runtime, &mut ctx, "3.14");
-    assert!(matches!(classify_object(&ctx, float), ObjectRef::DoubleFloat(_)));
+    assert!(matches!(
+        classify_object(&ctx, float),
+        ObjectRef::DoubleFloat(_)
+    ));
     let exp = read_one(&runtime, &mut ctx, "1.5e3");
-    assert!(matches!(classify_object(&ctx, exp), ObjectRef::DoubleFloat(_)));
+    assert!(matches!(
+        classify_object(&ctx, exp),
+        ObjectRef::DoubleFloat(_)
+    ));
 }
 
 #[test]
@@ -110,7 +129,9 @@ fn downcase_readtable_case_folds_symbols() {
     let mut opts = standard(&runtime, &mut ctx);
     opts.readtable = table;
     let mut source = ncl_reader::StringSource::new("HELLO");
-    let word = read(&mut ctx, &runtime, &mut source, &opts).unwrap().unwrap();
+    let word = read(&mut ctx, &runtime, &mut source, &opts)
+        .unwrap()
+        .unwrap();
     assert_eq!(name_of(&ctx, word), "hello");
 }
 
@@ -124,7 +145,9 @@ fn reads_keyword_symbols() {
     let pkg = ncl_object::symbol_package(&ctx, kw).unwrap();
     let pkg_name = ncl_object::Package::from(pkg).name(&ctx).unwrap();
     let len = string_length(&ctx, pkg_name).unwrap();
-    let pkg_name: String = (0..len).map(|i| string_ref(&ctx, pkg_name, i).unwrap()).collect();
+    let pkg_name: String = (0..len)
+        .map(|i| string_ref(&ctx, pkg_name, i).unwrap())
+        .collect();
     assert_eq!(pkg_name, "KEYWORD");
 }
 
@@ -172,8 +195,14 @@ fn reads_character_literals() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     assert_eq!(read_one(&runtime, &mut ctx, "#\\a"), Word::character(97));
-    assert_eq!(read_one(&runtime, &mut ctx, "#\\Space"), Word::character(32));
-    assert_eq!(read_one(&runtime, &mut ctx, "#\\Newline"), Word::character(10));
+    assert_eq!(
+        read_one(&runtime, &mut ctx, "#\\Space"),
+        Word::character(32)
+    );
+    assert_eq!(
+        read_one(&runtime, &mut ctx, "#\\Newline"),
+        Word::character(10)
+    );
     assert_eq!(read_one(&runtime, &mut ctx, "#\\("), Word::character(40));
 }
 
@@ -183,7 +212,10 @@ fn reads_vector_and_bit_vector_literals() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     let v = read_one(&runtime, &mut ctx, "#(1 2 3)");
-    assert!(matches!(classify_object(&ctx, v), ObjectRef::SimpleVector(_)));
+    assert!(matches!(
+        classify_object(&ctx, v),
+        ObjectRef::SimpleVector(_)
+    ));
     let bits = read_one(&runtime, &mut ctx, "#*101");
     assert!(matches!(
         classify_object(&ctx, bits),
@@ -205,10 +237,22 @@ fn reads_radix_integers() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
-    assert_eq!(classify(read_one(&runtime, &mut ctx, "#xff")), ObjectRef::Fixnum(255));
-    assert_eq!(classify(read_one(&runtime, &mut ctx, "#b101")), ObjectRef::Fixnum(5));
-    assert_eq!(classify(read_one(&runtime, &mut ctx, "#o17")), ObjectRef::Fixnum(15));
-    assert_eq!(classify(read_one(&runtime, &mut ctx, "#2r101")), ObjectRef::Fixnum(5));
+    assert_eq!(
+        classify(read_one(&runtime, &mut ctx, "#xff")),
+        ObjectRef::Fixnum(255)
+    );
+    assert_eq!(
+        classify(read_one(&runtime, &mut ctx, "#b101")),
+        ObjectRef::Fixnum(5)
+    );
+    assert_eq!(
+        classify(read_one(&runtime, &mut ctx, "#o17")),
+        ObjectRef::Fixnum(15)
+    );
+    assert_eq!(
+        classify(read_one(&runtime, &mut ctx, "#2r101")),
+        ObjectRef::Fixnum(5)
+    );
 }
 
 #[test]
@@ -265,7 +309,9 @@ fn read_base_is_honoured() {
     let mut opts = standard(&runtime, &mut ctx);
     opts.read_base = 16;
     let mut source = ncl_reader::StringSource::new("ff");
-    let word = read(&mut ctx, &runtime, &mut source, &opts).unwrap().unwrap();
+    let word = read(&mut ctx, &runtime, &mut source, &opts)
+        .unwrap()
+        .unwrap();
     assert_eq!(classify(word), ObjectRef::Fixnum(255));
 }
 
@@ -276,9 +322,17 @@ fn single_float_marker_is_rejected() {
     ctx.register(&runtime).unwrap();
     let opts = standard(&runtime, &mut ctx);
     let error = read_from_string(&mut ctx, &runtime, "1.5f0", &opts).unwrap_err();
-    assert!(matches!(error, ncl_reader::ReadError::UnsupportedFloatFormat(_)));
-    let word = read_from_string(&mut ctx, &runtime, "1.5d0", &opts).unwrap().unwrap();
-    assert!(matches!(classify_object(&ctx, word), ObjectRef::DoubleFloat(_)));
+    assert!(matches!(
+        error,
+        ncl_reader::ReadError::UnsupportedFloatFormat(_)
+    ));
+    let word = read_from_string(&mut ctx, &runtime, "1.5d0", &opts)
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        classify_object(&ctx, word),
+        ObjectRef::DoubleFloat(_)
+    ));
 }
 
 #[test]
@@ -308,7 +362,10 @@ fn undefined_dispatch_is_an_error() {
     ctx.register(&runtime).unwrap();
     let opts = standard(&runtime, &mut ctx);
     let error = read_from_string(&mut ctx, &runtime, "#q", &opts).unwrap_err();
-    assert!(matches!(error, ncl_reader::ReadError::UndefinedDispatchMacro('q')));
+    assert!(matches!(
+        error,
+        ncl_reader::ReadError::UndefinedDispatchMacro('q')
+    ));
 }
 
 #[test]
@@ -340,10 +397,16 @@ fn standard_readtable_reports_upcase_and_is_a_readtable() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     let table = ncl_reader::standard_readtable(&mut ctx, &runtime).unwrap();
-    assert_eq!(ncl_reader::readtable_case(&ctx, table).unwrap(), ReadtableCase::Upcase);
+    assert_eq!(
+        ncl_reader::readtable_case(&ctx, table).unwrap(),
+        ReadtableCase::Upcase
+    );
     assert!(ncl_reader::readtablep(&ctx, table.object().as_word()));
     let copy = ncl_reader::copy_readtable(&mut ctx, &runtime, table).unwrap();
-    assert_eq!(ncl_reader::readtable_case(&ctx, copy).unwrap(), ReadtableCase::Upcase);
+    assert_eq!(
+        ncl_reader::readtable_case(&ctx, copy).unwrap(),
+        ReadtableCase::Upcase
+    );
 }
 
 #[test]

@@ -79,9 +79,8 @@ pub fn read_sharp(
                 }
                 Some('r' | 'R') => {
                     source.read_char();
-                    let base = u32::try_from(number).map_err(|_| ReadError::InvalidNumber(
-                        "radix out of range".to_owned(),
-                    ))?;
+                    let base = u32::try_from(number)
+                        .map_err(|_| ReadError::InvalidNumber("radix out of range".to_owned()))?;
                     read_radix(ctx, runtime, source, base).map(Some)
                 }
                 _ => Err(ReadError::InvalidNumber(

@@ -3,7 +3,7 @@
 use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word};
 
 use crate::class::{HIERARCHY, install_class, wire_superclass};
-use crate::symbols::{SYMBOLS, SymbolKind, SymbolRow};
+use crate::symbols::{SymbolKind, SymbolRow, symbols};
 
 /// Register every owned symbol and the standard condition hierarchy.
 ///
@@ -17,7 +17,7 @@ use crate::symbols::{SYMBOLS, SymbolKind, SymbolRow};
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
-    for row in SYMBOLS {
+    for row in symbols() {
         register_symbol(runtime, &mut ctx, row)?;
     }
     install_hierarchy(runtime, &mut ctx)?;
@@ -41,7 +41,7 @@ fn register_symbol(
 }
 
 fn install_hierarchy(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
-    for row in SYMBOLS {
+    for row in symbols() {
         match row.kind {
             SymbolKind::Class | SymbolKind::ClassAndFunction => {
                 install_class(ctx, runtime, row.name)?;

@@ -1,6 +1,7 @@
 use super::{
     ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, emit, emit_call,
-    load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_safepoint, store_slot,
+    load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_safepoint, slot,
+    slot_mem_of, store_slot,
 };
 use crate::{CodegenError, RuntimeAbi};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem};
@@ -229,9 +230,33 @@ pub fn move_args(
             "block argument arity mismatch".into(),
         ));
     }
+    let mut moves = Vec::new();
     for (argument, parameter) in args.iter().zip(params) {
-        load_slot(assembler, slots, *argument, ENTRY)?;
-        store_slot(assembler, slots, parameter.value, ENTRY)?;
+        let source = slot(slots, *argument)?;
+        let destination = slot(slots, parameter.value)?;
+        if source != destination {
+            moves.push((source, destination));
+        }
+    }
+    // When a destination slot is also a source slot, a sequential copy would
+    // overwrite a value before it is read; stage every source on the stack first.
+    let overlapping = moves
+        .iter()
+        .any(|(source, _)| moves.iter().any(|(_, destination)| destination == source));
+    if overlapping {
+        for (source, _) in &moves {
+            emit(assembler, Inst::MovRM(ENTRY, slot_mem_of(*source)?))?;
+            emit(assembler, Inst::Push(ENTRY))?;
+        }
+        for (_, destination) in moves.iter().rev() {
+            emit(assembler, Inst::Pop(ENTRY))?;
+            emit(assembler, Inst::MovMR(slot_mem_of(*destination)?, ENTRY))?;
+        }
+        return Ok(());
+    }
+    for (source, destination) in &moves {
+        emit(assembler, Inst::MovRM(ENTRY, slot_mem_of(*source)?))?;
+        emit(assembler, Inst::MovMR(slot_mem_of(*destination)?, ENTRY))?;
     }
     Ok(())
 }

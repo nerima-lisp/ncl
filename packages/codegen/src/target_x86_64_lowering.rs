@@ -57,7 +57,7 @@ pub(super) fn slots(function: &Function, argument_words: u32) -> (Vec<(ValueId, 
     (result, next.saturating_sub(argument_words))
 }
 
-fn slot(slots: &[(ValueId, u32)], value: ValueId) -> Result<u32, CodegenError> {
+pub(super) fn slot(slots: &[(ValueId, u32)], value: ValueId) -> Result<u32, CodegenError> {
     slots
         .iter()
         .find(|(id, _)| *id == value)
@@ -65,8 +65,8 @@ fn slot(slots: &[(ValueId, u32)], value: ValueId) -> Result<u32, CodegenError> {
         .ok_or(CodegenError::UnknownValue(value))
 }
 
-fn slot_mem(slots: &[(ValueId, u32)], value: ValueId) -> Result<Mem, CodegenError> {
-    let index = slot(slots, value)?;
+/// Returns the frame address of a value slot by index.
+pub(super) fn slot_mem_of(index: u32) -> Result<Mem, CodegenError> {
     let bytes = index
         .checked_add(1)
         .and_then(|value| value.checked_mul(8))
@@ -75,6 +75,10 @@ fn slot_mem(slots: &[(ValueId, u32)], value: ValueId) -> Result<Mem, CodegenErro
         FRAME_POINTER,
         -i32::try_from(bytes).map_err(|_| CodegenError::FrameOverflow)?,
     ))
+}
+
+fn slot_mem(slots: &[(ValueId, u32)], value: ValueId) -> Result<Mem, CodegenError> {
+    slot_mem_of(slot(slots, value)?)
 }
 
 pub(super) fn load_slot(

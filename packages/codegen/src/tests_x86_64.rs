@@ -316,3 +316,59 @@ fn golden_x86_64_switch_dispatches_on_value() {
     assert!(contains(&compiled.code, &[0x49, 0x83, 0xFA, 0x01]));
     assert_eq!(count_occurrences(&compiled.code, &[0x0F, 0x84]), 2);
 }
+
+#[test]
+fn golden_x86_64_swapped_block_arguments_stage_on_the_stack() {
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(34), "swap", Vec::new(), vec![]);
+    let swap_block = builder.create_block(vec![
+        (Ty::Word, ncl_ir::ValueId(100)),
+        (Ty::Word, ncl_ir::ValueId(101)),
+    ]);
+    let first_constant = builder.add_constant(Constant::Fixnum(0));
+    let first = builder.push_op(
+        OpKind::Const {
+            result: first_constant,
+        },
+        &[Ty::Word],
+    );
+    assert!(first.is_ok());
+    let first = first.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let second_constant = builder.add_constant(Constant::Fixnum(1));
+    let second = builder.push_op(
+        OpKind::Const {
+            result: second_constant,
+        },
+        &[Ty::Word],
+    );
+    assert!(second.is_ok());
+    let second = second.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    assert!(
+        builder
+            .terminate(Terminator::Jump {
+                target: swap_block,
+                args: vec![first, second],
+            })
+            .is_ok()
+    );
+    assert!(builder.position_at(swap_block).is_ok());
+    // Passing the block's own parameters back in swapped order is a cycle, so a
+    // sequential copy would clobber a source before it is read.
+    assert!(
+        builder
+            .terminate(Terminator::Jump {
+                target: swap_block,
+                args: vec![ncl_ir::ValueId(101), ncl_ir::ValueId(100)],
+            })
+            .is_ok()
+    );
+    let compiled_result = compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi);
+    assert!(
+        compiled_result.is_ok(),
+        "swap fixture failed: {compiled_result:?}"
+    );
+    let Some(compiled) = compiled_result.ok() else {
+        return;
+    };
+    assert!(contains(&compiled.code, &[0x41, 0x53]));
+    assert!(contains(&compiled.code, &[0x41, 0x5B]));
+}

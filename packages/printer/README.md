@@ -12,6 +12,9 @@ write(&mut ThreadContext, &Runtime, Word, &mut dyn CharSink, &PrintOptions)
 write_to_string(&mut ThreadContext, &Runtime, Word, &PrintOptions)
     -> Result<Word, PrintError>          // returns a Lisp string
 register(&mut ThreadContext, &Runtime) -> Result<(), ObjectError>
+pprint_dispatch(&mut ThreadContext, Word, Word) -> Result<Word, ObjectError>
+set_pprint_dispatch(&mut ThreadContext, &Runtime, Word, Word, Word) -> Result<Word, ObjectError>
+copy_pprint_dispatch(&mut ThreadContext, &Runtime, Word) -> Result<Word, ObjectError>
 ```
 
 | item | role |
@@ -23,7 +26,9 @@ register(&mut ThreadContext, &Runtime) -> Result<(), ObjectError>
 | `PrintError` | `Object`, `Sink`, `NotReadable`, `Circularity`. |
 
 `PrintOptions::from_specials` reads the ambient variables when they are interned
-and special, and keeps the default otherwise.
+and special, and keeps the default otherwise. The dispatch functions operate on
+the `*print-pprint-dispatch*` table, a list of `(type-specifier . function)`
+entries whose `T` entry is the default.
 
 ## Printed forms
 
@@ -37,10 +42,15 @@ and special, and keeps the default otherwise.
 | string | `"..."` with `\"` and `\\` when escaping, otherwise raw |
 | symbol | package prefix (`:`, `PKG:`, bare for `COMMON-LISP`), `#:` for uninterned, `\|...\|` when escaping is required, `*print-case*` conversion |
 | cons | list, dotted pair, and the `'` / `#'` abbreviations; `*print-length*` prints `...` |
-| simple vector | `#(element ...)`; `*print-array*` false prints an opaque form |
+| simple, specialized, and non-simple array | `#(element ...)` or `#nA(element ...)`; `*print-array*` false prints an opaque form |
 | hash table, structure, instance, function, package, stream, readtable, code | `#<LABEL 0xADDRESS>`, or `PrintError::NotReadable` when `*print-readably*` is true |
 
-`*print-level*` replaces objects below the depth limit with `#`.
+`*print-level*` replaces objects below the depth limit with `#`. With
+`*print-circle*`, shared objects get `#n=` at first use and `#n#` after, and a
+cycle without `*print-circle*` returns `PrintError::Circularity` instead of
+looping. `SB-EXT:*PRINT-CIRCLE-NOT-SHARED*` restricts labels to cyclic objects.
+With `*print-pretty*`, sequence separators become a newline and an indent once
+the line reaches the margin.
 
 ## Owned symbols
 
@@ -53,19 +63,34 @@ and special, and keeps the default otherwise.
 `SB-EXT` functions `PRINT-SYMBOL-WITH-PREFIX`, `PRINT-UNREADABLY`; and the
 special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-READABLY*`,
 `SB-EXT:*PRINT-CIRCLE-NOT-SHARED*`, `SB-EXT:*PRINT-VECTOR-LENGTH*`.
+`*PRINT-PPRINT-DISPATCH*` starts as an empty dispatch table, the rest as `NIL`.
 
 ## Known gaps
 
+- **`classify_object` is unusable for headerless conses and characters**:
+  it reads a widetag from the first payload word, which a cons does not have,
+  and `Word::character` encodes `(scalar << 4) | 1`, whose `lowtag()` reads as
+  `List`, so `Word::is_character` never matches and `classify` reports a
+  character as a cons. The printer detects conses with `Word::is_cons` and
+  characters with the scalar bound in `print::character_code`. Needed fixes in
+  `ncl-sys`/`ncl-object`: make `character` encode the `Character` lowtag, or
+  make `classify_object` consult the lowtag before the widetag.
+- **Specialized and non-simple array length**: `ncl-object` exposes no length
+  or rank accessor, so the printer probes `specialized_array_ref` for the
+  length and uses `array_dimensions` for the rank. Needed additions:
+  `specialized_array_length` and non-simple array rank/fill-pointer accessors.
 - **Reader round trip**: `ncl-reader` (L2) is not on `main` yet, so the round
   trip test is deferred. Readable output is checked against fixed expected
   strings until the reader lands.
-- **Specialized and non-simple arrays**: `ncl-object` exposes no length or rank
-  accessor for them, so they print as `#<ARRAY ...>`. Needed additions:
-  `specialized_array_length` and non-simple array rank/fill-pointer accessors.
 - **Dynamic bindings**: `ThreadContext` exposes no binding lookup, so
   `PrintOptions::from_specials` reads value cells, not dynamic bindings.
 - **Builtin bodies**: `register` installs function names with an unbound
-  placeholder; callable function objects need the runtime and stream layers.
+  placeholder; callable function objects and the `pprint` stream arguments need
+  the runtime and stream layers. The `pprint-*` functions have no Rust-side
+  entry points yet; `write` with `*print-pretty*` is the working path.
+- **Type-specifier dispatch**: `set_pprint_dispatch` stores entries, but
+  matching a non-`T` specifier needs `ncl-types`, so lookup compares it with
+  `eq`.
 
 ## Verification
 

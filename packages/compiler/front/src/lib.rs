@@ -2,8 +2,7 @@
 //!
 //! `ncl-compiler-front` turns reader output (`ncl-object` values) into the
 //! internal AST in [`ast`], tracks lexical and declaration environments, expands
-//! macros through [`MacroCaller`], and, in the `lower` module owned by the
-//! back-half lane, lowers the AST into `ncl-ir`.
+//! macros through [`MacroCaller`], and lowers the AST into `ncl-ir` in [`lower`].
 //!
 //! # Frozen contract
 //!
@@ -16,7 +15,8 @@
 //!
 //! The front-half lane owns `env`, `expand`, `special`, the declaration and
 //! lambda-list parsers, [`MacroCaller`], and [`MacroRegistry`]. The back-half
-//! lane owns `lower` (AST to `ncl-ir`) and the remaining owned symbols.
+//! lane owns [`lower`] (AST to `ncl-ir`) and the `function`/`class` symbol
+//! registrations.
 
 pub mod ast;
 pub mod compiler_macro;

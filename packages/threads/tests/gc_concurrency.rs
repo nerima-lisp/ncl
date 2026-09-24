@@ -11,13 +11,9 @@
 //! The handshake makes the overlap deterministic: the workers are still
 //! allocating for every collection the main thread runs, so the collector must
 //! park them and scan their published roots.
-//!
-//! The two concurrency tests are temporarily ignored while the stop-the-world
-//! handshake hang is investigated in the L15 follow-up.
-
 use std::cell::Cell;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ncl_object::{Runtime, ThreadContext, Word};
@@ -31,9 +27,10 @@ const PAYLOAD: usize = 64;
 static WORKERS_STARTED: AtomicUsize = AtomicUsize::new(0);
 static STOP: AtomicBool = AtomicBool::new(false);
 static ALLOCATED: AtomicUsize = AtomicUsize::new(0);
+static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 fn allocating_worker(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ThreadError> {
-    WORKERS_STARTED.fetch_add(1, Ordering::SeqCst);
+    let mut started = false;
     while !STOP.load(Ordering::SeqCst) {
         let mut cell = Cell::new(ncl_object::make_string(ctx, runtime, &['x'; PAYLOAD])?);
         let token = ncl_sys::push_root(ctx.thread_mut(), cell.get_mut());
@@ -42,14 +39,18 @@ fn allocating_worker(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), T
         let length = ncl_object::string_length(ctx, *slot)?;
         assert_eq!(length, PAYLOAD);
         let _ = ncl_sys::pop_root(ctx.thread_mut(), token);
-        ALLOCATED.fetch_add(1, Ordering::Relaxed);
+        ALLOCATED.fetch_add(1, Ordering::SeqCst);
+        if !started {
+            started = true;
+            WORKERS_STARTED.fetch_add(1, Ordering::SeqCst);
+        }
     }
     Ok(())
 }
 
 #[test]
-#[ignore = "hangs in the stop-the-world handshake; tracked by the L15 follow-up"]
 fn collection_parks_two_concurrently_allocating_threads() {
+    let _test_guard = TEST_LOCK.lock().unwrap();
     let runtime = Arc::new(Runtime::new().unwrap());
     ncl_threads::register(&runtime).unwrap();
     let mut main_ctx = ThreadContext::new();
@@ -65,7 +66,10 @@ fn collection_parks_two_concurrently_allocating_threads() {
         std::thread::yield_now();
     }
 
-    for _ in 0..COLLECTIONS {
+    for collection in 0..COLLECTIONS {
+        while ALLOCATED.load(Ordering::SeqCst) <= collection {
+            std::thread::yield_now();
+        }
         main_ctx.collect(true).unwrap();
         assert!(ALLOCATED.load(Ordering::Relaxed) > 0);
     }
@@ -79,8 +83,8 @@ fn collection_parks_two_concurrently_allocating_threads() {
 }
 
 #[test]
-#[ignore = "hangs in the stop-the-world handshake; tracked by the L15 follow-up"]
 fn a_collection_releases_words_held_by_another_thread() {
+    let _test_guard = TEST_LOCK.lock().unwrap();
     let runtime = Arc::new(Runtime::new().unwrap());
     ncl_threads::register(&runtime).unwrap();
     let mut main_ctx = ThreadContext::new();

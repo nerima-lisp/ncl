@@ -1,4 +1,5 @@
-#![cfg(target_arch = "aarch64")]
+// The lint allow must precede the architecture gate: on other targets the
+// `#![cfg]` empties the crate, and a following allow would be stripped with it.
 #![allow(
     missing_docs,
     clippy::borrow_as_ptr,
@@ -6,6 +7,7 @@
     clippy::fn_to_numeric_cast,
     clippy::expect_used
 )]
+#![cfg(target_arch = "aarch64")]
 
 use ncl_codegen::{
     Aarch64Abi, ContextField, RuntimeAbi, RuntimeFunction, compile_function_aarch64,

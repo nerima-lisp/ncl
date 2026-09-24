@@ -1,0 +1,12 @@
+[package]
+name = "ncl-reader"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ncl-object = { path = "../object" }
+
+[lints]
+workspace = true

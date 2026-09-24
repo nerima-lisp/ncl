@@ -1,0 +1,1 @@
+//! Builtin registration for streams.

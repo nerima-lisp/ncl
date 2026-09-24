@@ -1,0 +1,13 @@
+[package]
+name = "ncl-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ncl-runtime = { path = "../runtime" }
+ncl-ownership = { path = "../ownership" }
+
+[lints]
+workspace = true

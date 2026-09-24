@@ -1,0 +1,14 @@
+[package]
+name = "ncl-lib-numbers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ncl-object = { path = "../../object" }
+ncl-types = { path = "../../types" }
+ncl-conditions = { path = "../../conditions" }
+
+[lints]
+workspace = true

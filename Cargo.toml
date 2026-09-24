@@ -9,6 +9,28 @@ members = [
     "packages/sys",
     "packages/object",
     "packages/objfile",
+    "packages/ownership",
+    "packages/types",
+    "packages/reader",
+    "packages/printer",
+    "packages/conditions",
+    "packages/clos",
+    "packages/compiler/front",
+    "packages/lib/numbers",
+    "packages/lib/sequences",
+    "packages/lib/strings",
+    "packages/lib/hash-arrays",
+    "packages/lib/streams",
+    "packages/lib/pathnames",
+    "packages/lib/packages",
+    "packages/lib/format",
+    "packages/lib/macros",
+    "packages/stdlib",
+    "packages/threads",
+    "packages/ffi",
+    "packages/image",
+    "packages/runtime",
+    "packages/conformance",
 ]
 default-members = [
     ".",
@@ -19,6 +41,28 @@ default-members = [
     "packages/sys",
     "packages/object",
     "packages/objfile",
+    "packages/ownership",
+    "packages/types",
+    "packages/reader",
+    "packages/printer",
+    "packages/conditions",
+    "packages/clos",
+    "packages/compiler/front",
+    "packages/lib/numbers",
+    "packages/lib/sequences",
+    "packages/lib/strings",
+    "packages/lib/hash-arrays",
+    "packages/lib/streams",
+    "packages/lib/pathnames",
+    "packages/lib/packages",
+    "packages/lib/format",
+    "packages/lib/macros",
+    "packages/stdlib",
+    "packages/threads",
+    "packages/ffi",
+    "packages/image",
+    "packages/runtime",
+    "packages/conformance",
 ]
 
 [workspace.package]
@@ -46,6 +90,9 @@ edition.workspace = true
 rust-version.workspace = true
 description = "A Rust-native Common Lisp runtime"
 license.workspace = true
+
+[dependencies]
+ncl-runtime = { path = "packages/runtime" }
 
 [lints]
 workspace = true

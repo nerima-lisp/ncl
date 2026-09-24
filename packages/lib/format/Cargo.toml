@@ -1,0 +1,17 @@
+[package]
+name = "ncl-lib-format"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ncl-object = { path = "../../object" }
+ncl-types = { path = "../../types" }
+ncl-conditions = { path = "../../conditions" }
+ncl-lib-streams = { path = "../streams" }
+ncl-lib-strings = { path = "../strings" }
+ncl-printer = { path = "../../printer" }
+
+[lints]
+workspace = true

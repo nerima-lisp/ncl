@@ -5,6 +5,9 @@ version = 4
 [[package]]
 name = "ncl"
 version = "0.1.0"
+dependencies = [
+ "ncl-runtime",
+]
 
 [[package]]
 name = "ncl-asm-aarch64"
@@ -13,6 +16,15 @@ version = "0.1.0"
 [[package]]
 name = "ncl-asm-x86-64"
 version = "0.1.0"
+
+[[package]]
+name = "ncl-clos"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-types",
+]
 
 [[package]]
 name = "ncl-codegen"
@@ -26,8 +38,142 @@ dependencies = [
 ]
 
 [[package]]
+name = "ncl-compiler-front"
+version = "0.1.0"
+dependencies = [
+ "ncl-clos",
+ "ncl-conditions",
+ "ncl-ir",
+ "ncl-object",
+ "ncl-reader",
+ "ncl-types",
+]
+
+[[package]]
+name = "ncl-conditions"
+version = "0.1.0"
+dependencies = [
+ "ncl-object",
+]
+
+[[package]]
+name = "ncl-conformance"
+version = "0.1.0"
+dependencies = [
+ "ncl-ownership",
+ "ncl-runtime",
+]
+
+[[package]]
+name = "ncl-ffi"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-sys",
+]
+
+[[package]]
+name = "ncl-image"
+version = "0.1.0"
+dependencies = [
+ "ncl-object",
+ "ncl-objfile",
+ "ncl-sys",
+]
+
+[[package]]
 name = "ncl-ir"
 version = "0.1.0"
+
+[[package]]
+name = "ncl-lib-format"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-lib-streams",
+ "ncl-lib-strings",
+ "ncl-object",
+ "ncl-printer",
+ "ncl-types",
+]
+
+[[package]]
+name = "ncl-lib-hash-arrays"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-types",
+]
+
+[[package]]
+name = "ncl-lib-macros"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-lib-sequences",
+ "ncl-object",
+ "ncl-reader",
+ "ncl-types",
+]
+
+[[package]]
+name = "ncl-lib-numbers"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-types",
+]
+
+[[package]]
+name = "ncl-lib-packages"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-types",
+]
+
+[[package]]
+name = "ncl-lib-pathnames"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-lib-strings",
+ "ncl-object",
+ "ncl-sys",
+ "ncl-types",
+]
+
+[[package]]
+name = "ncl-lib-sequences"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-types",
+]
+
+[[package]]
+name = "ncl-lib-streams"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-sys",
+ "ncl-types",
+]
+
+[[package]]
+name = "ncl-lib-strings"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-types",
+]
 
 [[package]]
 name = "ncl-object"
@@ -35,10 +181,80 @@ version = "0.1.0"
 dependencies = [
  "ncl-sys",
 ]
+
 [[package]]
 name = "ncl-objfile"
 version = "0.1.0"
 
 [[package]]
+name = "ncl-ownership"
+version = "0.1.0"
+dependencies = [
+ "ncl-object",
+]
+
+[[package]]
+name = "ncl-printer"
+version = "0.1.0"
+dependencies = [
+ "ncl-object",
+]
+
+[[package]]
+name = "ncl-reader"
+version = "0.1.0"
+dependencies = [
+ "ncl-object",
+]
+
+[[package]]
+name = "ncl-runtime"
+version = "0.1.0"
+dependencies = [
+ "ncl-codegen",
+ "ncl-compiler-front",
+ "ncl-ffi",
+ "ncl-image",
+ "ncl-stdlib",
+ "ncl-threads",
+]
+
+[[package]]
+name = "ncl-stdlib"
+version = "0.1.0"
+dependencies = [
+ "ncl-clos",
+ "ncl-conditions",
+ "ncl-lib-format",
+ "ncl-lib-hash-arrays",
+ "ncl-lib-macros",
+ "ncl-lib-numbers",
+ "ncl-lib-packages",
+ "ncl-lib-pathnames",
+ "ncl-lib-sequences",
+ "ncl-lib-streams",
+ "ncl-lib-strings",
+ "ncl-printer",
+ "ncl-reader",
+ "ncl-types",
+]
+
+[[package]]
 name = "ncl-sys"
 version = "0.1.0"
+
+[[package]]
+name = "ncl-threads"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-sys",
+]
+
+[[package]]
+name = "ncl-types"
+version = "0.1.0"
+dependencies = [
+ "ncl-object",
+]

@@ -1,0 +1,16 @@
+[package]
+name = "ncl-lib-macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ncl-object = { path = "../../object" }
+ncl-types = { path = "../../types" }
+ncl-reader = { path = "../../reader" }
+ncl-conditions = { path = "../../conditions" }
+ncl-lib-sequences = { path = "../sequences" }
+
+[lints]
+workspace = true

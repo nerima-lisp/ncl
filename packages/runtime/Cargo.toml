@@ -1,0 +1,17 @@
+[package]
+name = "ncl-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ncl-compiler-front = { path = "../compiler/front" }
+ncl-codegen = { path = "../codegen" }
+ncl-stdlib = { path = "../stdlib" }
+ncl-image = { path = "../image" }
+ncl-threads = { path = "../threads" }
+ncl-ffi = { path = "../ffi" }
+
+[lints]
+workspace = true

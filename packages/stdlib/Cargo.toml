@@ -1,0 +1,25 @@
+[package]
+name = "ncl-stdlib"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ncl-types = { path = "../types" }
+ncl-reader = { path = "../reader" }
+ncl-printer = { path = "../printer" }
+ncl-conditions = { path = "../conditions" }
+ncl-clos = { path = "../clos" }
+ncl-lib-numbers = { path = "../lib/numbers" }
+ncl-lib-sequences = { path = "../lib/sequences" }
+ncl-lib-strings = { path = "../lib/strings" }
+ncl-lib-hash-arrays = { path = "../lib/hash-arrays" }
+ncl-lib-streams = { path = "../lib/streams" }
+ncl-lib-pathnames = { path = "../lib/pathnames" }
+ncl-lib-packages = { path = "../lib/packages" }
+ncl-lib-format = { path = "../lib/format" }
+ncl-lib-macros = { path = "../lib/macros" }
+
+[lints]
+workspace = true

@@ -141,7 +141,7 @@ fn published_machine_code_returns_42() {
     #[cfg(target_arch = "aarch64")]
     let bytes = [0x40, 0x05, 0x80, 0xd2, 0xc0, 0x03, 0x5f, 0xd6];
     #[cfg(target_arch = "x86_64")]
-    let bytes = [0xb8, 0x2a, 0, 0, 0, 0, 0xc3];
+    let bytes = [0xb8, 0x2a, 0, 0, 0, 0xc3];
     let Ok(mut code) = alloc_code(bytes.len()) else {
         return;
     };

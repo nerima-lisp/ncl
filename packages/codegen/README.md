@@ -54,9 +54,11 @@ The stable ABI and frame/map contracts are specified in [Calling convention](../
 ## Module layout
 
 The lowering is split between `target_aarch64.rs`,
-`target_aarch64_lowering.rs`, and its `target_aarch64_lowering/ops.rs` child;
-ABI and safepoint metadata live in `abi.rs` and `safepoint.rs`. AArch64
-execution coverage is split across `tests/exec_aarch64.rs` and its fixture
-children, while decoder-oriented fixtures are split between `tests.rs`,
-`tests_aarch64.rs`, and `tests_aarch64_fixtures.rs`. Each Rust source module
+`target_aarch64_lowering.rs`, and its `target_aarch64_lowering/ops.rs` child,
+with the x86-64 lowering in `target_x86_64.rs`, `target_x86_64_lowering.rs`, and
+its `target_x86_64_lowering/ops.rs` child; ABI and safepoint metadata live in
+`abi.rs` and `safepoint.rs`. AArch64 execution coverage is split across
+`tests/exec_aarch64.rs` and its fixture children, while decoder-oriented
+fixtures are split between `tests.rs`, `tests_aarch64.rs`,
+`tests_aarch64_fixtures.rs`, and `tests_x86_64.rs`. Each Rust source module
 stays below the repository's 500-line limit.

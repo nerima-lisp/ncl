@@ -1,0 +1,55 @@
+//! The type-system error type.
+
+use ncl_object::{ObjectError, Word};
+use std::fmt;
+
+/// An error raised while parsing a type specifier or answering a type query.
+///
+/// This is the domain error of `ncl-types`. Object-layer failures are carried
+/// in [`TypeError::Object`]; the reverse conversion collapses every variant
+/// onto [`ObjectError::TypeError`], which is lossy by design because the
+/// object layer cannot represent type-system detail.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum TypeError {
+    /// A form that is neither a symbol nor a proper list.
+    InvalidSpecifier(Word),
+    /// An object-layer failure raised while inspecting a value.
+    Object(ObjectError),
+    /// A `(satisfies predicate)` type whose predicate cannot be invoked here.
+    CannotInvoke(Word),
+    /// A `deftype` name that must be expanded before it can be used.
+    UnexpandedDeftype(Word),
+}
+
+impl fmt::Display for TypeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidSpecifier(word) => write!(f, "invalid type specifier: {word:?}"),
+            Self::Object(error) => write!(f, "object error: {error}"),
+            Self::CannotInvoke(word) => write!(f, "cannot invoke predicate: {word:?}"),
+            Self::UnexpandedDeftype(word) => write!(f, "unexpanded deftype: {word:?}"),
+        }
+    }
+}
+
+impl std::error::Error for TypeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Object(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<ObjectError> for TypeError {
+    fn from(error: ObjectError) -> Self {
+        Self::Object(error)
+    }
+}
+
+impl From<TypeError> for ObjectError {
+    fn from(_error: TypeError) -> Self {
+        Self::TypeError
+    }
+}

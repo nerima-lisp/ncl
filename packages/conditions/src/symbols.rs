@@ -21,7 +21,7 @@ pub enum SymbolKind {
     Class,
     /// A condition class that is also a function.
     ClassAndFunction,
-    /// A variable, which only needs to be interned.
+    /// A variable, interned with its special bit set.
     Variable,
     /// A symbol with no dedicated registry, which only needs to be interned.
     Other,

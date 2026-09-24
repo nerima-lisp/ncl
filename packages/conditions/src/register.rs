@@ -1,6 +1,6 @@
 //! Registration of the owned symbols and the standard condition hierarchy.
 
-use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word};
+use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, set_symbol_special};
 
 use crate::class::{HIERARCHY, install_class, wire_superclass};
 use crate::symbols::{SymbolKind, SymbolRow, symbols};
@@ -30,12 +30,13 @@ fn register_symbol(
     row: &SymbolRow,
 ) -> Result<(), ObjectError> {
     let package = runtime.ensure_package(ctx, row.package)?;
-    Package::from(package).intern(ctx, runtime, row.name)?;
+    let (symbol, _status) = Package::from(package).intern(ctx, runtime, row.name)?;
     match row.kind {
         SymbolKind::Function | SymbolKind::ClassAndFunction => {
             runtime.define_function(ctx, row.package, row.name, Word::UNBOUND)?;
         }
-        SymbolKind::Class | SymbolKind::Variable | SymbolKind::Other => {}
+        SymbolKind::Variable => set_symbol_special(ctx, symbol, true)?,
+        SymbolKind::Class | SymbolKind::Other => {}
     }
     Ok(())
 }

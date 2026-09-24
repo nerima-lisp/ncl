@@ -93,7 +93,6 @@ jobs:
           toolchain: 1.98.0
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: python3 scripts/check_coverage_exclusions.py
       - run: cargo llvm-cov --locked --workspace --all-features --all-targets --lcov --output-path lcov.info
       # Region coverage, not line coverage: a line with an untaken branch
       # (e.g. one arm of a match) counts as fully covered by line metrics

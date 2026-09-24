@@ -13,6 +13,7 @@
 //! park them and scan their published roots.
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -28,6 +29,28 @@ static WORKERS_STARTED: AtomicUsize = AtomicUsize::new(0);
 static STOP: AtomicBool = AtomicBool::new(false);
 static ALLOCATED: AtomicUsize = AtomicUsize::new(0);
 static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Aborts the whole test process with a stderr diagnostic when the owning test
+/// does not signal completion within 120 seconds. The returned sender is held
+/// for the test's duration; dropping it (when the test returns) ends the watch
+/// cleanly via `Disconnected`.
+fn spawn_watchdog(name: &'static str) -> Sender<()> {
+    let (done_tx, done_rx) = channel();
+    std::thread::spawn(
+        move || match done_rx.recv_timeout(Duration::from_secs(120)) {
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => {}
+            Err(RecvTimeoutError::Timeout) => {
+                eprintln!(
+                    "gc_concurrency watchdog: {name} exceeded 120s (allocated={}, workers_started={})",
+                    ALLOCATED.load(Ordering::SeqCst),
+                    WORKERS_STARTED.load(Ordering::SeqCst),
+                );
+                std::process::abort();
+            }
+        },
+    );
+    done_tx
+}
 
 fn allocating_worker(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ThreadError> {
     let mut started = false;
@@ -50,6 +73,7 @@ fn allocating_worker(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), T
 
 #[test]
 fn collection_parks_two_concurrently_allocating_threads() {
+    let _watchdog = spawn_watchdog("collection_parks_two_concurrently_allocating_threads");
     let _test_guard = TEST_LOCK.lock().unwrap();
     let runtime = Arc::new(Runtime::new().unwrap());
     ncl_threads::register(&runtime).unwrap();
@@ -84,6 +108,7 @@ fn collection_parks_two_concurrently_allocating_threads() {
 
 #[test]
 fn a_collection_releases_words_held_by_another_thread() {
+    let _watchdog = spawn_watchdog("a_collection_releases_words_held_by_another_thread");
     let _test_guard = TEST_LOCK.lock().unwrap();
     let runtime = Arc::new(Runtime::new().unwrap());
     ncl_threads::register(&runtime).unwrap();

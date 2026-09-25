@@ -110,6 +110,8 @@ impl Word {
     /// Whether this is an immediate character.
     #[must_use]
     pub const fn is_character(self) -> bool {
-        self.lowtag() == LowTag::Character as u8
+        self.lowtag() == LowTag::List as u8
+            && self.bits() != Self::NIL.bits()
+            && self.address() < (1_usize << 32)
     }
 }

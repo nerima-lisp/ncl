@@ -40,6 +40,9 @@ pub fn classify(word: Word) -> ObjectRef {
     if word.is_character() {
         return ObjectRef::Character(u32::try_from(word.bits() >> 4).unwrap_or(0));
     }
+    if word == Word::TRUE || word == Word::UNBOUND {
+        return ObjectRef::Immediate(word);
+    }
     match word.lowtag() {
         x if x == LowTag::List as u8 => {
             if word == Word::NIL {

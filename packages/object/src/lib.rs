@@ -35,7 +35,7 @@ pub use array::{
 pub use builtin::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, FunctionObject, KeywordAdapter, LambdaList, MultipleValues,
-    NclStatus, RegisterFn, RustBuiltin,
+    NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
 };
 pub use classify::{ObjectRef, classify, classify_object};
 pub use code::code_slot;
@@ -86,8 +86,11 @@ pub use symbol_extensions::{
     symbol_value,
 };
 pub use typed::{
-    Array, Closure, Cons, ObjectErrorKind, ObjectType, SimpleVector, SpecializedArray,
-    StringObject, StructureObject, Symbol, TypeError, WordView,
+    ArithmeticError, Array, CellError, Character, Closure, Cons, ControlError, FileError, Fixnum,
+    FromLispArg, FunctionDesignator, Integer, LispError, LispString, List, Number, ObjectErrorKind,
+    ObjectType, PackageDesignator, PackageError, ProgramError, Rational, Real, Sequence,
+    SimpleVector, SpecializedArray, StreamError, StringDesignator, StringObject, StructureObject,
+    Symbol, TypeError, TypedRustBuiltin, WordView,
 };
 /// Object-layer failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -123,7 +126,8 @@ pub struct Runtime {
     layouts_registered: Mutex<bool>,
     builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
 }
-
+/// Per-mutator object-layer context. Generated code obtains its stable thread
+/// pointer with [`ThreadContext::thread_mut`].
 #[derive(Debug)]
 struct RootedTable {
     slot: Box<Word>,
@@ -241,7 +245,6 @@ impl Runtime {
         let table = Self::table(&self.functions).ok()?;
         HashTable::from(table).get(ctx, key).ok().flatten()
     }
-
     fn table(registry: &Mutex<Option<RootedTable>>) -> Result<Word, ObjectError> {
         registry
             .lock()
@@ -251,8 +254,6 @@ impl Runtime {
             .ok_or(ObjectError::Layout)
     }
 }
-/// Per-mutator object-layer context. Generated code obtains its stable thread
-/// pointer with [`ThreadContext::thread_mut`].
 #[derive(Debug)]
 pub struct ThreadContext {
     pub(crate) thread: Box<Thread>,
@@ -369,7 +370,6 @@ impl ThreadContext {
     pub fn weak_value(&self, value: Word) -> Word {
         ncl_sys::weak_value(&self.thread, value)
     }
-
     const fn require_registered(&self) -> Result<(), ObjectError> {
         if !self.registered {
             return Err(ObjectError::Storage(StorageCondition::ThreadNotRegistered));

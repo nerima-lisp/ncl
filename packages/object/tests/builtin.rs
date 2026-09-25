@@ -2,7 +2,8 @@
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, Runtime, ThreadContext,
+    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, Parameter, ParameterType, Runtime,
+    ThreadContext,
 };
 use ncl_sys::Word;
 
@@ -33,9 +34,30 @@ fn keyword_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ncl_object::Obje
 }
 
 const TEST_ID: BuiltinIdentifier =
-    BuiltinIdentifier::new(BuiltinPackage::new("NCL-TEST"), BuiltinName::new("ADD"));
+    BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADD"));
 const ADAPTED_ID: BuiltinIdentifier =
-    BuiltinIdentifier::new(BuiltinPackage::new("NCL-TEST"), BuiltinName::new("ADAPTED"));
+    BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADAPTED"));
+
+const REQUIRED_PARAMETERS: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("LEFT"),
+        ty: ParameterType::Fixnum,
+    },
+    Parameter {
+        name: BuiltinName::new("RIGHT"),
+        ty: ParameterType::Fixnum,
+    },
+];
+const KEY_PARAMETERS: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("LEFT"),
+        ty: ParameterType::Fixnum,
+    },
+    Parameter {
+        name: BuiltinName::new("RIGHT"),
+        ty: ParameterType::Fixnum,
+    },
+];
 
 #[test]
 fn registered_builtin_has_a_function_object_and_rust_call_boundary() {
@@ -44,7 +66,7 @@ fn registered_builtin_has_a_function_object_and_rust_call_boundary() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     let descriptor = Builtin {
-        lambda_list: LambdaList::new("left right"),
+        lambda_list: LambdaList::new(REQUIRED_PARAMETERS, &[], None, &[], false),
         convention: BuiltinConvention::Direct(Arity::exact(2)),
     };
     let implementation = BuiltinImplementation::direct(descriptor, add_builtin);
@@ -61,6 +83,14 @@ fn registered_builtin_has_a_function_object_and_rust_call_boundary() {
         Ok(entry)
     );
     assert_eq!(
+        ncl_object::FunctionObject::try_from(function.as_word()),
+        Ok(function)
+    );
+    assert_eq!(
+        ncl_object::FunctionObject::try_from(Word::NIL),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
         runtime.call_builtin(&mut ctx, function, &[Word::fixnum(2), Word::fixnum(3)]),
         Ok(Word::fixnum(5))
     );
@@ -74,7 +104,7 @@ fn adapted_builtin_reorders_keyword_payload_before_rust_call() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     let descriptor = Builtin {
-        lambda_list: LambdaList::new("&key left right"),
+        lambda_list: LambdaList::new(&[], &[], None, KEY_PARAMETERS, false),
         convention: BuiltinConvention::Adapted,
     };
     let function = runtime

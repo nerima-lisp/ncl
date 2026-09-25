@@ -14,17 +14,88 @@ pub enum NclStatus {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LambdaList(&'static str);
+pub enum ParameterType {
+    Any,
+    Fixnum,
+    Integer,
+    Number,
+    List,
+    Sequence,
+    StringDesignator,
+    FunctionDesignator,
+    PackageDesignator,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Parameter {
+    pub name: BuiltinName,
+    pub ty: ParameterType,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LambdaList {
+    pub required: &'static [Parameter],
+    pub optional: &'static [Parameter],
+    pub rest: Option<Parameter>,
+    pub keys: &'static [Parameter],
+    pub allow_other_keys: bool,
+}
 
 impl LambdaList {
     #[must_use]
-    pub const fn new(value: &'static str) -> Self {
-        Self(value)
+    pub const fn new(
+        required: &'static [Parameter],
+        optional: &'static [Parameter],
+        rest: Option<Parameter>,
+        keys: &'static [Parameter],
+        allow_other_keys: bool,
+    ) -> Self {
+        Self {
+            required,
+            optional,
+            rest,
+            keys,
+            allow_other_keys,
+        }
     }
-
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        self.0
+    pub const fn min_arity(self) -> usize {
+        self.required.len()
+    }
+    #[must_use]
+    pub const fn max_arity(self) -> Option<usize> {
+        if self.rest.is_some() {
+            None
+        } else {
+            Some(self.required.len() + self.optional.len() + self.keys.len() * 2)
+        }
+    }
+    #[must_use]
+    pub const fn is_direct(self) -> bool {
+        self.optional.is_empty() && self.rest.is_none() && self.keys.is_empty()
+    }
+    #[must_use]
+    pub const fn fixed(required: &'static [Parameter]) -> Self {
+        Self::new(required, &[], None, &[], false)
+    }
+    #[must_use]
+    pub const fn with_optional(
+        required: &'static [Parameter],
+        optional: &'static [Parameter],
+    ) -> Self {
+        Self::new(required, optional, None, &[], false)
+    }
+    #[must_use]
+    pub const fn with_rest(required: &'static [Parameter], rest: Parameter) -> Self {
+        Self::new(required, &[], Some(rest), &[], false)
+    }
+    #[must_use]
+    pub const fn with_keys(
+        required: &'static [Parameter],
+        keys: &'static [Parameter],
+        allow_other_keys: bool,
+    ) -> Self {
+        Self::new(required, &[], None, keys, allow_other_keys)
     }
 }
 
@@ -71,17 +142,43 @@ pub struct Builtin {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct BuiltinPackage(&'static str);
+#[non_exhaustive]
+pub enum BuiltinPackage {
+    CommonLisp,
+    AsdfInterface,
+    UiopDriver,
+    NclThreads,
+    NclFfi,
+    NclMop,
+    NclGray,
+    NclGc,
+    NclImage,
+    NclUnicode,
+    NclOs,
+    NclExt,
+    NclSys,
+    NclTest,
+}
 
 impl BuiltinPackage {
     #[must_use]
-    pub const fn new(value: &'static str) -> Self {
-        Self(value)
-    }
-
-    #[must_use]
     pub const fn as_str(self) -> &'static str {
-        self.0
+        match self {
+            Self::CommonLisp => "COMMON-LISP",
+            Self::AsdfInterface => "ASDF/INTERFACE",
+            Self::UiopDriver => "UIOP/DRIVER",
+            Self::NclThreads => "NCL-THREADS",
+            Self::NclFfi => "NCL-FFI",
+            Self::NclMop => "NCL-MOP",
+            Self::NclGray => "NCL-GRAY",
+            Self::NclGc => "NCL-GC",
+            Self::NclImage => "NCL-IMAGE",
+            Self::NclUnicode => "NCL-UNICODE",
+            Self::NclOs => "NCL-OS",
+            Self::NclExt => "NCL-EXT",
+            Self::NclSys => "NCL-SYS",
+            Self::NclTest => "NCL-TEST",
+        }
     }
 }
 
@@ -90,7 +187,12 @@ pub struct BuiltinName(&'static str);
 
 impl BuiltinName {
     #[must_use]
+    ///
+    /// # Panics
+    ///
+    /// Panics during const evaluation when the name is empty or non-ASCII.
     pub const fn new(value: &'static str) -> Self {
+        assert!(value.is_ascii() && !value.is_empty());
         Self(value)
     }
 
@@ -149,9 +251,13 @@ impl MultipleValues {
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct FunctionObject(Word);
-impl From<Word> for FunctionObject {
-    fn from(value: Word) -> Self {
-        Self(value)
+impl TryFrom<Word> for FunctionObject {
+    type Error = ObjectError;
+    fn try_from(value: Word) -> Result<Self, Self::Error> {
+        if value == Word::UNBOUND || value.lowtag() != ncl_sys::LowTag::OtherPointer as u8 {
+            return Err(ObjectError::TypeError);
+        }
+        Ok(Self(value))
     }
 }
 impl From<FunctionObject> for Word {
@@ -247,7 +353,10 @@ impl Runtime {
                 &implementation
                     .descriptor
                     .lambda_list
-                    .as_str()
+                    .required
+                    .iter()
+                    .map(|parameter| parameter.name.as_str())
+                    .collect::<String>()
                     .chars()
                     .collect::<Vec<_>>(),
             )?;
@@ -266,7 +375,7 @@ impl Runtime {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .insert(*function_word, implementation);
-                Ok(FunctionObject::from(*function_word))
+                FunctionObject::try_from(*function_word)
             })
         })
     }
@@ -292,8 +401,12 @@ impl Runtime {
             .get(&function.as_word())
             .copied()
             .ok_or(ObjectError::Unbound)?;
-        if let Some(arity) = implementation.descriptor.convention.arity()
-            && args.len() != usize::from(arity.get())
+        if args.len() < implementation.descriptor.lambda_list.min_arity()
+            || implementation
+                .descriptor
+                .lambda_list
+                .max_arity()
+                .is_some_and(|max| args.len() > max)
         {
             return Err(ObjectError::TypeError);
         }
@@ -350,14 +463,14 @@ impl BuiltinImplementation {
 
 #[macro_export]
 macro_rules! builtin {
-    ($name:ident, $arity:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $crate::LambdaList::new(""), convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
-    ($name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $crate::LambdaList::new($lambda_list), convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
+    ($name:ident, $arity:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $crate::LambdaList::new(&[], &[], None, &[], false), convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
+    ($name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $lambda_list, convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
     ($name:ident, 0, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 0, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
     ($name:ident, 1, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 1, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
     ($name:ident, 2, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 2, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word, _a1: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
     ($name:ident, 3, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 3, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word, _a1: $crate::Word, _a2: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
     ($name:ident, 4, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 4, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word, _a1: $crate::Word, _a2: $crate::Word, _a3: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
-    (@descriptor $name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $crate::LambdaList::new($lambda_list), convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
+    (@descriptor $name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $lambda_list, convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
     (@variadic $name:ident) => { pub extern "C" fn $name(_ctx: *mut $crate::ThreadContext, _argc: usize, _args: *const $crate::Word, _values: *mut $crate::MultipleValues) -> $crate::NclStatus { $crate::NclStatus::Error };
     };
 }

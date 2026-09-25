@@ -44,7 +44,10 @@ def generate(source: Path, output: Path) -> None:
         f"// Source: {UCD_URL}",
         "pub const GENERAL_CATEGORY_RANGES: &[(u32, u32, &str)] = &[",
     ]
-    lines.extend(f"    (0x{start:X}, 0x{end:X}, \"{category}\")," for start, end, category in ranges)
+    entries = ", ".join(
+        f"(0x{start:X}, 0x{end:X}, \"{category}\")" for start, end, category in ranges
+    )
+    lines.append(f"    {entries},")
     lines.append("];\n")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(lines), encoding="utf-8")

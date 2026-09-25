@@ -267,3 +267,12 @@ fn byte_register_rex_is_selected() {
     assert!(a.emit(&Inst::Setcc(Cond::Ne, Reg::Rsp)).is_ok());
     assert_eq!(a.bytes(), &[0x40, 0x0f, 0x95, 0xc4]);
 }
+
+#[test]
+fn sse_dispatch_rejects_non_sse_instructions() {
+    let mut bytes = Vec::new();
+    assert_eq!(
+        crate::sse::encode(&Inst::Ret, &mut bytes),
+        Err(EncodeError::InvalidOperand("not an SSE instruction"))
+    );
+}

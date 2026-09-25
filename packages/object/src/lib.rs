@@ -33,7 +33,7 @@ pub use array::{
 };
 pub use builtin::{
     Builtin, BuiltinImplementation, FunctionObject, KeywordAdapter, MultipleValues, NclStatus,
-    RegisterFn, RustBuiltin,
+    RegisterFn, RuntimeBuiltin, RustBuiltin,
 };
 pub use classify::{ObjectRef, classify, classify_object};
 pub use code::code_slot;
@@ -66,8 +66,8 @@ pub use readtable::{
 pub(crate) use roots::{finish_root, with_root, with_roots};
 pub use roots::{pop_root, push_root, try_pop_root, try_push_root};
 pub use specialized_array::{
-    make_specialized_array, specialized_array_element_type, specialized_array_ref,
-    specialized_array_set,
+    make_specialized_array, specialized_array_element_type, specialized_array_length,
+    specialized_array_ref, specialized_array_set,
 };
 pub use stream::stream_slot;
 pub use stream::{

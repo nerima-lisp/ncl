@@ -82,6 +82,14 @@ pub fn specialized_array_element_type(
     kind(ctx, object)
 }
 
+/// Return a specialized array's element count.
+///
+/// # Errors
+/// Returns [`ObjectError`] for a non-specialized array or malformed metadata.
+pub fn specialized_array_length(ctx: &ThreadContext, object: Word) -> Result<usize, ObjectError> {
+    length(ctx, object, layout::widetag::SPECIALIZED_ARRAY, 1)
+}
+
 /// Read a specialized array element after validating its representation.
 ///
 /// # Errors

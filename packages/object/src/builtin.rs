@@ -1,7 +1,7 @@
 //! Calling convention metadata and the safe Rust builtin boundary.
 
 use crate::{
-    make_code_object, make_simple_fun, with_root, ObjectError, Package, Runtime, ThreadContext,
+    ObjectError, Package, Runtime, ThreadContext, make_code_object, make_simple_fun, with_root,
 };
 use ncl_sys::Word;
 
@@ -79,6 +79,12 @@ impl FunctionObject {
 
 pub type RustBuiltin =
     fn(&mut super::ThreadContext, &[Word], &mut MultipleValues) -> Result<Word, super::ObjectError>;
+pub type RuntimeBuiltin = fn(
+    &super::Runtime,
+    &mut super::ThreadContext,
+    &[Word],
+    &mut MultipleValues,
+) -> Result<Word, super::ObjectError>;
 pub type KeywordAdapter = fn(&[Word]) -> Result<Vec<Word>, super::ObjectError>;
 pub type RegisterFn = fn(&super::Runtime);
 
@@ -88,6 +94,7 @@ pub struct BuiltinImplementation {
     /// Native entry address stored in the function object's ENTRY slot.
     pub entry: usize,
     pub function: RustBuiltin,
+    pub runtime_function: Option<RuntimeBuiltin>,
     pub keyword_adapter: Option<KeywordAdapter>,
 }
 
@@ -166,7 +173,11 @@ impl Runtime {
             .keyword_adapter
             .map_or_else(|| Ok(args.to_vec()), |adapter| adapter(args))?;
         let mut values = MultipleValues::new();
-        let result = (implementation.function)(ctx, &adapted, &mut values);
+        let result = if let Some(function) = implementation.runtime_function {
+            function(self, ctx, &adapted, &mut values)
+        } else {
+            (implementation.function)(ctx, &adapted, &mut values)
+        };
         ctx.set_values(values.as_slice());
         let pending = ctx.take_pending();
         pending.map_or(result, Err)
@@ -189,6 +200,7 @@ impl BuiltinImplementation {
             descriptor,
             entry: function as usize,
             function,
+            runtime_function: None,
             keyword_adapter: None,
         }
     }
@@ -198,7 +210,18 @@ impl BuiltinImplementation {
             descriptor,
             entry: function as usize,
             function,
+            runtime_function: None,
             keyword_adapter: Some(adapter),
+        }
+    }
+    #[must_use]
+    pub fn direct_with_runtime(descriptor: Builtin, function: RuntimeBuiltin) -> Self {
+        Self {
+            descriptor,
+            entry: function as usize,
+            function: runtime_unavailable,
+            runtime_function: Some(function),
+            keyword_adapter: None,
         }
     }
     /// Override the native entry address while keeping the safe Rust callback.
@@ -206,6 +229,14 @@ impl BuiltinImplementation {
     pub const fn with_entry(self, entry: usize) -> Self {
         Self { entry, ..self }
     }
+}
+
+const fn runtime_unavailable(
+    _ctx: &mut super::ThreadContext,
+    _args: &[Word],
+    _values: &mut MultipleValues,
+) -> Result<Word, super::ObjectError> {
+    Err(super::ObjectError::Unsupported)
 }
 
 #[macro_export]

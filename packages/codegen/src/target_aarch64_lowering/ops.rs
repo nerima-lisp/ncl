@@ -1,8 +1,8 @@
 use super::{
-    emit, load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call,
-    lower_runtime_builtin, lower_safepoint, store_slot,
+    emit, load_value, lower_alloc, lower_builtin, lower_call, lower_closure_call,
+    lower_runtime_builtin, lower_safepoint, store_value,
 };
-use crate::{CodegenError, RuntimeAbi};
+use crate::{Allocation, CodegenError, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 
@@ -41,16 +41,16 @@ fn lower_prim(
     prim: &Prim,
     args: &[ValueId],
     result: Option<ValueId>,
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
 ) -> Result<(), CodegenError> {
     let Some(first) = args.first() else {
         return Err(CodegenError::Unsupported(
             "primitive has no operands".into(),
         ));
     };
-    load_slot(assembler, slots, *first, Reg(16))?;
+    load_value(assembler, allocation, *first, Reg(16))?;
     if let Some(second) = args.get(1) {
-        load_slot(assembler, slots, *second, Reg(17))?;
+        load_value(assembler, allocation, *second, Reg(17))?;
     }
     match prim {
         Prim::FixnumAdd => emit(
@@ -163,7 +163,7 @@ fn lower_prim(
         }
     }
     if let Some(result) = result {
-        store_slot(assembler, slots, result, Reg(16))?;
+        store_value(assembler, allocation, result, Reg(16))?;
     }
     Ok(())
 }
@@ -173,7 +173,7 @@ pub fn lower_op(
     assembler: &mut Assembler,
     op: &Op,
     function: &Function,
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
     abi: &dyn RuntimeAbi,
 ) -> Result<Option<u32>, CodegenError> {
     let result = op.results.first().map(|(value, _)| *value);
@@ -188,20 +188,20 @@ pub fn lower_op(
                 emit(assembler, instruction)?;
             }
             if let Some(result) = result {
-                store_slot(assembler, slots, result, Reg(16))?;
+                store_value(assembler, allocation, result, Reg(16))?;
             }
         }
         OpKind::Move { value } | OpKind::Convert { value, .. } => {
-            load_slot(assembler, slots, *value, Reg(16))?;
+            load_value(assembler, allocation, *value, Reg(16))?;
             if let Some(result) = result {
-                store_slot(assembler, slots, result, Reg(16))?;
+                store_value(assembler, allocation, result, Reg(16))?;
             }
         }
         OpKind::Load { address }
         | OpKind::LoadField {
             object: address, ..
         } => {
-            load_slot(assembler, slots, *address, Reg(16))?;
+            load_value(assembler, allocation, *address, Reg(16))?;
             let offset = match &op.kind {
                 OpKind::LoadField { field, .. } => i16::try_from(field.saturating_mul(8))
                     .map_err(|_| CodegenError::FrameOverflow)?,
@@ -218,7 +218,7 @@ pub fn lower_op(
                 },
             )?;
             if let Some(result) = result {
-                store_slot(assembler, slots, result, Reg(16))?;
+                store_value(assembler, allocation, result, Reg(16))?;
             }
         }
         OpKind::Store { address, value }
@@ -227,8 +227,8 @@ pub fn lower_op(
             value,
             ..
         } => {
-            load_slot(assembler, slots, *address, Reg(16))?;
-            load_slot(assembler, slots, *value, Reg(17))?;
+            load_value(assembler, allocation, *address, Reg(16))?;
+            load_value(assembler, allocation, *value, Reg(17))?;
             let offset = match &op.kind {
                 OpKind::StoreField { field, .. } => i16::try_from(field.saturating_mul(8))
                     .map_err(|_| CodegenError::FrameOverflow)?,
@@ -247,26 +247,14 @@ pub fn lower_op(
         }
         OpKind::LoadArg { index } => {
             if let Some(result) = result {
-                let offset = i16::from(*index + 1)
-                    .checked_mul(-8)
-                    .ok_or(CodegenError::FrameOverflow)?;
-                emit(
-                    assembler,
-                    Inst::Ldr {
-                        rt: Reg(16),
-                        mem: MemOperand::Unscaled {
-                            base: RegOrSp::Reg(Reg(29)),
-                            offset,
-                        },
-                    },
-                )?;
-                store_slot(assembler, slots, result, Reg(16))?;
+                load_value(assembler, allocation, ValueId(u32::from(*index)), Reg(16))?;
+                store_value(assembler, allocation, result, Reg(16))?;
             }
         }
-        OpKind::Prim { op, args, .. } => lower_prim(assembler, op, args, result, slots)?,
+        OpKind::Prim { op, args, .. } => lower_prim(assembler, op, args, result, allocation)?,
         OpKind::Compare { op, left, right } => {
-            load_slot(assembler, slots, *left, Reg(16))?;
-            load_slot(assembler, slots, *right, Reg(17))?;
+            load_value(assembler, allocation, *left, Reg(16))?;
+            load_value(assembler, allocation, *right, Reg(17))?;
             emit(
                 assembler,
                 Inst::Cmp {
@@ -283,7 +271,7 @@ pub fn lower_op(
                         cond: compare_condition(*op),
                     },
                 )?;
-                store_slot(assembler, slots, result, Reg(16))?;
+                store_value(assembler, allocation, result, Reg(16))?;
             }
         }
         OpKind::SetMultipleValues { values } => {
@@ -291,12 +279,12 @@ pub fn lower_op(
                 emit(assembler, instruction)?;
             }
             if let (Some(first), Some(result)) = (values.first(), result) {
-                load_slot(assembler, slots, *first, Reg(16))?;
-                store_slot(assembler, slots, result, Reg(16))?;
+                load_value(assembler, allocation, *first, Reg(16))?;
+                store_value(assembler, allocation, result, Reg(16))?;
             }
         }
         OpKind::Alloc { words } => {
-            call_pc = Some(lower_alloc(assembler, *words, result, slots, abi)?);
+            call_pc = Some(lower_alloc(assembler, *words, result, allocation, abi)?);
         }
         OpKind::Safepoint => {
             call_pc = Some(lower_safepoint(assembler, abi)?);
@@ -306,34 +294,34 @@ pub fn lower_op(
             callee: function,
             args,
         } => {
-            lower_call(assembler, *function, args, slots)?;
+            lower_call(assembler, *function, args, allocation)?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
-                store_slot(assembler, slots, result, Reg(0))?;
+                store_value(assembler, allocation, result, Reg(0))?;
             }
         }
         OpKind::MakeClosure { entry, captures } => {
             let values = std::iter::once(*entry)
                 .chain(captures.iter().copied())
                 .collect::<Vec<_>>();
-            lower_runtime_builtin(assembler, "make-closure", &[], &values, slots, abi)?;
+            lower_runtime_builtin(assembler, "make-closure", &[], &values, allocation, abi)?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
-                store_slot(assembler, slots, result, Reg(0))?;
+                store_value(assembler, allocation, result, Reg(0))?;
             }
         }
         OpKind::CallClosure { closure, args } => {
-            lower_closure_call(assembler, *closure, args, slots)?;
+            lower_closure_call(assembler, *closure, args, allocation)?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
-                store_slot(assembler, slots, result, Reg(0))?;
+                store_value(assembler, allocation, result, Reg(0))?;
             }
         }
         OpKind::Builtin { name, args } => {
-            lower_builtin(assembler, name, args, slots, abi)?;
+            lower_builtin(assembler, name, args, allocation, abi)?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
-                store_slot(assembler, slots, result, Reg(0))?;
+                store_value(assembler, allocation, result, Reg(0))?;
             }
         }
         OpKind::EnterHandler { region } => {
@@ -369,7 +357,14 @@ pub fn lower_op(
                     definition.binding_targets.clone(),
                 ),
             };
-            lower_runtime_builtin(assembler, name, &immediate_args, &value_args, slots, abi)?;
+            lower_runtime_builtin(
+                assembler,
+                name,
+                &immediate_args,
+                &value_args,
+                allocation,
+                abi,
+            )?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
         }
         OpKind::LeaveHandler { region } => {
@@ -383,7 +378,14 @@ pub fn lower_op(
                 ncl_ir::HandlerKind::UnwindProtect => "leave-unwind-protect",
                 ncl_ir::HandlerKind::Progv => "leave-progv",
             };
-            lower_runtime_builtin(assembler, name, &[u64::from(region.0)], &[], slots, abi)?;
+            lower_runtime_builtin(
+                assembler,
+                name,
+                &[u64::from(region.0)],
+                &[],
+                allocation,
+                abi,
+            )?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
         }
     }
@@ -392,7 +394,7 @@ pub fn lower_op(
 
 pub fn move_args(
     assembler: &mut Assembler,
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
     args: &[ValueId],
     params: &[BlockParam],
 ) -> Result<(), CodegenError> {
@@ -402,8 +404,8 @@ pub fn move_args(
         ));
     }
     for (argument, parameter) in args.iter().zip(params) {
-        load_slot(assembler, slots, *argument, Reg(17))?;
-        store_slot(assembler, slots, parameter.value, Reg(17))?;
+        load_value(assembler, allocation, *argument, Reg(17))?;
+        store_value(assembler, allocation, parameter.value, Reg(17))?;
     }
     Ok(())
 }

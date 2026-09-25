@@ -1,7 +1,7 @@
 use super::{
-    ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, emit, emit_call,
-    load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call,
-    lower_runtime_builtin, lower_safepoint, slot, slot_mem_of, store_slot,
+    ENTRY, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, ValueSlots, emit, emit_call, load_immediate,
+    load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call, lower_runtime_builtin,
+    lower_safepoint, slot_mem_of, store_slot,
 };
 use crate::{CodegenError, RuntimeAbi};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem};
@@ -47,7 +47,7 @@ fn lower_prim(
     prim: &Prim,
     args: &[ValueId],
     result: Option<ValueId>,
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
     let Some(first) = args.first() else {
         return Err(CodegenError::Unsupported(
@@ -105,7 +105,7 @@ pub fn lower_op(
     assembler: &mut Assembler,
     op: &Op,
     function: &Function,
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
     abi: &dyn RuntimeAbi,
 ) -> Result<Option<u32>, CodegenError> {
     let result = op.results.first().map(|(value, _)| *value);
@@ -165,12 +165,11 @@ pub fn lower_op(
         }
         OpKind::LoadArg { index } => {
             if let Some(result) = result {
-                let offset = i32::from(*index + 1)
-                    .checked_mul(-8)
-                    .ok_or(CodegenError::FrameOverflow)?;
-                emit(
+                load_slot(
                     assembler,
-                    Inst::MovRM(FUNCTION_OBJECT, Mem::base(FRAME_POINTER, offset)),
+                    slots,
+                    ValueId(u32::from(*index)),
+                    FUNCTION_OBJECT,
                 )?;
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;
             }
@@ -293,7 +292,7 @@ pub fn lower_op(
 
 pub fn move_args(
     assembler: &mut Assembler,
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
     args: &[ValueId],
     params: &[BlockParam],
 ) -> Result<(), CodegenError> {
@@ -304,31 +303,79 @@ pub fn move_args(
     }
     let mut moves = Vec::new();
     for (argument, parameter) in args.iter().zip(params) {
-        let source = slot(slots, *argument)?;
-        let destination = slot(slots, parameter.value)?;
+        let source = slots.location(*argument)?;
+        let destination = slots.location(parameter.value)?;
         if source != destination {
             moves.push((source, destination));
         }
     }
-    // When a destination slot is also a source slot, a sequential copy would
-    // overwrite a value before it is read; stage every source on the stack first.
+    // When a destination location is also a source location, stage every source
+    // first so register and spill moves remain parallel-copy safe.
     let overlapping = moves
         .iter()
         .any(|(source, _)| moves.iter().any(|(_, destination)| destination == source));
     if overlapping {
         for (source, _) in &moves {
-            emit(assembler, Inst::MovRM(ENTRY, slot_mem_of(*source)?))?;
+            match source {
+                crate::Location::Register(register) => emit(
+                    assembler,
+                    Inst::MovRR(
+                        ENTRY,
+                        ncl_asm_x86_64::Reg::from_id(
+                            u8::try_from(*register).map_err(|_| CodegenError::FrameOverflow)?,
+                        )
+                        .ok_or(CodegenError::FrameOverflow)?,
+                    ),
+                )?,
+                crate::Location::Spill(spill) => emit(
+                    assembler,
+                    Inst::MovRM(
+                        ENTRY,
+                        slot_mem_of(
+                            slots
+                                .spill_base
+                                .checked_add(*spill)
+                                .ok_or(CodegenError::FrameOverflow)?,
+                        )?,
+                    ),
+                )?,
+            }
             emit(assembler, Inst::Push(ENTRY))?;
         }
         for (_, destination) in moves.iter().rev() {
             emit(assembler, Inst::Pop(ENTRY))?;
-            emit(assembler, Inst::MovMR(slot_mem_of(*destination)?, ENTRY))?;
+            match destination {
+                crate::Location::Register(register) => emit(
+                    assembler,
+                    Inst::MovRR(
+                        ncl_asm_x86_64::Reg::from_id(
+                            u8::try_from(*register).map_err(|_| CodegenError::FrameOverflow)?,
+                        )
+                        .ok_or(CodegenError::FrameOverflow)?,
+                        ENTRY,
+                    ),
+                )?,
+                crate::Location::Spill(spill) => emit(
+                    assembler,
+                    Inst::MovMR(
+                        slot_mem_of(
+                            slots
+                                .spill_base
+                                .checked_add(*spill)
+                                .ok_or(CodegenError::FrameOverflow)?,
+                        )?,
+                        ENTRY,
+                    ),
+                )?,
+            }
         }
         return Ok(());
     }
-    for (source, destination) in &moves {
-        emit(assembler, Inst::MovRM(ENTRY, slot_mem_of(*source)?))?;
-        emit(assembler, Inst::MovMR(slot_mem_of(*destination)?, ENTRY))?;
+    for (argument, parameter) in args.iter().zip(params) {
+        if slots.location(*argument)? != slots.location(parameter.value)? {
+            load_slot(assembler, slots, *argument, ENTRY)?;
+            store_slot(assembler, slots, parameter.value, ENTRY)?;
+        }
     }
     Ok(())
 }

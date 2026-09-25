@@ -347,6 +347,20 @@ impl SafepointMap {
                 ));
                 at += 2;
             }
+            let mut decoded_mask = 0_u16;
+            for &register_id in &ids {
+                if u32::from(register_id) >= u16::BITS {
+                    return Err("invalid register id");
+                }
+                let bit = 1_u16 << register_id;
+                if decoded_mask & bit != 0 || mask & bit == 0 {
+                    return Err("register ids do not match register mask");
+                }
+                decoded_mask |= bit;
+            }
+            if decoded_mask != mask {
+                return Err("register ids do not match register mask");
+            }
             entries.push(Safepoint {
                 pc_offset: pc,
                 frame_words: frame,
@@ -421,6 +435,11 @@ pub fn scan_frame_with_registers(
     registers: &mut [Word],
     mut forward: impl FnMut(Word) -> Word,
 ) -> Option<usize> {
+    if map.register_ids.iter().any(|register_id| {
+        u32::from(*register_id) >= u16::BITS || map.register_mask & (1_u16 << register_id) == 0
+    }) {
+        return None;
+    }
     let mut updated = scan_frame(words, frame_start, map, &mut forward)?;
     for register_id in &map.register_ids {
         let index = usize::from(*register_id);

@@ -81,6 +81,12 @@ fn encode_function(w: &mut Writer, f: &Function) {
     }
     vec_len(w, f.handler_regions.len());
     for h in &f.handler_regions {
+        w.u(h.id.0.into());
+        w.u(match h.kind {
+            crate::HandlerKind::Catch => 0,
+            crate::HandlerKind::UnwindProtect => 1,
+            crate::HandlerKind::Progv => 2,
+        });
         vec_len(w, h.protected.len());
         for b in &h.protected {
             w.u(b.0.into());
@@ -95,6 +101,8 @@ fn encode_function(w: &mut Writer, f: &Function) {
             w.u(v.0.into());
         }
         w.u(h.depth.into());
+        w.b(h.parent.is_some());
+        if let Some(parent) = h.parent { w.u(parent.0.into()); }
     }
     vec_len(w, f.debug.len());
     for d in &f.debug {
@@ -141,6 +149,7 @@ fn constant(w: &mut Writer, c: &Constant) {
         Constant::Nil => w.u(7),
         Constant::T => w.u(8),
         Constant::Unbound => w.u(9),
+        Constant::FunctionEntry(id) => { w.u(10); w.u(id.0.into()); }
     }
 }
 fn block(w: &mut Writer, b: &BasicBlock) {
@@ -174,12 +183,16 @@ fn op(w: &mut Writer, o: &OpKind) {
         OpKind::LoadArg { .. } => 7,
         OpKind::Call { .. } => 8,
         OpKind::CallIndirect { .. } => 9,
-        OpKind::Builtin { .. } => 10,
-        OpKind::Prim { .. } => 11,
-        OpKind::Compare { .. } => 12,
-        OpKind::Convert { .. } => 13,
-        OpKind::SetMultipleValues { .. } => 14,
-        OpKind::Safepoint => 15,
+        OpKind::MakeClosure { .. } => 10,
+        OpKind::CallClosure { .. } => 11,
+        OpKind::Builtin { .. } => 12,
+        OpKind::Prim { .. } => 13,
+        OpKind::Compare { .. } => 14,
+        OpKind::Convert { .. } => 15,
+        OpKind::SetMultipleValues { .. } => 16,
+        OpKind::Safepoint => 17,
+        OpKind::EnterHandler { .. } => 18,
+        OpKind::LeaveHandler { .. } => 19,
     };
     w.u(tag);
     match o {
@@ -217,6 +230,16 @@ fn op(w: &mut Writer, o: &OpKind) {
                 w.u(v.0.into());
             }
         }
+        OpKind::MakeClosure { entry, captures } => {
+            w.u(entry.0.into());
+            vec_len(w, captures.len());
+            for v in captures { w.u(v.0.into()); }
+        }
+        OpKind::CallClosure { closure, args } => {
+            w.u(closure.0.into());
+            vec_len(w, args.len());
+            for v in args { w.u(v.0.into()); }
+        }
         OpKind::Builtin { name, args } => {
             w.s(name);
             vec_len(w, args.len());
@@ -248,6 +271,7 @@ fn op(w: &mut Writer, o: &OpKind) {
             }
         }
         OpKind::Safepoint => {}
+        OpKind::EnterHandler { region } | OpKind::LeaveHandler { region } => w.u(region.0.into()),
     }
 }
 fn term(w: &mut Writer, t: &Terminator) {

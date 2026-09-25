@@ -104,6 +104,62 @@ pub(super) fn lower_call(
     Ok(())
 }
 
+pub(super) fn lower_closure_call(
+    assembler: &mut Assembler,
+    closure: ValueId,
+    args: &[ValueId],
+    slots: &[(ValueId, u32)],
+) -> Result<(), CodegenError> {
+    lower_call(assembler, closure, args, slots)?;
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(17),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(16)),
+                offset: 0,
+            },
+        },
+    )
+}
+
+pub(super) fn lower_runtime_builtin(
+    assembler: &mut Assembler,
+    name: &str,
+    immediate_args: &[u64],
+    value_args: &[ValueId],
+    slots: &[(ValueId, u32)],
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    if immediate_args.len() + value_args.len() > 4 {
+        return Err(CodegenError::Unsupported(
+            "AArch64 runtime calls support at most four arguments".into(),
+        ));
+    }
+    let address = abi
+        .runtime_address(RuntimeFunction::Builtin, Some(name))
+        .ok_or_else(|| CodegenError::Unsupported(format!("runtime address is unavailable: {name}")))?;
+    emit(
+        assembler,
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(0)),
+            rn: RegOrSp::Reg(Reg(21)),
+        },
+    )?;
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), address) {
+        emit(assembler, instruction)?;
+    }
+    for (index, value) in immediate_args.iter().copied().enumerate() {
+        for instruction in ncl_asm_aarch64::mov_imm64(Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?), value) {
+            emit(assembler, instruction)?;
+        }
+    }
+    for (index, value) in value_args.iter().copied().enumerate() {
+        load_slot(assembler, slots, value, Reg(u8::try_from(immediate_args.len() + index + 1).map_err(|_| CodegenError::FrameOverflow)?))?;
+    }
+    Ok(())
+}
+
 fn context_mem(abi: &dyn RuntimeAbi, field: ContextField) -> Result<MemOperand, CodegenError> {
     let offset = abi.field_offset(field).ok_or_else(|| {
         CodegenError::Unsupported(format!("context offset is unavailable: {field:?}"))

@@ -42,6 +42,10 @@ id_type!(
     FormId
 );
 id_type!(
+    #[doc = "A handler-region identity."]
+    HandlerRegionId
+);
+id_type!(
     #[doc = "A debug-location identity."]
     DebugLocationId
 );
@@ -114,6 +118,7 @@ pub enum Constant {
     Nil,
     T,
     Unbound,
+    FunctionEntry(FunctionId),
 }
 
 /// A direct primitive operation.
@@ -206,6 +211,14 @@ pub enum OpKind {
         callee: ValueId,
         args: Vec<ValueId>,
     },
+    MakeClosure {
+        entry: ValueId,
+        captures: Vec<ValueId>,
+    },
+    CallClosure {
+        closure: ValueId,
+        args: Vec<ValueId>,
+    },
     Builtin {
         name: String,
         args: Vec<ValueId>,
@@ -228,6 +241,12 @@ pub enum OpKind {
         values: Vec<ValueId>,
     },
     Safepoint,
+    EnterHandler {
+        region: HandlerRegionId,
+    },
+    LeaveHandler {
+        region: HandlerRegionId,
+    },
 }
 
 /// A terminator and its successor arguments.
@@ -269,11 +288,21 @@ pub enum Terminator {
 /// An exception handler region.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HandlerRegion {
+    pub id: HandlerRegionId,
+    pub kind: HandlerKind,
     pub protected: Vec<BlockId>,
     pub handler: BlockId,
     pub cleanup: Option<BlockId>,
     pub catch_tag: Option<ValueId>,
     pub depth: u32,
+    pub parent: Option<HandlerRegionId>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HandlerKind {
+    Catch,
+    UnwindProtect,
+    Progv,
 }
 /// A basic block.
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -400,7 +400,10 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     assert_eq!(FRAME_LOCAL_BEFORE.load(Ordering::SeqCst), old);
     assert_eq!(FRAME_LOCAL_AFTER.load(Ordering::SeqCst), after);
     assert_eq!(
-        ncl_object::function_name(&object_context, (*function).into()),
+        ncl_object::function_name(
+            &object_context,
+            ncl_object::Function::from_word(*function),
+        ),
         Ok(Word::NIL)
     );
 }

@@ -20,7 +20,7 @@ use ncl_object::{
     typed_builtin,
 };
 
-fn fail_type_error(
+const fn fail_type_error(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,
     _value: ncl_object::Fixnum,

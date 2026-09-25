@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on registration failures")]
+#![allow(
+    missing_docs,
+    clippy::unwrap_used,
+    reason = "tests assert on registration failures"
+)]
 
 use ncl_object::{Runtime, ThreadContext};
 

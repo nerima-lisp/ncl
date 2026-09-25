@@ -3,6 +3,8 @@
 use ncl_conditions::ConditionError;
 use ncl_object::ObjectError;
 
+use crate::sys_requirements::SysPrimitive;
+
 /// Failure of a foreign declaration, alien type operation, or foreign call.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -34,9 +36,9 @@ pub enum FfiError {
     UnsupportedType(&'static str),
     /// The operation needs an `ncl-sys` primitive that does not exist yet.
     ///
-    /// The payload is the required signature, one of the constants in
-    /// [`crate::sys_requirements`].
-    MissingSysPrimitive(&'static str),
+    /// The payload identifies the required primitive and its exact signature
+    /// through [`SysPrimitive::signature`].
+    MissingSysPrimitive(SysPrimitive),
     /// A condition class needed to signal a foreign error is not registered.
     MissingConditionClass(&'static str),
     /// A precise-root token did not pop in stack order.
@@ -62,7 +64,7 @@ impl std::fmt::Display for FfiError {
             Self::NullPointer => f.write_str("null system area pointer"),
             Self::UnsupportedType(name) => write!(f, "unsupported alien type: {name}"),
             Self::MissingSysPrimitive(requirement) => {
-                write!(f, "missing ncl-sys primitive: {requirement}")
+                write!(f, "missing ncl-sys primitive: {}", requirement.signature())
             }
             Self::MissingConditionClass(name) => {
                 write!(f, "condition class not registered: {name}")
@@ -75,6 +77,10 @@ impl std::fmt::Display for FfiError {
 
 impl std::error::Error for FfiError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        #[allow(
+            clippy::wildcard_enum_match_arm,
+            reason = "non-exhaustive errors require a forward-compatible fallback"
+        )]
         match self {
             Self::Object(error) => Some(error),
             Self::Condition(error) => Some(error),
@@ -103,6 +109,10 @@ impl FfiError {
     /// on its declared `Result<(), ObjectError>` signature.
     #[must_use]
     pub fn into_object_error(self) -> ObjectError {
+        #[allow(
+            clippy::wildcard_enum_match_arm,
+            reason = "non-exhaustive errors require a forward-compatible fallback"
+        )]
         match self {
             Self::Object(error) => error,
             _ => ObjectError::Unsupported,

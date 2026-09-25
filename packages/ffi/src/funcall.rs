@@ -15,12 +15,7 @@ pub fn alien_routine(
     result: AlienType,
     callable: bool,
 ) -> AlienRoutine {
-    AlienRoutine {
-        name: name.to_owned(),
-        arguments,
-        result,
-        callable,
-    }
+    AlienRoutine::new(name, arguments, result, callable)
 }
 
 /// The size in bytes of `ty`, like `alien-size`.
@@ -68,14 +63,14 @@ pub fn alien_funcall(
     routine: &AlienRoutine,
     arguments: &[Word],
 ) -> Result<Word, FfiError> {
-    if arguments.len() != routine.arguments.len() {
+    if arguments.len() != routine.arguments().len() {
         return Err(FfiError::ArityMismatch {
-            expected: routine.arguments.len(),
+            expected: routine.arguments().len(),
             got: arguments.len(),
         });
     }
     let mut buffer = Vec::new();
-    for (ty, value) in routine.arguments.iter().zip(arguments) {
+    for (ty, value) in routine.arguments().iter().zip(arguments) {
         buffer.extend(marshal_argument(ctx, ty, *value)?);
     }
     let _ = buffer.len();

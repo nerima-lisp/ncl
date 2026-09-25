@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on concrete values")]
+#![allow(
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "tests assert on concrete values"
+)]
 
 //! Alien type parsing, layout, and marshalling.
 
@@ -297,12 +301,7 @@ fn result_width_must_match_the_type() {
 
 #[test]
 fn routine_declaration_carries_its_signature() {
-    let routine = AlienRoutine {
-        name: "strlen".to_owned(),
-        arguments: vec![AlienType::CString],
-        result: AlienType::SizeT,
-        callable: false,
-    };
-    assert_eq!(routine.arguments.len(), 1);
-    assert_eq!(routine.result, AlienType::SizeT);
+    let routine = AlienRoutine::new("strlen", vec![AlienType::CString], AlienType::SizeT, false);
+    assert_eq!(routine.arguments().len(), 1);
+    assert_eq!(routine.result(), &AlienType::SizeT);
 }

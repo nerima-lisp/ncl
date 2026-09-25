@@ -13,20 +13,72 @@ use crate::sys_requirements::{
 };
 
 /// An opaque, owned handle to a loaded shared object.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+///
+/// Handles cannot be copied or cloned, and consuming one is required to unload
+/// it.
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct SharedObject(usize);
 
-impl SharedObject {
-    /// Wrap a loader handle.
+/// Whether a shared object is resolved lazily or immediately by the loader.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum LoaderMode {
+    /// Resolve symbols as they are used.
+    Lazy,
+    /// Resolve symbols while loading the object.
+    Now,
+}
+
+impl From<bool> for LoaderMode {
+    fn from(lazy: bool) -> Self {
+        if lazy { Self::Lazy } else { Self::Now }
+    }
+}
+
+/// An owned path passed to the dynamic loader.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct SharedObjectPath(String);
+
+impl SharedObjectPath {
     #[must_use]
-    pub const fn new(handle: usize) -> Self {
-        Self(handle)
+    /// Construct a path value object.
+    pub fn new(path: impl Into<String>) -> Self {
+        Self(path.into())
     }
 
-    /// The wrapped loader handle.
     #[must_use]
-    pub const fn handle(self) -> usize {
-        self.0
+    /// Borrow the path text at the dynamic-loader boundary.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for SharedObjectPath {
+    fn from(path: &str) -> Self {
+        Self::new(path)
+    }
+}
+
+/// An owned name passed to the dynamic symbol loader.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ForeignSymbolName(String);
+
+impl ForeignSymbolName {
+    #[must_use]
+    /// Construct a foreign symbol name value object.
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    #[must_use]
+    /// Borrow the symbol name at the dynamic-loader boundary.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for ForeignSymbolName {
+    fn from(name: &str) -> Self {
+        Self::new(name)
     }
 }
 
@@ -35,7 +87,12 @@ impl SharedObject {
 /// # Errors
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlopen` wrapper.
-pub const fn load_shared_object(_path: &str, _lazy: bool) -> Result<SharedObject, FfiError> {
+pub fn load_shared_object(
+    path: impl Into<SharedObjectPath>,
+    mode: impl Into<LoaderMode>,
+) -> Result<SharedObject, FfiError> {
+    let _path = path.into();
+    let _mode = mode.into();
     Err(FfiError::MissingSysPrimitive(DLOPEN_SHARED_OBJECT))
 }
 
@@ -53,7 +110,8 @@ pub const fn unload_shared_object(_object: SharedObject) -> Result<(), FfiError>
 /// # Errors
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlopen` wrapper.
-pub const fn dlopen_or_lose(_path: &str) -> Result<SharedObject, FfiError> {
+pub fn dlopen_or_lose(path: impl Into<SharedObjectPath>) -> Result<SharedObject, FfiError> {
+    let _path = path.into();
     Err(FfiError::MissingSysPrimitive(DLOPEN_SHARED_OBJECT))
 }
 
@@ -62,10 +120,11 @@ pub const fn dlopen_or_lose(_path: &str) -> Result<SharedObject, FfiError> {
 /// # Errors
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlsym` wrapper.
-pub const fn find_dynamic_foreign_symbol_address(
+pub fn find_dynamic_foreign_symbol_address(
     _object: SharedObject,
-    _name: &str,
+    name: impl Into<ForeignSymbolName>,
 ) -> Result<SystemAreaPointer, FfiError> {
+    let _name = name.into();
     Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
 }
 
@@ -74,7 +133,10 @@ pub const fn find_dynamic_foreign_symbol_address(
 /// # Errors
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlsym` wrapper.
-pub const fn find_foreign_symbol_address(_name: &str) -> Result<SystemAreaPointer, FfiError> {
+pub fn find_foreign_symbol_address(
+    name: impl Into<ForeignSymbolName>,
+) -> Result<SystemAreaPointer, FfiError> {
+    let _name = name.into();
     Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
 }
 
@@ -83,7 +145,10 @@ pub const fn find_foreign_symbol_address(_name: &str) -> Result<SystemAreaPointe
 /// # Errors
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlsym` wrapper.
-pub const fn foreign_symbol_address(_name: &str) -> Result<SystemAreaPointer, FfiError> {
+pub fn foreign_symbol_address(
+    name: impl Into<ForeignSymbolName>,
+) -> Result<SystemAreaPointer, FfiError> {
+    let _name = name.into();
     Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
 }
 
@@ -92,7 +157,10 @@ pub const fn foreign_symbol_address(_name: &str) -> Result<SystemAreaPointer, Ff
 /// # Errors
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlsym` wrapper.
-pub const fn foreign_symbol_sap(_name: &str) -> Result<SystemAreaPointer, FfiError> {
+pub fn foreign_symbol_sap(
+    name: impl Into<ForeignSymbolName>,
+) -> Result<SystemAreaPointer, FfiError> {
+    let _name = name.into();
     Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
 }
 
@@ -102,7 +170,10 @@ pub const fn foreign_symbol_sap(_name: &str) -> Result<SystemAreaPointer, FfiErr
 /// # Errors
 /// Returns [`FfiError::MissingSysPrimitive`] until `ncl-sys` exposes a safe
 /// `dlsym` wrapper.
-pub const fn foreign_symbol_dataref_sap(_name: &str) -> Result<SystemAreaPointer, FfiError> {
+pub fn foreign_symbol_dataref_sap(
+    name: impl Into<ForeignSymbolName>,
+) -> Result<SystemAreaPointer, FfiError> {
+    let _name = name.into();
     Err(FfiError::MissingSysPrimitive(DLSYM_FOREIGN_SYMBOL))
 }
 

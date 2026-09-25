@@ -423,6 +423,9 @@ const fn current_stack_bounds() -> Option<(usize, usize)> {
 mod tests {
     use super::*;
 
+    #[path = "coverage.rs"]
+    mod coverage;
+
     #[test]
     fn layout_matches_c_struct_offsets() {
         let layout = thread_layout();

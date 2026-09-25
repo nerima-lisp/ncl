@@ -57,7 +57,7 @@ impl Word {
     /// Encode a character in bits 4..24.
     #[must_use]
     pub const fn character(value: u32) -> Self {
-        Self(((value as u64) << 4) | 1)
+        Self((value as u64) << 4)
     }
     /// Encode a pointer with a lowtag.
     #[must_use]

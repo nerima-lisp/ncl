@@ -16,6 +16,64 @@ fn code_lifecycle_and_write_bounds() {
 }
 
 #[test]
+fn code_allocation_boundaries_and_metadata_accessors() {
+    assert!(matches!(alloc_code(0), Err(CodeError::EmptyAllocation)));
+    let Ok(mut code) = alloc_code(1) else { return };
+    let mut registry = CodeRegistry::default();
+    assert_eq!(
+        registry.register(
+            &code,
+            CodeObjectMetadata {
+                entry_offset: 0,
+                size: 1,
+                frame_words: 0,
+                function_name: "unpublished".to_string(),
+                source_locations: Vec::new(),
+                constant_slots: Vec::new(),
+                safepoint_map: SafepointMap::default(),
+                debug_table: Vec::new(),
+            }
+        ),
+        Err(CodeError::NotPublished)
+    );
+    assert_eq!(code.len(), 1);
+    assert!(!code.is_empty());
+    assert_eq!(code.as_slice(), &[0]);
+    assert_eq!(
+        code.write_code(usize::MAX, &[1]),
+        Err(CodeError::OutOfBounds)
+    );
+    assert_eq!(code.write_code(0, &[7]), Ok(()));
+    assert_eq!(code.as_slice(), &[7]);
+    assert_eq!(code.entry(), 0);
+    assert!(publish_code(&mut code).is_ok());
+    assert_eq!(publish_code(&mut code), Err(CodeError::AlreadyPublished));
+    free_code(code);
+}
+
+#[test]
+fn frame_walk_and_scan_reject_invalid_ranges() {
+    let words = [Word::NIL, Word::NIL, Word::NIL];
+    assert!(walk_frame_headers(&words, 0, 1).is_empty());
+    let map = Safepoint {
+        pc_offset: 0,
+        frame_words: 5,
+        slot_words: 5,
+        word_slot_count: 5,
+        register_mask: 0,
+        map_flags: 0,
+        slot_bitmap: vec![0b0000_0100],
+        register_ids: Vec::new(),
+    };
+    let mut frame = [Word::NIL; 2];
+    assert_eq!(scan_frame(&mut frame, 0, &map, |word| word), None);
+    assert_eq!(
+        scan_frame_chain(&mut frame, 0, 0, &SafepointMap::default(), |word| word),
+        None
+    );
+}
+
+#[test]
 fn registry_register_find_unregister() {
     let Ok(mut code) = alloc_code(16) else {
         return;

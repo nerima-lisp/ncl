@@ -256,6 +256,6 @@ Phase 1a's x86-64 lowering mirrors those two paths. The fast path loads `tlab_bu
 
 The four-word frame header and 16-byte alignment remain the native contract. Generated code stores the function object in header word 2: a native call places the callee function object in `x16` on AArch64 and `r10` on x86-64, and the callee prologue stores that register in word 2. The Phase 1 collector snapshots the top frame's four-word header from the frame pointer the slow path passed in, forwards header word 2 (the header slots the map marks live) and writes the forwarded values back into the real frame; locals and outgoing slots beyond the four-word header are not captured by the `set_native_frame` path in Phase 1 (`packages/sys/src/thread.rs`, `set_native_frame`, `write_back_frame_snapshot`.) Word 1 (the return PC) points into non-moving code space and is not written back. Walking older frames and forwarding register values are outside Phase 1 and remain Phase 1b work. The conformance test is `forwards_function_object_from_real_frame_after_safepoint_collection` (`packages/codegen/tests/exec_aarch64/cons.rs`.)
 
-Known limitations at the Phase 1 landing point ((b) は Phase 1b(L13)で解消する):
+Known limitations at the Phase 1 landing point ((b) は Phase 1b(N40)で解消する):
 
 - (b) only the top frame is walked; the real previous-fp in word 0 is not followed;

@@ -30,7 +30,7 @@ git diff --stat main...<worktree-head>
 ~~~
 
 When `<worktree-head>` is already an ancestor of `main` and the diffstat is
-empty, the snapshot has been fully superseded — there is no work to port.
+empty, the snapshot has been fully superseded: there is no work to port.
 Skip the procedure below and remove the worktree directly. An untracked
 planning document left in such a worktree (for example a next-step execution
 spec) describes future work, not a deliverable to merge; read it for context,
@@ -73,15 +73,10 @@ the workspace tests again on `main`. The source worktree can then be removed
 once `git status --short --branch` is clean. Keep the integration worktree
 until documentation updates and final verification are complete.
 
-Recent runtime refactors keep evaluator and builtin sequence responsibilities in
-separate modules. When splitting another large module, preserve the existing
-public(super) builtin surface, run the focused runtime tests, and integrate the
-change as its own commit before removing the source worktree.
-
 ## Rust workspace
 
-The workspace requires Rust 1.98.0 and pins Rust 1.98.0 in
-`rust-toolchain.toml`. Run the Rust checks from the repository root:
+The workspace pins Rust 1.98.0 in `rust-toolchain.toml`. Run the Rust checks
+from the repository root:
 
 ~~~sh
 cargo fmt --all -- --check
@@ -113,7 +108,7 @@ reported summary and the command exit status.
 
 For a browsable report, use `--html --output-dir artifacts/rust-coverage` in
 place of `--summary-only`. The flake app supplies the pinned Rust and LLVM
-tools; CI remains the authoritative 95.0% region-coverage regression gate.
+tools.
 
 ## Documentation
 

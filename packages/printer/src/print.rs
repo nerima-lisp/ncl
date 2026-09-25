@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 
 use ncl_object::{
-    ObjectRef, Runtime, ThreadContext, Word, classify_object, make_string, string_length,
-    string_ref, symbol_name,
+    Bignum, Complex, DoubleFloat, ObjectRef, Ratio, Runtime, ThreadContext, Word,
+    classify_object, make_string, string_length, string_ref, symbol_name,
 };
 
 use crate::circle::{CircleLabel, CircleState, labelable};
@@ -214,10 +214,10 @@ impl<'a> Printer<'a> {
             ObjectRef::SimpleVector(vector) => self.print_simple_vector(vector),
             ObjectRef::SpecializedArray(array) => self.print_specialized_array(array),
             ObjectRef::Array(array) => self.print_array(array),
-            ObjectRef::Bignum(number) => self.print_bignum(number.into()),
-            ObjectRef::Ratio(number) => self.print_ratio(number.into()),
-            ObjectRef::DoubleFloat(number) => self.print_double(number.into()),
-            ObjectRef::Complex(number) => self.print_complex(number.into()),
+            ObjectRef::Bignum(number) => self.print_bignum(Bignum::from_word(number)),
+            ObjectRef::Ratio(number) => self.print_ratio(Ratio::from_word(number)),
+            ObjectRef::DoubleFloat(number) => self.print_double(DoubleFloat::from_word(number)),
+            ObjectRef::Complex(number) => self.print_complex(Complex::from_word(number)),
             ObjectRef::HashTable(word) => self.print_opaque("HASH-TABLE", word),
             ObjectRef::Structure(word) => self.print_opaque("STRUCTURE", word),
             ObjectRef::Instance(word) => self.print_opaque("INSTANCE", word),

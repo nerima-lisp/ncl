@@ -2,7 +2,8 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, CodeObject, Function, Runtime, ThreadContext, Word, car,
+    ArrayElementType, ArrayOptions, CodeObject, Function, Instance, Runtime, ThreadContext, Word,
+    car,
     code_constants, code_debug, code_stack_map, complex_imag, complex_real, function_code,
     function_lambda_list, function_name, make_array, make_closure, make_code_object, make_complex,
     make_cons, make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector,
@@ -117,7 +118,7 @@ fn allocation_paths_survive_collection_before_every_allocation() {
         .unwrap_or_else(|error| panic!("instance: {error:?}"))
         .into();
     let instance_token = ncl_object::push_root(&mut ctx, &mut instance);
-    assert_eq!(slot_ref(&ctx, instance.into(), 0), Ok(cons));
+    assert_eq!(slot_ref(&ctx, Instance::from_word(instance), 0), Ok(cons));
     assert_registry_entries(&mut ctx, &runtime, symbol);
     assert!(ncl_object::pop_root(&mut ctx, instance_token));
     assert!(ncl_object::pop_root(&mut ctx, interned_token));

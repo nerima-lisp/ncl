@@ -342,7 +342,7 @@ impl MacroCaller for RuntimeMacroCaller {
                 detail: "macro package is not present".to_owned(),
             }
         })?;
-        let (symbol, _) = Package::from(package_word)
+        let (symbol, _) = Package::from_word(package_word)
             .intern(ctx, runtime, &name.name)
             .map_err(|error| ncl_compiler_front::FrontError::MacroExpansion {
                 name: name.clone(),

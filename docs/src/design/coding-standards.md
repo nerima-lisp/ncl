@@ -10,7 +10,7 @@
 | typed object | `ncl-object`, `ncl-types` | Word、widetag、accessor、Runtime、ThreadContext wrapper |
 | language front | `ncl-reader`, `ncl-printer`, `ncl-conditions`, `ncl-clos`, `ncl-compiler-front` | Form、condition、class、IR lowering |
 | machine backend | `ncl-ir`, `ncl-codegen`, `ncl-asm-x86-64`, `ncl-asm-aarch64`, `ncl-objfile` | MachineFunction、encoding、Fixup、Relocation、CodeBlob |
-| library | `ncl-lib-*` | ANSI/SBCL library surface |
+| library | `ncl-lib-*` | ANSI Common Lisp library surface |
 | integration | `ncl-threads`, `ncl-ffi`, `ncl-image`, `ncl-runtime`, `ncl-conformance`, root `ncl` | execution, image, CLI, conformance |
 
 外部 crate はゼロで、OS API は `ncl-sys` の宣言経由だけにする。safe crate は unsafe boundary を再宣言しない。公開型は所有権と root の責務を表し、heap `Word` を未登録 Rust container に保持しない。
@@ -91,7 +91,7 @@ pub fn read_form(input: &mut Input) -> Result<Form, ReaderError> {
 
 OS calls are handwritten `extern "C"` declarations in ncl-sys: `mmap`, `munmap`, `mprotect`, `pthread_create`, `pthread_join`, `pthread_self`, pthread stack attributes, mutexes, condition variables, semaphores, `dlopen`, `dlsym`, `dlerror`, `clock_gettime`, `read`, `write`, `open`, `close`, `stat`, `opendir`, `signal`, macOS `pthread_jit_write_protect_np`, and `sys_icache_invalidate`. cfg and ABI differences remain in ncl-sys.
 
-External crates are zero. Standard HashMap is allowed, but security or reproducibility-sensitive maps use an in-tree SipHash implementation. Randomness comes through an OS entropy wrapper. The 47 symbols required by `sb-unicode` are generated from UnicodeData into static Rust tables. Bignum uses little-endian u32 limbs. A regular-expression crate is not introduced.
+External crates are zero. Standard HashMap is allowed, but security or reproducibility-sensitive maps use an in-tree SipHash implementation. Randomness comes through an OS entropy wrapper. The Unicode symbol set exposed by the `NCL-UNICODE` package (FR-003) is generated from UnicodeData into static Rust tables. Bignum uses little-endian u32 limbs. A regular-expression crate is not introduced.
 
 ## Examples
 
@@ -145,7 +145,7 @@ Documentation examples are normative only when they name ownership, root lifetim
 
 The same review applies to documentation tables: numeric fields have one owner, cross-document values are checked together, and a renamed crate is updated in the context table, adjacency list, and API examples. A shortened replacement is not accepted when it removes a layout, numeric threshold, or failure condition.
 
-Before handoff, inspect the complete diff with `git diff --no-ext-diff`, confirm only requested design documents changed, and confirm the generated site contains all eight documents. Keep unrelated worktree entries untouched.
+Before handoff, inspect the complete diff with `git diff --no-ext-diff`, confirm only requested design documents changed, and confirm the generated site contains all documents. Keep unrelated worktree entries untouched.
 
 The canonical gate is the strict MkDocs build; cargo checks are separate and are not substituted for it.
 

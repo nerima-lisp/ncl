@@ -2,95 +2,58 @@
 
 ## Requirements
 
-Install the stable Rust toolchain with `rustfmt` and `clippy`. The repository
-declares these components in `rust-toolchain.toml`; alternatively use `nix
-develop` from the repository root.
+NCL builds with the stable Rust toolchain at version 1.98.0. The
+repository pins that version, with <code>rustfmt</code> and
+<code>clippy</code>, in <code>rust-toolchain.toml</code>. Alternatively
+run <code>nix develop</code> from the repository root; the development
+shell provides Rust 1.98.0, clippy, rustfmt, cargo-llvm-cov, and mkdocs.
 
-## Evaluate an expression
+## Current CLI state
 
-Run one expression with the CLI:
+The command-line interface is a stub during the native rewrite. Only
+version output works today:
+
+~~~sh
+cargo run -- --version
+~~~
+
+<code>--version</code> and its short form <code>-V</code> print the
+package version and exit with status 0.
+
+<code>--eval</code> reports the rewrite state and exits with status 1:
 
 ~~~sh
 cargo run -- --eval '(+ 1 2)'
 ~~~
 
-The result is printed to standard output. Repeated <code>--eval</code> options
-share one runtime:
+That command prints <code>--eval is not implemented during the native
+rewrite</code> to standard error. Any other option exits with status 2,
+and running the binary without arguments prints a notice that NCL is being
+rewritten and exits with status 2.
+
+There is no <code>--file</code>, <code>--repl</code>,
+<code>--compiled</code>, <code>--load</code>, <code>--script</code>, or
+<code>--quiet</code> option. Evaluation returns when milestone M1 in the
+[wave plan](project/wave-plan.md) lands.
+
+## Development gates
+
+From the repository root, run <code>nix develop</code> and then:
 
 ~~~sh
-cargo run -- --eval '(define square (lambda (x) (* x x)))' --eval '(square 5)'
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+python3 scripts/check_standards.py
 ~~~
 
-Use <code>--compiled</code> to send the evaluated source through the
-stack-bytecode compiler and VM:
+Coverage uses LLVM instrumentation through the flake app:
 
 ~~~sh
-cargo run -- --compiled --eval '(+ 1 2)'
+nix run path:.#rust-coverage -- --summary-only --fail-under-regions 95.0
 ~~~
 
-## Run a file or the REPL
-
-Evaluate a Lisp file with an explicit path:
+Build the documentation with:
 
 ~~~sh
-cargo run -- --file path/to/program.lisp
-~~~
-
-Start an interactive session with either of these forms:
-
-~~~sh
-cargo run -- --repl
-cargo run
-~~~
-
-The second command starts the REPL because no file or expression was supplied.
-<code>--quiet</code> suppresses REPL prompts and normal value output:
-
-~~~sh
-cargo run -- --quiet --repl
-~~~
-
-## Command-line help
-
-Use <code>--help</code> or <code>-h</code> to print usage information, and
-<code>--version</code> or <code>-V</code> to print the package version.
-Repeated <code>--eval</code>/<code>-e</code> options run in order and share one
-runtime. If <code>--file</code>/<code>-f</code> is supplied as well, the file is
-evaluated after those expressions; adding <code>--repl</code> enters the REPL
-after the non-interactive inputs.
-
-The process exits with status 0 on success, 1 for evaluation or file errors,
-and 2 for command-line usage errors.
-
-## Using Nix
-
-When Rust is supplied by Nix, run Cargo and the formatter from a shell that
-contains the required tools:
-
-~~~sh
-nix shell nixpkgs#rustc nixpkgs#rustfmt --command cargo run -- --eval '(+ 1 2)'
-~~~
-
-From the repository root, `nix develop` provides the complete development
-environment. Use `nix fmt` to format the workspace, then run the checks below:
-
-~~~sh
-nix fmt
-cargo check --locked --workspace --all-targets --all-features
-cargo test --locked --workspace --all-features --all-targets
-cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --all-features --no-deps
-~~~
-
-For the release gate, also run `cargo audit`, a locked release build and test,
-Rust documentation with warnings denied, and the CLI smoke checks for
-interpreted and compiled evaluation.
-
-Coverage is measured with LLVM instrumentation:
-
-~~~sh
-LLVM_COV=llvm-cov LLVM_PROFDATA=llvm-profdata cargo llvm-cov \
-  --locked --workspace --all-features --all-targets \
-  --ignore-filename-regex 'src/cli/repl/interactive\.rs|packages/core/runtime/src/builtins/registry/builtin_definitions\.rs' \
-  --summary-only --fail-under-regions 95.0
+mkdocs build --strict --config-file docs/mkdocs.yml
 ~~~

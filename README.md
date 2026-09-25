@@ -1,51 +1,52 @@
 # NCL
 
-NCL is being rewritten as a native Common Lisp implementation. The design
-contracts for the rewrite are in `docs/src/design/`. The former interpreter,
-VM, and syntax crates are retired at commit `d9bbb4ec` and retained only as
-legacy tests for later migration.
+NCL is a Rust-native Common Lisp implementation. It targets ANSI Common
+Lisp plus an NCL-specific extension API, and it is measured against SBCL by
+its numbers rather than by compatibility: there is no `SB-*` surface, no
+compatibility shim, and no alias package.
 
-## 契約との差分
+## Status
 
-`ncl-sys` は設計契約の実行時境界を次の形で具体化しています。
+NCL is mid-rewrite. The former interpreter, VM, and syntax crates ended at
+commit `d9bbb4ec` and have been removed. The workspace keeps the parts that
+do not depend on SBCL and rebuilds the rest:
 
-- `alloc_code` と `publish_code` は OS の mapping/protection 失敗を返す
-  `Result` API です。公開後の entry は release store、読み取りは acquire
-  load です。
-- `ReferenceLayout` は header-inclusive の固定 `reference_words` に加え、
-  `boxed_from` からオブジェクト末尾までを参照として扱えます。payload `N`
-  は生添字 `N + 1` です。
-- `Thread` は `repr(C)` で、生成コードが使う `thread_layout()` の offset を
-  ABI として固定します。上位の `ThreadContext` は `Thread` を先頭に置き、
-  `*mut ThreadContext` を `*mut Thread` として渡す契約です。
-- code object metadata は frame size、function name、source locations を保持し、
-  `Heap::release_code(&mut thread, &mut owned_code)` は STW 下で全登録スレッドの
-  frame chain を検査し、lookup table から除去してから mapping を解放します。
-  live PC が残る間は `CodeError::CodeInUse` を返し、`owned_code` を保持します。
-  registry に登録されていない場合も `CodeError::NotRegistered` を返し、再試行できるよう
-  `owned_code` を保持します。frame chain は各フレームの `previous` リンクを辿って走査します。
-- `Heap::collect` は登録された code registry と frame snapshot を使い、return PC
-  ごとの safepoint map、function object、live slots、callee-saved registers を更新します。
+- Core crates are in place: `ncl-sys`, `ncl-object`, `ncl-ir`,
+  `ncl-codegen`, `ncl-objfile`, `ncl-asm-x86-64`, and `ncl-asm-aarch64`.
+- The language, library, runtime, and conformance crates exist as skeletons
+  and are filled in by the implementation lanes.
+- The `ncl` binary currently supports only `--version` / `-V`. `--eval`
+  reports that it is not implemented during the native rewrite.
+- Source text does not execute as native code yet; milestone M1 is the
+  first point that does.
 
-契約文書側への正式な反映は、run ブランチでまとめて行います。この worktree では
-`docs/src/design/` を編集していません。
+The lane plan, decisions, and acceptance criteria are in
+[docs/src/project/wave-plan.md](docs/src/project/wave-plan.md). The frozen
+design contracts are in [docs/src/design/](docs/src/design/).
 
-## Object kinds
+## Development
 
-| kind | layout | accessor | ctor | GC test |
-| --- | --- | --- | --- | --- |
-| symbol | registered fields | value/function/plist/name | `make_symbol` | `remaining_object_kinds_round_trip` |
-| string / vector | length and data | string/vector accessors | `make_string`, `make_simple_vector` | `remaining_object_kinds_round_trip` |
-| specialized array | element type and data | `specialized_array_*` | `make_specialized_array` | `remaining_object_kinds_round_trip` |
-| non-simple array | rank-variable metadata and boxed payload tail | `array_*` | `make_array` | `non_simple_array_references_survive_minor_and_full_gc` |
-| structure / instance | layout or class and slots | `structure_*`, `slot_*` | `make_structure`, `make_instance` | `remaining_object_kinds_round_trip` |
-| simple-fun / closure | entry, code, inline captures | `function_*`, `closure_ref` | `make_simple_fun`, `make_closure` | `remaining_object_kinds_round_trip` |
-| bignum / ratio | packed limbs or references | numeric accessors | numeric constructors | `remaining_object_kinds_round_trip` |
-| double-float / complex | binary64 or two references | numeric accessors | numeric constructors | `remaining_object_kinds_round_trip` |
-| stream / readtable | named descriptor slots | named accessors | `make_stream`, `make_readtable` | `remaining_object_kinds_round_trip` |
-| code | entry, size, tables | `code_*` | `make_code_object` | `remaining_object_kinds_round_trip` |
+The workspace pins Rust 1.98.0 and uses zero external crates; `unsafe` is
+confined to `ncl-sys`. Enter the development shell and run the gates from
+the repository root:
 
-The GC tests allocate each object, allocate additional objects, run minor and
-full collection, and check payload values and reference identity.
+```sh
+nix develop
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+python3 scripts/check_standards.py
+```
 
-下流レーンは、非 simple 配列の rank 可変 metadata が `boxed_from` から全語走査されること、kind 境界型が `Word` の transparent newtype であること、`classify_object` が Structure/Instance と SimpleFun/Closure を別 variant に返すことを前提にしてください。
+Coverage and documentation are separate gates:
+
+```sh
+nix run path:.#rust-coverage -- --summary-only --fail-under-regions 95.0
+mkdocs build --strict --config-file docs/mkdocs.yml
+```
+
+Run the Rust commands through `nix develop`; a bare `cargo` may fail to link
+the binary on macOS.
+
+## License
+
+MIT.

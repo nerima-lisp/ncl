@@ -1,0 +1,13 @@
+[package]
+name = "ncl-opt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Conservative optimization passes for ncl-ir"
+
+[dependencies]
+ncl-ir = { path = "../../ir" }
+
+[lints]
+workspace = true

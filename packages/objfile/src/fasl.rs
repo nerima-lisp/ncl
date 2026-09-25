@@ -166,10 +166,11 @@ impl FaslReader {
                 stack_maps: stack.to_vec(),
                 debug: bytes
                     .get(
-                        usize::try_from(debug_start).map_err(|_| ObjectError::InvalidField {
-                            field: "debug offset",
-                            value: u64::from(debug_start),
-                        })?..,
+                        crate::types::target_usize(
+                            u64::from(debug_start),
+                            "debug offset",
+                            u64::from(debug_start),
+                        )?..,
                     )
                     .map_or_else(Vec::new, <[u8]>::to_vec),
             },

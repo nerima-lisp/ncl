@@ -1,8 +1,7 @@
 use super::{
     ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, emit, emit_call,
     load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call,
-    lower_runtime_builtin, lower_safepoint, slot,
-    slot_mem_of, store_slot,
+    lower_runtime_builtin, lower_safepoint, slot, slot_mem_of, store_slot,
 };
 use crate::{CodegenError, RuntimeAbi};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Mem};
@@ -16,7 +15,9 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i6
         ncl_ir::Constant::T => Ok(abi.encode_fixnum(1)),
         ncl_ir::Constant::FunctionEntry(function) => abi
             .constant_word(&format!("function-entry:{}", function.0))
-            .ok_or_else(|| CodegenError::Unsupported("function entry constant is unavailable".into())),
+            .ok_or_else(|| {
+                CodegenError::Unsupported("function entry constant is unavailable".into())
+            }),
         _ => Err(CodegenError::Unsupported(
             "constant requires a runtime table".into(),
         )),
@@ -252,7 +253,14 @@ pub fn lower_op(
                     "enter-unwind-protect",
                     vec![
                         i64::from(region.0),
-                        i64::from(definition.cleanup.ok_or_else(|| CodegenError::Unsupported("cleanup block is unavailable".into()))?.0),
+                        i64::from(
+                            definition
+                                .cleanup
+                                .ok_or_else(|| {
+                                    CodegenError::Unsupported("cleanup block is unavailable".into())
+                                })?
+                                .0,
+                        ),
                     ],
                     Vec::new(),
                 ),

@@ -225,6 +225,7 @@ const fn constant_type(constant: &Constant) -> Ty {
         | Constant::StringBytes(_)
         | Constant::Nil
         | Constant::T
-        | Constant::Unbound => Ty::Word,
+        | Constant::Unbound
+        | Constant::FunctionEntry(_) => Ty::Word,
     }
 }

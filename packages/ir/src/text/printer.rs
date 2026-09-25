@@ -106,7 +106,9 @@ fn encode_function(w: &mut Writer, f: &Function) {
         }
         w.u(h.depth.into());
         w.b(h.parent.is_some());
-        if let Some(parent) = h.parent { w.u(parent.0.into()); }
+        if let Some(parent) = h.parent {
+            w.u(parent.0.into());
+        }
     }
     vec_len(w, f.debug.len());
     for d in &f.debug {
@@ -153,7 +155,10 @@ fn constant(w: &mut Writer, c: &Constant) {
         Constant::Nil => w.u(7),
         Constant::T => w.u(8),
         Constant::Unbound => w.u(9),
-        Constant::FunctionEntry(id) => { w.u(10); w.u(id.0.into()); }
+        Constant::FunctionEntry(id) => {
+            w.u(10);
+            w.u(id.0.into());
+        }
     }
 }
 fn block(w: &mut Writer, b: &BasicBlock) {
@@ -199,6 +204,10 @@ fn op(w: &mut Writer, o: &OpKind) {
         OpKind::LeaveHandler { .. } => 19,
     };
     w.u(tag);
+    op_payload(w, o);
+}
+
+fn op_payload(w: &mut Writer, o: &OpKind) {
     match o {
         OpKind::Const { result } => w.u(result.0.into()),
         OpKind::Move { value }
@@ -237,12 +246,16 @@ fn op(w: &mut Writer, o: &OpKind) {
         OpKind::MakeClosure { entry, captures } => {
             w.u(entry.0.into());
             vec_len(w, captures.len());
-            for v in captures { w.u(v.0.into()); }
+            for v in captures {
+                w.u(v.0.into());
+            }
         }
         OpKind::CallClosure { closure, args } => {
             w.u(closure.0.into());
             vec_len(w, args.len());
-            for v in args { w.u(v.0.into()); }
+            for v in args {
+                w.u(v.0.into());
+            }
         }
         OpKind::Builtin { name, args } => {
             w.s(name);

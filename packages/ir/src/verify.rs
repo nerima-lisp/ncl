@@ -134,12 +134,18 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
         }
         match region.kind {
             crate::HandlerKind::Catch => {
-                if region.catch_tag.is_none() || region.cleanup.is_some() || !region.binding_targets.is_empty() {
+                if region.catch_tag.is_none()
+                    || region.cleanup.is_some()
+                    || !region.binding_targets.is_empty()
+                {
                     errors.push(VerifyError::HandlerMismatch(region.handler));
                 }
             }
             crate::HandlerKind::UnwindProtect => {
-                if region.cleanup.is_none() || region.catch_tag.is_some() || !region.binding_targets.is_empty() {
+                if region.cleanup.is_none()
+                    || region.catch_tag.is_some()
+                    || !region.binding_targets.is_empty()
+                {
                     errors.push(VerifyError::HandlerMismatch(region.handler));
                 }
             }
@@ -167,7 +173,11 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
                 errors.push(VerifyError::MissingHandlerRegion(parent));
                 continue;
             };
-            let parent_blocks = parent_region.protected.iter().copied().collect::<HashSet<_>>();
+            let parent_blocks = parent_region
+                .protected
+                .iter()
+                .copied()
+                .collect::<HashSet<_>>();
             if region.depth <= parent_region.depth
                 || region
                     .protected
@@ -192,20 +202,28 @@ fn verify_handler_flow(
     regions: &HashMap<HandlerRegionId, &crate::HandlerRegion>,
     errors: &mut Vec<VerifyError>,
 ) {
-    let Some(entry) = function.blocks.first().map(|block| block.id) else { return };
+    let Some(entry) = function.blocks.first().map(|block| block.id) else {
+        return;
+    };
     let mut incoming = HashMap::<BlockId, Option<Vec<HandlerRegionId>>>::new();
     incoming.insert(entry, Some(Vec::new()));
     let mut work = vec![entry];
     while let Some(id) = work.pop() {
-        let Some(block) = blocks.get(&id) else { continue };
-        let Some(mut stack) = incoming.get(&id).cloned().flatten() else { continue };
+        let Some(block) = blocks.get(&id) else {
+            continue;
+        };
+        let Some(mut stack) = incoming.get(&id).cloned().flatten() else {
+            continue;
+        };
         for op in &block.ops {
             let region = match op.kind {
                 OpKind::EnterHandler { region } => Some((true, region)),
                 OpKind::LeaveHandler { region } => Some((false, region)),
                 _ => None,
             };
-            let Some((enter, region)) = region else { continue };
+            let Some((enter, region)) = region else {
+                continue;
+            };
             if !regions.contains_key(&region) {
                 errors.push(VerifyError::MissingHandlerRegion(region));
                 continue;
@@ -229,7 +247,9 @@ fn verify_handler_flow(
             errors.push(VerifyError::HandlerUnbalanced(block.id));
         }
         for target in successors(&block.terminator) {
-            if !blocks.contains_key(&target) { continue; }
+            if !blocks.contains_key(&target) {
+                continue;
+            }
             match incoming.get(&target) {
                 None => {
                     incoming.insert(target, Some(stack.clone()));

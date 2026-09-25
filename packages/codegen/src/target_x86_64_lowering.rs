@@ -172,14 +172,21 @@ pub(super) fn lower_runtime_builtin(
     let address = abi
         .runtime_address(RuntimeFunction::Builtin, Some(name))
         .map(u64::cast_signed)
-        .ok_or_else(|| CodegenError::Unsupported(format!("runtime address is unavailable: {name}")))?;
+        .ok_or_else(|| {
+            CodegenError::Unsupported(format!("runtime address is unavailable: {name}"))
+        })?;
     emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
     load_immediate(assembler, ENTRY, address)?;
     for (index, value) in immediate_args.iter().copied().enumerate() {
         load_immediate(assembler, ARGUMENT_REGISTERS[index], value)?;
     }
     for (index, value) in value_args.iter().copied().enumerate() {
-        load_slot(assembler, slots, value, ARGUMENT_REGISTERS[immediate_args.len() + index])?;
+        load_slot(
+            assembler,
+            slots,
+            value,
+            ARGUMENT_REGISTERS[immediate_args.len() + index],
+        )?;
     }
     Ok(())
 }

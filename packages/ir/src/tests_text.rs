@@ -402,13 +402,42 @@ fn round_trip_cases() -> Vec<(&'static str, Function)> {
                 vec![block(
                     0,
                     vec![
-                        op(&[(0, Ty::Word)], OpKind::Const { result: ConstantIndex(0) }),
-                        op(&[], OpKind::EnterHandler { region: HandlerRegionId(0) }),
-                        op(&[(1, Ty::Word)], OpKind::MakeClosure { entry: ValueId(0), captures: Vec::new() }),
-                        op(&[(2, Ty::Word)], OpKind::CallClosure { closure: ValueId(1), args: Vec::new() }),
-                        op(&[], OpKind::LeaveHandler { region: HandlerRegionId(0) }),
+                        op(
+                            &[(0, Ty::Word)],
+                            OpKind::Const {
+                                result: ConstantIndex(0),
+                            },
+                        ),
+                        op(
+                            &[],
+                            OpKind::EnterHandler {
+                                region: HandlerRegionId(0),
+                            },
+                        ),
+                        op(
+                            &[(1, Ty::Word)],
+                            OpKind::MakeClosure {
+                                entry: ValueId(0),
+                                captures: Vec::new(),
+                            },
+                        ),
+                        op(
+                            &[(2, Ty::Word)],
+                            OpKind::CallClosure {
+                                closure: ValueId(1),
+                                args: Vec::new(),
+                            },
+                        ),
+                        op(
+                            &[],
+                            OpKind::LeaveHandler {
+                                region: HandlerRegionId(0),
+                            },
+                        ),
                     ],
-                    Terminator::Return { values: vec![ValueId(2)] },
+                    Terminator::Return {
+                        values: vec![ValueId(2)],
+                    },
                 )],
                 vec![HandlerRegion {
                     id: HandlerRegionId(0),

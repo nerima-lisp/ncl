@@ -35,7 +35,10 @@ impl RuntimeAbi for Aarch64FixtureAbi {
         match function {
             RuntimeFunction::SafepointSlow => Some(0x1000),
             RuntimeFunction::Builtin
-                if matches!(name, Some("make-closure" | "enter-unwind-protect" | "leave-unwind-protect")) =>
+                if matches!(
+                    name,
+                    Some("make-closure" | "enter-unwind-protect" | "leave-unwind-protect")
+                ) =>
             {
                 Some(0x1000)
             }
@@ -60,15 +63,33 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() {
     let entry_value = ncl_ir::ValueId(0);
     let closure = ncl_ir::ValueId(1);
     let result = ncl_ir::ValueId(2);
-    assert!(builder
-        .push_op(OpKind::Const { result: entry }, &[Ty::Word])
-        .is_ok());
-    assert!(builder
-        .push_op(OpKind::MakeClosure { entry: entry_value, captures: Vec::new() }, &[Ty::Word])
-        .is_ok());
-    assert!(builder
-        .push_op(OpKind::CallClosure { closure, args: Vec::new() }, &[Ty::Word])
-        .is_ok());
+    assert!(
+        builder
+            .push_op(OpKind::Const { result: entry }, &[Ty::Word])
+            .is_ok()
+    );
+    assert!(
+        builder
+            .push_op(
+                OpKind::MakeClosure {
+                    entry: entry_value,
+                    captures: Vec::new()
+                },
+                &[Ty::Word]
+            )
+            .is_ok()
+    );
+    assert!(
+        builder
+            .push_op(
+                OpKind::CallClosure {
+                    closure,
+                    args: Vec::new()
+                },
+                &[Ty::Word]
+            )
+            .is_ok()
+    );
     let region = ncl_ir::HandlerRegionId(3);
     builder.add_handler_region(ncl_ir::HandlerRegion {
         id: region,
@@ -81,16 +102,27 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() {
         depth: 0,
         parent: None,
     });
-    assert!(builder.push_op(OpKind::EnterHandler { region }, &[]).is_ok());
-    assert!(builder.push_op(OpKind::LeaveHandler { region }, &[]).is_ok());
-    assert!(builder
-        .terminate(Terminator::Return { values: vec![result] })
-        .is_ok());
+    assert!(
+        builder
+            .push_op(OpKind::EnterHandler { region }, &[])
+            .is_ok()
+    );
+    assert!(
+        builder
+            .push_op(OpKind::LeaveHandler { region }, &[])
+            .is_ok()
+    );
+    assert!(
+        builder
+            .terminate(Terminator::Return {
+                values: vec![result]
+            })
+            .is_ok()
+    );
     let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
         Ok(compiled) => compiled,
         Err(error) => {
-            assert!(false, "{error:?}");
-            return;
+            unreachable!("{error:?}");
         }
     };
     assert!(!compiled.code.is_empty());

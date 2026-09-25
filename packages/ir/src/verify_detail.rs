@@ -137,7 +137,7 @@ pub(super) fn check_op(
         }
         OpKind::Safepoint => require_results(op, &[], block.id, errors),
         OpKind::EnterHandler { .. } | OpKind::LeaveHandler { .. } => {
-            require_results(op, &[], block.id, errors)
+            require_results(op, &[], block.id, errors);
         }
     }
 }

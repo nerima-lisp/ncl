@@ -67,9 +67,6 @@ fn gc_extensions_register_the_owned_symbols() {
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     assert!(register(&mut ctx, &runtime).is_ok());
     for name in [
-        "*AFTER-GC-HOOKS*",
-        "*GC-REAL-TIME*",
-        "*GC-RUN-TIME*",
         "CANCEL-FINALIZATION",
         "FINALIZE",
         "GC",
@@ -77,16 +74,19 @@ fn gc_extensions_register_the_owned_symbols() {
         "HASH-TABLE-WEAKNESS",
         "MAKE-WEAK-POINTER",
         "MAKE-WEAK-VECTOR",
-        "WEAK-POINTER",
         "WEAK-POINTER-P",
         "WEAK-POINTER-VALUE",
         "WEAK-VECTOR-P",
     ] {
         assert_eq!(
-            runtime.function(&mut ctx, "SB-EXT", name),
+            runtime.function(&mut ctx, "NCL-GC", name),
             Some(Word::UNBOUND)
         );
     }
+    assert_eq!(
+        runtime.class(&mut ctx, "WEAK-POINTER"),
+        Some(Word::UNBOUND)
+    );
 }
 
 #[test]

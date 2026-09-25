@@ -67,7 +67,7 @@ fn register_my_functions(runtime: &Runtime) -> Result<(), ObjectError> {
 }
 ```
 
-`register(&runtime)` は object 層が所有する SB-EXT の GC、weak pointer、finalizer 関数名を登録します。関数 object は `FunctionObject = Word` です。
+`register(&runtime)` は object 層が所有する NCL-GC の GC、weak pointer、finalizer 関数名を登録します。関数 object は `FunctionObject = Word` です。
 
 ## GC と RootToken
 

@@ -22,6 +22,9 @@ mod symbol;
 
 pub use builtins::{copy_pprint_dispatch, pprint_dispatch, register, set_pprint_dispatch};
 pub use error::PrintError;
-pub use options::{PrintCase, PrintOptions};
+pub use options::{
+    ArrayMode, CircleMode, CircleSharingMode, EscapeMode, GensymMode, NonNegative, PrettyMode,
+    PrintBase, PrintCase, PrintOptions, RadixMode, ReadabilityMode,
+};
 pub use print::{write, write_to_string};
 pub use sink::{CharSink, StringSink};

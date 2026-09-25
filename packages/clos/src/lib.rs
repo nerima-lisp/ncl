@@ -23,7 +23,7 @@ const ARGS_2: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT];
 const ARGS_3: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT, ARGUMENT];
 const ARGS_4: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT, ARGUMENT, ARGUMENT];
 
-fn descriptor(arity: u8) -> Builtin {
+const fn descriptor(arity: u8) -> Builtin {
     let required = match arity {
         0 => ARGS_0,
         1 => ARGS_1,
@@ -39,6 +39,10 @@ fn descriptor(arity: u8) -> Builtin {
 }
 
 /// Allocate a class descriptor backed by an object-layer vector.
+///
+/// # Errors
+///
+/// Returns an object allocation or storage error.
 pub fn make_class(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -51,11 +55,19 @@ pub fn make_class(
 }
 
 /// Return the name stored in a class descriptor.
+///
+/// # Errors
+///
+/// Returns an object layout or storage error when `class` is not a vector.
 pub fn class_name(ctx: &ThreadContext, class: Word) -> Result<Word, ObjectError> {
     simple_vector_ref(ctx, class, CLASS_NAME)
 }
 
 /// Return the class of an object using the existing object-layer layouts.
+///
+/// # Errors
+///
+/// Returns an object layout error when the corresponding built-in class is absent.
 pub fn class_of(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -94,6 +106,10 @@ pub fn class_of(
 }
 
 /// Allocate an instance with an already finalized slot vector.
+///
+/// # Errors
+///
+/// Returns an object allocation or storage error.
 pub fn make_instance(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -237,11 +253,7 @@ fn bind(
     Ok(())
 }
 
-/// Register CLOS classes, NCL-MOP names, and the implemented slot builtins.
-pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
-    let mut ctx = ThreadContext::new();
-    ctx.register(runtime)?;
-    runtime.ensure_package(&mut ctx, NCL_MOP)?;
+fn register_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     for name in [
         "CLASS",
         "NULL",
@@ -276,11 +288,11 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         "DOUBLE-FLOAT",
         "COMPLEX",
     ] {
-        let package = runtime.ensure_package(&mut ctx, COMMON_LISP)?;
-        Package::from_word(package).intern(&mut ctx, runtime, name)?;
+        let package = runtime.ensure_package(ctx, COMMON_LISP)?;
+        Package::from_word(package).intern(ctx, runtime, name)?;
     }
-    install_class(&mut ctx, runtime, "T", None)?;
-    install_class(&mut ctx, runtime, "NULL", Some("T"))?;
+    install_class(ctx, runtime, "T", None)?;
+    install_class(ctx, runtime, "NULL", Some("T"))?;
     for &(name, superclass) in &[
         ("CLASS", Some("T")),
         ("STANDARD-OBJECT", Some("T")),
@@ -295,8 +307,8 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("STRUCTURE-OBJECT", Some("STANDARD-OBJECT")),
         ("EQL-SPECIALIZER", Some("STANDARD-OBJECT")),
     ] {
-        if runtime.class(&mut ctx, name).is_none() {
-            install_class(&mut ctx, runtime, name, superclass)?;
+        if runtime.class(ctx, name).is_none() {
+            install_class(ctx, runtime, name, superclass)?;
         }
     }
     for name in [
@@ -319,20 +331,24 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         "DOUBLE-FLOAT",
         "COMPLEX",
     ] {
-        if runtime.class(&mut ctx, name).is_none() {
-            install_class(&mut ctx, runtime, name, Some("T"))?;
+        if runtime.class(ctx, name).is_none() {
+            install_class(ctx, runtime, name, Some("T"))?;
         }
     }
+    Ok(())
+}
+
+fn register_owned_symbols(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     for row in include_str!("../ownership.tsv").lines().skip(1) {
         let fields: Vec<_> = row.split('\t').collect();
         if fields.len() < 3 {
             continue;
         }
-        let package = runtime.ensure_package(&mut ctx, fields[0])?;
-        Package::from_word(package).intern(&mut ctx, runtime, fields[1])?;
+        let package = runtime.ensure_package(ctx, fields[0])?;
+        Package::from_word(package).intern(ctx, runtime, fields[1])?;
         if fields[2] == "class" {
-            if runtime.class(&mut ctx, fields[1]).is_none() {
-                install_class(&mut ctx, runtime, fields[1], Some("T"))?;
+            if runtime.class(ctx, fields[1]).is_none() {
+                install_class(ctx, runtime, fields[1], Some("T"))?;
             }
             continue;
         }
@@ -340,9 +356,10 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             continue;
         }
         let arity = match fields[1] {
-            "SLOT-VALUE" | "SLOT-MAKUNBOUND" | "SLOT-BOUNDP" | "SLOT-EXISTS-P" => 2,
+            "SLOT-VALUE" | "SLOT-MAKUNBOUND" | "SLOT-BOUNDP" | "SLOT-EXISTS-P" | "SLOT-UNBOUND" => {
+                2
+            }
             "SLOT-MISSING" => 4,
-            "SLOT-UNBOUND" => 2,
             "CLASS-OF" | "CLASS-NAME" => 1,
             _ => 0,
         };
@@ -359,14 +376,27 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         } else {
             BuiltinPackage::CommonLisp
         };
-        bind(&mut ctx, runtime, package, fields[1], arity, callback)?;
+        bind(ctx, runtime, package, fields[1], arity, callback)?;
     }
     bind(
-        &mut ctx,
+        ctx,
         runtime,
         BuiltinPackage::CommonLisp,
         "SLOT-VALUE-SET",
         3,
         slot_set_builtin,
     )
+}
+
+/// Register CLOS classes, NCL-MOP names, and the implemented slot builtins.
+///
+/// # Errors
+///
+/// Returns the first object allocation, package, or builtin registration error.
+pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
+    let mut ctx = ThreadContext::new();
+    ctx.register(runtime)?;
+    runtime.ensure_package(&mut ctx, NCL_MOP)?;
+    register_classes(&mut ctx, runtime)?;
+    register_owned_symbols(&mut ctx, runtime)
 }

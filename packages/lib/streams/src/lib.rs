@@ -133,7 +133,7 @@ fn pass_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
         .collect()
 }
 
-fn fail(ctx: &mut ThreadContext, error: ObjectError) -> Word {
+const fn fail(ctx: &mut ThreadContext, error: ObjectError) -> Word {
     ctx.set_pending(error);
     Word::UNBOUND
 }

@@ -79,7 +79,7 @@ fn registered_builtin_has_a_function_object_and_rust_call_boundary() {
         Some(function.as_word())
     );
     assert_eq!(
-        ncl_object::function_entry(&ctx, function.as_word().into()),
+        ncl_object::function_entry(&ctx, ncl_object::Function::from_word(function.as_word())),
         Ok(entry)
     );
     assert_eq!(

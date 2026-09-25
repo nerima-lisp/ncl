@@ -97,7 +97,7 @@ impl HashTable {
                     ] {
                         put(ctx, table, slot, value)?;
                     }
-                    Ok(HashTable::from_word(table))
+                    Ok(Self::from_word(table))
                 })();
                 finish_root(ctx, index_token, result)
             })();

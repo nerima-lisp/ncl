@@ -10,8 +10,8 @@ use ncl_object::{Runtime, ThreadContext, Word};
 use crate::ThreadError;
 use crate::state::{lock, make_named_object, read_handle, read_slot, write_slot};
 use crate::sync::{
-    SemaphoreRecord, SyncState, WaitQueueRecord, block_until, mutex_handle, next_handle,
-    semaphore_handle, sync, waitqueue_handle,
+    SemaphoreRecord, SyncHandle, SyncState, WaitQueueRecord, block_until, mutex_handle,
+    next_handle, semaphore_handle, sync, waitqueue_handle,
 };
 use crate::thread::current_id;
 
@@ -44,7 +44,7 @@ pub fn make_semaphore(
             max: count.max(1),
         },
     );
-    make_named_object(ctx, runtime, "SEMAPHORE", name, handle, &[])
+    make_named_object(ctx, runtime, "SEMAPHORE", name, handle.get(), &[])
 }
 
 /// Create a wait queue.
@@ -64,7 +64,7 @@ pub fn make_waitqueue(
     lock(mutex)
         .waitqueues
         .insert(handle, WaitQueueRecord::default());
-    make_named_object(ctx, runtime, "WAITQUEUE", name, handle, &[])
+    make_named_object(ctx, runtime, "WAITQUEUE", name, handle.get(), &[])
 }
 
 /// Create a semaphore notification object.
@@ -104,7 +104,7 @@ pub fn make_spinlock(
     let (mutex, _) = sync();
     let handle = next_handle(&mut lock(mutex));
     lock(mutex).spinlocks.insert(handle, false);
-    make_named_object(ctx, runtime, "SPINLOCK", name, handle, &[Word::NIL])
+    make_named_object(ctx, runtime, "SPINLOCK", name, handle.get(), &[Word::NIL])
 }
 /// Return a semaphore's name.
 ///
@@ -132,7 +132,7 @@ pub fn semaphore_count(ctx: &ThreadContext, semaphore: Word) -> Result<Word, Thr
     ))
 }
 
-fn try_take_permit(state: &mut SyncState, handle: u64) -> Option<()> {
+fn try_take_permit(state: &mut SyncState, handle: SyncHandle) -> Option<()> {
     let record = state.semaphores.get_mut(&handle)?;
     if record.count == 0 {
         return None;
@@ -312,8 +312,9 @@ pub fn clear_semaphore_notification(
     Ok(Word::TRUE)
 }
 
-fn spinlock_handle(ctx: &ThreadContext, spinlock: Word) -> Result<u64, ThreadError> {
-    let handle = read_handle(ctx, spinlock, 1).map_err(|_| ThreadError::NotAMutex)?;
+fn spinlock_handle(ctx: &ThreadContext, spinlock: Word) -> Result<SyncHandle, ThreadError> {
+    let handle =
+        SyncHandle::from_raw(read_handle(ctx, spinlock, 1).map_err(|_| ThreadError::NotAMutex)?);
     let (table, _) = sync();
     if lock(table).spinlocks.contains_key(&handle) {
         Ok(handle)

@@ -79,6 +79,6 @@ pub use time::{
     with_timeout, without_interrupts,
 };
 pub use timer::{
-    TimerId, list_all_timers, make_timer, run_expired_timers, schedule_timer, timer_name,
-    timer_scheduled_p, unschedule_timer,
+    MonotonicDeadline, TimerId, list_all_timers, make_timer, run_expired_timers, schedule_timer,
+    timer_name, timer_scheduled_p, unschedule_timer,
 };

@@ -31,39 +31,53 @@ pub enum MutexKind {
     Recursive,
 }
 
+/// A handle allocated for a synchronization resource.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct SyncHandle(u64);
+
+impl SyncHandle {
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
 #[derive(Debug)]
 pub struct MutexRecord {
-    pub owner: Option<u64>,
-    pub depth: u64,
-    pub recursive: bool,
+    pub(crate) owner: Option<u64>,
+    pub(crate) depth: u64,
+    pub(crate) recursive: bool,
 }
 
 #[derive(Debug, Default)]
 pub struct RwLockRecord {
-    pub readers: u64,
-    pub writer: Option<u64>,
+    pub(crate) readers: u64,
+    pub(crate) writer: Option<u64>,
 }
 
 #[derive(Debug)]
 pub struct SemaphoreRecord {
-    pub count: u64,
-    pub max: u64,
+    pub(crate) count: u64,
+    pub(crate) max: u64,
 }
 
 #[derive(Debug, Default)]
 pub struct WaitQueueRecord {
-    pub tokens: u64,
+    pub(crate) tokens: u64,
 }
 
 #[derive(Debug, Default)]
 pub struct SyncState {
-    pub next: u64,
-    pub mutexes: HashMap<u64, MutexRecord>,
-    pub rwlocks: HashMap<u64, RwLockRecord>,
-    pub semaphores: HashMap<u64, SemaphoreRecord>,
-    pub waitqueues: HashMap<u64, WaitQueueRecord>,
-    pub spinlocks: HashMap<u64, bool>,
-    pub foreground: Option<u64>,
+    pub(crate) next: u64,
+    pub(crate) mutexes: HashMap<SyncHandle, MutexRecord>,
+    pub(crate) rwlocks: HashMap<SyncHandle, RwLockRecord>,
+    pub(crate) semaphores: HashMap<SyncHandle, SemaphoreRecord>,
+    pub(crate) waitqueues: HashMap<SyncHandle, WaitQueueRecord>,
+    pub(crate) spinlocks: HashMap<SyncHandle, bool>,
+    pub(crate) foreground: Option<u64>,
 }
 
 static SYNC: OnceLock<(Mutex<SyncState>, Condvar)> = OnceLock::new();
@@ -72,9 +86,9 @@ pub fn sync() -> &'static (Mutex<SyncState>, Condvar) {
     SYNC.get_or_init(|| (Mutex::new(SyncState::default()), Condvar::new()))
 }
 
-pub const fn next_handle(state: &mut SyncState) -> u64 {
+pub const fn next_handle(state: &mut SyncState) -> SyncHandle {
     state.next = state.next.saturating_add(1);
-    state.next
+    SyncHandle(state.next)
 }
 
 /// Block until `try_take` yields a value, the caller is interrupted, or
@@ -122,8 +136,9 @@ pub fn block_until<T>(
     outcome
 }
 
-pub fn mutex_handle(ctx: &ThreadContext, mutex: Word) -> Result<u64, ThreadError> {
-    let handle = read_handle(ctx, mutex, 1).map_err(|_| ThreadError::NotAMutex)?;
+pub fn mutex_handle(ctx: &ThreadContext, mutex: Word) -> Result<SyncHandle, ThreadError> {
+    let handle =
+        SyncHandle::from_raw(read_handle(ctx, mutex, 1).map_err(|_| ThreadError::NotAMutex)?);
     let (mutex, _) = sync();
     if lock(mutex).mutexes.contains_key(&handle) {
         Ok(handle)
@@ -132,8 +147,10 @@ pub fn mutex_handle(ctx: &ThreadContext, mutex: Word) -> Result<u64, ThreadError
     }
 }
 
-pub fn semaphore_handle(ctx: &ThreadContext, semaphore: Word) -> Result<u64, ThreadError> {
-    let handle = read_handle(ctx, semaphore, 1).map_err(|_| ThreadError::NotASemaphore)?;
+pub fn semaphore_handle(ctx: &ThreadContext, semaphore: Word) -> Result<SyncHandle, ThreadError> {
+    let handle = SyncHandle::from_raw(
+        read_handle(ctx, semaphore, 1).map_err(|_| ThreadError::NotASemaphore)?,
+    );
     let (mutex, _) = sync();
     if lock(mutex).semaphores.contains_key(&handle) {
         Ok(handle)
@@ -142,8 +159,10 @@ pub fn semaphore_handle(ctx: &ThreadContext, semaphore: Word) -> Result<u64, Thr
     }
 }
 
-pub fn waitqueue_handle(ctx: &ThreadContext, waitqueue: Word) -> Result<u64, ThreadError> {
-    let handle = read_handle(ctx, waitqueue, 1).map_err(|_| ThreadError::NotAWaitQueue)?;
+pub fn waitqueue_handle(ctx: &ThreadContext, waitqueue: Word) -> Result<SyncHandle, ThreadError> {
+    let handle = SyncHandle::from_raw(
+        read_handle(ctx, waitqueue, 1).map_err(|_| ThreadError::NotAWaitQueue)?,
+    );
     let (mutex, _) = sync();
     if lock(mutex).waitqueues.contains_key(&handle) {
         Ok(handle)

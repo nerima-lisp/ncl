@@ -193,7 +193,7 @@ fn thread_yield_and_finished_state_are_available() {
 fn thread_error_thread_reports_the_condition_boundary() {
     assert!(matches!(
         ncl_threads::thread_error_thread(Word::NIL),
-        Err(ThreadError::Unsupported(_))
+        Err(ThreadError::MissingClass)
     ));
 }
 

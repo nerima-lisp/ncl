@@ -242,11 +242,9 @@ pub fn main_thread_p(ctx: &ThreadContext, thread: Word) -> Result<Word, ThreadEr
 /// which owns their slot layout.
 ///
 /// # Errors
-/// Always returns [`ThreadError::Unsupported`].
+/// Always returns [`ThreadError::MissingClass`].
 pub const fn thread_error_thread(_condition: Word) -> Result<Word, ThreadError> {
-    Err(ThreadError::Unsupported(
-        "condition slot access belongs to ncl-conditions",
-    ))
+    Err(ThreadError::MissingClass)
 }
 
 /// Return the state word recorded in a thread object.

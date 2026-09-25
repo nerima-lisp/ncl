@@ -97,3 +97,45 @@ fn private_fasl_range_parser_reports_short_headers_and_overlaps() {
         })
     );
 }
+
+#[test]
+fn private_fasl_helpers_round_trip_payload_and_relocations() {
+    let value = Fasl {
+        header: FaslHeader {
+            architecture: Architecture::Aarch64,
+            features: 3,
+        },
+        sections: FaslSection {
+            code: vec![1, 2],
+            relocations: vec![Relocation {
+                section: SectionId(0),
+                offset: 1,
+                kind: RelocKind::Add12,
+                symbol: SymbolRef::Local(0),
+                addend: -2,
+            }],
+            constants: vec![3],
+            symbols: vec![4],
+            stack_maps: vec![5],
+            debug: vec![6],
+        },
+    };
+    let bytes = FaslWriter::write(&value).expect("FASL payload");
+    let ranges = read_fasl_ranges(&bytes).expect("valid ranges");
+    assert_eq!(ranges.code, &[1, 2]);
+    assert_eq!(ranges.constants, &[3]);
+    assert_eq!(ranges.symbols, &[4]);
+    assert_eq!(ranges.stack, &[5]);
+    assert_eq!(
+        &bytes[usize::try_from(ranges.debug_start).expect("debug offset")..],
+        &[6]
+    );
+    assert_eq!(
+        decode_relocations(ranges.reloc).expect("relocations").len(),
+        1
+    );
+    assert_eq!(
+        validate_section_order(&[("code", 64, 2), ("next", 66, 1)]),
+        Ok(())
+    );
+}

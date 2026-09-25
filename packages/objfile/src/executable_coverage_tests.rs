@@ -69,3 +69,36 @@ fn private_mach_writer_reports_unrepresentable_fields() {
         })
     );
 }
+
+#[test]
+fn private_executable_helpers_accept_valid_layouts() {
+    let image = ExecutableImage {
+        architecture: Architecture::X86_64,
+        code: vec![0xc3],
+        metadata: vec![1, 2],
+    };
+    let (mut output, layout) = executable_layout(&image).expect("Mach layout");
+    write_mach_header(&mut output, MachArchitecture::X86_64, layout.commands).expect("Mach header");
+    let segment = ExecSegment {
+        at: 32,
+        segment: "__TEXT",
+        vmaddr: 0x1_0000_0000,
+        fileoff: 0,
+        vmsize: layout.data_offset as u64,
+        filesize: layout.code_end as u64,
+        maxprot: 7,
+        initprot: 5,
+        section_offset: layout.code_offset,
+        section_size: image.code.len(),
+        section_name: "__text",
+        section_segment: "__TEXT",
+    };
+    write_exec_segment(&mut output, &segment).expect("text segment");
+    assert_eq!(output[0..4], 0xfeedfacfu32.to_le_bytes());
+    let elf = write_elf_executable(&image).expect("ELF executable");
+    let phoff = 64;
+    assert_eq!(
+        validate_elf_segments(&elf, phoff, 56, 2, 0x0040_1000),
+        Ok((true, true))
+    );
+}

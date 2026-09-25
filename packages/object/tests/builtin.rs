@@ -119,3 +119,43 @@ fn adapted_builtin_reorders_keyword_payload_before_rust_call() {
         Ok(Word::fixnum(5))
     );
 }
+
+fn callback(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    Ok(Word::NIL)
+}
+
+extern "C" fn native_entry(_ctx: *mut ThreadContext, _left: Word, _right: Word) -> Word {
+    Word::NIL
+}
+
+#[test]
+fn registered_builtin_address_uses_native_entry() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("context: {error:?}"));
+    let descriptor = Builtin {
+        lambda_list: LambdaList::fixed(&[]),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    };
+    let native_address = native_entry as *const () as usize;
+    let implementation =
+        BuiltinImplementation::direct(descriptor, callback).with_entry(native_address);
+    runtime
+        .register_builtin(
+            &mut ctx,
+            BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADD")),
+            implementation,
+        )
+        .unwrap_or_else(|error| panic!("builtin: {error:?}"));
+
+    assert_eq!(
+        runtime.builtin_address("NCL-TEST::ADD"),
+        Some(native_address as u64)
+    );
+}

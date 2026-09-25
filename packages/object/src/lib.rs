@@ -33,9 +33,10 @@ pub use array::{
     simple_vector_set, string_length, string_ref, string_set,
 };
 pub use builtin::{
-    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    AbiBuiltin, Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier,
+    BuiltinImplementation,
     BuiltinName, BuiltinPackage, FunctionObject, KeywordAdapter, LambdaList, MultipleValues,
-    LispErrorConverter, NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
+    LispErrorConverter, NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin, invoke_abi,
 };
 pub use classify::{ObjectRef, classify, classify_object};
 pub use code::code_slot;

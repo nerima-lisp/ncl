@@ -16,7 +16,7 @@ impl Fixnum {
     /// Returns a type error when the word is not a fixnum.
     pub fn try_from_word(word: Word) -> Result<Self, TypeError> {
         word.as_fixnum()
-            .filter(|_| !word.is_character())
+            .filter(|_| word.bits() < 256 || !word.is_character())
             .map(Self)
             .ok_or(TypeError {
                 datum: word,

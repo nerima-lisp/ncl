@@ -1,0 +1,15 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+NCL-GC	*AFTER-GC-HOOKS*	variable	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	*GC-REAL-TIME*	variable	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	*GC-RUN-TIME*	variable	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	CANCEL-FINALIZATION	function	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	FINALIZE	function	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	GC	function	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	GENERATION-BYTES-ALLOCATED	function	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	HASH-TABLE-WEAKNESS	function	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	MAKE-WEAK-POINTER	function	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	MAKE-WEAK-VECTOR	function	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	WEAK-POINTER	class	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	WEAK-POINTER-P	function	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	WEAK-POINTER-VALUE	function	ncl-object	1	no	NCL garbage-collection extension
+NCL-GC	WEAK-VECTOR-P	function	ncl-object	1	no	NCL garbage-collection extension

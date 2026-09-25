@@ -1,8 +1,8 @@
-//! SB-EXT garbage-collection symbol ownership.
+//! NCL-GC garbage-collection symbol ownership.
 
 use crate::hash_table::{INDEX, KV, MARKER};
 use crate::{
-    ObjectError, Runtime, Word,
+    ObjectError, Package, Runtime, Word,
     layout::{
         code_offset, function_offset, instance_offset, number_offset, readtable_offset,
         reference_words, simple_vector_offset, stream_offset, structure_offset, symbol_offset,
@@ -124,15 +124,18 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
     Ok(())
 }
 
-/// Register the 14 SB-EXT GC, weak-pointer, and finalizer symbols owned here.
+/// Register the NCL-GC GC, weak-pointer, and finalizer symbols owned here.
 ///
 /// # Errors
 /// Returns an allocation, layout, or storage error from function registration.
 pub fn register(ctx: &mut crate::ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
+    let package = runtime.ensure_package(ctx, "NCL-GC")?;
+    let package = Package::from(package);
+    for name in ["*AFTER-GC-HOOKS*", "*GC-REAL-TIME*", "*GC-RUN-TIME*"] {
+        let (symbol, _) = package.intern(ctx, runtime, name)?;
+        crate::set_symbol_special(ctx, symbol, true)?;
+    }
     for name in [
-        "*AFTER-GC-HOOKS*",
-        "*GC-REAL-TIME*",
-        "*GC-RUN-TIME*",
         "CANCEL-FINALIZATION",
         "FINALIZE",
         "GC",
@@ -140,13 +143,16 @@ pub fn register(ctx: &mut crate::ThreadContext, runtime: &Runtime) -> Result<(),
         "HASH-TABLE-WEAKNESS",
         "MAKE-WEAK-POINTER",
         "MAKE-WEAK-VECTOR",
-        "WEAK-POINTER",
         "WEAK-POINTER-P",
         "WEAK-POINTER-VALUE",
         "WEAK-VECTOR-P",
     ] {
-        runtime.define_function(ctx, "SB-EXT", name, Word::UNBOUND)?;
+        package.intern(ctx, runtime, name)?;
+        runtime.define_function(ctx, "NCL-GC", name, Word::UNBOUND)?;
     }
+    let (weak_pointer, _) = package.intern(ctx, runtime, "WEAK-POINTER")?;
+    runtime.define_class(ctx, "WEAK-POINTER", Word::UNBOUND)?;
+    let _ = weak_pointer;
     Ok(())
 }
 

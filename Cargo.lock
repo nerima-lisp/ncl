@@ -221,6 +221,7 @@ dependencies = [
 name = "ncl-object"
 version = "0.1.0"
 dependencies = [
+ "ncl-ownership",
  "ncl-sys",
 ]
 

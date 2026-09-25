@@ -375,7 +375,7 @@ impl MacroCaller for RuntimeMacroCaller {
 struct NativeAbi<'a> {
     object: &'a ObjectRuntime,
 }
-impl RuntimeAbi for NativeAbi {
+impl RuntimeAbi for NativeAbi<'_> {
     fn encode_fixnum(&self, value: i64) -> i64 {
         i64::from_ne_bytes(Word::fixnum(value).bits().to_ne_bytes())
     }

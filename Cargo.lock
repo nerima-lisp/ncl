@@ -231,6 +231,13 @@ name = "ncl-objfile"
 version = "0.1.0"
 
 [[package]]
+name = "ncl-opt"
+version = "0.1.0"
+dependencies = [
+ "ncl-ir",
+]
+
+[[package]]
 name = "ncl-os"
 version = "0.1.0"
 dependencies = [

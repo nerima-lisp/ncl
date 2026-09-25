@@ -12,6 +12,7 @@ ncl-asm-x86-64 -> none
 ncl-asm-aarch64 -> none
 ncl-objfile -> none
 ncl-codegen -> ncl-ir, ncl-asm-x86-64, ncl-asm-aarch64, ncl-objfile, ncl-object, ncl-sys
+ncl-opt -> ncl-ir
 ncl-ownership -> ncl-object
 ncl-types -> ncl-object
 ncl-reader -> ncl-object
@@ -34,7 +35,7 @@ ncl-stdlib -> ncl-types, ncl-reader, ncl-printer, ncl-conditions, ncl-clos,
 ncl-threads -> ncl-object, ncl-sys, ncl-conditions
 ncl-ffi -> ncl-object, ncl-sys, ncl-conditions
 ncl-image -> ncl-object, ncl-objfile, ncl-sys
-ncl-runtime -> ncl-compiler-front, ncl-codegen, ncl-stdlib, ncl-image, ncl-threads, ncl-ffi
+ncl-runtime -> ncl-compiler-front, ncl-codegen, ncl-opt, ncl-stdlib, ncl-image, ncl-threads, ncl-ffi
 ncl-conformance -> ncl-runtime, ncl-ownership
 ncl (bin) -> ncl-runtime
 ```
@@ -71,6 +72,7 @@ asm crates have no neighbors, so encoding is independent of object model and OS.
 | ncl-clos | class, slot, generic-function and MOP interfaces |
 | ncl-compiler-front | macroexpand, declarations, compiler macros, IR lowering |
 | ncl-codegen | MachineFunction, register allocation, frame and safepoint metadata |
+| ncl-opt | IR pass manager and conservative inlining passes |
 | ncl-asm-x86-64 / ncl-asm-aarch64 | target instruction model and encoder, no codegen dependency |
 | ncl-objfile | FASL and native object writer, returns bytes and calls no OS API |
 | ncl-ownership | crate-local ownership table の行型、`rows_for_crate_from_str`、`assert_crate_coverage_from_table`。テスト支援専用で Lisp 値を公開しない |
@@ -90,7 +92,7 @@ asm crates have no neighbors, so encoding is independent of object model and OS.
 | ncl-runtime | eval, compile, load; calls `ncl-stdlib::register_all` once at startup |
 | ncl-conformance | conformance runner |
 
-The dependency graph is acyclic. `ncl-ir -> none` and `ncl-objfile -> none` are deliberate. `Runtime`, `ThreadContext`, and `builtin!` live in ncl-object. No external crate is permitted; OS declarations exist only in ncl-sys.
+The dependency graph is acyclic. `ncl-ir -> none` and `ncl-objfile -> none` are deliberate. `ncl-opt -> ncl-ir` keeps optimization independent of runtime; the future `ncl-runtime -> ncl-opt` edge connects optimization at the runtime boundary. `Runtime`, `ThreadContext`, and `builtin!` live in ncl-object. No external crate is permitted; OS declarations exist only in ncl-sys.
 
 ### Registration and ownership rules
 

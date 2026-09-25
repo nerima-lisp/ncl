@@ -1,6 +1,8 @@
 //! Integer bit operations split by operation family.
 
-pub(crate) use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
+pub(crate) use ncl_object::{
+    BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
+};
 
 mod boole;
 mod fields;

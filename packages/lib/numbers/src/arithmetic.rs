@@ -1,6 +1,9 @@
 //! Numeric builtins split by arithmetic responsibility.
 
-pub(crate) use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
+pub(crate) use ncl_object::{
+    BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
+};
+pub(crate) use std::cmp::Ordering;
 
 mod basic;
 mod comparison;

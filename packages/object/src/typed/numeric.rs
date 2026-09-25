@@ -15,13 +15,10 @@ impl Fixnum {
     ///
     /// Returns a type error when the word is not a fixnum.
     pub fn try_from_word(word: Word) -> Result<Self, TypeError> {
-        word.as_fixnum()
-            .filter(|_| word.bits() < 256 || !word.is_character())
-            .map(Self)
-            .ok_or(TypeError {
-                datum: word,
-                expected: ObjectType::Fixnum,
-            })
+        word.as_fixnum().map(Self).ok_or(TypeError {
+            datum: word,
+            expected: ObjectType::Fixnum,
+        })
     }
     #[must_use]
     pub const fn value(self) -> i64 {

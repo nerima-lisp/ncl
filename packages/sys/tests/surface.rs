@@ -23,7 +23,7 @@ fn word_boundaries_and_root_slot_are_observable() {
     }
     let character = Word::character('λ' as u32);
     assert!(character.is_character());
-    assert_eq!(character.lowtag(), LowTag::Character as u8);
+    assert_eq!(character.lowtag(), LowTag::List as u8);
     assert!(Word::NIL.is_list());
     assert!(!Word::NIL.is_cons());
     let pointer = Word::pointer(0x1000, LowTag::OtherPointer);
@@ -33,6 +33,25 @@ fn word_boundaries_and_root_slot_are_observable() {
     let cell = std::cell::Cell::new(Word::fixnum(9));
     let slot = ncl_sys::RootSlot::new(&cell);
     assert_eq!(*slot, Word::fixnum(9));
+}
+
+#[test]
+fn fixnums_and_characters_keep_distinct_word_contracts() {
+    for value in [0, 1, 520, -1, i64::MAX / 2] {
+        let word = Word::fixnum(value);
+        assert!(word.is_fixnum());
+        assert!(!word.is_character());
+        assert_eq!(word.as_fixnum(), Some(value));
+    }
+
+    for value in [0, 65, 0x10_FFFF] {
+        let word = Word::character(value);
+        assert!(!word.is_fixnum());
+        assert_eq!(word.bits(), ((value as u64) << 4) | 1);
+        assert_eq!(Word::from_bits(word.bits()), word);
+        assert_eq!(word.bits() >> 4, u64::from(value));
+        assert_eq!(word.is_character(), value != 0);
+    }
 }
 
 #[test]

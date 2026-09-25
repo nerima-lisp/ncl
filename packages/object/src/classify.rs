@@ -34,16 +34,11 @@ pub enum ObjectRef {
 /// Classify a tagged value using lowtag information.
 #[must_use]
 pub fn classify(word: Word) -> ObjectRef {
-    if word.bits() < 256
-        && let Some(value) = word.as_fixnum()
-    {
-        return ObjectRef::Fixnum(value);
-    }
-    if word.lowtag() == LowTag::Character as u8
-        && word.bits() != Word::NIL.bits()
-        && word.address() < (1_usize << 32)
-    {
+    if word.is_character() {
         return ObjectRef::Character(u32::try_from(word.bits() >> 4).unwrap_or(0));
+    }
+    if word == Word::TRUE || word == Word::UNBOUND {
+        return ObjectRef::Immediate(word);
     }
     if let Some(value) = word.as_fixnum() {
         return ObjectRef::Fixnum(value);

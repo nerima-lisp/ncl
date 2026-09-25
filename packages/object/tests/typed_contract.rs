@@ -62,10 +62,12 @@ fn typed_conversion_reports_datum_and_expected_type() {
 
 #[test]
 fn fixnum_and_character_views_validate_and_round_trip() {
-    let fixnum =
-        Fixnum::try_from_word(Word::fixnum(-12)).unwrap_or_else(|error| panic!("{error:?}"));
-    assert_eq!(fixnum.value(), -12);
-    assert_eq!(fixnum.as_word(), Word::fixnum(-12));
+    for value in [0, 1, 520, -1, i64::MAX / 2] {
+        let fixnum =
+            Fixnum::try_from_word(Word::fixnum(value)).unwrap_or_else(|error| panic!("{error:?}"));
+        assert_eq!(fixnum.value(), value);
+        assert_eq!(fixnum.as_word(), Word::fixnum(value));
+    }
     assert_eq!(
         Fixnum::try_from_word(Word::character(65)),
         Err(TypeError {
@@ -85,6 +87,12 @@ fn fixnum_and_character_views_validate_and_round_trip() {
             expected: ObjectType::Character,
         })
     );
+    for value in [65, 0x10_FFFF] {
+        let character = Character::try_from_word(Word::character(value))
+            .unwrap_or_else(|error| panic!("{error:?}"));
+        assert_eq!(character.value(), value);
+        assert_eq!(character.as_word(), Word::character(value));
+    }
 }
 
 #[test]

@@ -57,7 +57,7 @@ impl Word {
     /// Encode a character in bits 4..24.
     #[must_use]
     pub const fn character(value: u32) -> Self {
-        Self((value as u64) << 4)
+        Self(((value as u64) << 4) | 1)
     }
     /// Encode a pointer with a lowtag.
     #[must_use]
@@ -110,7 +110,7 @@ impl Word {
     /// Whether this is an immediate character.
     #[must_use]
     pub const fn is_character(self) -> bool {
-        self.lowtag() == LowTag::Character as u8
+        self.lowtag() == LowTag::List as u8
             && self.bits() != Self::NIL.bits()
             && self.address() < (1_usize << 32)
     }

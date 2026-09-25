@@ -4,8 +4,8 @@
 //! `AArch64` on Linux and macOS).
 
 use ncl_object::{
-    Bignum, DoubleFloat, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,
-    classify_object, double_value, make_bignum_from_i128, make_double,
+    Bignum, DoubleFloat, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, double_value,
+    make_bignum_from_i128, make_double,
 };
 
 use super::{AlienType, size_of};
@@ -21,7 +21,6 @@ const MOST_NEGATIVE_FIXNUM: i128 = -(1_i128 << 62);
 
 /// Largest fixnum as an unsigned magnitude.
 const MOST_POSITIVE_FIXNUM_UNSIGNED: u128 = (1_u128 << 62) - 1;
-const CHARACTER_LOWTAG: u8 = 0;
 
 /// Marshal `value` into the foreign byte representation of `ty`.
 ///
@@ -236,7 +235,7 @@ fn boolean_value(value: Word) -> Result<bool, FfiError> {
 /// the two; this mirrors `ncl-printer`'s `character_code`.
 fn character_value(value: Word) -> Result<u32, FfiError> {
     const SCALAR_LIMIT: u64 = 1 << 25;
-    if value.lowtag() == CHARACTER_LOWTAG && value != Word::NIL && value.bits() < SCALAR_LIMIT {
+    if value.lowtag() == LOWTAG_LIST && value != Word::NIL && value.bits() < SCALAR_LIMIT {
         u32::try_from(value.bits() >> 4).map_err(|_| FfiError::TypeMismatch { type_name: "char" })
     } else {
         Err(FfiError::TypeMismatch { type_name: "char" })
@@ -277,6 +276,7 @@ fn double_value_of(ctx: &ThreadContext, value: Word) -> Result<f64, FfiError> {
     })
 }
 
+const LOWTAG_LIST: u8 = 1;
 const LOWTAG_SINGLE_FLOAT: u8 = 2;
 
 #[allow(
@@ -307,11 +307,6 @@ fn pointer_address(value: Word) -> Result<usize, FfiError> {
 
 /// Decode any Lisp integer into an `i128`.
 fn word_to_i128(ctx: &ThreadContext, value: Word) -> Result<i128, FfiError> {
-    if matches!(classify_object(ctx, value), ObjectRef::Character(code) if code <= 0xFF) {
-        return Err(FfiError::TypeMismatch {
-            type_name: "integer",
-        });
-    }
     if let Some(fixnum) = value.as_fixnum() {
         return Ok(i128::from(fixnum));
     }

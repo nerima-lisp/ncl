@@ -1,3 +1,5 @@
+//! Registration integration tests for `ncl_stdlib`.
+
 #![allow(clippy::unwrap_used, reason = "tests assert on registration failures")]
 
 use ncl_object::{Runtime, ThreadContext};

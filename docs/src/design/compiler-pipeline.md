@@ -29,8 +29,22 @@ Phase 1a execution coverage is recorded by the AArch64 integration fixture: cons
 - 可変キャプチャ変数: 2 つ以上のクロージャから代入される変数は 1 語 cell object に
   box し、クロージャは cell への参照を inline capture する。読み取り専用キャプチャは
   値を直接 inline する。
+- IR v2 の closure object: `ncl-object` の header object payload は
+  `entry, name, lambda-list, code, captures...` の順とする。`entry` は
+  code space の entry offset を fixnum 化した値であり、moving heap address を保持しない。
+  `code` は code object への参照、`captures` は front end が決めた順序の `Word` 列である。
+  mutable capture は cell object への参照、read-only capture は値そのものを格納する。
+  closure widetag の GC layout は固定 fields と全 captures を boxed として登録するため、
+  capture 数を別 metadata に重複して持たない。
 - クロージャ越えの `return-from`/`go`: 脱出しないと証明できない block/tagbody は catch
   record(HandlerRegion + `Throw`)で実装する。同一関数内で完結するものは `Jump`。
+
+`HandlerRegion` は通常の CFG の edge では表せない動的な脱出範囲を表す。protected block
+から handler または cleanup へ遷移する record を runtime unwinder が dynamic depth と
+catch tag で選ぶため、クロージャ越しの `return-from`/`go` を単なる `Jump` にしない。
+この分離により、通常の branch は SSA CFG のまま保ち、非局所脱出だけが handler record を
+作る。handler record の live `Word` は safepoint/root 契約で保持し、closure capture は
+heap object layout の boxed suffix として collector が追跡する。
 - `multiple-value-call`/`multiple-value-prog1`: variadic adapter ABI(`(ctx, argc, args,
   mv) -> NclStatus`)経由。固定 arity の `Call` には使わない。
 - `progv` と special 変数の bind/unbind: `Builtin`。binding depth は record chain が持ち、

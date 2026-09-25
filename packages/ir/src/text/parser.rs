@@ -2,8 +2,8 @@
 use super::ParseError;
 use crate::{
     BasicBlock, BlockId, BlockParam, Compare, Constant, ConstantIndex, Convert, DebugLocation,
-    DebugLocationId, FileId, FormId, Function, FunctionId, HandlerRegion, Local, LocalId, Op,
-    OpKind, Param, Prim, Terminator, Ty, ValueId,
+    DebugLocationId, FileId, FormId, Function, FunctionId, HandlerKind, HandlerRegion,
+    HandlerRegionId, Local, LocalId, Op, OpKind, Param, Prim, Terminator, Ty, ValueId,
 };
 
 fn u32(value: u64) -> Result<u32, ParseError> {
@@ -181,6 +181,7 @@ fn constant_read(r: &mut Reader<'_>) -> Result<Constant, ParseError> {
         7 => Constant::Nil,
         8 => Constant::T,
         9 => Constant::Unbound,
+        10 => Constant::FunctionEntry(FunctionId(u32(r.u()?)?)),
         _ => return Err(ParseError("bad constant".into())),
     })
 }
@@ -256,11 +257,19 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
             callee: v(r)?,
             args: vals(r)?,
         },
-        10 => OpKind::Builtin {
+        10 => OpKind::MakeClosure {
+            entry: v(r)?,
+            captures: vals(r)?,
+        },
+        11 => OpKind::CallClosure {
+            closure: v(r)?,
+            args: vals(r)?,
+        },
+        12 => OpKind::Builtin {
             name: r.s()?,
             args: vals(r)?,
         },
-        11 => {
+        13 => {
             let name = r.s()?;
             let args = vals(r)?;
             let condition = match r.u()? {
@@ -273,7 +282,7 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
                 condition,
             }
         }
-        12 => {
+        14 => {
             let name = r.s()?;
             OpKind::Compare {
                 op: compare(&name)?,
@@ -281,12 +290,14 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
                 right: v(r)?,
             }
         }
-        13 => OpKind::Convert {
+        15 => OpKind::Convert {
             op: convert(&r.s()?)?,
             value: v(r)?,
         },
-        14 => OpKind::SetMultipleValues { values: vals(r)? },
-        15 => OpKind::Safepoint,
+        16 => OpKind::SetMultipleValues { values: vals(r)? },
+        17 => OpKind::Safepoint,
+        18 => OpKind::EnterHandler { region: HandlerRegionId(u32(r.u()?)?) },
+        19 => OpKind::LeaveHandler { region: HandlerRegionId(u32(r.u()?)?) },
         _ => return Err(ParseError("bad operation".into())),
     })
 }
@@ -390,6 +401,13 @@ fn term_read(r: &mut Reader<'_>) -> Result<Terminator, ParseError> {
     })
 }
 fn handler_read(r: &mut Reader<'_>) -> Result<HandlerRegion, ParseError> {
+    let id = HandlerRegionId(u32(r.u()?)?);
+    let kind = match r.u()? {
+        0 => HandlerKind::Catch,
+        1 => HandlerKind::UnwindProtect,
+        2 => HandlerKind::Progv,
+        _ => return Err(ParseError("bad handler kind".into())),
+    };
     let protected = (0..r.u()?)
         .map(|_| Ok(BlockId(u32(r.u()?)?)))
         .collect::<Result<Vec<_>, ParseError>>()?;
@@ -405,10 +423,13 @@ fn handler_read(r: &mut Reader<'_>) -> Result<HandlerRegion, ParseError> {
         None
     };
     Ok(HandlerRegion {
+        id,
+        kind,
         protected,
         handler,
         cleanup,
         catch_tag,
         depth: u32(r.u()?)?,
+        parent: if r.b()? { Some(HandlerRegionId(u32(r.u()?)?)) } else { None },
     })
 }

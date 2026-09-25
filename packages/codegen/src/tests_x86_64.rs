@@ -31,9 +31,69 @@ impl RuntimeAbi for X86_64FixtureAbi {
         i32::try_from(offset).ok()
     }
 
-    fn runtime_address(&self, function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
-        (function == RuntimeFunction::SafepointSlow).then_some(0x1000)
+    fn runtime_address(&self, function: RuntimeFunction, name: Option<&str>) -> Option<u64> {
+        match function {
+            RuntimeFunction::SafepointSlow => Some(0x1000),
+            RuntimeFunction::Builtin
+                if matches!(name, Some("make-closure" | "enter-handler" | "leave-handler")) =>
+            {
+                Some(0x1000)
+            }
+            _ => None,
+        }
     }
+
+    fn constant_word(&self, name: &str) -> Option<i64> {
+        (name == "function-entry:7").then_some(0x2000)
+    }
+}
+
+#[test]
+fn lowers_ir_v2_closure_and_handler_ops_x86_64() {
+    let mut builder = ncl_ir::FunctionBuilder::new(
+        ncl_ir::FunctionId(70),
+        "ir-v2-ops",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let entry = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
+    let entry_value = ncl_ir::ValueId(0);
+    let closure = ncl_ir::ValueId(1);
+    let result = ncl_ir::ValueId(2);
+    assert!(builder
+        .push_op(OpKind::Const { result: entry }, &[Ty::Word])
+        .is_ok());
+    assert!(builder
+        .push_op(OpKind::MakeClosure { entry: entry_value, captures: Vec::new() }, &[Ty::Word])
+        .is_ok());
+    assert!(builder
+        .push_op(OpKind::CallClosure { closure, args: Vec::new() }, &[Ty::Word])
+        .is_ok());
+    let region = ncl_ir::HandlerRegionId(3);
+    builder.add_handler_region(ncl_ir::HandlerRegion {
+        id: region,
+        kind: ncl_ir::HandlerKind::Catch,
+        protected: vec![ncl_ir::BlockId(0)],
+        handler: ncl_ir::BlockId(0),
+        cleanup: None,
+        catch_tag: None,
+        depth: 0,
+        parent: None,
+    });
+    assert!(builder.push_op(OpKind::EnterHandler { region }, &[]).is_ok());
+    assert!(builder.push_op(OpKind::LeaveHandler { region }, &[]).is_ok());
+    assert!(builder
+        .terminate(Terminator::Return { values: vec![result] })
+        .is_ok());
+    let compiled = match compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi) {
+        Ok(compiled) => compiled,
+        Err(error) => {
+            assert!(false, "{error:?}");
+            return;
+        }
+    };
+    assert!(!compiled.code.is_empty());
+    assert!(compiled.safepoint_maps.len() >= 4);
 }
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {

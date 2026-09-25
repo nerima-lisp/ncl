@@ -72,6 +72,13 @@ PC lookup binary-searches code-relative map offsets. Frame walking reads the fou
 
 `Heap` owns the current GC epoch and the registered `ReferenceLayout` values. `register_layout(widetag, layout)` accepts header-inclusive raw indices in `reference_words`; `boxed_from`, when present, means every word from that index to the object end is boxed. A widetag registration is not silently replaced. The object layer therefore converts payload-relative offsets with `reference_words()` before registration. (`packages/sys/src/heap_types.rs`, `ReferenceLayout`; `packages/object/src/layout.rs`, `reference_words`.)
 
+For an IR v2 closure, the registered fixed references are payload `name`, `lambda-list`, and
+`code` (raw indices 2, 3, and 4 after the header). `boxed_from` starts at raw index 5, the
+first capture, and extends to the object end. The collector therefore discovers, forwards, and
+writes back all inline captures during the same object scan. `entry` is a fixnum-encoded offset
+into non-moving code space, so it is scalar metadata and is never treated as a heap reference.
+This layout is why a closure does not need a separate capture-count metadata word.
+
 Heap-level registry roots are address-stable slots. `push_heap_root` stores the address of a caller-owned `Word` and returns a LIFO `RootToken`; `pop_heap_root` removes only the most recent matching slot. A managed `Word` retained across allocation or collection must use this API or the corresponding thread root. (`packages/sys/src/lib.rs`, `push_heap_root`, `pop_heap_root`.)
 
 Code allocation is non-moving. A code range is writable while it is constructed, and `publish_code` makes it executable only after its bytes and metadata are installed. `release_code` removes or quiesces the published PC range by scanning registered frame metadata before the range can be unmapped. A published return PC is therefore not forwarded by the moving heap. (`packages/sys/src/code.rs`, `publish_code`; `packages/sys/src/heap.rs`, `release_code`.)
@@ -81,6 +88,14 @@ The collector increments the heap epoch for a collection and exposes that epoch 
 In Phase 1, a real generated frame is scanned through a snapshot of the top frame that the safepoint slow path handed to the collector: `set_native_frame` copies the four-word header at the passed frame pointer into the thread snapshot, and `write_back_frame_snapshot` forwards header word 2 (the header slots the map marks live) back into that frame. The return PC is matched by its raw bits, `Word::bits()`, without masking the low three tag bits, and resolved through the code registry. (`packages/sys/src/code.rs`, `scan_frame_chain_with_registry`; `packages/sys/src/thread.rs`, `set_native_frame`.)
 
 Object-layer allocation functions root managed arguments received by value and each element of a `&[Word]` before allocating, then re-read those values from interior-mutable root slots after allocation. `with_root` and `with_roots` register `Cell<Word>` slots and pass the closure a `ncl_sys::RootSlot`, which dereferences to the slot's current value; a plain `Word` behind `&mut` would let the optimizer reuse a pre-collection value. (`packages/object/src/roots.rs`, `with_root`, `with_roots`; `packages/sys/src/lib.rs`, `RootSlot`; `packages/object/src/lib.rs`.)
+
+Handler regions are a control-flow contract, not an alternate closure representation. A dynamic
+handler/cleanup/catch record is kept through the thread's handler chain and its live `Word` values
+must remain visible at safepoints; the IR region records protected, handler, cleanup, catch-tag,
+and dynamic-depth information so the unwinder can restore the right dynamic state. Precise frame
+maps scan frame roots, while the handler chain remains part of the runtime root protocol. This
+separation lets ordinary CFG edges stay precise without making the collector infer non-local
+control flow from code shape.
 
 `ThreadContext::set_gc_stress` selects a test-only mode that forces `collect(true)` on every allocation. The sys heap resolves stale addresses through forwarding, so a stale word cannot be detected, and the basis of correctness rests on static audit. (`packages/object/src/lib.rs`, `ThreadContext::set_gc_stress`; `packages/object/tests/gc_stress.rs`.)
 

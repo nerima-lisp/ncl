@@ -185,11 +185,28 @@ fn class_precedence_list_builtin(
 
 fn class_slots_builtin(
     ctx: &mut ThreadContext,
-    _: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    class_field(ctx, args.required(0)?, CLASS_SLOTS)
+    let mut classes = Vec::new();
+    let mut current = args.required(0)?;
+    while current != Word::NIL {
+        classes.push(current);
+        current = class_field(ctx, current, CLASS_DIRECT_SUPERCLASS)?;
+    }
+
+    let mut slots = Vec::new();
+    for class in classes.into_iter().rev() {
+        let direct_slots = class_field(ctx, class, CLASS_SLOTS)?;
+        if direct_slots == Word::NIL {
+            continue;
+        }
+        for index in 0..simple_vector_length(ctx, direct_slots)? {
+            slots.push(simple_vector_ref(ctx, direct_slots, index)?);
+        }
+    }
+    make_simple_vector(ctx, runtime, &slots)
 }
 
 fn class_direct_slots_builtin(
@@ -198,6 +215,8 @@ fn class_direct_slots_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
+    // The descriptor's slot field is the direct slot metadata.  CLASS-SLOTS
+    // computes the effective metadata across the superclass chain.
     class_field(ctx, args.required(0)?, CLASS_SLOTS)
 }
 

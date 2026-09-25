@@ -1,75 +1,53 @@
-//! ANSI file-stream builtins and the NCL-GRAY registration surface.
+//! Typed ANSI file-stream builtins.
 
 #![forbid(unsafe_code)]
 
 use std::fs;
 
 use ncl_object::{
-    simple_vector_length, simple_vector_ref, simple_vector_set, stream_element_type,
-    stream_external_format, stream_state, string_length, string_ref, symbol_name, Builtin,
-    BuiltinImplementation, ObjectError, Runtime, Stream, ThreadContext, Word,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Parameter,
+    ParameterType, Runtime, Stream, ThreadContext, Word, make_simple_vector, make_stream,
+    simple_vector_length, simple_vector_ref, simple_vector_set, stream_external_format,
+    stream_state, string_length, string_ref, symbol_name,
 };
 
 const POSITION: usize = 1;
 const DATA: usize = 2;
+const OPEN_PARAMETERS: &[Parameter] = &[Parameter { name: BuiltinName::new("namestring"), ty: ParameterType::Any }];
+const STREAM_PARAMETERS: &[Parameter] = &[Parameter { name: BuiltinName::new("stream"), ty: ParameterType::Any }];
+const STRING_PARAMETERS: &[Parameter] = &[
+    Parameter { name: BuiltinName::new("stream"), ty: ParameterType::Any },
+    Parameter { name: BuiltinName::new("string"), ty: ParameterType::Any },
+];
 
-/// Register the file-stream functions implemented by this crate.
+/// Register the implemented file-stream functions.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
     let open = BuiltinImplementation::adapted(
-        Builtin {
-            arity: 0,
-            direct: false,
-            lambda_list:
-                "namestring &key direction element-type if-exists if-does-not-exist external-format",
-        },
-        open_builtin,
+        Builtin { lambda_list: LambdaList::with_rest(OPEN_PARAMETERS, Parameter { name: BuiltinName::new("options"), ty: ParameterType::Any }), convention: BuiltinConvention::Adapted },
+        open_adapter,
         pass_arguments,
     );
+    runtime.register_builtin(&mut ctx, BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("OPEN")), open)?;
     let position = BuiltinImplementation::adapted(
-        Builtin {
-            arity: 0,
-            direct: false,
-            lambda_list: "stream &optional position",
-        },
-        file_position_builtin,
+        Builtin { lambda_list: LambdaList::with_optional(STREAM_PARAMETERS, &[]), convention: BuiltinConvention::Adapted },
+        file_position_adapter,
         pass_arguments,
     );
-    for (name, implementation) in [("OPEN", open), ("FILE-POSITION", position)] {
-        runtime.register_builtin(&mut ctx, "COMMON-LISP", name, implementation)?;
-    }
-    runtime.register_builtin(
-        &mut ctx,
-        "COMMON-LISP",
-        "FILE-LENGTH",
-        BuiltinImplementation::direct(
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "stream",
-            },
-            file_length_builtin,
-        ),
-    )?;
-    runtime.register_builtin(
-        &mut ctx,
-        "COMMON-LISP",
-        "FILE-STRING-LENGTH",
-        BuiltinImplementation::direct(
-            Builtin {
-                arity: 2,
-                direct: true,
-                lambda_list: "stream string",
-            },
-            file_string_length_builtin,
-        ),
-    )?;
+    runtime.register_builtin(&mut ctx, BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("FILE-POSITION")), position)?;
+    runtime.register_builtin(&mut ctx, BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("FILE-LENGTH")), BuiltinImplementation::direct(
+        Builtin { lambda_list: LambdaList::fixed(STREAM_PARAMETERS), convention: BuiltinConvention::Direct(Arity::exact(1)) }, file_length_adapter,
+    ))?;
+    runtime.register_builtin(&mut ctx, BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("FILE-STRING-LENGTH")), BuiltinImplementation::direct(
+        Builtin { lambda_list: LambdaList::fixed(STRING_PARAMETERS), convention: BuiltinConvention::Direct(Arity::exact(2)) }, file_string_length_adapter,
+    ))?;
     Ok(())
 }
 
-fn pass_arguments(args: &[Word]) -> Result<Vec<Word>, ObjectError> {
-    Ok(args.to_vec())
+fn pass_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
+    (0..args.len()).map(|index| args.get(index).ok_or(ObjectError::TypeError)).collect()
 }
 
 fn fail(ctx: &mut ThreadContext, error: ObjectError) -> Result<Word, ObjectError> {
@@ -77,157 +55,71 @@ fn fail(ctx: &mut ThreadContext, error: ObjectError) -> Result<Word, ObjectError
     Ok(Word::UNBOUND)
 }
 
-fn text(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
-    let len = string_length(ctx, word)?;
-    (0..len).map(|index| string_ref(ctx, word, index)).collect()
+fn text(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
+    (0..string_length(ctx, value)?).map(|index| string_ref(ctx, value, index)).collect()
 }
 
-fn name(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
-    text(ctx, symbol_name(ctx, word)?).map(|value| value.to_ascii_uppercase())
+fn symbol_text(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
+    text(ctx, symbol_name(ctx, value)?)
 }
 
-fn option(args: &[Word], ctx: &ThreadContext, keyword: &str) -> Result<Option<Word>, ObjectError> {
+fn option(ctx: &ThreadContext, args: &BuiltinArgs<'_>, keyword: &str) -> Result<Option<Word>, ObjectError> {
     let mut index = 1;
-    while index + 1 < args.len() {
-        if name(ctx, args[index])? == keyword {
-            return Ok(Some(args[index + 1]));
+    while index < args.len() {
+        let key = args.get(index).ok_or(ObjectError::TypeError)?;
+        let value = args.get(index + 1).ok_or(ObjectError::TypeError)?;
+        if symbol_text(ctx, key)?.eq_ignore_ascii_case(keyword) {
+            return Ok(Some(value));
         }
         index += 2;
-    }
-    if index != args.len() {
-        return Err(ObjectError::TypeError);
     }
     Ok(None)
 }
 
-fn bytes_for_external_format(text: &str, format: &str) -> Result<Vec<u8>, ObjectError> {
-    match format {
-        "UTF-8" => Ok(text.as_bytes().to_vec()),
-        "LATIN-1" => text
-            .chars()
-            .map(|character| u8::try_from(character as u32).map_err(|_| ObjectError::TypeError))
-            .collect(),
-        _ => Err(ObjectError::Unsupported),
-    }
-}
-
-fn open_builtin(
-    ctx: &mut ThreadContext,
-    args: &[Word],
-    _: &mut ncl_object::MultipleValues,
-) -> Result<Word, ObjectError> {
-    if args.is_empty() {
-        return fail(ctx, ObjectError::TypeError);
-    }
-    let path = match text(ctx, args[0]) {
-        Ok(path) => path,
-        Err(error) => return fail(ctx, error),
-    };
-    let direction = match option(args, ctx, "DIRECTION")? {
-        Some(word) => name(ctx, word)?,
-        None => "INPUT".to_string(),
-    };
-    let external_format = match option(args, ctx, "EXTERNAL-FORMAT")? {
-        Some(word) => name(ctx, word)?,
-        None => "UTF-8".to_string(),
-    };
-    if !matches!(direction.as_str(), "INPUT" | "OUTPUT" | "IO") {
-        return fail(ctx, ObjectError::TypeError);
-    }
-    if !matches!(external_format.as_str(), "UTF-8" | "LATIN-1") {
-        return fail(ctx, ObjectError::Unsupported);
-    }
-    let if_exists = option(args, ctx, "IF-EXISTS")?
-        .map(|word| name(ctx, word))
-        .transpose()?;
-    let if_missing = option(args, ctx, "IF-DOES-NOT-EXIST")?
-        .map(|word| name(ctx, word))
-        .transpose()?;
-    let input = direction == "INPUT";
+fn open_adapter(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    let path = text(ctx, args.required(0)?)?;
+    let direction = option(ctx, args, "DIRECTION")?.map(|word| symbol_text(ctx, word)).transpose()?.unwrap_or_else(|| "INPUT".to_owned());
     let exists = fs::metadata(&path).is_ok();
-    if input {
-        if !exists && if_missing.as_deref() == Some("NIL") {
-            return Ok(Word::NIL);
-        }
-        if !exists {
-            return fail(ctx, ObjectError::Unsupported);
-        }
-    } else {
-        if exists && if_exists.as_deref() == Some("ERROR") {
-            return fail(ctx, ObjectError::Unsupported);
-        }
-        if !exists && if_missing.as_deref() == Some("ERROR") {
-            return fail(ctx, ObjectError::Unsupported);
-        }
-        if !exists && if_missing.as_deref() == Some("NIL") {
-            return Ok(Word::NIL);
-        }
+    if !exists && option(ctx, args, "IF-DOES-NOT-EXIST")?.map(|word| symbol_text(ctx, word)).transpose()?.as_deref() == Some("NIL") {
+        return Ok(Word::NIL);
     }
-    let _ = (path, input, exists, if_exists, if_missing);
-    fail(ctx, ObjectError::Unsupported)
+    let data = match direction.as_str() {
+        "INPUT" => fs::read(&path).map_err(|_| ObjectError::Unsupported)?,
+        "OUTPUT" => {
+            let exists_policy = option(ctx, args, "IF-EXISTS")?.map(|word| symbol_text(ctx, word)).transpose()?;
+            if exists && exists_policy.as_deref() == Some("ERROR") { return fail(ctx, ObjectError::Unsupported); }
+            fs::File::create(&path).map_err(|_| ObjectError::Unsupported)?;
+            Vec::new()
+        }
+        "IO" => fs::read(&path).unwrap_or_default(),
+        _ => return fail(ctx, ObjectError::TypeError),
+    };
+    let state_values = std::iter::once(Word::fixnum(0))
+        .chain(data.into_iter().map(|byte| Word::fixnum(i64::from(byte))))
+        .collect::<Vec<_>>();
+    let state = make_simple_vector(ctx, runtime, &state_values)?;
+    let direction_word = option(ctx, args, "DIRECTION")?.unwrap_or(Word::NIL);
+    let format_word = option(ctx, args, "EXTERNAL-FORMAT")?.unwrap_or(Word::NIL);
+    Ok(make_stream(ctx, runtime, direction_word, Word::NIL, format_word, state, Word::NIL)?.into())
 }
 
-fn stream_data(ctx: &ThreadContext, stream: Word) -> Result<Word, ObjectError> {
-    stream_state(ctx, Stream::from(stream))
-}
-
-fn file_position_builtin(
-    ctx: &mut ThreadContext,
-    args: &[Word],
-    _: &mut ncl_object::MultipleValues,
-) -> Result<Word, ObjectError> {
-    if args.is_empty() || args.len() > 2 {
-        return fail(ctx, ObjectError::TypeError);
-    }
-    let state = stream_data(ctx, args[0])?;
-    if args.len() == 2 {
-        let position = args[1].as_fixnum().ok_or(ObjectError::TypeError)?;
-        let length = simple_vector_length(ctx, state)?.saturating_sub(DATA);
-        if position < 0 || usize::try_from(position).map_err(|_| ObjectError::TypeError)? > length {
-            return fail(ctx, ObjectError::TypeError);
-        }
-        simple_vector_set(ctx, state, POSITION, args[1])?;
+fn file_position_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    let state = stream_state(ctx, Stream::from(args.required(0)?))?;
+    if let Some(position) = args.get(1) {
+        let position = usize::try_from(position.as_fixnum().ok_or(ObjectError::TypeError)?).map_err(|_| ObjectError::TypeError)?;
+        if position > simple_vector_length(ctx, state)?.saturating_sub(DATA) { return fail(ctx, ObjectError::TypeError); }
+        simple_vector_set(ctx, state, POSITION, Word::fixnum(i64::try_from(position).map_err(|_| ObjectError::Layout)?))?;
     }
     simple_vector_ref(ctx, state, POSITION)
 }
 
-fn file_length_builtin(
-    ctx: &mut ThreadContext,
-    args: &[Word],
-    _: &mut ncl_object::MultipleValues,
-) -> Result<Word, ObjectError> {
-    let stream = args.first().copied().ok_or(ObjectError::TypeError)?;
-    let state = stream_data(ctx, stream)?;
-    Ok(Word::fixnum(
-        i64::try_from(simple_vector_length(ctx, state)?.saturating_sub(DATA))
-            .map_err(|_| ObjectError::Layout)?,
-    ))
+fn file_length_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    let state = stream_state(ctx, Stream::from(args.required(0)?))?;
+    Ok(Word::fixnum(i64::try_from(simple_vector_length(ctx, state)?.saturating_sub(DATA)).map_err(|_| ObjectError::Layout)?))
 }
 
-fn file_string_length_builtin(
-    ctx: &mut ThreadContext,
-    args: &[Word],
-    _: &mut ncl_object::MultipleValues,
-) -> Result<Word, ObjectError> {
-    if args.len() != 2 {
-        return fail(ctx, ObjectError::TypeError);
-    }
-    let format = stream_external_format(ctx, Stream::from(args[0]))?;
-    let format = if format == Word::NIL {
-        "UTF-8".to_string()
-    } else {
-        name(ctx, format)?
-    };
-    let bytes = bytes_for_external_format(&text(ctx, args[1])?, &format)?;
-    Ok(Word::fixnum(
-        i64::try_from(bytes.len()).map_err(|_| ObjectError::Layout)?,
-    ))
-}
-
-#[allow(dead_code)]
-fn _stream_accessors(ctx: &ThreadContext, stream: Stream) -> Result<(Word, Word), ObjectError> {
-    Ok((
-        stream_element_type(ctx, stream)?,
-        stream_external_format(ctx, stream)?,
-    ))
+fn file_string_length_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    if stream_external_format(ctx, Stream::from(args.required(0)?))? != Word::NIL { return Err(ObjectError::Unsupported); }
+    let length = text(ctx, args.required(1)?)?.len();
+    Ok(Word::fixnum(i64::try_from(length).map_err(|_| ObjectError::Layout)?))
 }

@@ -1,10 +1,10 @@
 //! Typed adapters for the standard CLOS instance initialization protocol.
 
 use ncl_object::{
-    classify_object, make_instance as allocate_instance, simple_vector_length, simple_vector_ref,
-    slot_set, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
-    ObjectType, Parameter, ParameterType, Runtime, ThreadContext, Word,
+    Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
+    Instance, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef, ObjectType, Parameter,
+    ParameterType, Runtime, ThreadContext, Word, classify_object,
+    make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
 };
 
 const CLASS_ARGUMENT: Parameter = Parameter {

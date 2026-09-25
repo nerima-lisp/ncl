@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use ncl_object::{make_simple_vector, FunctionObject, Runtime, ThreadContext, Word};
+use ncl_object::{FunctionObject, Runtime, ThreadContext, Word, make_simple_vector};
 
 #[path = "../src/initialization.rs"]
 mod initialization;

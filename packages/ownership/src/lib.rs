@@ -50,5 +50,5 @@ pub use coverage::{
     Missing, OwnershipError, assert_crate_coverage_from_table,
     assert_crate_function_bindings_from_table,
 };
-pub use table::{Kind, Row, rows_for_crate_from_str, rows_from_str};
 pub use symbols::{SymbolKind, SymbolRow};
+pub use table::{Kind, Row, rows_for_crate_from_str, rows_from_str};

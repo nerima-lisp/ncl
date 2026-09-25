@@ -10,11 +10,6 @@ fn registers_every_owned_symbol() {
     let mut ctx = ncl_object::ThreadContext::new();
     ctx.register(&runtime).unwrap();
     ncl_ffi::register(&runtime).unwrap();
-    ncl_ownership::assert_crate_coverage_from_table(
-        &runtime,
-        &mut ctx,
-        OWNERSHIP,
-        "ncl-ffi",
-    )
-    .unwrap();
+    ncl_ownership::assert_crate_coverage_from_table(&runtime, &mut ctx, OWNERSHIP, "ncl-ffi")
+        .unwrap();
 }

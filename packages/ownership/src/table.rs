@@ -101,7 +101,11 @@ pub fn rows_from_str(source: &str) -> Result<Vec<Row>, OwnershipError> {
 /// # Errors
 ///
 /// Returns [`OwnershipError::BadRow`] when the table is malformed.
-pub fn rows_for_crate_from_str(source: &str, crate_name: &str, phase: u8) -> Result<Vec<Row>, OwnershipError> {
+pub fn rows_for_crate_from_str(
+    source: &str,
+    crate_name: &str,
+    phase: u8,
+) -> Result<Vec<Row>, OwnershipError> {
     Ok(rows_from_str(source)?
         .into_iter()
         .filter(|row| row.crate_name == crate_name && row.phase == phase)

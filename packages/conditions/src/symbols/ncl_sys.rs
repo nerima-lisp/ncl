@@ -35,4 +35,3 @@ pub const NCL_SYS: &[SymbolRow] = &[
         kind: SymbolKind::Class,
     },
 ];
-

@@ -3,6 +3,18 @@
 use crate::{ContextField, RuntimeAbi, RuntimeFunction, compile_function_aarch64};
 use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
+fn decoded_text(bytes: [u8; 4], label: &str) -> String {
+    let decoded = ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &bytes, 0);
+    assert!(decoded.is_ok(), "{label}");
+    let Ok(decoded) = decoded else {
+        return String::new();
+    };
+    let Some(instruction) = decoded.first() else {
+        return String::new();
+    };
+    instruction.text.clone()
+}
+
 struct Aarch64FixtureAbi;
 
 impl RuntimeAbi for Aarch64FixtureAbi {
@@ -160,17 +172,10 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
     let end = usize::try_from(map.pc_offset).unwrap_or(0);
     assert!(end >= 4);
     let word = u32::from_le_bytes(compiled.code[end - 4..end].try_into().unwrap_or([0; 4]));
-    assert_eq!(
-        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word.to_le_bytes(), 0)
-            .expect("decode BLR")[0]
-            .text,
-        "blr x17"
-    );
+    assert_eq!(decoded_text(word.to_le_bytes(), "decode BLR"), "blr x17");
     let adr = u32::from_le_bytes(compiled.code[end - 8..end - 4].try_into().unwrap_or([0; 4]));
     assert_eq!(
-        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &adr.to_le_bytes(), 0)
-            .expect("decode ADR")[0]
-            .text,
+        decoded_text(adr.to_le_bytes(), "decode ADR"),
         "adr x2, #0x2"
     );
 }
@@ -211,15 +216,11 @@ fn golden_aarch64_prologue_spills_register_arguments() {
         )
     };
     assert_eq!(
-        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word(24).to_le_bytes(), 0)
-            .expect("decode STR x1")[0]
-            .text,
+        decoded_text(word(24).to_le_bytes(), "decode STR x1"),
         "str x1, [x29, #-8]"
     );
     assert_eq!(
-        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word(28).to_le_bytes(), 0)
-            .expect("decode STR x2")[0]
-            .text,
+        decoded_text(word(28).to_le_bytes(), "decode STR x2"),
         "str x2, [x29, #-16]"
     );
 }

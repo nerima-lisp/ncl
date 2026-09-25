@@ -59,10 +59,7 @@ const SYMBOLS: &[(&str, &str)] = &[
 ];
 
 /// Owned symbols whose constant bit must be set, as `(package, name)` pairs.
-const CONSTANTS: &[(&str, &str)] = &[
-    (COMMON_LISP, "NIL"),
-    (COMMON_LISP, "T"),
-];
+const CONSTANTS: &[(&str, &str)] = &[(COMMON_LISP, "NIL"), (COMMON_LISP, "T")];
 
 /// Class names to register.
 const CLASSES: &[&str] = &[

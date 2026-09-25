@@ -3,10 +3,10 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::Package;
 use ncl_object::{
-    array_dimensions, array_row_major_ref, array_row_major_set, builtin, car, classify,
-    classify_object, make_array, make_cons, make_simple_vector, make_specialized_array,
-    make_string, make_symbol, register, set_symbol_value, simple_vector_ref, string_ref,
-    symbol_name, symbol_value, ArrayElementType, ArrayOptions, ObjectRef, Runtime, ThreadContext,
+    ArrayElementType, ArrayOptions, ObjectRef, Runtime, ThreadContext, array_dimensions,
+    array_row_major_ref, array_row_major_set, builtin, car, classify, classify_object, make_array,
+    make_cons, make_simple_vector, make_specialized_array, make_string, make_symbol, register,
+    set_symbol_value, simple_vector_ref, string_ref, symbol_name, symbol_value,
 };
 use ncl_sys::Word;
 
@@ -83,10 +83,7 @@ fn gc_extensions_register_the_owned_symbols() {
             Some(Word::UNBOUND)
         );
     }
-    assert_eq!(
-        runtime.class(&mut ctx, "WEAK-POINTER"),
-        Some(Word::UNBOUND)
-    );
+    assert_eq!(runtime.class(&mut ctx, "WEAK-POINTER"), Some(Word::UNBOUND));
 }
 
 #[test]
@@ -95,15 +92,17 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     let mut ctx = ThreadContext::new();
     assert!(ctx.register(&runtime).is_ok());
     assert!(runtime.register_layouts().is_ok());
-    assert!(runtime
-        .register_layout(
-            99,
-            ncl_sys::ReferenceLayout {
-                reference_words: vec![1],
-                boxed_from: None,
-            },
-        )
-        .is_ok());
+    assert!(
+        runtime
+            .register_layout(
+                99,
+                ncl_sys::ReferenceLayout {
+                    reference_words: vec![1],
+                    boxed_from: None,
+                },
+            )
+            .is_ok()
+    );
 
     let mut list = Word::NIL;
     for value in 0..10_000 {
@@ -139,9 +138,11 @@ fn gc_preserves_object_accessors_and_weak_entries() {
         .unwrap_or_else(|error| panic!("HashTable allocation failed: {error:?}"));
     let mut table_word = table.as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
-    assert!(HashTable::from(table_word)
-        .insert(&mut ctx, &runtime, table_key, Word::fixnum(99))
-        .is_ok());
+    assert!(
+        HashTable::from(table_word)
+            .insert(&mut ctx, &runtime, table_key, Word::fixnum(99))
+            .is_ok()
+    );
 
     assert!(ctx.collect(false).is_ok());
     assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));

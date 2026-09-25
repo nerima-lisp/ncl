@@ -1,5 +1,7 @@
 //! Native instruction decoding for NCL development tools.
 
+#![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
+
 mod aarch64;
 mod x86_64;
 
@@ -46,8 +48,12 @@ impl core::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Truncated { address } => write!(f, "truncated instruction at 0x{address:x}"),
-            Self::Unsupported { address, .. } => write!(f, "unsupported instruction at 0x{address:x}"),
-            Self::Invalid { address, reason } => write!(f, "invalid instruction at 0x{address:x}: {reason}"),
+            Self::Unsupported { address, .. } => {
+                write!(f, "unsupported instruction at 0x{address:x}")
+            }
+            Self::Invalid { address, reason } => {
+                write!(f, "invalid instruction at 0x{address:x}: {reason}")
+            }
         }
     }
 }
@@ -64,7 +70,11 @@ pub enum Architecture {
 }
 
 /// Decode a native code region at an absolute address.
-pub fn decode(architecture: Architecture, bytes: &[u8], base: u64) -> Result<Vec<DecodedInstruction>, DecodeError> {
+pub fn decode(
+    architecture: Architecture,
+    bytes: &[u8],
+    base: u64,
+) -> Result<Vec<DecodedInstruction>, DecodeError> {
     match architecture {
         Architecture::X86_64 => x86_64::decode(bytes, base),
         Architecture::Aarch64 => aarch64::decode(bytes, base),
@@ -88,6 +98,8 @@ pub fn resolve_labels(instructions: &[DecodedInstruction]) -> Vec<Option<String>
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
     use super::{Architecture, decode, resolve_labels};
 
     #[test]
@@ -99,7 +111,8 @@ mod tests {
 
     #[test]
     fn labels_resolve_to_local_instruction_names() {
-        let decoded = decode(Architecture::X86_64, &[0xe9, 0, 0, 0, 0, 0xc3], 0x1000).expect("decode");
+        let decoded =
+            decode(Architecture::X86_64, &[0xe9, 0, 0, 0, 0, 0xc3], 0x1000).expect("decode");
         assert_eq!(resolve_labels(&decoded), vec![Some("L1".to_owned()), None]);
     }
 
@@ -115,17 +128,38 @@ mod tests {
             assembler.emit(&instruction).expect("encode");
         }
         let decoded = decode(Architecture::X86_64, assembler.bytes(), 0).expect("decode");
-        assert_eq!(decoded.iter().map(|instruction| instruction.text.as_str()).collect::<Vec<_>>(), ["nop", "ret", "int3", "ud2"]);
+        assert_eq!(
+            decoded
+                .iter()
+                .map(|instruction| instruction.text.as_str())
+                .collect::<Vec<_>>(),
+            ["nop", "ret", "int3", "ud2"]
+        );
     }
 
     #[test]
     fn aarch64_assembler_words_decode_as_their_instruction_text() {
         let words = [
             ncl_asm_aarch64::encode(&ncl_asm_aarch64::Inst::Nop, 0).expect("encode"),
-            ncl_asm_aarch64::encode(&ncl_asm_aarch64::Inst::Ret { rn: ncl_asm_aarch64::Reg(30) }, 4).expect("encode"),
+            ncl_asm_aarch64::encode(
+                &ncl_asm_aarch64::Inst::Ret {
+                    rn: ncl_asm_aarch64::Reg(30),
+                },
+                4,
+            )
+            .expect("encode"),
         ];
-        let bytes = words.into_iter().flat_map(u32::to_le_bytes).collect::<Vec<_>>();
+        let bytes = words
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
         let decoded = decode(Architecture::Aarch64, &bytes, 0).expect("decode");
-        assert_eq!(decoded.iter().map(|instruction| instruction.text.as_str()).collect::<Vec<_>>(), ["nop", "ret x30"]);
+        assert_eq!(
+            decoded
+                .iter()
+                .map(|instruction| instruction.text.as_str())
+                .collect::<Vec<_>>(),
+            ["nop", "ret x30"]
+        );
     }
 }

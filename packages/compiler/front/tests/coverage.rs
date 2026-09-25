@@ -10,5 +10,11 @@ fn registers_every_owned_symbol() {
     let mut ctx = ncl_object::ThreadContext::new();
     ctx.register(&runtime).unwrap();
     ncl_compiler_front::register(&runtime).unwrap();
-    ncl_ownership::assert_crate_coverage_from_table(&runtime, &mut ctx, TABLE, "ncl-compiler-front").unwrap();
+    ncl_ownership::assert_crate_coverage_from_table(
+        &runtime,
+        &mut ctx,
+        TABLE,
+        "ncl-compiler-front",
+    )
+    .unwrap();
 }

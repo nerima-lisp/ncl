@@ -253,8 +253,11 @@ fn strict_function_check_rejects_an_unbound_symbol_cell() {
     runtime
         .define_function(&mut ctx, "TEST", "FOO", Word::NIL)
         .unwrap();
-    let error = assert_crate_function_bindings_from_table(&runtime, &mut ctx, table, "test")
-        .unwrap_err();
+    let error =
+        assert_crate_function_bindings_from_table(&runtime, &mut ctx, table, "test").unwrap_err();
     assert!(error.to_string().contains("symbol function cell unbound"));
-    assert_eq!(ncl_object::symbol_function(&ctx, symbol).unwrap(), Word::UNBOUND);
+    assert_eq!(
+        ncl_object::symbol_function(&ctx, symbol).unwrap(),
+        Word::UNBOUND
+    );
 }

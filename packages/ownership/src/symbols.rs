@@ -31,13 +31,22 @@ impl SymbolKind {
     /// Whether this kind requires a function registration.
     #[must_use]
     pub const fn defines_function(self) -> bool {
-        matches!(self, Self::Function | Self::ClassAndFunction | Self::VariableAndFunction)
+        matches!(
+            self,
+            Self::Function | Self::ClassAndFunction | Self::VariableAndFunction
+        )
     }
 
     /// Whether this kind requires a class registration.
     #[must_use]
     pub const fn defines_class(self) -> bool {
-        matches!(self, Self::Class | Self::ClassAndFunction | Self::MacroAndClass | Self::SpecialOperatorAndClass)
+        matches!(
+            self,
+            Self::Class
+                | Self::ClassAndFunction
+                | Self::MacroAndClass
+                | Self::SpecialOperatorAndClass
+        )
     }
 
     /// Whether this kind requires the macro bit.

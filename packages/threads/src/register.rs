@@ -72,9 +72,13 @@ fn apply_kind(
         }
         SymbolKind::Variable => set_symbol_special(ctx, symbol, true),
         SymbolKind::Constant => set_symbol_constant(ctx, symbol, true),
-        SymbolKind::Class | SymbolKind::Type | SymbolKind::Other
-        | SymbolKind::ClassAndFunction | SymbolKind::MacroAndClass
-        | SymbolKind::SpecialOperatorAndClass | SymbolKind::VariableAndFunction => Ok(()),
+        SymbolKind::Class
+        | SymbolKind::Type
+        | SymbolKind::Other
+        | SymbolKind::ClassAndFunction
+        | SymbolKind::MacroAndClass
+        | SymbolKind::SpecialOperatorAndClass
+        | SymbolKind::VariableAndFunction => Ok(()),
     }
 }
 

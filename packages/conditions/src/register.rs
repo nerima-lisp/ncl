@@ -36,8 +36,13 @@ fn register_symbol(
             runtime.define_function(ctx, row.package, row.name, Word::UNBOUND)?;
         }
         SymbolKind::Variable => set_symbol_special(ctx, symbol, true)?,
-        SymbolKind::Class | SymbolKind::Other | SymbolKind::Constant | SymbolKind::Type
-        | SymbolKind::Macro | SymbolKind::MacroAndClass | SymbolKind::SpecialOperatorAndClass
+        SymbolKind::Class
+        | SymbolKind::Other
+        | SymbolKind::Constant
+        | SymbolKind::Type
+        | SymbolKind::Macro
+        | SymbolKind::MacroAndClass
+        | SymbolKind::SpecialOperatorAndClass
         | SymbolKind::VariableAndFunction => {}
     }
     Ok(())
@@ -49,9 +54,14 @@ fn install_hierarchy(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), O
             SymbolKind::Class | SymbolKind::ClassAndFunction => {
                 install_class(ctx, runtime, row.name)?;
             }
-            SymbolKind::Function | SymbolKind::Variable | SymbolKind::Other
-            | SymbolKind::Constant | SymbolKind::Type | SymbolKind::Macro
-            | SymbolKind::MacroAndClass | SymbolKind::SpecialOperatorAndClass
+            SymbolKind::Function
+            | SymbolKind::Variable
+            | SymbolKind::Other
+            | SymbolKind::Constant
+            | SymbolKind::Type
+            | SymbolKind::Macro
+            | SymbolKind::MacroAndClass
+            | SymbolKind::SpecialOperatorAndClass
             | SymbolKind::VariableAndFunction => {}
         }
     }

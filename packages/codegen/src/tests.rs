@@ -350,7 +350,8 @@ fn assert_aarch64_fixture_with_abi(function: &ncl_ir::Function, abi: &dyn Runtim
     for word in words {
         let encoded = u32::from_le_bytes([word[0], word[1], word[2], word[3]]);
         assert!(
-            ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &encoded.to_le_bytes(), 0).is_ok(),
+            ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &encoded.to_le_bytes(), 0)
+                .is_ok(),
             "unsupported AArch64 golden word: 0x{encoded:08x}"
         );
     }

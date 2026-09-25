@@ -26,17 +26,20 @@ fn registers_every_owned_symbol() {
 
     let package = runtime.find_package(&ctx, "NCL-IMAGE").unwrap();
     let package = Package::from(package);
-    let argv_name = make_string(&mut ctx, &runtime, &"*POSIX-ARGV*".chars().collect::<Vec<_>>())
-        .unwrap();
-    let (argv, _) = package
-        .find_symbol(&mut ctx, argv_name)
-        .unwrap()
-        .unwrap();
+    let argv_name = make_string(
+        &mut ctx,
+        &runtime,
+        &"*POSIX-ARGV*".chars().collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let (argv, _) = package.find_symbol(&mut ctx, argv_name).unwrap().unwrap();
     assert!(symbol_is_special(&ctx, argv).unwrap());
 
     for name in FUNCTIONS {
-        assert!(runtime.function(&mut ctx, "NCL-IMAGE", name).is_some(), "{name}");
+        assert!(
+            runtime.function(&mut ctx, "NCL-IMAGE", name).is_some(),
+            "{name}"
+        );
     }
     assert!(runtime.class(&mut ctx, "EXIT").is_some());
-
 }

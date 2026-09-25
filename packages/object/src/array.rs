@@ -380,10 +380,7 @@ pub fn array_dimensions(ctx: &ThreadContext, object: Word) -> Result<Vec<usize>,
 }
 
 /// Return an array's fill pointer, if it has one.
-pub fn array_fill_pointer(
-    ctx: &ThreadContext,
-    object: Word,
-) -> Result<Option<usize>, ObjectError> {
+pub fn array_fill_pointer(ctx: &ThreadContext, object: Word) -> Result<Option<usize>, ObjectError> {
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     let flags = read(
         ctx,
@@ -404,7 +401,9 @@ pub fn array_fill_pointer(
     )?
     .as_fixnum()
     .ok_or(ObjectError::Layout)?;
-    usize::try_from(pointer).map(Some).map_err(|_| ObjectError::Layout)
+    usize::try_from(pointer)
+        .map(Some)
+        .map_err(|_| ObjectError::Layout)
 }
 
 /// Set an array's fill pointer.
@@ -430,10 +429,7 @@ pub fn array_set_fill_pointer(
 }
 
 /// Return the array displaced target and index offset.
-pub fn array_displacement(
-    ctx: &ThreadContext,
-    object: Word,
-) -> Result<(Word, usize), ObjectError> {
+pub fn array_displacement(ctx: &ThreadContext, object: Word) -> Result<(Word, usize), ObjectError> {
     let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
     let target = read(
         ctx,

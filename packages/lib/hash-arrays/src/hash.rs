@@ -1,11 +1,11 @@
 //! Typed hash-table domain operations and builtin-boundary views.
 
-use ncl_object::hash_table::{sxhash, HashTable, HashTest, Weakness};
+use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
 use ncl_object::{
-    classify_object, string_length, string_ref, symbol_name, Builtin, BuiltinArgs,
-    BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
-    LambdaList, LispError, MultipleValues, ObjectError, ObjectType, Parameter, ParameterType,
-    Runtime, ThreadContext, Word,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, LambdaList, LispError, MultipleValues, ObjectError, ObjectType, Parameter,
+    ParameterType, Runtime, ThreadContext, Word, classify_object, string_length, string_ref,
+    symbol_name,
 };
 
 #[path = "builtins.rs"]

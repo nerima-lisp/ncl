@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use ncl_lib_hash_arrays::hash::{
-    clrhash, gethash, hash_table_count, make_hash_table, remhash, set_hash_value, sxhash_value,
-    HashTableOptions, LispValue,
+    HashTableOptions, LispValue, clrhash, gethash, hash_table_count, make_hash_table, remhash,
+    set_hash_value, sxhash_value,
 };
 use ncl_object::hash_table::HashTable;
 use ncl_object::{

@@ -3,8 +3,7 @@ use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{FindStatus, Package};
 use ncl_object::{
     ArrayElementType, ArrayOptions, CodeObject, Function, Instance, Runtime, ThreadContext, Word,
-    car,
-    code_constants, code_debug, code_stack_map, complex_imag, complex_real, function_code,
+    car, code_constants, code_debug, code_stack_map, complex_imag, complex_real, function_code,
     function_lambda_list, function_name, make_array, make_closure, make_code_object, make_complex,
     make_cons, make_instance, make_ratio, make_readtable, make_simple_fun, make_simple_vector,
     make_stream, make_string, make_structure, make_symbol, ratio_denominator, ratio_numerator,

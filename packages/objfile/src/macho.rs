@@ -280,16 +280,16 @@ pub fn validate_macho(bytes: &[u8], architecture: MachArchitecture) -> Result<()
                     needed: 4,
                 })?,
         );
-    let sizeofcmds = usize::try_from(u32::from_le_bytes(bytes[20..24].try_into().map_err(
-        |_| ObjectError::Truncated {
-            offset: 20,
-            needed: 4,
-        },
-    )?))
-    .map_err(|_| ObjectError::InvalidField {
-        field: "load commands",
-        value: u64::MAX,
-    })?;
+    let sizeofcmds = crate::types::target_usize(
+        u64::from(u32::from_le_bytes(bytes[20..24].try_into().map_err(
+            |_| ObjectError::Truncated {
+                offset: 20,
+                needed: 4,
+            },
+        )?)),
+        "load commands",
+        u64::MAX,
+    )?;
     let command_end = 32usize
         .checked_add(sizeofcmds)
         .ok_or(ObjectError::InvalidStructure("Mach-O command overflow"))?;
@@ -310,13 +310,11 @@ fn validate_macho_commands(
     let mut has_segment = false;
     for _ in 0..ncmds {
         let command = read_u32(bytes, cursor, "Mach-O command")?;
-        let size =
-            usize::try_from(read_u32(bytes, cursor + 4, "Mach-O command size")?).map_err(|_| {
-                ObjectError::InvalidField {
-                    field: "Mach-O command size",
-                    value: u64::MAX,
-                }
-            })?;
+        let size = crate::types::target_usize(
+            u64::from(read_u32(bytes, cursor + 4, "Mach-O command size")?),
+            "Mach-O command size",
+            u64::MAX,
+        )?;
         if size < 8 || cursor.checked_add(size).is_none_or(|end| end > command_end) {
             return Err(ObjectError::InvalidStructure("invalid Mach-O command size"));
         }
@@ -325,11 +323,11 @@ fn validate_macho_commands(
             if size < 72 {
                 return Err(ObjectError::InvalidStructure("short LC_SEGMENT_64"));
             }
-            let nsects = usize::try_from(read_u32(bytes, cursor + 64, "Mach-O section count")?)
-                .map_err(|_| ObjectError::InvalidField {
-                    field: "Mach-O section count",
-                    value: u64::MAX,
-                })?;
+            let nsects = crate::types::target_usize(
+                u64::from(read_u32(bytes, cursor + 64, "Mach-O section count")?),
+                "Mach-O section count",
+                u64::MAX,
+            )?;
             let section_bytes = nsects.checked_mul(80).ok_or(ObjectError::InvalidStructure(
                 "Mach-O section table overflow",
             ))?;
@@ -341,18 +339,16 @@ fn validate_macho_commands(
             }
             for index in 0..nsects {
                 let section = cursor + 72 + index * 80;
-                let offset =
-                    usize::try_from(read_u32(bytes, section + 48, "Mach-O section offset")?)
-                        .map_err(|_| ObjectError::InvalidField {
-                            field: "Mach-O section offset",
-                            value: u64::MAX,
-                        })?;
-                let section_size =
-                    usize::try_from(read_u64(bytes, section + 40, "Mach-O section size")?)
-                        .map_err(|_| ObjectError::InvalidField {
-                            field: "Mach-O section size",
-                            value: u64::MAX,
-                        })?;
+                let offset = crate::types::target_usize(
+                    u64::from(read_u32(bytes, section + 48, "Mach-O section offset")?),
+                    "Mach-O section offset",
+                    u64::MAX,
+                )?;
+                let section_size = crate::types::target_usize(
+                    read_u64(bytes, section + 40, "Mach-O section size")?,
+                    "Mach-O section size",
+                    u64::MAX,
+                )?;
                 if offset
                     .checked_add(section_size)
                     .is_none_or(|end| end > bytes.len())
@@ -409,38 +405,33 @@ pub fn validate_mach_executable(
     validate_macho(bytes, architecture)?;
     let ncmds = read_u32(bytes, 16, "Mach-O command count")?;
     let command_end = 32usize
-        .checked_add(
-            usize::try_from(read_u32(bytes, 20, "Mach-O command bytes")?).map_err(|_| {
-                ObjectError::InvalidField {
-                    field: "Mach-O command bytes",
-                    value: u64::MAX,
-                }
-            })?,
-        )
+        .checked_add(crate::types::target_usize(
+            u64::from(read_u32(bytes, 20, "Mach-O command bytes")?),
+            "Mach-O command bytes",
+            u64::MAX,
+        )?)
         .ok_or(ObjectError::InvalidStructure("Mach-O command overflow"))?;
     let mut cursor = 32usize;
     let mut has_main = false;
     let mut has_metadata = false;
     for _ in 0..ncmds {
         let command = read_u32(bytes, cursor, "Mach-O command")?;
-        let size =
-            usize::try_from(read_u32(bytes, cursor + 4, "Mach-O command size")?).map_err(|_| {
-                ObjectError::InvalidField {
-                    field: "Mach-O command size",
-                    value: u64::MAX,
-                }
-            })?;
+        let size = crate::types::target_usize(
+            u64::from(read_u32(bytes, cursor + 4, "Mach-O command size")?),
+            "Mach-O command size",
+            u64::MAX,
+        )?;
         if size < 8 || cursor.checked_add(size).is_none_or(|end| end > command_end) {
             return Err(ObjectError::InvalidStructure("invalid Mach-O command size"));
         }
         if command == 0x8000_0028 {
             has_main = size >= 24;
         } else if command == 0x19 && size >= 72 {
-            let count = usize::try_from(read_u32(bytes, cursor + 64, "Mach-O section count")?)
-                .map_err(|_| ObjectError::InvalidField {
-                    field: "Mach-O section count",
-                    value: u64::MAX,
-                })?;
+            let count = crate::types::target_usize(
+                u64::from(read_u32(bytes, cursor + 64, "Mach-O section count")?),
+                "Mach-O section count",
+                u64::MAX,
+            )?;
             for index in 0..count {
                 let section = cursor + 72 + index * 80;
                 if section + 80 > cursor + size {

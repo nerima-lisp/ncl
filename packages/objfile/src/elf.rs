@@ -294,16 +294,18 @@ pub fn validate_elf(bytes: &[u8], architecture: ElfArchitecture) -> Result<(), O
     {
         return Err(ObjectError::InvalidStructure("invalid ELF section table"));
     }
-    let shoff = usize::try_from(u64::from_le_bytes(bytes[40..48].try_into().map_err(
-        |_| ObjectError::Truncated {
-            offset: 40,
-            needed: 8,
-        },
-    )?))
-    .map_err(|_| ObjectError::InvalidField {
-        field: "section offset",
-        value: u64::MAX,
-    })?;
+    let shoff = crate::types::target_usize(
+        u64::from_le_bytes(
+            bytes[40..48]
+                .try_into()
+                .map_err(|_| ObjectError::Truncated {
+                    offset: 40,
+                    needed: 8,
+                })?,
+        ),
+        "section offset",
+        u64::MAX,
+    )?;
     let table_size = 9usize
         .checked_mul(64)
         .ok_or(ObjectError::InvalidStructure("section table overflow"))?;

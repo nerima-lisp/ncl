@@ -23,16 +23,18 @@ pub fn validate_elf_executable(
                     needed: 8,
                 })?,
         );
-    let phoff = usize::try_from(u64::from_le_bytes(bytes[32..40].try_into().map_err(
-        |_| ObjectError::Truncated {
-            offset: 32,
-            needed: 8,
-        },
-    )?))
-    .map_err(|_| ObjectError::InvalidField {
-        field: "program header offset",
-        value: u64::MAX,
-    })?;
+    let phoff = crate::types::target_usize(
+        u64::from_le_bytes(
+            bytes[32..40]
+                .try_into()
+                .map_err(|_| ObjectError::Truncated {
+                    offset: 32,
+                    needed: 8,
+                })?,
+        ),
+        "program header offset",
+        u64::MAX,
+    )?;
     let phentsize = usize::from(u16::from_le_bytes([bytes[54], bytes[55]]));
     let phnum = usize::from(u16::from_le_bytes([bytes[56], bytes[57]]));
     if phentsize != 56 || phnum < 2 {
@@ -114,30 +116,26 @@ fn validate_elf_segments(
                 needed: 4,
             }
         })?);
-        let offset = usize::try_from(u64::from_le_bytes(
-            bytes[at + 8..at + 16]
-                .try_into()
-                .map_err(|_| ObjectError::Truncated {
+        let offset = crate::types::target_usize(
+            u64::from_le_bytes(bytes[at + 8..at + 16].try_into().map_err(|_| {
+                ObjectError::Truncated {
                     offset: at + 8,
                     needed: 8,
-                })?,
-        ))
-        .map_err(|_| ObjectError::InvalidField {
-            field: "ELF segment offset",
-            value: u64::MAX,
-        })?;
-        let file_size = usize::try_from(u64::from_le_bytes(
-            bytes[at + 32..at + 40]
-                .try_into()
-                .map_err(|_| ObjectError::Truncated {
+                }
+            })?),
+            "ELF segment offset",
+            u64::MAX,
+        )?;
+        let file_size = crate::types::target_usize(
+            u64::from_le_bytes(bytes[at + 32..at + 40].try_into().map_err(|_| {
+                ObjectError::Truncated {
                     offset: at + 32,
                     needed: 8,
-                })?,
-        ))
-        .map_err(|_| ObjectError::InvalidField {
-            field: "ELF segment size",
-            value: u64::MAX,
-        })?;
+                }
+            })?),
+            "ELF segment size",
+            u64::MAX,
+        )?;
         if offset
             .checked_add(file_size)
             .is_none_or(|end| end > bytes.len())

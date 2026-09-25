@@ -10,12 +10,19 @@ use ncl_object::{ObjectError, Runtime, ThreadContext, Word};
 
 use crate::form::{elements, list, symbol};
 
-type Builtin = ncl_object::RustBuiltin;
-
 const DEFINITION_PROPERTY: &str = "NCL::DEFINITION";
 
-/// Return the callback for a definition macro, if `name` is one of ours.
-pub fn callback_for(name: &str) -> Option<Builtin> {
+#[allow(dead_code)]
+fn callback_for(
+    name: &str,
+) -> Option<
+    fn(
+        &Runtime,
+        &mut ThreadContext,
+        &[Word],
+        &mut ncl_object::MultipleValues,
+    ) -> Result<Word, ObjectError>,
+> {
     Some(match name {
         "DEFUN" => defun,
         "DEFMACRO" => defmacro,
@@ -30,6 +37,7 @@ pub fn callback_for(name: &str) -> Option<Builtin> {
     })
 }
 
+/// Return the callback for a definition macro, if `name` is one of ours.
 fn form_elements(ctx: &mut ThreadContext, form: Word) -> Result<Vec<Word>, ObjectError> {
     elements(ctx, form)
 }
@@ -239,6 +247,32 @@ fn define_setf_expander(
     defsetf(runtime, ctx, args, _values)
 }
 
+macro_rules! adapters {
+    ($($adapter:ident => $callback:ident),+ $(,)?) => { $(
+        pub(crate) fn $adapter(
+            ctx: &mut ThreadContext,
+            runtime: &Runtime,
+            args: &ncl_object::BuiltinArgs<'_>,
+            values: &mut ncl_object::MultipleValues,
+        ) -> Result<Word, ObjectError> {
+            let words = (0..args.len()).filter_map(|index| args.get(index)).collect::<Vec<_>>();
+            $callback(runtime, ctx, &words, values)
+        }
+    )+ }
+}
+
+adapters! {
+    defun_adapter => defun,
+    defmacro_adapter => defmacro,
+    defvar_adapter => defvar,
+    defparameter_adapter => defparameter,
+    defconstant_adapter => defconstant,
+    define_symbol_macro_adapter => define_symbol_macro,
+    define_compiler_macro_adapter => define_compiler_macro,
+    defsetf_adapter => defsetf,
+    define_setf_expander_adapter => define_setf_expander,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,10 +297,7 @@ mod tests {
         let expanded = call(&runtime, &mut ctx, "DEFVAR", form);
         let parts = elements(&mut ctx, expanded).unwrap();
         assert_eq!(parts.len(), 3);
-        assert_eq!(
-            elements(&mut ctx, parts[0]).unwrap()[0],
-            symbol(&mut ctx, &runtime, "PROGN").unwrap()
-        );
+        assert_eq!(parts[0], symbol(&mut ctx, &runtime, "PROGN").unwrap());
         let result = elements(&mut ctx, parts[2]).unwrap();
         assert_eq!(result[0], symbol(&mut ctx, &runtime, "QUOTE").unwrap());
         assert_eq!(result[1], name);

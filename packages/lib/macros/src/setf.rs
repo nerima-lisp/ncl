@@ -1,7 +1,7 @@
 #![allow(missing_docs, clippy::missing_errors_doc)]
 
-use crate::{elements, fresh_symbol, list, symbol, PlaceRegistry, SetfExpansion};
-use ncl_object::{classify_object, ObjectError, ObjectRef, Runtime, ThreadContext, Word};
+use crate::{PlaceRegistry, SetfExpansion, elements, fresh_symbol, list, symbol};
+use ncl_object::{ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object};
 
 fn form(
     ctx: &mut ThreadContext,

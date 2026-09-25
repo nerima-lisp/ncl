@@ -227,7 +227,6 @@ fn specialized_arrays_validate_element_type() {
         ObjectRef::SpecializedArray(array)
     );
 }
-
 #[test]
 fn non_simple_arrays_store_dimensions_and_row_major_values() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
@@ -252,7 +251,6 @@ fn non_simple_arrays_store_dimensions_and_row_major_values() {
     assert_eq!(array_row_major_ref(&ctx, array, 3), Ok(Word::fixnum(8)));
     assert_eq!(classify_object(&ctx, array), ObjectRef::Array(array));
 }
-
 #[test]
 fn non_simple_array_references_survive_minor_and_full_gc() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
@@ -302,7 +300,6 @@ fn non_simple_array_references_survive_minor_and_full_gc() {
     let value = array_row_major_ref(&ctx, rank_three_root, 0).unwrap_or(Word::NIL);
     assert_eq!(string_ref(&ctx, value, 0), Ok('x'));
 }
-
 #[test]
 #[allow(clippy::too_many_lines)]
 fn remaining_object_kinds_round_trip() {
@@ -468,10 +465,8 @@ fn remaining_object_kinds_round_trip() {
         ncl_object::code_stack_map(&ctx, ncl_object::CodeObject::from_word(roots[4])),
         Ok(roots[10])
     );
-    assert_eq!(
-        ncl_object::code_debug(&ctx, ncl_object::CodeObject::from_word(roots[4])),
-        Ok(roots[12])
-    );
+    let code4 = ncl_object::CodeObject::from_word(roots[4]);
+    assert_eq!(ncl_object::code_debug(&ctx, code4), Ok(roots[12]));
     assert_eq!(string_ref(&ctx, roots[10], 3), Ok('E'));
     assert_eq!(symbol_name(&ctx, roots[11]), Ok(roots[10]));
     assert_eq!(simple_vector_ref(&ctx, roots[12], 1), Ok(Word::fixnum(22)));
@@ -479,14 +474,10 @@ fn remaining_object_kinds_round_trip() {
         ncl_object::specialized_array_ref(&ctx, roots[13], 1),
         Ok(Word::fixnum(32))
     );
-    assert_eq!(
-        ncl_object::function_entry(&ctx, ncl_object::Function::from_word(roots[14])),
-        Ok(8)
-    );
-    assert_eq!(
-        ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(roots[3])),
-        Ok(1.25)
-    );
+    let function14 = ncl_object::Function::from_word(roots[14]);
+    assert_eq!(ncl_object::function_entry(&ctx, function14), Ok(8));
+    let double3 = ncl_object::DoubleFloat::from_word(roots[3]);
+    assert_eq!(ncl_object::double_value(&ctx, double3), Ok(1.25));
     assert_eq!(
         ncl_object::ratio_numerator(&ctx, ncl_object::Ratio::from_word(roots[7])),
         Ok(roots[2])

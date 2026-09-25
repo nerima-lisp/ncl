@@ -113,11 +113,14 @@ fn allocation_paths_survive_collection_before_every_allocation() {
     Package::from_word(package)
         .unintern(&mut ctx, &runtime, string)
         .unwrap_or_else(|error| panic!("unintern: {error:?}"));
-    let instance = make_instance(&mut ctx, &runtime, symbol, &[cons])
-        .unwrap_or_else(|error| panic!("instance: {error:?}"));
-    let mut instance_word = instance.as_word();
-    let instance_token = ncl_object::push_root(&mut ctx, &mut instance_word);
-    assert_eq!(slot_ref(&ctx, instance, 0), Ok(cons));
+    let mut instance = make_instance(&mut ctx, &runtime, symbol, &[cons])
+        .unwrap_or_else(|error| panic!("instance: {error:?}"))
+        .into();
+    let instance_token = ncl_object::push_root(&mut ctx, &mut instance);
+    assert_eq!(
+        slot_ref(&ctx, ncl_object::Instance::from_word(instance), 0),
+        Ok(cons)
+    );
     assert_registry_entries(&mut ctx, &runtime, symbol);
     assert!(ncl_object::pop_root(&mut ctx, instance_token));
     assert!(ncl_object::pop_root(&mut ctx, interned_token));
@@ -146,15 +149,15 @@ fn constructors_and_registry_survive_gc_stress() {
     let lambda_token = ncl_object::push_root(&mut ctx, &mut lambda);
     let code = make_code_object(&mut ctx, &runtime, 10, 2, name, lambda, Word::NIL)
         .unwrap_or_else(|error| panic!("code: {error:?}"));
-    let mut code_word = code.as_word();
+    let mut code_word = code.into();
     let code_token = ncl_object::push_root(&mut ctx, &mut code_word);
     let function = make_simple_fun(&mut ctx, &runtime, 1, name, lambda, code)
         .unwrap_or_else(|error| panic!("function: {error:?}"));
-    let mut function_word = function.as_word();
+    let mut function_word = function.into();
     let function_token = ncl_object::push_root(&mut ctx, &mut function_word);
     let closure = make_closure(&mut ctx, &runtime, 2, name, lambda, code, &[name, lambda])
         .unwrap_or_else(|error| panic!("closure: {error:?}"));
-    let mut closure_word = closure.as_word();
+    let mut closure_word = closure.into();
     let closure_token = ncl_object::push_root(&mut ctx, &mut closure_word);
     let code = CodeObject::from_word(code_word);
     let function = Function::from_word(function_word);
@@ -184,13 +187,13 @@ fn constructors_and_registry_survive_gc_stress() {
         name,
         lambda,
         Word::NIL,
-        code.as_word(),
+        code.into(),
     )
     .unwrap_or_else(|error| panic!("stream: {error:?}"));
     assert_eq!(stream_state(&ctx, stream), Ok(Word::NIL));
     assert_eq!(stream_element_type(&ctx, stream), Ok(name));
     assert_eq!(stream_external_format(&ctx, stream), Ok(lambda));
-    assert_eq!(stream_implementation(&ctx, stream), Ok(code.as_word()));
+    assert_eq!(stream_implementation(&ctx, stream), Ok(code.into()));
     let layout = runtime
         .register_structure_layout(1)
         .unwrap_or_else(|error| panic!("layout: {error:?}"));

@@ -175,6 +175,16 @@ fn direct_heap_wrappers_and_unregistered_code_errors_are_observable() {
         ),
         Err(ncl_sys::CodeError::NotRegistered)
     );
+    assert!(!ncl_sys::write_cons_word(&mut thread, object, 0, Word::TRUE));
+}
+
+#[test]
+fn public_code_write_wrapper_reports_bounds() {
+    let Ok(mut code) = ncl_sys::alloc_code(1) else {
+        return;
+    };
+    assert_eq!(ncl_sys::write_code(&mut code, 0, &[7]), Ok(()));
+    assert_eq!(ncl_sys::write_code(&mut code, 1, &[8]), Err(ncl_sys::CodeError::OutOfBounds));
 }
 
 #[test]

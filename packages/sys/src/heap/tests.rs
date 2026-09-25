@@ -8,6 +8,7 @@ fn tags_round_trip() {
     let v = Word::fixnum(-42);
     assert_eq!(v.as_fixnum(), Some(-42));
     assert!(Word::NIL.is_list());
+    assert_eq!(format!("{:?}", v), "Word(0xffffffffffffffac)");
 }
 
 #[test]

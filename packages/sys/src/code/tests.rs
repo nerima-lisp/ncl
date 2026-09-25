@@ -132,6 +132,45 @@ fn map_decode_lookup_and_scan() {
 }
 
 #[test]
+fn map_decode_rejects_truncated_and_invalid_contracts() {
+    assert_eq!(SafepointMap::decode(&[], 1), Err("truncated safepoint header"));
+
+    let mut bytes = vec![0; 16];
+    bytes[6..8].copy_from_slice(&2_u16.to_le_bytes());
+    assert_eq!(SafepointMap::decode(&bytes, 1), Err("invalid slot counts"));
+
+    let mut bytes = vec![0; 16];
+    bytes[6..8].copy_from_slice(&3_u16.to_le_bytes());
+    bytes[8..10].copy_from_slice(&3_u16.to_le_bytes());
+    assert_eq!(SafepointMap::decode(&bytes, 1), Err("truncated slot bitmap"));
+
+    let mut bytes = vec![0; 16];
+    bytes[6..8].copy_from_slice(&3_u16.to_le_bytes());
+    bytes[8..10].copy_from_slice(&3_u16.to_le_bytes());
+    bytes.push(0);
+    assert_eq!(SafepointMap::decode(&bytes, 1), Err("invalid header bitmap"));
+
+    let mut bytes = vec![0; 16];
+    bytes[6..8].copy_from_slice(&3_u16.to_le_bytes());
+    bytes[8..10].copy_from_slice(&3_u16.to_le_bytes());
+    bytes[10..12].copy_from_slice(&1_u16.to_le_bytes());
+    bytes.push(0b0000_0100);
+    assert_eq!(SafepointMap::decode(&bytes, 1), Err("truncated register ids"));
+}
+
+#[test]
+fn safepoint_map_accessors_report_entries_and_liveness() {
+    let mut bytes = vec![0; 16];
+    bytes[6..8].copy_from_slice(&3_u16.to_le_bytes());
+    bytes[8..10].copy_from_slice(&3_u16.to_le_bytes());
+    bytes.push(0b0000_0100);
+    let map = SafepointMap::decode(&bytes, 1).unwrap_or_default();
+    assert_eq!(map.entries().len(), 1);
+    assert!(SafepointMap::is_slot_live(&map.entries()[0], 2));
+    assert!(!SafepointMap::is_slot_live(&map.entries()[0], 3));
+}
+
+#[test]
 fn frame_chain_forwards_function_and_live_slots() {
     let mut bytes = vec![0; 16];
     bytes[0..4].copy_from_slice(&0u32.to_le_bytes());

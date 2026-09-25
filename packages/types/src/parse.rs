@@ -2,8 +2,9 @@
 
 use ncl_object::{ObjectRef, ThreadContext, Word, car, cdr, classify_object, symbol_name};
 
+use crate::adapter::from_word;
 use crate::text::string_to_upper;
-use crate::{ArrayDimensions, NamedType, TypeError, TypeSpecifier};
+use crate::{ArrayDimension, ArrayDimensions, IntegerBound, NamedType, TypeError, TypeSpecifier};
 
 /// Parse a type specifier form into a [`TypeSpecifier`].
 ///
@@ -41,7 +42,7 @@ fn parse_atom(ctx: &ThreadContext, spec: Word) -> Result<TypeSpecifier, TypeErro
     NamedType::from_name(&text).map_or_else(
         || {
             Ok(TypeSpecifier::Deftype {
-                name: spec,
+                name: text,
                 args: Vec::new(),
             })
         },
@@ -67,8 +68,11 @@ fn parse_list(ctx: &mut ThreadContext, spec: Word) -> Result<TypeSpecifier, Type
         "VECTOR" => parse_vector(ctx, tail),
         "FUNCTION" => parse_function(ctx, tail),
         _ => Ok(TypeSpecifier::Deftype {
-            name: head,
-            args: list_to_words(ctx, tail)?,
+            name: operator_name(ctx, head)?,
+            args: list_to_words(ctx, tail)?
+                .into_iter()
+                .map(|word| from_word(ctx, word))
+                .collect::<Result<_, _>>()?,
         }),
     }
 }
@@ -96,16 +100,24 @@ fn expect_end(list: Word) -> Result<(), TypeError> {
     }
 }
 
-fn parse_bound(ctx: &mut ThreadContext, list: Word) -> Result<(Option<Word>, Word), TypeError> {
+fn parse_bound(ctx: &mut ThreadContext, list: Word) -> Result<(IntegerBound, Word), TypeError> {
     if list == Word::NIL {
-        return Ok((None, Word::NIL));
+        return Ok((IntegerBound::Unbounded, Word::NIL));
     }
     let first = car(ctx, list)?;
     let rest = cdr(ctx, list)?;
     let bound = if is_star(ctx, first)? {
-        None
+        IntegerBound::Unbounded
+    } else if let Some(value) = first.as_fixnum() {
+        IntegerBound::Inclusive(value)
+    } else if first.is_list() {
+        IntegerBound::Exclusive(
+            single(ctx, first)?
+                .as_fixnum()
+                .ok_or(TypeError::InvalidSpecifier(first))?,
+        )
     } else {
-        Some(first)
+        return Err(TypeError::InvalidSpecifier(first));
     };
     Ok((bound, rest))
 }
@@ -132,15 +144,25 @@ fn parse_not(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier, TypeE
 }
 
 fn parse_member(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier, TypeError> {
-    Ok(TypeSpecifier::Member(list_to_words(ctx, tail)?))
+    Ok(TypeSpecifier::Member(
+        list_to_words(ctx, tail)?
+            .into_iter()
+            .map(|word| from_word(ctx, word))
+            .collect::<Result<_, _>>()?,
+    ))
 }
 
 fn parse_eql(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier, TypeError> {
-    Ok(TypeSpecifier::Eql(single(ctx, tail)?))
+    let item = single(ctx, tail)?;
+    Ok(TypeSpecifier::Eql(from_word(ctx, item)?))
 }
 
 fn parse_satisfies(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier, TypeError> {
-    Ok(TypeSpecifier::Satisfies(single(ctx, tail)?))
+    let predicate = single(ctx, tail)?;
+    Ok(TypeSpecifier::Satisfies(string_to_upper(
+        ctx,
+        symbol_name(ctx, predicate)?,
+    )?))
 }
 
 #[allow(clippy::similar_names)]
@@ -173,7 +195,10 @@ fn parse_vector(ctx: &mut ThreadContext, tail: Word) -> Result<TypeSpecifier, Ty
     let size = if rest == Word::NIL {
         None
     } else {
-        Some(single(ctx, rest)?)
+        Some({
+            let item = single(ctx, rest)?;
+            parse_array_dimension(ctx, item)?
+        })
     };
     Ok(TypeSpecifier::Vector { element_type, size })
 }
@@ -255,16 +280,21 @@ fn parse_dimensions(
         let mut cursor = first;
         while cursor != Word::NIL {
             let item = car(ctx, cursor)?;
-            ranks.push(if is_star(ctx, item)? {
-                None
-            } else {
-                Some(item)
-            });
+            ranks.push(parse_array_dimension(ctx, item)?);
             cursor = cdr(ctx, cursor)?;
         }
         return Ok(Some(ArrayDimensions::Ranks(ranks)));
     }
     Err(TypeError::InvalidSpecifier(first))
+}
+
+fn parse_array_dimension(ctx: &ThreadContext, word: Word) -> Result<ArrayDimension, TypeError> {
+    if is_star(ctx, word)? {
+        return Ok(ArrayDimension::Any);
+    }
+    let value = word.as_fixnum().ok_or(TypeError::InvalidSpecifier(word))?;
+    let value = usize::try_from(value).map_err(|_| TypeError::InvalidSpecifier(word))?;
+    Ok(ArrayDimension::Exact(value))
 }
 
 fn single(ctx: &mut ThreadContext, tail: Word) -> Result<Word, TypeError> {

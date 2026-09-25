@@ -3,7 +3,10 @@
 mod unicode_data;
 
 use ncl_object::{
-    Builtin, BuiltinImplementation, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Parameter, ParameterType,
+    Runtime, ThreadContext, Word, make_simple_vector, make_string, simple_vector_length,
+    simple_vector_ref, string_length, string_ref,
 };
 
 /// Return the Unicode `General_Category` abbreviation for a scalar value.
@@ -46,30 +49,30 @@ fn character(value: Word) -> Result<char, ObjectError> {
 
 #[allow(clippy::missing_const_for_fn, clippy::unnecessary_wraps)]
 fn characterp_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(characterp(args[0]))
+    Ok(characterp(args.required(0)?))
 }
 
 fn char_code_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(Word::fixnum(i64::from(character(args[0])? as u32)))
+    Ok(Word::fixnum(i64::from(character(args.required(0)?)? as u32)))
 }
 
 fn code_char_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let code = args[0].as_fixnum().ok_or(ObjectError::TypeError)?;
+    let code = args.required(0)?.as_fixnum().ok_or(ObjectError::TypeError)?;
     let code = u32::try_from(code).map_err(|_| ObjectError::TypeError)?;
     char::from_u32(code)
         .map(|character| Word::character(character as u32))
@@ -78,6 +81,10 @@ fn code_char_builtin(
 
 fn character_arg(value: Word) -> Result<char, ObjectError> {
     character(value)
+}
+
+fn builtin_words(args: &BuiltinArgs<'_>) -> Vec<Word> {
+    (0..args.len()).filter_map(|index| args.get(index)).collect()
 }
 
 fn char_predicate<F>(args: &[Word], predicate: F) -> Result<Word, ObjectError>
@@ -125,60 +132,60 @@ where
 }
 
 fn alpha_char_p_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(if character_arg(args[0])?.is_alphabetic() {
+    Ok(if character_arg(args.required(0)?)?.is_alphabetic() {
         Word::TRUE
     } else {
         Word::NIL
     })
 }
 fn alphanumericp_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(if character_arg(args[0])?.is_alphanumeric() {
+    Ok(if character_arg(args.required(0)?)?.is_alphanumeric() {
         Word::TRUE
     } else {
         Word::NIL
     })
 }
 fn upper_case_p_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(if character_arg(args[0])?.is_uppercase() {
+    Ok(if character_arg(args.required(0)?)?.is_uppercase() {
         Word::TRUE
     } else {
         Word::NIL
     })
 }
 fn lower_case_p_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(if character_arg(args[0])?.is_lowercase() {
+    Ok(if character_arg(args.required(0)?)?.is_lowercase() {
         Word::TRUE
     } else {
         Word::NIL
     })
 }
 fn both_case_p_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let c = character_arg(args[0])?;
+    let c = character_arg(args.required(0)?)?;
     Ok(if c.is_uppercase() || c.is_lowercase() {
         Word::TRUE
     } else {
@@ -186,398 +193,535 @@ fn both_case_p_builtin(
     })
 }
 fn digit_char_p_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let c = character_arg(args[0])?;
+    let c = character_arg(args.required(0)?)?;
     Ok(c.to_digit(36)
         .map_or(Word::NIL, |n| Word::fixnum(i64::from(n))))
 }
 fn char_upcase_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    simple_char_builtin(args, |c| c.to_uppercase().next().unwrap_or(c))
+    simple_char_builtin(&builtin_words(args), |c| c.to_uppercase().next().unwrap_or(c))
 }
 fn char_downcase_builtin(
-    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
-    args: &[Word],
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    simple_char_builtin(args, |c| c.to_lowercase().next().unwrap_or(c))
+    simple_char_builtin(&builtin_words(args), |c| c.to_lowercase().next().unwrap_or(c))
 }
 fn char_int_builtin(
-    runtime: &Runtime,
     ctx: &mut ThreadContext,
-    args: &[Word],
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_code_builtin(runtime, ctx, args, values)
+    char_code_builtin(ctx, runtime, args, values)
 }
 fn general_category_builtin(
-    runtime: &Runtime,
     ctx: &mut ThreadContext,
-    args: &[Word],
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let category =
-        general_category(character_arg(args[0])? as u32).ok_or(ObjectError::TypeError)?;
+    let category = general_category(character_arg(args.required(0)?)? as u32)
+        .ok_or(ObjectError::TypeError)?;
     ncl_object::make_string(ctx, runtime, &category.chars().collect::<Vec<_>>())
 }
 
-fn char_equal_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_compare_builtin(a, |x, y| x == y)
-}
-fn char_not_equal_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_compare_builtin(a, |x, y| x != y)
-}
-fn char_less_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_compare_builtin(a, |x, y| x < y)
-}
-fn char_greater_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_compare_builtin(a, |x, y| x > y)
-}
-fn char_not_greater_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_compare_builtin(a, |x, y| x <= y)
-}
-fn char_not_less_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_compare_builtin(a, |x, y| x >= y)
-}
-fn char_equal_ci_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_case_compare(a, |x, y| x == y)
-}
-fn char_not_equal_ci_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_case_compare(a, |x, y| x != y)
-}
-fn char_less_ci_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_case_compare(a, |x, y| x < y)
-}
-fn char_greater_ci_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_case_compare(a, |x, y| x > y)
-}
-fn char_not_greater_ci_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_case_compare(a, |x, y| x <= y)
-}
-fn char_not_less_ci_builtin(
-    _: &Runtime,
-    _: &mut ThreadContext,
-    a: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    char_case_compare(a, |x, y| x >= y)
+fn unicode_string_chars(ctx: &ThreadContext, value: Word) -> Result<Vec<char>, ObjectError> {
+    (0..string_length(ctx, value)?).map(|index| string_ref(ctx, value, index)).collect()
 }
 
-/// Register the implemented character builtins and Unicode entry point.
-///
-///
-/// # Errors
-///
-/// Returns an allocation or symbol registration error.
-#[allow(clippy::too_many_lines)]
+fn make_text(ctx: &mut ThreadContext, runtime: &Runtime, chars: Vec<char>) -> Result<Word, ObjectError> {
+    make_string(ctx, runtime, &chars)
+}
+
+fn decompose_char(value: char, compatibility: bool, output: &mut Vec<char>) {
+    let codepoint = value as u32;
+    if (0xAC00..0xD7A4).contains(&codepoint) {
+        let index = codepoint - 0xAC00;
+        output.push(char::from_u32(0x1100 + index / 588).unwrap_or(value));
+        output.push(char::from_u32(0x1161 + (index % 588) / 28).unwrap_or(value));
+        if index % 28 != 0 { output.push(char::from_u32(0x11A7 + index % 28).unwrap_or(value)); }
+        return;
+    }
+    if let Some((_, is_compatibility, values)) = unicode_data::DECOMPOSITIONS.iter().find(|entry| entry.0 == codepoint) {
+        if compatibility || !is_compatibility {
+            for &part in *values { if let Some(part) = char::from_u32(part) { decompose_char(part, compatibility, output); } }
+            return;
+        }
+    }
+    output.push(value);
+}
+
+fn combining_class(value: char) -> u8 {
+    unicode_data::COMBINING_CLASSES.iter().find(|entry| entry.0 == value as u32).map_or(0, |entry| entry.1)
+}
+
+fn normalize(chars: &[char], compatibility: bool, compose: bool) -> Vec<char> {
+    let mut decomposed = Vec::new();
+    for &value in chars { decompose_char(value, compatibility, &mut decomposed); }
+    let mut reordered = Vec::with_capacity(decomposed.len());
+    for value in decomposed {
+        let class = combining_class(value);
+        if class == 0 { reordered.push(value); } else {
+            let mut position = reordered.len();
+            while position > 0 && combining_class(reordered[position - 1]) > class { position -= 1; }
+            reordered.insert(position, value);
+        }
+    }
+    if !compose { return reordered; }
+    let mut result = Vec::with_capacity(reordered.len());
+    for value in reordered {
+        if let Some(&starter) = result.last() {
+            if combining_class(value) != 0 {
+                if let Some((_, _, composed)) = unicode_data::COMPOSITIONS.iter().find(|entry| entry.0 == starter as u32 && entry.1 == value as u32) {
+                    result.pop(); result.push(char::from_u32(*composed).unwrap_or(value)); continue;
+                }
+            }
+        }
+        result.push(value);
+    }
+    result
+}
+
+fn transform_string<F>(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, map: F) -> Result<Word, ObjectError>
+where F: Fn(&[char]) -> Vec<char> {
+    make_text(ctx, runtime, map(&unicode_string_chars(ctx, args.required(0)?)?))
+}
+
+fn normalize_nfc_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { transform_string(ctx, runtime, args, |s| normalize(s, false, true)) }
+fn normalize_nfd_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { transform_string(ctx, runtime, args, |s| normalize(s, false, false)) }
+fn normalize_nfkc_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { transform_string(ctx, runtime, args, |s| normalize(s, true, true)) }
+fn normalize_nfkd_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { transform_string(ctx, runtime, args, |s| normalize(s, true, false)) }
+fn full_upcase_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { transform_string(ctx, runtime, args, |s| s.iter().flat_map(|c| c.to_uppercase()).collect()) }
+fn full_downcase_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { transform_string(ctx, runtime, args, |s| s.iter().flat_map(|c| c.to_lowercase()).collect()) }
+fn full_titlecase_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> {
+    transform_string(ctx, runtime, args, |s| { let mut start = true; s.iter().flat_map(|c| { let out: Vec<char> = if start { c.to_uppercase().collect() } else { c.to_lowercase().collect() }; start = c.is_whitespace() || c.is_ascii_punctuation(); out }).collect() })
+}
+
+fn string_to_utf8_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> {
+    let bytes = unicode_string_chars(ctx, args.required(0)?)?.iter().collect::<String>().into_bytes();
+    make_simple_vector(ctx, runtime, &bytes.into_iter().map(|byte| Word::fixnum(i64::from(byte))).collect::<Vec<_>>())
+}
+fn utf8_to_string_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> {
+    let vector = args.required(0)?;
+    let mut bytes = Vec::with_capacity(simple_vector_length(ctx, vector)?);
+    for index in 0..simple_vector_length(ctx, vector)? { bytes.push(u8::try_from(simple_vector_ref(ctx, vector, index)?.as_fixnum().ok_or(ObjectError::TypeError)?).map_err(|_| ObjectError::TypeError)?); }
+    let text = String::from_utf8(bytes).map_err(|_| ObjectError::TypeError)?;
+    make_text(ctx, runtime, text.chars().collect())
+}
+
+fn grapheme_boundaries_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> {
+    let chars = unicode_string_chars(ctx, args.required(0)?)?;
+    let mut boundaries = vec![Word::fixnum(0)];
+    let mut regional_count = 0usize;
+    for (index, &current) in chars.iter().enumerate() {
+        let previous = index.checked_sub(1).and_then(|i| chars.get(i)).copied();
+        let extend = general_category(current as u32).is_some_and(|category| matches!(category, "Mn" | "Mc" | "Me")) || current == '\u{200D}' || (0xFE00..=0xFE0F).contains(&(current as u32));
+        let regional = (0x1F1E6..=0x1F1FF).contains(&(current as u32));
+        if previous.is_some_and(|p| !extend && p != '\u{200D}' && (!regional || regional_count % 2 == 0)) { boundaries.push(Word::fixnum(i64::try_from(index).map_err(|_| ObjectError::Layout)?)); }
+        regional_count = if regional { regional_count + 1 } else { 0 };
+    }
+    boundaries.push(Word::fixnum(i64::try_from(chars.len()).map_err(|_| ObjectError::Layout)?));
+    make_simple_vector(ctx, runtime, &boundaries)
+}
+
+fn char_equal_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_compare_builtin(&builtin_words(a), |x, y| x == y)
+}
+fn char_not_equal_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_compare_builtin(&builtin_words(a), |x, y| x != y)
+}
+fn char_less_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_compare_builtin(&builtin_words(a), |x, y| x < y)
+}
+fn char_greater_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_compare_builtin(&builtin_words(a), |x, y| x > y)
+}
+fn char_not_greater_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_compare_builtin(&builtin_words(a), |x, y| x <= y)
+}
+fn char_not_less_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_compare_builtin(&builtin_words(a), |x, y| x >= y)
+}
+fn char_equal_ci_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_case_compare(&builtin_words(a), |x, y| x == y)
+}
+fn char_not_equal_ci_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_case_compare(&builtin_words(a), |x, y| x != y)
+}
+fn char_less_ci_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_case_compare(&builtin_words(a), |x, y| x < y)
+}
+fn char_greater_ci_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_case_compare(&builtin_words(a), |x, y| x > y)
+}
+fn char_not_greater_ci_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_case_compare(&builtin_words(a), |x, y| x <= y)
+}
+fn char_not_less_ci_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    a: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    char_case_compare(&builtin_words(a), |x, y| x >= y)
+}
+
+fn string_designator(ctx: &ThreadContext, value: Word) -> Result<Word, ObjectError> {
+    match ncl_object::classify_object(ctx, value) {
+        ncl_object::ObjectRef::String(_) => Ok(value),
+        ncl_object::ObjectRef::Symbol(_) => ncl_object::symbol_name(ctx, value),
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn string_chars(ctx: &ThreadContext, value: Word) -> Result<Vec<char>, ObjectError> {
+    if value.is_character() { return Ok(vec![character(value)?]); }
+    let string = string_designator(ctx, value)?;
+    let length = ncl_object::string_length(ctx, string)?;
+    (0..length)
+        .map(|index| ncl_object::string_ref(ctx, string, index))
+        .collect()
+}
+
+fn make_result_string(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    chars: impl IntoIterator<Item = char>,
+) -> Result<Word, ObjectError> {
+    ncl_object::make_string(ctx, runtime, &chars.into_iter().collect::<Vec<_>>())
+}
+
+fn stringp_builtin(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    Ok(if matches!(ncl_object::classify_object(_ctx, args.required(0)?), ncl_object::ObjectRef::String(_)) {
+        Word::TRUE
+    } else {
+        Word::NIL
+    })
+}
+
+fn string_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let value = args.required(0)?;
+    match ncl_object::classify_object(ctx, value) {
+        ncl_object::ObjectRef::String(_) | ncl_object::ObjectRef::Symbol(_) => Ok(string_designator(ctx, value)?),
+        ncl_object::ObjectRef::Character(_) => make_result_string(ctx, runtime, [character(value)?]),
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn string_compare(ctx: &ThreadContext, args: &BuiltinArgs<'_>, fold: bool) -> Result<Vec<char>, ObjectError> {
+    let chars = string_chars(ctx, args.required(0)?)?;
+    if fold {
+        Ok(chars.into_iter().flat_map(|c| c.to_lowercase()).collect())
+    } else {
+        Ok(chars)
+    }
+}
+
+fn string_compare_word(ctx: &ThreadContext, value: Word, fold: bool) -> Result<Vec<char>, ObjectError> {
+    let chars = string_chars(ctx, value)?;
+    if fold { Ok(chars.into_iter().flat_map(|c| c.to_lowercase()).collect()) } else { Ok(chars) }
+}
+
+fn string_compare_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+    predicate: fn(std::cmp::Ordering) -> bool,
+    fold: bool,
+) -> Result<Word, ObjectError> {
+    let left = string_compare(ctx, args, fold)?;
+    let right = string_compare_word(ctx, args.required(1)?, fold)?;
+    Ok(if predicate(left.as_slice().cmp(right.as_slice())) { Word::TRUE } else { Word::NIL })
+}
+
+fn string_equal_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering == std::cmp::Ordering::Equal, false)
+}
+fn string_not_equal_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering != std::cmp::Ordering::Equal, false)
+}
+fn string_less_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering == std::cmp::Ordering::Less, false)
+}
+fn string_greater_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering == std::cmp::Ordering::Greater, false)
+}
+fn string_not_greater_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering != std::cmp::Ordering::Greater, false)
+}
+fn string_not_less_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering != std::cmp::Ordering::Less, false)
+}
+fn string_equal_ci_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering == std::cmp::Ordering::Equal, true)
+}
+fn string_not_equal_ci_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering != std::cmp::Ordering::Equal, true)
+}
+fn string_less_ci_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering == std::cmp::Ordering::Less, true)
+}
+fn string_greater_ci_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering == std::cmp::Ordering::Greater, true)
+}
+fn string_not_greater_ci_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering != std::cmp::Ordering::Greater, true)
+}
+fn string_not_less_ci_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    string_compare_builtin(ctx, runtime, args, values, |ordering| ordering != std::cmp::Ordering::Less, true)
+}
+
+fn string_case_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    upper: bool,
+) -> Result<Word, ObjectError> {
+    let chars = string_chars(ctx, args.required(0)?)?;
+    make_result_string(ctx, runtime, chars.into_iter().flat_map(|c| if upper { c.to_uppercase().collect::<Vec<_>>() } else { c.to_lowercase().collect::<Vec<_>>() }))
+}
+
+fn string_upcase_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { string_case_builtin(ctx, runtime, args, true) }
+fn string_downcase_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { string_case_builtin(ctx, runtime, args, false) }
+fn string_capitalize_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> {
+    let mut start = true;
+    let chars = string_chars(ctx, args.required(0)?)?;
+    make_result_string(ctx, runtime, chars.into_iter().flat_map(|character| {
+        let mapped = if start { character.to_uppercase().collect::<Vec<_>>() } else { character.to_lowercase().collect::<Vec<_>>() };
+        start = !character.is_alphanumeric();
+        mapped
+    }))
+}
+
+fn make_string_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> {
+    let size = usize::try_from(args.required(0)?.as_fixnum().ok_or(ObjectError::TypeError)?).map_err(|_| ObjectError::TypeError)?;
+    let initial = args.get(1).map_or(Ok(' '), character).map_err(|_| ObjectError::TypeError)?;
+    make_result_string(ctx, runtime, std::iter::repeat_n(initial, size))
+}
+
+fn trim_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, side: u8) -> Result<Word, ObjectError> {
+    let bag = string_chars(ctx, args.required(0)?)?;
+    let input = string_chars(ctx, args.required(1)?)?;
+    let mut start = 0;
+    let mut end = input.len();
+    if side & 1 != 0 { while start < end && bag.contains(&input[start]) { start += 1; } }
+    if side & 2 != 0 { while end > start && bag.contains(&input[end - 1]) { end -= 1; } }
+    make_result_string(ctx, runtime, input[start..end].iter().copied())
+}
+fn string_trim_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { trim_builtin(ctx, runtime, args, 3) }
+fn string_left_trim_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { trim_builtin(ctx, runtime, args, 1) }
+fn string_right_trim_builtin(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { trim_builtin(ctx, runtime, args, 2) }
+
+const CHARACTER: Parameter = Parameter { name: BuiltinName::new("CHARACTER"), ty: ParameterType::Any };
+const OBJECT: Parameter = Parameter { name: BuiltinName::new("OBJECT"), ty: ParameterType::Any };
+const CODE: Parameter = Parameter { name: BuiltinName::new("CODE"), ty: ParameterType::Fixnum };
+const STRING: Parameter = Parameter { name: BuiltinName::new("STRING"), ty: ParameterType::StringDesignator };
+const STRINGS: &[Parameter] = &[STRING, STRING];
+const REST_CHARACTER: Parameter = Parameter { name: BuiltinName::new("CHARACTERS"), ty: ParameterType::Any };
+const STRING_ARGS: &[Parameter] = &[STRING];
+const TRIM_ARGS: &[Parameter] = &[
+    Parameter { name: BuiltinName::new("CHAR-BAG"), ty: ParameterType::StringDesignator },
+    STRING,
+];
+const SIZE: Parameter = Parameter { name: BuiltinName::new("SIZE"), ty: ParameterType::Fixnum };
+const INITIAL_ELEMENT: Parameter = Parameter { name: BuiltinName::new("INITIAL-ELEMENT"), ty: ParameterType::Any };
+
+fn descriptor(lambda_list: LambdaList) -> Builtin {
+    Builtin { convention: if lambda_list.is_direct() { BuiltinConvention::Direct(Arity::exact(lambda_list.required.len() as u8)) } else { BuiltinConvention::Adapted }, lambda_list }
+}
+
+fn identity_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
+    Ok((0..args.len()).filter_map(|index| args.get(index)).collect())
+}
+
+/// Register the Common Lisp character and string builtins owned by this crate.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
-    let characterp = BuiltinImplementation::direct(
-        ncl_object::Builtin {
-            arity: 1,
-            direct: true,
-            lambda_list: "object",
-        },
-        characterp_builtin,
-    );
-    runtime.register_builtin(&mut ctx, "COMMON-LISP", "CHARACTERP", characterp)?;
-    let char_code = BuiltinImplementation::direct(
-        ncl_object::Builtin {
-            arity: 1,
-            direct: true,
-            lambda_list: "character",
-        },
-        char_code_builtin,
-    );
-    runtime.register_builtin(&mut ctx, "COMMON-LISP", "CHAR-CODE", char_code)?;
-    let code_char = BuiltinImplementation::direct(
-        ncl_object::Builtin {
-            arity: 1,
-            direct: true,
-            lambda_list: "code",
-        },
-        code_char_builtin,
-    );
-    runtime.register_builtin(&mut ctx, "COMMON-LISP", "CODE-CHAR", code_char)?;
-    let entries: &[(&str, Builtin, ncl_object::RustBuiltin)] = &[
-        (
-            "ALPHA-CHAR-P",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
-            alpha_char_p_builtin,
-        ),
-        (
-            "ALPHANUMERICP",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
-            alphanumericp_builtin,
-        ),
-        (
-            "UPPER-CASE-P",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
-            upper_case_p_builtin,
-        ),
-        (
-            "LOWER-CASE-P",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
-            lower_case_p_builtin,
-        ),
-        (
-            "BOTH-CASE-P",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
-            both_case_p_builtin,
-        ),
-        (
-            "DIGIT-CHAR-P",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
-            digit_char_p_builtin,
-        ),
-        (
-            "CHAR-UPCASE",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
-            char_upcase_builtin,
-        ),
-        (
-            "CHAR-DOWNCASE",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
-            char_downcase_builtin,
-        ),
-        (
-            "CHAR-INT",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
-            char_int_builtin,
-        ),
-        (
-            "GENERAL-CATEGORY",
-            Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "character",
-            },
+    macro_rules! register {
+        ($name:literal, $params:expr, $function:ident) => {
+            let descriptor = descriptor($params);
+            let implementation = if descriptor.lambda_list.is_direct() {
+                BuiltinImplementation::direct(descriptor, $function)
+            } else {
+                BuiltinImplementation::adapted(descriptor, $function, identity_adapter)
+            };
+            runtime.register_builtin(&mut ctx, BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new($name)), implementation)?;
+        };
+    }
+    register!("CHARACTERP", LambdaList::fixed(&[OBJECT]), characterp_builtin);
+    register!("CHAR-CODE", LambdaList::fixed(&[CHARACTER]), char_code_builtin);
+    register!("CODE-CHAR", LambdaList::fixed(&[CODE]), code_char_builtin);
+    register!("ALPHA-CHAR-P", LambdaList::fixed(&[CHARACTER]), alpha_char_p_builtin);
+    register!("ALPHANUMERICP", LambdaList::fixed(&[CHARACTER]), alphanumericp_builtin);
+    register!("UPPER-CASE-P", LambdaList::fixed(&[CHARACTER]), upper_case_p_builtin);
+    register!("LOWER-CASE-P", LambdaList::fixed(&[CHARACTER]), lower_case_p_builtin);
+    register!("BOTH-CASE-P", LambdaList::fixed(&[CHARACTER]), both_case_p_builtin);
+    register!("DIGIT-CHAR-P", LambdaList::fixed(&[CHARACTER]), digit_char_p_builtin);
+    register!("CHAR-UPCASE", LambdaList::fixed(&[CHARACTER]), char_upcase_builtin);
+    register!("CHAR-DOWNCASE", LambdaList::fixed(&[CHARACTER]), char_downcase_builtin);
+    register!("CHAR-INT", LambdaList::fixed(&[CHARACTER]), char_int_builtin);
+    register!("CHAR=", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_equal_builtin);
+    register!("CHAR/=", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_not_equal_builtin);
+    register!("CHAR<", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_less_builtin);
+    register!("CHAR>", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_greater_builtin);
+    register!("CHAR<=", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_not_greater_builtin);
+    register!("CHAR>=", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_not_less_builtin);
+    register!("CHAR-EQUAL", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_equal_ci_builtin);
+    register!("CHAR-NOT-EQUAL", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_not_equal_ci_builtin);
+    register!("CHAR-LESSP", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_less_ci_builtin);
+    register!("CHAR-GREATERP", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_greater_ci_builtin);
+    register!("CHAR-NOT-GREATERP", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_not_greater_ci_builtin);
+    register!("CHAR-NOT-LESSP", LambdaList::with_rest(&[CHARACTER], REST_CHARACTER), char_not_less_ci_builtin);
+    register!("STRINGP", LambdaList::fixed(&[OBJECT]), stringp_builtin);
+    register!("STRING", LambdaList::fixed(&[OBJECT]), string_builtin);
+    register!("STRING=", LambdaList::fixed(STRINGS), string_equal_builtin);
+    register!("STRING/=", LambdaList::fixed(STRINGS), string_not_equal_builtin);
+    register!("STRING<", LambdaList::fixed(STRINGS), string_less_builtin);
+    register!("STRING>", LambdaList::fixed(STRINGS), string_greater_builtin);
+    register!("STRING<=", LambdaList::fixed(STRINGS), string_not_greater_builtin);
+    register!("STRING>=", LambdaList::fixed(STRINGS), string_not_less_builtin);
+    register!("STRING-EQUAL", LambdaList::fixed(STRINGS), string_equal_ci_builtin);
+    register!("STRING-NOT-EQUAL", LambdaList::fixed(STRINGS), string_not_equal_ci_builtin);
+    register!("STRING-LESSP", LambdaList::fixed(STRINGS), string_less_ci_builtin);
+    register!("STRING-GREATERP", LambdaList::fixed(STRINGS), string_greater_ci_builtin);
+    register!("STRING-NOT-GREATERP", LambdaList::fixed(STRINGS), string_not_greater_ci_builtin);
+    register!("STRING-NOT-LESSP", LambdaList::fixed(STRINGS), string_not_less_ci_builtin);
+    register!("STRING-UPCASE", LambdaList::fixed(STRING_ARGS), string_upcase_builtin);
+    register!("STRING-DOWNCASE", LambdaList::fixed(STRING_ARGS), string_downcase_builtin);
+    register!("STRING-CAPITALIZE", LambdaList::fixed(STRING_ARGS), string_capitalize_builtin);
+    register!("MAKE-STRING", LambdaList::with_optional(&[SIZE], &[INITIAL_ELEMENT]), make_string_builtin);
+    register!("STRING-TRIM", LambdaList::fixed(TRIM_ARGS), string_trim_builtin);
+    register!("STRING-LEFT-TRIM", LambdaList::fixed(TRIM_ARGS), string_left_trim_builtin);
+    register!("STRING-RIGHT-TRIM", LambdaList::fixed(TRIM_ARGS), string_right_trim_builtin);
+    macro_rules! register_unicode {
+        ($name:literal, $function:ident) => {
+            let descriptor = descriptor(LambdaList::fixed(&[STRING]));
+            runtime.register_builtin(
+                &mut ctx,
+                BuiltinIdentifier::new(BuiltinPackage::NclUnicode, BuiltinName::new($name)),
+                BuiltinImplementation::direct(descriptor, $function),
+            )?;
+        };
+    }
+    register_unicode!("NORMALIZE-NFC", normalize_nfc_builtin);
+    register_unicode!("NORMALIZE-NFD", normalize_nfd_builtin);
+    register_unicode!("NORMALIZE-NFKC", normalize_nfkc_builtin);
+    register_unicode!("NORMALIZE-NFKD", normalize_nfkd_builtin);
+    register_unicode!("FULL-UPCASE", full_upcase_builtin);
+    register_unicode!("FULL-DOWNCASE", full_downcase_builtin);
+    register_unicode!("FULL-TITLECASE", full_titlecase_builtin);
+    register_unicode!("STRING-TO-UTF8", string_to_utf8_builtin);
+    register_unicode!("UTF8-TO-STRING", utf8_to_string_builtin);
+    register_unicode!("GRAPHEME-BOUNDARIES", grapheme_boundaries_builtin);
+    runtime.register_builtin(
+        &mut ctx,
+        BuiltinIdentifier::new(BuiltinPackage::NclUnicode, BuiltinName::new("GENERAL-CATEGORY")),
+        BuiltinImplementation::direct(
+            descriptor(LambdaList::fixed(&[CHARACTER])),
             general_category_builtin,
         ),
-        (
-            "CHAR=",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_equal_builtin,
-        ),
-        (
-            "CHAR/=",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_not_equal_builtin,
-        ),
-        (
-            "CHAR<",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_less_builtin,
-        ),
-        (
-            "CHAR>",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_greater_builtin,
-        ),
-        (
-            "CHAR<=",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_not_greater_builtin,
-        ),
-        (
-            "CHAR>=",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_not_less_builtin,
-        ),
-        (
-            "CHAR-EQUAL",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_equal_ci_builtin,
-        ),
-        (
-            "CHAR-NOT-EQUAL",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_not_equal_ci_builtin,
-        ),
-        (
-            "CHAR-LESSP",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_less_ci_builtin,
-        ),
-        (
-            "CHAR-GREATERP",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_greater_ci_builtin,
-        ),
-        (
-            "CHAR-NOT-GREATERP",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_not_greater_ci_builtin,
-        ),
-        (
-            "CHAR-NOT-LESSP",
-            Builtin {
-                arity: 2,
-                direct: false,
-                lambda_list: "&rest characters",
-            },
-            char_not_less_ci_builtin,
-        ),
-    ];
-    for &(name, descriptor, function) in entries {
-        runtime.register_builtin(
-            &mut ctx,
-            "COMMON-LISP",
-            name,
-            BuiltinImplementation::direct(descriptor, function),
-        )?;
-    }
+    )?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::general_category;
+    use ncl_object::{FunctionObject, Runtime, ThreadContext, Word};
+
+    fn call(
+        runtime: &Runtime,
+        ctx: &mut ThreadContext,
+        name: &str,
+        args: &[Word],
+    ) -> Word {
+        let function = runtime
+            .function(ctx, "COMMON-LISP", name)
+            .and_then(|word| FunctionObject::try_from(word).ok())
+            .unwrap_or_else(|| panic!("missing builtin {name}"));
+        runtime
+            .call_builtin(ctx, function, args)
+            .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
+    }
 
     #[test]
     fn generated_unicode_categories_cover_scalar_boundaries() {
@@ -585,5 +729,33 @@ mod tests {
         assert_eq!(general_category('a' as u32), Some("Ll"));
         assert_eq!(general_category(0xD800), None);
         assert_eq!(general_category(0x11_0000), None);
+    }
+
+    #[test]
+    fn string_builtins_cover_comparison_case_trim_and_construction() {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap_or_else(|error| panic!("context: {error:?}"));
+        super::register(&runtime).unwrap_or_else(|error| panic!("register: {error:?}"));
+
+        let hello = ncl_object::make_string(&mut ctx, &runtime, &['H', 'i'])
+            .unwrap_or_else(|error| panic!("string: {error:?}"));
+        let hi = ncl_object::make_string(&mut ctx, &runtime, &['h', 'i'])
+            .unwrap_or_else(|error| panic!("string: {error:?}"));
+        assert_eq!(call(&runtime, &mut ctx, "STRING-EQUAL", &[hello, hi]), Word::TRUE);
+
+        let upper = call(&runtime, &mut ctx, "STRING-UPCASE", &[hi]);
+        assert_eq!(ncl_object::string_length(&ctx, upper), Ok(2));
+        assert_eq!(ncl_object::string_ref(&ctx, upper, 0), Ok('H'));
+
+        let padded = ncl_object::make_string(&mut ctx, &runtime, &[' ', 'H', 'i', ' '])
+            .unwrap_or_else(|error| panic!("string: {error:?}"));
+        let spaces = ncl_object::make_string(&mut ctx, &runtime, &[' '])
+            .unwrap_or_else(|error| panic!("string: {error:?}"));
+        let trimmed = call(&runtime, &mut ctx, "STRING-TRIM", &[spaces, padded]);
+        assert_eq!(ncl_object::string_ref(&ctx, trimmed, 0), Ok('H'));
+
+        let made = call(&runtime, &mut ctx, "MAKE-STRING", &[Word::fixnum(3), Word::character('x' as u32)]);
+        assert_eq!(ncl_object::string_ref(&ctx, made, 2), Ok('x'));
     }
 }

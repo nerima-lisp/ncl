@@ -12,5 +12,8 @@ ncl-asm-aarch64 = { path = "../asm/aarch64" }
 ncl-object = { path = "../object" }
 ncl-sys = { path = "../sys" }
 
+[dev-dependencies]
+ncl-disasm = { path = "../disasm" }
+
 [lints]
 workspace = true

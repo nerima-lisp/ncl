@@ -337,19 +337,19 @@ fn remaining_object_kinds_round_trip() {
         Ok(Word::fixnum(2))
     );
     let instance = ncl_object::make_instance(&mut ctx, &runtime, Word::NIL, &[Word::fixnum(3)])
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Instance::from_word(Word::NIL));
     assert_eq!(ncl_object::slot_ref(&ctx, instance, 0), Ok(Word::fixnum(3)));
     assert!(ncl_object::slot_set(&mut ctx, instance, 0, Word::fixnum(4)).is_ok());
     let bignum = ncl_object::make_bignum_from_i128(&mut ctx, &runtime, -0x1_0000_0001)
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Bignum::from_word(Word::NIL));
     assert_eq!(ncl_object::bignum_limbs(&ctx, bignum), Ok(vec![1, 1]));
-    let double =
-        ncl_object::make_double(&mut ctx, &runtime, 1.25).unwrap_or_else(|_| Word::NIL.into());
+    let double = ncl_object::make_double(&mut ctx, &runtime, 1.25)
+        .unwrap_or_else(|_| ncl_object::DoubleFloat::from_word(Word::NIL));
     assert_eq!(ncl_object::double_value(&ctx, double), Ok(1.25));
     let code = ncl_object::make_code_object(&mut ctx, &runtime, 7, 4, bignum.into(), name, vector)
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::CodeObject::from_word(Word::NIL));
     let simple_fun = ncl_object::make_simple_fun(&mut ctx, &runtime, 8, name, specialized, code)
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Function::from_word(Word::NIL));
     let function = ncl_object::make_closure(
         &mut ctx,
         &runtime,
@@ -359,7 +359,7 @@ fn remaining_object_kinds_round_trip() {
         code,
         &[instance.into(), bignum.into(), double.into()],
     )
-    .unwrap_or_else(|_| Word::NIL.into());
+    .unwrap_or_else(|_| ncl_object::Function::from_word(Word::NIL));
     assert_eq!(ncl_object::function_entry(&ctx, function), Ok(7));
     assert_eq!(
         ncl_object::closure_ref(&ctx, function, 0),
@@ -382,12 +382,12 @@ fn remaining_object_kinds_round_trip() {
         Word::fixnum(9),
         Word::NIL,
     )
-    .unwrap_or_else(|_| Word::NIL.into());
+    .unwrap_or_else(|_| ncl_object::Stream::from_word(Word::NIL));
     assert_eq!(ncl_object::stream_state(&ctx, stream), Ok(Word::fixnum(9)));
     let ratio = ncl_object::make_ratio(&mut ctx, &runtime, bignum.into(), double.into())
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Ratio::from_word(Word::NIL));
     let complex = ncl_object::make_complex(&mut ctx, &runtime, ratio.into(), bignum.into())
-        .unwrap_or_else(|_| Word::NIL.into());
+        .unwrap_or_else(|_| ncl_object::Complex::from_word(Word::NIL));
     let readtable = ncl_object::make_readtable(
         &mut ctx,
         &runtime,
@@ -395,7 +395,7 @@ fn remaining_object_kinds_round_trip() {
         ratio.into(),
         Word::fixnum(2),
     )
-    .unwrap_or_else(|_| Word::NIL.into());
+    .unwrap_or_else(|_| ncl_object::Readtable::from_word(Word::NIL));
     let mut roots = [
         structure,
         instance.into(),
@@ -425,7 +425,7 @@ fn remaining_object_kinds_round_trip() {
     assert_eq!(classify_object(&ctx, roots[2]), ObjectRef::Bignum(roots[2]));
     assert!(ctx.collect(true).is_ok());
     assert_eq!(
-        ncl_object::bignum_limbs(&ctx, roots[2].into()),
+        ncl_object::bignum_limbs(&ctx, ncl_object::Bignum::from_word(roots[2])),
         Ok(vec![1, 1])
     );
     assert_eq!(
@@ -437,38 +437,41 @@ fn remaining_object_kinds_round_trip() {
         Ok(Word::fixnum(2))
     );
     assert_eq!(
-        ncl_object::slot_ref(&ctx, roots[1].into(), 0),
+        ncl_object::slot_ref(&ctx, ncl_object::Instance::from_word(roots[1]), 0),
         Ok(Word::fixnum(4))
     );
     assert_eq!(
-        ncl_object::closure_ref(&ctx, roots[5].into(), 0),
+        ncl_object::closure_ref(&ctx, ncl_object::Function::from_word(roots[5]), 0),
         Ok(roots[1])
     );
     assert_eq!(
-        ncl_object::closure_ref(&ctx, roots[5].into(), 1),
+        ncl_object::closure_ref(&ctx, ncl_object::Function::from_word(roots[5]), 1),
         Ok(roots[2])
     );
     assert_eq!(
-        ncl_object::closure_ref(&ctx, roots[5].into(), 2),
+        ncl_object::closure_ref(&ctx, ncl_object::Function::from_word(roots[5]), 2),
         Ok(roots[3])
     );
     assert_eq!(
-        ncl_object::code_entry(&ctx, roots[4].into()),
+        ncl_object::code_entry(&ctx, ncl_object::CodeObject::from_word(roots[4])),
         Ok(Word::fixnum(7))
     );
     assert_eq!(
-        ncl_object::code_size(&ctx, roots[4].into()),
+        ncl_object::code_size(&ctx, ncl_object::CodeObject::from_word(roots[4])),
         Ok(Word::fixnum(4))
     );
     assert_eq!(
-        ncl_object::code_constants(&ctx, roots[4].into()),
+        ncl_object::code_constants(&ctx, ncl_object::CodeObject::from_word(roots[4])),
         Ok(roots[2])
     );
     assert_eq!(
-        ncl_object::code_stack_map(&ctx, roots[4].into()),
+        ncl_object::code_stack_map(&ctx, ncl_object::CodeObject::from_word(roots[4])),
         Ok(roots[10])
     );
-    assert_eq!(ncl_object::code_debug(&ctx, roots[4].into()), Ok(roots[12]));
+    assert_eq!(
+        ncl_object::code_debug(&ctx, ncl_object::CodeObject::from_word(roots[4])),
+        Ok(roots[12])
+    );
     assert_eq!(string_ref(&ctx, roots[10], 3), Ok('E'));
     assert_eq!(symbol_name(&ctx, roots[11]), Ok(roots[10]));
     assert_eq!(simple_vector_ref(&ctx, roots[12], 1), Ok(Word::fixnum(22)));
@@ -476,22 +479,28 @@ fn remaining_object_kinds_round_trip() {
         ncl_object::specialized_array_ref(&ctx, roots[13], 1),
         Ok(Word::fixnum(32))
     );
-    assert_eq!(ncl_object::function_entry(&ctx, roots[14].into()), Ok(8));
-    assert_eq!(ncl_object::double_value(&ctx, roots[3].into()), Ok(1.25));
     assert_eq!(
-        ncl_object::ratio_numerator(&ctx, roots[7].into()),
+        ncl_object::function_entry(&ctx, ncl_object::Function::from_word(roots[14])),
+        Ok(8)
+    );
+    assert_eq!(
+        ncl_object::double_value(&ctx, ncl_object::DoubleFloat::from_word(roots[3])),
+        Ok(1.25)
+    );
+    assert_eq!(
+        ncl_object::ratio_numerator(&ctx, ncl_object::Ratio::from_word(roots[7])),
         Ok(roots[2])
     );
     assert_eq!(
-        ncl_object::complex_real(&ctx, roots[8].into()),
+        ncl_object::complex_real(&ctx, ncl_object::Complex::from_word(roots[8])),
         Ok(roots[7])
     );
     assert_eq!(
-        ncl_object::readtable_syntax(&ctx, roots[9].into()),
+        ncl_object::readtable_syntax(&ctx, ncl_object::Readtable::from_word(roots[9])),
         Ok(roots[8])
     );
     assert_eq!(
-        ncl_object::stream_state(&ctx, roots[6].into()),
+        ncl_object::stream_state(&ctx, ncl_object::Stream::from_word(roots[6])),
         Ok(Word::fixnum(9))
     );
     for token in tokens.into_iter().rev() {

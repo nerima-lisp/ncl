@@ -77,8 +77,11 @@ fn private_executable_helpers_accept_valid_layouts() {
         code: vec![0xc3],
         metadata: vec![1, 2],
     };
-    let (mut output, layout) = executable_layout(&image).expect("Mach layout");
-    write_mach_header(&mut output, MachArchitecture::X86_64, layout.commands).expect("Mach header");
+    let layout_result = executable_layout(&image);
+    assert!(layout_result.is_ok());
+    let Ok((mut output, layout)) = layout_result else { return };
+    let header_result = write_mach_header(&mut output, MachArchitecture::X86_64, layout.commands);
+    assert!(header_result.is_ok());
     let segment = ExecSegment {
         at: 32,
         segment: "__TEXT",
@@ -93,9 +96,12 @@ fn private_executable_helpers_accept_valid_layouts() {
         section_name: "__text",
         section_segment: "__TEXT",
     };
-    write_exec_segment(&mut output, &segment).expect("text segment");
+    let segment_result = write_exec_segment(&mut output, &segment);
+    assert!(segment_result.is_ok());
     assert_eq!(output[0..4], 0xfeedfacfu32.to_le_bytes());
-    let elf = write_elf_executable(&image).expect("ELF executable");
+    let elf_result = write_elf_executable(&image);
+    assert!(elf_result.is_ok());
+    let Ok(elf) = elf_result else { return };
     let phoff = 64;
     assert_eq!(
         validate_elf_segments(&elf, phoff, 56, 2, 0x0040_1000),

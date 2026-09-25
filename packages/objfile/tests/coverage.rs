@@ -411,7 +411,9 @@ fn native_writers_cover_empty_and_multi_section_layouts() {
             global: true,
         }],
     };
-    let elf = empty.write().expect("empty ELF layout");
+    let elf = empty
+        .write()
+        .unwrap_or_else(|error| panic!("empty ELF layout: {error}"));
     assert_eq!(validate_elf(&elf, ElfArchitecture::X86_64), Ok(()));
 
     let mach = MachObject {
@@ -438,7 +440,9 @@ fn native_writers_cover_empty_and_multi_section_layouts() {
             addend: 4,
         }],
     };
-    let mach_bytes = mach.write().expect("multi-section Mach-O layout");
+    let mach_bytes = mach
+        .write()
+        .unwrap_or_else(|error| panic!("multi-section Mach-O layout: {error}"));
     assert_eq!(
         MachReader::validate(&mach_bytes, MachArchitecture::X86_64),
         Ok(())
@@ -449,8 +453,8 @@ fn native_writers_cover_empty_and_multi_section_layouts() {
         code: vec![],
         metadata: vec![9],
     };
-    let executable =
-        write_mach_executable(&image, MachArchitecture::X86_64).expect("empty-code executable");
+    let executable = write_mach_executable(&image, MachArchitecture::X86_64)
+        .unwrap_or_else(|error| panic!("empty-code executable: {error}"));
     assert_eq!(
         validate_mach_executable(&executable, MachArchitecture::X86_64),
         Ok(())

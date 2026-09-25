@@ -101,7 +101,7 @@ fn hash_modes_cover_numeric_string_cons_and_iteration_contracts() {
 #[test]
 fn package_registry_and_visibility_operations_cover_all_statuses() {
     let (runtime, mut context) = setup();
-    let producer = Package::from(
+    let producer = Package::from_word(
         runtime
             .ensure_package(&mut context, "PRODUCER")
             .unwrap_or_else(|error| panic!("producer: {error:?}")),

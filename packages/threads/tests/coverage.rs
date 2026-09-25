@@ -14,7 +14,7 @@ fn registers_every_owned_symbol() {
         &runtime,
         &mut ctx,
         OWNERSHIP_TABLE,
-        "NCL-THREADS",
+        "ncl-threads",
     )
     .unwrap();
 }

@@ -4,8 +4,8 @@
 //! `AArch64` on Linux and macOS).
 
 use ncl_object::{
-    Bignum, DoubleFloat, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, double_value,
-    make_bignum_from_i128, make_double,
+    Bignum, DoubleFloat, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,
+    classify_object, double_value, make_bignum_from_i128, make_double,
 };
 
 use super::{AlienType, size_of};
@@ -307,6 +307,11 @@ fn pointer_address(value: Word) -> Result<usize, FfiError> {
 
 /// Decode any Lisp integer into an `i128`.
 fn word_to_i128(ctx: &ThreadContext, value: Word) -> Result<i128, FfiError> {
+    if matches!(classify_object(ctx, value), ObjectRef::Character(code) if code <= 0xFF) {
+        return Err(FfiError::TypeMismatch {
+            type_name: "integer",
+        });
+    }
     if let Some(fixnum) = value.as_fixnum() {
         return Ok(i128::from(fixnum));
     }

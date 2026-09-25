@@ -2,6 +2,7 @@
 
 mod arithmetic;
 mod bitops;
+mod rational_float;
 
 use ncl_object::{
     make_double, set_symbol_constant, set_symbol_value, Arity, Builtin, BuiltinConvention,
@@ -118,6 +119,44 @@ fn install_optional_set(
     Ok(())
 }
 
+fn install_rational_float(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+    const ONE_NUMBER: &[Parameter] = &[Parameter { name: BuiltinName::new("NUMBER"), ty: ParameterType::Number }];
+    const TWO_NUMBERS: &[Parameter] = &[
+        Parameter { name: BuiltinName::new("NUMBER"), ty: ParameterType::Number },
+        Parameter { name: BuiltinName::new("NUMBER"), ty: ParameterType::Number },
+    ];
+    const ONE_FLOAT: &[Parameter] = &[Parameter { name: BuiltinName::new("FLOAT"), ty: ParameterType::Number }];
+    const TWO_FLOATS: &[Parameter] = &[
+        Parameter { name: BuiltinName::new("FLOAT"), ty: ParameterType::Number },
+        Parameter { name: BuiltinName::new("FLOAT"), ty: ParameterType::Number },
+    ];
+    let fixed = [
+        ("NUMERATOR", ONE_NUMBER, rational_float::numerator as RustBuiltin),
+        ("DENOMINATOR", ONE_NUMBER, rational_float::denominator as RustBuiltin),
+        ("RATIONAL", ONE_NUMBER, rational_float::rational as RustBuiltin),
+        ("FLOAT", ONE_NUMBER, rational_float::float as RustBuiltin),
+        ("DECODE-FLOAT", ONE_FLOAT, rational_float::decode_float as RustBuiltin),
+        ("INTEGER-DECODE-FLOAT", ONE_FLOAT, rational_float::integer_decode_float as RustBuiltin),
+        ("SCALE-FLOAT", TWO_FLOATS, rational_float::scale_float as RustBuiltin),
+        ("FLOAT-DIGITS", ONE_FLOAT, rational_float::float_digits as RustBuiltin),
+        ("FLOAT-PRECISION", ONE_FLOAT, rational_float::float_precision as RustBuiltin),
+        ("FLOAT-RADIX", ONE_FLOAT, rational_float::float_radix as RustBuiltin),
+    ];
+    for (name, parameters, callback) in fixed {
+        let descriptor = Builtin { lambda_list: LambdaList::fixed(parameters), convention: BuiltinConvention::Direct(Arity::exact(parameters.len() as u8)) };
+        runtime.register_builtin(ctx, BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)), BuiltinImplementation::direct(descriptor, callback))?;
+    }
+    for (name, required, optional, callback) in [
+        ("RATIONALIZE", ONE_NUMBER, ONE_NUMBER, rational_float::rationalize as RustBuiltin),
+        ("FLOAT-SIGN", ONE_FLOAT, ONE_FLOAT, rational_float::float_sign as RustBuiltin),
+    ] {
+        let descriptor = Builtin { lambda_list: LambdaList::with_optional(required, optional), convention: BuiltinConvention::Adapted };
+        runtime.register_builtin(ctx, BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)), BuiltinImplementation::direct(descriptor, callback))?;
+    }
+    let _ = TWO_NUMBERS;
+    Ok(())
+}
+
 /// Register numeric predicates, arithmetic, rounding, and integer operations.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
@@ -160,6 +199,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ("ISQRT", 1, true, arithmetic::typed_dispatch_isqrt),
         ],
     )?;
+    install_rational_float(runtime, &mut ctx)?;
     install_optional_set(
         runtime,
         &mut ctx,

@@ -8,6 +8,16 @@ use ncl_object::{
     set_symbol_value, simple_vector_ref, string_ref, symbol_name, symbol_value,
 };
 use ncl_sys::Word;
+
+fn abi_add(
+    _ctx: &mut ThreadContext,
+    args: &ncl_object::BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    let left = args.required(0)?.as_fixnum().ok_or(ncl_object::ObjectError::TypeError)?;
+    let right = args.required(1)?.as_fixnum().ok_or(ncl_object::ObjectError::TypeError)?;
+    Ok(Word::fixnum(left + right))
+}
 #[test]
 fn classify_and_allocate() {
     assert_eq!(classify(Word::fixnum(-2)), ObjectRef::Fixnum(-2));
@@ -74,6 +84,36 @@ fn builtin_abi_expands_for_fixed_and_variadic_forms() {
     assert!(TEST_ABI.lambda_list.is_direct());
     assert_eq!(TEST_ABI.lambda_list.min_arity(), 1);
     let _ = (direct, variadic);
+}
+
+#[test]
+fn generated_builtin_abi_calls_safe_callback_and_preserves_pending_state() {
+    builtin!(
+        TEST_CONNECTED,
+        2,
+        ncl_object::LambdaList::fixed(&[]),
+        test_connected_direct,
+        test_connected_variadic,
+        abi_add
+    );
+    let mut ctx = ThreadContext::new();
+    let direct = test_connected_direct(&mut ctx, Word::fixnum(2), Word::fixnum(3));
+    assert_eq!(direct, Word::fixnum(5));
+
+    let words = [Word::fixnum(4), Word::fixnum(6)];
+    let mut values = ncl_object::MultipleValues::new();
+    assert_eq!(
+        test_connected_variadic(&mut ctx, words.len(), words.as_ptr(), &mut values),
+        ncl_object::NclStatus::Ok
+    );
+    assert_eq!(values.as_slice(), &[Word::fixnum(10)]);
+
+    ctx.set_pending(ncl_object::ObjectError::TypeError);
+    assert_eq!(
+        test_connected_direct(&mut ctx, Word::fixnum(1), Word::fixnum(1)),
+        Word::UNBOUND
+    );
+    assert_eq!(ctx.take_pending(), Some(ncl_object::ObjectError::TypeError));
 }
 
 #[test]

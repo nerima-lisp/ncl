@@ -17,7 +17,7 @@ const DEFAULT_MARGIN: usize = 80;
 
 /// The printer state for one [`write()`] call.
 pub struct Printer<'a> {
-    pub ctx: &'a mut ThreadContext,
+    pub(crate) ctx: &'a mut ThreadContext,
     // The current printing path allocates nothing on the Lisp heap, so it never
     // needs the runtime; the field stays so array and dispatch printing can
     // reach it without an API change.
@@ -25,12 +25,12 @@ pub struct Printer<'a> {
         dead_code,
         reason = "reserved for the pprint-dispatch and stream layers"
     )]
-    pub runtime: &'a Runtime,
-    pub sink: &'a mut dyn CharSink,
-    pub options: PrintOptions,
-    pub depth: usize,
-    pub column: usize,
-    pub margin: usize,
+    pub(crate) runtime: &'a Runtime,
+    pub(crate) sink: &'a mut dyn CharSink,
+    pub(crate) options: PrintOptions,
+    pub(crate) depth: usize,
+    pub(crate) column: usize,
+    pub(crate) margin: usize,
     circle: Option<CircleState>,
     active: HashSet<usize>,
 }
@@ -42,8 +42,8 @@ impl<'a> Printer<'a> {
         sink: &'a mut dyn CharSink,
         mut options: PrintOptions,
     ) -> Self {
-        if options.readably {
-            options.escape = true;
+        if options.readably() {
+            options = options.with_escape(true);
         }
         Self {
             ctx,
@@ -63,7 +63,10 @@ impl<'a> Printer<'a> {
         self.circle = Some(CircleState::scan(
             &mut *self.ctx,
             object,
-            self.options.circle_not_shared,
+            matches!(
+                self.options.circle_sharing_mode(),
+                crate::options::CircleSharingMode::OnlyShared
+            ),
         ));
     }
 
@@ -100,7 +103,7 @@ impl<'a> Printer<'a> {
     /// When `*print-pretty*` is on and the current column has reached the
     /// margin, the separator becomes a newline and an indent to `indent`.
     pub fn separator(&mut self, indent: usize) -> Result<(), PrintError> {
-        if self.options.pretty && self.column >= self.margin {
+        if self.options.pretty() && self.column >= self.margin {
             self.write_char('\n')?;
             self.write_spaces(indent)
         } else {
@@ -116,7 +119,7 @@ impl<'a> Printer<'a> {
         if object == Word::TRUE {
             return self.write_str("T");
         }
-        if let Some(level) = self.options.level
+        if let Some(level) = self.options.level().map(crate::options::NonNegative::get)
             && self.depth >= level
         {
             return self.write_char('#');
@@ -187,6 +190,10 @@ impl<'a> Printer<'a> {
         Ok(text)
     }
 
+    #[allow(
+        clippy::wildcard_enum_match_arm,
+        reason = "ObjectRef is non-exhaustive and the printer has an opaque fallback"
+    )]
     fn print_inner(&mut self, object: Word) -> Result<(), PrintError> {
         // `classify_object` reads a widetag from the first payload word, which
         // a headerless cons does not have, and `Word::character` encodes
@@ -256,7 +263,7 @@ pub fn write(
     options: &PrintOptions,
 ) -> Result<(), PrintError> {
     let mut printer = Printer::new(ctx, runtime, sink, *options);
-    if options.circle {
+    if options.circle() {
         printer.enable_circle(object);
     }
     printer.print(object)

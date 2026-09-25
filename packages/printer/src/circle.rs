@@ -12,6 +12,7 @@ const MAX_PROBE: usize = 1_000_000;
 
 /// A label the pre-scan assigned to a shared object.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CircleLabel {
     /// The first occurrence, printed as `#n=`.
     Definition(usize),
@@ -175,33 +176,29 @@ fn children(ctx: &mut ThreadContext, object: Word) -> Vec<Word> {
         }
         return out;
     }
-    match classify_object(ctx, object) {
-        ObjectRef::SimpleVector(vector) => {
-            if let Ok(length) = simple_vector_length(ctx, vector) {
-                for index in 0..length {
-                    if let Ok(value) = simple_vector_ref(ctx, vector, index) {
-                        out.push(value);
-                    }
-                }
-            }
-        }
-        ObjectRef::SpecializedArray(array) => {
-            for index in 0..specialized_length(ctx, array) {
-                if let Ok(value) = specialized_array_ref(ctx, array, index) {
+    let classified = classify_object(ctx, object);
+    if let ObjectRef::SimpleVector(vector) = classified {
+        if let Ok(length) = simple_vector_length(ctx, vector) {
+            for index in 0..length {
+                if let Ok(value) = simple_vector_ref(ctx, vector, index) {
                     out.push(value);
                 }
             }
         }
-        ObjectRef::Array(array) => {
-            if let Some(total) = array_total(ctx, array) {
-                for index in 0..total {
-                    if let Ok(value) = array_row_major_ref(ctx, array, index) {
-                        out.push(value);
-                    }
-                }
+    } else if let ObjectRef::SpecializedArray(array) = classified {
+        for index in 0..specialized_length(ctx, array) {
+            if let Ok(value) = specialized_array_ref(ctx, array, index) {
+                out.push(value);
             }
         }
-        _ => {}
+    } else if let ObjectRef::Array(array) = classified
+        && let Some(total) = array_total(ctx, array)
+    {
+        for index in 0..total {
+            if let Ok(value) = array_row_major_ref(ctx, array, index) {
+                out.push(value);
+            }
+        }
     }
     out
 }

@@ -21,7 +21,9 @@ copy_pprint_dispatch(&mut ThreadContext, &Runtime, Word) -> Result<Word, ObjectE
 | --- | --- |
 | `CharSink` | output trait: `write_char`, `write_str`. `ncl-lib-streams` adapts streams to it. |
 | `StringSink` | in-crate `CharSink` that accumulates a `String`. |
-| `PrintOptions` | one-to-one mirror of the `*print-*` variables, with `new`, `with_*` builders, and `from_specials`. |
+| `PrintOptions` | opaque, validated value object for the `*print-*` variables, with `new`, typed builders, and `from_specials`. |
+| `PrintBase` | validated radix newtype restricted to 2 through 36. |
+| `NonNegative` | validated non-negative limit value used by length and level options. |
 | `PrintCase` | `:upcase`, `:downcase`, `:capitalize`. |
 | `PrintError` | `Object`, `Sink`, `NotReadable`, `Circularity`. |
 

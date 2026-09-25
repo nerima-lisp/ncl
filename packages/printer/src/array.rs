@@ -12,7 +12,7 @@ use crate::print::Printer;
 impl Printer<'_> {
     /// Print a simple vector as `#(element ...)`.
     pub fn print_simple_vector(&mut self, vector: Word) -> Result<(), PrintError> {
-        if !self.options.array {
+        if !self.options.array() {
             return self.print_opaque("VECTOR", vector);
         }
         let length = simple_vector_length(self.ctx, vector)?;
@@ -29,7 +29,7 @@ impl Printer<'_> {
     /// `ncl-object` exposes no length accessor, so the length comes from the
     /// probe in [`crate::circle::specialized_length`].
     pub fn print_specialized_array(&mut self, array: Word) -> Result<(), PrintError> {
-        if !self.options.array {
+        if !self.options.array() {
             return self.print_opaque("ARRAY", array);
         }
         let length = specialized_length(&*self.ctx, array);
@@ -43,7 +43,7 @@ impl Printer<'_> {
 
     /// Print a non-simple array as `#(element ...)` or `#nA(element ...)`.
     pub fn print_array(&mut self, array: Word) -> Result<(), PrintError> {
-        if !self.options.array {
+        if !self.options.array() {
             return self.print_opaque("ARRAY", array);
         }
         let dimensions = array_dimensions(&*self.ctx, array)?;
@@ -71,7 +71,11 @@ impl Printer<'_> {
         length: usize,
         mut element: impl FnMut(&mut Self, usize) -> Result<Word, PrintError>,
     ) -> Result<(), PrintError> {
-        let limit = self.options.vector_length.or(self.options.length);
+        let limit = self
+            .options
+            .vector_length()
+            .or_else(|| self.options.length());
+        let limit = limit.map(crate::options::NonNegative::get);
         for index in 0..length {
             if let Some(limit) = limit
                 && index == limit

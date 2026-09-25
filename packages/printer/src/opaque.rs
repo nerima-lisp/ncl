@@ -13,7 +13,7 @@ impl Printer<'_> {
     /// Returns [`PrintError::NotReadable`] when `*print-readably*` is true,
     /// matching the standard's requirement to signal for unreadable objects.
     pub fn print_opaque(&mut self, label: &str, word: Word) -> Result<(), PrintError> {
-        if self.options.readably {
+        if self.options.readably() {
             return Err(PrintError::NotReadable);
         }
         self.write_str("#<")?;

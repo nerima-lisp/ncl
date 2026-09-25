@@ -146,15 +146,15 @@ fn constructors_and_registry_survive_gc_stress() {
     let lambda_token = ncl_object::push_root(&mut ctx, &mut lambda);
     let code = make_code_object(&mut ctx, &runtime, 10, 2, name, lambda, Word::NIL)
         .unwrap_or_else(|error| panic!("code: {error:?}"));
-    let mut code_word = code.into();
+    let mut code_word = code.as_word();
     let code_token = ncl_object::push_root(&mut ctx, &mut code_word);
     let function = make_simple_fun(&mut ctx, &runtime, 1, name, lambda, code)
         .unwrap_or_else(|error| panic!("function: {error:?}"));
-    let mut function_word = function.into();
+    let mut function_word = function.as_word();
     let function_token = ncl_object::push_root(&mut ctx, &mut function_word);
     let closure = make_closure(&mut ctx, &runtime, 2, name, lambda, code, &[name, lambda])
         .unwrap_or_else(|error| panic!("closure: {error:?}"));
-    let mut closure_word = closure.into();
+    let mut closure_word = closure.as_word();
     let closure_token = ncl_object::push_root(&mut ctx, &mut closure_word);
     let code = CodeObject::from_word(code_word);
     let function = Function::from_word(function_word);
@@ -184,13 +184,13 @@ fn constructors_and_registry_survive_gc_stress() {
         name,
         lambda,
         Word::NIL,
-        code.into(),
+        code.as_word(),
     )
     .unwrap_or_else(|error| panic!("stream: {error:?}"));
     assert_eq!(stream_state(&ctx, stream), Ok(Word::NIL));
     assert_eq!(stream_element_type(&ctx, stream), Ok(name));
     assert_eq!(stream_external_format(&ctx, stream), Ok(lambda));
-    assert_eq!(stream_implementation(&ctx, stream), Ok(code.into()));
+    assert_eq!(stream_implementation(&ctx, stream), Ok(code.as_word()));
     let layout = runtime
         .register_structure_layout(1)
         .unwrap_or_else(|error| panic!("layout: {error:?}"));

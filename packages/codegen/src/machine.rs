@@ -50,7 +50,7 @@ pub struct Block {
 impl Block {
     /// Creates a block with an initial code-relative offset of zero.
     #[must_use]
-    pub fn new(id: BlockId, operations: Vec<MachineOp>) -> Self {
+    pub const fn new(id: BlockId, operations: Vec<MachineOp>) -> Self {
         Self {
             id,
             operations,
@@ -97,7 +97,7 @@ impl MachineFunction {
     /// Creates a lowered machine function.
     #[must_use]
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub const fn new(
         entry: BlockId,
         blocks: Vec<Block>,
         frame: FrameLayout,

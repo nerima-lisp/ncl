@@ -56,7 +56,7 @@ pub(super) fn encode(
         }
         match &source.terminator {
             Terminator::Return { values } => {
-                emit_return(&mut assembler, values, &machine.slots, abi)?
+                emit_return(&mut assembler, values, &machine.slots, abi)?;
             }
             Terminator::Jump { target, .. } => {
                 emit(&mut assembler, &Inst::Jmp(labels[target]))?;

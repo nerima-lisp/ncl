@@ -125,6 +125,7 @@ pub struct Runtime {
     next_layout: Mutex<u32>,
     layouts_registered: Mutex<bool>,
     builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
+    builtin_addresses: Mutex<HashMap<String, usize>>,
     lisp_error_converter: Mutex<Option<LispErrorConverter>>,
 }
 /// Per-mutator object-layer context. Generated code obtains its stable thread
@@ -157,6 +158,7 @@ impl Runtime {
             next_layout: Mutex::new(1),
             layouts_registered: Mutex::new(false),
             builtins: Mutex::new(HashMap::new()),
+            builtin_addresses: Mutex::new(HashMap::new()),
             lisp_error_converter: Mutex::new(None),
         };
         runtime.register_layouts()?;
@@ -246,6 +248,17 @@ impl Runtime {
         let key = make_string(ctx, self, &key.chars().collect::<Vec<_>>()).ok()?;
         let table = Self::table(&self.functions).ok()?;
         HashTable::from_word(table).get(ctx, key).ok().flatten()
+    }
+
+    /// Return the native entry address registered for a builtin name.
+    #[must_use]
+    pub fn builtin_address(&self, name: &str) -> Option<u64> {
+        self.builtin_addresses
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(name)
+            .copied()
+            .and_then(|entry| u64::try_from(entry).ok())
     }
     fn table(registry: &Mutex<Option<RootedTable>>) -> Result<Word, ObjectError> {
         registry

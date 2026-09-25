@@ -178,7 +178,9 @@ impl Runtime {
         let entry = module.functions.pop().ok_or_else(|| {
             RuntimeError::Native("optimization removed entry function".to_owned())
         })?;
-        let abi = NativeAbi;
+        let abi = NativeAbi {
+            object: &self.object,
+        };
         let compiled = if cfg!(target_arch = "aarch64") {
             ncl_codegen::compile_function_aarch64(&entry, &abi)
         } else {
@@ -370,7 +372,9 @@ impl MacroCaller for RuntimeMacroCaller {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct NativeAbi;
+struct NativeAbi<'a> {
+    object: &'a ObjectRuntime,
+}
 impl RuntimeAbi for NativeAbi {
     fn encode_fixnum(&self, value: i64) -> i64 {
         i64::from_ne_bytes(Word::fixnum(value).bits().to_ne_bytes())
@@ -378,8 +382,8 @@ impl RuntimeAbi for NativeAbi {
     fn encode_character(&self, value: u32) -> i64 {
         i64::from_ne_bytes(Word::character(value).bits().to_ne_bytes())
     }
-    fn builtin_address(&self, _name: &str) -> Option<u64> {
-        None
+    fn builtin_address(&self, name: &str) -> Option<u64> {
+        self.object.builtin_address(name)
     }
     fn context_offset(&self, _field: &str) -> Option<i32> {
         None

@@ -45,6 +45,7 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     ncl_printer::register(ctx, runtime)?;
     ncl_conditions::register(runtime)?;
     ncl_clos::register(runtime)?;
+    ncl_lib_numbers::register(runtime)?;
     ncl_threads::register(runtime)?;
     ncl_ffi::register(runtime)?;
     ncl_image::register(runtime)?;

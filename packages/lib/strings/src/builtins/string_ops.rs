@@ -211,14 +211,14 @@ fn make_result_string(
 }
 
 fn stringp_builtin(
-    _ctx: &mut ThreadContext,
+    ctx: &mut ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     Ok(
         if matches!(
-            ncl_object::classify_object(_ctx, args.required(0)?),
+            ncl_object::classify_object(ctx, args.required(0)?),
             ncl_object::ObjectRef::String(_)
         ) {
             Word::TRUE
@@ -271,7 +271,7 @@ fn string_compare(
 ) -> Result<Vec<char>, ObjectError> {
     let chars = string_chars(ctx, args.required(0)?)?;
     if fold {
-        Ok(chars.into_iter().flat_map(|c| c.to_lowercase()).collect())
+        Ok(chars.into_iter().flat_map(char::to_lowercase).collect())
     } else {
         Ok(chars)
     }
@@ -284,7 +284,7 @@ fn string_compare_word(
 ) -> Result<Vec<char>, ObjectError> {
     let chars = string_chars(ctx, value)?;
     if fold {
-        Ok(chars.into_iter().flat_map(|c| c.to_lowercase()).collect())
+        Ok(chars.into_iter().flat_map(char::to_lowercase).collect())
     } else {
         Ok(chars)
     }

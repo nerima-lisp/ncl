@@ -1,5 +1,5 @@
 fn string_compare_builtin(
-    ctx: &mut ThreadContext,
+    ctx: &ThreadContext,
     _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,

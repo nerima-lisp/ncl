@@ -48,6 +48,7 @@ const INITIAL_ELEMENT: Parameter = Parameter {
     ty: ParameterType::Any,
 };
 
+#[allow(clippy::missing_const_for_fn, clippy::cast_possible_truncation)]
 fn descriptor(lambda_list: LambdaList) -> Builtin {
     Builtin {
         convention: if lambda_list.is_direct() {
@@ -60,12 +61,21 @@ fn descriptor(lambda_list: LambdaList) -> Builtin {
 }
 
 fn identity_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
-    Ok((0..args.len())
-        .filter_map(|index| args.get(index))
-        .collect())
+    let mut values = Vec::with_capacity(args.len());
+    for index in 0..args.len() {
+        let Some(value) = args.get(index) else {
+            return Err(ObjectError::TypeError);
+        };
+        values.push(value);
+    }
+    Ok(values)
 }
 
 /// Register the Common Lisp character and string builtins owned by this crate.
+///
+/// # Errors
+/// Returns an object error if a package, class, or builtin cannot be registered.
+#[allow(clippy::too_many_lines)]
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;

@@ -70,6 +70,7 @@ fn string_builtins_cover_comparison_case_trim_and_construction() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn character_and_mutating_string_builtins_cover_boundaries() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
     let mut ctx = ThreadContext::new();
@@ -105,16 +106,21 @@ fn character_and_mutating_string_builtins_cover_boundaries() {
     assert_eq!(ncl_object::string_length(&ctx, char_name), Ok(5));
     assert_eq!(
         (0..5)
-            .map(|index| ncl_object::string_ref(&ctx, char_name, index).unwrap())
+            .map(|index| {
+                ncl_object::string_ref(&ctx, char_name, index)
+                    .unwrap_or_else(|error| panic!("string-ref: {error:?}"))
+            })
             .collect::<String>(),
         "SPACE"
     );
-    let name = ncl_object::make_string(&mut ctx, &runtime, &['t', 'a', 'b']).unwrap();
+    let name = ncl_object::make_string(&mut ctx, &runtime, &['t', 'a', 'b'])
+        .unwrap_or_else(|error| panic!("string: {error:?}"));
     assert_eq!(
         call(&runtime, &mut ctx, "NAME-CHAR", &[name]),
         Word::character('\t' as u32)
     );
-    let unknown = ncl_object::make_string(&mut ctx, &runtime, &['N', 'O', 'P', 'E']).unwrap();
+    let unknown = ncl_object::make_string(&mut ctx, &runtime, &['N', 'O', 'P', 'E'])
+        .unwrap_or_else(|error| panic!("string: {error:?}"));
     assert_eq!(call(&runtime, &mut ctx, "NAME-CHAR", &[unknown]), Word::NIL);
 
     assert_eq!(
@@ -190,7 +196,7 @@ fn character_and_mutating_string_builtins_cover_boundaries() {
         &runtime,
         &['h', 'I', ' ', 'T', 'H', 'E', 'R', 'E'],
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("string: {error:?}"));
     assert_eq!(
         call(&runtime, &mut ctx, "NSTRING-UPCASE", &[mutable]),
         mutable

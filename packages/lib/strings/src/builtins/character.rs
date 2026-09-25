@@ -1,4 +1,5 @@
 /// Return the Unicode `General_Category` abbreviation for a scalar value.
+#[must_use]
 pub fn general_category(codepoint: u32) -> Option<&'static str> {
     if codepoint > 0x10_FFFF || (0xD800..=0xDFFF).contains(&codepoint) {
         return None;
@@ -40,17 +41,13 @@ fn typed_character(value: Word) -> Result<Character, LispError> {
     Character::try_from_word(value).map_err(LispError::from)
 }
 
-fn char_code_typed(
-    _ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    value: Character,
-) -> Result<Word, LispError> {
-    Ok(Word::fixnum(i64::from(value.value())))
+fn char_code_typed(value: Character) -> Word {
+    Word::fixnum(i64::from(value.value()))
 }
 
 fn char_code_typed_entry(
     ctx: &mut ThreadContext,
-    runtime: &Runtime,
+    _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
@@ -58,10 +55,7 @@ fn char_code_typed_entry(
         ctx.set_pending_lisp_error(error);
         ObjectError::TypeError
     })?;
-    let result = char_code_typed(ctx, runtime, value).map_err(|error| {
-        ctx.set_pending_lisp_error(error);
-        ObjectError::TypeError
-    })?;
+    let result = char_code_typed(value);
     values.clear();
     Ok(result)
 }

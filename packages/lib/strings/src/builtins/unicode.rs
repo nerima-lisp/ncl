@@ -7,9 +7,9 @@ fn unicode_string_chars(ctx: &ThreadContext, value: Word) -> Result<Vec<char>, O
 fn make_text(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    chars: Vec<char>,
+    chars: &[char],
 ) -> Result<Word, ObjectError> {
-    make_string(ctx, runtime, &chars)
+    make_string(ctx, runtime, chars)
 }
 
 fn decompose_char(value: char, compatibility: bool, output: &mut Vec<char>) {
@@ -18,7 +18,7 @@ fn decompose_char(value: char, compatibility: bool, output: &mut Vec<char>) {
         let index = codepoint - 0xAC00;
         output.push(char::from_u32(0x1100 + index / 588).unwrap_or(value));
         output.push(char::from_u32(0x1161 + (index % 588) / 28).unwrap_or(value));
-        if index % 28 != 0 {
+        if !index.is_multiple_of(28) {
             output.push(char::from_u32(0x11A7 + index % 28).unwrap_or(value));
         }
         return;
@@ -27,15 +27,14 @@ fn decompose_char(value: char, compatibility: bool, output: &mut Vec<char>) {
         .iter()
         .flat_map(|entries| entries.iter())
         .find(|entry| entry.0 == codepoint)
+        && (compatibility || !is_compatibility)
     {
-        if compatibility || !is_compatibility {
-            for &part in *values {
-                if let Some(part) = char::from_u32(part) {
-                    decompose_char(part, compatibility, output);
-                }
+        for &part in *values {
+            if let Some(part) = char::from_u32(part) {
+                decompose_char(part, compatibility, output);
             }
-            return;
         }
+        return;
     }
     output.push(value);
 }
@@ -71,18 +70,16 @@ fn normalize(chars: &[char], compatibility: bool, compose: bool) -> Vec<char> {
     }
     let mut result = Vec::with_capacity(reordered.len());
     for value in reordered {
-        if let Some(&starter) = result.last() {
-            if combining_class(value) != 0 {
-                if let Some((_, _, composed)) = unicode_data::COMPOSITIONS
-                    .iter()
-                    .flat_map(|entries| entries.iter())
-                    .find(|entry| entry.0 == starter as u32 && entry.1 == value as u32)
-                {
-                    result.pop();
-                    result.push(char::from_u32(*composed).unwrap_or(value));
-                    continue;
-                }
-            }
+        if let Some(&starter) = result.last()
+            && combining_class(value) != 0
+            && let Some((_, _, composed)) = unicode_data::COMPOSITIONS
+                .iter()
+                .flat_map(|entries| entries.iter())
+                .find(|entry| entry.0 == starter as u32 && entry.1 == value as u32)
+        {
+            result.pop();
+            result.push(char::from_u32(*composed).unwrap_or(value));
+            continue;
         }
         result.push(value);
     }
@@ -101,7 +98,7 @@ where
     make_text(
         ctx,
         runtime,
-        map(&unicode_string_chars(ctx, args.required(0)?)?),
+        &map(&unicode_string_chars(ctx, args.required(0)?)?),
     )
 }
 
@@ -217,7 +214,8 @@ fn utf8_to_string_builtin(
         );
     }
     let text = String::from_utf8(bytes).map_err(|_| ObjectError::TypeError)?;
-    make_text(ctx, runtime, text.chars().collect())
+    let chars: Vec<_> = text.chars().collect();
+    make_text(ctx, runtime, &chars)
 }
 
 fn grapheme_boundaries_builtin(
@@ -237,7 +235,9 @@ fn grapheme_boundaries_builtin(
             || (0xFE00..=0xFE0F).contains(&(current as u32));
         let regional = (0x1F1E6..=0x1F1FF).contains(&(current as u32));
         if previous
-            .is_some_and(|p| !extend && p != '\u{200D}' && (!regional || regional_count % 2 == 0))
+            .is_some_and(|p| {
+                !extend && p != '\u{200D}' && (!regional || regional_count.is_multiple_of(2))
+            })
         {
             boundaries.push(Word::fixnum(
                 i64::try_from(index).map_err(|_| ObjectError::Layout)?,

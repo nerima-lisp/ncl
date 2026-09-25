@@ -1,15 +1,17 @@
 //! Strict ownership coverage for the strings registration boundary.
 
-use ncl_object::{FunctionObject, Runtime, ThreadContext, symbol_is_constant};
+use ncl_object::{symbol_is_constant, FunctionObject, Runtime, ThreadContext};
 
 const TABLE: &str = include_str!("../ownership.tsv");
 
 #[test]
 fn strings_registration_covers_every_owned_symbol() {
-    let runtime = Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
     let mut context = ThreadContext::new();
-    context.register(&runtime).unwrap();
-    ncl_lib_strings::register(&runtime).unwrap();
+    context
+        .register(&runtime)
+        .unwrap_or_else(|error| panic!("context: {error:?}"));
+    ncl_lib_strings::register(&runtime).unwrap_or_else(|error| panic!("strings: {error:?}"));
 
     let mut rows = 0;
     for line in TABLE.lines().skip(1) {
@@ -37,12 +39,15 @@ fn strings_registration_covers_every_owned_symbol() {
             );
         }
         if kind.contains("constant") {
-            let package_word = runtime.find_package(&context, package).unwrap();
+            let package_word = runtime
+                .find_package(&context, package)
+                .unwrap_or_else(|| panic!("package missing: {package}"));
             let (word, _) = ncl_object::Package::from_word(package_word)
                 .intern(&mut context, &runtime, symbol)
-                .unwrap();
+                .unwrap_or_else(|error| panic!("intern: {error:?}"));
             assert!(
-                symbol_is_constant(&context, word).unwrap(),
+                symbol_is_constant(&context, word)
+                    .unwrap_or_else(|error| panic!("constant flag: {error:?}")),
                 "missing constant flag {package}::{symbol}"
             );
         }

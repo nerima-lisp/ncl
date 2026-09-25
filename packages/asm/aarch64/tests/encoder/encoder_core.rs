@@ -81,9 +81,9 @@ fn labels_resolve_and_are_retained() {
 }
 
 #[test]
-fn immediate_sequence_and_decode() {
+fn immediate_sequence_and_encoding() {
     assert_eq!(mov_imm64(x(0), 1).len(), 1);
-    assert_eq!(decode(0xD503_201F), Ok(Inst::Nop));
+    assert_eq!(encode(&Inst::Nop, 0), Ok(0xD503_201F));
     assert!(
         encode(
             &Inst::Add {

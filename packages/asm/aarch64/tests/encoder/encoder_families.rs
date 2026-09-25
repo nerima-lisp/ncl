@@ -289,3 +289,4 @@ fn public_helpers_cover_success_and_error_paths() {
         Err(ncl_asm_aarch64::EncodeError::DuplicateLabel(label))
     );
 }
+

@@ -1,7 +1,9 @@
 #![allow(missing_docs)]
+#![allow(clippy::unwrap_used)]
 
 use ncl_asm_x86_64::*;
 
+#[allow(clippy::needless_pass_by_value)]
 fn assert_encoding(inst: Inst, expected: &[u8]) {
     let mut assembler = Assembler::new();
     assert!(
@@ -156,6 +158,7 @@ fn golden_sse_and_decode_errors() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn model_conversions_and_invalid_memory_are_specific() {
     for id in 0..16 {
         assert_eq!(Reg::from_id(id).map(Reg::id), Some(id));

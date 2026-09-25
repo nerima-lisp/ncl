@@ -1,4 +1,6 @@
 //! Additional coverage tests for native object writers.
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::redundant_clone)]
 
 use ncl_objfile::*;
 

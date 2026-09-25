@@ -1,13 +1,13 @@
 //! The recursive reader and its public entry points.
 
 use ncl_object::{
-    Package, Runtime, ThreadContext, Word, make_cons, make_string, pop_root, push_root, rplacd,
+    Runtime, ThreadContext, Word, make_cons, make_string, pop_root, push_root, rplacd,
 };
 
 use crate::error::ReadError;
 use crate::input::{CharSource, StringSource};
 use crate::readtable::{Readtable, SyntaxKind, readtable_from_word, syntax_kind};
-use crate::token::read_token;
+use crate::token::{intern_common_lisp, read_token};
 
 /// The float format used when a token has no explicit float marker.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -19,6 +19,73 @@ pub enum FloatFormat {
     DoubleFloat,
 }
 
+/// The radix used to interpret integer tokens.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ReadBase(u32);
+
+impl ReadBase {
+    /// Construct a radix in the Common Lisp range `2..=36`.
+    ///
+    /// # Errors
+    /// Returns [`ReadError::InvalidBase`] when `base` is outside the range.
+    pub const fn new(base: u32) -> Result<Self, ReadError> {
+        if base < 2 || base > 36 {
+            Err(ReadError::InvalidBase(base))
+        } else {
+            Ok(Self(base))
+        }
+    }
+
+    /// Return the numeric radix for the object-layer parser boundary.
+    #[must_use]
+    pub const fn value(self) -> u32 {
+        self.0
+    }
+}
+
+/// Whether `#.` reader evaluation is permitted.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReadEvaluation {
+    /// Permit the `#.` syntax, subject to evaluator availability.
+    Enabled,
+    /// Reject the `#.` syntax.
+    Disabled,
+}
+
+/// Whether forms are constructed or discarded while reading.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReadSuppression {
+    /// Construct and return the form.
+    Keep,
+    /// Read the form for syntax only and return `NIL`.
+    Discard,
+}
+
+/// A package name selected as the current reader package.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PackageName(String);
+
+impl PackageName {
+    /// Construct a non-empty package name.
+    ///
+    /// # Errors
+    /// Returns [`ReadError::InvalidSymbolToken`] when `name` is empty.
+    pub fn new(name: impl Into<String>) -> Result<Self, ReadError> {
+        let name = name.into();
+        if name.is_empty() {
+            Err(ReadError::InvalidSymbolToken(name))
+        } else {
+            Ok(Self(name))
+        }
+    }
+
+    /// Borrow the package name at the runtime lookup boundary.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Options controlling a single [`read`] call.
 ///
 /// The fields mirror the reader dynamic variables `*read-base*`,
@@ -27,18 +94,12 @@ pub enum FloatFormat {
 /// readtable is passed explicitly.
 #[derive(Clone, Debug)]
 pub struct ReadOptions {
-    /// The active readtable.
-    pub readtable: Readtable,
-    /// The input radix for integers and ratios, in the closed range `2..=36`.
-    pub read_base: u32,
-    /// Whether `#.` is permitted (it has no evaluator in this build).
-    pub read_eval: bool,
-    /// When true, forms are read and discarded, and [`read`] returns `NIL`.
-    pub read_suppress: bool,
-    /// The float format for markers without an explicit type.
-    pub read_default_float_format: FloatFormat,
-    /// Package used to intern unprefixed symbols; `None` means `COMMON-LISP-USER`.
-    pub current_package: Option<String>,
+    readtable: Readtable,
+    read_base: ReadBase,
+    read_eval: ReadEvaluation,
+    read_suppress: ReadSuppression,
+    read_default_float_format: FloatFormat,
+    current_package: Option<PackageName>,
 }
 
 impl ReadOptions {
@@ -49,12 +110,82 @@ impl ReadOptions {
     pub fn standard(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Self, ReadError> {
         Ok(Self {
             readtable: crate::readtable::standard_readtable(ctx, runtime)?,
-            read_base: 10,
-            read_eval: true,
-            read_suppress: false,
+            read_base: ReadBase::new(10)?,
+            read_eval: ReadEvaluation::Enabled,
+            read_suppress: ReadSuppression::Keep,
             read_default_float_format: FloatFormat::DoubleFloat,
             current_package: None,
         })
+    }
+
+    /// Set the active readtable.
+    pub const fn set_readtable(&mut self, readtable: Readtable) {
+        self.readtable = readtable;
+    }
+
+    /// Set the integer radix.
+    pub const fn set_read_base(&mut self, base: ReadBase) {
+        self.read_base = base;
+    }
+
+    /// Set whether reader evaluation is enabled.
+    pub const fn set_read_evaluation(&mut self, evaluation: ReadEvaluation) {
+        self.read_eval = evaluation;
+    }
+
+    /// Set whether forms are suppressed.
+    pub const fn set_read_suppression(&mut self, suppression: ReadSuppression) {
+        self.read_suppress = suppression;
+    }
+
+    /// Set the default float format.
+    pub const fn set_default_float_format(&mut self, format: FloatFormat) {
+        self.read_default_float_format = format;
+    }
+
+    /// Set the current package used for unqualified symbols.
+    ///
+    /// # Errors
+    /// Returns [`ReadError::InvalidSymbolToken`] for an empty package name.
+    pub fn set_current_package(&mut self, package: impl Into<String>) -> Result<(), ReadError> {
+        self.current_package = Some(PackageName::new(package)?);
+        Ok(())
+    }
+
+    /// Return the active readtable.
+    #[must_use]
+    pub const fn readtable(&self) -> Readtable {
+        self.readtable
+    }
+
+    /// Return the configured radix.
+    #[must_use]
+    pub const fn read_base(&self) -> ReadBase {
+        self.read_base
+    }
+
+    /// Return the reader evaluation mode.
+    #[must_use]
+    pub const fn read_evaluation(&self) -> ReadEvaluation {
+        self.read_eval
+    }
+
+    /// Return the suppression mode.
+    #[must_use]
+    pub const fn read_suppression(&self) -> ReadSuppression {
+        self.read_suppress
+    }
+
+    /// Return the default float format.
+    #[must_use]
+    pub const fn default_float_format(&self) -> FloatFormat {
+        self.read_default_float_format
+    }
+
+    /// Return the current package, if one was configured.
+    #[must_use]
+    pub const fn current_package(&self) -> Option<&PackageName> {
+        self.current_package.as_ref()
     }
 }
 
@@ -175,10 +306,9 @@ pub fn read_form(
 
 /// Honour `*read-suppress*` by returning `NIL` instead of a constructed form.
 const fn apply_suppress(form: Option<Word>, opts: &ReadOptions) -> Option<Word> {
-    if opts.read_suppress {
-        Some(Word::NIL)
-    } else {
-        form
+    match opts.read_suppress {
+        ReadSuppression::Discard => Some(Word::NIL),
+        ReadSuppression::Keep => form,
     }
 }
 
@@ -206,7 +336,13 @@ fn skip_whitespace(
                     }
                 }
             }
-            _ => return Ok(()),
+            SyntaxKind::Constituent
+            | SyntaxKind::TerminatingMacro
+            | SyntaxKind::NonTerminatingMacro
+            | SyntaxKind::SingleEscape
+            | SyntaxKind::MultipleEscape
+            | SyntaxKind::Invalid
+            | SyntaxKind::CustomMacro(_) => return Ok(()),
         }
     }
 }
@@ -354,17 +490,4 @@ fn read_list_inner(
         *tail = cell;
     }
     Ok(*head)
-}
-
-/// Intern a symbol in the `COMMON-LISP` package.
-pub fn intern_common_lisp(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    name: &str,
-) -> Result<Word, ReadError> {
-    let package = runtime
-        .find_package(ctx, "COMMON-LISP")
-        .ok_or_else(|| ReadError::PackageNotFound("COMMON-LISP".to_owned()))?;
-    let (symbol, _) = Package::from(package).intern(ctx, runtime, name)?;
-    Ok(symbol)
 }

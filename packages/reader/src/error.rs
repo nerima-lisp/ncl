@@ -45,9 +45,14 @@ pub enum ReadError {
     UninvocableMacroFunction(char),
     /// A feature expression was malformed.
     InvalidFeatureExpression,
-    /// A construct this reader recognizes but cannot build yet (for example
-    /// `#p` pathnames or `#s` structures).
-    Unsupported(String),
+    /// Array reader syntax is not available yet.
+    ArraySyntax,
+    /// Structure reader syntax is not available yet.
+    StructureSyntax,
+    /// Pathname reader syntax is not available yet.
+    PathnameSyntax,
+    /// A readtable operation used a non-dispatch macro character.
+    NotDispatchMacro(char),
     /// An object-layer failure.
     Object(ObjectError),
 }
@@ -78,7 +83,10 @@ impl std::fmt::Display for ReadError {
                 write!(f, "macro character {ch} has no invocable function")
             }
             Self::InvalidFeatureExpression => f.write_str("invalid feature expression"),
-            Self::Unsupported(what) => write!(f, "unsupported construct: {what}"),
+            Self::ArraySyntax => f.write_str("array reader syntax is unavailable"),
+            Self::StructureSyntax => f.write_str("structure reader syntax is unavailable"),
+            Self::PathnameSyntax => f.write_str("pathname reader syntax is unavailable"),
+            Self::NotDispatchMacro(ch) => write!(f, "{ch} is not a dispatch macro character"),
             Self::Object(error) => write!(f, "object error: {error}"),
         }
     }
@@ -86,9 +94,10 @@ impl std::fmt::Display for ReadError {
 
 impl std::error::Error for ReadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Object(error) => Some(error),
-            _ => None,
+        if let Self::Object(error) = self {
+            Some(error)
+        } else {
+            None
         }
     }
 }

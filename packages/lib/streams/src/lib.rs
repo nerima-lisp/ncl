@@ -7,9 +7,10 @@ use std::fs;
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Parameter,
-    ParameterType, Runtime, Stream, ThreadContext, Word, make_simple_vector, make_stream,
-    simple_vector_length, simple_vector_ref, simple_vector_set, stream_external_format,
-    stream_state, string_length, string_ref, symbol_name,
+    ObjectRef, ParameterType, Runtime, Stream, ThreadContext, Word, classify_object,
+    make_simple_vector, make_stream, simple_vector_length, simple_vector_ref, simple_vector_set,
+    stream_direction, stream_element_type, stream_external_format, stream_state, string_length,
+    string_ref, symbol_name,
 };
 
 const POSITION: usize = 1;
@@ -43,6 +44,22 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     runtime.register_builtin(&mut ctx, BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("FILE-STRING-LENGTH")), BuiltinImplementation::direct(
         Builtin { lambda_list: LambdaList::fixed(STRING_PARAMETERS), convention: BuiltinConvention::Direct(Arity::exact(2)) }, file_string_length_adapter,
     ))?;
+    for (name, function) in [
+        ("STREAMP", streamp_adapter as _),
+        ("INPUT-STREAM-P", input_stream_p_adapter as _),
+        ("OUTPUT-STREAM-P", output_stream_p_adapter as _),
+        ("STREAM-ELEMENT-TYPE", stream_element_type_adapter as _),
+        ("STREAM-EXTERNAL-FORMAT", stream_external_format_adapter as _),
+    ] {
+        runtime.register_builtin(
+            &mut ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            BuiltinImplementation::direct(
+                Builtin { lambda_list: LambdaList::fixed(STREAM_PARAMETERS), convention: BuiltinConvention::Direct(Arity::exact(1)) },
+                function,
+            ),
+        )?;
+    }
     Ok(())
 }
 
@@ -104,7 +121,7 @@ fn open_adapter(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'
 }
 
 fn file_position_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
-    let state = stream_state(ctx, Stream::from(args.required(0)?))?;
+    let state = stream_state(ctx, Stream::from_word(args.required(0)?))?;
     if let Some(position) = args.get(1) {
         let position = usize::try_from(position.as_fixnum().ok_or(ObjectError::TypeError)?).map_err(|_| ObjectError::TypeError)?;
         if position > simple_vector_length(ctx, state)?.saturating_sub(DATA) { return fail(ctx, ObjectError::TypeError); }
@@ -114,12 +131,41 @@ fn file_position_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &Bui
 }
 
 fn file_length_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
-    let state = stream_state(ctx, Stream::from(args.required(0)?))?;
+    let state = stream_state(ctx, Stream::from_word(args.required(0)?))?;
     Ok(Word::fixnum(i64::try_from(simple_vector_length(ctx, state)?.saturating_sub(DATA)).map_err(|_| ObjectError::Layout)?))
 }
 
 fn file_string_length_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
-    if stream_external_format(ctx, Stream::from(args.required(0)?))? != Word::NIL { return Err(ObjectError::Unsupported); }
+    if stream_external_format(ctx, Stream::from_word(args.required(0)?))? != Word::NIL { return Err(ObjectError::Unsupported); }
     let length = text(ctx, args.required(1)?)?.len();
     Ok(Word::fixnum(i64::try_from(length).map_err(|_| ObjectError::Layout)?))
+}
+
+fn streamp_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    Ok(if matches!(classify_object(ctx, args.required(0)?), ObjectRef::Stream(_)) { Word::TRUE } else { Word::NIL })
+}
+
+fn stream_direction_matches(ctx: &ThreadContext, stream: Word, expected: &str) -> Result<bool, ObjectError> {
+    let direction = stream_direction(ctx, Stream::from_word(stream))?;
+    if direction == Word::NIL {
+        return Ok(expected == "INPUT");
+    }
+    let direction = symbol_text(ctx, direction)?;
+    Ok(direction.eq_ignore_ascii_case(expected) || direction.eq_ignore_ascii_case("IO"))
+}
+
+fn input_stream_p_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    Ok(if stream_direction_matches(ctx, args.required(0)?, "INPUT")? { Word::TRUE } else { Word::NIL })
+}
+
+fn output_stream_p_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    Ok(if stream_direction_matches(ctx, args.required(0)?, "OUTPUT")? { Word::TRUE } else { Word::NIL })
+}
+
+fn stream_element_type_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    stream_element_type(ctx, Stream::from_word(args.required(0)?))
+}
+
+fn stream_external_format_adapter(ctx: &mut ThreadContext, _runtime: &Runtime, args: &BuiltinArgs<'_>, _values: &mut MultipleValues) -> Result<Word, ObjectError> {
+    stream_external_format(ctx, Stream::from_word(args.required(0)?))
 }

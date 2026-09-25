@@ -461,5 +461,5 @@ pub fn readtable_from_word(word: Word) -> Result<Readtable, ReadError> {
     if word == Word::NIL {
         return Err(ReadError::Object(ObjectError::TypeError));
     }
-    Ok(Readtable::from_object(ObjectReadtable::from(word)))
+    Ok(Readtable::from_object(ObjectReadtable::from_word(word)))
 }

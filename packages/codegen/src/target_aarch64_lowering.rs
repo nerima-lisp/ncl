@@ -138,7 +138,9 @@ pub(super) fn lower_runtime_builtin(
     }
     let address = abi
         .runtime_address(RuntimeFunction::Builtin, Some(name))
-        .ok_or_else(|| CodegenError::Unsupported(format!("runtime address is unavailable: {name}")))?;
+        .ok_or_else(|| {
+            CodegenError::Unsupported(format!("runtime address is unavailable: {name}"))
+        })?;
     emit(
         assembler,
         Inst::Mov {
@@ -150,12 +152,21 @@ pub(super) fn lower_runtime_builtin(
         emit(assembler, instruction)?;
     }
     for (index, value) in immediate_args.iter().copied().enumerate() {
-        for instruction in ncl_asm_aarch64::mov_imm64(Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?), value) {
+        for instruction in ncl_asm_aarch64::mov_imm64(
+            Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
+            value,
+        ) {
             emit(assembler, instruction)?;
         }
     }
     for (index, value) in value_args.iter().copied().enumerate() {
-        load_slot(assembler, slots, value, Reg(u8::try_from(immediate_args.len() + index + 1).map_err(|_| CodegenError::FrameOverflow)?))?;
+        load_slot(
+            assembler,
+            slots,
+            value,
+            Reg(u8::try_from(immediate_args.len() + index + 1)
+                .map_err(|_| CodegenError::FrameOverflow)?),
+        )?;
     }
     Ok(())
 }

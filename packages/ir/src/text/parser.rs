@@ -296,8 +296,12 @@ fn op_read(r: &mut Reader<'_>) -> Result<OpKind, ParseError> {
         },
         16 => OpKind::SetMultipleValues { values: vals(r)? },
         17 => OpKind::Safepoint,
-        18 => OpKind::EnterHandler { region: HandlerRegionId(u32(r.u()?)?) },
-        19 => OpKind::LeaveHandler { region: HandlerRegionId(u32(r.u()?)?) },
+        18 => OpKind::EnterHandler {
+            region: HandlerRegionId(u32(r.u()?)?),
+        },
+        19 => OpKind::LeaveHandler {
+            region: HandlerRegionId(u32(r.u()?)?),
+        },
         _ => return Err(ParseError("bad operation".into())),
     })
 }
@@ -434,6 +438,10 @@ fn handler_read(r: &mut Reader<'_>) -> Result<HandlerRegion, ParseError> {
         catch_tag,
         binding_targets,
         depth: u32(r.u()?)?,
-        parent: if r.b()? { Some(HandlerRegionId(u32(r.u()?)?)) } else { None },
+        parent: if r.b()? {
+            Some(HandlerRegionId(u32(r.u()?)?))
+        } else {
+            None
+        },
     })
 }

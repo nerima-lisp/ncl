@@ -15,7 +15,9 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u6
         ncl_ir::Constant::FunctionEntry(function) => abi
             .constant_word(&format!("function-entry:{}", function.0))
             .map(i64::cast_unsigned)
-            .ok_or_else(|| CodegenError::Unsupported("function entry constant is unavailable".into())),
+            .ok_or_else(|| {
+                CodegenError::Unsupported("function entry constant is unavailable".into())
+            }),
         _ => Err(CodegenError::Unsupported(
             "constant requires a runtime table".into(),
         )),
@@ -350,7 +352,14 @@ pub fn lower_op(
                     "enter-unwind-protect",
                     vec![
                         u64::from(region.0),
-                        u64::from(definition.cleanup.ok_or_else(|| CodegenError::Unsupported("cleanup block is unavailable".into()))?.0),
+                        u64::from(
+                            definition
+                                .cleanup
+                                .ok_or_else(|| {
+                                    CodegenError::Unsupported("cleanup block is unavailable".into())
+                                })?
+                                .0,
+                        ),
                     ],
                     Vec::new(),
                 ),

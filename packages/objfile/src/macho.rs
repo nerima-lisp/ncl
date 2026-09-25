@@ -1,4 +1,8 @@
 use crate::{ObjectError, Relocation, SectionId};
+
+#[cfg(test)]
+#[path = "macho_coverage_tests.rs"]
+mod coverage_tests;
 /// Mach-O CPU architecture.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MachArchitecture {

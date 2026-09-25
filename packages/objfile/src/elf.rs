@@ -1,5 +1,9 @@
 use crate::{ObjectError, RelocKind, Relocation, Section, SectionId, SymbolRef};
 
+#[cfg(test)]
+#[path = "elf_coverage_tests.rs"]
+mod coverage_tests;
+
 /// ELF machine architecture.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ElfArchitecture {

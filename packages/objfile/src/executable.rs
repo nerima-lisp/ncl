@@ -1,5 +1,9 @@
 use crate::{Architecture, MachArchitecture, ObjectError};
 
+#[cfg(test)]
+#[path = "executable_coverage_tests.rs"]
+mod coverage_tests;
+
 /// Validates an ELF executable envelope and requires an NCL metadata load segment.
 ///
 /// # Errors

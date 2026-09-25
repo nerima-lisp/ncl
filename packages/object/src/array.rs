@@ -379,6 +379,82 @@ pub fn array_dimensions(ctx: &ThreadContext, object: Word) -> Result<Vec<usize>,
         .collect()
 }
 
+/// Return an array's fill pointer, if it has one.
+pub fn array_fill_pointer(
+    ctx: &ThreadContext,
+    object: Word,
+) -> Result<Option<usize>, ObjectError> {
+    let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
+    let flags = read(
+        ctx,
+        object,
+        metadata_offset(rank, 3),
+        layout::widetag::NON_SIMPLE_ARRAY,
+    )?
+    .as_fixnum()
+    .ok_or(ObjectError::Layout)? as u64;
+    if flags & layout::array_offset::FLAG_HAS_FILL_POINTER == 0 {
+        return Ok(None);
+    }
+    let pointer = read(
+        ctx,
+        object,
+        metadata_offset(rank, 0),
+        layout::widetag::NON_SIMPLE_ARRAY,
+    )?
+    .as_fixnum()
+    .ok_or(ObjectError::Layout)?;
+    usize::try_from(pointer).map(Some).map_err(|_| ObjectError::Layout)
+}
+
+/// Set an array's fill pointer.
+pub fn array_set_fill_pointer(
+    ctx: &mut ThreadContext,
+    object: Word,
+    pointer: usize,
+) -> Result<(), ObjectError> {
+    let dimensions = array_dimensions(ctx, object)?;
+    if dimensions.len() != 1 || pointer > dimensions[0] {
+        return Err(ObjectError::TypeError);
+    }
+    if array_fill_pointer(ctx, object)?.is_none() {
+        return Err(ObjectError::TypeError);
+    }
+    write(
+        ctx,
+        object,
+        metadata_offset(1, 0),
+        Word::fixnum(i64::try_from(pointer).map_err(|_| ObjectError::Layout)?),
+        layout::widetag::NON_SIMPLE_ARRAY,
+    )
+}
+
+/// Return the array displaced target and index offset.
+pub fn array_displacement(
+    ctx: &ThreadContext,
+    object: Word,
+) -> Result<(Word, usize), ObjectError> {
+    let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
+    let target = read(
+        ctx,
+        object,
+        metadata_offset(rank, 1),
+        layout::widetag::NON_SIMPLE_ARRAY,
+    )?;
+    let offset = usize::try_from(
+        read(
+            ctx,
+            object,
+            metadata_offset(rank, 2),
+            layout::widetag::NON_SIMPLE_ARRAY,
+        )?
+        .as_fixnum()
+        .ok_or(ObjectError::Layout)?,
+    )
+    .map_err(|_| ObjectError::Layout)?;
+    Ok((target, offset))
+}
+
 /// Read a row-major element from a general array.
 ///
 /// # Errors

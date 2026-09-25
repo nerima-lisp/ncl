@@ -37,8 +37,8 @@ impl TryFrom<Fixup> for Relocation {
     type Error = RelocationError;
 
     fn try_from(fixup: Fixup) -> Result<Self, Self::Error> {
-        let offset = u32::try_from(fixup.offset)
-            .map_err(|_| RelocationError::OffsetOutOfRange {
+        let offset =
+            u32::try_from(fixup.offset).map_err(|_| RelocationError::OffsetOutOfRange {
                 offset: fixup.offset,
             })?;
         let kind = match fixup.kind {

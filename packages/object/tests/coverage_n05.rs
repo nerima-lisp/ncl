@@ -1,7 +1,6 @@
 #![allow(missing_docs)]
 
 use ncl_object::{
-    ArrayElementType, ArrayOptions, ObjectError, Package, Runtime, ThreadContext, Word,
     bignum_limbs, bignum_sign, code_constants, code_debug, code_entry, code_size, code_stack_map,
     complex_imag, complex_real, function_code, function_entry, function_lambda_list, function_name,
     instance_class, make_array, make_bignum_from_i128, make_code_object, make_complex, make_double,
@@ -13,6 +12,7 @@ use ncl_object::{
     stream_element_type, stream_external_format, stream_implementation, stream_state,
     structure_layout, structure_ref, structure_set, symbol_flags, symbol_is_constant,
     symbol_is_macro, symbol_is_package_locked, symbol_is_special, symbol_name, symbol_value,
+    ArrayElementType, ArrayOptions, ObjectError, Package, Runtime, ThreadContext, Word,
 };
 
 fn setup() -> (Runtime, ThreadContext) {
@@ -95,53 +95,58 @@ fn object_constructors_and_accessors_preserve_payloads() {
 #[test]
 fn numbers_arrays_structures_and_descriptor_slots_are_observable() {
     let (runtime, mut context) = setup();
-    let big = make_bignum_from_i128(&mut context, &runtime, -((1_i128 << 40) + 5))
-        .unwrap_or_else(|error| panic!("bignum: {error:?}"));
-    assert!(bignum_sign(&context, big).unwrap_or(false));
-    assert_eq!(bignum_limbs(&context, big), Ok(vec![5, 256]));
-    let ratio = make_ratio(&mut context, &runtime, Word::fixnum(2), Word::fixnum(3))
-        .unwrap_or_else(|error| panic!("ratio: {error:?}"));
-    assert_eq!(ratio_numerator(&context, ratio), Ok(Word::fixnum(2)));
-    assert_eq!(ratio_denominator(&context, ratio), Ok(Word::fixnum(3)));
-    let double = make_double(&mut context, &runtime, 1.25)
-        .unwrap_or_else(|error| panic!("double: {error:?}"));
-    assert_eq!(ncl_object::double_value(&context, double), Ok(1.25));
-    let complex = make_complex(&mut context, &runtime, Word::fixnum(4), Word::fixnum(5))
-        .unwrap_or_else(|error| panic!("complex: {error:?}"));
-    assert_eq!(complex_real(&context, complex), Ok(Word::fixnum(4)));
-    assert_eq!(complex_imag(&context, complex), Ok(Word::fixnum(5)));
+    assert_number_payloads(&runtime, &mut context);
+    assert_array_payloads(&runtime, &mut context);
+    assert_structure_and_descriptor_payloads(&runtime, &mut context);
+}
 
+fn assert_number_payloads(runtime: &Runtime, context: &mut ThreadContext) {
+    let big = make_bignum_from_i128(context, runtime, -((1_i128 << 40) + 5))
+        .unwrap_or_else(|error| panic!("bignum: {error:?}"));
+    assert!(bignum_sign(context, big).unwrap_or(false));
+    assert_eq!(bignum_limbs(context, big), Ok(vec![5, 256]));
+    let ratio = make_ratio(context, runtime, Word::fixnum(2), Word::fixnum(3))
+        .unwrap_or_else(|error| panic!("ratio: {error:?}"));
+    assert_eq!(ratio_numerator(context, ratio), Ok(Word::fixnum(2)));
+    assert_eq!(ratio_denominator(context, ratio), Ok(Word::fixnum(3)));
+    let double =
+        make_double(context, runtime, 1.25).unwrap_or_else(|error| panic!("double: {error:?}"));
+    assert_eq!(ncl_object::double_value(context, double), Ok(1.25));
+    let complex = make_complex(context, runtime, Word::fixnum(4), Word::fixnum(5))
+        .unwrap_or_else(|error| panic!("complex: {error:?}"));
+    assert_eq!(complex_real(context, complex), Ok(Word::fixnum(4)));
+    assert_eq!(complex_imag(context, complex), Ok(Word::fixnum(5)));
+}
+
+fn assert_array_payloads(runtime: &Runtime, context: &mut ThreadContext) {
     let bits = make_specialized_array(
-        &mut context,
-        &runtime,
+        context,
+        runtime,
         ArrayElementType::Bit,
         &[Word::fixnum(0), Word::fixnum(1)],
     )
     .unwrap_or(Word::NIL);
     assert_eq!(
-        specialized_array_element_type(&context, bits),
+        specialized_array_element_type(context, bits),
         Ok(ArrayElementType::Bit)
     );
+    assert_eq!(specialized_array_ref(context, bits, 1), Ok(Word::fixnum(1)));
     assert_eq!(
-        specialized_array_ref(&context, bits, 1),
-        Ok(Word::fixnum(1))
-    );
-    assert_eq!(
-        specialized_array_set(&mut context, bits, 0, Word::fixnum(1)),
+        specialized_array_set(context, bits, 0, Word::fixnum(1)),
         Ok(())
     );
     assert_eq!(
-        specialized_array_set(&mut context, bits, 0, Word::fixnum(2)),
+        specialized_array_set(context, bits, 0, Word::fixnum(2)),
         Err(ObjectError::TypeError)
     );
     assert_eq!(
-        make_specialized_array(&mut context, &runtime, ArrayElementType::T, &[]),
+        make_specialized_array(context, runtime, ArrayElementType::T, &[]),
         Err(ObjectError::TypeError)
     );
 
     let array = make_array(
-        &mut context,
-        &runtime,
+        context,
+        runtime,
         &[2],
         ArrayOptions {
             element_type: ArrayElementType::T,
@@ -153,47 +158,49 @@ fn numbers_arrays_structures_and_descriptor_slots_are_observable() {
         },
     )
     .unwrap_or(Word::NIL);
-    assert_eq!(ncl_object::array_dimensions(&context, array), Ok(vec![2]));
+    assert_eq!(ncl_object::array_dimensions(context, array), Ok(vec![2]));
     assert_eq!(
-        ncl_object::array_row_major_ref(&context, array, 0),
+        ncl_object::array_row_major_ref(context, array, 0),
         Ok(Word::fixnum(6))
     );
     assert_eq!(
-        ncl_object::array_row_major_set(&mut context, array, 1, Word::TRUE),
+        ncl_object::array_row_major_set(context, array, 1, Word::TRUE),
         Ok(())
     );
     assert_eq!(
-        ncl_object::array_row_major_ref(&context, array, 1),
+        ncl_object::array_row_major_ref(context, array, 1),
         Ok(Word::TRUE)
     );
+}
 
+fn assert_structure_and_descriptor_payloads(runtime: &Runtime, context: &mut ThreadContext) {
     let layout = runtime
         .register_structure_layout(1)
         .unwrap_or_else(|_| panic!("layout"));
     let structure =
-        make_structure(&mut context, &runtime, layout, &[Word::fixnum(10)]).unwrap_or(Word::NIL);
-    assert_eq!(structure_layout(&context, structure), Ok(layout));
-    assert_eq!(structure_ref(&context, structure, 0), Ok(Word::fixnum(10)));
+        make_structure(context, runtime, layout, &[Word::fixnum(10)]).unwrap_or(Word::NIL);
+    assert_eq!(structure_layout(context, structure), Ok(layout));
+    assert_eq!(structure_ref(context, structure, 0), Ok(Word::fixnum(10)));
     assert_eq!(
-        structure_set(&mut context, structure, 0, Word::fixnum(11)),
+        structure_set(context, structure, 0, Word::fixnum(11)),
         Ok(())
     );
-    assert_eq!(structure_ref(&context, structure, 0), Ok(Word::fixnum(11)));
+    assert_eq!(structure_ref(context, structure, 0), Ok(Word::fixnum(11)));
 
     let readtable = make_readtable(
-        &mut context,
-        &runtime,
+        context,
+        runtime,
         Word::fixnum(1),
         Word::fixnum(2),
         Word::fixnum(3),
     )
     .unwrap_or_else(|_| panic!("readtable"));
-    assert_eq!(readtable_syntax(&context, readtable), Ok(Word::fixnum(1)));
-    assert_eq!(readtable_dispatch(&context, readtable), Ok(Word::fixnum(2)));
-    assert_eq!(readtable_case(&context, readtable), Ok(Word::fixnum(3)));
+    assert_eq!(readtable_syntax(context, readtable), Ok(Word::fixnum(1)));
+    assert_eq!(readtable_dispatch(context, readtable), Ok(Word::fixnum(2)));
+    assert_eq!(readtable_case(context, readtable), Ok(Word::fixnum(3)));
     let stream = make_stream(
-        &mut context,
-        &runtime,
+        context,
+        runtime,
         Word::fixnum(1),
         Word::fixnum(2),
         Word::fixnum(3),
@@ -201,14 +208,11 @@ fn numbers_arrays_structures_and_descriptor_slots_are_observable() {
         Word::fixnum(5),
     )
     .unwrap_or_else(|_| panic!("stream"));
-    assert_eq!(stream_direction(&context, stream), Ok(Word::fixnum(1)));
-    assert_eq!(stream_element_type(&context, stream), Ok(Word::fixnum(2)));
-    assert_eq!(
-        stream_external_format(&context, stream),
-        Ok(Word::fixnum(3))
-    );
-    assert_eq!(stream_state(&context, stream), Ok(Word::fixnum(4)));
-    assert_eq!(stream_implementation(&context, stream), Ok(Word::fixnum(5)));
+    assert_eq!(stream_direction(context, stream), Ok(Word::fixnum(1)));
+    assert_eq!(stream_element_type(context, stream), Ok(Word::fixnum(2)));
+    assert_eq!(stream_external_format(context, stream), Ok(Word::fixnum(3)));
+    assert_eq!(stream_state(context, stream), Ok(Word::fixnum(4)));
+    assert_eq!(stream_implementation(context, stream), Ok(Word::fixnum(5)));
 }
 
 #[test]

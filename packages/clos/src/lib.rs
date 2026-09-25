@@ -8,12 +8,15 @@ use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, Fixnum, Instance, LambdaList, MultipleValues, ObjectError, ObjectRef,
     ObjectType, Package, Runtime, ThreadContext, Word, classify_object, instance_class,
-    make_instance as allocate_instance, make_simple_vector, simple_vector_ref, slot_ref, slot_set,
+    make_instance as allocate_instance, make_simple_vector, simple_vector_length,
+    simple_vector_ref, slot_ref, slot_set,
 };
 
 const COMMON_LISP: &str = "COMMON-LISP";
 const NCL_MOP: &str = "NCL-MOP";
 const CLASS_NAME: usize = 0;
+const CLASS_DIRECT_SUPERCLASS: usize = 1;
+const CLASS_SLOTS: usize = 2;
 
 const ARGUMENT: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("ARG"),
@@ -207,6 +210,47 @@ fn slot_makunbound_builtin(
     Ok(instance.as_word())
 }
 
+fn slot_exists_in_class(
+    ctx: &ThreadContext,
+    class: Word,
+    slot_name: Word,
+) -> Result<bool, ObjectError> {
+    let slots = simple_vector_ref(ctx, class, CLASS_SLOTS)?;
+    if slots != Word::NIL {
+        for index in 0..simple_vector_length(ctx, slots)? {
+            let slot = simple_vector_ref(ctx, slots, index)?;
+            let name = match simple_vector_length(ctx, slot) {
+                Ok(length) if length >= 2 => simple_vector_ref(ctx, slot, 0)?,
+                _ => slot,
+            };
+            if name == slot_name {
+                return Ok(true);
+            }
+        }
+    }
+    let superclass = simple_vector_ref(ctx, class, CLASS_DIRECT_SUPERCLASS)?;
+    if superclass == Word::NIL {
+        return Ok(false);
+    }
+    slot_exists_in_class(ctx, superclass, slot_name)
+}
+
+fn slot_exists_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let instance = instance_arg(ctx, args.required(0)?)?;
+    let class = instance_class(ctx, instance)?;
+    let slot_name = args.required(1)?;
+    Ok(if slot_exists_in_class(ctx, class, slot_name)? {
+        Word::TRUE
+    } else {
+        Word::NIL
+    })
+}
+
 fn class_of_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -368,6 +412,7 @@ fn register_owned_symbols(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<
         let callback = match fields[1] {
             "SLOT-MAKUNBOUND" => slot_makunbound_builtin,
             "SLOT-BOUNDP" => slot_boundp_builtin,
+            "SLOT-EXISTS-P" => slot_exists_builtin,
             "SLOT-VALUE" => slot_value_builtin,
             "CLASS-OF" => class_of_builtin,
             "CLASS-NAME" => class_name_builtin,

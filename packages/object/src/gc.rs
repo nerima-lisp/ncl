@@ -130,7 +130,7 @@ pub fn register_layouts(runtime: &Runtime) -> Result<(), ObjectError> {
 /// Returns an allocation, layout, or storage error from function registration.
 pub fn register(ctx: &mut crate::ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     let package = runtime.ensure_package(ctx, "NCL-GC")?;
-    let package = Package::from(package);
+    let package = Package::from_word(package);
     for name in ["*AFTER-GC-HOOKS*", "*GC-REAL-TIME*", "*GC-RUN-TIME*"] {
         let (symbol, _) = package.intern(ctx, runtime, name)?;
         crate::set_symbol_special(ctx, symbol, true)?;

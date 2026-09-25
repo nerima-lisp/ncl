@@ -100,7 +100,7 @@ fn fully_registered_crate_passes() {
     let rows = rows_for_crate("ncl-lib-format", 1).unwrap();
     assert!(!rows.is_empty());
     for row in &rows {
-        let package = Package::from(runtime.find_package(&ctx, &row.package).unwrap());
+        let package = Package::from_word(runtime.find_package(&ctx, &row.package).unwrap());
         package.intern(&mut ctx, &runtime, &row.symbol).unwrap();
         if row.kind.contains(&Kind::Function) {
             runtime
@@ -118,7 +118,7 @@ fn interned_symbol_reports_the_missing_function() {
     ctx.register(&runtime).unwrap();
     let rows = rows_for_crate("ncl-lib-format", 1).unwrap();
     let row = &rows[0];
-    let package = Package::from(runtime.find_package(&ctx, &row.package).unwrap());
+    let package = Package::from_word(runtime.find_package(&ctx, &row.package).unwrap());
     package.intern(&mut ctx, &runtime, &row.symbol).unwrap();
     let error = assert_crate_coverage(&runtime, &mut ctx, "ncl-lib-format").unwrap_err();
     match error {
@@ -141,7 +141,7 @@ fn interned_class_reports_the_missing_class() {
         .iter()
         .find(|row| row.package == "COMMON-LISP" && row.kind.contains(&Kind::Class))
         .unwrap();
-    let package = Package::from(runtime.find_package(&ctx, &row.package).unwrap());
+    let package = Package::from_word(runtime.find_package(&ctx, &row.package).unwrap());
     package.intern(&mut ctx, &runtime, &row.symbol).unwrap();
     let error = assert_crate_coverage(&runtime, &mut ctx, "ncl-types").unwrap_err();
     let missing = match error {
@@ -165,7 +165,7 @@ fn registered_class_is_not_reported() {
         .iter()
         .find(|row| row.package == "COMMON-LISP" && row.kind == vec![Kind::Class])
         .unwrap();
-    let package = Package::from(runtime.find_package(&ctx, &row.package).unwrap());
+    let package = Package::from_word(runtime.find_package(&ctx, &row.package).unwrap());
     package.intern(&mut ctx, &runtime, &row.symbol).unwrap();
     runtime
         .define_class(&mut ctx, row.symbol.as_str(), Word::fixnum(1))
@@ -179,7 +179,7 @@ fn registered_class_is_not_reported() {
 }
 
 fn intern_symbol(runtime: &Runtime, ctx: &mut ThreadContext, package: &str, name: &str) -> Word {
-    Package::from(runtime.find_package(ctx, package).unwrap())
+    Package::from_word(runtime.find_package(ctx, package).unwrap())
         .intern(ctx, runtime, name)
         .unwrap()
         .0

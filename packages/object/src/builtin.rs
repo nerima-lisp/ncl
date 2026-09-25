@@ -1,7 +1,8 @@
 //! Calling convention metadata and the safe Rust builtin boundary.
 
 use crate::{
-    ObjectError, Package, Runtime, ThreadContext, make_code_object, make_simple_fun, with_root,
+    LispError, ObjectError, Package, Runtime, ThreadContext, make_code_object, make_simple_fun,
+    with_root,
 };
 use ncl_sys::Word;
 
@@ -318,6 +319,11 @@ pub type RustBuiltin = fn(
     &BuiltinArgs<'_>,
     &mut MultipleValues,
 ) -> Result<Word, ObjectError>;
+pub type LispErrorConverter = fn(
+    &mut ThreadContext,
+    &Runtime,
+    LispError,
+) -> Result<Word, ObjectError>;
 pub type KeywordAdapter = fn(&BuiltinArgs<'_>) -> Result<Vec<Word>, super::ObjectError>;
 pub type RegisterFn = fn(&super::Runtime);
 
@@ -345,7 +351,7 @@ impl Runtime {
         let package = identifier.package.as_str();
         let name = identifier.name.as_str();
         let package_word = self.ensure_package(ctx, package)?;
-        let (mut symbol, _) = Package::from(package_word).intern(ctx, self, name)?;
+        let (mut symbol, _) = Package::from_word(package_word).intern(ctx, self, name)?;
         with_root(ctx, &mut symbol, |ctx, symbol| {
             let lambda_list = crate::make_string(
                 ctx,
@@ -421,6 +427,12 @@ impl Runtime {
         let adapted = BuiltinArgs::new(&adapted);
         let result = (implementation.function)(ctx, self, &adapted, &mut values);
         ctx.set_values(values.as_slice());
+        if let Some(error) = ctx.take_pending_lisp_error() {
+            if let Some(converter) = self.lisp_error_converter() {
+                let condition = converter(ctx, self, error)?;
+                ctx.set_pending_condition(condition);
+            }
+        }
         let pending = ctx.take_pending();
         pending.map_or(result, Err)
     }

@@ -246,7 +246,7 @@ fn double_round_trips_through_bytes() {
     let bytes = marshal_argument(&ctx, &AlienType::DoubleFloat, original).unwrap();
     let value = unmarshal_result(&mut ctx, &runtime, &AlienType::DoubleFloat, &bytes).unwrap();
     assert_eq!(
-        double_value(&ctx, DoubleFloat::from(value))
+        double_value(&ctx, DoubleFloat::from_word(value))
             .unwrap()
             .to_bits(),
         1.5_f64.to_bits()

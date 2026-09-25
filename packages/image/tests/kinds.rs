@@ -71,7 +71,7 @@ fn remaining_object_kinds_round_trip() {
         0,
         Word::NIL,
         Word::NIL,
-        CodeObject::from(code),
+        CodeObject::from_word(code),
         &[Word::fixnum(5)],
     )
     .unwrap()
@@ -121,23 +121,23 @@ fn remaining_object_kinds_round_trip() {
         Some(2)
     );
     assert_eq!(
-        bignum_limbs(&ctx2, Bignum::from(loaded[1])).unwrap(),
+        bignum_limbs(&ctx2, Bignum::from_word(loaded[1])).unwrap(),
         vec![u32::MAX, u32::MAX]
     );
     assert_eq!(
-        ratio_numerator(&ctx2, Ratio::from(loaded[2]))
+        ratio_numerator(&ctx2, Ratio::from_word(loaded[2]))
             .unwrap()
             .as_fixnum(),
         Some(3)
     );
     assert_eq!(
-        double_value(&ctx2, DoubleFloat::from(loaded[3]))
+        double_value(&ctx2, DoubleFloat::from_word(loaded[3]))
             .unwrap()
             .to_bits(),
         1.5_f64.to_bits()
     );
     assert_eq!(
-        complex_imag(&ctx2, Complex::from(loaded[4]))
+        complex_imag(&ctx2, Complex::from_word(loaded[4]))
             .unwrap()
             .as_fixnum(),
         Some(2)
@@ -147,13 +147,13 @@ fn remaining_object_kinds_round_trip() {
         Some(9)
     );
     assert_eq!(
-        slot_ref(&ctx2, Instance::from(loaded[6]), 0)
+        slot_ref(&ctx2, Instance::from_word(loaded[6]), 0)
             .unwrap()
             .as_fixnum(),
         Some(8)
     );
     assert_eq!(
-        closure_ref(&ctx2, Function::from(loaded[7]), 0)
+        closure_ref(&ctx2, Function::from_word(loaded[7]), 0)
             .unwrap()
             .as_fixnum(),
         Some(5)

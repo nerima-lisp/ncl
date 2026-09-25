@@ -101,11 +101,11 @@ impl super::Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let symbol = match HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                let symbol = match HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                     .remove(ctx, runtime, *name)?
                 {
                     Some(symbol) => Some(symbol),
-                    None => HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?)
+                    None => HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?)
                         .remove(ctx, runtime, *name)?,
                 };
                 let Some(mut symbol) = symbol else {
@@ -166,7 +166,7 @@ impl super::Package {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
                 let symbol =
-                    if let Some((symbol, _)) = Self::from(*package).find_symbol(ctx, *name)? {
+                    if let Some((symbol, _)) = Self::from_word(*package).find_symbol(ctx, *name)? {
                         symbol
                     } else {
                         let mut symbol = crate::make_symbol(ctx, runtime, *name)?;
@@ -177,7 +177,7 @@ impl super::Package {
                                 crate::layout::symbol_offset::PACKAGE,
                                 *package,
                             )?;
-                            HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                            HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                                 .insert(ctx, runtime, *name, *symbol)?;
                             Ok(*symbol)
                         })?

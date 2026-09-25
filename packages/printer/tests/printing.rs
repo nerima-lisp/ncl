@@ -26,7 +26,7 @@ fn print(
 
 fn intern(runtime: &Runtime, ctx: &mut ThreadContext, package: &str, name: &str) -> Word {
     let package = runtime.find_package(ctx, package).unwrap();
-    Package::from(package).intern(ctx, runtime, name).unwrap().0
+    Package::from_word(package).intern(ctx, runtime, name).unwrap().0
 }
 
 fn list(runtime: &Runtime, ctx: &mut ThreadContext, values: &[Word]) -> Word {

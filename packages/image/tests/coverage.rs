@@ -25,7 +25,7 @@ fn registers_every_owned_symbol() {
         .unwrap();
 
     let package = runtime.find_package(&ctx, "NCL-IMAGE").unwrap();
-    let package = Package::from(package);
+    let package = Package::from_word(package);
     let argv_name = make_string(
         &mut ctx,
         &runtime,

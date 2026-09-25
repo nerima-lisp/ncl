@@ -2,8 +2,8 @@
 
 use ncl_object::{
     ArithmeticError, CellError, Character, ControlError, FileError, Fixnum, LispError, ObjectError,
-    ObjectErrorKind, ObjectRef, ObjectType, PackageError, ProgramError, StreamError, TypeError,
-    Word, WordView, classify,
+    CodeObject, Cons, ObjectErrorKind, ObjectRef, ObjectType, Package, PackageError,
+    ProgramError, StreamError, TypeError, Word, WordView, classify,
 };
 use ncl_sys::StorageCondition;
 
@@ -40,6 +40,15 @@ fn error_kind_preserves_existing_object_error_values() {
 fn classify_can_be_adapted_without_changing_the_abi() {
     let reference = classify(Word::fixnum(3));
     assert_eq!(WordView::from(reference).as_word(), Word::fixnum(3));
+}
+
+#[test]
+fn heap_views_use_named_word_constructors() {
+    let word = Word::fixnum(7);
+
+    assert_eq!(Cons::from_word(word).as_word(), word);
+    assert_eq!(Package::from_word(word).as_word(), word);
+    assert_eq!(CodeObject::from_word(word).as_word(), word);
 }
 
 #[test]

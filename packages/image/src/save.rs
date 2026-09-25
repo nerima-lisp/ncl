@@ -157,19 +157,19 @@ impl<'a> Capture<'a> {
             ObjectRef::Code(word) => self.capture_code_object(ctx, word),
             ObjectRef::Bignum(word) => Self::capture_bignum(ctx, word),
             ObjectRef::Ratio(word) => {
-                let numerator = ratio_numerator(ctx, Ratio::from(word))?;
-                let denominator = ratio_denominator(ctx, Ratio::from(word))?;
+                let numerator = ratio_numerator(ctx, Ratio::from_word(word))?;
+                let denominator = ratio_denominator(ctx, Ratio::from_word(word))?;
                 Ok(Record::Ratio {
                     numerator: self.ref_of(numerator)?,
                     denominator: self.ref_of(denominator)?,
                 })
             }
             ObjectRef::DoubleFloat(word) => Ok(Record::DoubleFloat {
-                bits: double_value(ctx, DoubleFloat::from(word))?.to_bits(),
+                bits: double_value(ctx, DoubleFloat::from_word(word))?.to_bits(),
             }),
             ObjectRef::Complex(word) => {
-                let real = complex_real(ctx, Complex::from(word))?;
-                let imag = complex_imag(ctx, Complex::from(word))?;
+                let real = complex_real(ctx, Complex::from_word(word))?;
+                let imag = complex_imag(ctx, Complex::from_word(word))?;
                 Ok(Record::Complex {
                     real: self.ref_of(real)?,
                     imag: self.ref_of(imag)?,
@@ -187,7 +187,7 @@ impl<'a> Capture<'a> {
         let package = if package_word == Word::NIL {
             String::new()
         } else {
-            read_string(ctx, Package::from(package_word).name(ctx)?)?
+            read_string(ctx, Package::from_word(package_word).name(ctx)?)?
         };
         let name = read_string(ctx, symbol_name(ctx, word)?)?;
         let value = symbol_value(ctx, word)?;
@@ -204,7 +204,7 @@ impl<'a> Capture<'a> {
     }
 
     fn capture_package(ctx: &mut ThreadContext, word: Word) -> Result<Record, ImageError> {
-        let name = read_string(ctx, Package::from(word).name(ctx)?)?;
+        let name = read_string(ctx, Package::from_word(word).name(ctx)?)?;
         let mut list = read_slot(ctx, word, PACKAGE_NICKNAMES)?;
         let mut nicknames = Vec::new();
         while list != Word::NIL {
@@ -239,7 +239,7 @@ impl<'a> Capture<'a> {
         ctx: &ThreadContext,
         word: Word,
     ) -> Result<Record, ImageError> {
-        let table = HashTable::from(word);
+        let table = HashTable::from_word(word);
         let test = u8::try_from(table.test(ctx)? as i64).map_err(|_| invalid("hash test"))?;
         let weakness =
             u8::try_from(table.weakness(ctx)? as i64).map_err(|_| invalid("hash weakness"))?;
@@ -275,13 +275,13 @@ impl<'a> Capture<'a> {
         ctx: &mut ThreadContext,
         word: Word,
     ) -> Result<Record, ImageError> {
-        let class = instance_class(ctx, Instance::from(word))?;
+        let class = instance_class(ctx, Instance::from_word(word))?;
         let class = self.ref_of(class)?;
         let slot_vector = read_slot(ctx, word, instance_offset::SLOT_VECTOR)?;
         let count = simple_vector_length(ctx, slot_vector)?;
         let mut slots = Vec::with_capacity(count.min(1024));
         for index in 0..count {
-            let slot = slot_ref(ctx, Instance::from(word), index)?;
+            let slot = slot_ref(ctx, Instance::from_word(word), index)?;
             slots.push(self.ref_of(slot)?);
         }
         Ok(Record::Instance { class, slots })
@@ -293,7 +293,7 @@ impl<'a> Capture<'a> {
         word: Word,
         closure: bool,
     ) -> Result<Record, ImageError> {
-        let function = Function::from(word);
+        let function = Function::from_word(word);
         let entry = function_entry(ctx, function)?;
         let name = function_name(ctx, function)?;
         let lambda_list = function_lambda_list(ctx, function)?;
@@ -322,7 +322,7 @@ impl<'a> Capture<'a> {
         ctx: &ThreadContext,
         word: Word,
     ) -> Result<Record, ImageError> {
-        let code = CodeObject::from(word);
+        let code = CodeObject::from_word(word);
         let entry = code_entry(ctx, code)?
             .as_fixnum()
             .ok_or(ImageError::Object(ObjectError::Layout))?;
@@ -342,7 +342,7 @@ impl<'a> Capture<'a> {
     }
 
     fn capture_bignum(ctx: &ThreadContext, word: Word) -> Result<Record, ImageError> {
-        let bignum = Bignum::from(word);
+        let bignum = Bignum::from_word(word);
         Ok(Record::Bignum {
             negative: bignum_sign(ctx, bignum)?,
             limbs: bignum_limbs(ctx, bignum)?,

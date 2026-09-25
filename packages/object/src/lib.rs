@@ -35,7 +35,7 @@ pub use array::{
 pub use builtin::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, FunctionObject, KeywordAdapter, LambdaList, MultipleValues,
-    NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
+    LispErrorConverter, NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
 };
 pub use classify::{ObjectRef, classify, classify_object};
 pub use code::code_slot;
@@ -125,6 +125,7 @@ pub struct Runtime {
     next_layout: Mutex<u32>,
     layouts_registered: Mutex<bool>,
     builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
+    lisp_error_converter: Mutex<Option<LispErrorConverter>>,
 }
 /// Per-mutator object-layer context. Generated code obtains its stable thread
 /// pointer with [`ThreadContext::thread_mut`].
@@ -156,6 +157,7 @@ impl Runtime {
             next_layout: Mutex::new(1),
             layouts_registered: Mutex::new(false),
             builtins: Mutex::new(HashMap::new()),
+            lisp_error_converter: Mutex::new(None),
         };
         runtime.register_layouts()?;
         let mut context = ThreadContext::new();
@@ -232,7 +234,7 @@ impl Runtime {
         with_root(ctx, &mut function, |context, function| {
             let mut key = make_string(context, self, &key.chars().collect::<Vec<_>>())?;
             with_root(context, &mut key, |context, key| {
-                HashTable::from(Self::table(&self.functions)?)
+                HashTable::from_word(Self::table(&self.functions)?)
                     .insert(context, self, *key, *function)
             })
         })
@@ -243,7 +245,7 @@ impl Runtime {
         let key = format!("{package}::{name}");
         let key = make_string(ctx, self, &key.chars().collect::<Vec<_>>()).ok()?;
         let table = Self::table(&self.functions).ok()?;
-        HashTable::from(table).get(ctx, key).ok().flatten()
+        HashTable::from_word(table).get(ctx, key).ok().flatten()
     }
     fn table(registry: &Mutex<Option<RootedTable>>) -> Result<Word, ObjectError> {
         registry
@@ -253,6 +255,22 @@ impl Runtime {
             .map(|root| *root.slot)
             .ok_or(ObjectError::Layout)
     }
+
+    /// Install the higher-layer converter for typed builtin failures.
+    pub fn register_lisp_error_converter(&self, converter: LispErrorConverter) {
+        *self
+            .lisp_error_converter
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(converter);
+    }
+
+    pub(crate) fn lisp_error_converter(&self) -> Option<LispErrorConverter> {
+        self.lisp_error_converter
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .copied()
+    }
 }
 #[derive(Debug)]
 pub struct ThreadContext {
@@ -261,6 +279,8 @@ pub struct ThreadContext {
     bindings: Vec<(u32, Word)>,
     values: Vec<Word>,
     pending: Option<ObjectError>,
+    pending_lisp_error: Option<LispError>,
+    pending_condition: Option<Word>,
     non_local_exit: bool,
     handler: Option<usize>,
     cleanup: Option<usize>,
@@ -277,6 +297,8 @@ impl ThreadContext {
             bindings: Vec::new(),
             values: Vec::new(),
             pending: None,
+            pending_lisp_error: None,
+            pending_condition: None,
             non_local_exit: false,
             handler: None,
             cleanup: None,
@@ -334,6 +356,20 @@ impl ThreadContext {
     /// Take the pending condition.
     pub const fn take_pending(&mut self) -> Option<ObjectError> {
         self.pending.take()
+    }
+    pub fn set_pending_lisp_error(&mut self, error: LispError) {
+        self.pending_lisp_error = Some(error);
+    }
+    pub(crate) const fn take_pending_lisp_error(&mut self) -> Option<LispError> {
+        self.pending_lisp_error.take()
+    }
+    /// Store the condition object produced for the latest typed builtin error.
+    pub const fn set_pending_condition(&mut self, condition: Word) {
+        self.pending_condition = Some(condition);
+    }
+    /// Take the pending condition object, if one was produced at the builtin boundary.
+    pub const fn take_pending_condition(&mut self) -> Option<Word> {
+        self.pending_condition.take()
     }
     /// Run a collection for this registered context.
     ///

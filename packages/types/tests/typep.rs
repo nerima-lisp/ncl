@@ -86,7 +86,7 @@ fn symbol_and_keyword() {
     let (runtime, mut ctx) = setup();
     let symbol = {
         let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
-        Package::from(package)
+        Package::from_word(package)
             .intern(&mut ctx, &runtime, "FOO")
             .unwrap()
             .0
@@ -96,7 +96,7 @@ fn symbol_and_keyword() {
 
     let keyword = {
         let package = runtime.find_package(&ctx, "KEYWORD").unwrap();
-        Package::from(package)
+        Package::from_word(package)
             .intern(&mut ctx, &runtime, "FOO")
             .unwrap()
             .0
@@ -245,7 +245,7 @@ fn satisfies_and_deftype_error() {
     let _ = &runtime;
     let _predicate = {
         let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
-        Package::from(package)
+        Package::from_word(package)
             .intern(&mut ctx, &runtime, "PRED")
             .unwrap()
             .0

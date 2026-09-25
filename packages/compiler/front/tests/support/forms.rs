@@ -40,7 +40,7 @@ impl Fixture {
             .runtime
             .ensure_package(&mut self.ctx, package)
             .expect("package");
-        Package::from(package)
+        Package::from_word(package)
             .intern(&mut self.ctx, &self.runtime, name)
             .expect("intern")
             .0
@@ -135,7 +135,7 @@ impl Default for Fixture {
 /// Intern `name` in `package` using an explicit context.
 pub fn intern(ctx: &mut ThreadContext, runtime: &Runtime, package: &str, name: &str) -> Word {
     let package = runtime.ensure_package(ctx, package).expect("package");
-    Package::from(package)
+    Package::from_word(package)
         .intern(ctx, runtime, name)
         .expect("intern")
         .0

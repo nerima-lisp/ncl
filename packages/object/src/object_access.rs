@@ -7,8 +7,9 @@ macro_rules! word_newtype {
         #[repr(transparent)]
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub struct $name(Word);
-        impl From<Word> for $name {
-            fn from(value: Word) -> Self {
+        impl $name {
+            #[must_use]
+            pub const fn from_word(value: Word) -> Self {
                 Self(value)
             }
         }

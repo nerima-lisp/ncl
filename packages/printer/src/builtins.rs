@@ -54,12 +54,12 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
     }
     for (package, name) in FUNCTIONS {
         let package_word = runtime.ensure_package(ctx, package)?;
-        Package::from(package_word).intern(ctx, runtime, name)?;
+        Package::from_word(package_word).intern(ctx, runtime, name)?;
         runtime.define_function(ctx, package, name, Word::UNBOUND)?;
     }
     for (package, name) in VARIABLES {
         let package = runtime.ensure_package(ctx, package)?;
-        let (mut symbol, _status) = Package::from(package).intern(ctx, runtime, name)?;
+        let (mut symbol, _status) = Package::from_word(package).intern(ctx, runtime, name)?;
         let token = push_root(ctx, &mut symbol);
         let result = initialise_variable(ctx, runtime, name, symbol);
         let _ = pop_root(ctx, token);

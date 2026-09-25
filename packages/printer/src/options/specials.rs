@@ -20,7 +20,7 @@ fn find_special(ctx: &mut ThreadContext, runtime: &Runtime, qualified: &str) -> 
     let package = runtime.find_package(ctx, package_name)?;
     let mut name = make_string(ctx, runtime, &symbol_name.chars().collect::<Vec<char>>()).ok()?;
     let token = push_root(ctx, &mut name);
-    let found = Package::from(package)
+    let found = Package::from_word(package)
         .find_symbol(ctx, name)
         .ok()
         .flatten()

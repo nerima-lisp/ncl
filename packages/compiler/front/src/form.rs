@@ -116,7 +116,7 @@ pub fn symbol_ref(
         let identity = table.identity(word);
         return Ok(SymbolRef::uninterned(name, identity));
     }
-    let package = word_string(ctx, Package::from(package).name(ctx)?)?;
+    let package = word_string(ctx, Package::from_word(package).name(ctx)?)?;
     Ok(SymbolRef::interned(package, name))
 }
 
@@ -162,14 +162,14 @@ pub fn number_literal(ctx: &mut ThreadContext, word: Word) -> Result<NumberLiter
     match classify_form(ctx, word) {
         ObjectRef::Fixnum(value) => Ok(NumberLiteral::Fixnum(value)),
         ObjectRef::Bignum(_) => {
-            let object = Bignum::from(word);
+            let object = Bignum::from_word(word);
             Ok(NumberLiteral::Bignum {
                 negative: bignum_sign(ctx, object)?,
                 limbs: bignum_limbs(ctx, object)?,
             })
         }
         ObjectRef::Ratio(_) => {
-            let object = Ratio::from(word);
+            let object = Ratio::from_word(word);
             let numerator = ratio_numerator(ctx, object)?;
             let denominator = ratio_denominator(ctx, object)?;
             Ok(NumberLiteral::Ratio {
@@ -179,10 +179,10 @@ pub fn number_literal(ctx: &mut ThreadContext, word: Word) -> Result<NumberLiter
         }
         ObjectRef::DoubleFloat(_) => Ok(NumberLiteral::DoubleFloat(double_value(
             ctx,
-            DoubleFloat::from(word),
+            DoubleFloat::from_word(word),
         )?)),
         ObjectRef::Complex(_) => {
-            let object = Complex::from(word);
+            let object = Complex::from_word(word);
             let real = complex_real(ctx, object)?;
             let imaginary = complex_imag(ctx, object)?;
             Ok(NumberLiteral::Complex {

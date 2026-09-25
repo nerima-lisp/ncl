@@ -256,7 +256,7 @@ fn single_value(ctx: &ThreadContext, value: Word) -> Result<f32, FfiError> {
         })?;
         return Ok(f32::from_bits(bits));
     }
-    double_value(ctx, DoubleFloat::from(value))
+    double_value(ctx, DoubleFloat::from_word(value))
         .map(f64_to_f32)
         .map_err(|_| FfiError::TypeMismatch {
             type_name: "single-float",
@@ -272,7 +272,7 @@ fn double_value_of(ctx: &ThreadContext, value: Word) -> Result<f64, FfiError> {
         })?;
         return Ok(f64::from(f32::from_bits(bits)));
     }
-    double_value(ctx, DoubleFloat::from(value)).map_err(|_| FfiError::TypeMismatch {
+    double_value(ctx, DoubleFloat::from_word(value)).map_err(|_| FfiError::TypeMismatch {
         type_name: "double-float",
     })
 }
@@ -342,7 +342,7 @@ fn word_to_u128(ctx: &ThreadContext, value: Word) -> Result<u128, FfiError> {
 
 /// Decode a bignum into its sign and magnitude.
 fn word_magnitude(ctx: &ThreadContext, value: Word) -> Result<(bool, u128), FfiError> {
-    let bignum = Bignum::from(value);
+    let bignum = Bignum::from_word(value);
     let limbs = bignum_limbs(ctx, bignum).map_err(|_| FfiError::TypeMismatch {
         type_name: "integer",
     })?;

@@ -97,7 +97,7 @@ impl HashTable {
                     ] {
                         put(ctx, table, slot, value)?;
                     }
-                    Ok(table.into())
+                    Ok(HashTable::from_word(table))
                 })();
                 finish_root(ctx, index_token, result)
             })();
@@ -183,7 +183,7 @@ impl HashTable {
         let mut value = value;
         let value_token = crate::push_root(ctx, &mut value);
         let result = (|| {
-            let mut table = Self::from(table_word);
+            let mut table = Self::from_word(table_word);
             table.rehash_if_needed(ctx)?;
             let (index, kv) = table.storage(ctx)?;
             let test = table.test(ctx)?;
@@ -210,7 +210,7 @@ impl HashTable {
                         capacity * 2
                     },
                 )?;
-                table = Self::from(table_word);
+                table = Self::from_word(table_word);
             }
             let count = table.count(ctx)?;
             let (index, kv) = table.storage(ctx)?;
@@ -375,7 +375,7 @@ impl HashTable {
                     make_simple_vector(ctx, runtime, &vec![Word::fixnum(EMPTY); capacity])?;
                 let index_token = crate::push_root(ctx, &mut new_index);
                 let result = (|| {
-                    let table = Self::from(table_word);
+                    let table = Self::from_word(table_word);
                     let marker = get(ctx, table_word, widetag::HASH_TABLE, MARKER)?;
                     let old_kv = get(ctx, table_word, widetag::HASH_TABLE, KV)?;
                     let old_high_water = table.read_usize(ctx, HIGH_WATER)?;

@@ -35,7 +35,7 @@ fn register_symbol(
     row: &SymbolRow,
 ) -> Result<(), ObjectError> {
     let package = runtime.ensure_package(ctx, row.package)?;
-    let (symbol, _status) = Package::from(package).intern(ctx, runtime, row.name)?;
+    let (symbol, _status) = Package::from_word(package).intern(ctx, runtime, row.name)?;
     if row.kind.defines_function() {
         runtime.define_function(ctx, row.package, row.name, Word::UNBOUND)?;
     }

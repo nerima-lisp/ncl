@@ -300,7 +300,7 @@ fn read_label(
     let table = ensure_labels_table(ctx, runtime, labels)?;
     let mut form = form;
     let token = push_root(ctx, &mut form);
-    let result = HashTable::from(table).insert(ctx, runtime, Word::fixnum(label), form);
+    let result = HashTable::from_word(table).insert(ctx, runtime, Word::fixnum(label), form);
     let _ = pop_root(ctx, token);
     result?;
     Ok(Some(form))
@@ -319,7 +319,7 @@ fn read_label_ref(
     }
     let mut table = *labels;
     let token = push_root(ctx, &mut table);
-    let value = HashTable::from(table).get(ctx, Word::fixnum(label))?;
+    let value = HashTable::from_word(table).get(ctx, Word::fixnum(label))?;
     let _ = pop_root(ctx, token);
     value
         .map(Some)

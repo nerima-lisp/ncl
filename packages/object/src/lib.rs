@@ -26,14 +26,16 @@ mod specialized_array;
 mod stream;
 mod structure;
 mod symbol_extensions;
+mod typed;
 pub use array::{
     ArrayElementType, ArrayOptions, array_dimensions, array_row_major_ref, array_row_major_set,
     make_array, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
     simple_vector_set, string_length, string_ref, string_set,
 };
 pub use builtin::{
-    Builtin, BuiltinImplementation, FunctionObject, KeywordAdapter, MultipleValues, NclStatus,
-    RegisterFn, RustBuiltin,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, FunctionObject, KeywordAdapter, LambdaList, MultipleValues,
+    NclStatus, RegisterFn, RustBuiltin,
 };
 pub use classify::{ObjectRef, classify, classify_object};
 pub use code::code_slot;
@@ -82,6 +84,10 @@ pub use symbol_extensions::{
     set_symbol_value, symbol_flags, symbol_function, symbol_is_constant, symbol_is_macro,
     symbol_is_package_locked, symbol_is_special, symbol_name, symbol_package, symbol_plist,
     symbol_value,
+};
+pub use typed::{
+    Array, Closure, Cons, ObjectErrorKind, ObjectType, SimpleVector, SpecializedArray,
+    StringObject, StructureObject, Symbol, TypeError, WordView,
 };
 /// Object-layer failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

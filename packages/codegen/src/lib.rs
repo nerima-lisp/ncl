@@ -18,6 +18,10 @@ mod tests;
 mod tests_aarch64;
 #[cfg(test)]
 mod tests_x86_64;
+#[cfg(test)]
+mod tests_x86_64_fixture;
+#[cfg(test)]
+mod tests_x86_64_golden;
 
 pub use abi::{Aarch64Abi, ContextField, RegisterId, RuntimeAbi, RuntimeFunction, X86_64Abi};
 pub use frame::{FRAME_HEADER_WORDS, FrameLayout};

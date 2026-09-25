@@ -124,7 +124,9 @@ fn private_elf_writer_round_trip_contains_symbols_and_sections() {
             global: true,
         }],
     };
-    let bytes = value.write().expect("ELF with all sections");
+    let result = value.write();
+    assert!(result.is_ok());
+    let Ok(bytes) = result else { return };
     assert_eq!(
         ElfReader::validate(&bytes, ElfArchitecture::Aarch64),
         Ok(())

@@ -120,18 +120,22 @@ fn private_fasl_helpers_round_trip_payload_and_relocations() {
             debug: vec![6],
         },
     };
-    let bytes = FaslWriter::write(&value).expect("FASL payload");
-    let ranges = read_fasl_ranges(&bytes).expect("valid ranges");
+    let bytes_result = FaslWriter::write(&value);
+    assert!(bytes_result.is_ok());
+    let Ok(bytes) = bytes_result else { return };
+    let ranges_result = read_fasl_ranges(&bytes);
+    assert!(ranges_result.is_ok());
+    let Ok(ranges) = ranges_result else { return };
     assert_eq!(ranges.code, &[1, 2]);
     assert_eq!(ranges.constants, &[3]);
     assert_eq!(ranges.symbols, &[4]);
     assert_eq!(ranges.stack, &[5]);
     assert_eq!(
-        &bytes[usize::try_from(ranges.debug_start).expect("debug offset")..],
+        &bytes[usize::try_from(ranges.debug_start).unwrap_or(0)..],
         &[6]
     );
     assert_eq!(
-        decode_relocations(ranges.reloc).expect("relocations").len(),
+        decode_relocations(ranges.reloc).map_or(0, |relocations| relocations.len()),
         1
     );
     assert_eq!(

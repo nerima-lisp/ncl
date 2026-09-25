@@ -281,7 +281,10 @@ dependencies = [
  "ncl-compiler-front",
  "ncl-ffi",
  "ncl-image",
+ "ncl-object",
+ "ncl-reader",
  "ncl-stdlib",
+ "ncl-sys",
  "ncl-threads",
 ]
 

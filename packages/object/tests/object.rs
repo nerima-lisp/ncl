@@ -40,7 +40,10 @@ fn symbols_and_bindings() {
 #[test]
 fn builtin_metadata_expands() {
     builtin!(TEST_BUILTIN, 2);
-    assert_eq!(TEST_BUILTIN.arity, 2);
+    assert_eq!(
+        TEST_BUILTIN.convention.arity(),
+        Some(ncl_object::Arity::exact(2))
+    );
 }
 
 #[test]
@@ -53,9 +56,12 @@ fn builtin_abi_expands_for_fixed_and_variadic_forms() {
         *const Word,
         *mut ncl_object::MultipleValues,
     ) -> ncl_object::NclStatus = test_variadic;
-    assert_eq!(TEST_ABI.arity, 2);
-    const { assert!(TEST_ABI.direct) };
-    assert_eq!(TEST_ABI.lambda_list, "a b");
+    assert_eq!(
+        TEST_ABI.convention.arity(),
+        Some(ncl_object::Arity::exact(2))
+    );
+    const { assert!(TEST_ABI.convention.direct()) };
+    assert_eq!(TEST_ABI.lambda_list.as_str(), "a b");
     let _ = (direct, variadic);
 }
 

@@ -14,10 +14,103 @@ pub enum NclStatus {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LambdaList(&'static str);
+
+impl LambdaList {
+    #[must_use]
+    pub const fn new(value: &'static str) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Arity(u8);
+
+impl Arity {
+    #[must_use]
+    pub const fn exact(value: u8) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuiltinConvention {
+    Direct(Arity),
+    Adapted,
+}
+
+impl BuiltinConvention {
+    #[must_use]
+    pub const fn direct(self) -> bool {
+        matches!(self, Self::Direct(_))
+    }
+
+    #[must_use]
+    pub const fn arity(self) -> Option<Arity> {
+        match self {
+            Self::Direct(arity) => Some(arity),
+            Self::Adapted => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Builtin {
-    pub arity: u8,
-    pub direct: bool,
-    pub lambda_list: &'static str,
+    pub lambda_list: LambdaList,
+    pub convention: BuiltinConvention,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct BuiltinPackage(&'static str);
+
+impl BuiltinPackage {
+    #[must_use]
+    pub const fn new(value: &'static str) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct BuiltinName(&'static str);
+
+impl BuiltinName {
+    #[must_use]
+    pub const fn new(value: &'static str) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct BuiltinIdentifier {
+    pub package: BuiltinPackage,
+    pub name: BuiltinName,
+}
+
+impl BuiltinIdentifier {
+    #[must_use]
+    pub const fn new(package: BuiltinPackage, name: BuiltinName) -> Self {
+        Self { package, name }
+    }
 }
 
 #[repr(C)]
@@ -77,9 +170,49 @@ impl FunctionObject {
     }
 }
 
-pub type RustBuiltin =
-    fn(&Runtime, &mut ThreadContext, &[Word], &mut MultipleValues) -> Result<Word, ObjectError>;
-pub type KeywordAdapter = fn(&[Word]) -> Result<Vec<Word>, super::ObjectError>;
+#[derive(Clone, Copy, Debug)]
+pub struct BuiltinArgs<'a> {
+    words: &'a [Word],
+}
+
+impl<'a> BuiltinArgs<'a> {
+    #[must_use]
+    pub const fn new(words: &'a [Word]) -> Self {
+        Self { words }
+    }
+
+    #[must_use]
+    pub const fn len(self) -> usize {
+        self.words.len()
+    }
+
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.words.is_empty()
+    }
+
+    #[must_use]
+    pub fn get(self, index: usize) -> Option<Word> {
+        self.words.get(index).copied()
+    }
+
+    /// Return a required argument.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ObjectError::TypeError`] when the argument is absent.
+    pub fn required(self, index: usize) -> Result<Word, ObjectError> {
+        self.get(index).ok_or(ObjectError::TypeError)
+    }
+}
+
+pub type RustBuiltin = fn(
+    &mut ThreadContext,
+    &Runtime,
+    &BuiltinArgs<'_>,
+    &mut MultipleValues,
+) -> Result<Word, ObjectError>;
+pub type KeywordAdapter = fn(&BuiltinArgs<'_>) -> Result<Vec<Word>, super::ObjectError>;
 pub type RegisterFn = fn(&super::Runtime);
 
 #[derive(Clone, Copy, Debug)]
@@ -100,10 +233,11 @@ impl Runtime {
     pub fn register_builtin(
         &self,
         ctx: &mut ThreadContext,
-        package: &str,
-        name: &str,
+        identifier: BuiltinIdentifier,
         implementation: BuiltinImplementation,
     ) -> Result<FunctionObject, ObjectError> {
+        let package = identifier.package.as_str();
+        let name = identifier.name.as_str();
         let package_word = self.ensure_package(ctx, package)?;
         let (mut symbol, _) = Package::from(package_word).intern(ctx, self, name)?;
         with_root(ctx, &mut symbol, |ctx, symbol| {
@@ -113,6 +247,7 @@ impl Runtime {
                 &implementation
                     .descriptor
                     .lambda_list
+                    .as_str()
                     .chars()
                     .collect::<Vec<_>>(),
             )?;
@@ -157,16 +292,21 @@ impl Runtime {
             .get(&function.as_word())
             .copied()
             .ok_or(ObjectError::Unbound)?;
-        if implementation.descriptor.direct
-            && args.len() != usize::from(implementation.descriptor.arity)
+        if let Some(arity) = implementation.descriptor.convention.arity()
+            && args.len() != usize::from(arity.get())
         {
             return Err(ObjectError::TypeError);
         }
-        let adapted = implementation
-            .keyword_adapter
-            .map_or_else(|| Ok(args.to_vec()), |adapter| adapter(args))?;
+        let original = args.to_vec();
+        let args = BuiltinArgs::new(&original);
+        let adapted = if let Some(adapter) = implementation.keyword_adapter {
+            adapter(&args)?
+        } else {
+            original
+        };
         let mut values = MultipleValues::new();
-        let result = (implementation.function)(self, ctx, &adapted, &mut values);
+        let adapted = BuiltinArgs::new(&adapted);
+        let result = (implementation.function)(ctx, self, &adapted, &mut values);
         ctx.set_values(values.as_slice());
         let pending = ctx.take_pending();
         pending.map_or(result, Err)
@@ -210,14 +350,14 @@ impl BuiltinImplementation {
 
 #[macro_export]
 macro_rules! builtin {
-    ($name:ident, $arity:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { arity: $arity, direct: true, lambda_list: "" }; };
-    ($name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { arity: $arity, direct: true, lambda_list: $lambda_list }; };
+    ($name:ident, $arity:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $crate::LambdaList::new(""), convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
+    ($name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $crate::LambdaList::new($lambda_list), convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
     ($name:ident, 0, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 0, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
     ($name:ident, 1, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 1, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
     ($name:ident, 2, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 2, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word, _a1: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
     ($name:ident, 3, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 3, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word, _a1: $crate::Word, _a2: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
     ($name:ident, 4, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 4, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word, _a1: $crate::Word, _a2: $crate::Word, _a3: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
-    (@descriptor $name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { arity: $arity, direct: true, lambda_list: $lambda_list }; };
+    (@descriptor $name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $crate::LambdaList::new($lambda_list), convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
     (@variadic $name:ident) => { pub extern "C" fn $name(_ctx: *mut $crate::ThreadContext, _argc: usize, _args: *const $crate::Word, _values: *mut $crate::MultipleValues) -> $crate::NclStatus { $crate::NclStatus::Error };
     };
 }

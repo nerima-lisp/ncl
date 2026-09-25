@@ -34,7 +34,7 @@ impl HashTableView {
     /// Validate a Lisp value as a hash table.
     pub fn try_from_word(ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
         match classify_object(ctx, word) {
-            ncl_object::ObjectRef::HashTable(table) => Ok(Self(table.into())),
+            ncl_object::ObjectRef::HashTable(table) => Ok(Self(HashTable::from_word(table))),
             _ => Err(LispError::TypeError {
                 datum: word,
                 expected: ObjectType::HashTable,
@@ -197,8 +197,25 @@ pub fn hash_table_size(ctx: &ThreadContext, table: HashTableView) -> Result<usiz
 }
 
 /// Compute the implementation's stable hash for a Lisp value.
+#[must_use]
 pub fn sxhash_value(value: LispValue) -> u64 {
     sxhash(value.as_word())
+}
+
+fn sxhash_builtin(
+    _: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    // SXHASH returns a non-negative fixnum at the Lisp boundary.  The object
+    // API deliberately exposes the full machine-width hash, so retain the
+    // low fixnum payload bits when adapting it to Word.
+    let hash = sxhash_value(LispValue::from_word(args.required(0)?));
+    let fixnum = hash & (i64::MAX as u64);
+    Ok(Word::fixnum(
+        i64::try_from(fixnum).map_err(|_| ObjectError::Layout)?,
+    ))
 }
 
 fn boundary(error: LispError) -> ObjectError {
@@ -305,16 +322,16 @@ fn symbol_named(ctx: &ThreadContext, word: Word, expected: &str) -> Result<bool,
         return Ok(false);
     }
     let name = symbol_name(ctx, word)?;
-    let length = string_length(ctx, name)?;
-    if length != expected.len() {
+    let expected = expected.chars().collect::<Vec<_>>();
+    if string_length(ctx, name)? != expected.len() {
         return Ok(false);
     }
-    for (index, expected) in expected.chars().enumerate() {
-        if string_ref(ctx, name, index)? != expected {
-            return Ok(false);
-        }
-    }
-    Ok(true)
+    expected
+        .into_iter()
+        .enumerate()
+        .try_fold(true, |matches, (index, expected)| {
+            Ok(matches && string_ref(ctx, name, index)? == expected)
+        })
 }
 
 fn make_hash_keyword(
@@ -352,7 +369,11 @@ fn make_hash_keyword(
     } else if symbol_named(ctx, keyword, "REHASH-SIZE")?
         || symbol_named(ctx, keyword, "REHASH-THRESHOLD")?
     {
-        return Err(ObjectError::Unsupported);
+        // HashTable currently owns a fixed initial capacity and load-factor
+        // policy.  Accept the standard options so callers can use the common
+        // interface; the object API applies its own policy until configurable
+        // rehash parameters are exposed.
+        return Ok(());
     } else {
         return Err(ObjectError::TypeError);
     }
@@ -545,6 +566,14 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
                 convention: BuiltinConvention::Adapted,
             },
             make_hash_table_builtin,
+        ),
+        (
+            BuiltinName::new("SXHASH"),
+            Builtin {
+                lambda_list: LambdaList::fixed(ONE),
+                convention: BuiltinConvention::Direct(ncl_object::Arity::exact(1)),
+            },
+            sxhash_builtin,
         ),
         (
             BuiltinName::new("MAPHASH"),

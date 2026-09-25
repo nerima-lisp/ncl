@@ -1,9 +1,10 @@
 #![allow(missing_docs)]
 
 use ncl_lib_hash_arrays::hash::{
-    clrhash, gethash, hash_table_count, make_hash_table, remhash, set_hash_value, HashTableOptions,
-    LispValue,
+    clrhash, gethash, hash_table_count, make_hash_table, remhash, set_hash_value, sxhash_value,
+    HashTableOptions, LispValue,
 };
+use ncl_object::hash_table::HashTable;
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
     BuiltinName, BuiltinPackage, LambdaList, Parameter, ParameterType, Runtime, ThreadContext,
@@ -19,7 +20,7 @@ fn runtime_and_context() -> (Runtime, ThreadContext) {
 }
 
 fn keyword(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Word {
-    ncl_object::Package::from(
+    ncl_object::Package::from_word(
         runtime
             .ensure_package(ctx, "KEYWORD")
             .expect("keyword package"),
@@ -160,5 +161,55 @@ fn make_hash_table_rejects_odd_or_unknown_keywords() {
     assert_eq!(
         runtime.call_builtin(&mut context, make, &[unknown_keyword, Word::NIL]),
         Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn make_hash_table_accepts_all_standard_keywords() {
+    let (runtime, mut context) = runtime_and_context();
+    let make = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut context, "COMMON-LISP", "MAKE-HASH-TABLE")
+            .expect("make-hash-table function"),
+    )
+    .expect("function object");
+    let arguments = [
+        keyword(&mut context, &runtime, "TEST"),
+        keyword(&mut context, &runtime, "EQUALP"),
+        keyword(&mut context, &runtime, "REHASH-SIZE"),
+        Word::fixnum(2),
+        keyword(&mut context, &runtime, "REHASH-THRESHOLD"),
+        Word::fixnum(1),
+        keyword(&mut context, &runtime, "WEAKNESS"),
+        keyword(&mut context, &runtime, "KEY-OR-VALUE"),
+    ];
+    let table = runtime
+        .call_builtin(&mut context, make, &arguments)
+        .expect("make hash table with all keywords");
+    let table = HashTable::from_word(table);
+    assert_eq!(
+        table.test(&context).expect("test"),
+        ncl_object::hash_table::HashTest::Equalp
+    );
+    assert_eq!(
+        table.weakness(&context).expect("weakness"),
+        ncl_object::hash_table::Weakness::KeyOrValue
+    );
+}
+
+#[test]
+fn sxhash_builtin_exposes_the_typed_hash() {
+    let (runtime, mut context) = runtime_and_context();
+    let sxhash = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut context, "COMMON-LISP", "SXHASH")
+            .expect("sxhash function"),
+    )
+    .expect("function object");
+    let value = Word::fixnum(42);
+    let expected = (sxhash_value(LispValue::from_word(value)) & (i64::MAX as u64)) as i64;
+    assert_eq!(
+        runtime.call_builtin(&mut context, sxhash, &[value]),
+        Ok(Word::fixnum(expected))
     );
 }

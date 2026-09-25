@@ -113,11 +113,11 @@ fn allocation_paths_survive_collection_before_every_allocation() {
     Package::from_word(package)
         .unintern(&mut ctx, &runtime, string)
         .unwrap_or_else(|error| panic!("unintern: {error:?}"));
-    let mut instance = make_instance(&mut ctx, &runtime, symbol, &[cons])
-        .unwrap_or_else(|error| panic!("instance: {error:?}"))
-        .into();
-    let instance_token = ncl_object::push_root(&mut ctx, &mut instance);
-    assert_eq!(slot_ref(&ctx, instance.into(), 0), Ok(cons));
+    let instance = make_instance(&mut ctx, &runtime, symbol, &[cons])
+        .unwrap_or_else(|error| panic!("instance: {error:?}"));
+    let mut instance_word = instance.as_word();
+    let instance_token = ncl_object::push_root(&mut ctx, &mut instance_word);
+    assert_eq!(slot_ref(&ctx, instance, 0), Ok(cons));
     assert_registry_entries(&mut ctx, &runtime, symbol);
     assert!(ncl_object::pop_root(&mut ctx, instance_token));
     assert!(ncl_object::pop_root(&mut ctx, interned_token));

@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 
 use ncl_object::{
-    Bignum, Complex, DoubleFloat, ObjectRef, Ratio, Runtime, ThreadContext, Word, classify_object,
-    make_string, string_length, string_ref, symbol_name,
+    Bignum, Complex, DoubleFloat, ObjectRef, Ratio, Runtime, ThreadContext, Word,
+    classify_object, make_string, string_length, string_ref, symbol_name,
 };
 
 use crate::circle::{CircleLabel, CircleState, labelable};

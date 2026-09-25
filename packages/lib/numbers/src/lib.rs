@@ -2,11 +2,13 @@
 
 mod arithmetic;
 mod bitops;
+mod complex;
 mod constants;
 mod random;
 mod remainder;
 mod rounding;
 mod rational_float;
+mod transcendental;
 
 use ncl_object::{
     make_double, set_symbol_constant, set_symbol_value, Arity, Builtin, BuiltinConvention,
@@ -201,9 +203,34 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ("GCD", 0, false, remainder::typed_gcd),
             ("LCM", 0, false, remainder::typed_lcm),
             ("ISQRT", 1, true, remainder::typed_isqrt),
+            ("EXP", 1, true, transcendental::typed_exp),
+            ("EXPT", 2, true, transcendental::typed_expt),
+            ("SQRT", 1, true, transcendental::typed_sqrt),
+            ("SIN", 1, true, transcendental::typed_sin),
+            ("COS", 1, true, transcendental::typed_cos),
+            ("TAN", 1, true, transcendental::typed_tan),
+            ("ASIN", 1, true, transcendental::typed_asin),
+            ("ACOS", 1, true, transcendental::typed_acos),
+            ("SINH", 1, true, transcendental::typed_sinh),
+            ("COSH", 1, true, transcendental::typed_cosh),
+            ("TANH", 1, true, transcendental::typed_tanh),
+            ("ASINH", 1, true, transcendental::typed_asinh),
+            ("ACOSH", 1, true, transcendental::typed_acosh),
+            ("ATANH", 1, true, transcendental::typed_atanh),
+            ("COMPLEX", 2, true, complex::typed_complex),
+            ("CONJUGATE", 1, true, complex::typed_conjugate),
+            ("CIS", 1, true, complex::typed_cis),
+            ("PHASE", 1, true, complex::typed_phase),
+            ("REALPART", 1, true, complex::typed_realpart),
+            ("IMAGPART", 1, true, complex::typed_imagpart),
         ],
     )?;
     install_rational_float(runtime, &mut ctx)?;
+    install_optional_set(
+        runtime,
+        &mut ctx,
+        &[("LOG", transcendental::typed_log), ("ATAN", transcendental::typed_atan)],
+    )?;
     install_optional_set(
         runtime,
         &mut ctx,
@@ -249,6 +276,8 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ("BOOLE", 3, true, bitops::typed_boole),
         ],
     )?;
+    constants::register(&mut ctx, runtime)?;
+    random::register(&mut ctx, runtime)?;
     let package = runtime
         .find_package(&ctx, "COMMON-LISP")
         .ok_or(ObjectError::PackageConflict)?;

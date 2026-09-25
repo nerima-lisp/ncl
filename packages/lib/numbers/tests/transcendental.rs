@@ -38,42 +38,16 @@ fn close(left: f64, right: f64) {
 #[test]
 fn real_transcendentals_and_optional_arguments() {
     let (runtime, mut ctx) = setup();
-    close(
-        float(&ctx, call(&runtime, &mut ctx, "EXP", &[Word::fixnum(1)])),
-        1.0_f64.exp(),
-    );
-    close(
-        float(&ctx, call(&runtime, &mut ctx, "SQRT", &[Word::fixnum(9)])),
-        3.0,
-    );
-    close(
-        float(
-            &ctx,
-            call(
-                &runtime,
-                &mut ctx,
-                "LOG",
-                &[Word::fixnum(8), Word::fixnum(2)],
-            ),
-        ),
-        3.0,
-    );
-    close(
-        float(
-            &ctx,
-            call(
-                &runtime,
-                &mut ctx,
-                "ATAN",
-                &[Word::fixnum(1), Word::fixnum(1)],
-            ),
-        ),
-        std::f64::consts::FRAC_PI_4,
-    );
-    close(
-        float(&ctx, call(&runtime, &mut ctx, "SINH", &[Word::fixnum(0)])),
-        0.0,
-    );
+    let exp = call(&runtime, &mut ctx, "EXP", &[Word::fixnum(1)]);
+    close(float(&ctx, exp), 1.0_f64.exp());
+    let sqrt = call(&runtime, &mut ctx, "SQRT", &[Word::fixnum(9)]);
+    close(float(&ctx, sqrt), 3.0);
+    let log = call(&runtime, &mut ctx, "LOG", &[Word::fixnum(8), Word::fixnum(2)]);
+    close(float(&ctx, log), 3.0);
+    let atan = call(&runtime, &mut ctx, "ATAN", &[Word::fixnum(1), Word::fixnum(1)]);
+    close(float(&ctx, atan), std::f64::consts::FRAC_PI_4);
+    let sinh = call(&runtime, &mut ctx, "SINH", &[Word::fixnum(0)]);
+    close(float(&ctx, sinh), 0.0);
 }
 
 #[test]
@@ -89,28 +63,14 @@ fn complex_components_and_complex_functions() {
     let ObjectRef::Complex(conjugate) = classify_object(&ctx, conjugate) else {
         panic!("expected complex")
     };
-    close(
-        float(
-            &ctx,
-            complex_real(&ctx, ncl_object::Complex::from_word(conjugate)).unwrap(),
-        ),
-        3.0,
-    );
-    close(
-        float(
-            &ctx,
-            complex_imag(&ctx, ncl_object::Complex::from_word(conjugate)).unwrap(),
-        ),
-        -4.0,
-    );
-    close(
-        float(&ctx, call(&runtime, &mut ctx, "REALPART", &[value])),
-        3.0,
-    );
-    close(
-        float(&ctx, call(&runtime, &mut ctx, "IMAGPART", &[value])),
-        4.0,
-    );
+    let conjugate_real = complex_real(&ctx, ncl_object::Complex::from_word(conjugate)).unwrap();
+    close(float(&ctx, conjugate_real), 3.0);
+    let conjugate_imag = complex_imag(&ctx, ncl_object::Complex::from_word(conjugate)).unwrap();
+    close(float(&ctx, conjugate_imag), -4.0);
+    let realpart = call(&runtime, &mut ctx, "REALPART", &[value]);
+    close(float(&ctx, realpart), 3.0);
+    let imagpart = call(&runtime, &mut ctx, "IMAGPART", &[value]);
+    close(float(&ctx, imagpart), 4.0);
     let cis = call(&runtime, &mut ctx, "CIS", &[Word::fixnum(0)]);
     let ObjectRef::Complex(cis) = classify_object(&ctx, cis) else {
         panic!("expected complex")

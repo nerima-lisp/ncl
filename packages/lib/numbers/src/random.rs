@@ -15,9 +15,11 @@ const ANY: Parameter = Parameter {
 };
 
 fn random_state_class(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
-    runtime
-        .class(ctx, "RANDOM-STATE")
-        .ok_or(ObjectError::Layout)
+    if let Some(class) = runtime.class(ctx, "RANDOM-STATE") {
+        return Ok(class);
+    }
+    runtime.define_class(ctx, "RANDOM-STATE", Word::fixnum(1))?;
+    runtime.class(ctx, "RANDOM-STATE").ok_or(ObjectError::Layout)
 }
 
 fn state_p(ctx: &mut ThreadContext, runtime: &Runtime, value: Word) -> Result<bool, ObjectError> {

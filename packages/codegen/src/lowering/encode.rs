@@ -1,4 +1,4 @@
-use crate::{checked_u32, CodegenError, CompiledFunction, MachineFunction, RuntimeAbi};
+use crate::{CodegenError, CompiledFunction, MachineFunction, RuntimeAbi, checked_u32};
 use crate::{FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Inst, Reg};
 use ncl_ir::{Function, Terminator};

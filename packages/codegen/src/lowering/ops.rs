@@ -1,6 +1,6 @@
-use crate::{checked_i64, checked_u16, checked_u32};
 use crate::{CodegenError, ConstantName, FrameLayout, RuntimeAbi, SafepointMap};
 use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL};
+use crate::{checked_i64, checked_u16, checked_u32};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Compare, Constant, Function, Op, OpKind, Prim, ValueId};
 

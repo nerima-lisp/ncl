@@ -98,7 +98,7 @@ fn private_executable_helpers_accept_valid_layouts() {
     };
     let segment_result = write_exec_segment(&mut output, &segment);
     assert!(segment_result.is_ok());
-    assert_eq!(output[0..4], 0xfeedfacfu32.to_le_bytes());
+    assert_eq!(output[0..4], 0xfeed_facf_u32.to_le_bytes());
     let elf_result = write_elf_executable(&image);
     assert!(elf_result.is_ok());
     let Ok(elf) = elf_result else { return };

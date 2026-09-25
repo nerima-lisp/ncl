@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FORBIDDEN = re.compile(r"\b(?:unwrap|expect)\s*\(|\bpanic!\s*\(")
 UNSAFE = re.compile(r"\bunsafe\b")
 TODO = re.compile(r"\btodo!\s*\(")
+EM_DASH = "\u2014"
 
 
 def dependency_violations(path: Path) -> list[str]:
@@ -70,6 +72,30 @@ def non_test_source(path: Path, source: str) -> str:
     return "".join(result)
 
 
+def em_dash_violations() -> tuple[list[str], int]:
+    listing = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout
+    failures = []
+    checked = 0
+    for entry in listing.split(b"\0"):
+        if not entry:
+            continue
+        relative = Path(entry.decode("utf-8", "surrogateescape"))
+        try:
+            text = (ROOT / relative).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        checked += 1
+        for number, line in enumerate(text.splitlines(), 1):
+            if EM_DASH in line:
+                failures.append(f"{relative}:{number}: em dash")
+    return failures, checked
+
+
 def main() -> int:
     failures = []
     todo_count = 0
@@ -91,9 +117,13 @@ def main() -> int:
         failures.extend(f"{relative}:{match.start()}: forbidden {match.group()}" for match in FORBIDDEN.finditer(checked))
         todo_count += len(TODO.findall(checked))
 
+    dash_failures, tracked_text = em_dash_violations()
+    failures.extend(dash_failures)
+
     print(f"manifests checked: {len(manifests)}")
     print(f"Rust files checked: {len(rust_files)}")
     print(f"todo!() outside tests: {todo_count}")
+    print(f"tracked text files checked: {tracked_text}")
     if failures:
         print("violations:")
         print("\n".join(f"- {failure}" for failure in failures))

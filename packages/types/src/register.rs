@@ -3,7 +3,6 @@
 use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, set_symbol_constant};
 
 const COMMON_LISP: &str = "COMMON-LISP";
-const SB_EXT: &str = "SB-EXT";
 
 /// Owned symbols to intern, as `(package, name)` pairs.
 const SYMBOLS: &[(&str, &str)] = &[
@@ -57,35 +56,12 @@ const SYMBOLS: &[(&str, &str)] = &[
     (COMMON_LISP, "TYPEP"),
     (COMMON_LISP, "UNSIGNED-BYTE"),
     (COMMON_LISP, "UPGRADED-COMPLEX-PART-TYPE"),
-    (SB_EXT, "DOUBLE-FLOAT-NEGATIVE-INFINITY"),
-    (SB_EXT, "DOUBLE-FLOAT-POSITIVE-INFINITY"),
-    (SB_EXT, "FLOAT-DENORMALIZED-P"),
-    (SB_EXT, "FLOAT-INFINITY-P"),
-    (SB_EXT, "FLOAT-NAN-P"),
-    (SB_EXT, "FLOAT-TRAPPING-NAN-P"),
-    (SB_EXT, "LONG-FLOAT-NEGATIVE-INFINITY"),
-    (SB_EXT, "LONG-FLOAT-POSITIVE-INFINITY"),
-    (SB_EXT, "MOST-POSITIVE-WORD"),
-    (SB_EXT, "SHORT-FLOAT-NEGATIVE-INFINITY"),
-    (SB_EXT, "SHORT-FLOAT-POSITIVE-INFINITY"),
-    (SB_EXT, "SINGLE-FLOAT-NEGATIVE-INFINITY"),
-    (SB_EXT, "SINGLE-FLOAT-POSITIVE-INFINITY"),
-    (SB_EXT, "WORD"),
 ];
 
 /// Owned symbols whose constant bit must be set, as `(package, name)` pairs.
 const CONSTANTS: &[(&str, &str)] = &[
     (COMMON_LISP, "NIL"),
     (COMMON_LISP, "T"),
-    (SB_EXT, "DOUBLE-FLOAT-NEGATIVE-INFINITY"),
-    (SB_EXT, "DOUBLE-FLOAT-POSITIVE-INFINITY"),
-    (SB_EXT, "LONG-FLOAT-NEGATIVE-INFINITY"),
-    (SB_EXT, "LONG-FLOAT-POSITIVE-INFINITY"),
-    (SB_EXT, "MOST-POSITIVE-WORD"),
-    (SB_EXT, "SHORT-FLOAT-NEGATIVE-INFINITY"),
-    (SB_EXT, "SHORT-FLOAT-POSITIVE-INFINITY"),
-    (SB_EXT, "SINGLE-FLOAT-NEGATIVE-INFINITY"),
-    (SB_EXT, "SINGLE-FLOAT-POSITIVE-INFINITY"),
 ];
 
 /// Class names to register.
@@ -134,10 +110,6 @@ const FUNCTIONS: &[(&str, &str)] = &[
     (COMMON_LISP, "TYPE-OF"),
     (COMMON_LISP, "TYPEP"),
     (COMMON_LISP, "UPGRADED-COMPLEX-PART-TYPE"),
-    (SB_EXT, "FLOAT-DENORMALIZED-P"),
-    (SB_EXT, "FLOAT-INFINITY-P"),
-    (SB_EXT, "FLOAT-NAN-P"),
-    (SB_EXT, "FLOAT-TRAPPING-NAN-P"),
 ];
 
 /// Register every owned type name, class name, and function name.
@@ -158,8 +130,6 @@ const FUNCTIONS: &[(&str, &str)] = &[
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
-
-    runtime.ensure_package(&mut ctx, SB_EXT)?;
 
     for &(package, name) in SYMBOLS {
         let package = runtime

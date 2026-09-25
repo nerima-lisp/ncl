@@ -25,8 +25,8 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError>;
 
 ## Registration
 
-`register` interns the 64 Phase 1 symbols owned by this crate (50 in
-`COMMON-LISP`, 14 in `SB-EXT`), registers the standard class names, and binds
+`register` interns the 50 ANSI Phase 1 symbols owned by this crate in
+`COMMON-LISP`, registers the standard class names, and binds
 the type-related function names. Class objects are placeholders
 (`Word::fixnum(1)`) and function objects are placeholders (`Word::UNBOUND`),
 matching `ncl_object::register`; real class objects arrive with `ncl-clos`
@@ -61,3 +61,5 @@ and real builtin ABI bindings with `ncl-runtime` code objects.
 - Post-freeze hardening: the fixed-arity forms (`not`, `eql`, `satisfies`,
   `integer`, `cons`, `function`, `array`, `vector`) now reject a trailing
   argument with `InvalidSpecifier` instead of silently ignoring it.
+- N14 surface migration: 14 legacy float/word names were deleted because
+  they are non-ANSI and have no NCL type-package replacement.

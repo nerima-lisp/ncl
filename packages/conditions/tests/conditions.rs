@@ -8,9 +8,10 @@
 //! type-specific signal dispatch.
 
 use ncl_conditions::{
-    ConditionClass, ConditionError, cerror, compute_restarts, condition_class, error, find_restart,
-    invoke_restart_by_name, make_condition, pop_handler, pop_restart, push_cleanup, push_handler,
-    push_restart, signal, unwind,
+    ConditionClass, ConditionError, ConditionIdentifier, ConditionSlotValue, cerror,
+    compute_restarts, condition_class, error, find_restart, invoke_restart_by_name, make_condition,
+    make_typed_condition, pop_handler, pop_restart, push_cleanup, push_handler, push_restart,
+    signal, unwind,
 };
 use ncl_object::{Runtime, ThreadContext, Word, make_string};
 
@@ -133,6 +134,23 @@ fn unhandled_warning_is_muffled() {
     let warning = class(&runtime, &mut ctx, "WARNING");
     let condition = make_condition(&mut ctx, &runtime, warning, &[]).unwrap();
     signal(&mut ctx, condition).unwrap();
+}
+
+#[test]
+fn typed_condition_constructor_uses_identifier_hierarchy() {
+    let (runtime, mut ctx) = setup();
+    let record = make_typed_condition(
+        &mut ctx,
+        &runtime,
+        ConditionIdentifier::TypeError,
+        &[ConditionSlotValue::from_word(Word::fixnum(7))],
+    )
+    .unwrap();
+
+    let class = class(&runtime, &mut ctx, "TYPE-ERROR");
+    let chain = push_handler(&mut ctx, &runtime, class, Word::NIL).unwrap();
+    signal(&mut ctx, record.as_word()).unwrap();
+    pop_handler(&mut ctx, chain);
 }
 
 #[test]

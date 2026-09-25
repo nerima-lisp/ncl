@@ -5,8 +5,8 @@
 )]
 
 use ncl_object::{
-    bignum_limbs, bignum_sign, classify_object, make_bignum_from_i128, Bignum, FunctionObject,
-    ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    Bignum, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs,
+    bignum_sign, classify_object, make_bignum_from_i128,
 };
 
 const MAX_FIXNUM: i64 = i64::MAX >> 4;

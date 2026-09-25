@@ -2,13 +2,26 @@
 //!
 //! The callbacks in this module deliberately contain no symbol registration.  The
 //! numbers registrar can install them alongside the other numeric callbacks.
+#![allow(
+    clippy::cast_lossless,
+    clippy::cast_sign_loss,
+    clippy::collapsible_if,
+    clippy::needless_pass_by_ref_mut
+)]
 
 use ncl_object::{
-    bignum_limbs, bignum_sign, classify_object, make_bignum_from_i128, Bignum, ObjectError,
-    ObjectRef, Runtime, ThreadContext, Word,
+    Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,
+    classify_object, make_bignum_from_i128,
 };
 
 use ncl_object::{BuiltinArgs, MultipleValues};
+
+mod boole;
+pub use boole::{
+    BOOLE_1, BOOLE_2, BOOLE_AND, BOOLE_ANDC1, BOOLE_ANDC2, BOOLE_C1, BOOLE_C2, BOOLE_CLR,
+    BOOLE_EQV, BOOLE_IOR, BOOLE_NAND, BOOLE_NOR, BOOLE_ORC1, BOOLE_ORC2, BOOLE_SET, BOOLE_XOR,
+    boole,
+};
 
 fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
     if let Some(value) = value.as_fixnum() {
@@ -218,11 +231,7 @@ pub fn logbitp(
     let index = usize::try_from(integer(ctx, *index)?).map_err(|_| ObjectError::TypeError)?;
     let value = integer(ctx, *value)?;
     Ok(if index >= 127 {
-        if value < 0 {
-            Word::TRUE
-        } else {
-            Word::NIL
-        }
+        if value < 0 { Word::TRUE } else { Word::NIL }
     } else if (value & (1_i128 << index)) != 0 {
         Word::TRUE
     } else {
@@ -428,57 +437,6 @@ pub fn deposit_field(
         runtime,
         (integer(ctx, *old_value)? & !mask) | (integer(ctx, *new_value)? & mask),
     )
-}
-
-pub const BOOLE_CLR: i64 = 0;
-pub const BOOLE_1: i64 = 10;
-pub const BOOLE_2: i64 = 12;
-pub const BOOLE_C1: i64 = 5;
-pub const BOOLE_C2: i64 = 3;
-pub const BOOLE_AND: i64 = 8;
-pub const BOOLE_IOR: i64 = 14;
-pub const BOOLE_XOR: i64 = 6;
-pub const BOOLE_EQV: i64 = 9;
-pub const BOOLE_NAND: i64 = 7;
-pub const BOOLE_NOR: i64 = 1;
-pub const BOOLE_ANDC1: i64 = 4;
-pub const BOOLE_ANDC2: i64 = 2;
-pub const BOOLE_ORC1: i64 = 13;
-pub const BOOLE_ORC2: i64 = 11;
-pub const BOOLE_SET: i64 = 15;
-
-pub fn boole(
-    runtime: &Runtime,
-    ctx: &mut ThreadContext,
-    args: &[Word],
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let [opcode, a, b] = args else {
-        return Err(ObjectError::TypeError);
-    };
-    let opcode = integer(ctx, *opcode)?;
-    let a = integer(ctx, *a)?;
-    let b = integer(ctx, *b)?;
-    let result = match opcode {
-        0 => 0,
-        1 => !(a | b),
-        2 => !a & !b,
-        3 => !a,
-        4 => a & !b,
-        5 => !b,
-        6 => a ^ b,
-        7 => !(a & b),
-        8 => a & b,
-        9 => !(a ^ b),
-        10 => a,
-        11 => a | !b,
-        12 => b,
-        13 => !a | b,
-        14 => a | b,
-        15 => -1,
-        _ => return Err(ObjectError::TypeError),
-    };
-    integer_word(ctx, runtime, result)
 }
 
 macro_rules! typed_dispatch {

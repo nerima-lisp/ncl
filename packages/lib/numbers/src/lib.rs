@@ -4,9 +4,9 @@ mod arithmetic;
 mod bitops;
 
 use ncl_object::{
-    make_double, set_symbol_constant, set_symbol_value, Arity, Builtin, BuiltinConvention,
-    BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, LambdaList, ObjectError,
-    Package, Parameter, ParameterType, Runtime, RustBuiltin, ThreadContext, Word,
+    Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, LambdaList, ObjectError, Package, Parameter, ParameterType, Runtime,
+    RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_value,
 };
 
 fn install(
@@ -91,6 +91,7 @@ fn install_set(
 }
 
 /// Register numeric predicates, arithmetic, rounding, and integer operations.
+#[allow(clippy::missing_errors_doc, clippy::too_many_lines)]
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;

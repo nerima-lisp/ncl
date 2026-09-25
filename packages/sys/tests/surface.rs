@@ -47,7 +47,7 @@ fn fixnums_and_characters_keep_distinct_word_contracts() {
     for value in [0, 65, 0x10_FFFF] {
         let word = Word::character(value);
         assert!(!word.is_fixnum());
-        assert_eq!(word.bits(), ((value as u64) << 4) | 1);
+        assert_eq!(word.bits(), (u64::from(value) << 4) | 1);
         assert_eq!(Word::from_bits(word.bits()), word);
         assert_eq!(word.bits() >> 4, u64::from(value));
         assert_eq!(word.is_character(), value != 0);

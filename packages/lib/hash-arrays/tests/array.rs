@@ -2,8 +2,8 @@
 
 use ncl_lib_hash_arrays::array::{Dimension, Dimensions, RowMajorIndex};
 use ncl_object::{
-    make_array, make_specialized_array, ArrayElementType, ArrayOptions, BuiltinPackage,
-    FunctionObject, Runtime, ThreadContext, Word,
+    make_array, make_simple_vector, make_specialized_array, ArrayElementType, ArrayOptions,
+    BuiltinPackage, FunctionObject, Runtime, ThreadContext, Word,
 };
 
 fn runtime_and_context() -> (Runtime, ThreadContext) {
@@ -118,4 +118,63 @@ fn runtime_call_builtin_covers_bit_operations_and_type_errors() {
         runtime.call_builtin(&mut context, bit, &[Word::fixnum(3), Word::fixnum(0)]),
         Err(ncl_object::ObjectError::TypeError)
     );
+}
+
+#[test]
+fn runtime_call_builtin_covers_fill_pointer_vector_and_displacement() {
+    let (runtime, mut context) = runtime_and_context();
+    ncl_lib_hash_arrays::array::register(&mut context, &runtime).expect("register arrays");
+    let vector = make_array(
+        &mut context,
+        &runtime,
+        &[2],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: Some(0),
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )
+    .expect("vector");
+    let fill_pointer = function(&runtime, &mut context, "FILL-POINTER");
+    assert_eq!(
+        runtime.call_builtin(&mut context, fill_pointer, &[vector]),
+        Ok(Word::fixnum(0))
+    );
+    let push = function(&runtime, &mut context, "VECTOR-PUSH");
+    assert_eq!(
+        runtime.call_builtin(&mut context, push, &[Word::fixnum(7), vector]),
+        Ok(Word::fixnum(0))
+    );
+    assert_eq!(ncl_object::array_fill_pointer(&context, vector), Ok(Some(1)));
+    let pop = function(&runtime, &mut context, "VECTOR-POP");
+    assert_eq!(
+        runtime.call_builtin(&mut context, pop, &[vector]),
+        Ok(Word::fixnum(7))
+    );
+
+    let target = make_simple_vector(&mut context, &runtime, &[Word::fixnum(1), Word::fixnum(2)])
+        .expect("target");
+    let displaced = make_array(
+        &mut context,
+        &runtime,
+        &[1],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::NIL,
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: Some(target),
+            displaced_index_offset: 1,
+        },
+    )
+    .expect("displaced array");
+    let displacement = function(&runtime, &mut context, "ARRAY-DISPLACEMENT");
+    assert_eq!(
+        runtime.call_builtin(&mut context, displacement, &[displaced]),
+        Ok(target)
+    );
+    assert_eq!(context.values(), &[target, Word::fixnum(1)]);
 }

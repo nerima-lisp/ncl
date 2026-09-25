@@ -101,13 +101,16 @@ impl super::Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let symbol = match HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
-                    .remove(ctx, runtime, *name)?
-                {
-                    Some(symbol) => Some(symbol),
-                    None => HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?)
-                        .remove(ctx, runtime, *name)?,
-                };
+                let symbol =
+                    match HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                        .remove(ctx, runtime, *name)?
+                    {
+                        Some(symbol) => Some(symbol),
+                        None => {
+                            HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?)
+                                .remove(ctx, runtime, *name)?
+                        }
+                    };
                 let Some(mut symbol) = symbol else {
                     return Ok(false);
                 };

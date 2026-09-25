@@ -2,8 +2,8 @@
 
 use ncl_object::{
     ArithmeticError, CellError, ControlError, FileError, LispError, ObjectError, ObjectType,
-    Package, PackageError, ProgramError, Runtime, StreamError, ThreadContext, Word,
-    pop_root, push_root,
+    Package, PackageError, ProgramError, Runtime, StreamError, ThreadContext, Word, pop_root,
+    push_root,
 };
 
 use crate::{ConditionError, ConditionIdentifier, ConditionSlotValue, make_typed_condition};
@@ -91,9 +91,7 @@ pub fn condition_from_lisp_error(
         },
         LispError::ArithmeticError(error) => match error {
             ArithmeticError::DivisionByZero => (ConditionIdentifier::DivisionByZero, Vec::new()),
-            ArithmeticError::InvalidOperation => {
-                (ConditionIdentifier::ArithmeticError, Vec::new())
-            }
+            ArithmeticError::InvalidOperation => (ConditionIdentifier::ArithmeticError, Vec::new()),
             _ => (ConditionIdentifier::ArithmeticError, Vec::new()),
         },
         LispError::ControlError(ControlError::Throw)
@@ -114,7 +112,9 @@ pub fn condition_from_lisp_error(
         LispError::PackageError(error) => (
             ConditionIdentifier::PackageError,
             match error {
-                PackageError::NotFound | PackageError::Conflict | PackageError::Locked => Vec::new(),
+                PackageError::NotFound | PackageError::Conflict | PackageError::Locked => {
+                    Vec::new()
+                }
                 _ => Vec::new(),
             },
         ),

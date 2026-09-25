@@ -325,11 +325,8 @@ pub type RustBuiltin = fn(
     &BuiltinArgs<'_>,
     &mut MultipleValues,
 ) -> Result<Word, ObjectError>;
-pub type LispErrorConverter = fn(
-    &mut ThreadContext,
-    &Runtime,
-    LispError,
-) -> Result<Word, ObjectError>;
+pub type LispErrorConverter =
+    fn(&mut ThreadContext, &Runtime, LispError) -> Result<Word, ObjectError>;
 pub type KeywordAdapter = fn(&BuiltinArgs<'_>) -> Result<Vec<Word>, super::ObjectError>;
 pub type RegisterFn = fn(&super::Runtime);
 

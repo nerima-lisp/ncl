@@ -83,8 +83,10 @@ fn numeric_equal(ctx: &ThreadContext, left: Word, right: Word) -> Result<bool, O
     }
     Ok(match tag {
         Some(widetag::BIGNUM) => {
-            crate::bignum_sign(ctx, crate::Bignum::from_word(left))? == crate::bignum_sign(ctx, crate::Bignum::from_word(right))?
-                && crate::bignum_limbs(ctx, crate::Bignum::from_word(left))? == crate::bignum_limbs(ctx, crate::Bignum::from_word(right))?
+            crate::bignum_sign(ctx, crate::Bignum::from_word(left))?
+                == crate::bignum_sign(ctx, crate::Bignum::from_word(right))?
+                && crate::bignum_limbs(ctx, crate::Bignum::from_word(left))?
+                    == crate::bignum_limbs(ctx, crate::Bignum::from_word(right))?
         }
         Some(widetag::DOUBLE_FLOAT) => {
             crate::double_value(ctx, crate::DoubleFloat::from_word(left))?.to_bits()
@@ -170,20 +172,44 @@ fn cons_part(ctx: &ThreadContext, word: Word, slot: usize) -> Result<Word, Objec
 
 fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectError> {
     Ok(match ncl_sys::object_widetag(&ctx.thread, word) {
-        Some(widetag::BIGNUM) => Some(crate::bignum_limbs(ctx, crate::Bignum::from_word(word))?.into_iter().fold(
-            u64::from(crate::bignum_sign(ctx, crate::Bignum::from_word(word))?),
-            |hash, limb| hash.rotate_left(5) ^ u64::from(limb),
-        )),
-        Some(widetag::DOUBLE_FLOAT) => Some(crate::double_value(ctx, crate::DoubleFloat::from_word(word))?.to_bits()),
+        Some(widetag::BIGNUM) => Some(
+            crate::bignum_limbs(ctx, crate::Bignum::from_word(word))?
+                .into_iter()
+                .fold(
+                    u64::from(crate::bignum_sign(ctx, crate::Bignum::from_word(word))?),
+                    |hash, limb| hash.rotate_left(5) ^ u64::from(limb),
+                ),
+        ),
+        Some(widetag::DOUBLE_FLOAT) => {
+            Some(crate::double_value(ctx, crate::DoubleFloat::from_word(word))?.to_bits())
+        }
         Some(widetag::RATIO) => Some(
-            content_hash(ctx, crate::ratio_numerator(ctx, crate::Ratio::from_word(word))?, false, 0)?
-                ^ content_hash(ctx, crate::ratio_denominator(ctx, crate::Ratio::from_word(word))?, false, 0)?
-                    .rotate_left(11),
+            content_hash(
+                ctx,
+                crate::ratio_numerator(ctx, crate::Ratio::from_word(word))?,
+                false,
+                0,
+            )? ^ content_hash(
+                ctx,
+                crate::ratio_denominator(ctx, crate::Ratio::from_word(word))?,
+                false,
+                0,
+            )?
+            .rotate_left(11),
         ),
         Some(widetag::COMPLEX) => Some(
-            content_hash(ctx, crate::complex_real(ctx, crate::Complex::from_word(word))?, false, 0)?
-                ^ content_hash(ctx, crate::complex_imag(ctx, crate::Complex::from_word(word))?, false, 0)?
-                    .rotate_left(11),
+            content_hash(
+                ctx,
+                crate::complex_real(ctx, crate::Complex::from_word(word))?,
+                false,
+                0,
+            )? ^ content_hash(
+                ctx,
+                crate::complex_imag(ctx, crate::Complex::from_word(word))?,
+                false,
+                0,
+            )?
+            .rotate_left(11),
         ),
         _ => None,
     })

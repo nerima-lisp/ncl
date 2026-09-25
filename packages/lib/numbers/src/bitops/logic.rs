@@ -12,7 +12,7 @@ use ncl_object::{BuiltinArgs, MultipleValues};
 
 use super::*;
 
-fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
+pub(super) fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
     if let Some(value) = value.as_fixnum() {
         return Ok(i128::from(value));
     }
@@ -37,7 +37,7 @@ fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
     }
 }
 
-fn integer_word(
+pub(super) fn integer_word(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     value: i128,
@@ -53,11 +53,11 @@ fn integer_word(
     Ok(make_bignum_from_i128(ctx, runtime, value)?.into())
 }
 
-fn all_integers(ctx: &ThreadContext, args: &[Word]) -> Result<Vec<i128>, ObjectError> {
+pub(super) fn all_integers(ctx: &ThreadContext, args: &[Word]) -> Result<Vec<i128>, ObjectError> {
     args.iter().map(|&arg| integer(ctx, arg)).collect()
 }
 
-fn fold_bits<F>(
+pub(super) fn fold_bits<F>(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
     args: &[Word],

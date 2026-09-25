@@ -1,5 +1,4 @@
 use crate::{Architecture, MachArchitecture, ObjectError};
-
 #[cfg(test)]
 #[path = "executable_coverage_tests.rs"]
 mod coverage_tests;

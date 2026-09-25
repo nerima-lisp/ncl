@@ -232,7 +232,7 @@ fn golden_aarch64_prologue_spills_register_arguments() {
 }
 
 #[test]
-#[allow(clippy::expect_used, clippy::chunks_exact_to_as_chunks)]
+#[allow(clippy::chunks_exact_to_as_chunks)]
 fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(29),
@@ -244,19 +244,25 @@ fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
     for index in 0..12 {
         let constant = builder.add_constant(Constant::Fixnum(index));
         values.push(
-            builder
-                .push_op(OpKind::Const { result: constant }, &[Ty::Word])
-                .expect("constant")[0],
+            match builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]) {
+                Ok(ids) => ids[0],
+                Err(error) => unreachable!("constant: {error:?}"),
+            },
         );
     }
-    builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
-    builder
-        .terminate(Terminator::Return { values })
-        .expect("return");
+    assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok(), "safepoint");
+    assert!(
+        builder.terminate(Terminator::Return { values }).is_ok(),
+        "return"
+    );
 
-    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi)
-        .expect("allocator-backed lowering");
-    let map = compiled.safepoint_maps.first().expect("safepoint map");
+    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
+        Ok(compiled) => compiled,
+        Err(error) => unreachable!("{error:?}"),
+    };
+    let Some(map) = compiled.safepoint_maps.first() else {
+        unreachable!("safepoint map");
+    };
     assert!(
         compiled.frame_size > 32,
         "spill slots must extend the frame"

@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::Package;
 use ncl_object::{
@@ -9,7 +8,6 @@ use ncl_object::{
     set_symbol_value, simple_vector_ref, string_ref, symbol_name, symbol_value,
 };
 use ncl_sys::Word;
-
 #[test]
 fn classify_and_allocate() {
     assert_eq!(classify(Word::fixnum(-2)), ObjectRef::Fixnum(-2));
@@ -21,7 +19,6 @@ fn classify_and_allocate() {
     let cons = make_cons(&mut ctx, &runtime, Word::fixnum(1), Word::NIL).unwrap_or(Word::NIL);
     assert_eq!(car(&mut ctx, cons), Ok(Word::fixnum(1)));
 }
-
 #[test]
 fn symbols_and_bindings() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
@@ -36,7 +33,6 @@ fn symbols_and_bindings() {
     ctx.bind(1, Word::fixnum(2));
     assert_eq!(ctx.unbind(1), Ok(Word::fixnum(2)));
 }
-
 #[test]
 fn builtin_metadata_expands() {
     builtin!(TEST_BUILTIN, 2);
@@ -45,10 +41,24 @@ fn builtin_metadata_expands() {
         Some(ncl_object::Arity::exact(2))
     );
 }
-
 #[test]
 fn builtin_abi_expands_for_fixed_and_variadic_forms() {
-    builtin!(TEST_ABI, 2, "a b", test_direct, test_variadic);
+    builtin!(
+        TEST_ABI,
+        2,
+        ncl_object::LambdaList::new(
+            &[ncl_object::Parameter {
+                name: ncl_object::BuiltinName::new("A"),
+                ty: ncl_object::ParameterType::Any,
+            }],
+            &[],
+            None,
+            &[],
+            false,
+        ),
+        test_direct,
+        test_variadic
+    );
     let direct: extern "C" fn(*mut ThreadContext, Word, Word) -> Word = test_direct;
     let variadic: extern "C" fn(
         *mut ThreadContext,
@@ -61,7 +71,8 @@ fn builtin_abi_expands_for_fixed_and_variadic_forms() {
         Some(ncl_object::Arity::exact(2))
     );
     const { assert!(TEST_ABI.convention.direct()) };
-    assert_eq!(TEST_ABI.lambda_list.as_str(), "a b");
+    assert!(TEST_ABI.lambda_list.is_direct());
+    assert_eq!(TEST_ABI.lambda_list.min_arity(), 1);
     let _ = (direct, variadic);
 }
 

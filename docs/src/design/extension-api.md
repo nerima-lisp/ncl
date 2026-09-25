@@ -96,13 +96,21 @@ fn add_builtin(
     Ok(Word::fixnum(left + right))
 }
 
+const REQUIRED: &[Parameter] = &[
+    Parameter { name: BuiltinName::new("left"), ty: ParameterType::Fixnum },
+    Parameter { name: BuiltinName::new("right"), ty: ParameterType::Fixnum },
+];
+
 let implementation = BuiltinImplementation::direct(
-    Builtin { lambda_list: LambdaList::new("left right"), convention: BuiltinConvention::Direct(Arity::exact(2)) },
+    Builtin {
+        lambda_list: LambdaList::fixed(REQUIRED),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    },
     add_builtin,
 );
 let function = runtime.register_builtin(
     &mut ctx,
-    BuiltinIdentifier::new(BuiltinPackage::new("NCL-TEST"), BuiltinName::new("ADD")),
+    BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADD")),
     implementation,
 )?;
 let result = runtime.call_builtin(&mut ctx, function, &[left, right])?;
@@ -112,35 +120,45 @@ let result = runtime.call_builtin(&mut ctx, function, &[left, right])?;
 keyword functions use `BuiltinImplementation::adapted` with a
 `KeywordAdapter`; the adapter validates and reorders the original argument
 slice before the callback is called. The `RustBuiltin` callback receives the
-`&Runtime` first, followed by the thread context, arguments, and multiple-value
-storage. The returned `FunctionObject` is also
-stored in the runtime registry, so generated code and Rust callers resolve the
-same function object. The example package is test-only and does not claim an
-ownership-table symbol.
+mutable thread context first, followed by the runtime, arguments, and
+multiple-value storage. The returned `FunctionObject` is also
+stored in the runtime registry. The example package is test-only and does not
+claim an ownership-table symbol.
 
-The fixed native ABI uses a direct context-plus-Word signature. Adapter calls
-use the `(ctx, argc, args, values) -> NclStatus` shape. Fixed calls must not be
-materialized as an argument-array adapter. Multiple values are written to
-`MultipleValues`, copied to `ThreadContext` by `call_builtin`, and exposed to
-the caller through `ctx.values()`.
+`Runtime::call_builtin` validates direct arity, applies an optional
+`KeywordAdapter`, invokes the callback, copies `MultipleValues` into the
+thread context, and then consumes pending state. The `NclStatus` enum and the
+exported `builtin!` macro are present in `ncl-object`, but no native entry
+contract is specified here because this document is limited to the evidenced
+typed Rust callback API.
+
+`BuiltinPackage` is a non-exhaustive enum; use `BuiltinPackage::NclTest` for
+the test package shown above. `FunctionObject::try_from(word)` is the checked
+conversion from a `Word` and returns `ObjectError::TypeError` for an unbound
+word or a non-function lowtag.
 
 The complete safe callback order is `(&mut ThreadContext, &Runtime,
 &BuiltinArgs, &mut MultipleValues)`, matching allocating object APIs.
 `BuiltinArgs` provides checked accessors and does not expose panic-prone indexing.
 
-`Word` is a `#[repr(transparent)]` 64-bit tagged value from `ncl-sys`. Use
+`Word` is the tagged value re-exported by `ncl-object` from `ncl-sys`. Use
 `classify(word)` for immediate and lowtag inspection and
 `classify_object(ctx, word)` when the registered widetag is needed. A typed
-`ObjectRef` variant is a view, not a root. Any heap `Word` that survives an
-allocation must be held through a `RootToken` or a runtime-owned root table.
-Object accessors validate the widetag and return `ObjectError::TypeError` for
-the wrong object kind.
+`ObjectRef` variant and `WordView` are views, not roots. `WordView::try_from_word`
+validates only the context-free categories implemented in `typed.rs`, and
+returns `typed::TypeError` for a mismatch. Any heap `Word` that survives an
+allocation must be held through the existing rooting API.
 
-### Fixed, optional, rest, and key arguments
+### Fixed arguments
 
 Fixed positional functions use `BuiltinConvention::Direct(Arity::exact(...))`:
 
 ```rust
+const FIXED: &[Parameter] = &[
+    Parameter { name: BuiltinName::new("first"), ty: ParameterType::Fixnum },
+    Parameter { name: BuiltinName::new("second"), ty: ParameterType::Fixnum },
+];
+
 fn fixed(
     _ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -155,29 +173,65 @@ fn fixed(
 }
 
 let implementation = BuiltinImplementation::direct(
-    Builtin { lambda_list: LambdaList::new("first second"), convention: BuiltinConvention::Direct(Arity::exact(2)) },
+    Builtin {
+        lambda_list: LambdaList::fixed(FIXED),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    },
     fixed,
 );
 ```
 
-The front-end lambda-list shapes corresponding to the supported argument
-sections are:
+`LambdaList::fixed`, `with_optional`, `with_rest`, and `with_keys` are the
+typed descriptor constructors. They keep the parameter shape explicit:
 
-```lisp
-(lambda (required &optional (count 1 count-p)) ...)
-(lambda (required &rest remaining) ...)
-(lambda (required &key (width 80 width-p) height &allow-other-keys) ...)
+```rust
+let fixed = LambdaList::fixed(REQUIRED);
+let optional = LambdaList::with_optional(REQUIRED, OPTIONAL);
+let rest = LambdaList::with_rest(REQUIRED, REST);
+let keys = LambdaList::with_keys(REQUIRED, KEYS, true);
 ```
 
-The parser stores required, optional, rest, key, and auxiliary parameters in
-separate typed fields. Sections must appear in the order
-`&whole`, `&environment`, required, `&optional`, `&rest` or `&body`, `&key`,
-`&allow-other-keys`, `&aux`. `&whole`, `&environment`, `&body`, and nested
-destructuring patterns are macro-only. An adapter for a variadic or keyword
-function receives the original slice, checks the rest/keyword shape, applies
-defaults, and passes the callback its normalized order.
+`min_arity`, `max_arity`, and `is_direct` expose descriptor properties. The
+object layer does not parse Lisp lambda-list syntax; a front-end parser remains
+outside this contract.
 
-### Multiple values and type errors
+### Typed adapters, multiple values, and type errors
+
+`TypedRustBuiltin` is the callback shape for a domain function that performs
+its own conversion and returns an `ncl-object::LispError`. `typed_builtin!`
+generates the raw `RustBuiltin` adapter and uses `FromLispArg` for fixed
+arguments:
+
+```rust
+let typed: TypedRustBuiltin = |_ctx, _runtime| Ok(Word::NIL);
+
+fn increment(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    value: Fixnum,
+) -> Result<Word, LispError> {
+    Ok(Word::fixnum(value.value() + 1))
+}
+
+typed_builtin!(increment_builtin, increment, (value: Fixnum));
+```
+
+The conversion boundary is explicit and returns `LispError` in `ncl-object`:
+
+```rust
+let value = Fixnum::from_lisp_arg(&ctx, word)?;
+```
+
+For example, `Fixnum::from_lisp_arg(&ctx, Word::NIL)` returns
+`Err(LispError::TypeError { .. })`. A function-valued designator can be
+constructed through the checked `FunctionObject` conversion:
+
+```rust
+let designator = FunctionDesignator::Function(FunctionObject::try_from(function_word)?);
+```
+
+Higher-layer conversion from `LispError` to `ncl-conditions` condition objects
+is not implemented in the inspected tree and remains a contract gap.
 
 `MultipleValues` is the explicit result side channel. The callback's returned
 `Word` remains the primary value:
@@ -204,63 +258,33 @@ fn quotient_and_remainder(
 }
 ```
 
-`call_builtin` copies the side channel into `ctx.values()` before consuming a
-pending condition. A callback that receives a non-fixnum, too few arguments, or
-an invalid keyword reports `ObjectError::TypeError`; it must not use
-`unwrap_or`, panic, or silently substitute a value. A higher layer may create a
-CL `TYPE-ERROR`, record the pending object error, and return `Word::UNBOUND`.
-The boundary then returns the pending error and does not expose the marker as a
-successful result.
-
-### Macro declaration shape
-
-Compiler macros are front-end declarations, not builtin descriptors. Their
-shape is:
+`call_builtin` copies the side channel into `ctx.values()` before consuming
+pending state. A callback can return `ObjectError::TypeError` for a type or
+argument failure; this object-layer contract does not define CL condition
+construction. `FunctionDesignator` currently provides the evidenced tagged
+view, but no direct `FromLispArg` conversion for the enum is present:
 
 ```rust
-pub struct CompilerMacro {
-    pub name: SymbolRef,
-    pub arity: ArityPattern,
-    pub expander: MacroExpander,
-    pub feature: Option<&'static str>,
-}
-
-type MacroExpander = fn(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    form: Word,
-) -> Result<Option<Word>, FrontError>;
+let designator = FunctionDesignator::Symbol(Symbol::from(symbol_word));
 ```
 
-The callback receives the whole call form. `Some(expansion)` replaces it and
-`None` declines. `ArityPattern { minimum, maximum }` is checked before the
-callback. Ordinary and macro lambda lists share one typed representation, but
-only macro lists may contain `&whole`, `&environment`, `&body`, or nested
-destructuring. Global macro calls use `MacroCaller::call_macro(ctx, runtime,
-name, form)` and surface expansion failures as `FrontError::MacroExpansion`.
+Compiler-macro declarations and lambda-list parsing are outside the inspected
+object sources and are intentionally not specified here.
 
 ### Error and DDD boundaries
 
-`ncl-sys` owns the unsafe tagged heap and platform ABI. `ncl-object` owns the
-typed Word view, widetags, roots, `Runtime`, `ThreadContext`, builtin
-registration, and the `ObjectError` boundary. `ncl-types` interprets type
-specifiers. `ncl-compiler-front` parses forms and macro declarations without a
-reverse dependency on the runtime. `ncl-conditions` owns CL condition classes,
-handlers, and restarts. Library crates own CL-facing functions and condition
-construction. An extension stays in its layer and uses the typed API above;
-it does not read object slots through `ncl-sys` or duplicate runtime registries.
+`ncl-object` owns the typed Word views, classification, builtin descriptors,
+registration, invocation, and `ObjectError` boundary described here. Other
+layer ownership and compiler-macro APIs are unresolved dependencies for this
+N08b contract and are not asserted by this document.
 
 ## Condition signaling from a builtin
 
-`ncl-object` does not depend on `ncl-conditions`. A builtin reports a boundary
-condition by recording an `ObjectError` in `ThreadContext`'s pending state and
-returning the reserved `Word::UNBOUND` marker as its primary result. On return,
-`Runtime::call_builtin` copies multiple values, consumes the pending state, and
-returns the pending error instead of the marker. A callback may alternatively
-return `Err(ObjectError)` directly; it must choose one path for each failure.
-The library crate owns construction of the CL condition object and calls the
-appropriate `ncl-conditions` function before recording the pending error.
-This keeps condition classes, handlers, and restarts above the object layer.
+`ncl-object` exposes `ObjectError` and `ThreadContext` pending-state methods,
+and `Runtime::call_builtin` consumes pending state after copying multiple
+values. The inspected sources do not define CL condition construction or a
+required `Word::UNBOUND` signaling protocol, so those remain unresolved API
+dependencies rather than extension guarantees.
 
 `Word::UNBOUND` is also used for an unbound function cell. `call_builtin`
 rejects an unbound handle or missing implementation with `ObjectError::Unbound`

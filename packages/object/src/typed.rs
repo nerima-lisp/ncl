@@ -1,8 +1,81 @@
 //! Additive typed views over the stable tagged-word ABI.
-
-use crate::{ObjectError, ObjectRef, classify};
+use crate::{FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext, classify};
 use ncl_sys::{StorageCondition, Word};
-
+/// Converts one raw ABI argument at the generated adapter boundary.
+pub trait FromLispArg: Sized {
+    /// Convert an argument without exposing an unchecked index to builtin code.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed condition when the word does not satisfy the argument type.
+    fn from_lisp_arg(ctx: &ThreadContext, word: Word) -> Result<Self, LispError>;
+}
+impl FromLispArg for Word {
+    fn from_lisp_arg(_ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
+        Ok(word)
+    }
+}
+impl FromLispArg for Fixnum {
+    fn from_lisp_arg(_ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
+        Self::try_from_word(word).map_err(LispError::from)
+    }
+}
+impl FromLispArg for List {
+    fn from_lisp_arg(_ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
+        if word == Word::NIL {
+            Ok(Self::Nil)
+        } else if word.lowtag() == ncl_sys::LowTag::List as u8 {
+            Ok(Self::Cons(crate::Cons::from(word)))
+        } else {
+            Err(LispError::TypeError {
+                datum: word,
+                expected: ObjectType::Cons,
+            })
+        }
+    }
+}
+/// Declare a fixed-arity typed builtin adapter.
+#[macro_export]
+macro_rules! typed_builtin {
+    ($name:ident, $implementation:path, ($a:ident : $at:ty)) => {
+        fn $name(
+            ctx: &mut $crate::ThreadContext,
+            runtime: &$crate::Runtime,
+            args: &$crate::BuiltinArgs<'_>,
+            values: &mut $crate::MultipleValues,
+        ) -> Result<$crate::Word, $crate::ObjectError> {
+            let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?)
+                .map_err(|_| $crate::ObjectError::TypeError)?;
+            $implementation(ctx, runtime, $a)
+                .map_err(|_| $crate::ObjectError::TypeError)
+                .map(|result| {
+                    values.clear();
+                    result
+                })
+        }
+    };
+    ($name:ident, $implementation:path, ($a:ident : $at:ty, $b:ident : $bt:ty)) => {
+        fn $name(
+            ctx: &mut $crate::ThreadContext,
+            runtime: &$crate::Runtime,
+            args: &$crate::BuiltinArgs<'_>,
+            values: &mut $crate::MultipleValues,
+        ) -> Result<$crate::Word, $crate::ObjectError> {
+            let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?)
+                .map_err(|_| $crate::ObjectError::TypeError)?;
+            let $b = <$bt as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(1)?)
+                .map_err(|_| $crate::ObjectError::TypeError)?;
+            $implementation(ctx, runtime, $a, $b)
+                .map_err(|_| $crate::ObjectError::TypeError)
+                .map(|result| {
+                    values.clear();
+                    result
+                })
+        }
+    };
+}
+/// Typed callback shape for a domain function that owns argument conversion.
+pub type TypedRustBuiltin = fn(&mut ThreadContext, &Runtime) -> Result<Word, LispError>;
 crate::word_newtype!(Cons);
 crate::word_newtype!(Symbol);
 crate::word_newtype!(StringObject);
@@ -11,7 +84,120 @@ crate::word_newtype!(SpecializedArray);
 crate::word_newtype!(Array);
 crate::word_newtype!(Closure);
 crate::word_newtype!(StructureObject);
-
+/// A fixnum view validated at the builtin boundary.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Fixnum(i64);
+impl Fixnum {
+    /// Validate and wrap a tagged fixnum.
+    ///
+    /// # Errors
+    ///
+    /// Returns a type error when the word is not a fixnum.
+    pub fn try_from_word(word: Word) -> Result<Self, TypeError> {
+        word.as_fixnum().map(Self).ok_or(TypeError {
+            datum: word,
+            expected: ObjectType::Fixnum,
+        })
+    }
+    #[must_use]
+    pub const fn value(self) -> i64 {
+        self.0
+    }
+    #[must_use]
+    pub const fn as_word(self) -> Word {
+        Word::fixnum(self.0)
+    }
+}
+/// A character view validated at the builtin boundary.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Character(u32);
+impl Character {
+    /// Validate and wrap a tagged character.
+    ///
+    /// # Errors
+    ///
+    /// Returns a type error when the word is not a character.
+    pub fn try_from_word(word: Word) -> Result<Self, TypeError> {
+        if word.is_character() {
+            Ok(Self(u32::try_from(word.bits() >> 4).unwrap_or(0)))
+        } else {
+            Err(TypeError {
+                datum: word,
+                expected: ObjectType::Character,
+            })
+        }
+    }
+    #[must_use]
+    pub const fn value(self) -> u32 {
+        self.0
+    }
+    #[must_use]
+    pub const fn as_word(self) -> Word {
+        Word::character(self.0)
+    }
+}
+/// The CL-facing name for the string view.
+pub type LispString = StringObject;
+/// The ANSI integer type.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Integer {
+    Fixnum(Fixnum),
+    Bignum(crate::Bignum),
+}
+/// The ANSI rational type.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Rational {
+    Integer(Integer),
+    Ratio(crate::Ratio),
+}
+/// The ANSI real type.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Real {
+    Rational(Rational),
+    DoubleFloat(crate::DoubleFloat),
+}
+/// The ANSI number type.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Number {
+    Real(Real),
+    Complex(crate::Complex),
+}
+/// A proper list view, preserving the distinct NIL and cons cases.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum List {
+    Nil,
+    Cons(Cons),
+}
+/// A sequence view.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Sequence {
+    List(List),
+    String(StringObject),
+    Vector(SimpleVector),
+}
+/// A string designator view.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StringDesignator {
+    String(StringObject),
+    Symbol(Symbol),
+    Character(u32),
+}
+/// A function designator view.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FunctionDesignator {
+    Function(FunctionObject),
+    Symbol(Symbol),
+}
+/// A package designator view.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PackageDesignator {
+    Package(crate::Package),
+    String(StringObject),
+    Symbol(Symbol),
+}
 /// The runtime kind expected by an object-layer operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -38,7 +224,35 @@ pub enum ObjectType {
     Stream,
     Code,
 }
-
+impl ObjectType {
+    /// Return the CLHS type name used in a type error.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Fixnum => "fixnum",
+            Self::Character => "character",
+            Self::Cons => "cons",
+            Self::Symbol => "symbol",
+            Self::String => "string",
+            Self::SimpleVector => "simple-vector",
+            Self::SpecializedArray => "specialized-array",
+            Self::Array => "array",
+            Self::HashTable => "hash-table",
+            Self::Function => "function",
+            Self::Closure => "closure",
+            Self::Instance => "instance",
+            Self::Structure => "structure-object",
+            Self::Bignum => "bignum",
+            Self::Ratio => "ratio",
+            Self::DoubleFloat => "double-float",
+            Self::Complex => "complex",
+            Self::Package => "package",
+            Self::Readtable => "readtable",
+            Self::Stream => "stream",
+            Self::Code => "code",
+        }
+    }
+}
 /// A failed conversion from an ABI word to a domain view.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TypeError {
@@ -47,7 +261,6 @@ pub struct TypeError {
     /// The view required by the operation.
     pub expected: ObjectType,
 }
-
 impl std::fmt::Display for TypeError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -58,9 +271,7 @@ impl std::fmt::Display for TypeError {
         )
     }
 }
-
 impl std::error::Error for TypeError {}
-
 /// A typed view of a tagged word without changing its ABI representation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -89,7 +300,6 @@ pub enum WordView {
     Other { word: Word, widetag: u8 },
     Immediate(Word),
 }
-
 impl WordView {
     /// Convert an immediate or lowtagged word to the requested view.
     ///
@@ -108,6 +318,12 @@ impl WordView {
                 | (Self::Symbol(_), ObjectType::Symbol)
                 | (Self::Function(_), ObjectType::Function)
                 | (Self::Instance(_), ObjectType::Instance)
+                | (Self::Bignum(_), ObjectType::Bignum)
+                | (Self::Ratio(_), ObjectType::Ratio)
+                | (Self::DoubleFloat(_), ObjectType::DoubleFloat)
+                | (Self::Complex(_), ObjectType::Complex)
+                | (Self::Package(_), ObjectType::Package)
+                | (Self::Stream(_), ObjectType::Stream)
         );
         if valid {
             Ok(view)
@@ -118,7 +334,6 @@ impl WordView {
             })
         }
     }
-
     /// Return the untyped ABI value represented by this view.
     #[must_use]
     pub fn as_word(self) -> Word {
@@ -148,7 +363,85 @@ impl WordView {
         }
     }
 }
-
+/// CLHS condition categories that can cross the builtin boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum LispError {
+    TypeError { datum: Word, expected: ObjectType },
+    ProgramError(ProgramError),
+    ArithmeticError(ArithmeticError),
+    ControlError(ControlError),
+    CellError(CellError),
+    PackageError(PackageError),
+    StreamError(StreamError),
+    EndOfFile,
+    FileError(FileError),
+    Object(ObjectError),
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ProgramError {
+    WrongNumberOfArguments {
+        minimum: usize,
+        maximum: Option<usize>,
+    },
+    UnknownKeyword,
+    OddKeywordArguments,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ArithmeticError {
+    DivisionByZero,
+    InvalidOperation,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ControlError {
+    Throw,
+    Go,
+    ReturnFrom,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CellError {
+    UnboundVariable,
+    UndefinedFunction,
+    UnboundSlot,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum PackageError {
+    NotFound,
+    Conflict,
+    Locked,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum StreamError {
+    Closed,
+    InvalidDirection,
+    Io,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum FileError {
+    NotFound,
+    PermissionDenied,
+    InvalidPath,
+}
+impl From<TypeError> for LispError {
+    fn from(error: TypeError) -> Self {
+        Self::TypeError {
+            datum: error.datum,
+            expected: error.expected,
+        }
+    }
+}
+impl From<ObjectError> for LispError {
+    fn from(error: ObjectError) -> Self {
+        Self::Object(error)
+    }
+}
 impl From<ObjectRef> for WordView {
     fn from(value: ObjectRef) -> Self {
         match value {
@@ -178,7 +471,6 @@ impl From<ObjectRef> for WordView {
         }
     }
 }
-
 /// Stable categories for the existing object-layer error ABI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -190,7 +482,6 @@ pub enum ObjectErrorKind {
     Unsupported,
     PackageConflict,
 }
-
 impl ObjectError {
     /// Return the typed category without changing the existing error enum.
     #[must_use]

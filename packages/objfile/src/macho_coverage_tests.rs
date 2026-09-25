@@ -67,3 +67,37 @@ fn private_macho_name_and_input_validation_rejects_invalid_data() {
         ))
     );
 }
+
+#[test]
+fn private_macho_readers_report_truncation() {
+    assert_eq!(
+        read_u32(&[1, 2, 3], 0, "command"),
+        Err(ObjectError::Truncated {
+            offset: 0,
+            needed: 4,
+        })
+    );
+    assert_eq!(
+        read_u64(&[1, 2, 3], 0, "section size"),
+        Err(ObjectError::Truncated {
+            offset: 0,
+            needed: 8,
+        })
+    );
+    assert_eq!(
+        validate_macho_commands(&[0; 32], 36, 1),
+        Err(ObjectError::Truncated {
+            offset: 32,
+            needed: 4,
+        })
+    );
+    let mut command = vec![0; 36];
+    command[32..36].copy_from_slice(&0x19u32.to_le_bytes());
+    assert_eq!(
+        validate_macho_commands(&command, 36, 1),
+        Err(ObjectError::Truncated {
+            offset: 36,
+            needed: 4,
+        })
+    );
+}

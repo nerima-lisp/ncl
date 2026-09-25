@@ -3,7 +3,10 @@
 //! Acceptance tests for the ownership gate against the embedded table.
 
 use ncl_object::{Package, Runtime, ThreadContext, Word};
-use ncl_ownership::{Kind, Missing, OwnershipError, assert_crate_coverage, rows, rows_for_crate};
+use ncl_ownership::{
+    Kind, Missing, OwnershipError, assert_crate_coverage, assert_crate_function_bindings_from_table,
+    rows, rows_for_crate,
+};
 
 /// The table the crate embeds, read again to derive expected counts.
 const TABLE: &str = include_str!("../../../conformance/ownership/symbols.tsv");
@@ -216,4 +219,21 @@ fn macro_variable_and_constant_kinds_require_their_flag_bits() {
             row.symbol
         );
     }
+}
+
+#[test]
+fn strict_function_check_rejects_an_unbound_symbol_cell() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let table = "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\nTEST\tFOO\tfunction\ttest\t1\tno\t\n";
+    runtime.ensure_package(&mut ctx, "TEST").unwrap();
+    let symbol = intern_symbol(&runtime, &mut ctx, "TEST", "FOO");
+    runtime
+        .define_function(&mut ctx, "TEST", "FOO", Word::NIL)
+        .unwrap();
+    let error = assert_crate_function_bindings_from_table(&runtime, &mut ctx, table, "test")
+        .unwrap_err();
+    assert!(error.to_string().contains("symbol function cell unbound"));
+    assert_eq!(ncl_object::symbol_function(&ctx, symbol).unwrap(), Word::UNBOUND);
 }

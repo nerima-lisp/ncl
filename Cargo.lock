@@ -42,6 +42,7 @@ version = "0.1.0"
 dependencies = [
  "ncl-asm-aarch64",
  "ncl-asm-x86-64",
+ "ncl-disasm",
  "ncl-ir",
  "ncl-object",
  "ncl-sys",

@@ -248,10 +248,7 @@ mod builtin_address_tests {
     #[test]
     fn context_fields_keep_the_stable_legacy_identifiers() {
         assert_eq!(ContextField::TlabBump.identifier(), "tlab_bump");
-        assert_eq!(
-            ContextField::MultipleValueCount.identifier(),
-            "mv_count"
-        );
+        assert_eq!(ContextField::MultipleValueCount.identifier(), "mv_count");
     }
 }
 

@@ -1,7 +1,7 @@
 //! Fixed-template x86-64 lowering.
 use crate::{
-    Block, CodegenError, CompiledFunction, FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE,
-    ConstantName, FrameLayout, MachineFunction, MachineOp, RuntimeAbi, SafepointMap,
+    Block, CodegenError, CompiledFunction, ConstantName, FLAG_ALLOCATION_SLOW, FLAG_CALL,
+    FLAG_LOOP_BACKEDGE, FrameLayout, MachineFunction, MachineOp, RuntimeAbi, SafepointMap,
 };
 use crate::{checked_i64, checked_u16, checked_u32};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
@@ -247,8 +247,8 @@ fn lower_op(
             let address = abi
                 .builtin_address_named(crate::BuiltinName::new(name))
                 .ok_or_else(|| {
-                CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
-            })?;
+                    CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
+                })?;
             emit(
                 assembler,
                 &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),

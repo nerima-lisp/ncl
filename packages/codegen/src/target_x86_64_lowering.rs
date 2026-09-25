@@ -399,7 +399,7 @@ fn lower_builtin(
     let address = abi
         .builtin_address_named(BuiltinName::new(name))
         .ok_or_else(|| {
-        CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
+            CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
         })?;
     emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
     load_immediate(assembler, ENTRY, address.cast_signed())?;

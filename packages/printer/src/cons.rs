@@ -20,7 +20,7 @@ impl Printer<'_> {
         let mut count = 0usize;
         let mut first = true;
         loop {
-            if let Some(limit) = self.options.length
+            if let Some(limit) = self.options.length().map(crate::options::NonNegative::get)
                 && count == limit
             {
                 if count > 0 {

@@ -609,12 +609,14 @@ mod tests {
             vec![MethodId::new(2)]
         );
         assert_eq!(generic.cache_len(), 2);
-        assert!(generic
-            .find_method(
-                &[Specializer::Eql(EqlValueId::new(7))],
-                MethodQualifier::Primary,
-            )
-            .is_some());
+        assert!(
+            generic
+                .find_method(
+                    &[Specializer::Eql(EqlValueId::new(7))],
+                    MethodQualifier::Primary,
+                )
+                .is_some()
+        );
     }
 
     #[test]
@@ -626,14 +628,16 @@ mod tests {
             (3, MethodQualifier::Primary),
             (4, MethodQualifier::Around),
         ] {
-            assert!(generic
-                .add_method(Method::new(
-                    MethodId::new(id),
-                    vec![Specializer::Class(ClassId::new(1))],
-                    qualifier,
-                    MethodId::new(id + 10),
-                ))
-                .is_ok());
+            assert!(
+                generic
+                    .add_method(Method::new(
+                        MethodId::new(id),
+                        vec![Specializer::Class(ClassId::new(1))],
+                        qualifier,
+                        MethodId::new(id + 10),
+                    ))
+                    .is_ok()
+            );
         }
         let combination = generic
             .compute_standard_method_combination(&[DispatchArgument::Class(ClassId::new(1))])

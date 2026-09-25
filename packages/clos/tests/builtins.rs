@@ -52,3 +52,53 @@ fn slot_builtins_round_trip_and_reject_non_instances() {
         Err(ncl_object::ObjectError::TypeError)
     );
 }
+
+#[test]
+fn slot_exists_p_recognizes_direct_and_inherited_slots() {
+    let (runtime, mut ctx) = setup();
+    let inherited_name = Word::fixnum(17);
+    let direct_name = Word::fixnum(23);
+    let inherited_slot =
+        ncl_object::make_simple_vector(&mut ctx, &runtime, &[inherited_name, Word::fixnum(0)])
+            .unwrap();
+    let parent_slots =
+        ncl_object::make_simple_vector(&mut ctx, &runtime, &[inherited_slot]).unwrap();
+    let parent = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        Word::NIL,
+        Word::NIL,
+        parent_slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let child_slots = ncl_object::make_simple_vector(&mut ctx, &runtime, &[direct_name]).unwrap();
+    let child = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        Word::NIL,
+        parent,
+        child_slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let instance = ncl_clos::make_instance(&mut ctx, &runtime, child, &[]).unwrap();
+    let slot_exists = function(&runtime, &mut ctx, "SLOT-EXISTS-P");
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_exists, &[instance, inherited_name]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_exists, &[instance, direct_name]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_exists, &[instance, Word::fixnum(99)]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, slot_exists, &[Word::NIL, inherited_name]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}

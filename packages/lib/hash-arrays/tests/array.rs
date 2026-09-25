@@ -2,8 +2,8 @@
 
 use ncl_lib_hash_arrays::array::{Dimension, Dimensions, RowMajorIndex};
 use ncl_object::{
-    make_array, make_simple_vector, make_specialized_array, ArrayElementType, ArrayOptions,
-    BuiltinPackage, FunctionObject, Runtime, ThreadContext, Word,
+    ArrayElementType, ArrayOptions, BuiltinPackage, FunctionObject, Runtime, ThreadContext, Word,
+    make_array, make_simple_vector, make_specialized_array,
 };
 
 fn runtime_and_context() -> (Runtime, ThreadContext) {
@@ -148,7 +148,10 @@ fn runtime_call_builtin_covers_fill_pointer_vector_and_displacement() {
         runtime.call_builtin(&mut context, push, &[Word::fixnum(7), vector]),
         Ok(Word::fixnum(0))
     );
-    assert_eq!(ncl_object::array_fill_pointer(&context, vector), Ok(Some(1)));
+    assert_eq!(
+        ncl_object::array_fill_pointer(&context, vector),
+        Ok(Some(1))
+    );
     let pop = function(&runtime, &mut context, "VECTOR-POP");
     assert_eq!(
         runtime.call_builtin(&mut context, pop, &[vector]),

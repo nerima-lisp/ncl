@@ -415,8 +415,8 @@ fn options_come_from_the_ambient_variables() {
     set_symbol_special(&mut ctx, base, true).unwrap();
     set_symbol_value(&mut ctx, base, Word::fixnum(16)).unwrap();
     let options = PrintOptions::from_specials(&mut ctx, &runtime);
-    assert!(!options.escape);
-    assert_eq!(options.base, 16);
+    assert!(!options.escape());
+    assert_eq!(options.base().get(), 16);
 }
 
 #[test]

@@ -12,9 +12,9 @@ impl Printer<'_> {
     /// Print a fixnum in `*print-base*`.
     pub fn print_fixnum(&mut self, value: i64) -> Result<(), PrintError> {
         self.write_str(&self.radix_prefix())?;
-        let text = format_integer(value, self.options.base);
+        let text = format_integer(value, self.options.base().get());
         self.write_str(&text)?;
-        if self.options.radix && self.options.base == 10 {
+        if self.options.radix() && self.options.base().get() == 10 {
             self.write_char('.')?;
         }
         Ok(())
@@ -25,8 +25,8 @@ impl Printer<'_> {
         let limbs = bignum_limbs(self.ctx, number)?;
         let negative = bignum_sign(self.ctx, number)?;
         self.write_str(&self.radix_prefix())?;
-        self.write_str(&format_limbs(&limbs, negative, self.options.base))?;
-        if self.options.radix && self.options.base == 10 {
+        self.write_str(&format_limbs(&limbs, negative, self.options.base().get()))?;
+        if self.options.radix() && self.options.base().get() == 10 {
             self.write_char('.')?;
         }
         Ok(())
@@ -60,10 +60,10 @@ impl Printer<'_> {
 
     /// The radix prefix for the current `*print-radix*` and `*print-base*`.
     fn radix_prefix(&self) -> String {
-        if !self.options.radix {
+        if !self.options.radix() {
             return String::new();
         }
-        match self.options.base {
+        match self.options.base().get() {
             2 => "#b".to_string(),
             8 => "#o".to_string(),
             16 => "#x".to_string(),

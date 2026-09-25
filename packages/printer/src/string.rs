@@ -9,7 +9,7 @@ impl Printer<'_> {
     /// Print a string, escaped when `*print-escape*` is true.
     pub fn print_string(&mut self, string: Word) -> Result<(), PrintError> {
         let text = self.string_text(string)?;
-        if !self.options.escape {
+        if !self.options.escape() {
             return self.write_str(&text);
         }
         self.write_char('"')?;
@@ -28,7 +28,7 @@ impl Printer<'_> {
         let Some(character) = char::from_u32(code) else {
             return self.write_str("#\\?");
         };
-        if !self.options.escape {
+        if !self.options.escape() {
             return self.write_char(character);
         }
         self.write_str("#\\")?;

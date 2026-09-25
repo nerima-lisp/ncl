@@ -1,4 +1,7 @@
-use super::{emit, load_slot, lower_alloc, lower_builtin, lower_call, lower_safepoint, store_slot};
+use super::{
+    emit, load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call,
+    lower_runtime_builtin, lower_safepoint, store_slot,
+};
 use crate::{CodegenError, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
@@ -9,6 +12,10 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u6
         ncl_ir::Constant::Character(value) => Ok(abi.encode_character(*value).cast_unsigned()),
         ncl_ir::Constant::Nil | ncl_ir::Constant::Unbound => Ok(0),
         ncl_ir::Constant::T => Ok(abi.encode_fixnum(1).cast_unsigned()),
+        ncl_ir::Constant::FunctionEntry(function) => abi
+            .constant_word(&format!("function-entry:{}", function.0))
+            .map(i64::cast_unsigned)
+            .ok_or_else(|| CodegenError::Unsupported("function entry constant is unavailable".into())),
         _ => Err(CodegenError::Unsupported(
             "constant requires a runtime table".into(),
         )),
@@ -303,12 +310,37 @@ pub fn lower_op(
                 store_slot(assembler, slots, result, Reg(0))?;
             }
         }
+        OpKind::MakeClosure { entry, captures } => {
+            let values = std::iter::once(*entry)
+                .chain(captures.iter().copied())
+                .collect::<Vec<_>>();
+            lower_runtime_builtin(assembler, "make-closure", &[], &values, slots, abi)?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })?;
+            if let Some(result) = result {
+                store_slot(assembler, slots, result, Reg(0))?;
+            }
+        }
+        OpKind::CallClosure { closure, args } => {
+            lower_closure_call(assembler, *closure, args, slots)?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })?;
+            if let Some(result) = result {
+                store_slot(assembler, slots, result, Reg(0))?;
+            }
+        }
         OpKind::Builtin { name, args } => {
             lower_builtin(assembler, name, args, slots, abi)?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
                 store_slot(assembler, slots, result, Reg(0))?;
             }
+        }
+        OpKind::EnterHandler { region } => {
+            lower_runtime_builtin(assembler, "enter-handler", &[u64::from(region.0)], &[], slots, abi)?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })?;
+        }
+        OpKind::LeaveHandler { region } => {
+            lower_runtime_builtin(assembler, "leave-handler", &[u64::from(region.0)], &[], slots, abi)?;
+            emit(assembler, Inst::Blr { rn: Reg(17) })?;
         }
     }
     Ok(call_pc)

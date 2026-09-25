@@ -38,7 +38,13 @@ impl AArch64TargetIsa {
             TemplateKind::Jump => vec![Inst::B {
                 label: ncl_asm_aarch64::Label(0),
             }],
-            TemplateKind::Call | TemplateKind::CallIndirect | TemplateKind::Builtin => {
+            TemplateKind::Call
+            | TemplateKind::CallIndirect
+            | TemplateKind::MakeClosure
+            | TemplateKind::CallClosure
+            | TemplateKind::Builtin
+            | TemplateKind::EnterHandler
+            | TemplateKind::LeaveHandler => {
                 vec![Inst::Blr { rn: Reg(17) }]
             }
             TemplateKind::Alloc | TemplateKind::Safepoint => vec![Inst::Nop],

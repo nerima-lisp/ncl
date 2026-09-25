@@ -3,7 +3,7 @@
 #![allow(clippy::all)]
 #![allow(clippy::too_many_lines)]
 
-use crate::{BasicBlock, BlockId, Function, Op, OpKind, Terminator, Ty, ValueId};
+use crate::{BasicBlock, BlockId, Function, HandlerRegionId, Op, OpKind, Terminator, Ty, ValueId};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -22,6 +22,11 @@ pub enum VerifyError {
     ReturnArity(BlockId),
     TypeMismatch(BlockId),
     HandlerTarget(BlockId),
+    DuplicateHandlerRegion(HandlerRegionId),
+    MissingHandlerRegion(HandlerRegionId),
+    HandlerNesting(HandlerRegionId),
+    HandlerMismatch(BlockId),
+    HandlerUnbalanced(BlockId),
     /// A warning represented in the existing error channel for API compatibility.
     SafepointWarning(BlockId),
 }
@@ -122,11 +127,97 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
                 errors.push(VerifyError::HandlerTarget(*block));
             }
         }
+        if let Some(tag) = region.catch_tag {
+            if definitions.get(&tag).map(|(ty, _, _)| *ty) != Some(Ty::Word) {
+                errors.push(VerifyError::TypeMismatch(region.handler));
+            }
+        }
     }
+    let mut regions = HashMap::new();
+    for region in &function.handler_regions {
+        if regions.insert(region.id, region).is_some() {
+            errors.push(VerifyError::DuplicateHandlerRegion(region.id));
+        }
+    }
+    for region in &function.handler_regions {
+        if let Some(parent) = region.parent {
+            let Some(parent_region) = regions.get(&parent) else {
+                errors.push(VerifyError::MissingHandlerRegion(parent));
+                continue;
+            };
+            let parent_blocks = parent_region.protected.iter().copied().collect::<HashSet<_>>();
+            if region.depth <= parent_region.depth
+                || region
+                    .protected
+                    .iter()
+                    .any(|block| !parent_blocks.contains(block))
+            {
+                errors.push(VerifyError::HandlerNesting(region.id));
+            }
+        }
+    }
+    verify_handler_flow(function, &blocks, &regions, &mut errors);
     if errors.is_empty() {
         Ok(())
     } else {
         Err(errors)
+    }
+}
+
+fn verify_handler_flow(
+    function: &Function,
+    blocks: &HashMap<BlockId, &BasicBlock>,
+    regions: &HashMap<HandlerRegionId, &crate::HandlerRegion>,
+    errors: &mut Vec<VerifyError>,
+) {
+    let Some(entry) = function.blocks.first().map(|block| block.id) else { return };
+    let mut incoming = HashMap::<BlockId, Option<Vec<HandlerRegionId>>>::new();
+    incoming.insert(entry, Some(Vec::new()));
+    let mut work = vec![entry];
+    while let Some(id) = work.pop() {
+        let Some(block) = blocks.get(&id) else { continue };
+        let Some(mut stack) = incoming.get(&id).cloned().flatten() else { continue };
+        for op in &block.ops {
+            let region = match op.kind {
+                OpKind::EnterHandler { region } => Some((true, region)),
+                OpKind::LeaveHandler { region } => Some((false, region)),
+                _ => None,
+            };
+            let Some((enter, region)) = region else { continue };
+            if !regions.contains_key(&region) {
+                errors.push(VerifyError::MissingHandlerRegion(region));
+                continue;
+            }
+            if enter {
+                if let Some(parent) = regions[&region].parent {
+                    if stack.last().copied() != Some(parent) {
+                        errors.push(VerifyError::HandlerMismatch(block.id));
+                    }
+                }
+                stack.push(region);
+            } else if stack.pop() != Some(region) {
+                errors.push(VerifyError::HandlerMismatch(block.id));
+            }
+        }
+        for target in successors(&block.terminator) {
+            if !blocks.contains_key(&target) { continue; }
+            match incoming.get(&target) {
+                None => {
+                    incoming.insert(target, Some(stack.clone()));
+                    work.push(target);
+                }
+                Some(Some(old)) if old != &stack => {
+                    incoming.insert(target, None);
+                    errors.push(VerifyError::HandlerUnbalanced(target));
+                }
+                _ => {}
+            }
+        }
+    }
+    for (id, stack) in incoming {
+        if stack.is_some_and(|stack| !stack.is_empty()) {
+            errors.push(VerifyError::HandlerUnbalanced(id));
+        }
     }
 }
 
@@ -299,7 +390,10 @@ fn check_safepoints(
     for (index, op) in block.ops.iter().enumerate() {
         if matches!(
             op.kind,
-            OpKind::Call { .. } | OpKind::CallIndirect { .. } | OpKind::Builtin { .. }
+            OpKind::Call { .. }
+                | OpKind::CallIndirect { .. }
+                | OpKind::CallClosure { .. }
+                | OpKind::Builtin { .. }
         ) && (index == 0 || !matches!(block.ops[index - 1].kind, OpKind::Safepoint))
         {
             errors.push(VerifyError::SafepointWarning(block.id));

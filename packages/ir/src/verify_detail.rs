@@ -21,6 +21,11 @@ pub(super) fn check_op(
                 errors.push(VerifyError::ConstantOutOfBounds(block.id));
             }
             if let Some(constant) = function.constants.get(result.0 as usize) {
+                if let crate::Constant::Object(index) = constant {
+                    if index.0 as usize >= function.constants.len() {
+                        errors.push(VerifyError::ConstantOutOfBounds(block.id));
+                    }
+                }
                 require_results(op, &[constant_type(constant)], block.id, errors);
             }
         }
@@ -62,6 +67,16 @@ pub(super) fn check_op(
             args,
         } => {
             require_type(use_one(*function, errors), Ty::Word, block.id, errors);
+            require_word_args(args, block, position, definitions, dominators, errors);
+            require_results(op, &[Ty::Word], block.id, errors);
+        }
+        OpKind::MakeClosure { entry, captures } => {
+            require_type(use_one(*entry, errors), Ty::Word, block.id, errors);
+            require_word_args(captures, block, position, definitions, dominators, errors);
+            require_results(op, &[Ty::Word], block.id, errors);
+        }
+        OpKind::CallClosure { closure, args } => {
+            require_type(use_one(*closure, errors), Ty::Word, block.id, errors);
             require_word_args(args, block, position, definitions, dominators, errors);
             require_results(op, &[Ty::Word], block.id, errors);
         }
@@ -121,6 +136,9 @@ pub(super) fn check_op(
             require_results(op, &[], block.id, errors);
         }
         OpKind::Safepoint => require_results(op, &[], block.id, errors),
+        OpKind::EnterHandler { .. } | OpKind::LeaveHandler { .. } => {
+            require_results(op, &[], block.id, errors)
+        }
     }
 }
 
@@ -340,6 +358,7 @@ const fn constant_type(constant: &crate::Constant) -> Ty {
         | crate::Constant::StringBytes(_)
         | crate::Constant::Nil
         | crate::Constant::T
-        | crate::Constant::Unbound => Ty::Word,
+        | crate::Constant::Unbound
+        | crate::Constant::FunctionEntry(_) => Ty::Word,
     }
 }

@@ -146,6 +146,44 @@ pub(super) fn lower_call(
     Ok(())
 }
 
+pub(super) fn lower_closure_call(
+    assembler: &mut Assembler,
+    closure: ValueId,
+    args: &[ValueId],
+    slots: &[(ValueId, u32)],
+) -> Result<(), CodegenError> {
+    lower_call(assembler, closure, args, slots)?;
+    emit(assembler, Inst::MovRM(ENTRY, Mem::base(FUNCTION_OBJECT, 0)))
+}
+
+pub(super) fn lower_runtime_builtin(
+    assembler: &mut Assembler,
+    name: &str,
+    immediate_args: &[i64],
+    value_args: &[ValueId],
+    slots: &[(ValueId, u32)],
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    if immediate_args.len() + value_args.len() > ARGUMENT_REGISTERS.len() {
+        return Err(CodegenError::Unsupported(
+            "x86-64 runtime calls support at most four arguments".into(),
+        ));
+    }
+    let address = abi
+        .runtime_address(RuntimeFunction::Builtin, Some(name))
+        .map(u64::cast_signed)
+        .ok_or_else(|| CodegenError::Unsupported(format!("runtime address is unavailable: {name}")))?;
+    emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
+    load_immediate(assembler, ENTRY, address)?;
+    for (index, value) in immediate_args.iter().copied().enumerate() {
+        load_immediate(assembler, ARGUMENT_REGISTERS[index], value)?;
+    }
+    for (index, value) in value_args.iter().copied().enumerate() {
+        load_slot(assembler, slots, value, ARGUMENT_REGISTERS[immediate_args.len() + index])?;
+    }
+    Ok(())
+}
+
 fn context_mem(abi: &dyn RuntimeAbi, field: ContextField) -> Result<Mem, CodegenError> {
     let offset = abi.field_offset(field).ok_or_else(|| {
         CodegenError::Unsupported(format!("context offset is unavailable: {field:?}"))

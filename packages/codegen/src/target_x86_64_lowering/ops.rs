@@ -1,6 +1,7 @@
 use super::{
     ENTRY, FRAME_POINTER, FUNCTION_OBJECT, RETURN_VALUE, VALUE_COUNT, emit, emit_call,
-    load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_safepoint, slot,
+    load_immediate, load_slot, lower_alloc, lower_builtin, lower_call, lower_closure_call,
+    lower_runtime_builtin, lower_safepoint, slot,
     slot_mem_of, store_slot,
 };
 use crate::{CodegenError, RuntimeAbi};
@@ -13,6 +14,9 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i6
         ncl_ir::Constant::Character(value) => Ok(abi.encode_character(*value)),
         ncl_ir::Constant::Nil | ncl_ir::Constant::Unbound => Ok(0),
         ncl_ir::Constant::T => Ok(abi.encode_fixnum(1)),
+        ncl_ir::Constant::FunctionEntry(function) => abi
+            .constant_word(&format!("function-entry:{}", function.0))
+            .ok_or_else(|| CodegenError::Unsupported("function entry constant is unavailable".into())),
         _ => Err(CodegenError::Unsupported(
             "constant requires a runtime table".into(),
         )),
@@ -208,12 +212,37 @@ pub fn lower_op(
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }
         }
+        OpKind::MakeClosure { entry, captures } => {
+            let values = std::iter::once(*entry)
+                .chain(captures.iter().copied())
+                .collect::<Vec<_>>();
+            lower_runtime_builtin(assembler, "make-closure", &[], &values, slots, abi)?;
+            call_pc = Some(emit_call(assembler)?);
+            if let Some(result) = result {
+                store_slot(assembler, slots, result, RETURN_VALUE)?;
+            }
+        }
+        OpKind::CallClosure { closure, args } => {
+            lower_closure_call(assembler, *closure, args, slots)?;
+            call_pc = Some(emit_call(assembler)?);
+            if let Some(result) = result {
+                store_slot(assembler, slots, result, RETURN_VALUE)?;
+            }
+        }
         OpKind::Builtin { name, args } => {
             lower_builtin(assembler, name, args, slots, abi)?;
             call_pc = Some(emit_call(assembler)?);
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
             }
+        }
+        OpKind::EnterHandler { region } => {
+            lower_runtime_builtin(assembler, "enter-handler", &[i64::from(region.0)], &[], slots, abi)?;
+            call_pc = Some(emit_call(assembler)?);
+        }
+        OpKind::LeaveHandler { region } => {
+            lower_runtime_builtin(assembler, "leave-handler", &[i64::from(region.0)], &[], slots, abi)?;
+            call_pc = Some(emit_call(assembler)?);
         }
     }
     Ok(call_pc)

@@ -171,8 +171,12 @@ pub fn compile_function_aarch64(
                 op.kind,
                 OpKind::Call { .. }
                     | OpKind::CallIndirect { .. }
+                    | OpKind::MakeClosure { .. }
+                    | OpKind::CallClosure { .. }
                     | OpKind::Builtin { .. }
                     | OpKind::Safepoint
+                    | OpKind::EnterHandler { .. }
+                    | OpKind::LeaveHandler { .. }
             ) {
                 add_map(
                     &mut maps,

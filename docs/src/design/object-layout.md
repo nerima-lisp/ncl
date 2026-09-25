@@ -60,7 +60,7 @@ Cons pages contain `(car, cdr)` with no header. Header-object pages contain the 
 | hash-table | open addressing, power-of-two capacity, 7/8 load threshold, four weakness modes, synchronized flag |
 | structure | layout descriptor and slots |
 | CLOS instance | class pointer, indirect slot vector, layout generation |
-| simple-fun / closure | entry and code object; closure captured values inline |
+| simple-fun / closure | `entry`, `name`, `lambda-list`, `code`; closure captures follow inline |
 | bignum / ratio | sign and little-endian u32 limbs; numerator and denominator |
 | double-float / complex | binary64; real and imaginary values |
 | package / readtable / stream | names and tables; syntax and dispatch tables; direction, element type, buffer and state |
@@ -73,6 +73,24 @@ The flag bits are read and written through the `ncl-object` accessors `symbol_fl
 ## Phase 1 payload and registration contract
 
 Header-object payload references are registered from payload-relative offsets by adding one header word. The collector consumes the resulting header-inclusive `reference_words` and optional `boxed_from`; scalar metadata must never be registered as a reference. References are placed after scalar metadata (scalars-first), and every reference store goes through the object access path and its write barrier. (`packages/object/src/layout.rs`, `reference_words`; `packages/object/src/gc.rs`, `register_layouts`; `packages/object/src/object_access.rs`.)
+
+IR v2 closures use the following payload layout. The header is raw word 0; payload offsets are
+relative to the first word after it.
+
+| payload offset | field | GC treatment |
+| ---: | --- | --- |
+| 0 | `entry` | scalar fixnum encoding the non-moving code-space entry offset |
+| 1 | `name` | reference |
+| 2 | `lambda-list` | reference |
+| 3 | `code` | reference to a code object |
+| 4.. | `captures` | every word is a reference; length is object size minus offset 4 |
+
+`make_closure` writes the entry, metadata, code reference, and captures in this order. Mutable
+captures point to cell objects; read-only captures store the captured value directly. The closure
+registration in `packages/object/src/gc.rs` lists payload references 1, 2, and 3 and sets
+`boxed_from` to payload offset 4 (header-inclusive raw index 5), so the collector scans and
+forwards every capture without a separate capture-count field. The entry is not a moving heap
+address and code bytes must not embed one.
 
 At 340464b0, the observed HASH_TABLE payload has scalar slots 0..7 (`TEST`, `WEAKNESS`, `COUNT`, `CAPACITY`, `EPOCH`, `FREE_HEAD`, `HIGH_WATER`, `OCCUPIED`) followed by reference slots 8..10 (`MARKER`, `KV`, `INDEX`). The PACKAGE payload has scalar slots 0..1 (`LOCK`, `GENSYM`) followed by reference slots 2..9 (`NAME`, `NICKNAMES`, `USE_LIST`, `USED_BY`, `INTERNAL`, `EXTERNAL`, `SHADOWING`, `LOCAL_NICKNAMES`). These slot numbers are a snapshot, not the cross-lane contract: the invariant is scalars-first, registration through `ReferenceLayout`, and barrier-protected reference stores. (`packages/object/src/hash_table.rs`, `packages/object/src/package.rs`, `packages/object/src/gc.rs`.)
 

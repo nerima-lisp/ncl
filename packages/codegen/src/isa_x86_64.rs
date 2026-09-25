@@ -21,12 +21,16 @@ pub fn skeleton(kind: TemplateKind) -> Vec<Inst> {
         | TemplateKind::LoadArg
         | TemplateKind::Call
         | TemplateKind::CallIndirect
+        | TemplateKind::MakeClosure
+        | TemplateKind::CallClosure
         | TemplateKind::Builtin
         | TemplateKind::Prim
         | TemplateKind::Compare
         | TemplateKind::Convert
         | TemplateKind::SetMultipleValues
         | TemplateKind::Safepoint
+        | TemplateKind::EnterHandler
+        | TemplateKind::LeaveHandler
         | TemplateKind::Jump
         | TemplateKind::Branch
         | TemplateKind::Switch

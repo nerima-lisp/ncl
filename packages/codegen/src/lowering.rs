@@ -137,6 +137,8 @@ fn constant_value(constant: &Constant, abi: &dyn RuntimeAbi) -> Result<i64, Code
         Constant::DoubleFloat(value) => Ok(i64::from_ne_bytes(value.to_bits().to_ne_bytes())),
         Constant::Nil | Constant::Unbound => Ok(0),
         Constant::T => Ok(abi.encode_fixnum(1)),
+        Constant::FunctionEntry(function) => abi.constant_word(&format!("function-entry:{}", function.0))
+            .ok_or_else(|| CodegenError::Unsupported("function entry constant is unavailable".into())),
         Constant::Symbol { .. } | Constant::Object(_) | Constant::StringBytes(_) => Err(
             CodegenError::Unsupported("constant requires a runtime constant table".into()),
         ),
@@ -275,6 +277,12 @@ fn lower_op(
             }
         }
         OpKind::Safepoint => add_map(assembler, frame, slots, maps, FLAG_CALL)?,
+        OpKind::MakeClosure { .. } | OpKind::CallClosure { .. } | OpKind::EnterHandler { .. }
+        | OpKind::LeaveHandler { .. } => {
+            return Err(CodegenError::Unsupported(
+                "operation is only available in target-specific lowering".into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -476,9 +484,7 @@ fn encode(
             Terminator::Throw { .. } | Terminator::Unreachable => emit(&mut assembler, &Inst::Ud2)?,
         }
     }
-    let blob = assembler
-        .finish()
-        .map_err(|error| CodegenError::Encode(error.to_string()))?;
+    let blob = assembler.finish().map_err(|error| CodegenError::Encode(error.to_string()))?;
     let relocations = crate::relocations_from_fixups(&blob.fixups).map_err(|error| {
         CodegenError::Encode(format!("relocation conversion failed: {error:?}"))
     })?;

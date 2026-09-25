@@ -143,6 +143,16 @@ fn mach_executable_requires_main_and_nonempty_metadata() {
         ))
     );
 
+    let mut short_main = valid.clone();
+    short_main[400..404].copy_from_slice(&0x8000_0028u32.to_le_bytes());
+    short_main[404..408].copy_from_slice(&8u32.to_le_bytes());
+    assert_eq!(
+        validate_mach_executable(&short_main, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure(
+            "missing NCL executable metadata"
+        ))
+    );
+
     let mut no_metadata = valid;
     no_metadata[296..304].copy_from_slice(&0u64.to_le_bytes());
     assert_eq!(

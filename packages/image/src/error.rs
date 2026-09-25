@@ -7,6 +7,8 @@ use ncl_sys::CodeError;
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ImageError {
+    /// The host operating system could not read or write an image file.
+    Io(std::io::ErrorKind),
     /// The byte stream ended before a complete value could be read.
     Truncated {
         /// Byte offset at which the read was attempted.
@@ -54,6 +56,7 @@ pub enum ImageError {
 impl std::fmt::Display for ImageError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Io(error) => write!(f, "image file I/O failed: {error}"),
             Self::Truncated { offset, needed } => {
                 write!(f, "image truncated at {offset}, needed {needed} bytes")
             }
@@ -77,6 +80,12 @@ impl std::error::Error for ImageError {
             Self::Object(error) => Some(error),
             _ => None,
         }
+    }
+}
+
+impl From<std::io::Error> for ImageError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error.kind())
     }
 }
 

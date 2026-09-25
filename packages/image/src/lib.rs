@@ -45,7 +45,9 @@
 //! - Relocating code constant slots: code blocks are saved and republished by
 //!   bytes, but a raw entry address is not rewritten to the new allocation.
 
+mod adapter;
 mod code;
+mod domain;
 mod error;
 mod format;
 mod record;
@@ -53,7 +55,9 @@ mod register;
 mod restore;
 mod save;
 
+pub use adapter::{parse, read, write};
 pub use code::CodeImage;
+pub use domain::{Architecture, Features, Header, Offset, Section, Size, Version};
 pub use error::ImageError;
 pub use register::register;
 pub use restore::{LoadedImage, load};

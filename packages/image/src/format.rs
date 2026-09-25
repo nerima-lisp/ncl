@@ -6,8 +6,12 @@
 //! code block, and one feature string per runtime feature.
 
 use crate::code::CodeImage;
+use crate::domain::{Architecture, Features, Header, Offset, Section, Size, Version};
 use crate::error::ImageError;
-use crate::record::{Record, Ref, get_code, get_record, get_ref, put_code, put_record, put_ref};
+use crate::record::{
+    Record, Ref, get_code, get_record, get_ref, put_code, put_record, put_ref, validate_record,
+    validate_ref,
+};
 
 /// Leading magic bytes of every image.
 pub const MAGIC: &[u8; 8] = b"NCLIMAGE";
@@ -22,7 +26,7 @@ const ENDIAN_LITTLE: u8 = 1;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImageFile {
     /// Target architecture, reusing the `ncl-objfile` architecture model.
-    pub architecture: ncl_objfile::Architecture,
+    pub architecture: Architecture,
     /// Heap collection epoch recorded at save time.
     pub gc_epoch: u64,
     /// Object records in index order.
@@ -32,12 +36,24 @@ pub struct ImageFile {
     /// Code blobs.
     pub code: Vec<CodeImage>,
     /// Runtime feature strings.
-    pub features: Vec<String>,
+    pub features: Features,
 }
 
 impl ImageFile {
-    /// Serialize this image into a complete byte vector.
-    pub fn to_bytes(&self) -> Result<Vec<u8>, ImageError> {
+    /// Return the typed header, including the encoded payload size.
+    pub fn header(&self) -> Result<Header, ImageError> {
+        let payload = self.payload_bytes()?;
+        Ok(Header {
+            version: Version::CURRENT,
+            architecture: self.architecture,
+            payload: Section {
+                offset: Offset::new(narrow(HEADER_SIZE, "payload offset")?),
+                size: Size::new(narrow(payload.len(), "payload size")?),
+            },
+        })
+    }
+
+    fn payload_bytes(&self) -> Result<Vec<u8>, ImageError> {
         let mut payload = Vec::new();
         for record in &self.objects {
             put_record(&mut payload, record)?;
@@ -48,14 +64,20 @@ impl ImageFile {
         for code in &self.code {
             put_code(&mut payload, code)?;
         }
-        for feature in &self.features {
+        for feature in self.features.as_slice() {
             put_string(&mut payload, feature)?;
         }
+        Ok(payload)
+    }
+
+    /// Serialize this image into a complete byte vector.
+    pub fn to_bytes(&self) -> Result<Vec<u8>, ImageError> {
+        let payload = self.payload_bytes()?;
 
         let mut out = Vec::with_capacity(HEADER_SIZE + payload.len());
         out.extend_from_slice(MAGIC);
-        put_u16(&mut out, FORMAT_VERSION);
-        put_u8(&mut out, self.architecture as u8);
+        put_u16(&mut out, Version::CURRENT.get());
+        put_u8(&mut out, self.architecture.tag());
         put_u8(&mut out, POINTER_WIDTH);
         put_u8(&mut out, ENDIAN_LITTLE);
         put_u8(&mut out, header_size()?);
@@ -63,7 +85,10 @@ impl ImageFile {
         put_u32(&mut out, narrow(self.objects.len(), "object count")?);
         put_u32(&mut out, narrow(self.roots.len(), "root count")?);
         put_u32(&mut out, narrow(self.code.len(), "code count")?);
-        put_u32(&mut out, narrow(self.features.len(), "feature count")?);
+        put_u32(
+            &mut out,
+            narrow(self.features.as_slice().len(), "feature count")?,
+        );
         put_u64(&mut out, self.gc_epoch);
         put_u32(&mut out, narrow(HEADER_SIZE, "payload offset")?);
         put_u32(&mut out, narrow(payload.len(), "payload size")?);
@@ -80,23 +105,8 @@ impl ImageFile {
         if reader.take(8)? != MAGIC {
             return Err(ImageError::BadMagic);
         }
-        let version = reader.u16()?;
-        if version != FORMAT_VERSION {
-            return Err(ImageError::UnsupportedVersion {
-                found: version,
-                supported: FORMAT_VERSION,
-            });
-        }
-        let architecture = match reader.u8()? {
-            1 => ncl_objfile::Architecture::X86_64,
-            2 => ncl_objfile::Architecture::Aarch64,
-            tag => {
-                return Err(ImageError::UnknownTag {
-                    space: "architecture",
-                    tag,
-                });
-            }
-        };
+        let version = Version::parse(reader.u16()?)?;
+        let architecture = Architecture::parse(reader.u8()?)?;
         if reader.u8()? != POINTER_WIDTH {
             return Err(invalid("pointer width"));
         }
@@ -106,23 +116,41 @@ impl ImageFile {
         if reader.u8()? != header_size()? {
             return Err(invalid("header size"));
         }
-        let _reserved = reader.u16()?;
+        if reader.u16()? != 0 {
+            return Err(invalid("reserved header"));
+        }
         let object_count = reader.u32()? as usize;
         let root_count = reader.u32()? as usize;
         let code_count = reader.u32()? as usize;
         let feature_count = reader.u32()? as usize;
         let gc_epoch = reader.u64()?;
-        let payload_offset = reader.u32()? as usize;
-        let payload_size = reader.u32()? as usize;
-        let end = payload_offset
-            .checked_add(payload_size)
-            .ok_or_else(|| invalid("payload bounds"))?;
+        let header = Header {
+            version,
+            architecture,
+            payload: Section {
+                offset: Offset::new(reader.u32()?),
+                size: Size::new(reader.u32()?),
+            },
+        };
+        let payload_offset = header.payload.offset.get() as usize;
+        let end = header.payload.end()?;
         let payload = bytes
             .get(payload_offset..end)
-            .ok_or(ImageError::Truncated {
+            .ok_or_else(|| ImageError::Truncated {
                 offset: payload_offset,
-                needed: payload_size,
+                needed: header.payload.size.get() as usize,
             })?;
+        if payload_offset < HEADER_SIZE || end != bytes.len() {
+            return Err(invalid("payload bounds"));
+        }
+        let minimum = object_count
+            .checked_add(root_count)
+            .and_then(|count| count.checked_add(code_count))
+            .and_then(|count| count.checked_add(feature_count))
+            .ok_or_else(|| invalid("payload counts"))?;
+        if minimum > payload.len() {
+            return Err(invalid("payload counts"));
+        }
 
         let mut reader = Reader::new(payload);
         let mut objects = Vec::with_capacity(object_count);
@@ -133,6 +161,12 @@ impl ImageFile {
         for _ in 0..root_count {
             roots.push(get_ref(&mut reader)?);
         }
+        for root in &roots {
+            validate_ref(*root, object_count)?;
+        }
+        for record in &objects {
+            validate_record(record, object_count)?;
+        }
         let mut code = Vec::with_capacity(code_count);
         for _ in 0..code_count {
             code.push(get_code(&mut reader)?);
@@ -141,8 +175,12 @@ impl ImageFile {
         for _ in 0..feature_count {
             features.push(reader.string()?);
         }
+        if reader.remaining() != 0 {
+            return Err(invalid("payload trailing bytes"));
+        }
+        let features = Features::new(features)?;
         Ok(Self {
-            architecture,
+            architecture: header.architecture,
             gc_epoch,
             objects,
             roots,
@@ -205,6 +243,10 @@ impl<'a> Reader<'a> {
     /// Wrap a byte slice.
     pub const fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, pos: 0 }
+    }
+
+    pub const fn remaining(&self) -> usize {
+        self.bytes.len().saturating_sub(self.pos)
     }
 
     /// Consume exactly `count` bytes or fail.

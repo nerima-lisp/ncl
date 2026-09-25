@@ -81,14 +81,14 @@ fn round_trip(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
     roots: &[Word],
-) -> (Runtime, ThreadContext, Vec<Word>) {
+) -> (Runtime, ThreadContext, ncl_image::LoadedImage) {
     let image = save(runtime, ctx, roots, &[]).unwrap();
 
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     let loaded = load(&image, &runtime, &mut ctx).unwrap();
-    (runtime, ctx, loaded.roots)
+    (runtime, ctx, loaded)
 }
 
 #[test]
@@ -98,11 +98,13 @@ fn object_graph_round_trips_into_a_fresh_runtime() {
     ctx.register(&runtime).unwrap();
     let graph = build_graph(&runtime, &mut ctx);
 
-    let (_runtime2, mut ctx2, roots2) = round_trip(&runtime, &mut ctx, &graph.roots);
-    assert_eq!(graph.roots.len(), roots2.len());
-    for (index, (original, loaded)) in graph.roots.iter().zip(roots2.iter()).enumerate() {
+    let (_runtime2, mut ctx2, loaded) = round_trip(&runtime, &mut ctx, &graph.roots);
+    assert_eq!(graph.roots.len(), loaded.roots().len());
+    for (index, (original, loaded_root)) in
+        graph.roots.iter().zip(loaded.roots().iter()).enumerate()
+    {
         assert!(
-            isomorphic(&mut ctx, *original, &mut ctx2, *loaded),
+            isomorphic(&mut ctx, *original, &mut ctx2, *loaded_root),
             "root {index} is not isomorphic after a load"
         );
     }
@@ -116,12 +118,10 @@ fn loaded_objects_survive_a_full_collection() {
     let graph = build_graph(&runtime, &mut ctx);
 
     let (_runtime2, mut ctx2, loaded) = round_trip(&runtime, &mut ctx, &graph.roots);
-    let mut roots = loaded;
-    let token = ncl_sys::register_root_set(ctx2.thread_mut(), &mut roots);
     ctx2.collect(true).unwrap();
 
     // The cons still points at the vector, whose string and symbol survived.
-    let vector = car(&mut ctx2, roots[0]).unwrap();
+    let vector = car(&mut ctx2, loaded.roots()[0]).unwrap();
     assert_eq!(simple_vector_length(&ctx2, vector).unwrap(), 3);
     let string = simple_vector_ref(&ctx2, vector, 0).unwrap();
     assert_eq!(read_string(&ctx2, string), "hi");
@@ -133,16 +133,16 @@ fn loaded_objects_survive_a_full_collection() {
     assert_eq!(symbol_value(&ctx2, symbol).unwrap().as_fixnum(), Some(5));
 
     // The hash table still maps 1 to the string.
-    let table = HashTable::from(roots[1]);
+    let table = HashTable::from(loaded.roots()[1]);
     let found = table.get(&mut ctx2, Word::fixnum(1)).unwrap().unwrap();
     assert_eq!(read_string(&ctx2, found), "hi");
 
     // The function object still names its code object.
-    let function = Function::from(roots[2]);
+    let function = Function::from(loaded.roots()[2]);
     assert_eq!(function_entry(&ctx2, function).unwrap(), 0);
     let code = function_code(&ctx2, function).unwrap();
     assert_eq!(code_entry(&ctx2, code).unwrap().as_fixnum(), Some(0));
-    let _ = ncl_sys::pop_root(ctx2.thread_mut(), token);
+    loaded.release(&mut ctx2).unwrap();
 }
 
 /// Report whether two object graphs have the same shape and contents.

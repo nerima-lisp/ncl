@@ -106,57 +106,58 @@ fn remaining_object_kinds_round_trip() {
     let runtime2 = Runtime::new().unwrap();
     let mut ctx2 = ThreadContext::new();
     ctx2.register(&runtime2).unwrap();
-    let mut loaded = load(&image, &runtime2, &mut ctx2).unwrap().roots;
-    let token = ncl_sys::register_root_set(ctx2.thread_mut(), &mut loaded);
+    let loaded = load(&image, &runtime2, &mut ctx2).unwrap();
     ctx2.collect(true).unwrap();
 
     assert_eq!(
-        specialized_array_element_type(&ctx2, loaded[0]).unwrap(),
+        specialized_array_element_type(&ctx2, loaded.roots()[0]).unwrap(),
         ArrayElementType::Fixnum
     );
     assert_eq!(
-        specialized_array_ref(&ctx2, loaded[0], 1)
+        specialized_array_ref(&ctx2, loaded.roots()[0], 1)
             .unwrap()
             .as_fixnum(),
         Some(2)
     );
     assert_eq!(
-        bignum_limbs(&ctx2, Bignum::from(loaded[1])).unwrap(),
+        bignum_limbs(&ctx2, Bignum::from(loaded.roots()[1])).unwrap(),
         vec![u32::MAX, u32::MAX]
     );
     assert_eq!(
-        ratio_numerator(&ctx2, Ratio::from(loaded[2]))
+        ratio_numerator(&ctx2, Ratio::from(loaded.roots()[2]))
             .unwrap()
             .as_fixnum(),
         Some(3)
     );
     assert_eq!(
-        double_value(&ctx2, DoubleFloat::from(loaded[3]))
+        double_value(&ctx2, DoubleFloat::from(loaded.roots()[3]))
             .unwrap()
             .to_bits(),
         1.5_f64.to_bits()
     );
     assert_eq!(
-        complex_imag(&ctx2, Complex::from(loaded[4]))
+        complex_imag(&ctx2, Complex::from(loaded.roots()[4]))
             .unwrap()
             .as_fixnum(),
         Some(2)
     );
     assert_eq!(
-        structure_ref(&ctx2, loaded[5], 0).unwrap().as_fixnum(),
+        structure_ref(&ctx2, loaded.roots()[5], 0)
+            .unwrap()
+            .as_fixnum(),
         Some(9)
     );
     assert_eq!(
-        slot_ref(&ctx2, Instance::from(loaded[6]), 0)
+        slot_ref(&ctx2, Instance::from(loaded.roots()[6]), 0)
             .unwrap()
             .as_fixnum(),
         Some(8)
     );
     assert_eq!(
-        closure_ref(&ctx2, Function::from(loaded[7]), 0)
+        closure_ref(&ctx2, Function::from(loaded.roots()[7]), 0)
             .unwrap()
             .as_fixnum(),
         Some(5)
     );
-    let _ = ncl_sys::pop_root(ctx2.thread_mut(), token);
+    loaded.release(&mut ctx2).unwrap();
 }

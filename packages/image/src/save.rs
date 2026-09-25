@@ -16,6 +16,7 @@ use ncl_object::{
 use ncl_sys::LowTag;
 
 use crate::code::CodeImage;
+use crate::domain::{Architecture, Features};
 use crate::error::ImageError;
 use crate::format::ImageFile;
 use crate::record::{Record, Ref};
@@ -44,25 +45,17 @@ pub fn save(
     let root_refs = capture.run(ctx, roots)?;
     let objects = capture.finish();
     let file = ImageFile {
-        architecture: host_architecture(),
+        architecture: Architecture::host(),
         gc_epoch: ncl_sys::heap_epoch(ctx.thread_mut()),
         objects,
         roots: root_refs,
         code: code.to_vec(),
-        features: runtime.features(),
+        features: Features::new(runtime.features())?,
     };
     file.to_bytes()
 }
 
 /// Return the architecture byte for the current target.
-const fn host_architecture() -> ncl_objfile::Architecture {
-    if cfg!(target_arch = "x86_64") {
-        ncl_objfile::Architecture::X86_64
-    } else {
-        ncl_objfile::Architecture::Aarch64
-    }
-}
-
 /// Object-graph walker that assigns record indices and captures payloads.
 struct Capture<'a> {
     runtime: &'a Runtime,

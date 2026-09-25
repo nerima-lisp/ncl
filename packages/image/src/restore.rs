@@ -1,5 +1,7 @@
 //! Reconstruction of a saved object graph into a destination runtime.
 
+#![allow(clippy::too_many_lines, reason = "flat per-kind restoration dispatch")]
+
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ObjectError, Package, Runtime, ThreadContext, Word, allocate, code_offset, function_offset,
@@ -7,8 +9,10 @@ use ncl_object::{
     pop_root, push_root, rplaca, rplacd, simple_vector_offset, simple_vector_set,
     specialized_array_offset, string_offset, structure_offset, symbol_offset, widetag,
 };
-use ncl_sys::{CodePtr, StorageCondition};
+use ncl_sys::{CodePtr, RootToken, StorageCondition};
 
+use crate::adapter::parse;
+use crate::domain::Architecture;
 use crate::error::ImageError;
 use crate::format::ImageFile;
 use crate::record::{Record, Ref};
@@ -17,9 +21,35 @@ use crate::record::{Record, Ref};
 #[derive(Debug)]
 pub struct LoadedImage {
     /// Restored root values in the same order they were saved.
-    pub roots: Vec<Word>,
+    roots: Box<[Word]>,
     /// Republished code blocks in the same order they were saved.
     pub code: Vec<CodePtr>,
+    root_token: RootToken,
+}
+
+impl LoadedImage {
+    /// Borrow roots while this image owns their precise root registration.
+    #[must_use]
+    pub fn roots(&self) -> &[Word] {
+        &self.roots
+    }
+
+    /// Release the precise roots owned by this image.
+    ///
+    /// The image must be released in reverse order of other root registrations
+    /// made on the same thread. Keeping the image alive keeps its roots valid.
+    ///
+    /// # Errors
+    /// Returns an error when another root was registered after this image.
+    pub fn release(self, ctx: &mut ThreadContext) -> Result<(), ImageError> {
+        if ncl_sys::pop_root(ctx.thread_mut(), self.root_token) {
+            Ok(())
+        } else {
+            Err(ImageError::InvalidField {
+                field: "root ownership",
+            })
+        }
+    }
 }
 
 /// Restore an image into `runtime`, returning its roots and code blocks.
@@ -33,12 +63,13 @@ pub struct LoadedImage {
 /// Returns [`ImageError`] when the byte stream is malformed, targets another
 /// architecture, references an unknown record, or when heap or code-space
 /// allocation fails.
+#[must_use]
 pub fn load(
     bytes: &[u8],
     runtime: &Runtime,
     ctx: &mut ThreadContext,
 ) -> Result<LoadedImage, ImageError> {
-    let file = ImageFile::from_bytes(bytes)?;
+    let file = parse(bytes)?;
     check_architecture(file.architecture)?;
     let count = file.objects.len();
     let mut slots: Vec<Word> = vec![Word::NIL; count];
@@ -55,7 +86,13 @@ pub fn load(
     for image in &file.code {
         code.push(image.publish()?);
     }
-    Ok(LoadedImage { roots, code })
+    let mut roots = roots.into_boxed_slice();
+    let root_token = ncl_sys::register_root_set(ctx.thread_mut(), &mut roots);
+    Ok(LoadedImage {
+        roots,
+        code,
+        root_token,
+    })
 }
 
 /// Run the four reconstruction passes and return the resolved roots.
@@ -186,7 +223,6 @@ fn allocate_objects(
 }
 
 /// Pass 4: write every payload slot and hash-table entry.
-#[allow(clippy::too_many_lines, reason = "flat per-kind fill dispatch")]
 fn fill_objects(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -466,12 +502,8 @@ const fn decode_weakness(value: u8) -> Result<Weakness, ImageError> {
     }
 }
 
-fn check_architecture(architecture: ncl_objfile::Architecture) -> Result<(), ImageError> {
-    let host = if cfg!(target_arch = "x86_64") {
-        ncl_objfile::Architecture::X86_64
-    } else {
-        ncl_objfile::Architecture::Aarch64
-    };
+fn check_architecture(architecture: Architecture) -> Result<(), ImageError> {
+    let host = Architecture::host();
     if architecture == host {
         Ok(())
     } else {

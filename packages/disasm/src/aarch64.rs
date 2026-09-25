@@ -25,7 +25,7 @@ fn spreg(n: u32) -> String { if n == 31 { "sp".into() } else { reg(n) } }
 fn extend(option: u32) -> &'static str {
     ["uxtb", "uxth", "uxtw", "uxtx", "sxtb", "sxth", "sxtw", "sxtx"][option as usize]
 }
-fn memory(word: u32, size: u32, load: bool, signed_word: bool, fp: bool) -> Option<String> {
+fn memory(word: u32, size: u32, load: bool, signed_word: bool, fp: bool, unscaled: bool) -> Option<String> {
     let rt = if fp { freg(word & 31, size == 8) } else if signed_word { reg(word & 31) } else if size == 8 { reg(word & 31) } else { format!("w{}", word & 31) };
     let base = spreg((word >> 5) & 31);
     let is_register = word & 0x0000_0800 != 0;
@@ -35,7 +35,7 @@ fn memory(word: u32, size: u32, load: bool, signed_word: bool, fp: bool) -> Opti
         if amount == 0 && option == 3 { format!("[{base}, {}]", reg((word >> 16) & 31)) }
         else if amount == 0 { format!("[{base}, {}, {}]", reg((word >> 16) & 31), extend(option)) }
         else { format!("[{base}, {}, {} #{amount}]", reg((word >> 16) & 31), extend(option)) }
-    } else if word & 0x0020_0000 != 0 {
+    } else if unscaled {
         let offset = signed((word >> 12) & 0x1ff, 9);
         let mode = (word >> 10) & 3;
         if mode == 1 { format!("[{base}], #{offset}") }
@@ -140,24 +140,24 @@ fn decode_word(address: u64, word: u32) -> Result<(String, Option<u64>), DecodeE
         let op = if asr { "asr" } else if lsr { "lsr" } else { "lsl" };
         Ok((format!("{op} {}, {}, #{}", reg(word & 31), reg((word >> 5) & 31), (word >> 10) & 63), None))
     }
-    else if word & 0xffc0_0000 == 0xf940_0000 { Ok((memory(word, 8, true, false, false).unwrap(), None)) }
-    else if word & 0xffc0_0000 == 0xf900_0000 { Ok((memory(word, 8, false, false, false).unwrap(), None)) }
-    else if word & 0xff80_0000 == 0xf800_0000 { Ok((memory(word, 8, word & 0x0040_0000 != 0, false, false).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0xf940_0000 { Ok((memory(word, 8, true, false, false, false).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0xf900_0000 { Ok((memory(word, 8, false, false, false, false).unwrap(), None)) }
+    else if word & 0xff80_0000 == 0xf800_0000 { Ok((memory(word, 8, word & 0x0040_0000 != 0, false, false, true).unwrap(), None)) }
     else if word & 0x3e00_0000 == 0x2800_0000 {
         let load = word & 0x0040_0000 != 0;
         let offset = signed((word >> 15) & 0x7f, 7) * 8;
         let mode = (word >> 23) & 3;
         let suffix = if mode == 1 { format!("[{}], #{}", spreg((word >> 5) & 31), offset) } else if mode == 3 { format!("[{}, #{}]!", spreg((word >> 5) & 31), offset) } else { format!("[{}, #{}]", spreg((word >> 5) & 31), offset) };
         Ok((format!("{} {}, {}, {}", if load { "ldp" } else { "stp" }, reg(word & 31), reg((word >> 10) & 31), suffix), None))
-    } else if word & 0xffc0_0000 == 0x3940_0000 { Ok((memory(word, 1, true, false, false).unwrap(), None)) }
-    else if word & 0xffc0_0000 == 0x3900_0000 { Ok((memory(word, 1, false, false, false).unwrap(), None)) }
-    else if word & 0xffc0_0000 == 0x7940_0000 { Ok((memory(word, 2, true, false, false).unwrap(), None)) }
-    else if word & 0xffc0_0000 == 0x7900_0000 { Ok((memory(word, 2, false, false, false).unwrap(), None)) }
-    else if word & 0xffc0_0000 == 0xb940_0000 { Ok((memory(word, 4, true, false, false).unwrap(), None)) }
-    else if word & 0xffc0_0000 == 0xb900_0000 { Ok((memory(word, 4, false, false, false).unwrap(), None)) }
-    else if word & 0xffc0_0000 == 0xb840_0000 { Ok((memory(word, 4, true, true, false).unwrap(), None)) }
-    else if word & 0xffc0_0000 == 0xfd40_0000 { Ok((memory(word, 8, true, false, true).unwrap(), None)) }
-    else if word & 0xffc0_0000 == 0xfd00_0000 { Ok((memory(word, 8, false, false, true).unwrap(), None)) }
+    } else if word & 0xffc0_0000 == 0x3940_0000 { Ok((memory(word, 1, true, false, false, false).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0x3900_0000 { Ok((memory(word, 1, false, false, false, false).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0x7940_0000 { Ok((memory(word, 2, true, false, false, false).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0x7900_0000 { Ok((memory(word, 2, false, false, false, false).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0xb940_0000 { Ok((memory(word, 4, true, false, false, false).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0xb900_0000 { Ok((memory(word, 4, false, false, false, false).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0xb840_0000 { Ok((memory(word, 4, true, true, false, true).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0xfd40_0000 { Ok((memory(word, 8, true, false, true, false).unwrap(), None)) }
+    else if word & 0xffc0_0000 == 0xfd00_0000 { Ok((memory(word, 8, false, false, true, false).unwrap(), None)) }
     else if word & 0xff00_0000 == 0x9a80_0000 { Ok((format!("csel {}, {}, {}, {}", reg(word & 31), reg((word >> 5) & 31), reg((word >> 16) & 31), cond((word >> 12) & 15)), None)) }
     else if word & 0xffe0_001f == 0x9b00_7c00 { Ok((format!("mul {}, {}, {}", reg(word & 31), reg((word >> 5) & 31), reg((word >> 16) & 31)), None)) }
     else if word & 0xffe0_fc00 == 0x9ac0_0800 || word & 0xffe0_fc00 == 0x9ac0_0c00 { Ok((format!("{} {}, {}, {}", if word & 0x400 == 0 { "udiv" } else { "sdiv" }, reg(word & 31), reg((word >> 5) & 31), reg((word >> 16) & 31)), None)) }

@@ -67,9 +67,19 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
     let end = usize::try_from(map.pc_offset).unwrap_or(0);
     assert!(end >= 4);
     let word = u32::from_le_bytes(compiled.code[end - 4..end].try_into().unwrap_or([0; 4]));
-    assert!(ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word.to_le_bytes(), 0).is_ok());
+    assert_eq!(
+        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word.to_le_bytes(), 0)
+            .expect("decode BLR")[0]
+            .text,
+        "blr x17"
+    );
     let adr = u32::from_le_bytes(compiled.code[end - 8..end - 4].try_into().unwrap_or([0; 4]));
-    assert!(ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &adr.to_le_bytes(), 0).is_ok());
+    assert_eq!(
+        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &adr.to_le_bytes(), 0)
+            .expect("decode ADR")[0]
+            .text,
+        "adr x2, #0x2"
+    );
 }
 
 #[test]
@@ -107,6 +117,16 @@ fn golden_aarch64_prologue_spills_register_arguments() {
                 .unwrap_or([0; 4]),
         )
     };
-    assert!(ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word(24).to_le_bytes(), 0).is_ok());
-    assert!(ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word(28).to_le_bytes(), 0).is_ok());
+    assert_eq!(
+        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word(24).to_le_bytes(), 0)
+            .expect("decode STR x1")[0]
+            .text,
+        "str x1, [x29, #-8]"
+    );
+    assert_eq!(
+        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word(28).to_le_bytes(), 0)
+            .expect("decode STR x2")[0]
+            .text,
+        "str x2, [x29, #-16]"
+    );
 }

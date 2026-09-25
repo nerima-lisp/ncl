@@ -160,7 +160,12 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
     };
     let end = usize::try_from(map.pc_offset).expect("map offset");
     let word = u32::from_le_bytes(compiled.code[end - 4..end].try_into().expect("instruction"));
-    assert!(ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word.to_le_bytes(), 0).is_ok());
+    assert_eq!(
+        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word.to_le_bytes(), 0)
+            .expect("decode BLR")[0]
+            .text,
+        "blr x17"
+    );
 }
 
 #[test]
@@ -265,7 +270,12 @@ fn executes_safepoint_poll_without_and_with_request() {
     };
     let end = usize::try_from(map.pc_offset).expect("map offset");
     let word = u32::from_le_bytes(compiled.code[end - 4..end].try_into().expect("instruction"));
-    assert!(ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word.to_le_bytes(), 0).is_ok());
+    assert_eq!(
+        ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &word.to_le_bytes(), 0)
+            .expect("decode BLR")[0]
+            .text,
+        "blr x17"
+    );
 }
 
 #[test]

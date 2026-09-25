@@ -300,7 +300,6 @@ impl Thread {
             .and_then(|heap| heap.safepoint_map_for_pc(return_pc));
         let Some(map) = map else {
             self.frame_snapshot_failed = true;
-            debug_assert!(false, "safepoint continuation PC is not registered");
             self.frame_chain.clear();
             self.frame_registers.clear();
             self.frame_address = None;

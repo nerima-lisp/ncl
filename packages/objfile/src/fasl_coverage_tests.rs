@@ -62,23 +62,11 @@ fn private_wire_helpers_cover_integer_boundaries() {
 
 #[test]
 fn private_fasl_range_parser_reports_short_headers_and_overlaps() {
-    for (length, _offset) in [
-        (24usize, 24usize),
-        (28, 28),
-        (32, 32),
-        (36, 36),
-        (40, 40),
-        (44, 44),
-        (48, 48),
-        (52, 52),
-        (56, 56),
-        (60, 60),
-    ] {
-        match read_fasl_ranges(&vec![0; length]) {
-            Err(ObjectError::Truncated { needed: 4, .. }) => {}
-            Err(error) => panic!("unexpected error at {length}: {error}"),
-            Ok(_) => panic!("short header at {length} unexpectedly parsed"),
-        }
+    for length in [24usize, 28, 32, 36, 40, 44, 48, 52, 56, 60] {
+        assert!(matches!(
+            read_fasl_ranges(&vec![0; length]),
+            Err(ObjectError::Truncated { needed: 4, .. })
+        ));
     }
     let mut bytes = vec![0; 64];
     bytes[24..28].copy_from_slice(&64u32.to_le_bytes());

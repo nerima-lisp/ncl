@@ -1,5 +1,9 @@
 use crate::{ObjectError, RelocKind, Relocation, SectionId, SymbolRef};
 
+#[cfg(test)]
+#[path = "fasl_coverage_tests.rs"]
+mod coverage_tests;
+
 /// Architecture encoded by NCL binary formats.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]

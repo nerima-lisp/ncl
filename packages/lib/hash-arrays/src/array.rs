@@ -334,6 +334,77 @@ fn array_total_size_builtin(
         .map_err(|_| ObjectError::Layout)
 }
 
+fn fill_pointer_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let value = ncl_object::array_fill_pointer(ctx, args.required(0)?)?
+        .ok_or(ObjectError::TypeError)?;
+    Ok(Word::fixnum(
+        i64::try_from(value).map_err(|_| ObjectError::Layout)?,
+    ))
+}
+
+fn array_has_fill_pointer_p_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    Ok(if ncl_object::array_fill_pointer(ctx, args.required(0)?)?.is_some() {
+        Word::TRUE
+    } else {
+        Word::NIL
+    })
+}
+
+fn vector_push_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let value = args.required(0)?;
+    let vector = args.required(1)?;
+    let pointer = ncl_object::array_fill_pointer(ctx, vector)?.ok_or(ObjectError::TypeError)?;
+    if pointer >= total(ctx, vector)? {
+        return Ok(Word::NIL);
+    }
+    ncl_object::array_row_major_set(ctx, vector, pointer, value)?;
+    ncl_object::array_set_fill_pointer(ctx, vector, pointer + 1)?;
+    Ok(Word::fixnum(i64::try_from(pointer).map_err(|_| ObjectError::Layout)?))
+}
+
+fn vector_pop_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let vector = args.required(0)?;
+    let pointer = ncl_object::array_fill_pointer(ctx, vector)?.ok_or(ObjectError::TypeError)?;
+    let next = pointer.checked_sub(1).ok_or(ObjectError::TypeError)?;
+    let value = row_ref(ctx, vector, next)?;
+    ncl_object::array_set_fill_pointer(ctx, vector, next)?;
+    Ok(value)
+}
+
+fn array_displacement_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let (target, offset) = ncl_object::array_displacement(ctx, args.required(0)?)?;
+    values.set(&[
+        target,
+        Word::fixnum(i64::try_from(offset).map_err(|_| ObjectError::Layout)?),
+    ]);
+    Ok(target)
+}
+
 fn symbol_name_is(ctx: &ThreadContext, word: Word, expected: &str) -> Result<bool, ObjectError> {
     if !matches!(classify_object(ctx, word), ncl_object::ObjectRef::Symbol(_)) {
         return Ok(false);
@@ -619,6 +690,19 @@ fn bit_xor(
     bit_binary(ctx, r, a, |x, y| x ^ y, v)
 }
 
+fn vector_push_extend_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let _ = args.required(0)?;
+    let vector = array_word(ctx, args.required(1)?)?;
+    let _ = args.required(2)?;
+    let _ = total(ctx, vector)?;
+    Err(ObjectError::Unsupported)
+}
+
 fn register_one(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -716,6 +800,15 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
     )?;
     register_aref(ctx, runtime)?;
     for (name, arity, function) in [
+        ("FILL-POINTER", 1, fill_pointer_builtin as ncl_object::RustBuiltin),
+        ("ARRAY-HAS-FILL-POINTER-P", 1, array_has_fill_pointer_p_builtin),
+        ("VECTOR-PUSH", 2, vector_push_builtin),
+        ("VECTOR-POP", 1, vector_pop_builtin),
+        ("ARRAY-DISPLACEMENT", 1, array_displacement_builtin),
+    ] {
+        register_one(ctx, runtime, name, arity, function)?;
+    }
+    for (name, arity, function) in [
         (
             "ARRAY-RANK",
             1,
@@ -730,6 +823,9 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("BIT-AND", 2, bit_and),
         ("BIT-IOR", 2, bit_ior),
         ("BIT-XOR", 2, bit_xor),
+        ("VECTOR-PUSH", 2, vector_push_builtin),
+        ("VECTOR-PUSH-EXTEND", 3, vector_push_extend_builtin),
+        ("VECTOR-POP", 1, vector_pop_builtin),
     ] {
         register_one(ctx, runtime, name, arity, function)?;
     }

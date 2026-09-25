@@ -86,21 +86,15 @@ pub fn condition_from_lisp_error(
             ConditionIdentifier::TypeError,
             words(&[datum, type_specifier(ctx, runtime, expected)?]),
         ),
-        LispError::ProgramError(error) => match error {
-            ProgramError::WrongNumberOfArguments { minimum, maximum } => (
-                ConditionIdentifier::ProgramError,
-                words(&[fixnum(minimum), maximum.map_or(Word::NIL, fixnum)]),
-            ),
-            ProgramError::UnknownKeyword | ProgramError::OddKeywordArguments => {
-                (ConditionIdentifier::ProgramError, Vec::new())
-            }
-            _ => (ConditionIdentifier::ProgramError, Vec::new()),
-        },
-        LispError::ArithmeticError(error) => match error {
-            ArithmeticError::DivisionByZero => (ConditionIdentifier::DivisionByZero, Vec::new()),
-            ArithmeticError::InvalidOperation => (ConditionIdentifier::ArithmeticError, Vec::new()),
-            _ => (ConditionIdentifier::ArithmeticError, Vec::new()),
-        },
+        LispError::ProgramError(ProgramError::WrongNumberOfArguments { minimum, maximum }) => (
+            ConditionIdentifier::ProgramError,
+            words(&[fixnum(minimum), maximum.map_or(Word::NIL, fixnum)]),
+        ),
+        LispError::ProgramError(_) => (ConditionIdentifier::ProgramError, Vec::new()),
+        LispError::ArithmeticError(ArithmeticError::DivisionByZero) => {
+            (ConditionIdentifier::DivisionByZero, Vec::new())
+        }
+        LispError::ArithmeticError(_) => (ConditionIdentifier::ArithmeticError, Vec::new()),
         LispError::ControlError(_) => (ConditionIdentifier::ControlError, Vec::new()),
         LispError::CellError(error) => (
             match error {

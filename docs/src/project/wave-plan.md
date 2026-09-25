@@ -30,7 +30,7 @@
 
 ## 現状
 
-main `5bf6506a` で確認した事実です。
+Gate 0 の N01 が契約と骨格を着地させています。次の事実は着地先の main で確認したものです。
 
 - `src/main.rs` は 23 行の stub です。動くのは `--version` / `-V` のみで、
   `--eval` は "not implemented during the native rewrite" を表示して exit 1、
@@ -39,13 +39,13 @@ main `5bf6506a` で確認した事実です。
 - 旧 interpreter、VM、syntax crate は削除済みで、`packages/core/*` はもう
   存在しません。
 - 着地済みまたは一部着地の crate: sys、object、ir、codegen、objfile、
-  asm/x86-64、asm/aarch64。lib/*、clos、stdlib、runtime、conformance の各
-  crate は 1 行の骨格のままです。ワークスペースは root の `ncl` bin と 30 の
-  package メンバーで構成されています。
-- 所有表 `conformance/ownership/symbols.tsv` には、先頭フィールドが `SB-` で
-  始まる行がまだ 1,925 行残っています。FR-001 がこれを削除します。
-- `docs/src/design/` には凍結済みの契約文書があります。拡張 API の契約文書
-  `docs/src/design/extension-api.md` はまだ存在せず、N01 が作成します。
+  asm/x86-64、asm/aarch64。言語・ライブラリ・runtime・conformance の各 crate は
+  骨格または部分実装の段階です。
+- N01 が所有表の分割 (`packages/<crate>/ownership.tsv`)、拡張 crate 7 本
+  (ncl-os、ncl-asdf、ncl-uiop、ncl-profiler、ncl-coverage、ncl-debug、
+  ncl-disasm) の骨格、`docs/src/design/extension-api.md` を着地させました。
+  グローバルな `conformance/ownership/symbols.tsv` には、先頭フィールドが `SB-`
+  で始まる行がまだ 1,925 行残っており、FR-001 がこれを削除します。
 - SBCL 互換は意図的に廃止しています (D-2)。拡張機能は NCL 独自パッケージが
   提供します (FR-003)。
 - 開発環境は `nix develop` で整います。Rust 1.98.0、clippy、rustfmt、

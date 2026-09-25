@@ -3,7 +3,7 @@
 //!
 //! `ncl-reader` depends only on `ncl-object`. It builds Lisp objects (`Word`
 //! values) for symbols, numbers, strings, characters, conses, vectors, and
-//! specialized arrays, and registers the 23 symbols it owns from the
+//! specialized arrays, and registers the 21 symbols it owns from the
 //! conformance ownership table.
 //!
 //! The readtable wraps the `ncl_object` readtable descriptor; its syntax and
@@ -106,12 +106,6 @@ const OWNED_SYMBOLS: &[(&str, &str, SymbolKind)] = &[
     ),
     ("COMMON-LISP", "SET-MACRO-CHARACTER", SymbolKind::Function),
     ("COMMON-LISP", "SET-SYNTAX-FROM-CHAR", SymbolKind::Function),
-    (
-        "SB-EXT",
-        "READTABLE-BASE-CHAR-PREFERENCE",
-        SymbolKind::Function,
-    ),
-    ("SB-EXT", "READTABLE-NORMALIZATION", SymbolKind::Function),
 ];
 
 /// Intern every owned symbol and register the function and class entries.
@@ -125,7 +119,6 @@ const OWNED_SYMBOLS: &[(&str, &str, SymbolKind)] = &[
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
-    runtime.ensure_package(&mut ctx, "SB-EXT")?;
     for &(package, name, kind) in OWNED_SYMBOLS {
         let package_word = runtime
             .find_package(&ctx, package)

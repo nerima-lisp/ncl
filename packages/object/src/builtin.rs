@@ -430,11 +430,11 @@ impl Runtime {
         let adapted = BuiltinArgs::new(&adapted);
         let result = (implementation.function)(ctx, self, &adapted, &mut values);
         ctx.set_values(values.as_slice());
-        if let Some(error) = ctx.take_pending_lisp_error() {
-            if let Some(converter) = self.lisp_error_converter() {
-                let condition = converter(ctx, self, error)?;
-                ctx.set_pending_condition(condition);
-            }
+        if let Some(error) = ctx.take_pending_lisp_error()
+            && let Some(converter) = self.lisp_error_converter()
+        {
+            let condition = converter(ctx, self, error)?;
+            ctx.set_pending_condition(condition);
         }
         let pending = ctx.take_pending();
         pending.map_or(result, Err)

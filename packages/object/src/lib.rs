@@ -357,7 +357,7 @@ impl ThreadContext {
     pub const fn take_pending(&mut self) -> Option<ObjectError> {
         self.pending.take()
     }
-    pub fn set_pending_lisp_error(&mut self, error: LispError) {
+    pub const fn set_pending_lisp_error(&mut self, error: LispError) {
         self.pending_lisp_error = Some(error);
     }
     pub(crate) const fn take_pending_lisp_error(&mut self) -> Option<LispError> {

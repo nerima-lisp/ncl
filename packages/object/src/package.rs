@@ -71,7 +71,7 @@ impl Package {
                     ] {
                         put(ctx, object, slot, value)?;
                     }
-                    Ok(Package::from_word(object))
+                    Ok(Self::from_word(object))
                 })
             })
         })

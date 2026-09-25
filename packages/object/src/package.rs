@@ -90,6 +90,35 @@ impl Package {
     pub fn shadowing_symbols(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
         get(ctx, self.0, widetag::PACKAGE, SHADOWING)
     }
+
+    /// Return whether this package is locked against namespace mutation.
+    pub fn is_locked(self, ctx: &ThreadContext) -> Result<bool, ObjectError> {
+        Ok(get(ctx, self.0, widetag::PACKAGE, LOCK)? != Word::fixnum(0))
+    }
+
+    /// Set the package lock state.
+    pub fn set_locked(self, ctx: &mut ThreadContext, locked: bool) -> Result<(), ObjectError> {
+        put(
+            ctx,
+            self.0,
+            LOCK,
+            if locked { Word::fixnum(1) } else { Word::fixnum(0) },
+        )
+    }
+
+    /// Return package-local nicknames as an association list.
+    pub fn local_nicknames(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
+        get(ctx, self.0, widetag::PACKAGE, LOCAL_NICKNAMES)
+    }
+
+    /// Replace package-local nicknames with an association list.
+    pub fn set_local_nicknames(
+        self,
+        ctx: &mut ThreadContext,
+        nicknames: Word,
+    ) -> Result<(), ObjectError> {
+        put(ctx, self.0, LOCAL_NICKNAMES, nicknames)
+    }
     /// Add a nickname to this package.
     ///
     /// # Errors

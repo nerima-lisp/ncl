@@ -431,6 +431,103 @@ pub fn nthcdr(
     proper_list(ctx, cursor)?;
     Ok(cursor)
 }
+pub fn butlast(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    value: List,
+    n: ncl_object::Fixnum,
+) -> Result<Word, LispError> {
+    let value = list_word(value);
+    let n = n.value();
+    if n < 0 {
+        return Err(LispError::TypeError {
+            datum: ncl_object::Word::fixnum(n),
+            expected: ncl_object::ObjectType::Fixnum,
+        });
+    }
+    proper_list(ctx, value)?;
+    let mut items = Vec::new();
+    let mut cursor = value;
+    while cursor.is_cons() {
+        items.push(object_car(ctx, cursor)?);
+        cursor = object_cdr(ctx, cursor)?;
+    }
+    let keep = items.len().saturating_sub(usize::try_from(n).unwrap_or(usize::MAX));
+    list_from(ctx, runtime, &items[..keep]).map_err(LispError::from)
+}
+
+pub fn last(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    value: List,
+    n: ncl_object::Fixnum,
+) -> Result<Word, LispError> {
+    let value = list_word(value);
+    let n = n.value();
+    if n < 0 {
+        return Err(LispError::TypeError {
+            datum: ncl_object::Word::fixnum(n),
+            expected: ncl_object::ObjectType::Fixnum,
+        });
+    }
+    proper_list(ctx, value)?;
+    if n == 0 {
+        return Ok(Word::NIL);
+    }
+    let mut lead = value;
+    for _ in 0..n {
+        if lead == Word::NIL {
+            return Ok(value);
+        }
+        lead = object_cdr(ctx, lead)?;
+    }
+    let mut tail = value;
+    while lead != Word::NIL {
+        lead = object_cdr(ctx, lead)?;
+        tail = object_cdr(ctx, tail)?;
+    }
+    Ok(tail)
+}
+
+macro_rules! list_nth_builtin {
+    ($name:ident, $index:literal) => {
+        pub fn $name(
+            ctx: &mut ThreadContext,
+            _runtime: &Runtime,
+            value: List,
+        ) -> Result<Word, LispError> {
+            let value = list_word(value);
+            proper_list(ctx, value)?;
+            nth_word(ctx, $index, value)
+        }
+    };
+}
+
+list_nth_builtin!(first, 0);
+list_nth_builtin!(second, 1);
+list_nth_builtin!(third, 2);
+list_nth_builtin!(fourth, 3);
+list_nth_builtin!(fifth, 4);
+list_nth_builtin!(sixth, 5);
+list_nth_builtin!(seventh, 6);
+list_nth_builtin!(eighth, 7);
+list_nth_builtin!(ninth, 8);
+list_nth_builtin!(tenth, 9);
+
+pub fn make_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    length: ncl_object::Fixnum,
+    initial: Word,
+) -> Result<Word, LispError> {
+    let length = usize::try_from(length.value()).map_err(|_| LispError::TypeError {
+        datum: length.as_word(),
+        expected: ncl_object::ObjectType::Fixnum,
+    })?;
+    let values = vec![initial; length];
+    list_from(ctx, runtime, &values).map_err(LispError::from)
+}
+
 pub fn member(
     ctx: &mut ThreadContext,
     _runtime: &Runtime,
@@ -480,5 +577,4 @@ pub fn rplacd(
 ) -> Result<Word, LispError> {
     Ok(object_rplacd(ctx, cons, value)?)
 }
-
 

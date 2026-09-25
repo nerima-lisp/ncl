@@ -1,7 +1,8 @@
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, FromLispArg, LambdaList, MultipleValues, ObjectError, Parameter,
-    ParameterType, Runtime, Sequence, ThreadContext, Word, typed_builtin,
+    BuiltinName, BuiltinPackage, Fixnum, FromLispArg, LambdaList, List, MultipleValues,
+    ObjectError, ObjectRef, Parameter, ParameterType, Runtime, Sequence, ThreadContext, Word,
+    classify_object, string_length, string_ref, symbol_name, typed_builtin,
 };
 
 use crate::domain;
@@ -167,6 +168,9 @@ const MAKE_REQUIRED: &[Parameter] = &[
     parameter("length", ParameterType::Fixnum),
 ];
 const MAKE_OPTIONAL: &[Parameter] = &[parameter("initial-element", ParameterType::Any)];
+const LIST_N_OPTIONAL: &[Parameter] = &[parameter("n", ParameterType::Fixnum)];
+const MAKE_LIST_REQUIRED: &[Parameter] = &[parameter("size", ParameterType::Fixnum)];
+const MAKE_LIST_KEYS: &[Parameter] = &[parameter("initial-element", ParameterType::Any)];
 
 typed_builtin!(atom_builtin, domain::atom, (value: Word));
 typed_builtin!(cons_p_builtin, domain::cons_p, (value: Word));
@@ -174,6 +178,17 @@ typed_builtin!(list_p_builtin, domain::list_p, (value: Word));
 typed_builtin!(end_p_builtin, domain::end_p, (value: Word));
 typed_builtin!(car_builtin, domain::car, (value: ncl_object::List));
 typed_builtin!(cdr_builtin, domain::cdr, (value: ncl_object::List));
+typed_builtin!(rest_builtin, domain::cdr, (value: ncl_object::List));
+typed_builtin!(first_builtin, domain::first, (value: ncl_object::List));
+typed_builtin!(second_builtin, domain::second, (value: ncl_object::List));
+typed_builtin!(third_builtin, domain::third, (value: ncl_object::List));
+typed_builtin!(fourth_builtin, domain::fourth, (value: ncl_object::List));
+typed_builtin!(fifth_builtin, domain::fifth, (value: ncl_object::List));
+typed_builtin!(sixth_builtin, domain::sixth, (value: ncl_object::List));
+typed_builtin!(seventh_builtin, domain::seventh, (value: ncl_object::List));
+typed_builtin!(eighth_builtin, domain::eighth, (value: ncl_object::List));
+typed_builtin!(ninth_builtin, domain::ninth, (value: ncl_object::List));
+typed_builtin!(tenth_builtin, domain::tenth, (value: ncl_object::List));
 typed_builtin!(list_length_builtin, domain::list_length, (value: ncl_object::List));
 typed_builtin!(nth_builtin, domain::nth, (index: ncl_object::Fixnum, value: ncl_object::List));
 typed_builtin!(nthcdr_builtin, domain::nthcdr, (index: ncl_object::Fixnum, value: ncl_object::List));
@@ -213,6 +228,80 @@ typed_builtin!(cddaar_builtin, domain::cddaar, (value: Word));
 typed_builtin!(cddadr_builtin, domain::cddadr, (value: Word));
 typed_builtin!(cdddar_builtin, domain::cdddar, (value: Word));
 typed_builtin!(cddddr_builtin, domain::cddddr, (value: Word));
+
+fn list_n_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    n: i64,
+    butlast: bool,
+) -> Result<Word, ObjectError> {
+    let list = List::from_lisp_arg(ctx, args.required(0)?).map_err(|error| {
+        ctx.set_pending_lisp_error(error);
+        ObjectError::TypeError
+    })?;
+    let n = Fixnum::try_from_word(args.get(1).unwrap_or(Word::fixnum(n))).map_err(|error| {
+        ctx.set_pending_lisp_error(error.into());
+        ObjectError::TypeError
+    })?;
+    let result = if butlast {
+        domain::butlast(ctx, runtime, list, n)
+    } else {
+        domain::last(ctx, runtime, list, n)
+    };
+    map_lisp(ctx, result)
+}
+
+fn butlast_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    list_n_builtin(ctx, runtime, args, 1, true)
+}
+
+fn last_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    list_n_builtin(ctx, runtime, args, 1, false)
+}
+
+fn make_list_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let length = Fixnum::try_from_word(args.required(0)?).map_err(|error| {
+        ctx.set_pending_lisp_error(error.into());
+        ObjectError::TypeError
+    })?;
+    let initial = match args.len() {
+        1 => Word::NIL,
+        3 => {
+            let key = args.required(1)?;
+            let ObjectRef::Symbol(_) = classify_object(ctx, key) else {
+                return Err(ObjectError::TypeError);
+            };
+            let name = symbol_name(ctx, key)?;
+            let mut text = String::new();
+            for index in 0..string_length(ctx, name)? {
+                text.push(string_ref(ctx, name, index)?);
+            }
+            if !text.eq_ignore_ascii_case("INITIAL-ELEMENT") {
+                return Err(ObjectError::TypeError);
+            }
+            args.required(2)?
+        }
+        _ => return Err(ObjectError::TypeError),
+    };
+    let result = domain::make_list(ctx, runtime, length, initial);
+    map_lisp(ctx, result)
+}
 
 fn adapted<F>(args: &BuiltinArgs<'_>, f: F) -> Result<Word, ncl_object::LispError>
 where
@@ -373,6 +462,31 @@ pub(crate) fn entry(name: &str) -> Option<BuiltinImplementation> {
         "ENDP" => (descriptor(ONE_ANY), end_p_builtin),
         "CAR" => (descriptor(ONE_LIST), car_builtin),
         "CDR" => (descriptor(ONE_LIST), cdr_builtin),
+        "REST" => (descriptor(ONE_LIST), rest_builtin),
+        "FIRST" => (descriptor(ONE_LIST), first_builtin),
+        "SECOND" => (descriptor(ONE_LIST), second_builtin),
+        "THIRD" => (descriptor(ONE_LIST), third_builtin),
+        "FOURTH" => (descriptor(ONE_LIST), fourth_builtin),
+        "FIFTH" => (descriptor(ONE_LIST), fifth_builtin),
+        "SIXTH" => (descriptor(ONE_LIST), sixth_builtin),
+        "SEVENTH" => (descriptor(ONE_LIST), seventh_builtin),
+        "EIGHTH" => (descriptor(ONE_LIST), eighth_builtin),
+        "NINTH" => (descriptor(ONE_LIST), ninth_builtin),
+        "TENTH" => (descriptor(ONE_LIST), tenth_builtin),
+        "BUTLAST" => (
+            Builtin {
+                lambda_list: LambdaList::with_optional(ONE_LIST, LIST_N_OPTIONAL),
+                convention: BuiltinConvention::Adapted,
+            },
+            butlast_builtin,
+        ),
+        "LAST" => (
+            Builtin {
+                lambda_list: LambdaList::with_optional(ONE_LIST, LIST_N_OPTIONAL),
+                convention: BuiltinConvention::Adapted,
+            },
+            last_builtin,
+        ),
         "LIST-LENGTH" => (descriptor(ONE_LIST), list_length_builtin),
         "NTH" => (descriptor(TWO_N_LIST), nth_builtin),
         "NTHCDR" => (descriptor(TWO_N_LIST), nthcdr_builtin),
@@ -478,6 +592,13 @@ pub(crate) fn entry(name: &str) -> Option<BuiltinImplementation> {
                 convention: BuiltinConvention::Adapted,
             },
             generic_make,
+        ),
+        "MAKE-LIST" => (
+            Builtin {
+                lambda_list: LambdaList::with_keys(MAKE_LIST_REQUIRED, MAKE_LIST_KEYS, false),
+                convention: BuiltinConvention::Adapted,
+            },
+            make_list_builtin,
         ),
         _ => return None,
     };

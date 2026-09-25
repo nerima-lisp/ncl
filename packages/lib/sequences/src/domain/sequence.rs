@@ -235,3 +235,225 @@ pub(crate) fn make_sequence(
     }
 }
 
+#[derive(Clone, Copy)]
+struct SearchOptions {
+    start: usize,
+    end: Option<usize>,
+    from_end: bool,
+    test: Option<Word>,
+    test_not: Option<Word>,
+    key: Option<Word>,
+}
+
+fn keyword_name(ctx: &ThreadContext, word: Word) -> Result<String, LispError> {
+    let name = symbol_name(ctx, word)?;
+    (0..string_length(ctx, name)?)
+        .map(|index| string_ref(ctx, name, index))
+        .collect::<Result<String, _>>()
+        .map_err(LispError::from)
+}
+
+fn search_options(
+    ctx: &ThreadContext,
+    args: &[Word],
+    length: usize,
+) -> Result<SearchOptions, LispError> {
+    let mut options = SearchOptions {
+        start: 0,
+        end: None,
+        from_end: false,
+        test: None,
+        test_not: None,
+        key: None,
+    };
+    let mut index = 2;
+    while index < args.len() {
+        let keyword = keyword_name(ctx, args[index])?;
+        let value = args.get(index + 1).copied().ok_or(LispError::ProgramError(
+            ncl_object::ProgramError::OddKeywordArguments,
+        ))?;
+        match keyword.as_str() {
+            "START" => {
+                options.start = usize::try_from(
+                    value
+                        .as_fixnum()
+                        .ok_or(LispError::TypeError {
+                            datum: value,
+                            expected: ncl_object::ObjectType::Fixnum,
+                        })?,
+                )
+                .map_err(|_| LispError::TypeError {
+                    datum: value,
+                    expected: ncl_object::ObjectType::Fixnum,
+                })?;
+            }
+            "END" => {
+                options.end = Some(usize::try_from(
+                    value
+                        .as_fixnum()
+                        .ok_or(LispError::TypeError {
+                            datum: value,
+                            expected: ncl_object::ObjectType::Fixnum,
+                        })?,
+                )
+                .map_err(|_| LispError::TypeError {
+                    datum: value,
+                    expected: ncl_object::ObjectType::Fixnum,
+                })?);
+            }
+            "FROM-END" => options.from_end = value != Word::NIL,
+            "TEST" => options.test = Some(value),
+            "TEST-NOT" => options.test_not = Some(value),
+            "KEY" => options.key = (value != Word::NIL).then_some(value),
+            _ => {
+                return Err(LispError::ProgramError(
+                    ncl_object::ProgramError::UnknownKeyword,
+                ));
+            }
+        }
+        index += 2;
+    }
+    let end = options.end.unwrap_or(length);
+    if options.test.is_some() && options.test_not.is_some()
+        || options.start > end
+        || end > length
+    {
+        return Err(LispError::TypeError {
+            datum: Word::fixnum(end as i64),
+            expected: ncl_object::ObjectType::Fixnum,
+        });
+    }
+    options.end = Some(end);
+    Ok(options)
+}
+
+fn call_designator(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    function: Word,
+    args: &[Word],
+) -> Result<Word, LispError> {
+    let function = match classify_object(ctx, function) {
+        ObjectRef::Function(word) => FunctionObject::try_from(word).map_err(LispError::from)?,
+        ObjectRef::Symbol(symbol) => {
+            FunctionObject::try_from(symbol_function(ctx, symbol)?).map_err(LispError::from)?
+        }
+        _ => {
+            return Err(LispError::TypeError {
+                datum: function,
+                expected: ncl_object::ObjectType::Function,
+            });
+        }
+    };
+    runtime
+        .call_builtin(ctx, function, args)
+        .map_err(LispError::from)
+}
+
+fn keyed(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    key: Option<Word>,
+    value: Word,
+) -> Result<Word, LispError> {
+    key.map_or(Ok(value), |function| call_designator(ctx, runtime, function, &[value]))
+}
+
+fn matches(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    item: Word,
+    value: Word,
+    options: SearchOptions,
+    predicate: Option<Word>,
+    invert: bool,
+) -> Result<bool, LispError> {
+    let value = keyed(ctx, runtime, options.key, value)?;
+    let result = if let Some(predicate) = predicate {
+        call_designator(ctx, runtime, predicate, &[value])? != Word::NIL
+    } else if let Some(test) = options.test {
+        call_designator(ctx, runtime, test, &[item, value])? != Word::NIL
+    } else if let Some(test_not) = options.test_not {
+        call_designator(ctx, runtime, test_not, &[item, value])? == Word::NIL
+    } else {
+        item == value
+    };
+    Ok(result != invert)
+}
+
+fn search_index(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    values: &[Word],
+    item: Word,
+    options: SearchOptions,
+    predicate: Option<Word>,
+    invert: bool,
+) -> Result<Option<usize>, LispError> {
+    let range = options.start..options.end.unwrap_or(values.len());
+    if options.from_end {
+        for index in range.rev() {
+            if matches(ctx, runtime, item, values[index], options, predicate, invert)? {
+                return Ok(Some(index));
+            }
+        }
+    } else {
+        for index in range {
+            if matches(ctx, runtime, item, values[index], options, predicate, invert)? {
+                return Ok(Some(index));
+            }
+        }
+    }
+    Ok(None)
+}
+
+pub(crate) fn sequence_search(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &[Word],
+    predicate: Option<Word>,
+    invert: bool,
+    result: SearchResult,
+) -> Result<Word, LispError> {
+    let sequence = sequence_value(ctx, args[1]).map_err(LispError::from)?;
+    let values = seq_values(ctx, sequence).map_err(LispError::from)?;
+    let options = search_options(ctx, args, values.len())?;
+    let index = search_index(ctx, runtime, &values, args[0], options, predicate, invert)?;
+    match result {
+        SearchResult::Find => Ok(index.map_or(Word::NIL, |index| values[index])),
+        SearchResult::Position => Ok(index.map_or(Word::NIL, |index| Word::fixnum(index as i64))),
+        SearchResult::Count => {
+            let mut count = 0_i64;
+            let end = options.end.unwrap_or(values.len());
+            for index in options.start..end {
+                if matches(ctx, runtime, args[0], values[index], options, predicate, invert)? {
+                    count += 1;
+                }
+            }
+            Ok(Word::fixnum(count))
+        }
+        SearchResult::Member => {
+            let Some(index) = index else { return Ok(Word::NIL) };
+            if let Sequence::List(list) = sequence {
+                let mut cursor = list_word(list);
+                for _ in 0..index {
+                    cursor = object_cdr(ctx, cursor)?;
+                }
+                Ok(cursor)
+            } else {
+                Err(LispError::TypeError {
+                    datum: args[1],
+                    expected: ncl_object::ObjectType::Cons,
+                })
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum SearchResult {
+    Find,
+    Position,
+    Count,
+    Member,
+}

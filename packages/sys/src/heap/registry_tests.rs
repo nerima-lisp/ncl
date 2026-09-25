@@ -265,3 +265,20 @@ fn release_code_keeps_owned_code_when_unregistered() {
     );
     assert!(owned.is_some());
 }
+
+#[test]
+fn release_code_rejects_unregistered_thread_and_empty_owner() {
+    let heap = Heap::new(HeapConfig::default());
+    let mut thread = Thread::new();
+    let mut owned = None;
+    assert_eq!(
+        heap.release_code(&mut thread, &mut owned),
+        Err(crate::CodeError::NotRegistered)
+    );
+
+    assert_eq!(heap.register_thread(&mut thread), Ok(()));
+    assert_eq!(
+        heap.release_code(&mut thread, &mut owned),
+        Err(crate::CodeError::NotRegistered)
+    );
+}

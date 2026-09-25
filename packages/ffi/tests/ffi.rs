@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on concrete errors")]
+#![allow(
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    reason = "tests assert on concrete values and errors"
+)]
 
 //! Foreign calls, dynamic loading, unmanaged memory, roots, and conditions.
 

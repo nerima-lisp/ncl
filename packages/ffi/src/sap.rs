@@ -58,17 +58,13 @@ impl SystemAreaPointer {
 
     /// Encode as a Lisp fixnum holding the address, like `sap-int`.
     #[must_use]
-    #[allow(
-        clippy::cast_possible_wrap,
-        reason = "user-space addresses fit in a signed 63-bit fixnum"
-    )]
-    pub const fn sap_int(self) -> Word {
-        Word::fixnum(self.0 as i64)
+    pub fn sap_int(self) -> Word {
+        Word::fixnum(i64::try_from(self.0).unwrap_or(i64::MAX))
     }
 
     /// Encode as a Lisp value; the inverse of [`SystemAreaPointer::from_word`].
     #[must_use]
-    pub const fn as_word(self) -> Word {
+    pub fn as_word(self) -> Word {
         self.sap_int()
     }
 

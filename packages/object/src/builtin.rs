@@ -298,6 +298,12 @@ impl<'a> BuiltinArgs<'a> {
         self.words.is_empty()
     }
 
+    /// Expose the validated argument slice to an adapter implementation.
+    #[must_use]
+    pub const fn as_slice(self) -> &'a [Word] {
+        self.words
+    }
+
     #[must_use]
     pub fn get(self, index: usize) -> Option<Word> {
         self.words.get(index).copied()

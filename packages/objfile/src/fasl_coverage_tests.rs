@@ -59,3 +59,53 @@ fn private_wire_helpers_cover_integer_boundaries() {
     );
     assert_eq!(kind_number(RelocKind::ExternalSymbol), 8);
 }
+
+#[test]
+fn private_fasl_range_parser_reports_short_headers_and_overlaps() {
+    for (length, _offset) in [
+        (24usize, 24usize),
+        (28, 28),
+        (32, 32),
+        (36, 36),
+        (40, 40),
+        (44, 44),
+        (48, 48),
+        (52, 52),
+        (56, 56),
+        (60, 60),
+    ] {
+        match read_fasl_ranges(&vec![0; length]) {
+            Err(ObjectError::Truncated { needed: 4, .. }) => {}
+            Err(error) => panic!("unexpected error at {length}: {error}"),
+            Ok(_) => panic!("short header at {length} unexpectedly parsed"),
+        }
+    }
+    let mut bytes = vec![0; 64];
+    bytes[24..28].copy_from_slice(&64u32.to_le_bytes());
+    bytes[28..32].copy_from_slice(&1u32.to_le_bytes());
+    assert!(matches!(
+        read_fasl_ranges(&bytes),
+        Err(ObjectError::OutOfBounds {
+            section: "code",
+            offset: 64,
+            size: 1,
+        })
+    ));
+    let mut huge_relocation_count = vec![0; 64];
+    huge_relocation_count[32..36].copy_from_slice(&64u32.to_le_bytes());
+    huge_relocation_count[36..40].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(matches!(
+        read_fasl_ranges(&huge_relocation_count),
+        Err(ObjectError::InvalidField {
+            field: "relocation size",
+            value: u64::MAX,
+        })
+    ));
+    assert_eq!(
+        validate_section_order(&[("first", 64, 2), ("second", 65, 0)]),
+        Err(ObjectError::Overlap {
+            first: "previous FASL section",
+            second: "second",
+        })
+    );
+}

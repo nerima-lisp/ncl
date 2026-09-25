@@ -1,5 +1,5 @@
-use crate::ThreadContext;
 use crate::layout::widetag;
+use crate::ThreadContext;
 use ncl_sys::{LowTag, Word};
 
 /// Classification of a tagged value.
@@ -34,11 +34,11 @@ pub enum ObjectRef {
 /// Classify a tagged value using lowtag information.
 #[must_use]
 pub fn classify(word: Word) -> ObjectRef {
-    if let Some(value) = word.as_fixnum() {
-        return ObjectRef::Fixnum(value);
-    }
     if word.is_character() {
         return ObjectRef::Character(u32::try_from(word.bits() >> 4).unwrap_or(0));
+    }
+    if let Some(value) = word.as_fixnum() {
+        return ObjectRef::Fixnum(value);
     }
     match word.lowtag() {
         x if x == LowTag::List as u8 => {

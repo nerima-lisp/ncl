@@ -115,6 +115,7 @@ impl<'a> Capture<'a> {
     }
 
     /// Capture one heap object's payload.
+    #[allow(clippy::wildcard_enum_match_arm, reason = "ObjectRef is non-exhaustive at the adapter boundary")]
     fn capture(&mut self, ctx: &mut ThreadContext, word: Word) -> Result<Record, ImageError> {
         if word.lowtag() == low_tag(LowTag::List) {
             let car = car(ctx, word)?;
@@ -178,7 +179,8 @@ impl<'a> Capture<'a> {
             ObjectRef::Fixnum(_)
             | ObjectRef::Character(_)
             | ObjectRef::Other { .. }
-            | ObjectRef::Immediate(_) => Err(unsupported("non-heap value")),
+            | ObjectRef::Immediate(_)
+            | _ => Err(unsupported("non-heap value")),
         }
     }
 

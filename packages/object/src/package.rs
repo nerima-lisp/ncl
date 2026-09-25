@@ -184,7 +184,8 @@ impl Package {
                         crate::layout::symbol_offset::PACKAGE,
                         *package,
                     )?;
-                    let table = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                    let table =
+                        HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
                     table.insert(ctx, runtime, *name_word, *symbol)?;
                     Ok((*symbol, FindStatus::Internal))
                 })
@@ -208,11 +209,13 @@ impl Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let internal = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                let internal =
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
                 let mut symbol = if let Some(symbol) = internal.remove(ctx, runtime, *name)? {
                     symbol
                 } else {
-                    let external = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                    let external =
+                        HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
                     if external.get(ctx, *name)?.is_some() {
                         return Ok(true);
                     }
@@ -227,7 +230,8 @@ impl Package {
                         .ok_or(ObjectError::Layout)?
                 };
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    let external = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                    let external =
+                        HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
                     external.insert(ctx, runtime, *name, *symbol)
                 })?;
                 Ok(true)
@@ -251,12 +255,14 @@ impl Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let external = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                let external =
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
                 let Some(mut symbol) = external.remove(ctx, runtime, *name)? else {
                     return Ok(false);
                 };
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    let internal = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                    let internal =
+                        HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
                     internal.insert(ctx, runtime, *name, *symbol)
                 })?;
                 Ok(true)

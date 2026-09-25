@@ -34,8 +34,8 @@ pub use array::{
 };
 pub use builtin::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, FunctionObject, KeywordAdapter, LambdaList, MultipleValues,
-    LispErrorConverter, NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
+    BuiltinName, BuiltinPackage, FunctionObject, KeywordAdapter, LambdaList, LispErrorConverter,
+    MultipleValues, NclStatus, Parameter, ParameterType, RegisterFn, RustBuiltin,
 };
 pub use classify::{ObjectRef, classify, classify_object};
 pub use code::code_slot;

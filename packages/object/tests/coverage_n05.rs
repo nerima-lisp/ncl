@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use ncl_object::{
+    ArrayElementType, ArrayOptions, ObjectError, Package, Runtime, ThreadContext, Word,
     bignum_limbs, bignum_sign, code_constants, code_debug, code_entry, code_size, code_stack_map,
     complex_imag, complex_real, function_code, function_entry, function_lambda_list, function_name,
     instance_class, make_array, make_bignum_from_i128, make_code_object, make_complex, make_double,
@@ -12,7 +13,6 @@ use ncl_object::{
     stream_element_type, stream_external_format, stream_implementation, stream_state,
     structure_layout, structure_ref, structure_set, symbol_flags, symbol_is_constant,
     symbol_is_macro, symbol_is_package_locked, symbol_is_special, symbol_name, symbol_value,
-    ArrayElementType, ArrayOptions, ObjectError, Package, Runtime, ThreadContext, Word,
 };
 
 fn setup() -> (Runtime, ThreadContext) {

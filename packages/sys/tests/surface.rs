@@ -1,13 +1,13 @@
 //! Public-surface tests for the platform and heap boundary.
 
 use ncl_sys::{
-    alloc, alloc_cons, alloc_large, collect, enter_native, heap_epoch, leave_native, make_weak,
-    object_widetag, pop_root, publish_conservative_root, publish_safepoint, push_root,
-    read_cons_word, read_object_word, register_layout, register_root_set, register_thread,
-    register_thread_with_thread, request_safepoint, set_strict_forwarding, set_tlab, tlab_bump,
-    weak_value, write_barrier, write_cons_word, write_object_word, Condvar, Heap, HeapConfig,
-    LowTag, Mutex, NativeState, ReferenceLayout, SafepointState, Semaphore, Thread, TypeTag,
-    WaitQueue, Weakness, Word,
+    Condvar, Heap, HeapConfig, LowTag, Mutex, NativeState, ReferenceLayout, SafepointState,
+    Semaphore, Thread, TypeTag, WaitQueue, Weakness, Word, alloc, alloc_cons, alloc_large, collect,
+    enter_native, heap_epoch, leave_native, make_weak, object_widetag, pop_root,
+    publish_conservative_root, publish_safepoint, push_root, read_cons_word, read_object_word,
+    register_layout, register_root_set, register_thread, register_thread_with_thread,
+    request_safepoint, set_strict_forwarding, set_tlab, tlab_bump, weak_value, write_barrier,
+    write_cons_word, write_object_word,
 };
 use std::sync::Arc;
 use std::thread;
@@ -113,24 +113,28 @@ fn heap_wrappers_cover_registration_allocation_and_access() {
     assert!(write_cons_word(&mut thread, cons, 1, Word::TRUE));
     assert_eq!(read_cons_word(&thread, cons, 1), Some(Word::TRUE));
     assert!(alloc_large(&mut thread, &heap, TypeTag { widetag: 8 }, 1024).is_ok());
-    assert!(register_layout(
-        &heap,
-        7,
-        ReferenceLayout {
-            reference_words: vec![1],
-            boxed_from: None
-        }
-    )
-    .is_ok());
-    assert!(register_layout(
-        &heap,
-        7,
-        ReferenceLayout {
-            reference_words: vec![],
-            boxed_from: None
-        }
-    )
-    .is_err());
+    assert!(
+        register_layout(
+            &heap,
+            7,
+            ReferenceLayout {
+                reference_words: vec![1],
+                boxed_from: None
+            }
+        )
+        .is_ok()
+    );
+    assert!(
+        register_layout(
+            &heap,
+            7,
+            ReferenceLayout {
+                reference_words: vec![],
+                boxed_from: None
+            }
+        )
+        .is_err()
+    );
     set_strict_forwarding(&thread, true);
     write_barrier(&mut thread, object, 1);
     assert_eq!(make_weak(&thread, object, Weakness::Value), object);
@@ -175,7 +179,12 @@ fn direct_heap_wrappers_and_unregistered_code_errors_are_observable() {
         ),
         Err(ncl_sys::CodeError::NotRegistered)
     );
-    assert!(!ncl_sys::write_cons_word(&mut thread, object, 0, Word::TRUE));
+    assert!(!ncl_sys::write_cons_word(
+        &mut thread,
+        object,
+        0,
+        Word::TRUE
+    ));
 }
 
 #[test]
@@ -184,7 +193,10 @@ fn public_code_write_wrapper_reports_bounds() {
         return;
     };
     assert_eq!(ncl_sys::write_code(&mut code, 0, &[7]), Ok(()));
-    assert_eq!(ncl_sys::write_code(&mut code, 1, &[8]), Err(ncl_sys::CodeError::OutOfBounds));
+    assert_eq!(
+        ncl_sys::write_code(&mut code, 1, &[8]),
+        Err(ncl_sys::CodeError::OutOfBounds)
+    );
 }
 
 #[test]

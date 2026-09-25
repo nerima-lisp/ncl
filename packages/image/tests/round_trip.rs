@@ -32,7 +32,9 @@ fn build_graph(runtime: &Runtime, ctx: &mut ThreadContext) -> Graph {
     let string_token = push_root(ctx, &mut string);
 
     let package = runtime.find_package(ctx, "NCL").unwrap();
-    let (mut symbol, _) = Package::from_word(package).intern(ctx, runtime, "FOO").unwrap();
+    let (mut symbol, _) = Package::from_word(package)
+        .intern(ctx, runtime, "FOO")
+        .unwrap();
     set_symbol_value(ctx, symbol, Word::fixnum(5)).unwrap();
     let symbol_token = push_root(ctx, &mut symbol);
 
@@ -55,9 +57,16 @@ fn build_graph(runtime: &Runtime, ctx: &mut ThreadContext) -> Graph {
     let mut name = make_string(ctx, runtime, &['f', 'n']).unwrap();
     let name_token = push_root(ctx, &mut name);
 
-    let mut function = make_simple_fun(ctx, runtime, 0, name, Word::NIL, CodeObject::from_word(code))
-        .unwrap()
-        .as_word();
+    let mut function = make_simple_fun(
+        ctx,
+        runtime,
+        0,
+        name,
+        Word::NIL,
+        CodeObject::from_word(code),
+    )
+    .unwrap()
+    .as_word();
     let function_token = push_root(ctx, &mut function);
 
     let roots = vec![cons, table_word, function];

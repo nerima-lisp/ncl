@@ -1,5 +1,5 @@
-use super::{length, read, write, ArrayElementType};
-use crate::{make_simple_vector, make_string, Runtime, ThreadContext};
+use super::{ArrayElementType, length, read, write};
+use crate::{Runtime, ThreadContext, make_simple_vector, make_string};
 use ncl_sys::Word;
 
 #[test]
@@ -48,14 +48,16 @@ fn element_type_decoding_and_low_level_array_access_are_explicit() {
         read(&context, vector, 1, crate::widetag::SIMPLE_VECTOR),
         Ok(Word::fixnum(3))
     );
-    assert!(write(
-        &mut context,
-        vector,
-        1,
-        Word::fixnum(4),
-        crate::widetag::SIMPLE_VECTOR
-    )
-    .is_ok());
+    assert!(
+        write(
+            &mut context,
+            vector,
+            1,
+            Word::fixnum(4),
+            crate::widetag::SIMPLE_VECTOR
+        )
+        .is_ok()
+    );
     assert_eq!(
         read(&context, vector, 1, crate::widetag::STRING),
         Err(crate::ObjectError::TypeError)

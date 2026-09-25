@@ -4,8 +4,8 @@
 //! numbers registrar can install them alongside the other numeric callbacks.
 
 use ncl_object::{
-    bignum_limbs, bignum_sign, classify_object, make_bignum_from_i128, Bignum, ObjectError,
-    ObjectRef, Runtime, ThreadContext, Word,
+    Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,
+    classify_object, make_bignum_from_i128,
 };
 
 use ncl_object::{BuiltinArgs, MultipleValues};
@@ -218,11 +218,7 @@ pub fn logbitp(
     let index = usize::try_from(integer(ctx, *index)?).map_err(|_| ObjectError::TypeError)?;
     let value = integer(ctx, *value)?;
     Ok(if index >= 127 {
-        if value < 0 {
-            Word::TRUE
-        } else {
-            Word::NIL
-        }
+        if value < 0 { Word::TRUE } else { Word::NIL }
     } else if (value & (1_i128 << index)) != 0 {
         Word::TRUE
     } else {

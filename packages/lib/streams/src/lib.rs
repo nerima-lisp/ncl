@@ -5,12 +5,12 @@
 use std::fs;
 
 use ncl_object::{
-    classify_object, make_simple_vector, make_stream, simple_vector_length, simple_vector_ref,
-    simple_vector_set, stream_direction, stream_element_type, stream_external_format, stream_state,
-    string_length, string_ref, symbol_name, Arity, Builtin, BuiltinArgs, BuiltinConvention,
-    BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, LambdaList,
-    MultipleValues, ObjectError, ObjectRef, Parameter, ParameterType, Runtime, Stream,
-    ThreadContext, Word,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, ObjectRef, Parameter,
+    ParameterType, Runtime, Stream, ThreadContext, Word, classify_object, make_simple_vector,
+    make_stream, simple_vector_length, simple_vector_ref, simple_vector_set, stream_direction,
+    stream_element_type, stream_external_format, stream_state, string_length, string_ref,
+    symbol_name,
 };
 
 const POSITION: usize = 1;

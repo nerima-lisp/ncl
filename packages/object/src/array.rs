@@ -1,4 +1,4 @@
-use crate::{allocate, layout, with_roots, ObjectError, Runtime, ThreadContext};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
 use crate::{specialized_array_ref, specialized_array_set};
 use ncl_sys::Word;
 /// Options for constructing a non-simple array.

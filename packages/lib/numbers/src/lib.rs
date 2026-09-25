@@ -4,9 +4,9 @@ mod arithmetic;
 mod bitops;
 
 use ncl_object::{
-    make_double, set_symbol_constant, set_symbol_value, Arity, Builtin, BuiltinConvention,
-    BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, LambdaList, ObjectError,
-    Package, Parameter, ParameterType, Runtime, RustBuiltin, ThreadContext, Word,
+    Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, LambdaList, ObjectError, Package, Parameter, ParameterType, Runtime,
+    RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_value,
 };
 
 fn install(

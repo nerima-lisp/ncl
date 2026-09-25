@@ -2,12 +2,12 @@
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    array_dimensions, array_row_major_ref, array_row_major_set, bignum_limbs, bignum_sign,
-    classify_object, complex_imag, complex_real, double_value, make_array, make_bignum_from_i128,
-    make_complex, make_cons, make_double, make_ratio, make_simple_vector, make_string,
-    ratio_denominator, ratio_numerator, specialized_array_element_type, specialized_array_ref,
-    specialized_array_set, symbol_name, ArrayElementType, ArrayOptions, FindStatus, ObjectError,
-    Package, Runtime, ThreadContext, WordView,
+    ArrayElementType, ArrayOptions, FindStatus, ObjectError, Package, Runtime, ThreadContext,
+    WordView, array_dimensions, array_row_major_ref, array_row_major_set, bignum_limbs,
+    bignum_sign, classify_object, complex_imag, complex_real, double_value, make_array,
+    make_bignum_from_i128, make_complex, make_cons, make_double, make_ratio, make_simple_vector,
+    make_string, ratio_denominator, ratio_numerator, specialized_array_element_type,
+    specialized_array_ref, specialized_array_set, symbol_name,
 };
 use ncl_sys::Word;
 
@@ -66,18 +66,22 @@ fn hash_modes_cover_numeric_string_cons_and_iteration_contracts() {
         assert_eq!(table.weakness(&context), Ok(Weakness::None));
         assert_eq!(table.count(&context), Ok(0));
         assert!(table.capacity(&context).unwrap_or(0) >= 8);
-        assert!(table
-            .insert(&mut context, &runtime, key, Word::fixnum(9))
-            .is_ok());
+        assert!(
+            table
+                .insert(&mut context, &runtime, key, Word::fixnum(9))
+                .is_ok()
+        );
         assert_eq!(
             table.get(&mut context, equal_key),
             Ok(Some(Word::fixnum(9)))
         );
         let mut entries = Vec::new();
-        assert!(table
-            .for_each_entry(&context, |stored_key, value| entries
-                .push((stored_key, value)))
-            .is_ok());
+        assert!(
+            table
+                .for_each_entry(&context, |stored_key, value| entries
+                    .push((stored_key, value)))
+                .is_ok()
+        );
         assert_eq!(entries.len(), 1);
         assert_eq!(
             table.remove(&mut context, &runtime, equal_key),
@@ -109,12 +113,16 @@ fn package_registry_and_visibility_operations_cover_all_statuses() {
     let consumer = Package::new(&mut context, &runtime, "CONSUMER")
         .unwrap_or_else(|error| panic!("consumer: {error:?}"));
     let nickname = make_string(&mut context, &runtime, &['P', 'R', 'O']).unwrap_or(Word::NIL);
-    assert!(producer
-        .add_nickname(&mut context, &runtime, nickname)
-        .is_ok());
-    assert!(!producer
-        .add_nickname(&mut context, &runtime, nickname)
-        .unwrap_or(true));
+    assert!(
+        producer
+            .add_nickname(&mut context, &runtime, nickname)
+            .is_ok()
+    );
+    assert!(
+        !producer
+            .add_nickname(&mut context, &runtime, nickname)
+            .unwrap_or(true)
+    );
     assert_eq!(
         runtime.find_package(&context, "PRO"),
         Some(producer.as_word())
@@ -129,55 +137,77 @@ fn package_registry_and_visibility_operations_cover_all_statuses() {
         producer.find_symbol(&mut context, name),
         Ok(Some((symbol, FindStatus::Internal)))
     );
-    assert!(producer
-        .export(&mut context, &runtime, name)
-        .unwrap_or(false));
+    assert!(
+        producer
+            .export(&mut context, &runtime, name)
+            .unwrap_or(false)
+    );
     assert_eq!(
         producer.find_symbol(&mut context, name),
         Ok(Some((symbol, FindStatus::External)))
     );
-    assert!(producer
-        .export(&mut context, &runtime, name)
-        .unwrap_or(false));
-    assert!(producer
-        .unexport(&mut context, &runtime, name)
-        .unwrap_or(false));
-    assert!(!producer
-        .unexport(&mut context, &runtime, name)
-        .unwrap_or(true));
-    assert!(producer
-        .use_package(&mut context, &runtime, producer.as_word())
-        .is_ok());
-    assert!(!producer
-        .use_package(&mut context, &runtime, producer.as_word())
-        .unwrap_or(true));
+    assert!(
+        producer
+            .export(&mut context, &runtime, name)
+            .unwrap_or(false)
+    );
+    assert!(
+        producer
+            .unexport(&mut context, &runtime, name)
+            .unwrap_or(false)
+    );
+    assert!(
+        !producer
+            .unexport(&mut context, &runtime, name)
+            .unwrap_or(true)
+    );
+    assert!(
+        producer
+            .use_package(&mut context, &runtime, producer.as_word())
+            .is_ok()
+    );
+    assert!(
+        !producer
+            .use_package(&mut context, &runtime, producer.as_word())
+            .unwrap_or(true)
+    );
     let inherited_name = make_string(&mut context, &runtime, &['Y']).unwrap_or(Word::NIL);
     let (inherited, _) = producer
         .intern(&mut context, &runtime, "Y")
         .unwrap_or_else(|error| panic!("intern: {error:?}"));
-    assert!(producer
-        .export(&mut context, &runtime, inherited_name)
-        .unwrap_or(false));
-    assert!(consumer
-        .use_package(&mut context, &runtime, producer.as_word())
-        .unwrap_or(false));
+    assert!(
+        producer
+            .export(&mut context, &runtime, inherited_name)
+            .unwrap_or(false)
+    );
+    assert!(
+        consumer
+            .use_package(&mut context, &runtime, producer.as_word())
+            .unwrap_or(false)
+    );
     assert_eq!(
         consumer.find_symbol(&mut context, inherited_name),
         Ok(Some((inherited, FindStatus::Inherited)))
     );
-    assert!(consumer
-        .import(&mut context, &runtime, inherited_name, inherited)
-        .is_ok());
+    assert!(
+        consumer
+            .import(&mut context, &runtime, inherited_name, inherited)
+            .is_ok()
+    );
     assert_eq!(
         consumer.find_symbol(&mut context, inherited_name),
         Ok(Some((inherited, FindStatus::Internal)))
     );
-    assert!(consumer
-        .unuse_package(&mut context, producer.as_word())
-        .unwrap_or(false));
-    assert!(!consumer
-        .unuse_package(&mut context, producer.as_word())
-        .unwrap_or(true));
+    assert!(
+        consumer
+            .unuse_package(&mut context, producer.as_word())
+            .unwrap_or(false)
+    );
+    assert!(
+        !consumer
+            .unuse_package(&mut context, producer.as_word())
+            .unwrap_or(true)
+    );
     assert!(consumer.shadow(&mut context, &runtime, name).is_ok());
     assert!(consumer.shadow(&mut context, &runtime, name).is_ok());
     assert_ne!(
@@ -194,9 +224,11 @@ fn package_registry_and_visibility_operations_cover_all_statuses() {
     runtime.add_feature("NCL-COVERAGE");
     runtime.add_feature("NCL-COVERAGE");
     assert_eq!(runtime.features(), vec![String::from("NCL-COVERAGE")]);
-    assert!(runtime
-        .define_class(&mut context, "COVERAGE", Word::TRUE)
-        .is_ok());
+    assert!(
+        runtime
+            .define_class(&mut context, "COVERAGE", Word::TRUE)
+            .is_ok()
+    );
     assert_eq!(runtime.class(&mut context, "COVERAGE"), Some(Word::TRUE));
     assert_eq!(runtime.class(&mut context, "UNKNOWN"), None);
 }
@@ -313,16 +345,22 @@ fn malformed_metadata_and_recursive_equal_values_return_domain_errors() {
     let (runtime, mut context) = setup();
     let table = HashTable::new(&mut context, &runtime, HashTest::Eq, Weakness::None)
         .unwrap_or_else(|error| panic!("table: {error:?}"));
-    assert!(context
-        .write_object_slot(table.into(), 0, Word::fixnum(99))
-        .is_ok());
+    assert!(
+        context
+            .write_object_slot(table.into(), 0, Word::fixnum(99))
+            .is_ok()
+    );
     assert_eq!(table.test(&context), Err(ObjectError::Layout));
-    assert!(context
-        .write_object_slot(table.into(), 0, Word::fixnum(0))
-        .is_ok());
-    assert!(context
-        .write_object_slot(table.into(), 1, Word::fixnum(99))
-        .is_ok());
+    assert!(
+        context
+            .write_object_slot(table.into(), 0, Word::fixnum(0))
+            .is_ok()
+    );
+    assert!(
+        context
+            .write_object_slot(table.into(), 1, Word::fixnum(99))
+            .is_ok()
+    );
     assert_eq!(table.weakness(&context), Err(ObjectError::Layout));
     let specialized = ncl_object::make_specialized_array(
         &mut context,
@@ -331,9 +369,11 @@ fn malformed_metadata_and_recursive_equal_values_return_domain_errors() {
         &[Word::fixnum(1)],
     )
     .unwrap_or(Word::NIL);
-    assert!(context
-        .write_object_slot(specialized, 0, Word::fixnum(99))
-        .is_ok());
+    assert!(
+        context
+            .write_object_slot(specialized, 0, Word::fixnum(99))
+            .is_ok()
+    );
     assert_eq!(
         specialized_array_element_type(&context, specialized),
         Err(ObjectError::Layout)
@@ -355,9 +395,11 @@ fn malformed_metadata_and_recursive_equal_values_return_domain_errors() {
     assert!(ncl_object::rplacd(&mut context, cycle, cycle).is_ok());
     let recursive = HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)
         .unwrap_or_else(|error| panic!("table: {error:?}"));
-    assert!(recursive
-        .insert(&mut context, &runtime, cycle, Word::TRUE)
-        .is_err());
+    assert!(
+        recursive
+            .insert(&mut context, &runtime, cycle, Word::TRUE)
+            .is_err()
+    );
 }
 
 #[test]
@@ -379,13 +421,15 @@ fn arrays_reject_invalid_options_and_displacement_targets() {
         make_array(&mut context, &runtime, &[1, 1], options(Some(1), None, 0)),
         Err(ObjectError::TypeError)
     );
-    assert!(make_array(
-        &mut context,
-        &runtime,
-        &[2],
-        options(None, Some(Word::TRUE), 0)
-    )
-    .is_ok());
+    assert!(
+        make_array(
+            &mut context,
+            &runtime,
+            &[2],
+            options(None, Some(Word::TRUE), 0)
+        )
+        .is_ok()
+    );
     let empty =
         make_array(&mut context, &runtime, &[0], options(None, None, 0)).unwrap_or(Word::NIL);
     assert_eq!(
@@ -417,18 +461,26 @@ fn package_lists_remove_non_head_entries_and_reject_conflicts() {
     let second =
         Package::new(&mut context, &runtime, "SECOND").unwrap_or_else(|_| panic!("second"));
     let third = Package::new(&mut context, &runtime, "THIRD").unwrap_or_else(|_| panic!("third"));
-    assert!(first
-        .use_package(&mut context, &runtime, second.as_word())
-        .unwrap_or(false));
-    assert!(first
-        .use_package(&mut context, &runtime, third.as_word())
-        .unwrap_or(false));
-    assert!(first
-        .unuse_package(&mut context, third.as_word())
-        .unwrap_or(false));
-    assert!(first
-        .unuse_package(&mut context, second.as_word())
-        .unwrap_or(false));
+    assert!(
+        first
+            .use_package(&mut context, &runtime, second.as_word())
+            .unwrap_or(false)
+    );
+    assert!(
+        first
+            .use_package(&mut context, &runtime, third.as_word())
+            .unwrap_or(false)
+    );
+    assert!(
+        first
+            .unuse_package(&mut context, third.as_word())
+            .unwrap_or(false)
+    );
+    assert!(
+        first
+            .unuse_package(&mut context, second.as_word())
+            .unwrap_or(false)
+    );
     let name = make_string(&mut context, &runtime, &['C']).unwrap_or(Word::NIL);
     let (left, _) = second
         .intern(&mut context, &runtime, "C")
@@ -444,9 +496,11 @@ fn package_lists_remove_non_head_entries_and_reject_conflicts() {
         Err(ObjectError::PackageConflict)
     );
     assert!(second.shadow(&mut context, &runtime, name).is_ok());
-    assert!(second
-        .unintern(&mut context, &runtime, name)
-        .unwrap_or(false));
+    assert!(
+        second
+            .unintern(&mut context, &runtime, name)
+            .unwrap_or(false)
+    );
     assert_eq!(second.find_symbol(&mut context, name), Ok(None));
 }
 

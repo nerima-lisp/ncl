@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use ncl_object::{
-    ArithmeticError, CellError, Character, ControlError, FileError, Fixnum, LispError, ObjectError,
-    CodeObject, Cons, ObjectErrorKind, ObjectRef, ObjectType, Package, PackageError,
+    ArithmeticError, CellError, Character, CodeObject, Cons, ControlError, FileError, Fixnum,
+    LispError, ObjectError, ObjectErrorKind, ObjectRef, ObjectType, Package, PackageError,
     ProgramError, StreamError, TypeError, Word, WordView, classify,
 };
 use ncl_sys::StorageCondition;

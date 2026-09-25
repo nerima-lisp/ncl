@@ -44,11 +44,12 @@ macro_rules! typed_builtin {
             args: &$crate::BuiltinArgs<'_>,
             values: &mut $crate::MultipleValues,
         ) -> Result<$crate::Word, $crate::ObjectError> {
-            let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?)
-                .map_err(|error| {
+            let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?).map_err(
+                |error| {
                     ctx.set_pending_lisp_error(error);
                     $crate::ObjectError::TypeError
-                })?;
+                },
+            )?;
             $implementation(ctx, runtime, $a)
                 .map_err(|error| {
                     ctx.set_pending_lisp_error(error);
@@ -67,16 +68,18 @@ macro_rules! typed_builtin {
             args: &$crate::BuiltinArgs<'_>,
             values: &mut $crate::MultipleValues,
         ) -> Result<$crate::Word, $crate::ObjectError> {
-            let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?)
-                .map_err(|error| {
+            let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?).map_err(
+                |error| {
                     ctx.set_pending_lisp_error(error);
                     $crate::ObjectError::TypeError
-                })?;
-            let $b = <$bt as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(1)?)
-                .map_err(|error| {
+                },
+            )?;
+            let $b = <$bt as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(1)?).map_err(
+                |error| {
                     ctx.set_pending_lisp_error(error);
                     $crate::ObjectError::TypeError
-                })?;
+                },
+            )?;
             $implementation(ctx, runtime, $a, $b)
                 .map_err(|error| {
                     ctx.set_pending_lisp_error(error);
@@ -467,7 +470,9 @@ impl From<ObjectRef> for WordView {
             ObjectRef::HashTable(value) => Self::HashTable(crate::HashTable::from_word(value)),
             ObjectRef::String(value) => Self::String(StringObject::from_word(value)),
             ObjectRef::SimpleVector(value) => Self::SimpleVector(SimpleVector::from_word(value)),
-            ObjectRef::SpecializedArray(value) => Self::SpecializedArray(SpecializedArray::from_word(value)),
+            ObjectRef::SpecializedArray(value) => {
+                Self::SpecializedArray(SpecializedArray::from_word(value))
+            }
             ObjectRef::Array(value) => Self::Array(Array::from_word(value)),
             ObjectRef::Function(value) => Self::Function(crate::Function::from_word(value)),
             ObjectRef::Closure(value) => Self::Closure(Closure::from_word(value)),
@@ -475,7 +480,9 @@ impl From<ObjectRef> for WordView {
             ObjectRef::Structure(value) => Self::Structure(StructureObject::from_word(value)),
             ObjectRef::Bignum(value) => Self::Bignum(crate::Bignum::from_word(value)),
             ObjectRef::Ratio(value) => Self::Ratio(crate::Ratio::from_word(value)),
-            ObjectRef::DoubleFloat(value) => Self::DoubleFloat(crate::DoubleFloat::from_word(value)),
+            ObjectRef::DoubleFloat(value) => {
+                Self::DoubleFloat(crate::DoubleFloat::from_word(value))
+            }
             ObjectRef::Complex(value) => Self::Complex(crate::Complex::from_word(value)),
             ObjectRef::Package(value) => Self::Package(crate::Package::from_word(value)),
             ObjectRef::Readtable(value) => Self::Readtable(crate::Readtable::from_word(value)),

@@ -14,10 +14,10 @@ use ncl_conditions::{
     signal, unwind,
 };
 use ncl_object::{
-    Builtin, BuiltinImplementation, BuiltinPackage, BuiltinIdentifier, BuiltinName,
-    BuiltinConvention, Arity, LispError, ObjectType, Parameter, ParameterType, Runtime,
-    Package, ThreadContext, Word, make_string, pop_root, push_root, slot_ref, string_length,
-    string_ref, typed_builtin,
+    Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, LispError, ObjectType, Package, Parameter, ParameterType, Runtime,
+    ThreadContext, Word, make_string, pop_root, push_root, slot_ref, string_length, string_ref,
+    typed_builtin,
 };
 
 fn fail_type_error(
@@ -211,7 +211,10 @@ fn typed_builtin_error_becomes_pending_type_condition() {
         )
         .unwrap();
 
-    assert_eq!(runtime.call_builtin(&mut ctx, function, &[Word::NIL]), Err(ncl_object::ObjectError::TypeError));
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[Word::NIL]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
     let mut condition = ctx.take_pending_condition().unwrap();
     let condition_token = push_root(&mut ctx, &mut condition);
     let class = ncl_conditions::condition_class_of(&ctx, condition).unwrap();
@@ -220,9 +223,17 @@ fn typed_builtin_error_becomes_pending_type_condition() {
     for (index, character) in "TYPE-ERROR".chars().enumerate() {
         assert_eq!(string_ref(&ctx, class_name, index).unwrap(), character);
     }
-    assert_eq!(slot_ref(&ctx, ncl_object::Instance::from_word(condition), 0).unwrap(), Word::NIL);
+    assert_eq!(
+        slot_ref(&ctx, ncl_object::Instance::from_word(condition), 0).unwrap(),
+        Word::NIL
+    );
     let package = runtime.ensure_package(&mut ctx, "COMMON-LISP").unwrap();
-    let (expected_type, _) = Package::from_word(package).intern(&mut ctx, &runtime, "FIXNUM").unwrap();
-    assert_eq!(slot_ref(&ctx, ncl_object::Instance::from_word(condition), 1).unwrap(), expected_type);
+    let (expected_type, _) = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "FIXNUM")
+        .unwrap();
+    assert_eq!(
+        slot_ref(&ctx, ncl_object::Instance::from_word(condition), 1).unwrap(),
+        expected_type
+    );
     pop_root(&mut ctx, condition_token);
 }

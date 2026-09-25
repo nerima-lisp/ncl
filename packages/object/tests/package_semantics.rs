@@ -85,9 +85,15 @@ fn unintern_clears_home_and_shadowing_but_not_inherited() {
             .unintern(&mut ctx, &runtime, name)
             .unwrap_or_else(|error| panic!("test failure: {error:?}"))
     );
-    assert_eq!(Package::from_word(base).find_symbol(&mut ctx, name), Ok(None));
+    assert_eq!(
+        Package::from_word(base).find_symbol(&mut ctx, name),
+        Ok(None)
+    );
     assert_eq!(symbol_package(&ctx, symbol), Ok(Word::NIL));
-    assert_eq!(Package::from_word(base).shadowing_symbols(&ctx), Ok(Word::NIL));
+    assert_eq!(
+        Package::from_word(base).shadowing_symbols(&ctx),
+        Ok(Word::NIL)
+    );
 }
 
 #[test]

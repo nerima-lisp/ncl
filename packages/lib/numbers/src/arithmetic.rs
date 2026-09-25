@@ -433,34 +433,110 @@ pub fn min(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     word(ctx, runtime, value)
 }
 
-fn round_pair(value: f64, mode: u8) -> f64 {
+fn round_float(value: f64, mode: u8) -> f64 {
     match mode {
         0 => value.floor(),
         1 => value.ceil(),
         2 => value.trunc(),
-        _ => value.round(),
+        _ => {
+            let lower = value.floor();
+            let fraction = value - lower;
+            if fraction < 0.5 {
+                lower
+            } else if fraction > 0.5 || (lower as i128) % 2 != 0 {
+                lower + 1.0
+            } else {
+                lower
+            }
+        }
     }
 }
+
+fn rational_parts(value: Number) -> Option<(i128, i128)> {
+    match value {
+        Number::Integer(n) => Some((n, 1)),
+        Number::Ratio(n, d) => Some((n, d)),
+        Number::Float(_) | Number::Complex(_, _) => None,
+    }
+}
+
+fn exact_quotient(numerator: i128, denominator: i128, mode: u8) -> i128 {
+    let q = match mode {
+        0 => numerator.div_euclid(denominator),
+        1 => (-numerator).div_euclid(denominator).wrapping_neg(),
+        2 => numerator / denominator,
+        _ => {
+            let trunc = numerator / denominator;
+            let remainder = numerator % denominator;
+            let comparison = remainder.abs().saturating_mul(2).cmp(&denominator);
+            if comparison.is_gt() || (comparison.is_eq() && trunc.unsigned_abs() % 2 == 1) {
+                trunc + numerator.signum()
+            } else {
+                trunc
+            }
+        }
+    };
+    q
+}
+
+fn exact_round(value: Number, divisor: Number, mode: u8) -> Option<(Number, Number)> {
+    let (value_n, value_d) = rational_parts(value)?;
+    let (divisor_n, divisor_d) = rational_parts(divisor)?;
+    if divisor_n == 0 {
+        return None;
+    }
+    let numerator = value_n.checked_mul(divisor_d)?;
+    let denominator = value_d.checked_mul(divisor_n)?;
+    let sign = denominator.signum();
+    let numerator = numerator * sign;
+    let denominator = denominator.abs();
+    let quotient = exact_quotient(numerator, denominator, mode);
+    let remainder_n = value_n
+        .checked_mul(divisor_d)?
+        .checked_sub(quotient.checked_mul(value_d.checked_mul(divisor_n)?)?)?;
+    Some((
+        Number::Integer(quotient),
+        ratio(remainder_n, value_d.checked_mul(divisor_d)?),
+    ))
+}
+
 pub fn round_dispatch(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     args: &[Word],
     values: &mut MultipleValues,
     mode: u8,
+    float_quotient: bool,
 ) -> Result<Word, ObjectError> {
-    let x = number(ctx, args[0])?.to_f64();
-    let divisor = if args.len() > 1 {
-        number(ctx, args[1])?.to_f64()
-    } else {
-        1.0
+    let value = number(ctx, args.first().copied().ok_or(ObjectError::TypeError)?)?;
+    let divisor = match args.get(1).copied() {
+        Some(value) => number(ctx, value)?,
+        None => Number::Integer(1),
     };
-    if divisor == 0.0 {
-        return Err(ObjectError::TypeError);
-    }
-    let q = round_pair(x / divisor, mode);
-    let rem = x - q * divisor;
-    let quotient = word(ctx, runtime, Number::Float(q))?;
-    let remainder = word(ctx, runtime, Number::Float(rem))?;
+    let (quotient, remainder) = match exact_round(value, divisor, mode) {
+        Some((quotient, remainder)) => (quotient, remainder),
+        None => {
+            let divisor = divisor.to_f64();
+            if divisor == 0.0 {
+                return Err(ObjectError::TypeError);
+            }
+            let quotient = round_float(value.to_f64() / divisor, mode);
+            (
+                Number::Float(quotient),
+                Number::Float(value.to_f64() - quotient * divisor),
+            )
+        }
+    };
+    let quotient = word(
+        ctx,
+        runtime,
+        if float_quotient {
+            Number::Float(quotient.to_f64())
+        } else {
+            quotient
+        },
+    )?;
+    let remainder = word(ctx, runtime, remainder)?;
     values.set(&[quotient, remainder]);
     Ok(quotient)
 }
@@ -470,7 +546,7 @@ pub fn floor(
     args: &[Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    round_dispatch(ctx, runtime, args, values, 0)
+    round_dispatch(ctx, runtime, args, values, 0, false)
 }
 pub fn ceiling(
     ctx: &mut ThreadContext,
@@ -478,7 +554,7 @@ pub fn ceiling(
     args: &[Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    round_dispatch(ctx, runtime, args, values, 1)
+    round_dispatch(ctx, runtime, args, values, 1, false)
 }
 pub fn truncate(
     ctx: &mut ThreadContext,
@@ -486,7 +562,7 @@ pub fn truncate(
     args: &[Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    round_dispatch(ctx, runtime, args, values, 2)
+    round_dispatch(ctx, runtime, args, values, 2, false)
 }
 pub fn round(
     ctx: &mut ThreadContext,
@@ -494,7 +570,7 @@ pub fn round(
     args: &[Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    round_dispatch(ctx, runtime, args, values, 3)
+    round_dispatch(ctx, runtime, args, values, 3, false)
 }
 pub fn ffloor(
     ctx: &mut ThreadContext,
@@ -502,7 +578,7 @@ pub fn ffloor(
     args: &[Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    floor(ctx, runtime, args, values)
+    round_dispatch(ctx, runtime, args, values, 0, true)
 }
 pub fn fceiling(
     ctx: &mut ThreadContext,
@@ -510,7 +586,7 @@ pub fn fceiling(
     args: &[Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    ceiling(ctx, runtime, args, values)
+    round_dispatch(ctx, runtime, args, values, 1, true)
 }
 pub fn ftruncate(
     ctx: &mut ThreadContext,
@@ -518,7 +594,7 @@ pub fn ftruncate(
     args: &[Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    truncate(ctx, runtime, args, values)
+    round_dispatch(ctx, runtime, args, values, 2, true)
 }
 pub fn fround(
     ctx: &mut ThreadContext,
@@ -526,7 +602,7 @@ pub fn fround(
     args: &[Word],
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    round(ctx, runtime, args, values)
+    round_dispatch(ctx, runtime, args, values, 3, true)
 }
 
 pub fn modulo(

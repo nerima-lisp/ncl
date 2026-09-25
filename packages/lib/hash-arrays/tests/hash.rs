@@ -1,17 +1,53 @@
 #![allow(missing_docs)]
 
 use ncl_lib_hash_arrays::hash::{
-    HashTableOptions, LispValue, clrhash, gethash, hash_table_count, make_hash_table, remhash,
-    set_hash_value,
+    clrhash, gethash, hash_table_count, make_hash_table, remhash, set_hash_value, HashTableOptions,
+    LispValue,
 };
-use ncl_object::{Runtime, ThreadContext, Word};
+use ncl_object::{
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, LambdaList, Parameter, ParameterType, Runtime, ThreadContext,
+    Word,
+};
 
 fn runtime_and_context() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().expect("create runtime");
     let mut context = ThreadContext::new();
     context.register(&runtime).expect("register runtime");
+    ncl_lib_hash_arrays::register(&mut context, &runtime).expect("register hash builtins");
     (runtime, context)
 }
+
+fn keyword(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Word {
+    ncl_object::Package::from(
+        runtime
+            .ensure_package(ctx, "KEYWORD")
+            .expect("keyword package"),
+    )
+    .intern(ctx, runtime, name)
+    .expect("intern keyword")
+    .0
+}
+
+fn callback(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    args.required(0)
+}
+
+const CALLBACK_PARAMETERS: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("KEY"),
+        ty: ParameterType::Any,
+    },
+    Parameter {
+        name: BuiltinName::new("VALUE"),
+        ty: ParameterType::Any,
+    },
+];
 
 #[test]
 fn typed_hash_domain_round_trip_and_clear() {
@@ -29,4 +65,100 @@ fn typed_hash_domain_round_trip_and_clear() {
     assert_eq!(hash_table_count(&context, table).expect("count"), 1);
     assert!(remhash(&mut context, &runtime, table, key).expect("remhash"));
     assert_eq!(clrhash(&mut context, &runtime, table).expect("clrhash"), 0);
+}
+
+#[test]
+fn hash_builtins_make_with_keywords_and_access_weakness() {
+    let (runtime, mut context) = runtime_and_context();
+    let make = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut context, "COMMON-LISP", "MAKE-HASH-TABLE")
+            .expect("make-hash-table function"),
+    )
+    .expect("function object");
+    let weakness_keyword = keyword(&mut context, &runtime, "WEAKNESS");
+    let key_keyword = keyword(&mut context, &runtime, "KEY");
+    let table = runtime
+        .call_builtin(&mut context, make, &[weakness_keyword, key_keyword])
+        .expect("make hash table");
+    let weakness = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut context, "COMMON-LISP", "HASH-TABLE-WEAKNESS")
+            .expect("weakness function"),
+    )
+    .expect("function object");
+    assert_eq!(
+        runtime.call_builtin(&mut context, weakness, &[table]),
+        Ok(Word::fixnum(1))
+    );
+}
+
+#[test]
+fn maphash_calls_registered_function_and_rejects_bad_arguments() {
+    let (runtime, mut context) = runtime_and_context();
+    let callback = runtime
+        .register_builtin(
+            &mut context,
+            BuiltinIdentifier::new(
+                BuiltinPackage::NclTest,
+                BuiltinName::new("MAPHASH-CALLBACK"),
+            ),
+            BuiltinImplementation::direct(
+                Builtin {
+                    lambda_list: LambdaList::fixed(CALLBACK_PARAMETERS),
+                    convention: BuiltinConvention::Direct(Arity::exact(2)),
+                },
+                callback,
+            ),
+        )
+        .expect("register callback");
+    let table = make_hash_table(&mut context, &runtime, HashTableOptions::default())
+        .expect("make hash table");
+    set_hash_value(
+        &mut context,
+        &runtime,
+        table,
+        LispValue::from_word(Word::fixnum(1)),
+        LispValue::from_word(Word::fixnum(2)),
+    )
+    .expect("insert");
+    let maphash = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut context, "COMMON-LISP", "MAPHASH")
+            .expect("maphash function"),
+    )
+    .expect("function object");
+    assert_eq!(
+        runtime.call_builtin(
+            &mut context,
+            maphash,
+            &[callback.as_word(), table.as_word()]
+        ),
+        Ok(table.as_word())
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut context, maphash, &[Word::NIL, table.as_word()]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+}
+
+#[test]
+fn make_hash_table_rejects_odd_or_unknown_keywords() {
+    let (runtime, mut context) = runtime_and_context();
+    let make = ncl_object::FunctionObject::try_from(
+        runtime
+            .function(&mut context, "COMMON-LISP", "MAKE-HASH-TABLE")
+            .expect("make-hash-table function"),
+    )
+    .expect("function object");
+    let test_keyword = keyword(&mut context, &runtime, "TEST");
+    let unknown_keyword = keyword(&mut context, &runtime, "NO-SUCH-KEY");
+    assert_eq!(
+        runtime.call_builtin(&mut context, make, &[test_keyword]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut context, make, &[unknown_keyword, Word::NIL]),
+        Err(ncl_object::ObjectError::TypeError)
+    );
 }

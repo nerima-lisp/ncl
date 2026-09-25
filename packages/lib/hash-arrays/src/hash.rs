@@ -1,10 +1,11 @@
 //! Typed hash-table domain operations and builtin-boundary views.
 
-use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
+use ncl_object::hash_table::{sxhash, HashTable, HashTest, Weakness};
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, LispError, MultipleValues, ObjectError, ObjectType, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, classify_object,
+    classify_object, string_length, string_ref, symbol_name, Builtin, BuiltinArgs,
+    BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
+    LambdaList, LispError, MultipleValues, ObjectError, ObjectType, Parameter, ParameterType,
+    Runtime, ThreadContext, Word,
 };
 
 /// An opaque Lisp value accepted as a hash-table key or value.
@@ -177,6 +178,14 @@ pub fn hash_table_test(ctx: &ThreadContext, table: HashTableView) -> Result<Hash
     table.0.test(ctx).map_err(object_error)
 }
 
+/// Return the table's weak-reference policy.
+pub fn hash_table_weakness(
+    ctx: &ThreadContext,
+    table: HashTableView,
+) -> Result<Weakness, LispError> {
+    table.0.weakness(ctx).map_err(object_error)
+}
+
 /// Return the number of live entries.
 pub fn hash_table_count(ctx: &ThreadContext, table: HashTableView) -> Result<usize, LispError> {
     table.0.count(ctx).map_err(object_error)
@@ -262,13 +271,113 @@ fn hash_table_test_builtin(
     ))
 }
 
+fn hash_table_weakness_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    Ok(Word::fixnum(
+        hash_table_weakness(ctx, table(ctx, *args, 0)?).map_err(boundary)? as i64,
+    ))
+}
+
+fn maphash_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let function = ncl_object::FunctionObject::try_from(args.required(0)?)?;
+    let table = table(ctx, *args, 1)?;
+    let mut entries = Vec::new();
+    table
+        .0
+        .for_each_entry(ctx, |key, value| entries.push((key, value)))?;
+    for (key, value) in entries {
+        runtime.call_builtin(ctx, function, &[key, value])?;
+    }
+    Ok(table.as_word())
+}
+
+fn symbol_named(ctx: &ThreadContext, word: Word, expected: &str) -> Result<bool, ObjectError> {
+    if !matches!(classify_object(ctx, word), ncl_object::ObjectRef::Symbol(_)) {
+        return Ok(false);
+    }
+    let name = symbol_name(ctx, word)?;
+    let length = string_length(ctx, name)?;
+    if length != expected.len() {
+        return Ok(false);
+    }
+    for (index, expected) in expected.chars().enumerate() {
+        if string_ref(ctx, name, index)? != expected {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn make_hash_keyword(
+    ctx: &ThreadContext,
+    keyword: Word,
+    value: Word,
+    options: &mut HashTableOptions,
+) -> Result<(), ObjectError> {
+    if symbol_named(ctx, keyword, "TEST")? {
+        options.test = if symbol_named(ctx, value, "EQ")? {
+            HashTest::Eq
+        } else if symbol_named(ctx, value, "EQL")? {
+            HashTest::Eql
+        } else if symbol_named(ctx, value, "EQUAL")? {
+            HashTest::Equal
+        } else if symbol_named(ctx, value, "EQUALP")? {
+            HashTest::Equalp
+        } else {
+            return Err(ObjectError::TypeError);
+        };
+    } else if symbol_named(ctx, keyword, "WEAKNESS")? {
+        options.weakness = if symbol_named(ctx, value, "KEY")? {
+            Weakness::Key
+        } else if symbol_named(ctx, value, "VALUE")? {
+            Weakness::Value
+        } else if symbol_named(ctx, value, "KEY-AND-VALUE")? {
+            Weakness::KeyAndValue
+        } else if symbol_named(ctx, value, "KEY-OR-VALUE")? {
+            Weakness::KeyOrValue
+        } else if symbol_named(ctx, value, "NIL")? {
+            Weakness::None
+        } else {
+            return Err(ObjectError::TypeError);
+        };
+    } else if symbol_named(ctx, keyword, "REHASH-SIZE")?
+        || symbol_named(ctx, keyword, "REHASH-THRESHOLD")?
+    {
+        return Err(ObjectError::Unsupported);
+    } else {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(())
+}
+
 fn make_hash_table_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    _: &BuiltinArgs<'_>,
+    args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(make_hash_table(ctx, runtime, HashTableOptions::default())
+    if args.len() % 2 != 0 {
+        return Err(ObjectError::TypeError);
+    }
+    let mut options = HashTableOptions::default();
+    for pair in (0..args.len()).step_by(2) {
+        make_hash_keyword(
+            ctx,
+            args.required(pair)?,
+            args.required(pair + 1)?,
+            &mut options,
+        )?;
+    }
+    Ok(make_hash_table(ctx, runtime, options)
         .map_err(boundary)?
         .as_word())
 }
@@ -360,6 +469,34 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
             ty: ParameterType::Any,
         },
     ];
+    const MAKE_HASH_TABLE_KEYS: &[Parameter] = &[
+        Parameter {
+            name: BuiltinName::new("TEST"),
+            ty: ParameterType::Any,
+        },
+        Parameter {
+            name: BuiltinName::new("REHASH-SIZE"),
+            ty: ParameterType::Any,
+        },
+        Parameter {
+            name: BuiltinName::new("REHASH-THRESHOLD"),
+            ty: ParameterType::Any,
+        },
+        Parameter {
+            name: BuiltinName::new("WEAKNESS"),
+            ty: ParameterType::Any,
+        },
+    ];
+    const MAPHASH: &[Parameter] = &[
+        Parameter {
+            name: BuiltinName::new("FUNCTION"),
+            ty: ParameterType::Any,
+        },
+        Parameter {
+            name: BuiltinName::new("TABLE"),
+            ty: ParameterType::Any,
+        },
+    ];
     let entries: &[(BuiltinName, Builtin, ncl_object::RustBuiltin)] = &[
         (
             BuiltinName::new("HASH-TABLE-P"),
@@ -394,12 +531,28 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
             hash_table_test_builtin,
         ),
         (
+            BuiltinName::new("HASH-TABLE-WEAKNESS"),
+            Builtin {
+                lambda_list: LambdaList::fixed(ONE),
+                convention: BuiltinConvention::Direct(ncl_object::Arity::exact(1)),
+            },
+            hash_table_weakness_builtin,
+        ),
+        (
             BuiltinName::new("MAKE-HASH-TABLE"),
             Builtin {
-                lambda_list: LambdaList::fixed(&[]),
-                convention: BuiltinConvention::Direct(ncl_object::Arity::exact(0)),
+                lambda_list: LambdaList::with_keys(&[], MAKE_HASH_TABLE_KEYS, false),
+                convention: BuiltinConvention::Adapted,
             },
             make_hash_table_builtin,
+        ),
+        (
+            BuiltinName::new("MAPHASH"),
+            Builtin {
+                lambda_list: LambdaList::fixed(MAPHASH),
+                convention: BuiltinConvention::Direct(ncl_object::Arity::exact(2)),
+            },
+            maphash_builtin,
         ),
         (
             BuiltinName::new("GETHASH"),

@@ -4,7 +4,12 @@
 //! types so that array arithmetic and bounds checks do not depend on the
 //! tagged-word ABI.
 
-use ncl_object::{ArrayElementType, LispError, ObjectType, Word};
+use ncl_object::{
+    classify_object, ArrayElementType, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier,
+    BuiltinImplementation, BuiltinName, BuiltinPackage, Fixnum, LambdaList, LispError,
+    MultipleValues, ObjectError, ObjectType, Parameter, ParameterType, Runtime, ThreadContext,
+    Word,
+};
 
 /// A non-negative array dimension.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -153,7 +158,7 @@ impl From<ArrayElementType> for ElementType {
 /// Typed array metadata and row-major operations.
 pub mod builtins {
     use super::{Dimension, Dimensions, LispError, RowMajorIndex};
-    use ncl_object::{Array, Fixnum, ThreadContext, Word, array_dimensions, array_row_major_ref};
+    use ncl_object::{array_dimensions, array_row_major_ref, Array, Fixnum, ThreadContext, Word};
 
     /// Convert a builtin argument into an array view at the ABI boundary.
     pub fn array_argument(ctx: &ThreadContext, word: Word) -> Result<Array, LispError> {
@@ -234,6 +239,299 @@ pub mod register {
             convention: BuiltinConvention::Direct(ncl_object::Arity::exact(1)),
         }
     }
+}
+
+fn array_word(ctx: &ThreadContext, word: Word) -> Result<Word, ObjectError> {
+    match classify_object(ctx, word) {
+        ncl_object::ObjectRef::Array(_)
+        | ncl_object::ObjectRef::SimpleVector(_)
+        | ncl_object::ObjectRef::SpecializedArray(_) => Ok(word),
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn rank_dimensions(ctx: &ThreadContext, array: Word) -> Result<Vec<usize>, ObjectError> {
+    match classify_object(ctx, array) {
+        ncl_object::ObjectRef::Array(_) => ncl_object::array_dimensions(ctx, array),
+        ncl_object::ObjectRef::SimpleVector(_) => {
+            Ok(vec![ncl_object::simple_vector_length(ctx, array)?])
+        }
+        ncl_object::ObjectRef::SpecializedArray(_) => {
+            let mut length = 0;
+            while ncl_object::specialized_array_ref(ctx, array, length).is_ok() {
+                length += 1;
+            }
+            Ok(vec![length])
+        }
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn row_ref(ctx: &ThreadContext, array: Word, index: usize) -> Result<Word, ObjectError> {
+    match classify_object(ctx, array) {
+        ncl_object::ObjectRef::Array(_) => ncl_object::array_row_major_ref(ctx, array, index),
+        ncl_object::ObjectRef::SimpleVector(_) => ncl_object::simple_vector_ref(ctx, array, index),
+        ncl_object::ObjectRef::SpecializedArray(_) => {
+            ncl_object::specialized_array_ref(ctx, array, index)
+        }
+        _ => Err(ObjectError::TypeError),
+    }
+}
+
+fn fixnum(word: Word) -> Result<usize, ObjectError> {
+    usize::try_from(
+        Fixnum::try_from_word(word)
+            .map_err(|_| ObjectError::TypeError)?
+            .value(),
+    )
+    .map_err(|_| ObjectError::TypeError)
+}
+
+fn total(ctx: &ThreadContext, array: Word) -> Result<usize, ObjectError> {
+    rank_dimensions(ctx, array)?
+        .into_iter()
+        .try_fold(1_usize, |a, b| a.checked_mul(b).ok_or(ObjectError::Layout))
+}
+
+fn array_rank_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let rank = rank_dimensions(ctx, array_word(ctx, args.required(0)?)?)?.len();
+    i64::try_from(rank)
+        .map(Word::fixnum)
+        .map_err(|_| ObjectError::Layout)
+}
+
+fn array_dimensions_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let dimensions = rank_dimensions(ctx, array_word(ctx, args.required(0)?)?)?;
+    let values = dimensions
+        .into_iter()
+        .map(|v| {
+            i64::try_from(v)
+                .map(Word::fixnum)
+                .map_err(|_| ObjectError::Layout)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    ncl_object::make_simple_vector(ctx, runtime, &values)
+}
+
+fn array_total_size_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    i64::try_from(total(ctx, array_word(ctx, args.required(0)?)?)?)
+        .map(Word::fixnum)
+        .map_err(|_| ObjectError::Layout)
+}
+
+fn aref_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let array = array_word(ctx, args.required(0)?)?;
+    let dimensions = rank_dimensions(ctx, array)?;
+    if args.len() != dimensions.len() + 1 {
+        return Err(ObjectError::TypeError);
+    }
+    let mut index = 0usize;
+    for (ordinal, dimension) in dimensions.into_iter().enumerate() {
+        let word = args.get(ordinal + 1).ok_or(ObjectError::TypeError)?;
+        let subscript = fixnum(word)?;
+        if subscript >= dimension {
+            return Err(ObjectError::TypeError);
+        }
+        index = index
+            .checked_mul(dimension)
+            .and_then(|v| v.checked_add(subscript))
+            .ok_or(ObjectError::Layout)?;
+    }
+    row_ref(ctx, array, index)
+}
+
+fn row_major_aref_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let array = array_word(ctx, args.required(0)?)?;
+    row_ref(ctx, array, fixnum(args.required(1)?)?)
+}
+
+fn svref_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let array = args.required(0)?;
+    if !matches!(
+        classify_object(ctx, array),
+        ncl_object::ObjectRef::SimpleVector(_)
+    ) {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_object::simple_vector_ref(ctx, array, fixnum(args.required(1)?)?)
+}
+
+fn bit_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let array = args.required(0)?;
+    if !matches!(
+        classify_object(ctx, array),
+        ncl_object::ObjectRef::SpecializedArray(_)
+    ) || ncl_object::specialized_array_element_type(ctx, array)? != ArrayElementType::Bit
+    {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_object::specialized_array_ref(ctx, array, fixnum(args.required(1)?)?)
+}
+
+fn sbit_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let array = args.required(0)?;
+    if !matches!(
+        classify_object(ctx, array),
+        ncl_object::ObjectRef::SpecializedArray(_)
+    ) || ncl_object::specialized_array_element_type(ctx, array)? != ArrayElementType::Bit
+    {
+        return Err(ObjectError::TypeError);
+    }
+    let index = fixnum(args.required(1)?)?;
+    let value = args.required(2)?;
+    ncl_object::specialized_array_set(ctx, array, index, value)?;
+    Ok(value)
+}
+
+fn bit_binary(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    op: fn(bool, bool) -> bool,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let left = args.required(0)?;
+    let right = args.required(1)?;
+    if ncl_object::specialized_array_element_type(ctx, left)? != ArrayElementType::Bit
+        || ncl_object::specialized_array_element_type(ctx, right)? != ArrayElementType::Bit
+    {
+        return Err(ObjectError::TypeError);
+    }
+    let shape = rank_dimensions(ctx, left)?;
+    if shape != rank_dimensions(ctx, right)? {
+        return Err(ObjectError::TypeError);
+    }
+    let mut values = Vec::with_capacity(total(ctx, left)?);
+    for index in 0..total(ctx, left)? {
+        let a = row_ref(ctx, left, index)?
+            .as_fixnum()
+            .ok_or(ObjectError::TypeError)?
+            == 1;
+        let b = row_ref(ctx, right, index)?
+            .as_fixnum()
+            .ok_or(ObjectError::TypeError)?
+            == 1;
+        values.push(Word::fixnum(i64::from(op(a, b))));
+    }
+    ncl_object::make_specialized_array(ctx, runtime, ArrayElementType::Bit, &values)
+}
+
+fn bit_and(
+    ctx: &mut ThreadContext,
+    r: &Runtime,
+    a: &BuiltinArgs<'_>,
+    v: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    bit_binary(ctx, r, a, |x, y| x & y, v)
+}
+fn bit_ior(
+    ctx: &mut ThreadContext,
+    r: &Runtime,
+    a: &BuiltinArgs<'_>,
+    v: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    bit_binary(ctx, r, a, |x, y| x | y, v)
+}
+fn bit_xor(
+    ctx: &mut ThreadContext,
+    r: &Runtime,
+    a: &BuiltinArgs<'_>,
+    v: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    bit_binary(ctx, r, a, |x, y| x ^ y, v)
+}
+
+fn register_one(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: &'static str,
+    arity: u8,
+    function: ncl_object::RustBuiltin,
+) -> Result<(), ObjectError> {
+    let parameters: &'static [Parameter] = Box::leak(
+        (0..usize::from(arity))
+            .map(|_| Parameter {
+                name: BuiltinName::new("ARG"),
+                ty: ParameterType::Any,
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+    );
+    let descriptor = Builtin {
+        lambda_list: LambdaList::with_rest(&parameters[..1], parameters[0]),
+        convention: BuiltinConvention::Direct(ncl_object::Arity::exact(arity)),
+    };
+    runtime
+        .register_builtin(
+            ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            BuiltinImplementation::direct(descriptor, function),
+        )
+        .map(|_| ())
+}
+
+/// Register the array/vector/bit builtins implemented in this module.
+pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
+    for (name, arity, function) in [
+        (
+            "ARRAY-RANK",
+            1,
+            array_rank_builtin as ncl_object::RustBuiltin,
+        ),
+        ("ARRAY-DIMENSIONS", 1, array_dimensions_builtin),
+        ("ARRAY-TOTAL-SIZE", 1, array_total_size_builtin),
+        ("AREF", 2, aref_builtin),
+        ("ROW-MAJOR-AREF", 2, row_major_aref_builtin),
+        ("SVREF", 2, svref_builtin),
+        ("BIT", 2, bit_builtin),
+        ("SBIT", 3, sbit_builtin),
+        ("BIT-AND", 2, bit_and),
+        ("BIT-IOR", 2, bit_ior),
+        ("BIT-XOR", 2, bit_xor),
+    ] {
+        register_one(ctx, runtime, name, arity, function)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

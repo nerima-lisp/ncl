@@ -163,7 +163,7 @@ pub mod builtins {
     /// Convert a builtin argument into an array view at the ABI boundary.
     pub fn array_argument(ctx: &ThreadContext, word: Word) -> Result<Array, LispError> {
         match ncl_object::classify_object(ctx, word) {
-            ncl_object::ObjectRef::Array(value) => Ok(Array::from(value)),
+            ncl_object::ObjectRef::Array(value) => Ok(Array::from_word(value)),
             _ => Err(LispError::TypeError {
                 datum: word,
                 expected: ncl_object::ObjectType::Array,
@@ -334,6 +334,144 @@ fn array_total_size_builtin(
         .map_err(|_| ObjectError::Layout)
 }
 
+fn symbol_name_is(ctx: &ThreadContext, word: Word, expected: &str) -> Result<bool, ObjectError> {
+    if !matches!(classify_object(ctx, word), ncl_object::ObjectRef::Symbol(_)) {
+        return Ok(false);
+    }
+    let name = ncl_object::symbol_name(ctx, word)?;
+    if ncl_object::string_length(ctx, name)? != expected.len() {
+        return Ok(false);
+    }
+    expected
+        .chars()
+        .enumerate()
+        .try_fold(true, |same, (index, character)| {
+            Ok(same && ncl_object::string_ref(ctx, name, index)? == character)
+        })
+}
+
+fn dimensions_argument(ctx: &mut ThreadContext, word: Word) -> Result<Vec<usize>, ObjectError> {
+    if let Some(value) = word.as_fixnum() {
+        return Ok(vec![usize::try_from(value).map_err(|_| ObjectError::TypeError)?]);
+    }
+    let mut dimensions = Vec::new();
+    let mut cursor = word;
+    while cursor != Word::NIL {
+        let dimension = ncl_object::car(ctx, cursor)?
+            .as_fixnum()
+            .ok_or(ObjectError::TypeError)?;
+        dimensions.push(usize::try_from(dimension).map_err(|_| ObjectError::TypeError)?);
+        cursor = ncl_object::cdr(ctx, cursor)?;
+    }
+    if dimensions.is_empty() {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(dimensions)
+}
+
+fn keyword(ctx: &mut ThreadContext, args: &BuiltinArgs<'_>, name: &str) -> Result<Option<Word>, ObjectError> {
+    if !(args.len() - 1).is_multiple_of(2) {
+        return Err(ObjectError::TypeError);
+    }
+    for index in (1..args.len()).step_by(2) {
+        if symbol_name_is(ctx, args.required(index)?, name)? {
+            return Ok(Some(args.required(index + 1)?));
+        }
+    }
+    Ok(None)
+}
+
+fn element_type(ctx: &mut ThreadContext, word: Word) -> Result<ArrayElementType, ObjectError> {
+    for (name, kind) in [
+        ("T", ArrayElementType::T),
+        ("BIT", ArrayElementType::Bit),
+        ("CHARACTER", ArrayElementType::Character),
+        ("BASE-CHAR", ArrayElementType::BaseChar),
+        ("FIXNUM", ArrayElementType::Fixnum),
+        ("SIGNED-BYTE", ArrayElementType::Signed),
+        ("UNSIGNED-BYTE", ArrayElementType::Unsigned),
+        ("SINGLE-FLOAT", ArrayElementType::SingleFloat),
+        ("DOUBLE-FLOAT", ArrayElementType::DoubleFloat),
+    ] {
+        if symbol_name_is(ctx, word, name)? {
+            return Ok(kind);
+        }
+    }
+    Err(ObjectError::TypeError)
+}
+
+fn make_array_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let dimensions = dimensions_argument(ctx, args.required(0)?)?;
+    let fill_pointer = keyword(ctx, args, "FILL-POINTER")?
+        .filter(|word| *word != Word::NIL)
+        .map(fixnum)
+        .transpose()?;
+    let displaced_to = keyword(ctx, args, "DISPLACED-TO")?;
+    let offset = keyword(ctx, args, "DISPLACED-INDEX-OFFSET")?
+        .map(fixnum)
+        .transpose()?
+        .unwrap_or(0);
+    let adjustable = keyword(ctx, args, "ADJUSTABLE")?
+        .is_some_and(|word| word != Word::NIL);
+    let initial_element = keyword(ctx, args, "INITIAL-ELEMENT")?.unwrap_or(Word::NIL);
+    let kind = keyword(ctx, args, "ELEMENT-TYPE")?
+        .map(|word| element_type(ctx, word))
+        .transpose()?
+        .unwrap_or(ArrayElementType::T);
+    ncl_object::make_array(
+        ctx,
+        runtime,
+        &dimensions,
+        ncl_object::ArrayOptions {
+            element_type: kind,
+            initial_element,
+            adjustable,
+            fill_pointer,
+            displaced_to,
+            displaced_index_offset: offset,
+        },
+    )
+}
+
+fn adjust_array_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let old = array_word(ctx, args.required(0)?)?;
+    let dimensions = dimensions_argument(ctx, args.required(1)?)?;
+    let kind = keyword(ctx, args, "ELEMENT-TYPE")?
+        .map(|word| element_type(ctx, word))
+        .transpose()?
+        .unwrap_or(ArrayElementType::T);
+    let result = ncl_object::make_array(
+        ctx,
+        runtime,
+        &dimensions,
+        ncl_object::ArrayOptions {
+            element_type: kind,
+            initial_element: Word::NIL,
+            adjustable: true,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let count = total(ctx, old)?.min(total(ctx, result)?);
+    for index in 0..count {
+        let value = row_ref(ctx, old, index)?;
+        ncl_object::array_row_major_set(ctx, result, index, value)?;
+    }
+    values.clear();
+    Ok(result)
+}
+
 fn aref_builtin(
     ctx: &mut ThreadContext,
     _: &Runtime,
@@ -498,7 +636,7 @@ fn register_one(
             .into_boxed_slice(),
     );
     let descriptor = Builtin {
-        lambda_list: LambdaList::with_rest(&parameters[..1], parameters[0]),
+        lambda_list: LambdaList::fixed(parameters),
         convention: BuiltinConvention::Direct(ncl_object::Arity::exact(arity)),
     };
     runtime
@@ -510,8 +648,73 @@ fn register_one(
         .map(|_| ())
 }
 
+fn register_aref(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
+    const REQUIRED: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("ARRAY"),
+        ty: ParameterType::Any,
+    }];
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("AREF")),
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::with_rest(
+                    REQUIRED,
+                    Parameter { name: BuiltinName::new("INDEX"), ty: ParameterType::Any },
+                ),
+                convention: BuiltinConvention::Direct(ncl_object::Arity::exact(2)),
+            },
+            aref_builtin,
+        ),
+    )?;
+    Ok(())
+}
+
 /// Register the array/vector/bit builtins implemented in this module.
 pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
+    const MAKE_ARRAY_KEYS: &[Parameter] = &[
+        Parameter { name: BuiltinName::new("ELEMENT-TYPE"), ty: ParameterType::Any },
+        Parameter { name: BuiltinName::new("INITIAL-ELEMENT"), ty: ParameterType::Any },
+        Parameter { name: BuiltinName::new("ADJUSTABLE"), ty: ParameterType::Any },
+        Parameter { name: BuiltinName::new("FILL-POINTER"), ty: ParameterType::Any },
+        Parameter { name: BuiltinName::new("DISPLACED-TO"), ty: ParameterType::Any },
+        Parameter { name: BuiltinName::new("DISPLACED-INDEX-OFFSET"), ty: ParameterType::Any },
+    ];
+    const MAKE_ARRAY_REQUIRED: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("DIMENSIONS"),
+        ty: ParameterType::Any,
+    }];
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("MAKE-ARRAY")),
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::with_keys(MAKE_ARRAY_REQUIRED, MAKE_ARRAY_KEYS, false),
+                convention: BuiltinConvention::Adapted,
+            },
+            make_array_builtin,
+        ),
+    )?;
+    const ADJUST_ARRAY_KEYS: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("ELEMENT-TYPE"),
+        ty: ParameterType::Any,
+    }];
+    const ADJUST_ARRAY_REQUIRED: &[Parameter] = &[
+        Parameter { name: BuiltinName::new("ARRAY"), ty: ParameterType::Any },
+        Parameter { name: BuiltinName::new("DIMENSIONS"), ty: ParameterType::Any },
+    ];
+    runtime.register_builtin(
+        ctx,
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("ADJUST-ARRAY")),
+        BuiltinImplementation::direct(
+            Builtin {
+                lambda_list: LambdaList::with_keys(ADJUST_ARRAY_REQUIRED, ADJUST_ARRAY_KEYS, false),
+                convention: BuiltinConvention::Adapted,
+            },
+            adjust_array_builtin,
+        ),
+    )?;
+    register_aref(ctx, runtime)?;
     for (name, arity, function) in [
         (
             "ARRAY-RANK",
@@ -520,7 +723,6 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ),
         ("ARRAY-DIMENSIONS", 1, array_dimensions_builtin),
         ("ARRAY-TOTAL-SIZE", 1, array_total_size_builtin),
-        ("AREF", 2, aref_builtin),
         ("ROW-MAJOR-AREF", 2, row_major_aref_builtin),
         ("SVREF", 2, svref_builtin),
         ("BIT", 2, bit_builtin),

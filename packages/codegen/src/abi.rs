@@ -116,6 +116,57 @@ pub trait RuntimeAbi {
     }
 }
 
+/// Supplies stable addresses for generated builtin calls without exposing target details.
+#[allow(dead_code)]
+pub trait BuiltinAddressProvider {
+    /// Return the process address for a named builtin.
+    fn builtin_address(&self, name: &str) -> Option<u64>;
+}
+
+/// Small deterministic address table suitable for embedders and tests.
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default)]
+pub struct BuiltinAddressTable(Vec<(String, u64)>);
+#[allow(dead_code)]
+impl BuiltinAddressTable {
+    /// Create an empty address table.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self(Vec::new())
+    }
+    /// Insert or replace a builtin address.
+    pub fn insert(&mut self, name: impl Into<String>, address: u64) {
+        let name = name.into();
+        if let Some(entry) = self.0.iter_mut().find(|entry| entry.0 == name) {
+            entry.1 = address;
+        } else {
+            self.0.push((name, address));
+        }
+    }
+}
+impl BuiltinAddressProvider for BuiltinAddressTable {
+    fn builtin_address(&self, name: &str) -> Option<u64> {
+        self.0
+            .iter()
+            .find(|entry| entry.0 == name)
+            .map(|entry| entry.1)
+    }
+}
+
+#[cfg(test)]
+mod builtin_address_tests {
+    use super::{BuiltinAddressProvider, BuiltinAddressTable};
+
+    #[test]
+    fn address_table_replaces_and_reads_entries() {
+        let mut table = BuiltinAddressTable::new();
+        table.insert("NCL-TEST::ADD", 0x10);
+        assert_eq!(table.builtin_address("NCL-TEST::ADD"), Some(0x10));
+        table.insert("NCL-TEST::ADD", 0x20);
+        assert_eq!(table.builtin_address("NCL-TEST::ADD"), Some(0x20));
+    }
+}
+
 /// Default x86-64 ABI policy used by tests and embedders.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct X86_64Abi;

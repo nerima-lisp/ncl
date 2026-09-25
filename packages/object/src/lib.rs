@@ -31,7 +31,10 @@ pub use array::{
     make_array, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
     simple_vector_set, string_length, string_ref, string_set,
 };
-pub use builtin::{Builtin, FunctionObject, MultipleValues, NclStatus, RegisterFn};
+pub use builtin::{
+    Builtin, BuiltinImplementation, FunctionObject, KeywordAdapter, MultipleValues, NclStatus,
+    RegisterFn, RustBuiltin,
+};
 pub use classify::{ObjectRef, classify, classify_object};
 pub use code::code_slot;
 pub use code::{
@@ -112,6 +115,7 @@ pub struct Runtime {
     layouts: Mutex<HashMap<u32, usize>>,
     next_layout: Mutex<u32>,
     layouts_registered: Mutex<bool>,
+    builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
 }
 
 #[derive(Debug)]
@@ -141,6 +145,7 @@ impl Runtime {
             layouts: Mutex::new(HashMap::new()),
             next_layout: Mutex::new(1),
             layouts_registered: Mutex::new(false),
+            builtins: Mutex::new(HashMap::new()),
         };
         runtime.register_layouts()?;
         let mut context = ThreadContext::new();

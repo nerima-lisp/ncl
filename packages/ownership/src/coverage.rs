@@ -2,7 +2,7 @@
 
 use ncl_object::{
     ObjectError, Package, Runtime, ThreadContext, Word, make_string, pop_root, push_root,
-    symbol_is_constant, symbol_is_macro, symbol_is_special,
+    symbol_function, symbol_is_constant, symbol_is_macro, symbol_is_special,
 };
 
 use crate::table::{Kind, Row, rows_for_crate};
@@ -155,6 +155,83 @@ pub fn assert_crate_coverage_from_table(
         check_row(runtime, ctx, row, &mut missing)?;
     }
     if missing.is_empty() { Ok(()) } else { Err(OwnershipError::Missing(missing)) }
+}
+
+/// Check that every owned function is present in both registries and its
+/// symbol function cell.
+pub fn assert_crate_function_bindings(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    crate_name: &str,
+) -> Result<(), OwnershipError> {
+    let rows = rows_for_crate(crate_name, PHASE_ONE)?;
+    if rows.is_empty() {
+        return Err(OwnershipError::NoRows {
+            crate_name: crate_name.to_owned(),
+        });
+    }
+    check_function_bindings(runtime, ctx, &rows)
+}
+
+/// Check function-cell bindings against caller-supplied ownership table text.
+pub fn assert_crate_function_bindings_from_table(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    table: &str,
+    crate_name: &str,
+) -> Result<(), OwnershipError> {
+    let rows = crate::table::rows_for_crate_from_str(table, crate_name, PHASE_ONE)?;
+    if rows.is_empty() {
+        return Err(OwnershipError::NoRows {
+            crate_name: crate_name.to_owned(),
+        });
+    }
+    check_function_bindings(runtime, ctx, &rows)
+}
+
+fn check_function_bindings(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    rows: &[Row],
+) -> Result<(), OwnershipError> {
+    let mut missing = Vec::new();
+    for row in rows.iter().filter(|row| row.kind.contains(&Kind::Function)) {
+        let Some(package_word) = runtime.find_package(ctx, &row.package) else {
+            missing.push(single_kind(row, Kind::Function, "package not found"));
+            continue;
+        };
+        let mut name = make_string(ctx, runtime, &row.symbol.chars().collect::<Vec<_>>())?;
+        let mut package = package_word;
+        let name_token = push_root(ctx, &mut name);
+        let package_token = push_root(ctx, &mut package);
+        let found = Package::from(package).find_symbol(ctx, name);
+        let _ = pop_root(ctx, package_token);
+        let _ = pop_root(ctx, name_token);
+        let Some((mut symbol, _)) = found? else {
+            missing.push(single_kind(row, Kind::Function, "symbol not interned"));
+            continue;
+        };
+        let symbol_token = push_root(ctx, &mut symbol);
+        let registered = runtime
+            .function(ctx, &row.package, &row.symbol)
+            .is_some_and(|value| value != Word::UNBOUND);
+        let bound = symbol_function(ctx, symbol)? != Word::UNBOUND;
+        let _ = pop_root(ctx, symbol_token);
+        if !registered {
+            missing.push(single_kind(row, Kind::Function, "function not registered"));
+        } else if !bound {
+            missing.push(single_kind(
+                row,
+                Kind::Function,
+                "symbol function cell unbound",
+            ));
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(OwnershipError::Missing(missing))
+    }
 }
 
 /// Check one table row, appending every failure to `missing`.

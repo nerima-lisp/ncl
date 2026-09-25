@@ -5,20 +5,20 @@
 //! submodules below; the `rows` accessor yields them in ownership-table
 //! order.
 
-mod sb_ext;
-mod sb_sys;
-mod sb_thread;
+mod ncl_timing;
+mod ncl_interrupts;
+mod ncl_threads;
 
 pub use ncl_ownership::{SymbolKind, SymbolRow};
 
-/// The `SB-EXT` Phase-1 symbols owned by this crate.
-pub use sb_ext::SB_EXT;
-/// The `SB-SYS` Phase-1 symbols owned by this crate.
-pub use sb_sys::SB_SYS;
-/// The `SB-THREAD` Phase-1 symbols owned by this crate.
-pub use sb_thread::SB_THREAD;
+/// The `NCL-THREADS` Phase-1 symbols owned by this crate.
+pub use ncl_timing::NCL_TIMING;
+/// The `NCL-THREADS` Phase-1 symbols owned by this crate.
+pub use ncl_interrupts::NCL_INTERRUPTS;
+/// The `NCL-THREADS` Phase-1 symbols owned by this crate.
+pub use ncl_threads::NCL_THREADS;
 
 /// Every Phase-1 symbol owned by this crate, in ownership-table order.
 pub fn rows() -> impl Iterator<Item = &'static SymbolRow> {
-    SB_EXT.iter().chain(SB_SYS).chain(SB_THREAD)
+    NCL_TIMING.iter().chain(NCL_INTERRUPTS).chain(NCL_THREADS)
 }

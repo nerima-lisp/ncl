@@ -206,7 +206,7 @@ pub fn with_deadline<T>(
     }
 }
 
-/// Run `f` with a timeout, binding `SB-EXT:*EXIT-TIMEOUT*` while it runs.
+/// Run `f` with a timeout, binding `NCL-THREADS:*TIMEOUT-EXIT*` while it runs.
 ///
 /// # Errors
 /// Returns `f`'s error, or [`ThreadError::Timeout`] when the timeout passed by
@@ -217,7 +217,7 @@ pub fn with_timeout<T>(
     seconds: Word,
     f: impl FnOnce(&mut ThreadContext) -> Result<T, ThreadError>,
 ) -> Result<T, ThreadError> {
-    let symbol = intern_internal(ctx, runtime, "SB-EXT", "*EXIT-TIMEOUT*")?;
+    let symbol = intern_internal(ctx, runtime, "NCL-THREADS", "*TIMEOUT-EXIT*")?;
     let previous = ncl_object::symbol_value(ctx, symbol)?;
     ncl_object::set_symbol_value(ctx, symbol, seconds)?;
     let result = with_deadline(ctx, seconds, f);
@@ -257,7 +257,7 @@ pub fn without_interrupts<T>(
     result
 }
 
-/// Build an `SB-SYS:DEADLINE-TIMEOUT` condition instance.
+/// Build an `NCL-THREADS:TIMEOUT-DEADLINE` condition instance.
 ///
 /// The condition class is owned by `ncl-conditions`, so this crate does not
 /// signal it directly: the `with-deadline` and `with-timeout` expanders in

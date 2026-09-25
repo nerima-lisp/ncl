@@ -99,7 +99,7 @@ pub fn make_thread(
     })
 }
 
-/// Append a thread object to the `SB-THREAD::*ALL-THREADS*` list.
+/// Append a thread object to the `NCL-THREADS::*THREADS*` list.
 ///
 /// The list lives in a symbol value cell, so the heap keeps the thread objects
 /// alive without an unregistered Rust container.
@@ -108,7 +108,7 @@ fn push_all_threads(
     runtime: &Runtime,
     object: Word,
 ) -> Result<(), ThreadError> {
-    let symbol = intern_internal(ctx, runtime, "SB-THREAD", "*ALL-THREADS*")?;
+    let symbol = intern_internal(ctx, runtime, "NCL-THREADS", "*THREADS*")?;
     let mut object = object;
     with_root(ctx, &mut object, |ctx, object| {
         let mut list = symbol_value(ctx, symbol)?;
@@ -123,12 +123,12 @@ fn push_all_threads(
     })
 }
 
-/// Return the `SB-THREAD::*ALL-THREADS*` list of thread objects.
+/// Return the `NCL-THREADS::*THREADS*` list of thread objects.
 ///
 /// # Errors
 /// Returns an object-layer error when the internal symbol cannot be interned.
 pub fn list_all_threads(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ThreadError> {
-    let symbol = intern_internal(ctx, runtime, "SB-THREAD", "*ALL-THREADS*")?;
+    let symbol = intern_internal(ctx, runtime, "NCL-THREADS", "*THREADS*")?;
     let list = symbol_value(ctx, symbol)?;
     Ok(if list == Word::UNBOUND {
         Word::NIL
@@ -202,7 +202,7 @@ pub fn interrupt_thread(ctx: &ThreadContext, thread: Word) -> Result<(), ThreadE
 
 /// Return the Lisp thread object for the calling thread.
 ///
-/// The object is cached in `SB-THREAD::*CURRENT-THREAD*`. Per-thread
+/// The object is cached in `NCL-THREADS::*CURRENT-THREAD*`. Per-thread
 /// `*current-thread*` overrides are not wired because Phase 1 symbol value
 /// cells are global defaults.
 ///
@@ -212,7 +212,7 @@ pub fn interrupt_thread(ctx: &ThreadContext, thread: Word) -> Result<(), ThreadE
 /// # Panics
 /// Panics if a root token cannot be removed in stack order.
 pub fn current_thread(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ThreadError> {
-    let symbol = intern_internal(ctx, runtime, "SB-THREAD", "*CURRENT-THREAD*")?;
+    let symbol = intern_internal(ctx, runtime, "NCL-THREADS", "*CURRENT-THREAD*")?;
     let existing = symbol_value(ctx, symbol)?;
     if existing != Word::UNBOUND && existing != Word::NIL {
         return Ok(existing);

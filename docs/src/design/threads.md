@@ -2,11 +2,11 @@
 
 ## 決定
 
-NCL は 1 OS thread を 1 Lisp thread として登録する。`ThreadContext` は TLAB、shadow roots、binding stack、multiple values、handler/cleanup/catch pointers、stack bounds、safepoint epoch、register snapshot、native state、interrupt flags、deadline、wait state を持つ。これらと共有 heap は `ncl-sys` が所有する。
+NCL-THREADS は 1 OS thread を 1 Lisp thread として登録する。`ncl-sys::Thread` は TLAB、shadow roots、handler/cleanup/catch pointers、stack bounds、safepoint epoch、register snapshot、native state、interrupt flag などの機械可視状態を持ち、`ncl-object::ThreadContext` はこれを binding stack、multiple values、pending state と組み合わせる。共有 heap と機械可視 thread state は `ncl-sys` が所有し、deadline などの API 状態は `ncl-threads` が管理する。`NCL-THREADS` の名前と API が契約の対象であり、SBCL の内部表現や動作をそのまま前提にしない。
 
-symbol の `tls_index: u32` は 1 語の thread override slot を指す。value cell は global default、TLS slot は thread override を保持し、binding entry は `(old_value, tls_index)` の 2 語とする。bind は現在値を binding stack に保存して TLS slot を新しい値へ設定し、unbind は保存値を復元して entry を pop する。mutex、condition variable、semaphore、waitqueue は `ncl-sys` の OS wrapper を使う。blocking 前に poll と interrupt/deadline 検査を行い、`enter_native` から `leave_native` を対にする。
+per-thread の special value を導入する場合の NCL-THREADS 契約は、symbol の `tls_index: u32` を 1 語の thread override slot に対応させ、value cell を global default とすることである。その場合の binding entry は `(old_value, tls_index)` の 2 語で、bind は旧値を保存して override を設定し、unbind は旧値を復元して entry を pop する。これは契約上のレイアウトであり、現 Phase 1 の `ThreadContext` は `(u32, Word)` の binding stack を持つだけで、symbol value の TLS lookup はまだ実装していない。mutex、condition variable、semaphore、waitqueue の待機は `ncl-threads` の API を通じて行い、blocking call は `enter_native` と `leave_native` で囲む。
 
-`interrupt-thread` は対象の interrupt flag と safepoint request bit を設定し、waitqueue を wake する。Lisp callback は safepoint または native transition 復帰時だけ実行する。deadline は monotonic nanoseconds の絶対値で、timeout は pending non-local exit として cleanup 後に報告する。
+`interrupt-thread` は対象の cooperative interrupt を記録し、待機中の `ncl-threads` 操作を wake する。`ncl-sys` の safepoint request bit は safepoint API が管理し、Lisp callback を任意の native instruction 上で実行しない。deadline は monotonic nanoseconds の絶対値である。現 Phase 1 の `with-deadline` と `with-timeout` は保護本体の復帰後に期限を検査し、期限切れを `ThreadError::Timeout` として返す。一般の pending non-local exit や cleanup 後の条件報告までを実装済みとはしない。
 
 ## 根拠
 
@@ -20,7 +20,7 @@ mutator 固有状態を ThreadContext に閉じ込めることで共有 Runtime 
 
 ## Phase 1 レーンが前提にしてよいこと / してはいけないこと
 
-- TLS slot は 1 語、binding entry は 2 語、blocking call は native transition とする。
+- per-thread special value を実装する際は TLS slot を 1 語、binding entry を 2 語とする。現 Phase 1 の binding API は `ThreadContext::bind`/`unbind` である。
 - thread の登録、離脱、poll、root publication を独自の global state に置かない。
 - mutex 保持中に GC request を待つ実装を追加しない。
 - 同一 OS thread 上に複数の登録 `Thread` がある場合、`collect` を呼ぶ側以外は native 状態でなければならない（STW は active mutator の poll を待つため、poll できない登録 Thread があると停止する）。
@@ -29,13 +29,13 @@ mutator 固有状態を ThreadContext に閉じ込めることで共有 Runtime 
 
 ## Poll state machine
 
-`Running -> PollRequested -> Published -> Collecting -> Running` is the normal request path. `Published` records stack bounds, callee-saved registers, current frame, and epoch. A thread blocked in native code is `Safe`; it contributes its registered roots and conservative boundary without delaying collection.
+`Running -> PollRequested -> Published -> Collecting -> Running` is the normal request path. `Published` records stack bounds, callee-saved registers, current frame, and epoch. A thread blocked in native code is `Safe`; it contributes its registered roots and conservative boundary without delaying collection. This is the `ncl-sys` safepoint contract, not a claim that every `ncl-threads` interrupt operation directly sets the safepoint word.
 
-ThreadContext fields are thread id, native stack bounds, current frame, TLAB base/limit, allocation counter, TLS area, binding stack, handler/catch/cleanup pointers, registered roots, safepoint epoch/state, interrupt flags, deadline stack, multiple-value area, wait state, native register spill area, and pending status.
+The machine-visible `ncl-sys::Thread` fields include native stack bounds, TLAB state, registered roots, safepoint epoch/state, interrupt flag, frame/register snapshots, multiple-value descriptor, handler/catch/cleanup pointers, and pending status. `ncl-object::ThreadContext` additionally owns the binding vector and multiple-value storage. The deadline stack and the `ncl-threads` thread registry are currently separate runtime state; they are not asserted to be fields of `ThreadContext`.
 
-The OS wrappers expose mutex lock/unlock, condition wait/signal/broadcast, semaphore wait/post, and waitqueue park/wake. The protocol is poll, inspect interrupt and deadline, enter native, park, wake, leave native, and poll again. `interrupt-thread` atomically sets interrupt and poll-request bits and wakes a waitqueue. Delivery occurs at a safepoint or native return.
+The `ncl-threads` API exposes mutex lock/unlock, condition wait/signal/broadcast, semaphore wait/post, and waitqueue operations over shared blocking state. A blocking operation checks its cooperative interrupt, enters native state before parking, wakes, leaves native state, and returns the result. `interrupt-thread` records the interrupt under the thread registry lock and notifies the registry condition variable; it does not by itself establish an asynchronous callback or a generated-code safepoint.
 
-`with-deadline` pushes an absolute monotonic-nanosecond deadline. `with-timeout` derives one and installs a timeout condition. Poll, blocking waits, and builtin boundaries check it; expiration becomes a pending non-local exit after cleanup. A symbol value cell supplies the global default; each thread has one override word in TLS. Binding uses the old value and TLS index, and unbinding restores the old value before removing the entry.
+`with-deadline` pushes an absolute monotonic-nanosecond deadline for the calling thread. `with-timeout` sets `NCL-THREADS:*TIMEOUT-EXIT*` around the body and uses the same deadline entry point. In the current API, both report `ThreadError::Timeout` when the protected body returns after the deadline; the blocking primitives independently return `Timeout` when their wait expires. A symbol value cell is currently global, and `ThreadContext::bind`/`unbind` records `(u32, Word)` entries; the TLS override lookup and cleanup-driven non-local exit described by the eventual contract are not yet implemented.
 
 ## Phase 1 machine-visible layout
 

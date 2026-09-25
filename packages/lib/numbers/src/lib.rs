@@ -2,6 +2,8 @@
 
 mod arithmetic;
 mod bitops;
+mod constants;
+mod random;
 mod remainder;
 mod rounding;
 mod rational_float;

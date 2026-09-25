@@ -79,7 +79,9 @@ fn private_executable_helpers_accept_valid_layouts() {
     };
     let layout_result = executable_layout(&image);
     assert!(layout_result.is_ok());
-    let Ok((mut output, layout)) = layout_result else { return };
+    let Ok((mut output, layout)) = layout_result else {
+        return;
+    };
     let header_result = write_mach_header(&mut output, MachArchitecture::X86_64, layout.commands);
     assert!(header_result.is_ok());
     let segment = ExecSegment {

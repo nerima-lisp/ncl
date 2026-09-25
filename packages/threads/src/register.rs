@@ -19,16 +19,16 @@ use crate::symbols::{SymbolKind, SymbolRow, rows};
 /// `SPINLOCK` are support classes for objects this crate creates. `SPINLOCK` is
 /// a `type` row in the table and is interned as well as installed here.
 const CLASSES: &[(&str, &str)] = &[
-    ("TIMER", "SB-EXT"),
-    ("FOREIGN-THREAD", "SB-THREAD"),
-    ("MUTEX", "SB-THREAD"),
-    ("RWLOCK", "SB-THREAD"),
-    ("SEMAPHORE", "SB-THREAD"),
-    ("SEMAPHORE-NOTIFICATION", "SB-THREAD"),
-    ("SPINLOCK", "SB-THREAD"),
-    ("THREAD", "SB-THREAD"),
-    ("WAITQUEUE", "SB-THREAD"),
-    ("PROCESS", "SB-EXT"),
+    ("TIMER", "NCL-THREADS"),
+    ("FOREIGN-THREAD", "NCL-THREADS"),
+    ("MUTEX", "NCL-THREADS"),
+    ("RWLOCK", "NCL-THREADS"),
+    ("SEMAPHORE", "NCL-THREADS"),
+    ("SEMAPHORE-NOTIFICATION", "NCL-THREADS"),
+    ("SPINLOCK", "NCL-THREADS"),
+    ("THREAD", "NCL-THREADS"),
+    ("WAITQUEUE", "NCL-THREADS"),
+    ("PROCESS", "NCL-THREADS"),
 ];
 
 /// Register every owned symbol and class with `runtime`.

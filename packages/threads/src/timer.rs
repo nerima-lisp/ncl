@@ -76,7 +76,7 @@ fn push_all_timers(
     runtime: &Runtime,
     timer: Word,
 ) -> Result<(), ThreadError> {
-    let symbol = intern_internal(ctx, runtime, "SB-EXT", "*ALL-TIMERS*")?;
+    let symbol = intern_internal(ctx, runtime, "NCL-THREADS", "*TIMERS*")?;
     let mut timer = timer;
     with_root(ctx, &mut timer, |ctx, timer| {
         let mut list = symbol_value(ctx, symbol)?;
@@ -139,12 +139,12 @@ pub fn timer_scheduled_p(ctx: &ThreadContext, timer: Word) -> Result<Word, Threa
     Ok(if scheduled { Word::TRUE } else { Word::NIL })
 }
 
-/// Return the `SB-EXT::*ALL-TIMERS*` list of timer objects.
+/// Return the `NCL-THREADS::*TIMERS*` list of timer objects.
 ///
 /// # Errors
 /// Returns an object-layer error when the internal symbol cannot be interned.
 pub fn list_all_timers(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ThreadError> {
-    let symbol = intern_internal(ctx, runtime, "SB-EXT", "*ALL-TIMERS*")?;
+    let symbol = intern_internal(ctx, runtime, "NCL-THREADS", "*TIMERS*")?;
     let list = symbol_value(ctx, symbol)?;
     Ok(if list == Word::UNBOUND {
         Word::NIL

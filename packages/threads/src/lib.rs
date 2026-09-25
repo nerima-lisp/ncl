@@ -8,7 +8,7 @@
 //! (safepoints, native transitions, heap registration) and contains no
 //! low-level code of its own.
 //!
-//! Phase 1 registers every `SB-THREAD`, `SB-SYS`, and `SB-EXT` symbol assigned
+//! Phase 1 registers every `NCL-THREADS` symbol assigned
 //! to this crate by `conformance/ownership/symbols.tsv`, and implements the
 //! runtime-side operations behind them. The `with-mutex`, `with-recursive-lock`,
 //! `with-timeout`, `with-deadline`, `with-interrupts`, and related macro
@@ -18,11 +18,11 @@
 //! # Phase 1 limitations
 //!
 //! - There is no Rust-to-Lisp call path yet, so a thread created by
-//!   `make-thread` records its function object but does not invoke it; it
+//!   `thread-spawn` records its function object but does not invoke it; it
 //!   registers its context, participates in cooperative safepoints, and waits
 //!   until it is terminated.
 //! - Symbol value cells are global defaults, so `*current-thread*` and
-//!   `symbol-value-in-thread` do not model per-thread overrides.
+//!   thread-local symbol lookup do not model per-thread overrides.
 //! - Spawning an OS thread uses `std::thread` because `ncl-sys` exposes
 //!   `pthread_create` and `pthread_join` only as raw low-level declarations; a
 //!   safe spawn/join wrapper is a needed `ncl-sys` addition.

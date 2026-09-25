@@ -1,6 +1,8 @@
 //! CLOS class descriptors and the NCL-MOP registration boundary.
 
 pub mod domain;
+pub mod initialization;
+pub mod mop;
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
@@ -398,5 +400,14 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     ctx.register(runtime)?;
     runtime.ensure_package(&mut ctx, NCL_MOP)?;
     register_classes(&mut ctx, runtime)?;
-    register_owned_symbols(&mut ctx, runtime)
+    register_owned_symbols(&mut ctx, runtime)?;
+    for descriptor in mop::builtin_descriptors() {
+        runtime.register_builtin(
+            &mut ctx,
+            BuiltinIdentifier::new(descriptor.package, descriptor.name),
+            mop::implementation(*descriptor),
+        )?;
+    }
+    initialization::register_initialization_builtins(runtime)?;
+    Ok(())
 }

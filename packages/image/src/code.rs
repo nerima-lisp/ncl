@@ -78,8 +78,11 @@ impl CodeImage {
 
     /// Return the entry byte offset within the allocation.
     #[must_use]
-    pub const fn entry_offset(&self) -> usize {
-        self.entry_offset as usize
+    pub fn entry_offset(&self) -> usize {
+        match usize::try_from(self.entry_offset) {
+            Ok(value) => value,
+            Err(_) => self.bytes.len(),
+        }
     }
 
     /// Return the complete native frame size in words.

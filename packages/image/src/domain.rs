@@ -106,7 +106,11 @@ impl Section {
     pub fn end(self) -> Result<usize, ImageError> {
         usize::try_from(self.offset.get())
             .ok()
-            .and_then(|offset| offset.checked_add(self.size.get() as usize))
+            .and_then(|offset| {
+                usize::try_from(self.size.get())
+                    .ok()
+                    .and_then(|size| offset.checked_add(size))
+            })
             .ok_or(ImageError::InvalidLayout {
                 field: "payload bounds",
             })

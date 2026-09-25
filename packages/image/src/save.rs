@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use ncl_object::hash_table::HashTable;
+use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     Bignum, CodeObject, Complex, DoubleFloat, Function, Instance, ObjectError, ObjectRef, Package,
     Ratio, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, car, cdr, classify_object,
@@ -84,7 +84,11 @@ impl<'a> Capture<'a> {
         while let Some((id, word)) = self.queue.pop_front() {
             let record = self.capture(ctx, word)?;
             let index = usize::try_from(id).map_err(|_| invalid("object index"))?;
-            self.records[index] = Some(record);
+            let slot = self
+                .records
+                .get_mut(index)
+                .ok_or_else(|| invalid("object index"))?;
+            *slot = Some(record);
         }
         Ok(root_refs)
     }
@@ -112,7 +116,7 @@ impl<'a> Capture<'a> {
 
     /// Capture one heap object's payload.
     fn capture(&mut self, ctx: &mut ThreadContext, word: Word) -> Result<Record, ImageError> {
-        if word.lowtag() == LowTag::List as u8 {
+        if word.lowtag() == low_tag(LowTag::List) {
             let car = car(ctx, word)?;
             let cdr = cdr(ctx, word)?;
             return Ok(Record::Cons {
@@ -171,7 +175,10 @@ impl<'a> Capture<'a> {
             ObjectRef::Array(_) => Err(unsupported("non-simple array")),
             ObjectRef::Readtable(_) => Err(unsupported("readtable")),
             ObjectRef::Stream(_) => Err(unsupported("stream")),
-            _ => Err(unsupported("non-heap value")),
+            ObjectRef::Fixnum(_)
+            | ObjectRef::Character(_)
+            | ObjectRef::Other { .. }
+            | ObjectRef::Immediate(_) => Err(unsupported("non-heap value")),
         }
     }
 
@@ -212,7 +219,17 @@ impl<'a> Capture<'a> {
         ctx: &mut ThreadContext,
         word: Word,
     ) -> Result<Record, ImageError> {
-        let element_type = specialized_array_element_type(ctx, word)? as u8;
+        let element_type = match specialized_array_element_type(ctx, word)? {
+            ncl_object::ArrayElementType::T => 0,
+            ncl_object::ArrayElementType::Bit => 1,
+            ncl_object::ArrayElementType::Character => 2,
+            ncl_object::ArrayElementType::BaseChar => 3,
+            ncl_object::ArrayElementType::Fixnum => 4,
+            ncl_object::ArrayElementType::Signed => 5,
+            ncl_object::ArrayElementType::Unsigned => 6,
+            ncl_object::ArrayElementType::SingleFloat => 7,
+            ncl_object::ArrayElementType::DoubleFloat => 8,
+        };
         let length = read_slot(ctx, word, specialized_array_offset::LENGTH)?
             .as_fixnum()
             .ok_or(ImageError::Object(ObjectError::Layout))?;
@@ -233,9 +250,8 @@ impl<'a> Capture<'a> {
         word: Word,
     ) -> Result<Record, ImageError> {
         let table = HashTable::from(word);
-        let test = u8::try_from(table.test(ctx)? as i64).map_err(|_| invalid("hash test"))?;
-        let weakness =
-            u8::try_from(table.weakness(ctx)? as i64).map_err(|_| invalid("hash weakness"))?;
+        let test = hash_test_tag(table.test(ctx)?);
+        let weakness = weakness_tag(table.weakness(ctx)?);
         let mut raw = Vec::new();
         table.for_each_entry(ctx, |key, value| raw.push((key, value)))?;
         let mut entries = Vec::with_capacity(raw.len());
@@ -346,10 +362,42 @@ impl<'a> Capture<'a> {
 /// Report whether a word is a heap object the image can address by record.
 fn is_heap(word: Word) -> bool {
     let tag = word.lowtag();
-    if tag == LowTag::List as u8 {
+    if tag == low_tag(LowTag::List) {
         return word != Word::NIL;
     }
-    tag == LowTag::Instance as u8 || tag == LowTag::OtherPointer as u8
+    tag == low_tag(LowTag::Instance) || tag == low_tag(LowTag::OtherPointer)
+}
+
+const fn low_tag(tag: LowTag) -> u8 {
+    match tag {
+        LowTag::Character => 0,
+        LowTag::List => 1,
+        LowTag::SingleFloat => 2,
+        LowTag::Function => 3,
+        LowTag::OtherImmediate => 4,
+        LowTag::Instance => 5,
+        LowTag::Reserved => 6,
+        LowTag::OtherPointer => 7,
+    }
+}
+
+const fn hash_test_tag(test: HashTest) -> u8 {
+    match test {
+        HashTest::Eq => 0,
+        HashTest::Eql => 1,
+        HashTest::Equal => 2,
+        HashTest::Equalp => 3,
+    }
+}
+
+const fn weakness_tag(weakness: Weakness) -> u8 {
+    match weakness {
+        Weakness::None => 0,
+        Weakness::Key => 1,
+        Weakness::Value => 2,
+        Weakness::KeyAndValue => 3,
+        Weakness::KeyOrValue => 4,
+    }
 }
 
 /// Read a string object into a Rust string.

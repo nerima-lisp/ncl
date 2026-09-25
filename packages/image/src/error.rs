@@ -78,7 +78,15 @@ impl std::error::Error for ImageError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Object(error) => Some(error),
-            _ => None,
+            Self::Io(_)
+            | Self::Truncated { .. }
+            | Self::BadMagic
+            | Self::UnsupportedVersion { .. }
+            | Self::InvalidField { .. }
+            | Self::UnknownTag { .. }
+            | Self::UnsupportedKind { .. }
+            | Self::InvalidLayout { .. }
+            | Self::Code(_) => None,
         }
     }
 }

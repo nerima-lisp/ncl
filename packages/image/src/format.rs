@@ -119,10 +119,10 @@ impl ImageFile {
         if reader.u16()? != 0 {
             return Err(invalid("reserved header"));
         }
-        let object_count = reader.u32()? as usize;
-        let root_count = reader.u32()? as usize;
-        let code_count = reader.u32()? as usize;
-        let feature_count = reader.u32()? as usize;
+        let object_count = widen(reader.u32()?, "object count")?;
+        let root_count = widen(reader.u32()?, "root count")?;
+        let code_count = widen(reader.u32()?, "code count")?;
+        let feature_count = widen(reader.u32()?, "feature count")?;
         let gc_epoch = reader.u64()?;
         let header = Header {
             version,
@@ -132,13 +132,14 @@ impl ImageFile {
                 size: Size::new(reader.u32()?),
             },
         };
-        let payload_offset = header.payload.offset.get() as usize;
+        let payload_offset = widen(header.payload.offset.get(), "payload offset")?;
         let end = header.payload.end()?;
+        let payload_size = widen(header.payload.size.get(), "payload size")?;
         let payload = bytes
             .get(payload_offset..end)
             .ok_or_else(|| ImageError::Truncated {
                 offset: payload_offset,
-                needed: header.payload.size.get() as usize,
+                needed: payload_size,
             })?;
         if payload_offset < HEADER_SIZE || end != bytes.len() {
             return Err(invalid("payload bounds"));
@@ -205,6 +206,11 @@ pub fn narrow(value: usize, field: &'static str) -> Result<u32, ImageError> {
     u32::try_from(value).map_err(|_| invalid(field))
 }
 
+/// Widen an on-disk `u32` field to the host index type.
+pub fn widen(value: u32, field: &'static str) -> Result<usize, ImageError> {
+    usize::try_from(value).map_err(|_| invalid(field))
+}
+
 /// Append one byte.
 pub fn put_u8(out: &mut Vec<u8>, value: u8) {
     out.push(value);
@@ -265,32 +271,43 @@ impl<'a> Reader<'a> {
 
     /// Read one byte.
     pub fn u8(&mut self) -> Result<u8, ImageError> {
-        Ok(self.take(1)?[0])
+        let [byte]: [u8; 1] = self
+            .take(1)?
+            .try_into()
+            .map_err(|_| invalid("reader bounds"))?;
+        Ok(byte)
     }
 
     /// Read a little-endian `u16`.
     pub fn u16(&mut self) -> Result<u16, ImageError> {
-        let bytes = self.take(2)?;
-        Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+        let bytes: [u8; 2] = self
+            .take(2)?
+            .try_into()
+            .map_err(|_| invalid("reader bounds"))?;
+        Ok(u16::from_le_bytes(bytes))
     }
 
     /// Read a little-endian `u32`.
     pub fn u32(&mut self) -> Result<u32, ImageError> {
-        let bytes = self.take(4)?;
-        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        let bytes: [u8; 4] = self
+            .take(4)?
+            .try_into()
+            .map_err(|_| invalid("reader bounds"))?;
+        Ok(u32::from_le_bytes(bytes))
     }
 
     /// Read a little-endian `u64`.
     pub fn u64(&mut self) -> Result<u64, ImageError> {
-        let bytes = self.take(8)?;
-        Ok(u64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
+        let bytes: [u8; 8] = self
+            .take(8)?
+            .try_into()
+            .map_err(|_| invalid("reader bounds"))?;
+        Ok(u64::from_le_bytes(bytes))
     }
 
     /// Read a length-prefixed UTF-8 string.
     pub fn string(&mut self) -> Result<String, ImageError> {
-        let length = self.u32()? as usize;
+        let length = widen(self.u32()?, "string length")?;
         let bytes = self.take(length)?;
         String::from_utf8(bytes.to_vec()).map_err(|_| invalid("string encoding"))
     }

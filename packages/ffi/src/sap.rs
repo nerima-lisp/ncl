@@ -3,7 +3,7 @@
 //! Phase 1 represents a SAP as a Lisp fixnum holding the machine address, so
 //! `sap-int` and `int-sap` are exact inverses. A distinct SAP object kind is a
 //! follow-up `ncl-object` requirement; until then a SAP and an integer address
-//! are interchangeable, which is what the `SB-SYS` memory primitives assume.
+//! are interchangeable until the runtime grows a distinct pointer object.
 
 use ncl_object::Word;
 

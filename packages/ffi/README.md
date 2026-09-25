@@ -1,8 +1,8 @@
 # ncl-ffi
 
-`ncl-ffi` owns the SBCL `SB-ALIEN` and `SB-SYS` surface for NCL: alien type
-descriptors, `alien-funcall` argument marshalling, system area pointers,
-dynamic loading, and the 106 symbols the ownership table assigns to this crate.
+`ncl-ffi` owns the `NCL-FFI` surface for NCL: foreign type descriptors,
+foreign-call argument marshalling, machine pointers, dynamic loading, and the
+105 symbols in `ownership.tsv`.
 It depends only on `ncl-object`, `ncl-sys`, and `ncl-conditions`, and it stays
 within Rust's safe subset: every raw pointer operation remains behind `ncl-sys`.
 
@@ -46,7 +46,7 @@ FfiError, sys_requirements
   are exact inverses.
 - `with_rooted_objects` roots managed values with precise roots across a
   collection, using the public `push_root` / `pop_root`.
-- `register` interns the 106 owned symbols and sets each function, class, macro,
+- `register` interns the 105 owned symbols and sets each function, class, macro,
   and special bit the ownership gate requires.
 
 ## ncl-sys requirements
@@ -100,9 +100,9 @@ becomes a real call and should assert the returned length.
 
 ## Owned symbols
 
-`register` installs the 106 Phase-1 symbols from
-`conformance/ownership/symbols.tsv`: 60 in `SB-ALIEN`, 43 in `SB-SYS`, and 3 in
-`SB-EXT`. Functions are registered with an unbound placeholder, classes with a
+`register` installs the 105 Phase-1 symbols from
+`ownership.tsv`: 105 symbols in `NCL-FFI`. Functions are registered with an
+unbound placeholder, classes with a
 minimal descriptor vector, and macros and variables with their macro and special
 bits. `macro` rows reserve the name and set the bit; the expanders live in
 `ncl-lib-macros` (L19).

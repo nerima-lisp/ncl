@@ -1,21 +1,21 @@
-//! `SB-EXT` symbols owned by `ncl-ffi`.
+//! `NCL-FFI` symbols owned by `ncl-ffi`.
 
 use super::{SymbolKind, SymbolRow};
 
-/// The `SB-EXT` Phase-1 symbols owned by this crate.
-pub const SB_EXT: &[SymbolRow] = &[
+/// The `NCL-FFI` Phase-1 symbols owned by this crate.
+pub const EXTENSION: &[SymbolRow] = &[
     SymbolRow {
-        package: "SB-EXT",
+        package: "NCL-FFI",
         name: "POSIX-ENVIRON",
         kind: SymbolKind::Function,
     },
     SymbolRow {
-        package: "SB-EXT",
+        package: "NCL-FFI",
         name: "POSIX-GETENV",
         kind: SymbolKind::Function,
     },
     SymbolRow {
-        package: "SB-EXT",
+        package: "NCL-FFI",
         name: "RUN-PROGRAM",
         kind: SymbolKind::Function,
     },

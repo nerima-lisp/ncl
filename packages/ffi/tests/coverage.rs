@@ -1,6 +1,8 @@
 #![allow(clippy::unwrap_used, reason = "tests assert on coverage failures")]
 
-//! Ownership coverage gate: every Phase-1 `ncl-ffi` symbol is registered.
+//! Ownership coverage gate: every Phase-1 `NCL-FFI` symbol is registered.
+
+const OWNERSHIP: &str = include_str!("../ownership.tsv");
 
 #[test]
 fn registers_every_owned_symbol() {
@@ -8,5 +10,11 @@ fn registers_every_owned_symbol() {
     let mut ctx = ncl_object::ThreadContext::new();
     ctx.register(&runtime).unwrap();
     ncl_ffi::register(&runtime).unwrap();
-    ncl_ownership::assert_crate_coverage(&runtime, &mut ctx, "ncl-ffi").unwrap();
+    ncl_ownership::assert_crate_coverage_from_table(
+        &runtime,
+        &mut ctx,
+        OWNERSHIP,
+        "ncl-ffi",
+    )
+    .unwrap();
 }

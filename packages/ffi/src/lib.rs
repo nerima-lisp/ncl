@@ -1,9 +1,8 @@
 //! Foreign declarations and calls.
 //!
-//! `ncl-ffi` owns the SBCL `SB-ALIEN` / `SB-SYS` surface: alien type
-//! descriptors with their size and alignment, `alien-funcall` argument
-//! marshalling, system area pointers, dynamic loading, and the 106 symbols the
-//! ownership table assigns to this crate.
+//! `ncl-ffi` owns the `NCL-FFI` surface: foreign type descriptors with their
+//! size and alignment, foreign-call argument marshalling, pointers, dynamic
+//! loading, and the 105 symbols in its ownership table.
 //!
 //! Dynamic loading and foreign calls reach the OS only through `ncl-sys`, and
 //! this crate stays within Rust's safe subset, so every raw pointer operation

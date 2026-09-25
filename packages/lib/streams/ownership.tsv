@@ -1,0 +1,70 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	*DEBUG-IO*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*ERROR-OUTPUT*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-ARRAY*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-BASE*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-CASE*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-CIRCLE*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-ESCAPE*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-GENSYM*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-LENGTH*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-LEVEL*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-LINES*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-MISER-WIDTH*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-PRETTY*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-RADIX*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*PRINT-RIGHT-MARGIN*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*QUERY-IO*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*STANDARD-INPUT*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*STANDARD-OUTPUT*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*TERMINAL-IO*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*TRACE-OUTPUT*	variable	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	BROADCAST-STREAM-STREAMS	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CLEAR-INPUT	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	CLEAR-OUTPUT	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	CLOSE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	CONCATENATED-STREAM-STREAMS	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ECHO-STREAM-INPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ECHO-STREAM-OUTPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FILE-POSITION	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FILE-STRING-LENGTH	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FINISH-OUTPUT	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	FORCE-OUTPUT	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	FRESH-LINE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	GET-OUTPUT-STREAM-STRING	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	INPUT-STREAM-P	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	INTERACTIVE-STREAM-P	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	LISTEN	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	MAKE-BROADCAST-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-CONCATENATED-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-ECHO-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-STRING-INPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-STRING-OUTPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-SYNONYM-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-TWO-WAY-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	OPEN	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	OPEN-STREAM-P	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	OUTPUT-STREAM-P	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	PEEK-CHAR	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	READ-BYTE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	READ-CHAR	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ-CHAR-NO-HANG	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ-LINE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ-SEQUENCE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STREAM-ELEMENT-TYPE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	STREAM-ERROR-STREAM	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	STREAM-EXTERNAL-FORMAT	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	STREAMP	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	SYNONYM-STREAM-SYMBOL	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	TERPRI	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	TWO-WAY-STREAM-INPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	TWO-WAY-STREAM-OUTPUT-STREAM	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	UNREAD-CHAR	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	WRITE	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	WRITE-BYTE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	WRITE-CHAR	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	WRITE-LINE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	WRITE-SEQUENCE	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	WRITE-STRING	function	ncl-lib-streams	1	no	stream/readtable/printing stream surface
+COMMON-LISP	Y-OR-N-P	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	YES-OR-NO-P	function	ncl-lib-streams	1	no	reclassified by subsystem ownership rule

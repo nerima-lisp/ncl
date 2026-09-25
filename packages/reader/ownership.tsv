@@ -1,0 +1,22 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	*READ-BASE*	variable	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*READ-DEFAULT-FLOAT-FORMAT*	variable	ncl-reader	1	no	numeric tower or numeric type
+COMMON-LISP	*READ-EVAL*	variable	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*READ-SUPPRESS*	variable	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	*READTABLE*	variable	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	COPY-READTABLE	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	GET-DISPATCH-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	GET-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	MAKE-DISPATCH-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	PARSE-INTEGER	function	ncl-reader	1	no	numeric tower or numeric type
+COMMON-LISP	READ	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ-DELIMITED-LIST	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ-FROM-STRING	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READ-PRESERVING-WHITESPACE	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	READTABLE	class	ncl-reader	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	READTABLE-CASE	function	ncl-reader	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	READTABLEP	function	ncl-reader	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SET-DISPATCH-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	SET-MACRO-CHARACTER	function	ncl-reader	1	no	stream/readtable/printing stream surface
+COMMON-LISP	SET-SYNTAX-FROM-CHAR	function	ncl-reader	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	WITH-STANDARD-IO-SYNTAX	macro	ncl-reader	1	no	macro expansion/setf surface

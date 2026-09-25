@@ -42,7 +42,9 @@
 //! for the gate to see them.
 
 mod coverage;
+mod symbols;
 mod table;
 
-pub use coverage::{Missing, OwnershipError, assert_crate_coverage};
-pub use table::{Kind, Row, rows, rows_for_crate};
+pub use coverage::{Missing, OwnershipError, assert_crate_coverage, assert_crate_coverage_from_table};
+pub use table::{Kind, Row, rows, rows_for_crate, rows_for_crate_from_str, rows_from_str};
+pub use symbols::{SymbolKind, SymbolRow};

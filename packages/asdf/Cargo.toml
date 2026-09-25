@@ -1,5 +1,5 @@
 [package]
-name = "ncl-conditions"
+name = "ncl-asdf"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,9 @@ license.workspace = true
 
 [dependencies]
 ncl-object = { path = "../object" }
-ncl-ownership = { path = "../ownership" }
+ncl-conditions = { path = "../conditions" }
+ncl-clos = { path = "../clos" }
+ncl-uiop = { path = "../uiop" }
 
 [lints]
 workspace = true

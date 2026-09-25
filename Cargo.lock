@@ -10,6 +10,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ncl-asdf"
+version = "0.1.0"
+dependencies = [
+ "ncl-clos",
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-uiop",
+]
+
+[[package]]
 name = "ncl-asm-aarch64"
 version = "0.1.0"
 
@@ -64,6 +74,34 @@ version = "0.1.0"
 dependencies = [
  "ncl-ownership",
  "ncl-runtime",
+]
+
+[[package]]
+name = "ncl-coverage"
+version = "0.1.0"
+dependencies = [
+ "ncl-compiler-front",
+ "ncl-object",
+]
+
+[[package]]
+name = "ncl-debug"
+version = "0.1.0"
+dependencies = [
+ "ncl-codegen",
+ "ncl-conditions",
+ "ncl-lib-streams",
+ "ncl-object",
+ "ncl-sys",
+]
+
+[[package]]
+name = "ncl-disasm"
+version = "0.1.0"
+dependencies = [
+ "ncl-asm-aarch64",
+ "ncl-asm-x86-64",
+ "ncl-object",
 ]
 
 [[package]]
@@ -191,6 +229,16 @@ name = "ncl-objfile"
 version = "0.1.0"
 
 [[package]]
+name = "ncl-os"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-lib-streams",
+ "ncl-object",
+ "ncl-sys",
+]
+
+[[package]]
 name = "ncl-ownership"
 version = "0.1.0"
 dependencies = [
@@ -203,6 +251,16 @@ version = "0.1.0"
 dependencies = [
  "ncl-object",
  "ncl-ownership",
+]
+
+[[package]]
+name = "ncl-profiler"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-object",
+ "ncl-sys",
+ "ncl-threads",
 ]
 
 [[package]]
@@ -229,8 +287,14 @@ dependencies = [
 name = "ncl-stdlib"
 version = "0.1.0"
 dependencies = [
+ "ncl-asdf",
  "ncl-clos",
  "ncl-conditions",
+ "ncl-coverage",
+ "ncl-debug",
+ "ncl-disasm",
+ "ncl-ffi",
+ "ncl-image",
  "ncl-lib-format",
  "ncl-lib-hash-arrays",
  "ncl-lib-macros",
@@ -240,9 +304,14 @@ dependencies = [
  "ncl-lib-sequences",
  "ncl-lib-streams",
  "ncl-lib-strings",
+ "ncl-object",
+ "ncl-os",
  "ncl-printer",
+ "ncl-profiler",
  "ncl-reader",
+ "ncl-threads",
  "ncl-types",
+ "ncl-uiop",
 ]
 
 [[package]]
@@ -265,4 +334,16 @@ version = "0.1.0"
 dependencies = [
  "ncl-object",
  "ncl-ownership",
+]
+
+[[package]]
+name = "ncl-uiop"
+version = "0.1.0"
+dependencies = [
+ "ncl-conditions",
+ "ncl-lib-pathnames",
+ "ncl-lib-streams",
+ "ncl-lib-strings",
+ "ncl-object",
+ "ncl-os",
 ]

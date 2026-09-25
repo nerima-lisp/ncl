@@ -1,0 +1,53 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	ADJUST-ARRAY	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ADJUSTABLE-ARRAY-P	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	AREF	function	ncl-lib-hash-arrays	1	yes	array/vector/bit/hash operation
+COMMON-LISP	ARRAY-DIMENSION	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ARRAY-DIMENSION-LIMIT	constant	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ARRAY-DIMENSIONS	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ARRAY-DISPLACEMENT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ARRAY-ELEMENT-TYPE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ARRAY-HAS-FILL-POINTER-P	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ARRAY-IN-BOUNDS-P	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ARRAY-RANK	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ARRAY-RANK-LIMIT	constant	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ARRAY-ROW-MAJOR-INDEX	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ARRAY-TOTAL-SIZE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ARRAY-TOTAL-SIZE-LIMIT	constant	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ARRAYP	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BIT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-AND	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-ANDC1	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-ANDC2	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-EQV	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-IOR	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-NAND	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-NOR	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-NOT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-ORC1	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-ORC2	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-VECTOR-P	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	BIT-XOR	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	CLRHASH	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	FILL-POINTER	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	GETHASH	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-COUNT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-P	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-REHASH-SIZE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-REHASH-THRESHOLD	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-SIZE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	HASH-TABLE-TEST	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	MAKE-ARRAY	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	MAKE-HASH-TABLE	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	MAPHASH	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	REMHASH	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	ROW-MAJOR-AREF	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	SBIT	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	SIMPLE-BIT-VECTOR-P	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SIMPLE-VECTOR-P	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	SVREF	function	ncl-lib-hash-arrays	1	yes	array/vector/bit/hash operation
+COMMON-LISP	VECTOR	class+function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation
+COMMON-LISP	VECTOR-POP	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	VECTOR-PUSH	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	VECTOR-PUSH-EXTEND	function	ncl-lib-hash-arrays	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	VECTORP	function	ncl-lib-hash-arrays	1	no	array/vector/bit/hash operation

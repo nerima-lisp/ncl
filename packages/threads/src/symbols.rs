@@ -9,35 +9,7 @@ mod sb_ext;
 mod sb_sys;
 mod sb_thread;
 
-/// Registration kind of an owned symbol.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SymbolKind {
-    /// A function, registered with `define_function`.
-    Function,
-    /// A macro, registered with `define_macro`.
-    Macro,
-    /// A variable, interned with its special bit set.
-    Variable,
-    /// A constant.
-    Constant,
-    /// A class.
-    Class,
-    /// A type.
-    Type,
-    /// A symbol with no dedicated registry, which only needs to be interned.
-    Other,
-}
-
-/// One owned symbol.
-#[derive(Debug)]
-pub struct SymbolRow {
-    /// Owning package name.
-    pub package: &'static str,
-    /// Symbol name.
-    pub name: &'static str,
-    /// Registration kind.
-    pub kind: SymbolKind,
-}
+pub use ncl_ownership::{SymbolKind, SymbolRow};
 
 /// The `SB-EXT` Phase-1 symbols owned by this crate.
 pub use sb_ext::SB_EXT;

@@ -1,0 +1,59 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	ALPHA-CHAR-P	function	ncl-lib-strings	1	yes	character/string operation
+COMMON-LISP	ALPHANUMERICP	function	ncl-lib-strings	1	yes	character/string operation
+COMMON-LISP	BOTH-CASE-P	function	ncl-lib-strings	1	yes	character/string operation
+COMMON-LISP	CHAR	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR-CODE	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR-CODE-LIMIT	constant	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR-DOWNCASE	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR-EQUAL	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR-GREATERP	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR-INT	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR-LESSP	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR-NAME	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR-NOT-EQUAL	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR-NOT-GREATERP	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR-NOT-LESSP	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR-UPCASE	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHAR/=	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR<	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR<=	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR=	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR>	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHAR>=	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CHARACTER	class+function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	CHARACTERP	function	ncl-lib-strings	1	yes	character/string operation
+COMMON-LISP	CODE-CHAR	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	DIGIT-CHAR	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	DIGIT-CHAR-P	function	ncl-lib-strings	1	yes	character/string operation
+COMMON-LISP	GRAPHIC-CHAR-P	function	ncl-lib-strings	1	yes	character/string operation
+COMMON-LISP	LOWER-CASE-P	function	ncl-lib-strings	1	yes	character/string operation
+COMMON-LISP	MAKE-STRING	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	NAME-CHAR	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NSTRING-CAPITALIZE	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	NSTRING-DOWNCASE	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	NSTRING-UPCASE	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	SCHAR	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	SIMPLE-STRING-P	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STANDARD-CHAR-P	function	ncl-lib-strings	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STRING	class+function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-CAPITALIZE	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-DOWNCASE	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-EQUAL	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-GREATERP	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-LEFT-TRIM	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-LESSP	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-NOT-EQUAL	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-NOT-GREATERP	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-NOT-LESSP	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-RIGHT-TRIM	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-TRIM	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING-UPCASE	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING/=	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING<	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING<=	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING=	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING>	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRING>=	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	STRINGP	function	ncl-lib-strings	1	no	character/string operation
+COMMON-LISP	UPPER-CASE-P	function	ncl-lib-strings	1	yes	character/string operation

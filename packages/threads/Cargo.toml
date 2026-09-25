@@ -9,8 +9,6 @@ license.workspace = true
 ncl-object = { path = "../object" }
 ncl-sys = { path = "../sys" }
 ncl-conditions = { path = "../conditions" }
-
-[dev-dependencies]
 ncl-ownership = { path = "../ownership" }
 
 [lints]

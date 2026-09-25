@@ -1,0 +1,57 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	*BREAK-ON-SIGNALS*	variable	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	*DEBUGGER-HOOK*	variable	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	ABORT	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	ARITHMETIC-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	ARITHMETIC-ERROR-OPERANDS	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	BREAK	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	CELL-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	CELL-ERROR-NAME	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	CERROR	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	COMPUTE-RESTARTS	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	CONDITION	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	CONTINUE	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	CONTROL-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	DIVISION-BY-ZERO	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	END-OF-FILE	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	ERROR	condition+class+function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	FILE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	FIND-RESTART	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	FLOATING-POINT-INEXACT	condition+class	ncl-conditions	1	no	condition class and accessors
+COMMON-LISP	FLOATING-POINT-INVALID-OPERATION	condition+class	ncl-conditions	1	no	condition class and accessors
+COMMON-LISP	FLOATING-POINT-OVERFLOW	condition+class	ncl-conditions	1	no	condition class and accessors
+COMMON-LISP	FLOATING-POINT-UNDERFLOW	condition+class	ncl-conditions	1	no	condition class and accessors
+COMMON-LISP	INVALID-METHOD-ERROR	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	INVOKE-DEBUGGER	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	INVOKE-RESTART	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	INVOKE-RESTART-INTERACTIVELY	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	MAKE-CONDITION	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	METHOD-COMBINATION-ERROR	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	MUFFLE-WARNING	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	PACKAGE-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
+COMMON-LISP	PARSE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	PRINT-NOT-READABLE	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	PROGRAM-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	READER-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	RESTART-NAME	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	SERIOUS-CONDITION	condition+class	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SIGNAL	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	SIMPLE-CONDITION	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	SIMPLE-CONDITION-FORMAT-ARGUMENTS	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SIMPLE-CONDITION-FORMAT-CONTROL	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SIMPLE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	SIMPLE-TYPE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	SIMPLE-WARNING	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	STORAGE-CONDITION	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	STORE-VALUE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STREAM-ERROR	condition+class	ncl-conditions	1	no	condition class and accessors
+COMMON-LISP	STYLE-WARNING	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	TYPE-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	TYPE-ERROR-DATUM	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	TYPE-ERROR-EXPECTED-TYPE	function	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	UNBOUND-SLOT	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	UNBOUND-SLOT-INSTANCE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	UNBOUND-VARIABLE	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	UNDEFINED-FUNCTION	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	USE-VALUE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	WARNING	condition+class	ncl-conditions	1	no	condition/restart surface

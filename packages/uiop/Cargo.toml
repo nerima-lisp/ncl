@@ -1,5 +1,5 @@
 [package]
-name = "ncl-ffi"
+name = "ncl-uiop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,9 +7,11 @@ license.workspace = true
 
 [dependencies]
 ncl-object = { path = "../object" }
-ncl-sys = { path = "../sys" }
 ncl-conditions = { path = "../conditions" }
-ncl-ownership = { path = "../ownership" }
+ncl-lib-streams = { path = "../lib/streams" }
+ncl-lib-pathnames = { path = "../lib/pathnames" }
+ncl-lib-strings = { path = "../lib/strings" }
+ncl-os = { path = "../os" }
 
 [lints]
 workspace = true

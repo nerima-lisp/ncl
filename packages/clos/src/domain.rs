@@ -54,7 +54,9 @@ impl EqlValueId {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum Allocation {
+    /// A value stored in each instance.
     Instance,
+    /// A value shared by the class.
     Class,
 }
 
@@ -115,10 +117,15 @@ impl SlotDefinition {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomainError {
+    /// Two effective slots use the same identifier.
     DuplicateSlot,
+    /// Two methods have the same specializers and qualifier.
     DuplicateMethod,
+    /// The computed precedence list is invalid.
     InvalidClassPrecedenceList,
+    /// A superclass has not been finalized.
     UnfinalizedClass,
+    /// A referenced superclass is absent.
     UnknownClass,
 }
 
@@ -137,7 +144,7 @@ pub struct Class {
 impl Class {
     /// Create a class aggregate before inheritance finalization.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         id: ClassId,
         direct_supers: Vec<ClassId>,
         direct_slots: Vec<SlotDefinition>,
@@ -184,7 +191,12 @@ impl Class {
     }
 
     /// Finalize a class using already-finalized parent aggregates.
-    pub fn finalize_inheritance(&mut self, parents: &[Class]) -> Result<(), DomainError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a superclass is absent or unfinalized, or when a
+    /// slot identifier is duplicated.
+    pub fn finalize_inheritance(&mut self, parents: &[Self]) -> Result<(), DomainError> {
         let mut precedence = vec![self.id];
         for parent_id in &self.direct_supers {
             let parent = parents
@@ -228,8 +240,12 @@ impl Class {
         self.effective_slots = slots
             .into_iter()
             .enumerate()
-            .map(|(index, slot)| slot.assign_location(index as u32))
-            .collect();
+            .map(|(index, slot)| {
+                u32::try_from(index)
+                    .map(|location| slot.assign_location(location))
+                    .map_err(|_| DomainError::InvalidClassPrecedenceList)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         self.precedence = precedence;
         self.finalized = true;
         self.version = self.version.saturating_add(1);
@@ -250,9 +266,13 @@ impl Class {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum MethodQualifier {
+    /// The primary method.
     Primary,
+    /// Runs before the primary method.
     Before,
+    /// Runs after the primary method.
     After,
+    /// Wraps the primary method.
     Around,
 }
 
@@ -260,7 +280,9 @@ pub enum MethodQualifier {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum Specializer {
+    /// A class specializer.
     Class(ClassId),
+    /// An EQL value specializer.
     Eql(EqlValueId),
 }
 
@@ -276,7 +298,7 @@ pub struct Method {
 impl Method {
     /// Create a method entity.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         id: MethodId,
         specializers: Vec<Specializer>,
         qualifier: MethodQualifier,
@@ -332,6 +354,11 @@ pub struct GenericFunction {
 
 impl GenericFunction {
     /// Add a method and invalidate cached dispatch results.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DomainError::DuplicateMethod`] when the method signature is
+    /// already present.
     pub fn add_method(&mut self, method: Method) -> Result<(), DomainError> {
         if self.methods.iter().any(|existing| {
             existing.specializers == method.specializers && existing.qualifier == method.qualifier
@@ -347,11 +374,11 @@ impl GenericFunction {
     pub fn remove_method(&mut self, id: MethodId) -> bool {
         let before = self.methods.len();
         self.methods.retain(|method| method.id != id);
-        if self.methods.len() != before {
+        if self.methods.len() == before {
+            false
+        } else {
             self.invalidate_cache();
             true
-        } else {
-            false
         }
     }
 
@@ -364,7 +391,16 @@ impl GenericFunction {
         if let Some(cached) = self.cache.get(&key) {
             return cached.clone();
         }
-        let applicable = self.methods.iter().filter(|method| method.specializers.iter().enumerate().all(|(index, specializer)| matches!(specializer, Specializer::Class(class) if classes.get(index) == Some(class)))).map(Method::id).collect();
+        let applicable: Vec<MethodId> = self
+            .methods
+            .iter()
+            .filter(|method| {
+                method.specializers.iter().enumerate().all(|(index, specializer)| {
+                    matches!(specializer, Specializer::Class(class) if classes.get(index) == Some(class))
+                })
+            })
+            .map(Method::id)
+            .collect();
         self.cache.insert(key, applicable.clone());
         applicable
     }
@@ -390,9 +426,7 @@ mod tests {
     fn finalization_assigns_effective_slot_locations() {
         let slot = SlotDefinition::new(SlotId::new(1), Allocation::Instance, Some(7));
         let mut class = Class::new(ClassId::new(1), Vec::new(), vec![slot]);
-        class
-            .finalize_inheritance(&[])
-            .expect("root class finalizes");
+        assert!(class.finalize_inheritance(&[]).is_ok());
         assert_eq!(class.class_precedence_list(), &[ClassId::new(1)]);
         assert_eq!(class.effective_slots()[0].location(), Some(0));
     }
@@ -406,7 +440,7 @@ mod tests {
             MethodQualifier::Primary,
             MethodId::new(9),
         );
-        generic.add_method(method).expect("method is unique");
+        assert!(generic.add_method(method).is_ok());
         assert_eq!(
             generic.applicable_methods(&[ClassId::new(1)]),
             vec![MethodId::new(1)]

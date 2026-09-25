@@ -1,7 +1,7 @@
 //! Calling convention metadata and the safe Rust builtin boundary.
 
 use crate::{
-    make_code_object, make_simple_fun, with_root, ObjectError, Package, Runtime, ThreadContext,
+    ObjectError, Package, Runtime, ThreadContext, make_code_object, make_simple_fun, with_root,
 };
 use ncl_sys::Word;
 
@@ -78,7 +78,7 @@ impl FunctionObject {
 }
 
 pub type RustBuiltin =
-    fn(&mut super::ThreadContext, &[Word], &mut MultipleValues) -> Result<Word, super::ObjectError>;
+    fn(&Runtime, &mut ThreadContext, &[Word], &mut MultipleValues) -> Result<Word, ObjectError>;
 pub type KeywordAdapter = fn(&[Word]) -> Result<Vec<Word>, super::ObjectError>;
 pub type RegisterFn = fn(&super::Runtime);
 
@@ -166,7 +166,7 @@ impl Runtime {
             .keyword_adapter
             .map_or_else(|| Ok(args.to_vec()), |adapter| adapter(args))?;
         let mut values = MultipleValues::new();
-        let result = (implementation.function)(ctx, &adapted, &mut values);
+        let result = (implementation.function)(self, ctx, &adapted, &mut values);
         ctx.set_values(values.as_slice());
         let pending = ctx.take_pending();
         pending.map_or(result, Err)

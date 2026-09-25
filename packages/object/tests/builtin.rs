@@ -4,6 +4,7 @@ use ncl_object::{BuiltinImplementation, MultipleValues, Runtime, ThreadContext};
 use ncl_sys::Word;
 
 fn add_builtin(
+    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
     args: &[Word],
     values: &mut MultipleValues,

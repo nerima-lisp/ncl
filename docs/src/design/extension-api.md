@@ -83,6 +83,17 @@ The builtin boundary is owned by `ncl-object`. A library crate describes one
 function and binds it to the CL function cell with `Runtime::register_builtin`:
 
 ```rust
+fn add_builtin(
+    _runtime: &Runtime,
+    _ctx: &mut ThreadContext,
+    args: &[Word],
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    Ok(Word::fixnum(
+        args[0].as_fixnum().unwrap_or(0) + args[1].as_fixnum().unwrap_or(0),
+    ))
+}
+
 let implementation = BuiltinImplementation::direct(
     Builtin { arity: 2, direct: true, lambda_list: "left right" },
     add_builtin,
@@ -94,7 +105,9 @@ let result = runtime.call_builtin(&mut ctx, function, &[left, right])?;
 `BuiltinImplementation::direct` is for fixed positional arity. Variadic and
 keyword functions use `BuiltinImplementation::adapted` with a
 `KeywordAdapter`; the adapter validates and reorders the original argument
-slice before the callback is called. The returned `FunctionObject` is also
+slice before the callback is called. The `RustBuiltin` callback receives the
+`&Runtime` first, followed by the thread context, arguments, and multiple-value
+storage. The returned `FunctionObject` is also
 stored in the runtime registry, so generated code and Rust callers resolve the
 same function object. The example package is test-only and does not claim an
 ownership-table symbol.

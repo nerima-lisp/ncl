@@ -48,7 +48,7 @@ entries whose `T` entry is the default.
 `*print-level*` replaces objects below the depth limit with `#`. With
 `*print-circle*`, shared objects get `#n=` at first use and `#n#` after, and a
 cycle without `*print-circle*` returns `PrintError::Circularity` instead of
-looping. `SB-EXT:*PRINT-CIRCLE-NOT-SHARED*` restricts labels to cyclic objects.
+looping. `NCL-EXT:*PRINT-CIRCLE-NOT-SHARED*` restricts labels to cyclic objects.
 With `*print-pretty*`, sequence separators become a newline and an indent once
 the line reaches the margin.
 
@@ -60,9 +60,9 @@ the line reaches the margin.
 `PRINT-NOT-READABLE-OBJECT`, `PPRINT`, `PPRINT-FILL`, `PPRINT-LINEAR`,
 `PPRINT-TAB`, `PPRINT-TABULAR`, `PPRINT-INDENT`, `PPRINT-NEWLINE`,
 `PPRINT-DISPATCH`, `SET-PPRINT-DISPATCH`, `COPY-PPRINT-DISPATCH`, and the
-`SB-EXT` functions `PRINT-SYMBOL-WITH-PREFIX`, `PRINT-UNREADABLY`; and the
+`NCL-EXT` functions `PRINT-SYMBOL-WITH-PREFIX`, `PRINT-UNREADABLY`; and the
 special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-READABLY*`,
-`SB-EXT:*PRINT-CIRCLE-NOT-SHARED*`, `SB-EXT:*PRINT-VECTOR-LENGTH*`.
+`NCL-EXT:*PRINT-CIRCLE-NOT-SHARED*`, `NCL-EXT:*PRINT-VECTOR-LENGTH*`.
 `*PRINT-PPRINT-DISPATCH*` starts as an empty dispatch table, the rest as `NIL`.
 
 ## Known gaps

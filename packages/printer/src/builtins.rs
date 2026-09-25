@@ -25,16 +25,16 @@ const FUNCTIONS: [(&str, &str); 20] = [
     ("COMMON-LISP", "PRINT-OBJECT"),
     ("COMMON-LISP", "SET-PPRINT-DISPATCH"),
     ("COMMON-LISP", "WRITE-TO-STRING"),
-    ("SB-EXT", "PRINT-SYMBOL-WITH-PREFIX"),
-    ("SB-EXT", "PRINT-UNREADABLY"),
+    ("NCL-EXT", "PRINT-SYMBOL-WITH-PREFIX"),
+    ("NCL-EXT", "PRINT-UNREADABLY"),
 ];
 
 /// The `(package, name)` special variables `ncl-printer` owns.
 const VARIABLES: [(&str, &str); 4] = [
     ("COMMON-LISP", "*PRINT-PPRINT-DISPATCH*"),
     ("COMMON-LISP", "*PRINT-READABLY*"),
-    ("SB-EXT", "*PRINT-CIRCLE-NOT-SHARED*"),
-    ("SB-EXT", "*PRINT-VECTOR-LENGTH*"),
+    ("NCL-EXT", "*PRINT-CIRCLE-NOT-SHARED*"),
+    ("NCL-EXT", "*PRINT-VECTOR-LENGTH*"),
 ];
 
 /// Register every symbol `ncl-printer` owns with `runtime`.
@@ -49,7 +49,7 @@ const VARIABLES: [(&str, &str); 4] = [
 /// Returns an [`ObjectError`] when a package cannot be created, an allocation
 /// fails, or a symbol flag cannot be written.
 pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
-    for package in ["COMMON-LISP", "SB-EXT"] {
+    for package in ["COMMON-LISP", "NCL-EXT"] {
         runtime.ensure_package(ctx, package)?;
     }
     for (package, name) in FUNCTIONS {

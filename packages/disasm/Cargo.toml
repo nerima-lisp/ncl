@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Dependency-free x86-64 and AArch64 disassembler for NCL"
 
 [dependencies]
 ncl-object = { path = "../object" }

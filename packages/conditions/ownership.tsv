@@ -55,3 +55,40 @@ COMMON-LISP	UNBOUND-VARIABLE	condition+class	ncl-conditions	1	no	condition/resta
 COMMON-LISP	UNDEFINED-FUNCTION	condition+class	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	USE-VALUE	function	ncl-conditions	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	WARNING	condition+class	ncl-conditions	1	no	condition/restart surface
+NCL-EXT	CODE-DELETION-NOTE	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	COMPILER-NOTE	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	DEFCONSTANT-UNEQL	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	DELETE-FILE-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	DEPRECATION-CONDITION	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	DEPRECATION-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	EARLY-DEPRECATION-WARNING	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	FILE-DOES-NOT-EXIST	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	FILE-EXISTS	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	FINAL-DEPRECATION-WARNING	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	IMPLICIT-GENERIC-FUNCTION-WARNING	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	INVALID-FASL	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	LATE-DEPRECATION-WARNING	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	NAME-CONFLICT	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	PACKAGE-DOES-NOT-EXIST	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	PACKAGE-LOCK-VIOLATION	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	PACKAGE-LOCKED-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	READER-PACKAGE-DOES-NOT-EXIST	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	STEP-CONDITION	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	STEP-FINISHED-CONDITION	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	STEP-FORM-CONDITION	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	STEP-VALUES-CONDITION	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	SYMBOL-PACKAGE-LOCKED-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	TIMEOUT	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-EXT	UNKNOWN-KEYWORD-ARGUMENT	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-FFI	UNDEFINED-ALIEN-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-SYS	BREAKPOINT-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-SYS	DEADLINE-TIMEOUT	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-SYS	INTERACTIVE-INTERRUPT	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-SYS	IO-TIMEOUT	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-SYS	MEMORY-FAULT-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-SYS	SYSTEM-CONDITION	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-THREADS	INTERRUPT-THREAD-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-THREADS	JOIN-THREAD-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-THREADS	SYMBOL-VALUE-IN-THREAD-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-THREADS	THREAD-DEADLOCK	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions
+NCL-THREADS	THREAD-ERROR	condition+class	ncl-conditions	1	no	NCL condition type; owned by ncl-conditions

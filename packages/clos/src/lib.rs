@@ -119,7 +119,7 @@ pub fn make_instance(
     Ok(allocate_instance(ctx, runtime, class, slots)?.as_word())
 }
 
-fn typed_error(ctx: &mut ThreadContext, error: ncl_object::LispError) -> ObjectError {
+const fn typed_error(ctx: &mut ThreadContext, error: ncl_object::LispError) -> ObjectError {
     ctx.set_pending_lisp_error(error);
     ObjectError::TypeError
 }

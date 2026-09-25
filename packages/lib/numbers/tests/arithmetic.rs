@@ -162,3 +162,25 @@ fn arithmetic_builtins_call_through_runtime() {
     assert_boolean(&runtime, &mut ctx, "<=", &[big, bigger], true);
     assert_boolean(&runtime, &mut ctx, ">=", &[bigger, big], true);
 }
+
+#[test]
+fn rounding_builtins_preserve_exact_values_and_optional_divisor() {
+    let (runtime, mut ctx) = setup();
+    let two = Word::fixnum(2);
+    let negative_seven = Word::fixnum(-7);
+
+    assert_integer(&runtime, &mut ctx, "FLOOR", &[negative_seven, two], -4);
+    assert_eq!(ctx.values().len(), 2);
+    assert_eq!(integer(&ctx, ctx.values()[1]), 1);
+
+    assert_integer(&runtime, &mut ctx, "CEILING", &[negative_seven, two], -3);
+    assert_eq!(integer(&ctx, ctx.values()[1]), -1);
+
+    assert_integer(&runtime, &mut ctx, "TRUNCATE", &[negative_seven, two], -3);
+    assert_eq!(integer(&ctx, ctx.values()[1]), -1);
+
+    assert_integer(&runtime, &mut ctx, "ROUND", &[Word::fixnum(5), two], 2);
+    assert_eq!(integer(&ctx, ctx.values()[1]), 1);
+    assert_integer(&runtime, &mut ctx, "ROUND", &[Word::fixnum(7), two], 4);
+    assert_eq!(integer(&ctx, ctx.values()[1]), -1);
+}

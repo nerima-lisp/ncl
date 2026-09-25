@@ -90,6 +90,34 @@ fn install_set(
     Ok(())
 }
 
+fn install_optional_set(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    entries: &[(&'static str, RustBuiltin)],
+) -> Result<(), ObjectError> {
+    const REQUIRED: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("NUMBER"),
+        ty: ParameterType::Number,
+    }];
+    const OPTIONAL: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("DIVISOR"),
+        ty: ParameterType::Number,
+    }];
+    for &(name, callback) in entries {
+        let descriptor = Builtin {
+            lambda_list: LambdaList::with_optional(REQUIRED, OPTIONAL),
+            convention: BuiltinConvention::Adapted,
+        };
+        let identifier = BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name));
+        runtime.register_builtin(
+            ctx,
+            identifier,
+            BuiltinImplementation::direct(descriptor, callback),
+        )?;
+    }
+    Ok(())
+}
+
 /// Register numeric predicates, arithmetic, rounding, and integer operations.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
@@ -125,19 +153,25 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ("MINUSP", 1, true, arithmetic::typed_dispatch_minusp),
             ("EVENP", 1, true, arithmetic::typed_dispatch_evenp),
             ("ODDP", 1, true, arithmetic::typed_dispatch_oddp),
-            ("FLOOR", 1, true, arithmetic::typed_dispatch_floor),
-            ("CEILING", 1, true, arithmetic::typed_dispatch_ceiling),
-            ("TRUNCATE", 1, true, arithmetic::typed_dispatch_truncate),
-            ("ROUND", 1, true, arithmetic::typed_dispatch_round),
-            ("FFLOOR", 1, true, arithmetic::typed_dispatch_ffloor),
-            ("FCEILING", 1, true, arithmetic::typed_dispatch_fceiling),
-            ("FTRUNCATE", 1, true, arithmetic::typed_dispatch_ftruncate),
-            ("FROUND", 1, true, arithmetic::typed_dispatch_fround),
             ("MOD", 2, true, arithmetic::typed_dispatch_mod),
             ("REM", 2, true, arithmetic::typed_dispatch_rem),
             ("GCD", 0, false, arithmetic::typed_dispatch_gcd),
             ("LCM", 0, false, arithmetic::typed_dispatch_lcm),
             ("ISQRT", 1, true, arithmetic::typed_dispatch_isqrt),
+        ],
+    )?;
+    install_optional_set(
+        runtime,
+        &mut ctx,
+        &[
+            ("FLOOR", arithmetic::typed_dispatch_floor),
+            ("CEILING", arithmetic::typed_dispatch_ceiling),
+            ("TRUNCATE", arithmetic::typed_dispatch_truncate),
+            ("ROUND", arithmetic::typed_dispatch_round),
+            ("FFLOOR", arithmetic::typed_dispatch_ffloor),
+            ("FCEILING", arithmetic::typed_dispatch_fceiling),
+            ("FTRUNCATE", arithmetic::typed_dispatch_ftruncate),
+            ("FROUND", arithmetic::typed_dispatch_fround),
         ],
     )?;
     install_set(

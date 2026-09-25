@@ -1,6 +1,6 @@
 //! Process objects and their accessors.
 //!
-//! `SB-EXT` assigns the `process-*` accessors to this crate, so Phase 1 models a
+//! `NCL-THREADS` assigns the `process-*` accessors to this crate, so Phase 1 models a
 //! process as a heap instance with scalar slots. Spawning an OS process belongs
 //! to `ncl-ffi` and the runtime; these functions read and update the object
 //! model only, and [`process_kill`] marks the object dead without signalling a

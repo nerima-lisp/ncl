@@ -35,7 +35,7 @@ impl RuntimeAbi for X86_64FixtureAbi {
         match function {
             RuntimeFunction::SafepointSlow => Some(0x1000),
             RuntimeFunction::Builtin
-                if matches!(name, Some("make-closure" | "enter-handler" | "leave-handler")) =>
+                if matches!(name, Some("make-closure" | "enter-unwind-protect" | "leave-unwind-protect")) =>
             {
                 Some(0x1000)
             }
@@ -72,11 +72,12 @@ fn lowers_ir_v2_closure_and_handler_ops_x86_64() {
     let region = ncl_ir::HandlerRegionId(3);
     builder.add_handler_region(ncl_ir::HandlerRegion {
         id: region,
-        kind: ncl_ir::HandlerKind::Catch,
+        kind: ncl_ir::HandlerKind::UnwindProtect,
         protected: vec![ncl_ir::BlockId(0)],
         handler: ncl_ir::BlockId(0),
-        cleanup: None,
+        cleanup: Some(ncl_ir::BlockId(0)),
         catch_tag: None,
+        binding_targets: Vec::new(),
         depth: 0,
         parent: None,
     });

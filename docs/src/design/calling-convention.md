@@ -94,6 +94,14 @@ Multiple values return `v0` and count in the ABI registers; additional values ar
 
 CatchRecord contains `{ tag, target_frame, target_pc, value_slot, depth, previous }`. CleanupRecord and HandlerRecord also contain their frame address and dynamic depth. ThreadContext holds the three current pointers. Unwind marks the pending exit, runs LIFO cleanup, restores binding and handler chains, then moves to the selected `target_pc` in the selected frame. Rust frames propagate `NclStatus` in two stages: adapter to builtin caller, then caller to the top NCL entry. Rust panic is abort.
 
+IR handler kinds select the record operation at `EnterHandler` and `LeaveHandler`:
+`Catch` calls `enter-catch`/`leave-catch` with the region depth and catch tag;
+`UnwindProtect` calls `enter-unwind-protect`/`leave-unwind-protect` with its cleanup
+entry; and `Progv` calls `enter-progv`/`leave-progv` with the binding target values.
+The first operation links the corresponding record through the current ThreadContext
+pointer. The unwinder runs cleanup records in LIFO order and restores Progv bindings
+before transferring to a catch target.
+
 ## Phase 1 runtime ABI binding
 
 `ncl-codegen::RuntimeAbi` is the only lowering-to-runtime boundary. Lowering asks the embedding runtime for typed byte offsets for TLAB bump/limit, the `safepoint_request` and `pending` words, multiple-value state, and the handler/cleanup/catch pointers. It asks for addresses of allocation and safepoint slow paths, unwind, builtins, and the constant table. An unavailable offset or address is reported as an unavailable operation; codegen does not infer an offset from a Rust layout or embed a runtime address. (`packages/codegen/src/abi.rs`, `RuntimeAbi`, `ContextField`, `RuntimeFunction`.)

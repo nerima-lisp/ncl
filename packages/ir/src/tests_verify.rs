@@ -191,6 +191,7 @@ fn invalid_cases() -> Vec<(&'static str, Function, VerifyError)> {
                     handler: BlockId(8),
                     cleanup: Some(BlockId(9)),
                     catch_tag: None,
+                    binding_targets: Vec::new(),
                     depth: 0,
                     parent: None,
                 }],
@@ -337,7 +338,7 @@ fn verifier_accepts_unique_ids_and_matching_types() {
             ),
             block(
                 1,
-                Vec::new(),
+                vec![op(&[], OpKind::Safepoint)],
                 Terminator::Return {
                     values: vec![ValueId(0)],
                 },

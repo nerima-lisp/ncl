@@ -132,6 +132,28 @@ pub fn verify(function: &Function) -> Result<(), Vec<VerifyError>> {
                 errors.push(VerifyError::TypeMismatch(region.handler));
             }
         }
+        match region.kind {
+            crate::HandlerKind::Catch => {
+                if region.catch_tag.is_none() || region.cleanup.is_some() || !region.binding_targets.is_empty() {
+                    errors.push(VerifyError::HandlerMismatch(region.handler));
+                }
+            }
+            crate::HandlerKind::UnwindProtect => {
+                if region.cleanup.is_none() || region.catch_tag.is_some() || !region.binding_targets.is_empty() {
+                    errors.push(VerifyError::HandlerMismatch(region.handler));
+                }
+            }
+            crate::HandlerKind::Progv => {
+                if region.binding_targets.is_empty() || region.catch_tag.is_some() {
+                    errors.push(VerifyError::HandlerMismatch(region.handler));
+                }
+            }
+        }
+        for target in &region.binding_targets {
+            if definitions.get(target).map(|(ty, _, _)| *ty) != Some(Ty::Word) {
+                errors.push(VerifyError::TypeMismatch(region.handler));
+            }
+        }
     }
     let mut regions = HashMap::new();
     for region in &function.handler_regions {
@@ -199,6 +221,13 @@ fn verify_handler_flow(
                 errors.push(VerifyError::HandlerMismatch(block.id));
             }
         }
+        let normal_exit = matches!(
+            block.terminator,
+            Terminator::Return { .. } | Terminator::CallReturn { .. } | Terminator::TailCall { .. }
+        );
+        if normal_exit && !stack.is_empty() {
+            errors.push(VerifyError::HandlerUnbalanced(block.id));
+        }
         for target in successors(&block.terminator) {
             if !blocks.contains_key(&target) { continue; }
             match incoming.get(&target) {
@@ -212,11 +241,6 @@ fn verify_handler_flow(
                 }
                 _ => {}
             }
-        }
-    }
-    for (id, stack) in incoming {
-        if stack.is_some_and(|stack| !stack.is_empty()) {
-            errors.push(VerifyError::HandlerUnbalanced(id));
         }
     }
 }

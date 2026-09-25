@@ -294,6 +294,7 @@ pub struct HandlerRegion {
     pub handler: BlockId,
     pub cleanup: Option<BlockId>,
     pub catch_tag: Option<ValueId>,
+    pub binding_targets: Vec<ValueId>,
     pub depth: u32,
     pub parent: Option<HandlerRegionId>,
 }

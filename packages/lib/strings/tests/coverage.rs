@@ -1,6 +1,6 @@
 //! Strict ownership coverage for the strings registration boundary.
 
-use ncl_object::{symbol_is_constant, FunctionObject, Runtime, ThreadContext};
+use ncl_object::{FunctionObject, Runtime, ThreadContext, symbol_is_constant};
 
 const TABLE: &str = include_str!("../ownership.tsv");
 

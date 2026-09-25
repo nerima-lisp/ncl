@@ -1,4 +1,4 @@
-use super::{gcd_i128, integer, word, Number, ObjectError, Runtime, ThreadContext, Word};
+use super::{Number, ObjectError, Runtime, ThreadContext, Word, gcd_i128, integer, word};
 
 pub fn gcd(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let value = args.iter().try_fold(0i128, |acc, arg| {

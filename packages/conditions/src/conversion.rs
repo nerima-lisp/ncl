@@ -1,12 +1,12 @@
 //! Conversion of object-layer typed builtin failures into CL conditions.
 
 use ncl_object::{
-    pop_root, push_root, ArithmeticError, CellError, LispError, ObjectError, ObjectType, Package,
-    ProgramError, Runtime, ThreadContext, Word,
+    ArithmeticError, CellError, LispError, ObjectError, ObjectType, Package, ProgramError, Runtime,
+    ThreadContext, Word, pop_root, push_root,
 };
 
 use crate::{
-    make_typed_condition, ConditionError, ConditionIdentifier, ConditionRecord, ConditionSlotValue,
+    ConditionError, ConditionIdentifier, ConditionRecord, ConditionSlotValue, make_typed_condition,
 };
 
 fn words(values: &[Word]) -> Vec<ConditionSlotValue> {

@@ -1,6 +1,6 @@
 use super::{
-    add_pair, args_numbers, div_pair, mul_pair, number, ratio, sub_pair, word, Number, ObjectError,
-    Runtime, ThreadContext, Word,
+    Number, ObjectError, Runtime, ThreadContext, Word, add_pair, args_numbers, div_pair, mul_pair,
+    number, ratio, sub_pair, word,
 };
 
 pub fn add(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {

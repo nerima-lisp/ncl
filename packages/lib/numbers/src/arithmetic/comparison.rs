@@ -1,5 +1,5 @@
 use super::{
-    args_numbers, bool_word, word, Number, ObjectError, Ordering, Runtime, ThreadContext, Word,
+    Number, ObjectError, Ordering, Runtime, ThreadContext, Word, args_numbers, bool_word, word,
 };
 
 fn comparison(

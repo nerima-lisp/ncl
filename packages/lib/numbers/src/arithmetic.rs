@@ -14,8 +14,8 @@ mod rounding;
 pub use basic::*;
 pub use comparison::*;
 use core::{
-    add_pair, args_numbers, bool_word, div_pair, gcd_i128, integer, mul_pair, number, ratio,
-    sub_pair, word, Number,
+    Number, add_pair, args_numbers, bool_word, div_pair, gcd_i128, integer, mul_pair, number,
+    ratio, sub_pair, word,
 };
 pub use dispatch::*;
 pub use number_theory::*;

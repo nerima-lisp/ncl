@@ -1,4 +1,4 @@
-use super::{bool_word, integer, number, Number, ObjectError, ThreadContext, Word};
+use super::{Number, ObjectError, ThreadContext, Word, bool_word, integer, number};
 
 #[allow(clippy::unnecessary_wraps)]
 pub fn numberp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {

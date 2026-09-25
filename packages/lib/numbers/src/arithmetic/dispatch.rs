@@ -1,11 +1,11 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
 
 use super::{
-    abs, add, ceiling, complexp, div, equal, evenp, fceiling, ffloor, floatp, floor, fround,
-    ftruncate, gcd, greater, greater_equal, integerp, isqrt, lcm, less, less_equal, max, min,
-    minusp, modulo, mul, not_equal, numberp, oddp, one_minus, one_plus, plusp, rationalp, realp,
-    remainder, round, signum, sub, truncate, zerop, BuiltinArgs, MultipleValues, ObjectError,
-    Runtime, ThreadContext, Word,
+    BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word, abs, add, ceiling,
+    complexp, div, equal, evenp, fceiling, ffloor, floatp, floor, fround, ftruncate, gcd, greater,
+    greater_equal, integerp, isqrt, lcm, less, less_equal, max, min, minusp, modulo, mul,
+    not_equal, numberp, oddp, one_minus, one_plus, plusp, rationalp, realp, remainder, round,
+    signum, sub, truncate, zerop,
 };
 
 pub fn dispatch_add(

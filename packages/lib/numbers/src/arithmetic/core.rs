@@ -2,9 +2,9 @@
 
 use ncl_object::Word;
 use ncl_object::{
-    bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
-    make_bignum_from_i128, make_complex, make_double, make_ratio, ratio_denominator,
-    ratio_numerator, ObjectError, ObjectRef, Runtime, ThreadContext,
+    ObjectError, ObjectRef, Runtime, ThreadContext, bignum_limbs, bignum_sign, classify_object,
+    complex_imag, complex_real, double_value, make_bignum_from_i128, make_complex, make_double,
+    make_ratio, ratio_denominator, ratio_numerator,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -216,11 +216,7 @@ pub(super) fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
 }
 
 pub(super) const fn bool_word(value: bool) -> Word {
-    if value {
-        Word::TRUE
-    } else {
-        Word::NIL
-    }
+    if value { Word::TRUE } else { Word::NIL }
 }
 pub(super) fn args_numbers(ctx: &ThreadContext, args: &[Word]) -> Result<Vec<Number>, ObjectError> {
     args.iter().map(|arg| number(ctx, *arg)).collect()

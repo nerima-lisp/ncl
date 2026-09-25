@@ -1,6 +1,6 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
 
-use super::{integer, integer_word, MultipleValues, ObjectError, Runtime, ThreadContext, Word};
+use super::{MultipleValues, ObjectError, Runtime, ThreadContext, Word, integer, integer_word};
 
 fn byte_parts(spec: Word) -> Result<(u32, u32), ObjectError> {
     let bits = spec.bits();

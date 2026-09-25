@@ -92,112 +92,109 @@ fn package_registry_and_visibility_operations_cover_all_statuses() {
     );
     let consumer = Package::new(&mut context, &runtime, "CONSUMER")
         .unwrap_or_else(|error| panic!("consumer: {error:?}"));
-    let nickname = make_string(&mut context, &runtime, &['P', 'R', 'O']).unwrap_or(Word::NIL);
-    assert!(
-        producer
-            .add_nickname(&mut context, &runtime, nickname)
-            .is_ok()
-    );
+    assert_package_registry(&runtime, &mut context, producer);
+    assert_symbol_visibility(&runtime, &mut context, producer, consumer);
+    assert_runtime_registry(&runtime, &mut context, producer);
+}
+
+fn assert_package_registry(runtime: &Runtime, context: &mut ThreadContext, producer: Package) {
+    let nickname = make_string(context, runtime, &['P', 'R', 'O']).unwrap_or(Word::NIL);
+    assert!(producer.add_nickname(context, runtime, nickname).is_ok());
     assert!(
         !producer
-            .add_nickname(&mut context, &runtime, nickname)
+            .add_nickname(context, runtime, nickname)
             .unwrap_or(true)
     );
     assert_eq!(
-        runtime.find_package(&context, "PRO"),
+        runtime.find_package(context, "PRO"),
         Some(producer.as_word())
     );
-    assert_eq!(runtime.find_package(&context, "MISSING"), None);
-    let name = make_string(&mut context, &runtime, &['X']).unwrap_or(Word::NIL);
+    assert_eq!(runtime.find_package(context, "MISSING"), None);
+}
+
+fn assert_symbol_visibility(
+    runtime: &Runtime,
+    context: &mut ThreadContext,
+    producer: Package,
+    consumer: Package,
+) {
+    let name = make_string(context, runtime, &['X']).unwrap_or(Word::NIL);
     let (symbol, status) = producer
-        .intern(&mut context, &runtime, "X")
+        .intern(context, runtime, "X")
         .unwrap_or_else(|error| panic!("intern: {error:?}"));
     assert_eq!(status, FindStatus::Internal);
     assert_eq!(
-        producer.find_symbol(&mut context, name),
+        producer.find_symbol(context, name),
         Ok(Some((symbol, FindStatus::Internal)))
     );
-    assert!(
-        producer
-            .export(&mut context, &runtime, name)
-            .unwrap_or(false)
-    );
+    assert!(producer.export(context, runtime, name).unwrap_or(false));
     assert_eq!(
-        producer.find_symbol(&mut context, name),
+        producer.find_symbol(context, name),
         Ok(Some((symbol, FindStatus::External)))
     );
+    assert!(producer.export(context, runtime, name).unwrap_or(false));
+    assert!(producer.unexport(context, runtime, name).unwrap_or(false));
+    assert!(!producer.unexport(context, runtime, name).unwrap_or(true));
     assert!(
         producer
-            .export(&mut context, &runtime, name)
-            .unwrap_or(false)
-    );
-    assert!(
-        producer
-            .unexport(&mut context, &runtime, name)
-            .unwrap_or(false)
-    );
-    assert!(
-        !producer
-            .unexport(&mut context, &runtime, name)
-            .unwrap_or(true)
-    );
-    assert!(
-        producer
-            .use_package(&mut context, &runtime, producer.as_word())
+            .use_package(context, runtime, producer.as_word())
             .is_ok()
     );
     assert!(
         !producer
-            .use_package(&mut context, &runtime, producer.as_word())
+            .use_package(context, runtime, producer.as_word())
             .unwrap_or(true)
     );
-    let inherited_name = make_string(&mut context, &runtime, &['Y']).unwrap_or(Word::NIL);
+    let inherited_name = make_string(context, runtime, &['Y']).unwrap_or(Word::NIL);
     let (inherited, _) = producer
-        .intern(&mut context, &runtime, "Y")
+        .intern(context, runtime, "Y")
         .unwrap_or_else(|error| panic!("intern: {error:?}"));
     assert!(
         producer
-            .export(&mut context, &runtime, inherited_name)
+            .export(context, runtime, inherited_name)
             .unwrap_or(false)
     );
     assert!(
         consumer
-            .use_package(&mut context, &runtime, producer.as_word())
+            .use_package(context, runtime, producer.as_word())
             .unwrap_or(false)
     );
     assert_eq!(
-        consumer.find_symbol(&mut context, inherited_name),
+        consumer.find_symbol(context, inherited_name),
         Ok(Some((inherited, FindStatus::Inherited)))
     );
     assert!(
         consumer
-            .import(&mut context, &runtime, inherited_name, inherited)
+            .import(context, runtime, inherited_name, inherited)
             .is_ok()
     );
     assert_eq!(
-        consumer.find_symbol(&mut context, inherited_name),
+        consumer.find_symbol(context, inherited_name),
         Ok(Some((inherited, FindStatus::Internal)))
     );
     assert!(
         consumer
-            .unuse_package(&mut context, producer.as_word())
+            .unuse_package(context, producer.as_word())
             .unwrap_or(false)
     );
     assert!(
         !consumer
-            .unuse_package(&mut context, producer.as_word())
+            .unuse_package(context, producer.as_word())
             .unwrap_or(true)
     );
-    assert!(consumer.shadow(&mut context, &runtime, name).is_ok());
-    assert!(consumer.shadow(&mut context, &runtime, name).is_ok());
+    assert!(consumer.shadow(context, runtime, name).is_ok());
+    assert!(consumer.shadow(context, runtime, name).is_ok());
     assert_ne!(
-        consumer.shadowing_symbols(&context).unwrap_or(Word::NIL),
+        consumer.shadowing_symbols(context).unwrap_or(Word::NIL),
         Word::NIL
     );
-    let generated = consumer.gensym(&mut context, &runtime).unwrap_or(Word::NIL);
-    assert!(symbol_name(&context, generated).is_ok());
+    let generated = consumer.gensym(context, runtime).unwrap_or(Word::NIL);
+    assert!(symbol_name(context, generated).is_ok());
+}
+
+fn assert_runtime_registry(runtime: &Runtime, context: &mut ThreadContext, producer: Package) {
     assert_eq!(
-        runtime.ensure_package(&mut context, "PRODUCER"),
+        runtime.ensure_package(context, "PRODUCER"),
         Ok(producer.as_word())
     );
     assert!(runtime.gc_config().dynamic_space_size > 0);
@@ -206,9 +203,9 @@ fn package_registry_and_visibility_operations_cover_all_statuses() {
     assert_eq!(runtime.features(), vec![String::from("NCL-COVERAGE")]);
     assert!(
         runtime
-            .define_class(&mut context, "COVERAGE", Word::TRUE)
+            .define_class(context, "COVERAGE", Word::TRUE)
             .is_ok()
     );
-    assert_eq!(runtime.class(&mut context, "COVERAGE"), Some(Word::TRUE));
-    assert_eq!(runtime.class(&mut context, "UNKNOWN"), None);
+    assert_eq!(runtime.class(context, "COVERAGE"), Some(Word::TRUE));
+    assert_eq!(runtime.class(context, "UNKNOWN"), None);
 }

@@ -17,7 +17,7 @@ pub mod function;
 /// A special operator the front end parses.
 ///
 /// The first 25 variants are the Common Lisp special operators listed by CLHS
-/// 3.1.2.1.2.1. The last three are the SBCL extensions the ownership table
+/// 3.1.2.1.2.1. The last three are the NCL extensions the ownership table
 /// assigns to this crate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -72,11 +72,11 @@ pub enum SpecialForm {
     Throw,
     /// `unwind-protect`.
     UnwindProtect,
-    /// `sb-sys:%primitive`.
+    /// `ncl-sys:%primitive`.
     Primitive,
-    /// `sb-sys:nlx-protect`.
+    /// `ncl-sys:nlx-protect`.
     NlxProtect,
-    /// `sb-ext:truly-the`.
+    /// `ncl-ext:truly-the`.
     TrulyThe,
 }
 
@@ -92,9 +92,9 @@ impl SpecialForm {
             return common_lisp_form(&name.name);
         }
         match (name.package.as_deref(), name.name.as_str()) {
-            (Some("SB-SYS"), "%PRIMITIVE") => Some(Self::Primitive),
-            (Some("SB-SYS"), "NLX-PROTECT") => Some(Self::NlxProtect),
-            (Some("SB-EXT"), "TRULY-THE") => Some(Self::TrulyThe),
+            (Some("NCL-SYS"), "%PRIMITIVE") => Some(Self::Primitive),
+            (Some("NCL-SYS"), "NLX-PROTECT") => Some(Self::NlxProtect),
+            (Some("NCL-EXT"), "TRULY-THE") => Some(Self::TrulyThe),
             _ => None,
         }
     }
@@ -138,8 +138,8 @@ impl SpecialForm {
     #[must_use]
     pub fn symbol(self) -> SymbolRef {
         match self {
-            Self::Primitive | Self::NlxProtect => SymbolRef::interned("SB-SYS", self.name()),
-            Self::TrulyThe => SymbolRef::interned("SB-EXT", self.name()),
+            Self::Primitive | Self::NlxProtect => SymbolRef::interned("NCL-SYS", self.name()),
+            Self::TrulyThe => SymbolRef::interned("NCL-EXT", self.name()),
             _ => SymbolRef::interned("COMMON-LISP", self.name()),
         }
     }

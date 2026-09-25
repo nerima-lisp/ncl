@@ -130,7 +130,7 @@ fn optimize_parses_qualities() {
 #[test]
 fn an_unknown_specifier_is_retained() {
     let mut f = Fixture::new();
-    let unknown = f.intern("SB-EXT", "SOME-DECLARATION");
+    let unknown = f.intern("NCL-EXT", "SOME-DECLARATION");
     let argument = f.user("X");
     let specifier = f.list(&[unknown, argument]);
     match parse_one(&mut f, specifier) {

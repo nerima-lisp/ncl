@@ -51,8 +51,6 @@ pub(super) struct FunctionEntry {
     pub name: SymbolRef,
     /// The placeholder callee value emitted at every call site.
     pub callee: ValueId,
-    /// The captured values the callee expects before its own arguments.
-    pub captures: Vec<Slot>,
 }
 
 /// One lexical scope.

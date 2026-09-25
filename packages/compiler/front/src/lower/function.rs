@@ -19,7 +19,6 @@ use super::error::LowerError;
 #[derive(Debug, Default)]
 pub(super) struct Lowerer {
     next_function: u32,
-    next_closure: u32,
     functions: Vec<Function>,
 }
 
@@ -28,7 +27,6 @@ impl Lowerer {
     pub(super) const fn new() -> Self {
         Self {
             next_function: 0,
-            next_closure: 0,
             functions: Vec::new(),
         }
     }
@@ -38,13 +36,6 @@ impl Lowerer {
         let id = FunctionId(self.next_function);
         self.next_function += 1;
         id
-    }
-
-    /// Allocate a synthetic name for a closure placeholder.
-    pub(super) fn fresh_closure(&mut self) -> String {
-        let name = format!("closure-{}", self.next_closure);
-        self.next_closure += 1;
-        name
     }
 
     /// Register a lowered nested function.

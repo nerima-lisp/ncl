@@ -12,7 +12,7 @@ mod forms;
 use forms::Fixture;
 
 use ncl_compiler_front::lower_toplevel;
-use ncl_ir::{Compare, Function, OpKind, Terminator, verify};
+use ncl_ir::{Compare, Constant, Function, HandlerKind, OpKind, Terminator, verify};
 use ncl_object::Word;
 
 /// Fail with the function's text form when it does not verify.
@@ -221,4 +221,146 @@ fn lowers_an_optional_parameter_with_a_default_block() {
         )),
         "the supplied value is loaded from its argument slot"
     );
+}
+
+#[test]
+fn lowers_lambda_to_function_entry_closure_and_closure_call() {
+    let mut fx = Fixture::new();
+    let lambda = fx.cl("LAMBDA");
+    let argument = fx.user("X");
+    let lambda_list = fx.list(&[argument]);
+    let lambda_form = fx.list(&[lambda, lambda_list, argument]);
+    let form = fx.list(&[lambda_form, Word::NIL]);
+
+    let expr = fx.expand(form).expect("expand");
+    let lowered = lower_toplevel(&expr).expect("lower");
+
+    assert_verifies(&lowered.entry);
+    assert_eq!(lowered.nested.len(), 1);
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::MakeClosure { .. }
+    )));
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::CallClosure { .. }
+    )));
+    assert!(
+        lowered
+            .entry
+            .constants
+            .iter()
+            .any(|constant| matches!(constant, Constant::FunctionEntry(_)))
+    );
+    assert_verifies(&lowered.nested[0]);
+}
+
+#[test]
+fn lowers_catch_throw_with_a_handler_region() {
+    let mut fx = Fixture::new();
+    let catch = fx.cl("CATCH");
+    let throw = fx.cl("THROW");
+    let tag = fx.keyword("TAG");
+    let throw_form = fx.list(&[throw, tag, Word::fixnum(7)]);
+    let form = fx.list(&[catch, tag, throw_form]);
+
+    let expr = fx.expand(form).expect("expand");
+    let lowered = lower_toplevel(&expr).expect("lower");
+
+    assert_verifies(&lowered.entry);
+    assert_eq!(lowered.entry.handler_regions.len(), 1);
+    assert_eq!(lowered.entry.handler_regions[0].kind, HandlerKind::Catch);
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::EnterHandler { .. }
+    )));
+    assert!(any_op(&lowered.entry, |kind| matches!(
+        kind,
+        OpKind::LeaveHandler { .. }
+    )));
+    assert!(any_op(
+        &lowered.entry,
+        |kind| matches!(kind, OpKind::Builtin { name, .. } if name == "throw")
+    ));
+    assert!(any_terminator(&lowered.entry, |term| matches!(
+        term,
+        Terminator::Throw { .. }
+    )));
+}
+
+#[test]
+fn lowers_unwind_protect_and_progv_with_handler_regions() {
+    let mut fx = Fixture::new();
+    let unwind = fx.cl("UNWIND-PROTECT");
+    let cleanup = fx.form("CLEANUP", &[]);
+    let unwind_form = fx.list(&[unwind, Word::NIL, cleanup]);
+    let expr = fx.expand(unwind_form).expect("expand unwind-protect");
+    let lowered = lower_toplevel(&expr).expect("lower unwind-protect");
+    assert_verifies(&lowered.entry);
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::UnwindProtect)
+    );
+
+    let progv = fx.cl("PROGV");
+    let symbol = fx.user("X");
+    let symbols = symbol;
+    let values = Word::fixnum(1);
+    let progv_form = fx.list(&[progv, symbols, values, symbol]);
+    let expr = fx.expand(progv_form).expect("expand progv");
+    let lowered = lower_toplevel(&expr).expect("lower progv");
+    assert_verifies(&lowered.entry);
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::Progv)
+    );
+}
+
+#[test]
+fn lowers_macrolet_and_symbol_macrolet_bodies() {
+    let mut fx = Fixture::new();
+    let symbol_macrolet = fx.cl("SYMBOL-MACROLET");
+    let name = fx.user("X");
+    let definition = fx.list(&[name, Word::fixnum(9)]);
+    let definitions = fx.list(&[definition]);
+    let form = fx.list(&[symbol_macrolet, definitions, name]);
+    let expr = fx.expand(form).expect("expand symbol-macrolet");
+    let lowered = lower_toplevel(&expr).expect("lower symbol-macrolet");
+    assert_verifies(&lowered.entry);
+}
+
+#[test]
+fn lowers_return_from_inside_a_lambda_with_a_catch_region() {
+    let mut fx = Fixture::new();
+    let block = fx.cl("BLOCK");
+    let return_from = fx.cl("RETURN-FROM");
+    let lambda = fx.cl("LAMBDA");
+    let name = fx.user("B");
+    let lambda_body = fx.list(&[return_from, name, Word::fixnum(11)]);
+    let lambda_form = fx.list(&[lambda, Word::NIL, lambda_body]);
+    let call = fx.list(&[lambda_form]);
+    let form = fx.list(&[block, name, call]);
+
+    let expr = fx.expand(form).expect("expand");
+    let lowered = lower_toplevel(&expr).expect("lower");
+    assert_verifies(&lowered.entry);
+    assert_eq!(lowered.nested.len(), 1);
+    assert!(
+        lowered
+            .entry
+            .handler_regions
+            .iter()
+            .any(|region| region.kind == HandlerKind::Catch)
+    );
+    assert!(any_terminator(&lowered.nested[0], |term| matches!(
+        term,
+        Terminator::Throw { .. }
+    )));
+    assert_verifies(&lowered.nested[0]);
 }

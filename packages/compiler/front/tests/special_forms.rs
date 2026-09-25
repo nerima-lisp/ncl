@@ -326,7 +326,7 @@ fn truly_the_maps_to_the() {
     let mut f = Fixture::new();
     let type_name = f.cl("INTEGER");
     let value = f.user("X");
-    let operator = f.intern("SB-EXT", "TRULY-THE");
+    let operator = f.intern("NCL-EXT", "TRULY-THE");
     let form = f.list(&[operator, type_name, value]);
     assert!(matches!(f.expand(form).unwrap(), Expr::The { .. }));
 }
@@ -402,7 +402,7 @@ fn a_named_call_parses_its_arguments() {
 #[test]
 fn primitive_reports_the_missing_representation() {
     let mut f = Fixture::new();
-    let operator = f.intern("SB-SYS", "%PRIMITIVE");
+    let operator = f.intern("NCL-SYS", "%PRIMITIVE");
     let name = f.user("NAME");
     let form = f.list(&[operator, name]);
     assert!(f.expand(form).is_err());

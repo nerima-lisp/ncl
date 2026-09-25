@@ -57,3 +57,14 @@ COMMON-LISP	STRING>	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	STRING>=	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	STRINGP	function	ncl-lib-strings	1	no	character/string operation
 COMMON-LISP	UPPER-CASE-P	function	ncl-lib-strings	1	yes	character/string operation
+NCL-UNICODE	GENERAL-CATEGORY	function	ncl-lib-strings	1	yes	Unicode General_Category value for one character
+NCL-UNICODE	NORMALIZE-NFC	function	ncl-lib-strings	1	no	Unicode canonical composition
+NCL-UNICODE	NORMALIZE-NFD	function	ncl-lib-strings	1	no	Unicode canonical decomposition
+NCL-UNICODE	NORMALIZE-NFKC	function	ncl-lib-strings	1	no	Unicode compatibility composition
+NCL-UNICODE	NORMALIZE-NFKD	function	ncl-lib-strings	1	no	Unicode compatibility decomposition
+NCL-UNICODE	FULL-UPCASE	function	ncl-lib-strings	1	no	Unicode full case mapping on strings
+NCL-UNICODE	FULL-DOWNCASE	function	ncl-lib-strings	1	no	Unicode full case mapping on strings
+NCL-UNICODE	FULL-TITLECASE	function	ncl-lib-strings	1	no	Unicode full title mapping on strings
+NCL-UNICODE	STRING-TO-UTF8	function	ncl-lib-strings	1	no	UTF-8 encoding of a string
+NCL-UNICODE	UTF8-TO-STRING	function	ncl-lib-strings	1	no	UTF-8 decoding to a string
+NCL-UNICODE	GRAPHEME-BOUNDARIES	function	ncl-lib-strings	1	no	Extended grapheme-cluster boundaries

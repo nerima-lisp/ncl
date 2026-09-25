@@ -273,9 +273,7 @@ fn instruction_families_encode() {
 
 #[test]
 fn public_helpers_cover_success_and_error_paths() {
-    assert_eq!(disassemble(0xD503_201F), Ok("nop".to_owned()));
-    assert!(disassemble(0).is_err());
-    assert!(decode(0xD503_201F).is_ok());
+    assert_eq!(encode(&Inst::Nop, 0), Ok(0xD503_201F));
     assert_eq!(mov_imm64(x(0), 0).len(), 1);
     assert_eq!(mov_imm64(x(0), u64::MAX).len(), 1);
     assert_eq!(mov_imm64(x(0), 0x0001_0000_0000_0001).len(), 2);

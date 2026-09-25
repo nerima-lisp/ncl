@@ -354,8 +354,14 @@ impl MacroCaller for RuntimeMacroCaller {
                 detail: error.to_string(),
             }
         })?;
+        let function = FunctionObject::try_from(function).map_err(|error| {
+            ncl_compiler_front::FrontError::MacroExpansion {
+                name: name.clone(),
+                detail: error.to_string(),
+            }
+        })?;
         runtime
-            .call_builtin(ctx, FunctionObject::from(function), &[form])
+            .call_builtin(ctx, function, &[form])
             .map_err(|error| ncl_compiler_front::FrontError::MacroExpansion {
                 name: name.clone(),
                 detail: error.to_string(),

@@ -45,9 +45,6 @@ pub fn classify(word: Word) -> ObjectRef {
     {
         return ObjectRef::Character(u32::try_from(word.bits() >> 4).unwrap_or(0));
     }
-    if word == Word::TRUE {
-        return ObjectRef::Immediate(word);
-    }
     if let Some(value) = word.as_fixnum() {
         return ObjectRef::Fixnum(value);
     }

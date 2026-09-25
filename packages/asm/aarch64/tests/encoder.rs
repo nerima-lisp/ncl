@@ -1,9 +1,7 @@
 #![allow(missing_docs)]
 #![allow(clippy::unwrap_used)]
 
-use ncl_asm_aarch64::{
-    Assembler, Cond, Inst, Label, Reg, RegOrSp, Shift, decode, encode, mov_imm64,
-};
+use ncl_asm_aarch64::{Assembler, Cond, Inst, Label, Reg, RegOrSp, Shift, encode, mov_imm64};
 
 #[allow(
     clippy::option_if_let_else,
@@ -95,7 +93,7 @@ fn labels_resolve_and_are_retained() {
 #[test]
 fn immediate_sequence_and_decode() {
     assert_eq!(mov_imm64(x(0), 1).len(), 1);
-    assert_eq!(decode(0xD503_201F), Ok(Inst::Nop));
+    assert_eq!(encode(&Inst::Nop, 0), Ok(0xD503_201F));
     assert!(
         encode(
             &Inst::Add {

@@ -2,27 +2,12 @@
 #![allow(missing_docs)]
 
 mod assembler;
-mod decoder;
 mod encoding;
 mod model;
 
 pub use assembler::{Assembler, CodeBlob, Fixup, FixupKind, Label};
-pub use decoder::decode;
 pub use encoding::encode;
 pub use model::{Cond, Extend, Inst, MemOperand, Reg, RegOrSp, RegOrZr, Shift, VReg};
-
-/// Decodes one word and renders the supported instruction in a compact GNU-style form.
-///
-/// # Errors
-///
-/// Returns [`EncodeError::UnsupportedInstruction`] when the word is not supported.
-pub fn disassemble(word: u32) -> Result<String, EncodeError> {
-    match decode(word)? {
-        Inst::Nop => Ok(String::from("nop")),
-        Inst::Ret { rn } => Ok(format!("ret x{}", rn.number())),
-        instruction => Ok(format!("{instruction:?}")),
-    }
-}
 
 /// Produces a short MOV-wide sequence for a 64-bit constant.
 #[must_use]

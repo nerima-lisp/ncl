@@ -1,19 +1,17 @@
 [package]
-name = "ncl-codegen"
+name = "ncl-disasm"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Dependency-free x86-64 and AArch64 disassembler for NCL"
 
 [dependencies]
-ncl-ir = { path = "../ir" }
-ncl-asm-x86-64 = { path = "../asm/x86-64" }
-ncl-asm-aarch64 = { path = "../asm/aarch64" }
 ncl-object = { path = "../object" }
-ncl-sys = { path = "../sys" }
 
 [dev-dependencies]
-ncl-disasm = { path = "../disasm" }
+ncl-asm-x86-64 = { path = "../asm/x86-64" }
+ncl-asm-aarch64 = { path = "../asm/aarch64" }
 
 [lints]
 workspace = true

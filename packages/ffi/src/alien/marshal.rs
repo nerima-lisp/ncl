@@ -21,6 +21,7 @@ const MOST_NEGATIVE_FIXNUM: i128 = -(1_i128 << 62);
 
 /// Largest fixnum as an unsigned magnitude.
 const MOST_POSITIVE_FIXNUM_UNSIGNED: u128 = (1_u128 << 62) - 1;
+const CHARACTER_LOWTAG: u8 = 0;
 
 /// Marshal `value` into the foreign byte representation of `ty`.
 ///
@@ -230,13 +231,12 @@ fn boolean_value(value: Word) -> Result<bool, FfiError> {
 
 /// Decode a Lisp character into its Unicode scalar value.
 ///
-/// `Word::character` encodes `(scalar << 4) | 1`, so `Word::lowtag()` reports
-/// `List` for a character and `Word::is_character` never matches it. A cons
-/// address is a heap pointer far above the Unicode scalar range, so the scalar
-/// bound separates the two; this mirrors `ncl-printer`'s `character_code`.
+/// `Word::character` uses the character lowtag. A cons address is a heap
+/// pointer far above the Unicode scalar range, so the scalar bound separates
+/// the two; this mirrors `ncl-printer`'s `character_code`.
 fn character_value(value: Word) -> Result<u32, FfiError> {
     const SCALAR_LIMIT: u64 = 1 << 25;
-    if value.lowtag() == LOWTAG_LIST && value != Word::NIL && value.bits() < SCALAR_LIMIT {
+    if value.lowtag() == CHARACTER_LOWTAG && value != Word::NIL && value.bits() < SCALAR_LIMIT {
         u32::try_from(value.bits() >> 4).map_err(|_| FfiError::TypeMismatch { type_name: "char" })
     } else {
         Err(FfiError::TypeMismatch { type_name: "char" })
@@ -277,7 +277,6 @@ fn double_value_of(ctx: &ThreadContext, value: Word) -> Result<f64, FfiError> {
     })
 }
 
-const LOWTAG_LIST: u8 = 1;
 const LOWTAG_SINGLE_FLOAT: u8 = 2;
 
 #[allow(

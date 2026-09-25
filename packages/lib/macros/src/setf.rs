@@ -75,11 +75,7 @@ fn store_place(
     expansion: &SetfExpansion,
     value: Word,
 ) -> Result<Word, ObjectError> {
-    if expansion.store_variables.len() != 1 {
-        return Err(ObjectError::Unsupported);
-    }
-    let store_binding = binding(ctx, runtime, expansion.store_variables[0], value)?;
-    let body = wrap_let(ctx, runtime, "LET", &[store_binding], expansion.store_form)?;
+    let body = store_expansion(ctx, runtime, expansion, value)?;
     let mut bindings = Vec::with_capacity(expansion.temporary_variables.len());
     for (variable, value_form) in expansion
         .temporary_variables
@@ -94,6 +90,19 @@ fn store_place(
     } else {
         wrap_let(ctx, runtime, "LET*", &bindings, body)
     }
+}
+
+fn store_expansion(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    expansion: &SetfExpansion,
+    value: Word,
+) -> Result<Word, ObjectError> {
+    if expansion.store_variables.len() != 1 {
+        return Err(ObjectError::Unsupported);
+    }
+    let store_binding = binding(ctx, runtime, expansion.store_variables[0], value)?;
+    wrap_let(ctx, runtime, "LET", &[store_binding], expansion.store_form)
 }
 
 fn setf_pairs(
@@ -131,7 +140,7 @@ fn setf_pairs(
         }
         let mut store_forms = Vec::new();
         for (expansion, value_variable) in stores {
-            store_forms.push(store_place(ctx, runtime, &expansion, value_variable)?);
+            store_forms.push(store_expansion(ctx, runtime, &expansion, value_variable)?);
         }
         let body = sequence(ctx, runtime, &store_forms)?;
         let body = wrap_let(ctx, runtime, "LET*", &value_bindings, body)?;
@@ -300,7 +309,7 @@ fn rotate_like(
         } else {
             arguments[place_count]
         };
-        stores.push(store_place(ctx, runtime, &expansions[index], source)?);
+        stores.push(store_expansion(ctx, runtime, &expansions[index], source)?);
     }
     stores.push(old_values[0]);
     let body = sequence(ctx, runtime, &stores)?;
@@ -339,4 +348,90 @@ pub fn expand_get_setf_expansion(
         expansion.store_form,
         expansion.access_form,
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ncl_object::{Runtime, ThreadContext, car, cdr};
+
+    fn test_place_expander(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        arguments: &[Word],
+    ) -> Result<SetfExpansion, ObjectError> {
+        let value_form = arguments.first().copied().ok_or(ObjectError::TypeError)?;
+        let temporary = fresh_symbol(ctx, runtime)?;
+        let store = fresh_symbol(ctx, runtime)?;
+        let set = symbol(ctx, runtime, "SET")?;
+        let store_form = list(ctx, runtime, &[set, store, temporary])?;
+        Ok(SetfExpansion {
+            temporary_variables: vec![temporary],
+            value_forms: vec![value_form],
+            store_variables: vec![store],
+            store_form,
+            access_form: temporary,
+        })
+    }
+
+    fn count_word(ctx: &mut ThreadContext, form: Word, target: Word) -> usize {
+        if form == target {
+            return 1;
+        }
+        if !form.is_cons() {
+            return 0;
+        }
+        let mut count = 0;
+        let mut cursor = form;
+        while cursor != Word::NIL {
+            let Ok(head) = car(ctx, cursor) else {
+                return count;
+            };
+            count += count_word(ctx, head, target);
+            let Ok(tail) = cdr(ctx, cursor) else {
+                return count;
+            };
+            cursor = tail;
+        }
+        count
+    }
+
+    fn place_form(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        operator: Word,
+        value_form: Word,
+    ) -> Result<Word, ObjectError> {
+        list(ctx, runtime, &[operator, value_form])
+    }
+
+    #[test]
+    fn parallel_and_rotate_like_setf_macros_evaluate_place_subforms_once() -> Result<(), ObjectError>
+    {
+        let runtime = Runtime::new()?;
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)?;
+        let operator = symbol(&mut ctx, &runtime, "TEST-PLACE")?;
+        let side_effect = symbol(&mut ctx, &runtime, "SIDE-EFFECT")?;
+        let mut registry = PlaceRegistry::new();
+        registry.define(operator, test_place_expander);
+
+        let place = place_form(&mut ctx, &runtime, operator, side_effect)?;
+        let second_place = place_form(&mut ctx, &runtime, operator, side_effect)?;
+        let cases = [
+            expand_psetf(&mut ctx, &runtime, &registry, &[place, Word::fixnum(1)])?,
+            expand_shiftf(
+                &mut ctx,
+                &runtime,
+                &registry,
+                &[place, second_place, Word::fixnum(1)],
+            )?,
+            expand_rotatef(&mut ctx, &runtime, &registry, &[place, second_place])?,
+        ];
+
+        assert_eq!(count_word(&mut ctx, cases[0], side_effect), 1);
+        assert_eq!(count_word(&mut ctx, cases[1], side_effect), 2);
+        assert_eq!(count_word(&mut ctx, cases[2], side_effect), 2);
+        Ok(())
+    }
 }

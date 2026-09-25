@@ -8,7 +8,7 @@ mod place;
 mod setf;
 
 pub use form::{elements, fresh_symbol, list, symbol};
-pub use place::{PlaceExpander, PlaceRegistry, SetfExpansion};
+pub use place::{PlaceExpander, PlaceRegistry, SetfExpansion, register_place};
 pub use setf::{
     expand_decf, expand_get_setf_expansion, expand_incf, expand_pop, expand_psetf, expand_push,
     expand_remf, expand_rotatef, expand_setf, expand_shiftf,
@@ -98,7 +98,9 @@ fn setf_callback(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand_setf(ctx, runtime, &PlaceRegistry::new(), &arguments)
+    place::with_runtime_registry(runtime, |registry| {
+        expand_setf(ctx, runtime, registry, &arguments)
+    })
 }
 
 fn psetf_callback(
@@ -109,7 +111,9 @@ fn psetf_callback(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand_psetf(ctx, runtime, &PlaceRegistry::new(), &arguments)
+    place::with_runtime_registry(runtime, |registry| {
+        expand_psetf(ctx, runtime, registry, &arguments)
+    })
 }
 
 fn call_macro(
@@ -121,7 +125,9 @@ fn call_macro(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand(ctx, runtime, &PlaceRegistry::new(), &arguments)
+    place::with_runtime_registry(runtime, |registry| {
+        expand(ctx, runtime, registry, &arguments)
+    })
 }
 
 fn incf_callback(
@@ -148,7 +154,9 @@ fn push_callback(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand_push(ctx, runtime, &PlaceRegistry::new(), &arguments, false)
+    place::with_runtime_registry(runtime, |registry| {
+        expand_push(ctx, runtime, registry, &arguments, false)
+    })
 }
 fn pushnew_callback(
     runtime: &Runtime,
@@ -158,7 +166,9 @@ fn pushnew_callback(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand_push(ctx, runtime, &PlaceRegistry::new(), &arguments, true)
+    place::with_runtime_registry(runtime, |registry| {
+        expand_push(ctx, runtime, registry, &arguments, true)
+    })
 }
 fn pop_callback(
     runtime: &Runtime,
@@ -199,7 +209,9 @@ fn get_setf_expansion_callback(
     values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let place_word = expansion_arg(args)?;
-    let expansion = expand_get_setf_expansion(ctx, runtime, &PlaceRegistry::new(), place_word)?;
+    let expansion = place::with_runtime_registry(runtime, |registry| {
+        expand_get_setf_expansion(ctx, runtime, registry, place_word)
+    })?;
     values.set(&expansion);
     Ok(expansion[4])
 }
@@ -283,6 +295,7 @@ fn identity_adapter(
 
 /// Register the symbols owned by this crate.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
+    place::initialize_runtime_registry(runtime);
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
     for &name in MACROS {
@@ -303,7 +316,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
             implementation,
         )?;
-        let symbol = Package::from(runtime.ensure_package(&mut ctx, CL)?)
+        let symbol = Package::from_word(runtime.ensure_package(&mut ctx, CL)?)
             .intern(&mut ctx, runtime, name)?
             .0;
         set_symbol_macro(&mut ctx, symbol, true)?;
@@ -328,7 +341,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             get_setf_adapter,
         ),
     )?;
-    let variable = Package::from(runtime.ensure_package(&mut ctx, CL)?)
+    let variable = Package::from_word(runtime.ensure_package(&mut ctx, CL)?)
         .intern(&mut ctx, runtime, "*MACROEXPAND-HOOK*")?
         .0;
     ncl_object::set_symbol_value(&mut ctx, variable, Word::NIL)?;
@@ -449,7 +462,7 @@ mod tests {
         let mut ctx = ThreadContext::new();
         ctx.register(&runtime).expect("context registration");
         let package = runtime.find_package(&ctx, CL).expect("COMMON-LISP");
-        let symbol = Package::from(package)
+        let symbol = Package::from_word(package)
             .intern(&mut ctx, &runtime, "WHEN")
             .expect("WHEN")
             .0;

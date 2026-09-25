@@ -28,10 +28,10 @@ pub fn elements(ctx: &mut ThreadContext, mut form: Word) -> Result<Vec<Word>, Ob
 
 pub fn symbol(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Result<Word, ObjectError> {
     let package = runtime.ensure_package(ctx, "COMMON-LISP")?;
-    Ok(Package::from(package).intern(ctx, runtime, name)?.0)
+    Ok(Package::from_word(package).intern(ctx, runtime, name)?.0)
 }
 
 pub fn fresh_symbol(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Word, ObjectError> {
     let package = runtime.ensure_package(ctx, "NCL")?;
-    Package::from(package).gensym(ctx, runtime)
+    Package::from_word(package).gensym(ctx, runtime)
 }

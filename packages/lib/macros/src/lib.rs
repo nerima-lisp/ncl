@@ -1,8 +1,8 @@
 //! Builtin registration and small, structural macro expanders.
 #![allow(clippy::missing_errors_doc)]
 
-mod defining;
 mod control;
+mod defining;
 mod form;
 mod place;
 mod setf;
@@ -15,15 +15,36 @@ pub use setf::{
 };
 
 use ncl_object::{
-    set_symbol_macro, Builtin, BuiltinImplementation, ObjectError, Package, Runtime, ThreadContext,
-    Word,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, LambdaList, ObjectError, Package, Parameter, ParameterType,
+    Runtime, ThreadContext, Word, set_symbol_macro,
 };
 
 const CL: &str = "COMMON-LISP";
+const FORM: Parameter = Parameter {
+    name: BuiltinName::new("FORM"),
+    ty: ParameterType::Any,
+};
+const ENVIRONMENT: Parameter = Parameter {
+    name: BuiltinName::new("ENVIRONMENT"),
+    ty: ParameterType::Any,
+};
+const MACRO_LAMBDA_LIST: LambdaList = LambdaList::with_rest(&[FORM], ENVIRONMENT);
+const PLACE: Parameter = Parameter {
+    name: BuiltinName::new("PLACE"),
+    ty: ParameterType::Any,
+};
 
 fn expansion_arg(args: &[Word]) -> Result<Word, ObjectError> {
     args.first().copied().ok_or(ObjectError::TypeError)
 }
+
+type LegacyBuiltin = fn(
+    &Runtime,
+    &mut ThreadContext,
+    args: &[Word],
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError>;
 
 fn identity(
     _runtime: &Runtime,
@@ -32,6 +53,32 @@ fn identity(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     expansion_arg(args)
+}
+
+fn call_legacy(
+    callback: LegacyBuiltin,
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let words = (0..args.len())
+        .filter_map(|index| args.get(index))
+        .collect::<Vec<_>>();
+    callback(runtime, ctx, &words, values)
+}
+
+macro_rules! adapters {
+    ($($adapter:ident => $callback:path),+ $(,)?) => {
+        $(fn $adapter(
+            ctx: &mut ThreadContext,
+            runtime: &Runtime,
+            args: &BuiltinArgs<'_>,
+            values: &mut ncl_object::MultipleValues,
+        ) -> Result<Word, ObjectError> {
+            call_legacy($callback, ctx, runtime, args, values)
+        })+
+    };
 }
 
 fn macro_arguments(ctx: &mut ThreadContext, form: Word) -> Result<Vec<Word>, ObjectError> {
@@ -157,62 +204,128 @@ fn get_setf_expansion_callback(
     Ok(expansion[4])
 }
 
+fn get_setf_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let words = (0..args.len())
+        .filter_map(|index| args.get(index))
+        .collect::<Vec<_>>();
+    get_setf_expansion_callback(runtime, ctx, &words, values)
+}
+
+adapters!
+    (setf_adapter => setf_callback,
+     psetf_adapter => psetf_callback,
+     incf_adapter => incf_callback,
+     decf_adapter => decf_callback,
+     push_adapter => push_callback,
+     pushnew_adapter => pushnew_callback,
+     pop_adapter => pop_callback,
+     remf_adapter => remf_callback,
+     shiftf_adapter => shiftf_callback,
+     rotatef_adapter => rotatef_callback);
+
 fn callback_for(name: &str) -> ncl_object::RustBuiltin {
     match name {
-        "SETF" => setf_callback,
-        "PSETF" => psetf_callback,
-        "INCF" => incf_callback,
-        "DECF" => decf_callback,
-        "PUSH" => push_callback,
-        "PUSHNEW" => pushnew_callback,
-        "POP" => pop_callback,
-        "REMF" => remf_callback,
-        "SHIFTF" => shiftf_callback,
-        "ROTATEF" => rotatef_callback,
-        name => defining::callback_for(name)
-            .or_else(|| control::callback_for(name))
-            .unwrap_or(identity),
+        "SETF" => setf_adapter,
+        "PSETF" => psetf_adapter,
+        "INCF" => incf_adapter,
+        "DECF" => decf_adapter,
+        "PUSH" => push_adapter,
+        "PUSHNEW" => pushnew_adapter,
+        "POP" => pop_adapter,
+        "REMF" => remf_adapter,
+        "SHIFTF" => shiftf_adapter,
+        "ROTATEF" => rotatef_adapter,
+        "DEFUN" => defining::defun_adapter,
+        "DEFMACRO" => defining::defmacro_adapter,
+        "DEFVAR" => defining::defvar_adapter,
+        "DEFPARAMETER" => defining::defparameter_adapter,
+        "DEFCONSTANT" => defining::defconstant_adapter,
+        "DEFINE-SYMBOL-MACRO" => defining::define_symbol_macro_adapter,
+        "DEFINE-COMPILER-MACRO" => defining::define_compiler_macro_adapter,
+        "DEFSETF" => defining::defsetf_adapter,
+        "DEFINE-SETF-EXPANDER" => defining::define_setf_expander_adapter,
+        "WHEN" => control::expand_when_adapter,
+        "UNLESS" => control::expand_unless_adapter,
+        "AND" => control::expand_and_adapter,
+        "OR" => control::expand_or_adapter,
+        "COND" => control::expand_cond_adapter,
+        "CASE" => control::expand_case_adapter,
+        "ECASE" => control::expand_ecase_adapter,
+        "CCASE" => control::expand_ccase_adapter,
+        "TYPECASE" => control::expand_typecase_adapter,
+        "ETYPECASE" => control::expand_etypecase_adapter,
+        "CTYPECASE" => control::expand_ctypecase_adapter,
+        "PROG" => control::expand_prog_adapter,
+        "PROG*" => control::expand_prog_star_adapter,
+        "PROG1" => control::expand_prog1_adapter,
+        "PROG2" => control::expand_prog2_adapter,
+        "RETURN" => control::expand_return_adapter,
+        "NTH-VALUE" => control::expand_nth_value_adapter,
+        "DO" => control::expand_do_adapter,
+        "DO*" => control::expand_do_star_adapter,
+        _ => identity_adapter,
     }
+}
+
+fn identity_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    call_legacy(identity, ctx, runtime, args, values)
 }
 
 /// Register the symbols owned by this crate.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
-    for name in MACROS {
+    for &name in MACROS {
         let implementation = BuiltinImplementation::adapted(
             Builtin {
-                arity: 0,
-                direct: false,
-                lambda_list: "form &environment environment",
+                lambda_list: MACRO_LAMBDA_LIST,
+                convention: BuiltinConvention::Adapted,
             },
             callback_for(name),
-            |args| Ok(args.to_vec()),
+            |args| {
+                Ok((0..args.len())
+                    .filter_map(|index| args.get(index))
+                    .collect())
+            },
         );
-        let function = runtime.register_builtin(&mut ctx, CL, name, implementation)?;
+        let function = runtime.register_builtin(
+            &mut ctx,
+            BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name)),
+            implementation,
+        )?;
         let symbol = Package::from(runtime.ensure_package(&mut ctx, CL)?)
             .intern(&mut ctx, runtime, name)?
             .0;
         set_symbol_macro(&mut ctx, symbol, true)?;
         let _ = function;
     }
-    for name in FUNCTIONS {
-        if *name != "GET-SETF-EXPANSION" {
+    for &name in FUNCTIONS {
+        if name != "GET-SETF-EXPANSION" {
             runtime.define_function(&mut ctx, CL, name, Word::UNBOUND)?;
         }
     }
     runtime.register_builtin(
         &mut ctx,
-        CL,
-        "GET-SETF-EXPANSION",
-        BuiltinImplementation::adapted(
+        BuiltinIdentifier::new(
+            BuiltinPackage::CommonLisp,
+            BuiltinName::new("GET-SETF-EXPANSION"),
+        ),
+        BuiltinImplementation::direct(
             Builtin {
-                arity: 1,
-                direct: true,
-                lambda_list: "place &environment environment",
+                lambda_list: LambdaList::fixed(&[PLACE]),
+                convention: BuiltinConvention::Direct(Arity::exact(1)),
             },
-            get_setf_expansion_callback,
-            |args| Ok(args.to_vec()),
+            get_setf_adapter,
         ),
     )?;
     let variable = Package::from(runtime.ensure_package(&mut ctx, CL)?)

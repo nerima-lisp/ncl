@@ -1,6 +1,6 @@
 #![allow(missing_docs, clippy::missing_errors_doc)]
 
-use ncl_object::{car, cdr, make_cons, ObjectError, Package, Runtime, ThreadContext, Word};
+use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word, car, cdr, make_cons};
 
 pub fn list(
     ctx: &mut ThreadContext,

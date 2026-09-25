@@ -42,12 +42,12 @@ pub fn typed_complex(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let real = args.required(0)?;
-    let real_value = real(ctx, real)?;
+    let real_word = args.required(0)?;
+    let real_value = real(ctx, real_word)?;
     let imag = args.required(1)?;
     let imag_value = real(ctx, imag)?;
     if imag_value == 0.0 {
-        return Ok(real);
+        return Ok(real_word);
     }
     let real = make_double(ctx, runtime, real_value)?.into();
     let imag = make_double(ctx, runtime, imag_value)?.into();
@@ -63,11 +63,11 @@ pub fn typed_conjugate(
     let value = args.required(0)?;
     match classify_object(ctx, value) {
         ObjectRef::Complex(value) => {
-            let real = complex_real(ctx, ncl_object::Complex::from_word(value))?;
+            let real_value = complex_real(ctx, ncl_object::Complex::from_word(value))?;
             let imag = complex_imag(ctx, ncl_object::Complex::from_word(value))?;
             let imag_value = -real(ctx, imag)?;
             let imag = make_double(ctx, runtime, imag_value)?.into();
-            make_complex(ctx, runtime, real, imag).map(Into::into)
+            make_complex(ctx, runtime, real_value, imag).map(Into::into)
         }
         _ => {
             real(ctx, value)?;

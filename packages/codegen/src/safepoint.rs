@@ -50,6 +50,42 @@ impl fmt::Display for MapError {
 impl std::error::Error for MapError {}
 
 impl SafepointMap {
+    /// Builds the wire-format mask for the live register ids.
+    ///
+    /// Register ids are shared by the x86-64 and `AArch64` backends and are
+    /// therefore represented as `u16`. Only ids addressable by the 16-bit
+    /// mask are accepted, and an id may occur only once.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for duplicate or unrepresentable ids.
+    pub fn build_register_mask(registers: &[u16]) -> Result<u16, MapError> {
+        let mut register_mask = 0u16;
+        for &register in registers {
+            if u32::from(register) >= u16::BITS {
+                return Err(MapError::RegisterCountOutOfRange);
+            }
+            let bit = 1u16 << register;
+            if register_mask & bit != 0 {
+                return Err(MapError::InvalidHeader);
+            }
+            register_mask |= bit;
+        }
+        Ok(register_mask)
+    }
+
+    /// Verifies that a mask describes exactly the supplied live register ids.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the ids do not equal the mask.
+    pub fn validate_register_mask(register_mask: u16, registers: &[u16]) -> Result<(), MapError> {
+        if Self::build_register_mask(registers)? != register_mask {
+            return Err(MapError::InvalidHeader);
+        }
+        Ok(())
+    }
+
     /// Constructs a safepoint map using the fixed 16-byte header format.
     ///
     /// # Errors
@@ -79,17 +115,7 @@ impl SafepointMap {
         if live_slots.len() > usize::from(u16::MAX) {
             return Err(MapError::SlotCountOutOfRange);
         }
-        let mut register_mask = 0u16;
-        for &register in registers {
-            if u32::from(register) >= u16::BITS {
-                return Err(MapError::RegisterCountOutOfRange);
-            }
-            let bit = 1u16 << register;
-            if register_mask & bit != 0 {
-                return Err(MapError::InvalidHeader);
-            }
-            register_mask |= bit;
-        }
+        let register_mask = Self::build_register_mask(registers)?;
         Ok(Self {
             pc_offset,
             frame_words,
@@ -124,7 +150,12 @@ impl SafepointMap {
         Ok(bytes)
     }
 
-    fn validate(&self) -> Result<(), MapError> {
+    /// Validates the in-memory map against the wire-format invariants.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the bitmap, header, or register mask is invalid.
+    pub fn validate(&self) -> Result<(), MapError> {
         if self.frame_words < HEADER_WORD_COUNT {
             return Err(MapError::FrameTooSmall);
         }
@@ -137,11 +168,7 @@ impl SafepointMap {
         {
             return Err(MapError::InvalidBitmap);
         }
-        if self.registers.len() > usize::from(u16::MAX) + 1
-            || self.registers.len() != self.register_mask.count_ones() as usize
-        {
-            return Err(MapError::InvalidHeader);
-        }
+        Self::validate_register_mask(self.register_mask, &self.registers)?;
         Ok(())
     }
 }
@@ -160,4 +187,43 @@ fn bit_is_set(bitmap: &[u8], bit: u16) -> bool {
     bitmap
         .get(usize::from(bit) / 8)
         .is_some_and(|byte| byte & (1u8 << (bit % 8)) != 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MapError, SafepointMap};
+
+    #[test]
+    fn builds_masks_for_common_u16_register_ids() {
+        let mask = SafepointMap::build_register_mask(&[0, 3, 14, 15]);
+        assert_eq!(mask, Ok(0xC009));
+    }
+
+    #[test]
+    fn rejects_duplicate_and_unrepresentable_register_ids() {
+        assert_eq!(
+            SafepointMap::build_register_mask(&[3, 3]),
+            Err(MapError::InvalidHeader)
+        );
+        assert_eq!(
+            SafepointMap::build_register_mask(&[16]),
+            Err(MapError::RegisterCountOutOfRange)
+        );
+    }
+
+    #[test]
+    fn validates_register_ids_against_the_wire_mask() {
+        assert!(SafepointMap::validate_register_mask(0x0009, &[0, 3]).is_ok());
+        assert_eq!(
+            SafepointMap::validate_register_mask(0x0009, &[0, 4]),
+            Err(MapError::InvalidHeader)
+        );
+
+        let Ok(mut map) = SafepointMap::new(0, 4, 4, &[], &[0, 3], 0) else {
+            return;
+        };
+        map.registers = vec![0, 4];
+        assert_eq!(map.validate(), Err(MapError::InvalidHeader));
+        assert_eq!(map.encode(), Err(MapError::InvalidHeader));
+    }
 }

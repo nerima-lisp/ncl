@@ -74,6 +74,12 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
     let mut handler_values = HashSet::new();
     let mut position = 0u32;
 
+    for (index, parameter) in function.params.iter().enumerate() {
+        if let Ok(value) = u32::try_from(index) {
+            definitions.insert(ValueId(value), (position, parameter.ty));
+        }
+    }
+
     for block in &function.blocks {
         for param in &block.params {
             definitions.insert(param.value, (position, param.ty));
@@ -87,7 +93,7 @@ pub fn allocate(function: &Function, target: AllocationTarget) -> Allocation {
             for value in operands {
                 last_use.insert(value, position);
             }
-            if is_call(&op.kind) {
+            if is_call(&op.kind) || matches!(op.kind, OpKind::Safepoint) {
                 call_positions.insert(position);
             }
             if matches!(op.kind, OpKind::Safepoint) || is_call(&op.kind) {
@@ -319,7 +325,10 @@ fn operands_of_terminator(terminator: &Terminator, out: &mut Vec<ValueId>) {
 #[cfg(test)]
 mod tests {
     use super::{AllocationTarget, Location, allocate};
-    use ncl_ir::{Constant, FunctionBuilder, FunctionId, OpKind, Terminator, Ty};
+    use ncl_ir::{
+        Constant, FunctionBuilder, FunctionId, HandlerKind, HandlerRegion, OpKind, Terminator, Ty,
+        ValueId,
+    };
 
     #[test]
     fn linear_scan_spills_when_live_values_exceed_registers() {
@@ -356,5 +365,53 @@ mod tests {
                 .iter()
                 .any(|(_, location)| matches!(location, Location::Register(_)))
         );
+    }
+
+    #[test]
+    fn handler_crossing_values_are_spilled_and_not_register_roots() {
+        let mut builder = FunctionBuilder::new(
+            FunctionId(1),
+            "handler-crossing",
+            Vec::new(),
+            vec![Ty::Word],
+        );
+        let constant = builder.add_constant(Constant::Fixnum(7));
+        let value = builder
+            .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+            .map_or(ValueId(0), |values| values[0]);
+        builder.add_handler_region(HandlerRegion {
+            id: ncl_ir::HandlerRegionId(0),
+            kind: HandlerKind::UnwindProtect,
+            protected: vec![ncl_ir::BlockId(0)],
+            handler: ncl_ir::BlockId(0),
+            cleanup: Some(ncl_ir::BlockId(0)),
+            catch_tag: None,
+            binding_targets: vec![value],
+            depth: 0,
+            parent: None,
+        });
+        assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok());
+        assert!(
+            builder
+                .terminate(Terminator::Return {
+                    values: vec![value]
+                })
+                .is_ok()
+        );
+
+        let allocation = allocate(&builder.finish(), AllocationTarget::X86_64);
+        let interval = allocation
+            .intervals
+            .iter()
+            .find(|interval| interval.value == value);
+        let Some(interval) = interval else {
+            panic!("handler-crossing interval");
+        };
+        assert!(interval.crosses_handler);
+        assert!(matches!(
+            allocation.location(value),
+            Some(Location::Spill(_))
+        ));
+        assert!(allocation.safepoint_registers.values().all(Vec::is_empty));
     }
 }

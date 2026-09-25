@@ -49,7 +49,7 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
             Ordering::SeqCst,
         );
         FRAME_LOCAL_BEFORE.store(
-            ctx.frame_word(5).expect("captured live local").bits(),
+            ctx.frame_word(4).expect("captured live local").bits(),
             Ordering::SeqCst,
         );
         ctx.clear_safepoint_request();
@@ -62,7 +62,7 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
             .expect("written-back frame function object");
         FRAME_WORD_AFTER.store(after.bits(), Ordering::SeqCst);
         FRAME_LOCAL_AFTER.store(
-            ctx.last_written_frame_word(5)
+            ctx.last_written_frame_word(4)
                 .expect("written-back live local")
                 .bits(),
             Ordering::SeqCst,

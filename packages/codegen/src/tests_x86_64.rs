@@ -1,6 +1,9 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
-use crate::{ContextField, FLAG_CALL, RuntimeAbi, RuntimeFunction, compile_function_x86_64};
+use crate::{
+    AllocationTarget, ContextField, FLAG_CALL, RuntimeAbi, RuntimeFunction, allocate,
+    compile_function_x86_64,
+};
 use ncl_ir::{Compare, Constant, FunctionBuilder, OpKind, Terminator, Ty};
 
 struct X86_64FixtureAbi;
@@ -49,6 +52,67 @@ impl RuntimeAbi for X86_64FixtureAbi {
     fn constant_word(&self, name: &str) -> Option<i64> {
         (name == "function-entry:7").then_some(0x2000)
     }
+}
+
+#[test]
+#[allow(clippy::expect_used)]
+fn x86_64_lowering_uses_allocator_register_roots() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(71),
+        "allocated-root",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let constant = builder.add_constant(Constant::Fixnum(9));
+    let value = builder
+        .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+        .expect("constant")[0];
+    builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
+    builder
+        .terminate(Terminator::Return {
+            values: vec![value],
+        })
+        .expect("return");
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    let expected = allocation
+        .safepoint_registers
+        .get(&1)
+        .expect("allocator safepoint roots");
+    assert!(!expected.is_empty());
+    let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi).expect("lowering");
+    assert_eq!(compiled.safepoint_maps[0].registers, *expected);
+    assert!(!compiled.code.is_empty());
+}
+
+#[test]
+#[allow(clippy::expect_used)]
+fn x86_64_lowering_reserves_allocator_spills_in_frame() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(72),
+        "allocated-spills",
+        Vec::new(),
+        vec![Ty::Word; 8],
+    );
+    let mut values = Vec::new();
+    for index in 0..8u32 {
+        let constant = builder.add_constant(Constant::Fixnum(i64::from(index)));
+        values.push(
+            builder
+                .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+                .expect("constant")[0],
+        );
+    }
+    builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
+    builder
+        .terminate(Terminator::Return { values })
+        .expect("return");
+    let function = builder.finish();
+    let allocation = allocate(&function, AllocationTarget::X86_64);
+    assert!(allocation.spill_words > 0);
+    let compiled = compile_function_x86_64(&function, &X86_64FixtureAbi).expect("lowering");
+    assert!(compiled.frame_size >= (4 + 8 + allocation.spill_words) * 8);
+    assert!(compiled.safepoint_maps[0].bitmap.len() > 1);
 }
 
 #[test]

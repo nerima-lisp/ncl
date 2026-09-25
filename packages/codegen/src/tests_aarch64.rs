@@ -181,6 +181,7 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
 }
 
 #[test]
+#[allow(clippy::chunks_exact_to_as_chunks)]
 fn golden_aarch64_prologue_spills_register_arguments() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(28),
@@ -208,19 +209,61 @@ fn golden_aarch64_prologue_spills_register_arguments() {
     let Some(compiled) = compiled_result.ok() else {
         return;
     };
-    let word = |offset| {
-        u32::from_le_bytes(
-            compiled.code[offset..offset + 4]
-                .try_into()
-                .unwrap_or([0; 4]),
-        )
-    };
-    assert_eq!(
-        decoded_text(word(24).to_le_bytes(), "decode STR x1"),
-        "str x1, [x29, #-8]"
+    let instructions = compiled
+        .code
+        .chunks_exact(4)
+        .map(|bytes| {
+            decoded_text(
+                bytes.try_into().unwrap_or([0; 4]),
+                "decode argument initialization",
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        instructions
+            .iter()
+            .any(|text| text == "orr x6, x31, x1, lsl #0")
     );
-    assert_eq!(
-        decoded_text(word(28).to_le_bytes(), "decode STR x2"),
-        "str x2, [x29, #-16]"
+    assert!(
+        instructions
+            .iter()
+            .any(|text| text == "orr x7, x31, x2, lsl #0")
     );
+}
+
+#[test]
+#[allow(clippy::expect_used, clippy::chunks_exact_to_as_chunks)]
+fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(29),
+        "allocator-locations",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let mut values = Vec::new();
+    for index in 0..12 {
+        let constant = builder.add_constant(Constant::Fixnum(index));
+        values.push(
+            builder
+                .push_op(OpKind::Const { result: constant }, &[Ty::Word])
+                .expect("constant")[0],
+        );
+    }
+    builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
+    builder
+        .terminate(Terminator::Return { values })
+        .expect("return");
+
+    let compiled = compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi)
+        .expect("allocator-backed lowering");
+    let map = compiled.safepoint_maps.first().expect("safepoint map");
+    assert!(
+        compiled.frame_size > 32,
+        "spill slots must extend the frame"
+    );
+    assert!(
+        map.registers.is_empty(),
+        "safepoint-crossing values are spilled"
+    );
+    assert!(map.bitmap.iter().any(|byte| byte & (1 << 4) != 0));
 }

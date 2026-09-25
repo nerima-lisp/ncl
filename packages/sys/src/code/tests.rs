@@ -50,7 +50,7 @@ fn map_decode_lookup_and_scan() {
     bytes[4..6].copy_from_slice(&8u16.to_le_bytes());
     bytes[6..8].copy_from_slice(&5u16.to_le_bytes());
     bytes[8..10].copy_from_slice(&5u16.to_le_bytes());
-    bytes[10..12].copy_from_slice(&1u16.to_le_bytes());
+    bytes[10..12].copy_from_slice(&8u16.to_le_bytes());
     bytes.push(0b0001_0100);
     bytes.extend_from_slice(&3u16.to_le_bytes());
     let Ok(map) = SafepointMap::decode(&bytes, 1) else {
@@ -71,6 +71,21 @@ fn map_decode_lookup_and_scan() {
     );
     assert_eq!(frame[2].as_fixnum(), Some(2));
     assert_eq!(frame[4].as_fixnum(), Some(3));
+}
+
+#[test]
+fn safepoint_decode_rejects_register_ids_outside_register_mask() {
+    let mut bytes = vec![0; 16];
+    bytes[4..6].copy_from_slice(&4u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&3u16.to_le_bytes());
+    bytes[8..10].copy_from_slice(&3u16.to_le_bytes());
+    bytes[10..12].copy_from_slice(&1u16.to_le_bytes());
+    bytes.push(0b0000_0100);
+    bytes.extend_from_slice(&3u16.to_le_bytes());
+    assert_eq!(
+        SafepointMap::decode(&bytes, 1),
+        Err("register ids do not match register mask")
+    );
 }
 
 #[test]

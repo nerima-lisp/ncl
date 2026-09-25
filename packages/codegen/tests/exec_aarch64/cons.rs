@@ -359,12 +359,14 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
         }],
         vec![],
     );
-    builder
+    let live_local = builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
-        .expect("live local");
+        .expect("live local")[0];
     builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
     builder
-        .terminate(Terminator::Return { values: Vec::new() })
+        .terminate(Terminator::Return {
+            values: vec![live_local],
+        })
         .expect("return");
     let compiled = compile_function_aarch64(&builder.finish(), &BuiltinAbi).expect("lowering");
     let mut code = alloc_code(compiled.code.len()).expect("code allocation");
@@ -389,9 +391,9 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     COLLECT_IN_SAFEPOINT.store(false, Ordering::SeqCst);
     ncl_sys::register_thread_with_thread(&thread, object_context.thread_mut())
         .expect("re-register object context");
-    assert_eq!(result, (0, 0));
     assert!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst) > slow_before);
     let after = function.bits();
+    assert_eq!(result, (after, 1));
     assert_ne!(old, after);
     assert_eq!(FRAME_WORD_BEFORE.load(Ordering::SeqCst), old);
     assert_eq!(FRAME_WORD_AFTER.load(Ordering::SeqCst), after);

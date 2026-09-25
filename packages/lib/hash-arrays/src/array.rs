@@ -823,9 +823,7 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         ("BIT-AND", 2, bit_and),
         ("BIT-IOR", 2, bit_ior),
         ("BIT-XOR", 2, bit_xor),
-        ("VECTOR-PUSH", 2, vector_push_builtin),
         ("VECTOR-PUSH-EXTEND", 3, vector_push_extend_builtin),
-        ("VECTOR-POP", 1, vector_pop_builtin),
     ] {
         register_one(ctx, runtime, name, arity, function)?;
     }

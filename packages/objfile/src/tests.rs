@@ -240,6 +240,211 @@ fn fasl_rejects_overlapping_sections_and_out_of_range_relocations() {
 }
 
 #[test]
+fn fasl_header_rejection_reports_the_rejected_field() {
+    let value = Fasl {
+        header: FaslHeader {
+            architecture: Architecture::X86_64,
+            features: 7,
+        },
+        sections: FaslSection {
+            code: vec![0xc3],
+            relocations: vec![],
+            constants: vec![],
+            symbols: vec![],
+            stack_maps: vec![],
+            debug: vec![],
+        },
+    };
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[0] = b'X';
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "magic",
+            value: 0
+        })
+    );
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[8..10].copy_from_slice(&2u16.to_le_bytes());
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "version",
+            value: 2
+        })
+    );
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[10] = Architecture::Aarch64 as u8;
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "architecture",
+            value: 2
+        })
+    );
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[13] = 32;
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "header",
+            value: 32
+        })
+    );
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[16..24].copy_from_slice(&8u64.to_le_bytes());
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 7),
+        Err(ObjectError::InvalidField {
+            field: "feature bitmap",
+            value: 8
+        })
+    );
+}
+
+#[test]
+fn fasl_bounds_and_relocation_errors_are_specific() {
+    let value = Fasl {
+        header: FaslHeader {
+            architecture: Architecture::X86_64,
+            features: 0,
+        },
+        sections: FaslSection {
+            code: vec![0xc3],
+            relocations: vec![Relocation {
+                section: SectionId(0),
+                offset: 0,
+                kind: RelocKind::Abs64,
+                symbol: SymbolRef::Local(0),
+                addend: 0,
+            }],
+            constants: vec![],
+            symbols: vec![],
+            stack_maps: vec![],
+            debug: vec![],
+        },
+    };
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[65..69].copy_from_slice(&1u32.to_le_bytes());
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 0),
+        Err(ObjectError::InvalidReference {
+            kind: "FASL relocation section",
+            index: 1
+        })
+    );
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[69..73].copy_from_slice(&1u32.to_le_bytes());
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 0),
+        Err(ObjectError::OutOfBounds {
+            section: "FASL relocation",
+            offset: 1,
+            size: 1
+        })
+    );
+    let mut bytes = FaslWriter::write(&value).unwrap_or_default();
+    bytes[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert_eq!(
+        FaslReader::read(&bytes, Architecture::X86_64, 0),
+        Err(ObjectError::OutOfBounds {
+            section: "constant",
+            offset: u64::from(u32::MAX),
+            size: 0
+        })
+    );
+    let overflowing = Fasl {
+        sections: FaslSection {
+            relocations: vec![Relocation {
+                addend: i64::from(i32::MAX) + 1,
+                ..value.sections.relocations[0].clone()
+            }],
+            ..value.sections.clone()
+        },
+        ..value
+    };
+    assert_eq!(
+        FaslWriter::write(&overflowing),
+        Err(ObjectError::InvalidField {
+            field: "relocation addend",
+            value: i64::from(i32::MAX) as u64 + 1
+        })
+    );
+}
+
+#[test]
+fn native_writers_reject_invalid_references_and_cover_relocation_records() {
+    let elf_sections = vec![ElfSection {
+        id: SectionId(1),
+        kind: ElfSectionKind::Text,
+        bytes: vec![0; 8],
+    }];
+    let invalid_section = ElfObject {
+        architecture: ElfArchitecture::X86_64,
+        sections: elf_sections.clone(),
+        relocations: vec![Relocation {
+            section: SectionId(9),
+            offset: 0,
+            kind: RelocKind::Abs64,
+            symbol: SymbolRef::External("missing".into()),
+            addend: 0,
+        }],
+        symbols: vec![],
+    };
+    assert_eq!(
+        invalid_section.write(),
+        Err(ObjectError::InvalidReference {
+            kind: "section",
+            index: 9
+        })
+    );
+    let invalid_symbol = ElfObject {
+        sections: elf_sections.clone(),
+        relocations: vec![Relocation {
+            section: SectionId(1),
+            offset: 7,
+            kind: RelocKind::PcRel32,
+            symbol: SymbolRef::Local(2),
+            addend: -4,
+        }],
+        ..invalid_section
+    };
+    assert_eq!(
+        invalid_symbol.write(),
+        Err(ObjectError::InvalidReference {
+            kind: "symbol",
+            index: 2
+        })
+    );
+    let object = ElfObject {
+        architecture: ElfArchitecture::X86_64,
+        sections: elf_sections,
+        relocations: vec![Relocation {
+            section: SectionId(1),
+            offset: 0,
+            kind: RelocKind::Plt32,
+            symbol: SymbolRef::External("puts".into()),
+            addend: -4,
+        }],
+        symbols: vec![ElfSymbol {
+            name: "entry".into(),
+            section: Some(SectionId(1)),
+            value: 0,
+            global: true,
+        }],
+    };
+    let bytes = object.write().unwrap_or_default();
+    assert_eq!(validate_elf(&bytes, ElfArchitecture::X86_64), Ok(()));
+    assert_eq!(
+        ElfReader::validate(&bytes, ElfArchitecture::Aarch64),
+        Err(ObjectError::InvalidField {
+            field: "ELF machine",
+            value: 62
+        })
+    );
+}
+
+#[test]
 #[ignore = "requires macOS codesign and execution"]
 fn signed_minimal_macho_executes() {
     let image = ExecutableImage {

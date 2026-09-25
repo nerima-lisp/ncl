@@ -2,10 +2,11 @@
 
 use ncl_object::Word;
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, bignum_limbs,
-    bignum_sign, classify_object, complex_imag, complex_real, double_value, make_bignum_from_i128,
-    make_complex, make_double, make_ratio, ratio_denominator, ratio_numerator,
+    bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
+    make_bignum_from_i128, make_complex, make_double, make_ratio, ratio_denominator,
+    ratio_numerator, BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext,
 };
+use std::cmp::Ordering;
 
 #[derive(Clone, Copy, Debug)]
 enum Number {
@@ -43,7 +44,7 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(value) => Ok(i128::from(value)),
         ObjectRef::Bignum(value) => {
-            let limbs = bignum_limbs(ctx, ncl_object::Bignum::from(value))?;
+            let limbs = bignum_limbs(ctx, ncl_object::Bignum::from_word(value))?;
             if limbs.len() > 4 {
                 return Err(ObjectError::TypeError);
             }
@@ -51,7 +52,7 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
             for (index, limb) in limbs.into_iter().enumerate() {
                 magnitude |= i128::from(limb) << (index * 32);
             }
-            Ok(if bignum_sign(ctx, ncl_object::Bignum::from(value))? {
+            Ok(if bignum_sign(ctx, ncl_object::Bignum::from_word(value))? {
                 -magnitude
             } else {
                 magnitude
@@ -65,17 +66,29 @@ fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => Ok(Number::Integer(integer(ctx, word)?)),
         ObjectRef::Ratio(value) => {
-            let n = integer(ctx, ratio_numerator(ctx, ncl_object::Ratio::from(value))?)?;
-            let d = integer(ctx, ratio_denominator(ctx, ncl_object::Ratio::from(value))?)?;
+            let n = integer(
+                ctx,
+                ratio_numerator(ctx, ncl_object::Ratio::from_word(value))?,
+            )?;
+            let d = integer(
+                ctx,
+                ratio_denominator(ctx, ncl_object::Ratio::from_word(value))?,
+            )?;
             Ok(ratio(n, d))
         }
         ObjectRef::DoubleFloat(value) => Ok(Number::Float(double_value(
             ctx,
-            ncl_object::DoubleFloat::from(value),
+            ncl_object::DoubleFloat::from_word(value),
         )?)),
         ObjectRef::Complex(value) => {
-            let real = number(ctx, complex_real(ctx, ncl_object::Complex::from(value))?)?;
-            let imag = number(ctx, complex_imag(ctx, ncl_object::Complex::from(value))?)?;
+            let real = number(
+                ctx,
+                complex_real(ctx, ncl_object::Complex::from_word(value))?,
+            )?;
+            let imag = number(
+                ctx,
+                complex_imag(ctx, ncl_object::Complex::from_word(value))?,
+            )?;
             Ok(Number::Complex(real.to_f64(), imag.to_f64()))
         }
         _ => Err(ObjectError::TypeError),
@@ -191,7 +204,11 @@ fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
 }
 
 fn bool_word(value: bool) -> Word {
-    if value { Word::TRUE } else { Word::NIL }
+    if value {
+        Word::TRUE
+    } else {
+        Word::NIL
+    }
 }
 fn args_numbers(ctx: &ThreadContext, args: &[Word]) -> Result<Vec<Number>, ObjectError> {
     args.iter().map(|arg| number(ctx, *arg)).collect()
@@ -350,44 +367,54 @@ pub fn signum(
 fn comparison(
     ctx: &ThreadContext,
     args: &[Word],
-    cmp: impl Fn(f64, f64) -> bool,
+    cmp: impl Fn(Ordering) -> bool,
 ) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
     Ok(bool_word(
         ns.windows(2)
-            .all(|pair| cmp(pair[0].to_f64(), pair[1].to_f64())),
+            .all(|pair| cmp(compare_numbers(pair[0], pair[1]))),
     ))
 }
+
+fn compare_numbers(left: Number, right: Number) -> Ordering {
+    match (left, right) {
+        (Number::Integer(left), Number::Integer(right)) => left.cmp(&right),
+        (left, right) => left
+            .to_f64()
+            .partial_cmp(&right.to_f64())
+            .unwrap_or(Ordering::Equal),
+    }
+}
 pub fn equal(ctx: &mut ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
-    comparison(ctx, args, |a, b| a == b)
+    comparison(ctx, args, |ordering| ordering == Ordering::Equal)
 }
 pub fn not_equal(ctx: &mut ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
     Ok(bool_word(ns.iter().enumerate().all(|(i, value)| {
         ns[i + 1..]
             .iter()
-            .all(|other| value.to_f64() != other.to_f64())
+            .all(|other| compare_numbers(*value, *other) != Ordering::Equal)
     })))
 }
 pub fn less(ctx: &mut ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
-    comparison(ctx, args, |a, b| a < b)
+    comparison(ctx, args, |ordering| ordering == Ordering::Less)
 }
 pub fn greater(ctx: &mut ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
-    comparison(ctx, args, |a, b| a > b)
+    comparison(ctx, args, |ordering| ordering == Ordering::Greater)
 }
 pub fn less_equal(
     ctx: &mut ThreadContext,
     _: &Runtime,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    comparison(ctx, args, |a, b| a <= b)
+    comparison(ctx, args, |ordering| ordering != Ordering::Greater)
 }
 pub fn greater_equal(
     ctx: &mut ThreadContext,
     _: &Runtime,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    comparison(ctx, args, |a, b| a >= b)
+    comparison(ctx, args, |ordering| ordering != Ordering::Less)
 }
 pub fn max(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
@@ -796,3 +823,126 @@ typed_legacy_dispatch!(typed_dispatch_rem, dispatch_rem);
 typed_legacy_dispatch!(typed_dispatch_gcd, dispatch_gcd);
 typed_legacy_dispatch!(typed_dispatch_lcm, dispatch_lcm);
 typed_legacy_dispatch!(typed_dispatch_isqrt, dispatch_isqrt);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ncl_object::make_bignum_from_i128;
+
+    fn context() -> (Runtime, ThreadContext) {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        super::super::register(&runtime).unwrap();
+        (runtime, ctx)
+    }
+
+    fn call(runtime: &Runtime, ctx: &mut ThreadContext, name: &str, args: &[Word]) -> Word {
+        let function = runtime
+            .function(ctx, "COMMON-LISP", name)
+            .and_then(|word| ncl_object::FunctionObject::try_from(word).ok())
+            .unwrap();
+        runtime.call_builtin(ctx, function, args).unwrap()
+    }
+
+    fn bignum(ctx: &mut ThreadContext, runtime: &Runtime, value: i128) -> Word {
+        make_bignum_from_i128(ctx, runtime, value).unwrap().into()
+    }
+
+    #[test]
+    fn arithmetic_preserves_fixnum_bignum_boundary_and_argument_order() {
+        let (runtime, mut ctx) = context();
+        let max = i128::from(i64::MAX >> 4);
+        let fixnum = Word::fixnum(max as i64);
+        let next = bignum(&mut ctx, &runtime, max + 1);
+
+        let result = add(&mut ctx, &runtime, &[fixnum, Word::fixnum(1)]).unwrap();
+        assert_eq!(integer(&ctx, result).unwrap(), max + 1);
+        let result = sub(&mut ctx, &runtime, &[next, Word::fixnum(1)]).unwrap();
+        assert_eq!(integer(&ctx, result).unwrap(), max);
+        let result = mul(
+            &mut ctx,
+            &runtime,
+            &[Word::fixnum(2), Word::fixnum(3), Word::fixnum(4)],
+        )
+        .unwrap();
+        assert_eq!(integer(&ctx, result).unwrap(), 24);
+        let result = sub(
+            &mut ctx,
+            &runtime,
+            &[Word::fixnum(10), Word::fixnum(2), Word::fixnum(3)],
+        )
+        .unwrap();
+        assert_eq!(integer(&ctx, result).unwrap(), 5);
+        let result = one_plus(&mut ctx, &runtime, &[fixnum]).unwrap();
+        assert_eq!(integer(&ctx, result).unwrap(), max + 1);
+        let result = one_minus(&mut ctx, &runtime, &[next]).unwrap();
+        assert_eq!(integer(&ctx, result).unwrap(), max);
+    }
+
+    #[test]
+    fn comparisons_keep_pairwise_and_chain_semantics_at_boundary() {
+        let (runtime, mut ctx) = context();
+        let max = i128::from(i64::MAX >> 4);
+        let fixnum = Word::fixnum(max as i64);
+        let next = bignum(&mut ctx, &runtime, max + 1);
+        let after = bignum(&mut ctx, &runtime, max + 2);
+
+        assert_eq!(
+            equal(&mut ctx, &runtime, &[fixnum, next]).unwrap(),
+            Word::NIL
+        );
+        assert_eq!(
+            not_equal(&mut ctx, &runtime, &[fixnum, next, after]).unwrap(),
+            Word::TRUE
+        );
+        assert_eq!(
+            less(&mut ctx, &runtime, &[fixnum, next, after]).unwrap(),
+            Word::TRUE
+        );
+        assert_eq!(
+            greater(&mut ctx, &runtime, &[after, next, fixnum]).unwrap(),
+            Word::TRUE
+        );
+        assert_eq!(
+            less_equal(&mut ctx, &runtime, &[fixnum, next, next]).unwrap(),
+            Word::TRUE
+        );
+        assert_eq!(
+            greater_equal(&mut ctx, &runtime, &[after, next, next]).unwrap(),
+            Word::TRUE
+        );
+    }
+
+    #[test]
+    fn registered_arithmetic_and_comparisons_use_builtin_boundary() {
+        let (runtime, mut ctx) = context();
+        let max = i128::from(i64::MAX >> 4);
+        let fixnum = Word::fixnum(max as i64);
+        let next = bignum(&mut ctx, &runtime, max + 1);
+
+        let addition = call(&runtime, &mut ctx, "+", &[fixnum, Word::fixnum(1)]);
+        assert_eq!(integer(&ctx, addition).unwrap(), max + 1);
+        let result = call(&runtime, &mut ctx, "-", &[next, Word::fixnum(1)]);
+        assert_eq!(integer(&ctx, result).unwrap(), max);
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "*",
+                &[Word::fixnum(2), Word::fixnum(3), Word::fixnum(4)],
+            ),
+            Word::fixnum(24)
+        );
+        let result = call(&runtime, &mut ctx, "1+", &[fixnum]);
+        assert_eq!(integer(&ctx, result).unwrap(), max + 1);
+        let result = call(&runtime, &mut ctx, "1-", &[next]);
+        assert_eq!(integer(&ctx, result).unwrap(), max);
+        assert_eq!(call(&runtime, &mut ctx, "=", &[fixnum, next]), Word::NIL);
+        assert_eq!(call(&runtime, &mut ctx, "/=", &[fixnum, next]), Word::TRUE);
+        assert_eq!(call(&runtime, &mut ctx, "<", &[fixnum, next]), Word::TRUE);
+        assert_eq!(call(&runtime, &mut ctx, ">", &[next, fixnum]), Word::TRUE);
+        assert_eq!(call(&runtime, &mut ctx, "<=", &[fixnum, next]), Word::TRUE);
+        assert_eq!(call(&runtime, &mut ctx, ">=", &[next, fixnum]), Word::TRUE);
+    }
+}

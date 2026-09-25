@@ -5,10 +5,10 @@
 //! changing the descriptor representation used by `ncl-clos` today.
 
 use ncl_object::{
+    Arity, Builtin, BuiltinArgs, BuiltinImplementation, BuiltinName, BuiltinPackage, Fixnum,
+    Instance, LambdaList, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     classify_object, instance_class, make_simple_vector, simple_vector_length, simple_vector_ref,
-    slot_ref, slot_set, Arity, Builtin, BuiltinArgs, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, Fixnum, Instance, LambdaList, MultipleValues, ObjectError, ObjectRef, Runtime,
-    ThreadContext, Word,
+    slot_ref, slot_set,
 };
 
 const ARG: ncl_object::Parameter = ncl_object::Parameter {

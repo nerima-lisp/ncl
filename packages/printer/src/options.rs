@@ -53,9 +53,9 @@ pub struct PrintOptions {
     pub array: bool,
     /// `*print-gensym*`: print `#:` before uninterned symbol names.
     pub gensym: bool,
-    /// `SB-EXT:*PRINT-CIRCLE-NOT-SHARED*`: label only genuinely shared objects.
+    /// `NCL-EXT:*PRINT-CIRCLE-NOT-SHARED*`: label only genuinely shared objects.
     pub circle_not_shared: bool,
-    /// `SB-EXT:*PRINT-VECTOR-LENGTH*`: maximum length for arrays.
+    /// `NCL-EXT:*PRINT-VECTOR-LENGTH*`: maximum length for arrays.
     pub vector_length: Option<usize>,
 }
 
@@ -158,14 +158,14 @@ impl PrintOptions {
         self
     }
 
-    /// Return a copy with `SB-EXT:*PRINT-CIRCLE-NOT-SHARED*` replaced.
+    /// Return a copy with `NCL-EXT:*PRINT-CIRCLE-NOT-SHARED*` replaced.
     #[must_use]
     pub const fn with_circle_not_shared(mut self, not_shared: bool) -> Self {
         self.circle_not_shared = not_shared;
         self
     }
 
-    /// Return a copy with `SB-EXT:*PRINT-VECTOR-LENGTH*` replaced.
+    /// Return a copy with `NCL-EXT:*PRINT-VECTOR-LENGTH*` replaced.
     #[must_use]
     pub const fn with_vector_length(mut self, length: Option<usize>) -> Self {
         self.vector_length = length;
@@ -195,10 +195,10 @@ impl PrintOptions {
         options.circle_not_shared = bool_special(
             ctx,
             runtime,
-            "SB-EXT:*PRINT-CIRCLE-NOT-SHARED*",
+            "NCL-EXT:*PRINT-CIRCLE-NOT-SHARED*",
             options.circle_not_shared,
         );
-        options.vector_length = length_special(ctx, runtime, "SB-EXT:*PRINT-VECTOR-LENGTH*");
+        options.vector_length = length_special(ctx, runtime, "NCL-EXT:*PRINT-VECTOR-LENGTH*");
         options
     }
 }

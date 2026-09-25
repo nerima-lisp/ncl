@@ -30,7 +30,7 @@ impl CircleState {
     /// Scan `root` and label every shared object in first-visit order.
     ///
     /// When `not_shared` is true, only objects that lie on a cycle are
-    /// labelled, matching `SB-EXT:*PRINT-CIRCLE-NOT-SHARED*`.
+    /// labelled, matching `NCL-EXT:*PRINT-CIRCLE-NOT-SHARED*`.
     ///
     /// The scan reads object fields only, so it never allocates on the Lisp
     /// heap and the addresses it records stay valid until printing finishes.

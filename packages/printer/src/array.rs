@@ -64,7 +64,7 @@ impl Printer<'_> {
     /// Print `length` elements separated by spaces or pretty line breaks.
     ///
     /// `element` reads the element at an index. `*print-length*` and
-    /// `SB-EXT:*PRINT-VECTOR-LENGTH*` print `...` once their limit is reached.
+    /// `NCL-EXT:*PRINT-VECTOR-LENGTH*` print `...` once their limit is reached.
     pub fn print_elements(
         &mut self,
         indent: usize,

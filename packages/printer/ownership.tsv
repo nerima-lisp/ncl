@@ -19,3 +19,7 @@ COMMON-LISP	PRINT-NOT-READABLE-OBJECT	function	ncl-printer	1	no	reclassified by 
 COMMON-LISP	PRINT-OBJECT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	SET-PPRINT-DISPATCH	function	ncl-printer	1	no	reclassified by subsystem ownership rule
 COMMON-LISP	WRITE-TO-STRING	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+NCL-EXT	*PRINT-CIRCLE-NOT-SHARED*	variable	ncl-printer	1	no	N14 migration of legacy printer extension
+NCL-EXT	*PRINT-VECTOR-LENGTH*	variable	ncl-printer	1	no	N14 migration of legacy printer extension
+NCL-EXT	PRINT-SYMBOL-WITH-PREFIX	function	ncl-printer	1	no	N14 migration of legacy printer extension
+NCL-EXT	PRINT-UNREADABLY	function	ncl-printer	1	no	N14 migration of legacy printer extension

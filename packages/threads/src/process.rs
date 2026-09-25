@@ -97,7 +97,7 @@ pub fn make_process(
 /// # Errors
 /// This operation does not fail; a non-process object reports NIL.
 pub fn process_p(ctx: &ThreadContext, object: Word) -> Result<Word, ThreadError> {
-    let is_process = slot_ref(ctx, Instance::from(object), ALIVE_SLOT).is_ok();
+    let is_process = slot_ref(ctx, Instance::from_word(object), ALIVE_SLOT).is_ok();
     Ok(if is_process { Word::TRUE } else { Word::NIL })
 }
 

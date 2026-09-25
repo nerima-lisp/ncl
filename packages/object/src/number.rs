@@ -48,7 +48,7 @@ pub fn make_bignum_from_i128(
             ),
         )?;
     }
-    Ok(object.into())
+    Ok(Bignum::from_word(object))
 }
 /// Read bignum limbs.
 ///
@@ -97,7 +97,7 @@ pub fn make_ratio(
         let object = allocate(ctx, runtime, widetag::RATIO, 2)?;
         put(ctx, object, number_offset::RATIO_NUMERATOR, *values[0])?;
         put(ctx, object, number_offset::RATIO_DENOMINATOR, *values[1])?;
-        Ok(object.into())
+        Ok(Ratio::from_word(object))
     })
 }
 /// Allocate a binary64 object.
@@ -116,7 +116,7 @@ pub fn make_double(
         number_offset::DOUBLE_BITS,
         Word::from_bits(value.to_bits()),
     )?;
-    Ok(object.into())
+    Ok(DoubleFloat::from_word(object))
 }
 /// Read a binary64 object.
 ///
@@ -147,7 +147,7 @@ pub fn make_complex(
         let object = allocate(ctx, runtime, widetag::COMPLEX, 2)?;
         put(ctx, object, number_offset::COMPLEX_REAL, *values[0])?;
         put(ctx, object, number_offset::COMPLEX_IMAG, *values[1])?;
-        Ok(object.into())
+        Ok(Complex::from_word(object))
     })
 }
 /// Read a ratio numerator.

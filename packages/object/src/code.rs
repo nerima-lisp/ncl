@@ -30,7 +30,7 @@ pub fn make_code_object(
                 {
                     put(ctx, object, i, v)?;
                 }
-                Ok(object.into())
+                Ok(CodeObject::from_word(object))
             })
         })
     })

@@ -399,7 +399,7 @@ fn is_keyword(ctx: &ThreadContext, object: Word) -> Result<bool, TypeError> {
     if package == Word::NIL {
         return Ok(false);
     }
-    let name = Package::from(package).name(ctx)?;
+    let name = Package::from_word(package).name(ctx)?;
     Ok(string_to_upper(ctx, name)? == "KEYWORD")
 }
 

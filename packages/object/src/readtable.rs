@@ -20,7 +20,7 @@ pub fn make_readtable(
         for (i, v) in values.iter().copied().enumerate() {
             put(ctx, object, i, *v)?;
         }
-        Ok(object.into())
+            Ok(Readtable::from_word(object))
     })
 }
 /// Read a raw readtable slot.

@@ -123,7 +123,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         let package_word = runtime
             .find_package(&ctx, package)
             .ok_or(ObjectError::Layout)?;
-        let (symbol, _) = Package::from(package_word).intern(&mut ctx, runtime, name)?;
+        let (symbol, _) = Package::from_word(package_word).intern(&mut ctx, runtime, name)?;
         match kind {
             SymbolKind::Variable => ncl_object::set_symbol_special(&mut ctx, symbol, true)?,
             SymbolKind::Function => {

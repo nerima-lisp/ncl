@@ -28,7 +28,7 @@ fn registers_ncl_ext_printer_extensions() {
     }
     let package = runtime.find_package(&ctx, "NCL-EXT").unwrap();
     for name in ["*PRINT-CIRCLE-NOT-SHARED*", "*PRINT-VECTOR-LENGTH*"] {
-        let symbol = ncl_object::Package::from(package)
+        let symbol = ncl_object::Package::from_word(package)
             .intern(&mut ctx, &runtime, name)
             .unwrap()
             .0;

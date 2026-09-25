@@ -322,7 +322,7 @@ fn intern_symbol(
     let package = resolver
         .resolve_package(ctx, &package_name_value)
         .ok_or_else(|| ReadError::PackageNotFound(package_name.clone()))?;
-    let (symbol, _) = Package::from(package).intern(ctx, runtime, &symbol_name)?;
+    let (symbol, _) = Package::from_word(package).intern(ctx, runtime, &symbol_name)?;
     Ok(symbol)
 }
 
@@ -335,6 +335,6 @@ pub fn intern_common_lisp(
     let package = runtime
         .find_package(ctx, "COMMON-LISP")
         .ok_or_else(|| ReadError::PackageNotFound("COMMON-LISP".to_owned()))?;
-    let (symbol, _) = Package::from(package).intern(ctx, runtime, name)?;
+    let (symbol, _) = Package::from_word(package).intern(ctx, runtime, name)?;
     Ok(symbol)
 }

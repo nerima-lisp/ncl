@@ -303,24 +303,24 @@ fn gc_rehash_normalizes_occupied_slots_before_insert() {
         .as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
     for key in 0..27_i64 {
-        HashTable::from(table_word)
+        HashTable::from_word(table_word)
             .insert(&mut ctx, &runtime, key_word(key), key_word(key))
             .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
     }
-    let capacity = HashTable::from(table_word)
+    let capacity = HashTable::from_word(table_word)
         .capacity(&ctx)
         .unwrap_or_else(|error| panic!("capacity failed: {error:?}"));
     for key in 0..11_i64 {
         assert_eq!(
-            HashTable::from(table_word).remove(&mut ctx, &runtime, key_word(key)),
+            HashTable::from_word(table_word).remove(&mut ctx, &runtime, key_word(key)),
             Ok(Some(key_word(key)))
         );
     }
     assert!(ctx.collect(true).is_ok());
-    HashTable::from(table_word)
+    HashTable::from_word(table_word)
         .insert(&mut ctx, &runtime, key_word(100), key_word(100))
         .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
-    assert_eq!(HashTable::from(table_word).capacity(&ctx), Ok(capacity));
+    assert_eq!(HashTable::from_word(table_word).capacity(&ctx), Ok(capacity));
     assert!(ncl_object::pop_root(&mut ctx, table_token));
 }
 
@@ -353,18 +353,18 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
         .as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
     for key in 0..8_192_i64 {
-        HashTable::from(table_word)
+        HashTable::from_word(table_word)
             .insert(&mut ctx, &runtime, key_word(key), key_word(key))
             .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
     }
     for key in (0..8_192_i64).step_by(2) {
         assert_eq!(
-            HashTable::from(table_word).remove(&mut ctx, &runtime, key_word(key)),
+            HashTable::from_word(table_word).remove(&mut ctx, &runtime, key_word(key)),
             Ok(Some(key_word(key)))
         );
     }
     for key in 8_192..12_288_i64 {
-        HashTable::from(table_word)
+        HashTable::from_word(table_word)
             .insert(&mut ctx, &runtime, key_word(key), key_word(key))
             .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
     }
@@ -372,14 +372,14 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     for key in 1..8_192_i64 {
         if key % 2 == 1 {
             assert_eq!(
-                HashTable::from(table_word).get(&mut ctx, key_word(key)),
+                HashTable::from_word(table_word).get(&mut ctx, key_word(key)),
                 Ok(Some(key_word(key)))
             );
         }
     }
     for key in 8_192..12_288_i64 {
         assert_eq!(
-            HashTable::from(table_word).get(&mut ctx, key_word(key)),
+            HashTable::from_word(table_word).get(&mut ctx, key_word(key)),
             Ok(Some(key_word(key)))
         );
     }
@@ -404,7 +404,7 @@ fn moving_keys_are_rehashed_in_every_table() {
         let mut key = Box::new(string(&mut ctx, &runtime, &format!("KEY-{index}")));
         let token = ncl_object::push_root(&mut ctx, key.as_mut());
         for (table, offset) in [(first_table, 0), (second_table, 1_000)] {
-            HashTable::from(table)
+            HashTable::from_word(table)
                 .insert(&mut ctx, &runtime, *key, key_word(index + offset))
                 .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
         }
@@ -419,11 +419,11 @@ fn moving_keys_are_rehashed_in_every_table() {
         assert_ne!(key.address(), old_addresses[index]);
         let index = i64::try_from(index).unwrap_or(i64::MAX);
         assert_eq!(
-            HashTable::from(first_table).get(&mut ctx, **key),
+            HashTable::from_word(first_table).get(&mut ctx, **key),
             Ok(Some(key_word(index)))
         );
         assert_eq!(
-            HashTable::from(second_table).get(&mut ctx, **key),
+            HashTable::from_word(second_table).get(&mut ctx, **key),
             Ok(Some(key_word(index + 1_000)))
         );
     }

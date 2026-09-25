@@ -31,7 +31,7 @@ pub fn make_stream(
             for (i, v) in values.iter().copied().enumerate() {
                 put(ctx, object, i, *v)?;
             }
-            Ok(object.into())
+            Ok(Stream::from_word(object))
         },
     )
 }

@@ -26,7 +26,7 @@ pub fn make_instance(
             put(ctx, object, instance_offset::CLASS, *class)?;
             put(ctx, object, instance_offset::SLOT_VECTOR, *vector)?;
             put(ctx, object, instance_offset::GENERATION, Word::fixnum(0))?;
-            Ok(object.into())
+            Ok(Instance::from_word(object))
         })
     })
 }

@@ -133,7 +133,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
         .unwrap_or_else(|error| panic!("Package allocation failed: {error:?}"));
     let mut package_word = package.as_word();
     let package_token = ncl_object::push_root(&mut ctx, &mut package_word);
-    let package = Package::from(package_word);
+    let package = Package::from_word(package_word);
     let interned = package
         .intern(&mut ctx, &runtime, "SAME")
         .map_or(Word::NIL, |pair| pair.0);
@@ -156,7 +156,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     let mut table_word = table.as_word();
     let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
     assert!(
-        HashTable::from(table_word)
+        HashTable::from_word(table_word)
             .insert(&mut ctx, &runtime, table_key, Word::fixnum(99))
             .is_ok()
     );
@@ -166,10 +166,10 @@ fn gc_preserves_object_accessors_and_weak_entries() {
     assert_eq!(runtime.widetag(roots[1_001]), Some(1));
     assert_eq!(symbol_value(&ctx, roots[1_001]), Ok(Word::UNBOUND));
     assert_eq!(
-        HashTable::from(table_word).get(&mut ctx, table_key),
+        HashTable::from_word(table_word).get(&mut ctx, table_key),
         Ok(Some(Word::fixnum(99)))
     );
-    let package = Package::from(package_word);
+    let package = Package::from_word(package_word);
     assert_eq!(
         package
             .intern(&mut ctx, &runtime, "SAME")
@@ -179,7 +179,7 @@ fn gc_preserves_object_accessors_and_weak_entries() {
 
     assert!(ctx.collect(true).is_ok());
     assert_eq!(car(&mut ctx, roots[1_000]), Ok(Word::fixnum(9_999)));
-    let table = HashTable::from(table_word);
+    let table = HashTable::from_word(table_word);
     assert_eq!(table.get(&mut ctx, table_key), Ok(Some(Word::fixnum(99))));
     assert_eq!(ctx.weak_value(weak), Word::NIL);
     assert!(ncl_object::pop_root(&mut ctx, table_token));

@@ -124,7 +124,7 @@ mod tests {
         ctx.collect(true)
             .unwrap_or_else(|error| panic!("collection failed: {error:?}"));
         assert_eq!(
-            slot_ref(&ctx, crate::Instance::from(instance_word), 0),
+            slot_ref(&ctx, crate::Instance::from_word(instance_word), 0),
             Ok(Word::fixnum(7))
         );
         assert!(pop_root(&mut ctx, token));

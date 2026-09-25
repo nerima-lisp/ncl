@@ -71,7 +71,7 @@ impl Package {
                     ] {
                         put(ctx, object, slot, value)?;
                     }
-                    Ok(object.into())
+                    Ok(Package::from_word(object))
                 })
             })
         })
@@ -135,11 +135,11 @@ impl Package {
         ctx: &mut ThreadContext,
         name: Word,
     ) -> Result<Option<(Word, FindStatus)>, ObjectError> {
-        let internal = HashTable::from(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
+        let internal = HashTable::from_word(get(ctx, self.0, widetag::PACKAGE, INTERNAL)?);
         if let Some(symbol) = internal.get(ctx, name)? {
             return Ok(Some((symbol, FindStatus::Internal)));
         }
-        let external = HashTable::from(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
+        let external = HashTable::from_word(get(ctx, self.0, widetag::PACKAGE, EXTERNAL)?);
         if let Some(symbol) = external.get(ctx, name)? {
             return Ok(Some((symbol, FindStatus::External)));
         }
@@ -147,8 +147,8 @@ impl Package {
         while used != Word::NIL {
             let package =
                 ncl_sys::read_cons_word(&ctx.thread, used, 0).ok_or(ObjectError::Layout)?;
-            let package = Self::from(package);
-            let external = HashTable::from(get(ctx, package.0, widetag::PACKAGE, EXTERNAL)?);
+            let package = Self::from_word(package);
+            let external = HashTable::from_word(get(ctx, package.0, widetag::PACKAGE, EXTERNAL)?);
             if let Some(symbol) = external.get(ctx, name)? {
                 return Ok(Some((symbol, FindStatus::Inherited)));
             }
@@ -173,7 +173,7 @@ impl Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
             crate::with_root(ctx, &mut name_word, |ctx, name_word| {
-                if let Some(found) = Self::from(*package).find_symbol(ctx, *name_word)? {
+                if let Some(found) = Self::from_word(*package).find_symbol(ctx, *name_word)? {
                     return Ok(found);
                 }
                 let mut symbol = make_symbol(ctx, runtime, *name_word)?;
@@ -184,7 +184,7 @@ impl Package {
                         crate::layout::symbol_offset::PACKAGE,
                         *package,
                     )?;
-                    let table = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                    let table = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
                     table.insert(ctx, runtime, *name_word, *symbol)?;
                     Ok((*symbol, FindStatus::Internal))
                 })
@@ -208,26 +208,26 @@ impl Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let internal = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                let internal = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
                 let mut symbol = if let Some(symbol) = internal.remove(ctx, runtime, *name)? {
                     symbol
                 } else {
-                    let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                    let external = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
                     if external.get(ctx, *name)?.is_some() {
                         return Ok(true);
                     }
                     let Some((symbol, FindStatus::Inherited)) =
-                        Self::from(*package).find_symbol(ctx, *name)?
+                        Self::from_word(*package).find_symbol(ctx, *name)?
                     else {
                         return Ok(false);
                     };
-                    Self::from(*package).import(ctx, runtime, *name, symbol)?;
-                    HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                    Self::from_word(*package).import(ctx, runtime, *name, symbol)?;
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                         .remove(ctx, runtime, *name)?
                         .ok_or(ObjectError::Layout)?
                 };
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                    let external = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
                     external.insert(ctx, runtime, *name, *symbol)
                 })?;
                 Ok(true)
@@ -251,12 +251,12 @@ impl Package {
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let external = HashTable::from(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
+                let external = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, EXTERNAL)?);
                 let Some(mut symbol) = external.remove(ctx, runtime, *name)? else {
                     return Ok(false);
                 };
                 crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                    let internal = HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                    let internal = HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
                     internal.insert(ctx, runtime, *name, *symbol)
                 })?;
                 Ok(true)
@@ -290,7 +290,7 @@ impl Package {
                         crate::layout::symbol_offset::PACKAGE,
                     )?;
                     if let Some((existing, status)) =
-                        Self::from(*package).find_symbol(ctx, *name)?
+                        Self::from_word(*package).find_symbol(ctx, *name)?
                     {
                         if existing == *symbol {
                             if status != FindStatus::Inherited {
@@ -308,7 +308,7 @@ impl Package {
                             *package,
                         )?;
                     }
-                    HashTable::from(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                    HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
                         .insert(ctx, runtime, *name, *symbol)
                 })
             })
@@ -387,13 +387,13 @@ mod tests {
             package,
         )
         .unwrap_or_else(|error| panic!("external home: {error:?}"));
-        HashTable::from(
+        HashTable::from_word(
             get(&ctx, package, widetag::PACKAGE, INTERNAL)
                 .unwrap_or_else(|error| panic!("internal table: {error:?}")),
         )
         .insert(&mut ctx, &runtime, name, internal)
         .unwrap_or_else(|error| panic!("internal insert: {error:?}"));
-        HashTable::from(
+        HashTable::from_word(
             get(&ctx, package, widetag::PACKAGE, EXTERNAL)
                 .unwrap_or_else(|error| panic!("external table: {error:?}")),
         )
@@ -401,12 +401,12 @@ mod tests {
         .unwrap_or_else(|error| panic!("external insert: {error:?}"));
 
         assert!(
-            Package::from(package)
+            Package::from_word(package)
                 .unintern(&mut ctx, &runtime, name)
                 .unwrap_or_else(|error| panic!("unintern: {error:?}"))
         );
         assert_eq!(
-            HashTable::from(
+            HashTable::from_word(
                 get(&ctx, package, widetag::PACKAGE, EXTERNAL)
                     .unwrap_or_else(|error| panic!("external table: {error:?}")),
             )
@@ -414,7 +414,7 @@ mod tests {
             Ok(Some(external))
         );
         assert_eq!(
-            HashTable::from(
+            HashTable::from_word(
                 get(&ctx, package, widetag::PACKAGE, INTERNAL)
                     .unwrap_or_else(|error| panic!("internal table: {error:?}")),
             )

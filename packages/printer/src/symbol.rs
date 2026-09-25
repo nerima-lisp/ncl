@@ -19,7 +19,7 @@ impl Printer<'_> {
             return self.write_str(&rendered);
         }
         let package_name = {
-            let name = Package::from(package).name(&*self.ctx)?;
+            let name = Package::from_word(package).name(&*self.ctx)?;
             self.string_text(name)?
         };
         if package_name == "KEYWORD" {

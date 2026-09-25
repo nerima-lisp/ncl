@@ -66,7 +66,7 @@ pub fn serialize_value(
             let package = runtime
                 .find_package(ctx, "COMMON-LISP")
                 .ok_or(ncl_object::ObjectError::PackageConflict)?;
-            Ok(ncl_object::Package::from(package)
+            Ok(ncl_object::Package::from_word(package)
                 .intern(ctx, runtime, value)?
                 .0)
         }

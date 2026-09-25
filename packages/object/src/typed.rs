@@ -25,7 +25,7 @@ impl FromLispArg for List {
         if word == Word::NIL {
             Ok(Self::Nil)
         } else if word.lowtag() == ncl_sys::LowTag::List as u8 {
-            Ok(Self::Cons(crate::Cons::from(word)))
+            Ok(Self::Cons(crate::Cons::from_word(word)))
         } else {
             Err(LispError::TypeError {
                 datum: word,
@@ -45,9 +45,15 @@ macro_rules! typed_builtin {
             values: &mut $crate::MultipleValues,
         ) -> Result<$crate::Word, $crate::ObjectError> {
             let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?)
-                .map_err(|_| $crate::ObjectError::TypeError)?;
+                .map_err(|error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                })?;
             $implementation(ctx, runtime, $a)
-                .map_err(|_| $crate::ObjectError::TypeError)
+                .map_err(|error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                })
                 .map(|result| {
                     values.clear();
                     result
@@ -62,11 +68,20 @@ macro_rules! typed_builtin {
             values: &mut $crate::MultipleValues,
         ) -> Result<$crate::Word, $crate::ObjectError> {
             let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?)
-                .map_err(|_| $crate::ObjectError::TypeError)?;
+                .map_err(|error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                })?;
             let $b = <$bt as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(1)?)
-                .map_err(|_| $crate::ObjectError::TypeError)?;
+                .map_err(|error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                })?;
             $implementation(ctx, runtime, $a, $b)
-                .map_err(|_| $crate::ObjectError::TypeError)
+                .map_err(|error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                })
                 .map(|result| {
                     values.clear();
                     result
@@ -447,25 +462,25 @@ impl From<ObjectRef> for WordView {
         match value {
             ObjectRef::Fixnum(value) => Self::Fixnum(value),
             ObjectRef::Character(value) => Self::Character(value),
-            ObjectRef::Cons(value) => Self::Cons(value.into()),
-            ObjectRef::Symbol(value) => Self::Symbol(value.into()),
-            ObjectRef::HashTable(value) => Self::HashTable(value.into()),
-            ObjectRef::String(value) => Self::String(value.into()),
-            ObjectRef::SimpleVector(value) => Self::SimpleVector(value.into()),
-            ObjectRef::SpecializedArray(value) => Self::SpecializedArray(value.into()),
-            ObjectRef::Array(value) => Self::Array(value.into()),
-            ObjectRef::Function(value) => Self::Function(value.into()),
-            ObjectRef::Closure(value) => Self::Closure(value.into()),
-            ObjectRef::Instance(value) => Self::Instance(value.into()),
-            ObjectRef::Structure(value) => Self::Structure(value.into()),
-            ObjectRef::Bignum(value) => Self::Bignum(value.into()),
-            ObjectRef::Ratio(value) => Self::Ratio(value.into()),
-            ObjectRef::DoubleFloat(value) => Self::DoubleFloat(value.into()),
-            ObjectRef::Complex(value) => Self::Complex(value.into()),
-            ObjectRef::Package(value) => Self::Package(value.into()),
-            ObjectRef::Readtable(value) => Self::Readtable(value.into()),
-            ObjectRef::Stream(value) => Self::Stream(value.into()),
-            ObjectRef::Code(value) => Self::Code(value.into()),
+            ObjectRef::Cons(value) => Self::Cons(Cons::from_word(value)),
+            ObjectRef::Symbol(value) => Self::Symbol(Symbol::from_word(value)),
+            ObjectRef::HashTable(value) => Self::HashTable(crate::HashTable::from_word(value)),
+            ObjectRef::String(value) => Self::String(StringObject::from_word(value)),
+            ObjectRef::SimpleVector(value) => Self::SimpleVector(SimpleVector::from_word(value)),
+            ObjectRef::SpecializedArray(value) => Self::SpecializedArray(SpecializedArray::from_word(value)),
+            ObjectRef::Array(value) => Self::Array(Array::from_word(value)),
+            ObjectRef::Function(value) => Self::Function(crate::Function::from_word(value)),
+            ObjectRef::Closure(value) => Self::Closure(Closure::from_word(value)),
+            ObjectRef::Instance(value) => Self::Instance(crate::Instance::from_word(value)),
+            ObjectRef::Structure(value) => Self::Structure(StructureObject::from_word(value)),
+            ObjectRef::Bignum(value) => Self::Bignum(crate::Bignum::from_word(value)),
+            ObjectRef::Ratio(value) => Self::Ratio(crate::Ratio::from_word(value)),
+            ObjectRef::DoubleFloat(value) => Self::DoubleFloat(crate::DoubleFloat::from_word(value)),
+            ObjectRef::Complex(value) => Self::Complex(crate::Complex::from_word(value)),
+            ObjectRef::Package(value) => Self::Package(crate::Package::from_word(value)),
+            ObjectRef::Readtable(value) => Self::Readtable(crate::Readtable::from_word(value)),
+            ObjectRef::Stream(value) => Self::Stream(crate::Stream::from_word(value)),
+            ObjectRef::Code(value) => Self::Code(crate::CodeObject::from_word(value)),
             ObjectRef::Other { word, widetag } => Self::Other { word, widetag },
             ObjectRef::Immediate(value) => Self::Immediate(value),
         }

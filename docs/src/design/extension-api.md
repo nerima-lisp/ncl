@@ -230,8 +230,10 @@ constructed through the checked `FunctionObject` conversion:
 let designator = FunctionDesignator::Function(FunctionObject::try_from(function_word)?);
 ```
 
-Higher-layer conversion from `LispError` to `ncl-conditions` condition objects
-is not implemented in the inspected tree and remains a contract gap.
+`ncl-object` does not depend on `ncl-conditions`. `ncl-conditions::register`
+installs a `Runtime::register_lisp_error_converter` callback. The builtin
+boundary preserves a `LispError`, invokes that callback, and stores the
+allocated condition object in `ThreadContext` pending state.
 
 `MultipleValues` is the explicit result side channel. The callback's returned
 `Word` remains the primary value:
@@ -259,13 +261,13 @@ fn quotient_and_remainder(
 ```
 
 `call_builtin` copies the side channel into `ctx.values()` before consuming
-pending state. A callback can return `ObjectError::TypeError` for a type or
-argument failure; this object-layer contract does not define CL condition
-construction. `FunctionDesignator` currently provides the evidenced tagged
-view, but no direct `FromLispArg` conversion for the enum is present:
+pending state. `ncl-conditions::condition_from_lisp_error` owns the conversion
+to a typed condition record. `FunctionDesignator` currently provides the
+evidenced tagged view, but no direct `FromLispArg` conversion for the enum is
+present:
 
 ```rust
-let designator = FunctionDesignator::Symbol(Symbol::from(symbol_word));
+let designator = FunctionDesignator::Symbol(Symbol::from_word(symbol_word));
 ```
 
 Compiler-macro declarations and lambda-list parsing are outside the inspected
@@ -280,11 +282,17 @@ N08b contract and are not asserted by this document.
 
 ## Condition signaling from a builtin
 
-`ncl-object` exposes `ObjectError` and `ThreadContext` pending-state methods,
-and `Runtime::call_builtin` consumes pending state after copying multiple
-values. The inspected sources do not define CL condition construction or a
-required `Word::UNBOUND` signaling protocol, so those remain unresolved API
-dependencies rather than extension guarantees.
+`ncl-object` exposes `ObjectError`, typed builtin errors, and
+`ThreadContext::take_pending_condition`. `Runtime::call_builtin` copies
+multiple values, converts a preserved `LispError` through the registered
+condition converter, and consumes ordinary pending state. The condition record
+is allocated by `ncl-conditions`; object does not import that crate.
+
+The stable mapping is `TypeError` to `TYPE-ERROR` (`datum`, `expected-type`),
+wrong-arity `ProgramError` to `PROGRAM-ERROR` (minimum and maximum), division
+by zero to `DIVISION-BY-ZERO`, end-of-file to `END-OF-FILE`, storage failures to
+`STORAGE-CONDITION`, and the remaining variants to their corresponding
+standard condition class with no slots when their Rust variant has no payload.
 
 `Word::UNBOUND` is also used for an unbound function cell. `call_builtin`
 rejects an unbound handle or missing implementation with `ObjectError::Unbound`

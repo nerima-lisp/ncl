@@ -21,6 +21,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         register_symbol(runtime, &mut ctx, row)?;
     }
     install_hierarchy(runtime, &mut ctx)?;
+    runtime.register_lisp_error_converter(crate::condition_from_lisp_error);
     Ok(())
 }
 
@@ -30,7 +31,7 @@ fn register_symbol(
     row: &SymbolRow,
 ) -> Result<(), ObjectError> {
     let package = runtime.ensure_package(ctx, row.package)?;
-    let (symbol, _status) = Package::from(package).intern(ctx, runtime, row.name)?;
+    let (symbol, _status) = Package::from_word(package).intern(ctx, runtime, row.name)?;
     match row.kind {
         SymbolKind::Function | SymbolKind::ClassAndFunction => {
             runtime.define_function(ctx, row.package, row.name, Word::UNBOUND)?;

@@ -315,7 +315,7 @@ pub fn condition_class_of(
     ctx: &ThreadContext,
     condition: Word,
 ) -> Result<ConditionClass, ConditionError> {
-    match instance_class(ctx, Instance::from(condition)) {
+    match instance_class(ctx, Instance::from_word(condition)) {
         Ok(class) => Ok(ConditionClass::from_word(class)),
         Err(ObjectError::TypeError) => Err(ConditionError::NotACondition),
         Err(error) => Err(ConditionError::Object(error)),

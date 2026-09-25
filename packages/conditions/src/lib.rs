@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 mod class;
+mod conversion;
 mod error;
 mod handler;
 pub(crate) mod records;
@@ -28,6 +29,7 @@ pub use class::{
     condition_class_name, condition_class_of, make_condition, make_condition_record,
     make_typed_condition,
 };
+pub use conversion::condition_from_lisp_error;
 pub use error::ConditionError;
 pub use handler::{HandlerChain, cerror, error, pop_handler, push_handler, signal, warn};
 pub use register::register;

@@ -114,3 +114,18 @@ impl WaitQueue {
         self.available.notify_all();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::WaitQueue;
+
+    #[test]
+    fn wake_one_does_not_overflow_after_wake_all() {
+        let queue = WaitQueue::default();
+
+        queue.wake_all();
+        queue.wake_one();
+
+        assert_eq!(*queue.state.lock(), usize::MAX);
+    }
+}

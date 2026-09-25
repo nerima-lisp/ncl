@@ -153,6 +153,14 @@ fn macho_reader_rejects_short_segments_and_section_tables() {
         validate_macho(&table_overflow, MachArchitecture::X86_64),
         Err(ObjectError::InvalidStructure("short Mach-O section table"))
     );
+
+    let mut invalid_command_end = valid;
+    invalid_command_end[20..24].copy_from_slice(&7u32.to_le_bytes());
+    invalid_command_end[36..40].copy_from_slice(&8u32.to_le_bytes());
+    assert_eq!(
+        validate_macho(&invalid_command_end, MachArchitecture::X86_64),
+        Err(ObjectError::InvalidStructure("invalid Mach-O command size"))
+    );
 }
 
 #[test]

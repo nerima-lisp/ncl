@@ -105,3 +105,14 @@ fn native_frame_registry_scan_and_failed_capture_are_observable() {
     thread.set_frame_snapshot(Vec::new(), Vec::new());
     assert!(!thread.has_native_frame_snapshot());
 }
+
+#[test]
+fn native_frame_capture_marks_unknown_pc_as_failed() {
+    let heap = crate::Heap::new(crate::HeapConfig::default());
+    let mut thread = Thread::new();
+    assert!(crate::register_thread(&heap, &mut thread).is_ok());
+    thread.capture_native_frame(0, usize::MAX);
+    assert!(thread.frame_snapshot_failed());
+    assert!(!thread.has_native_frame_snapshot());
+    crate::unregister_thread(&thread);
+}

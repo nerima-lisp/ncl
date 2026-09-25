@@ -10,7 +10,10 @@ use ncl_types::{
 
 fn intern(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Word {
     let package = runtime.find_package(ctx, "COMMON-LISP").unwrap();
-    Package::from_word(package).intern(ctx, runtime, name).unwrap().0
+    Package::from_word(package)
+        .intern(ctx, runtime, name)
+        .unwrap()
+        .0
 }
 
 fn list(ctx: &mut ThreadContext, runtime: &Runtime, items: &[Word]) -> Word {

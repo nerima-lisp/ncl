@@ -320,7 +320,10 @@ fn gc_rehash_normalizes_occupied_slots_before_insert() {
     HashTable::from_word(table_word)
         .insert(&mut ctx, &runtime, key_word(100), key_word(100))
         .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
-    assert_eq!(HashTable::from_word(table_word).capacity(&ctx), Ok(capacity));
+    assert_eq!(
+        HashTable::from_word(table_word).capacity(&ctx),
+        Ok(capacity)
+    );
     assert!(ncl_object::pop_root(&mut ctx, table_token));
 }
 

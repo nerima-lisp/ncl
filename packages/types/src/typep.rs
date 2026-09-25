@@ -1,13 +1,16 @@
 //! The `typep` predicate.
 
 use ncl_object::{
-    ArrayElementType, DoubleFloat, ObjectRef, Package, ThreadContext, Word, array_dimensions, car,
-    cdr, classify_object, double_value, simple_vector_length, specialized_array_element_type,
-    string_length, symbol_package,
+    ArrayElementType, ObjectRef, Package, ThreadContext, Word, array_dimensions, car, cdr,
+    classify_object, simple_vector_length, specialized_array_element_type, string_length,
+    symbol_package,
 };
 
+use crate::adapter::from_word;
 use crate::text::string_to_upper;
-use crate::{ArrayDimensions, NamedType, TypeError, TypeSpecifier};
+use crate::{
+    ArrayDimension, ArrayDimensions, IntegerBound, NamedType, TypeError, TypeSpecifier, Value,
+};
 
 /// Test whether `object` satisfies the type specifier.
 ///
@@ -28,8 +31,8 @@ pub fn typep(
         TypeSpecifier::And(specs) => all_match(ctx, object, specs),
         TypeSpecifier::Not(inner) => Ok(!typep(ctx, object, inner)?),
         TypeSpecifier::Member(items) => member_match(ctx, object, items),
-        TypeSpecifier::Eql(item) => eql(ctx, object, *item),
-        TypeSpecifier::Satisfies(predicate) => Err(TypeError::CannotInvoke(*predicate)),
+        TypeSpecifier::Eql(item) => value_matches(ctx, object, item),
+        TypeSpecifier::Satisfies(predicate) => Err(TypeError::CannotInvoke(predicate.clone())),
         TypeSpecifier::Array {
             element_type,
             dimensions,
@@ -47,7 +50,7 @@ pub fn typep(
         TypeSpecifier::Cons { car, cdr } => typep_cons(ctx, object, car, cdr),
         TypeSpecifier::Function { .. } => Ok(is_function(ctx, object)),
         TypeSpecifier::Values(_) => Ok(true),
-        TypeSpecifier::Deftype { name, .. } => Err(TypeError::UnexpandedDeftype(*name)),
+        TypeSpecifier::Deftype { name, .. } => Err(TypeError::UnexpandedDeftype(name.clone())),
     }
 }
 
@@ -126,28 +129,32 @@ fn typep_named(ctx: &ThreadContext, object: Word, named: NamedType) -> Result<bo
     }
 }
 
-const fn typep_integer_range(object: Word, low: Option<Word>, high: Option<Word>) -> bool {
+const fn typep_integer_range(object: Word, low: IntegerBound, high: IntegerBound) -> bool {
     let Some(value) = object.as_fixnum() else {
         // Bignum objects are outside fixnum range and are not compared here.
         return false;
     };
-    if let Some(low) = low {
-        let Some(bound) = low.as_fixnum() else {
-            return false;
-        };
-        if value < bound {
-            return false;
+    bound_contains(low, value, true) && bound_contains(high, value, false)
+}
+
+const fn bound_contains(bound: IntegerBound, value: i64, lower: bool) -> bool {
+    match bound {
+        IntegerBound::Unbounded => true,
+        IntegerBound::Inclusive(bound) => {
+            if lower {
+                value >= bound
+            } else {
+                value <= bound
+            }
+        }
+        IntegerBound::Exclusive(bound) => {
+            if lower {
+                value > bound
+            } else {
+                value < bound
+            }
         }
     }
-    if let Some(high) = high {
-        let Some(bound) = high.as_fixnum() else {
-            return false;
-        };
-        if value > bound {
-            return false;
-        }
-    }
-    true
 }
 
 fn any_match(
@@ -176,9 +183,9 @@ fn all_match(
     Ok(true)
 }
 
-fn member_match(ctx: &ThreadContext, object: Word, items: &[Word]) -> Result<bool, TypeError> {
+fn member_match(ctx: &ThreadContext, object: Word, items: &[Value]) -> Result<bool, TypeError> {
     for item in items {
-        if eql(ctx, object, *item)? {
+        if value_matches(ctx, object, item)? {
             return Ok(true);
         }
     }
@@ -208,6 +215,7 @@ fn typep_array(
     simple: bool,
 ) -> Result<bool, TypeError> {
     let reference = classify_object(ctx, object);
+    #[allow(clippy::wildcard_enum_match_arm)]
     let (is_array, is_simple) = match reference {
         ObjectRef::SimpleVector(_) | ObjectRef::SpecializedArray(_) | ObjectRef::String(_) => {
             (true, true)
@@ -233,21 +241,17 @@ fn typep_vector(
     ctx: &ThreadContext,
     object: Word,
     element_type: Option<&TypeSpecifier>,
-    size: Option<Word>,
+    size: Option<ArrayDimension>,
 ) -> Result<bool, TypeError> {
     if !is_vector(ctx, object)? {
         return Ok(false);
     }
     let _ = element_type;
-    if let Some(size) = size {
-        let Some(expected) = size.as_fixnum() else {
-            return Ok(true);
-        };
-        if let Some(length) = vector_length(ctx, object)?
-            && Some(expected) != i64::try_from(length).ok()
-        {
-            return Ok(false);
-        }
+    if let Some(size) = size
+        && let Some(length) = vector_length(ctx, object)?
+        && !dimension_matches(size, length)
+    {
+        return Ok(false);
     }
     Ok(true)
 }
@@ -268,13 +272,10 @@ fn dimensions_match(
                 return Ok(false);
             }
             for (index, bound) in expected.iter().enumerate() {
-                let Some(word) = bound else {
-                    continue;
-                };
                 let Some(dimension) = actual.get(index) else {
                     return Ok(false);
                 };
-                if word.as_fixnum() != i64::try_from(*dimension).ok() {
+                if !dimension_matches(*bound, *dimension) {
                     return Ok(false);
                 }
             }
@@ -283,7 +284,16 @@ fn dimensions_match(
     }
 }
 
+fn dimension_matches(bound: ArrayDimension, actual: usize) -> bool {
+    match bound {
+        ArrayDimension::Any => true,
+        ArrayDimension::Exact(expected) => actual == expected,
+        ArrayDimension::Exclusive(expected) => actual < expected,
+    }
+}
+
 fn rank_of(ctx: &ThreadContext, reference: ObjectRef) -> Result<Option<usize>, TypeError> {
+    #[allow(clippy::wildcard_enum_match_arm)]
     match reference {
         ObjectRef::SimpleVector(_) | ObjectRef::String(_) | ObjectRef::SpecializedArray(_) => {
             Ok(Some(1))
@@ -297,6 +307,7 @@ fn actual_dimensions(
     ctx: &ThreadContext,
     reference: ObjectRef,
 ) -> Result<Option<Vec<usize>>, TypeError> {
+    #[allow(clippy::wildcard_enum_match_arm)]
     match reference {
         ObjectRef::SimpleVector(word) => Ok(Some(vec![simple_vector_length(ctx, word)?])),
         ObjectRef::String(word) => Ok(Some(vec![string_length(ctx, word)?])),
@@ -345,6 +356,7 @@ fn is_rational(ctx: &ThreadContext, object: Word) -> bool {
 
 fn is_vector(ctx: &ThreadContext, object: Word) -> Result<bool, TypeError> {
     let reference = classify_object(ctx, object);
+    #[allow(clippy::wildcard_enum_match_arm)]
     Ok(match reference {
         ObjectRef::SimpleVector(_) | ObjectRef::String(_) | ObjectRef::SpecializedArray(_) => true,
         ObjectRef::Array(word) => array_dimensions(ctx, word)?.len() == 1,
@@ -392,28 +404,24 @@ fn is_keyword(ctx: &ThreadContext, object: Word) -> Result<bool, TypeError> {
 }
 
 fn vector_length(ctx: &ThreadContext, object: Word) -> Result<Option<usize>, TypeError> {
+    #[allow(clippy::wildcard_enum_match_arm)]
     match classify_object(ctx, object) {
         ObjectRef::SimpleVector(word) => Ok(Some(simple_vector_length(ctx, word)?)),
         ObjectRef::String(word) => Ok(Some(string_length(ctx, word)?)),
         ObjectRef::Array(word) => {
             let dimensions = array_dimensions(ctx, word)?;
-            Ok((dimensions.len() == 1).then(|| dimensions[0]))
+            Ok((dimensions.len() == 1)
+                .then(|| dimensions.first().copied())
+                .flatten())
         }
         _ => Ok(None),
     }
 }
 
 #[allow(clippy::float_cmp)]
-fn eql(ctx: &ThreadContext, a: Word, b: Word) -> Result<bool, TypeError> {
-    if a == b {
+fn value_matches(ctx: &ThreadContext, object: Word, value: &Value) -> Result<bool, TypeError> {
+    if matches!(value, Value::Opaque(bits) if *bits == object.bits()) {
         return Ok(true);
     }
-    match (classify_object(ctx, a), classify_object(ctx, b)) {
-        (ObjectRef::DoubleFloat(left), ObjectRef::DoubleFloat(right)) => {
-            let left = double_value(ctx, DoubleFloat::from(left))?;
-            let right = double_value(ctx, DoubleFloat::from(right))?;
-            Ok(left == right)
-        }
-        _ => Ok(false),
-    }
+    Ok(from_word(ctx, object)? == *value)
 }

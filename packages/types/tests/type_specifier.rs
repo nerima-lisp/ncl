@@ -3,7 +3,10 @@
 //! Round-trip tests for type-specifier parsing.
 
 use ncl_object::{Package, Runtime, ThreadContext, Word, make_cons};
-use ncl_types::{ArrayDimensions, NamedType, TypeSpecifier, parse_type_specifier};
+use ncl_types::{
+    ArrayDimension, ArrayDimensions, IntegerBound, NamedType, TypeSpecifier, Value,
+    parse_type_specifier,
+};
 
 fn intern(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> Word {
     let package = runtime.find_package(ctx, "COMMON-LISP").unwrap();
@@ -68,7 +71,7 @@ fn unknown_symbol_parses_to_deftype() {
     let parsed = parse_type_specifier(&mut ctx, mine).unwrap();
     assert!(matches!(
         parsed,
-        TypeSpecifier::Deftype { name, args } if name == mine && args.is_empty()
+        TypeSpecifier::Deftype { name, args } if name == "MY-TYPE" && args.is_empty()
     ));
 }
 
@@ -85,8 +88,8 @@ fn integer_range_round_trips() {
     assert_eq!(
         parse_type_specifier(&mut ctx, form).unwrap(),
         TypeSpecifier::IntegerRange {
-            low: Some(zero),
-            high: Some(ten)
+            low: IntegerBound::Inclusive(0),
+            high: IntegerBound::Inclusive(10)
         }
     );
 }
@@ -122,7 +125,7 @@ fn or_and_not_member_parse() {
     let member_form = list(&mut ctx, &runtime, &[member, one, Word::NIL]);
     assert_eq!(
         parse_type_specifier(&mut ctx, member_form).unwrap(),
-        TypeSpecifier::Member(vec![one, Word::NIL])
+        TypeSpecifier::Member(vec![Value::Integer(1), Value::Nil])
     );
 
     let and_form = list(&mut ctx, &runtime, &[and]);
@@ -160,7 +163,10 @@ fn array_dimensions_parse() {
         parse_type_specifier(&mut ctx, form).unwrap(),
         TypeSpecifier::Array {
             element_type: Some(Box::new(TypeSpecifier::Named(NamedType::T))),
-            dimensions: Some(ArrayDimensions::Ranks(vec![Some(two), Some(three)])),
+            dimensions: Some(ArrayDimensions::Ranks(vec![
+                ArrayDimension::Exact(2),
+                ArrayDimension::Exact(3)
+            ])),
             simple: true,
         }
     );

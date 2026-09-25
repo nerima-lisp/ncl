@@ -17,9 +17,11 @@ pub enum TypeError {
     /// An object-layer failure raised while inspecting a value.
     Object(ObjectError),
     /// A `(satisfies predicate)` type whose predicate cannot be invoked here.
-    CannotInvoke(Word),
+    CannotInvoke(String),
     /// A `deftype` name that must be expanded before it can be used.
-    UnexpandedDeftype(Word),
+    UnexpandedDeftype(String),
+    /// A value cannot be serialized into the runtime object representation.
+    CannotSerialize,
 }
 
 impl fmt::Display for TypeError {
@@ -27,8 +29,9 @@ impl fmt::Display for TypeError {
         match self {
             Self::InvalidSpecifier(word) => write!(f, "invalid type specifier: {word:?}"),
             Self::Object(error) => write!(f, "object error: {error}"),
-            Self::CannotInvoke(word) => write!(f, "cannot invoke predicate: {word:?}"),
-            Self::UnexpandedDeftype(word) => write!(f, "unexpanded deftype: {word:?}"),
+            Self::CannotInvoke(word) => write!(f, "cannot invoke predicate: {word}"),
+            Self::UnexpandedDeftype(word) => write!(f, "unexpanded deftype: {word}"),
+            Self::CannotSerialize => f.write_str("cannot serialize type-specifier value"),
         }
     }
 }
@@ -37,7 +40,10 @@ impl std::error::Error for TypeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Object(error) => Some(error),
-            _ => None,
+            Self::InvalidSpecifier(_)
+            | Self::CannotInvoke(_)
+            | Self::UnexpandedDeftype(_)
+            | Self::CannotSerialize => None,
         }
     }
 }

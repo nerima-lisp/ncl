@@ -2,8 +2,7 @@
 
 //! Representative `subtypep` cases, including uncertain ones.
 
-use ncl_object::Word;
-use ncl_types::{NamedType, TypeSpecifier, subtypep};
+use ncl_types::{IntegerBound, NamedType, TypeSpecifier, subtypep};
 
 const fn named(name: NamedType) -> TypeSpecifier {
     TypeSpecifier::Named(name)
@@ -11,8 +10,8 @@ const fn named(name: NamedType) -> TypeSpecifier {
 
 fn range(low: Option<i64>, high: Option<i64>) -> TypeSpecifier {
     TypeSpecifier::IntegerRange {
-        low: low.map(Word::fixnum),
-        high: high.map(Word::fixnum),
+        low: low.map_or(IntegerBound::Unbounded, IntegerBound::Inclusive),
+        high: high.map_or(IntegerBound::Unbounded, IntegerBound::Inclusive),
     }
 }
 
@@ -92,7 +91,7 @@ fn or_and_combinations() {
 #[test]
 fn deftype_and_satisfies_error() {
     let deftype = TypeSpecifier::Deftype {
-        name: Word::fixnum(1),
+        name: "PREDICATE".to_owned(),
         args: vec![],
     };
     assert!(matches!(
@@ -100,7 +99,7 @@ fn deftype_and_satisfies_error() {
         Err(ncl_types::TypeError::UnexpandedDeftype(_))
     ));
 
-    let satisfies = TypeSpecifier::Satisfies(Word::fixnum(1));
+    let satisfies = TypeSpecifier::Satisfies("PREDICATE".to_owned());
     assert!(matches!(
         subtypep(&satisfies, &named(NamedType::T)),
         Err(ncl_types::TypeError::CannotInvoke(_))

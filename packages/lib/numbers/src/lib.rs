@@ -2,6 +2,8 @@
 
 mod arithmetic;
 mod bitops;
+mod remainder;
+mod rounding;
 mod rational_float;
 
 use ncl_object::{
@@ -192,11 +194,11 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ("MINUSP", 1, true, arithmetic::typed_dispatch_minusp),
             ("EVENP", 1, true, arithmetic::typed_dispatch_evenp),
             ("ODDP", 1, true, arithmetic::typed_dispatch_oddp),
-            ("MOD", 2, true, arithmetic::typed_dispatch_mod),
-            ("REM", 2, true, arithmetic::typed_dispatch_rem),
-            ("GCD", 0, false, arithmetic::typed_dispatch_gcd),
-            ("LCM", 0, false, arithmetic::typed_dispatch_lcm),
-            ("ISQRT", 1, true, arithmetic::typed_dispatch_isqrt),
+            ("MOD", 2, true, remainder::typed_mod),
+            ("REM", 2, true, remainder::typed_rem),
+            ("GCD", 0, false, remainder::typed_gcd),
+            ("LCM", 0, false, remainder::typed_lcm),
+            ("ISQRT", 1, true, remainder::typed_isqrt),
         ],
     )?;
     install_rational_float(runtime, &mut ctx)?;
@@ -204,14 +206,14 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         runtime,
         &mut ctx,
         &[
-            ("FLOOR", arithmetic::typed_dispatch_floor),
-            ("CEILING", arithmetic::typed_dispatch_ceiling),
-            ("TRUNCATE", arithmetic::typed_dispatch_truncate),
-            ("ROUND", arithmetic::typed_dispatch_round),
-            ("FFLOOR", arithmetic::typed_dispatch_ffloor),
-            ("FCEILING", arithmetic::typed_dispatch_fceiling),
-            ("FTRUNCATE", arithmetic::typed_dispatch_ftruncate),
-            ("FROUND", arithmetic::typed_dispatch_fround),
+            ("FLOOR", rounding::typed_floor),
+            ("CEILING", rounding::typed_ceiling),
+            ("TRUNCATE", rounding::typed_truncate),
+            ("ROUND", rounding::typed_round),
+            ("FFLOOR", rounding::typed_ffloor),
+            ("FCEILING", rounding::typed_fceiling),
+            ("FTRUNCATE", rounding::typed_ftruncate),
+            ("FROUND", rounding::typed_fround),
         ],
     )?;
     install_set(

@@ -1,9 +1,8 @@
 //! Conversion of object-layer typed builtin failures into CL conditions.
 
 use ncl_object::{
-    ArithmeticError, CellError, ControlError, FileError, LispError, ObjectError, ObjectType,
-    Package, PackageError, ProgramError, Runtime, StreamError, ThreadContext, Word,
-    pop_root, push_root,
+    ArithmeticError, CellError, LispError, ObjectError, ObjectType, Package, ProgramError, Runtime,
+    ThreadContext, Word, pop_root, push_root,
 };
 
 use crate::{ConditionError, ConditionIdentifier, ConditionSlotValue, make_typed_condition};
@@ -32,7 +31,7 @@ fn type_specifier(
         .map(|(symbol, _)| symbol)
 }
 
-fn object_error(error: ConditionError) -> ObjectError {
+const fn object_error(error: ConditionError) -> ObjectError {
     match error {
         ConditionError::Object(error) => error,
         ConditionError::Unhandled
@@ -58,7 +57,7 @@ fn type_error_condition(
         ConditionIdentifier::TypeError,
         &words(&[datum, expected_type]),
     )
-    .map(|record| record.as_word())
+    .map(crate::class::ConditionRecord::as_word)
     .map_err(object_error);
     pop_root(ctx, expected_token);
     pop_root(ctx, datum_token);
@@ -66,6 +65,14 @@ fn type_error_condition(
 }
 
 /// Construct the standard condition corresponding to a typed builtin error.
+///
+/// # Errors
+///
+/// Returns an object-layer failure when the condition class or its slots cannot be allocated.
+#[allow(
+    clippy::wildcard_enum_match_arm,
+    reason = "LispError is #[non_exhaustive], so its match requires a wildcard arm"
+)]
 pub fn condition_from_lisp_error(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -91,16 +98,9 @@ pub fn condition_from_lisp_error(
         },
         LispError::ArithmeticError(error) => match error {
             ArithmeticError::DivisionByZero => (ConditionIdentifier::DivisionByZero, Vec::new()),
-            ArithmeticError::InvalidOperation => {
-                (ConditionIdentifier::ArithmeticError, Vec::new())
-            }
+            ArithmeticError::InvalidOperation => (ConditionIdentifier::ArithmeticError, Vec::new()),
             _ => (ConditionIdentifier::ArithmeticError, Vec::new()),
         },
-        LispError::ControlError(ControlError::Throw)
-        | LispError::ControlError(ControlError::Go)
-        | LispError::ControlError(ControlError::ReturnFrom) => {
-            (ConditionIdentifier::ControlError, Vec::new())
-        }
         LispError::ControlError(_) => (ConditionIdentifier::ControlError, Vec::new()),
         LispError::CellError(error) => (
             match error {
@@ -111,30 +111,10 @@ pub fn condition_from_lisp_error(
             },
             Vec::new(),
         ),
-        LispError::PackageError(error) => (
-            ConditionIdentifier::PackageError,
-            match error {
-                PackageError::NotFound | PackageError::Conflict | PackageError::Locked => Vec::new(),
-                _ => Vec::new(),
-            },
-        ),
-        LispError::StreamError(error) => (
-            ConditionIdentifier::StreamError,
-            match error {
-                StreamError::Closed | StreamError::InvalidDirection | StreamError::Io => Vec::new(),
-                _ => Vec::new(),
-            },
-        ),
+        LispError::PackageError(_) => (ConditionIdentifier::PackageError, Vec::new()),
+        LispError::StreamError(_) => (ConditionIdentifier::StreamError, Vec::new()),
         LispError::EndOfFile => (ConditionIdentifier::EndOfFile, Vec::new()),
-        LispError::FileError(error) => (
-            ConditionIdentifier::FileError,
-            match error {
-                FileError::NotFound | FileError::PermissionDenied | FileError::InvalidPath => {
-                    Vec::new()
-                }
-                _ => Vec::new(),
-            },
-        ),
+        LispError::FileError(_) => (ConditionIdentifier::FileError, Vec::new()),
         LispError::Object(ObjectError::TypeError) => (
             ConditionIdentifier::TypeError,
             words(&[Word::NIL, Word::NIL]),
@@ -142,15 +122,9 @@ pub fn condition_from_lisp_error(
         LispError::Object(ObjectError::Storage(_)) => {
             (ConditionIdentifier::StorageCondition, Vec::new())
         }
-        LispError::Object(ObjectError::Layout)
-        | LispError::Object(ObjectError::Unbound)
-        | LispError::Object(ObjectError::Unsupported)
-        | LispError::Object(ObjectError::PackageConflict) => {
-            (ConditionIdentifier::Error, Vec::new())
-        }
         _ => (ConditionIdentifier::Error, Vec::new()),
     };
     make_typed_condition(ctx, runtime, identifier, &slots)
-        .map(|record| record.as_word())
+        .map(crate::class::ConditionRecord::as_word)
         .map_err(object_error)
 }

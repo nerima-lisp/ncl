@@ -1,0 +1,8 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+NCL-IMAGE	*POSIX-ARGV*	variable	ncl-image	1	no	image startup API
+NCL-IMAGE	EXIT	class+function	ncl-image	1	no	image lifecycle API
+NCL-IMAGE	QUIT	function	ncl-image	1	no	image lifecycle API
+NCL-IMAGE	SAVE-LISP-AND-DIE	function	ncl-image	1	no	image lifecycle API
+NCL-IMAGE	OS-COLD-INIT-OR-REINIT	function	ncl-image	1	no	image lifecycle API
+NCL-IMAGE	OS-DEINIT	function	ncl-image	1	no	image lifecycle API
+NCL-IMAGE	OS-EXIT	function	ncl-image	1	no	image lifecycle API

@@ -159,3 +159,37 @@ fn registered_builtin_address_uses_native_entry() {
         Some(native_address as u64)
     );
 }
+
+fn abi_add(
+    _ctx: &mut ThreadContext,
+    args: &ncl_object::BuiltinArgs<'_>,
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ncl_object::ObjectError> {
+    let left = args.required(0)?.as_fixnum().ok_or(ncl_object::ObjectError::TypeError)?;
+    let right = args.required(1)?.as_fixnum().ok_or(ncl_object::ObjectError::TypeError)?;
+    Ok(Word::fixnum(left + right))
+}
+
+#[test]
+fn generated_builtin_abi_calls_safe_callback() {
+    ncl_object::builtin!(
+        TEST_CONNECTED,
+        2,
+        LambdaList::fixed(&[]),
+        test_connected_direct,
+        test_connected_variadic,
+        abi_add
+    );
+    let mut ctx = ThreadContext::new();
+    assert_eq!(
+        test_connected_direct(&mut ctx, Word::fixnum(2), Word::fixnum(3)),
+        Word::fixnum(5)
+    );
+    let words = [Word::fixnum(4), Word::fixnum(6)];
+    let mut values = MultipleValues::new();
+    assert_eq!(
+        test_connected_variadic(&mut ctx, words.len(), words.as_ptr(), &mut values),
+        ncl_object::NclStatus::Ok
+    );
+    assert_eq!(values.as_slice(), &[Word::fixnum(10)]);
+}

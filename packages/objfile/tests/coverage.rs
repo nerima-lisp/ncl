@@ -397,3 +397,62 @@ fn executable_writers_cover_aarch64_and_entry_validation() {
         Ok(())
     );
 }
+
+#[test]
+fn native_writers_cover_empty_and_multi_section_layouts() {
+    let empty = ElfObject {
+        architecture: ElfArchitecture::X86_64,
+        sections: vec![],
+        relocations: vec![],
+        symbols: vec![ElfSymbol {
+            name: "undefined".into(),
+            section: None,
+            value: 0,
+            global: true,
+        }],
+    };
+    let elf = empty.write().expect("empty ELF layout");
+    assert_eq!(validate_elf(&elf, ElfArchitecture::X86_64), Ok(()));
+
+    let mach = MachObject {
+        architecture: MachArchitecture::X86_64,
+        sections: vec![
+            MachSection {
+                id: SectionId(1),
+                segment: "__TEXT".into(),
+                name: "__text".into(),
+                bytes: vec![0xc3],
+            },
+            MachSection {
+                id: SectionId(2),
+                segment: "__DATA".into(),
+                name: "__data".into(),
+                bytes: vec![1, 2, 3],
+            },
+        ],
+        relocations: vec![Relocation {
+            section: SectionId(2),
+            offset: 1,
+            kind: RelocKind::Abs64,
+            symbol: SymbolRef::External("loader".into()),
+            addend: 4,
+        }],
+    };
+    let mach_bytes = mach.write().expect("multi-section Mach-O layout");
+    assert_eq!(
+        MachReader::validate(&mach_bytes, MachArchitecture::X86_64),
+        Ok(())
+    );
+
+    let image = ExecutableImage {
+        architecture: Architecture::X86_64,
+        code: vec![],
+        metadata: vec![9],
+    };
+    let executable =
+        write_mach_executable(&image, MachArchitecture::X86_64).expect("empty-code executable");
+    assert_eq!(
+        validate_mach_executable(&executable, MachArchitecture::X86_64),
+        Ok(())
+    );
+}

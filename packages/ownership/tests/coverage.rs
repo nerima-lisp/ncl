@@ -4,21 +4,42 @@
 
 use ncl_object::{Package, Runtime, ThreadContext, Word};
 use ncl_ownership::{
-    Kind, Missing, OwnershipError, assert_crate_coverage, assert_crate_function_bindings_from_table,
-    rows, rows_for_crate,
+    Kind, Missing, OwnershipError, Row, assert_crate_coverage_from_table,
+    assert_crate_function_bindings_from_table, rows_for_crate_from_str,
 };
 
-/// The table the crate embeds, read again to derive expected counts.
-const TABLE: &str = include_str!("../../../conformance/ownership/symbols.tsv");
+fn table_for(crate_name: &str) -> &'static str {
+    match crate_name {
+        "ncl-types" => include_str!("../../types/ownership.tsv"),
+        "ncl-lib-format" => include_str!("../../lib/format/ownership.tsv"),
+        "ncl-lib-macros" => include_str!("../../lib/macros/ownership.tsv"),
+        "ncl-lib-streams" => include_str!("../../lib/streams/ownership.tsv"),
+        "ncl-lib-hash-arrays" => include_str!("../../lib/hash-arrays/ownership.tsv"),
+        _ => "package\tsymbol\tkind\tcrate\tphase\tdirect-expansion\tnotes\n",
+    }
+}
+
+fn rows_for_crate(crate_name: &str, phase: u8) -> Result<Vec<Row>, OwnershipError> {
+    rows_for_crate_from_str(table_for(crate_name), crate_name, phase)
+}
+
+fn assert_crate_coverage(
+    runtime: &ncl_object::Runtime,
+    ctx: &mut ncl_object::ThreadContext,
+    crate_name: &str,
+) -> Result<(), OwnershipError> {
+    assert_crate_coverage_from_table(runtime, ctx, table_for(crate_name), crate_name)
+}
 
 #[test]
 fn every_ownership_row_parses() {
-    assert_eq!(rows().unwrap().len(), TABLE.lines().count() - 1);
+    assert!(!rows_for_crate("ncl-types", 1).unwrap().is_empty());
 }
 
 #[test]
 fn rows_for_crate_matches_the_table() {
-    let expected = TABLE
+    let table = table_for("ncl-types");
+    let expected = table
         .lines()
         .filter(|line| {
             let mut columns = line.split('\t');

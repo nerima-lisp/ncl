@@ -1,8 +1,0 @@
-package	symbol	function	macro	special-operator	variable	constant	type	class	condition	fboundp	boundp	find-class	sb-int-type-kind
-SB-ACLREPL	*MAX-HISTORY*	no	no	no	yes	no	no	no	no	no	yes	no	no
-SB-ACLREPL	*PROMPT*	no	no	no	yes	no	no	no	no	no	yes	no	no
-SB-ACLREPL	*USE-SHORT-PACKAGE-NAME*	no	no	no	yes	no	no	no	no	no	yes	no	no
-SB-ACLREPL	*COMMAND-CHAR*	no	no	no	yes	no	no	no	no	no	yes	no	no
-SB-ACLREPL	*EXIT-ON-EOF*	no	no	no	yes	no	no	no	no	no	yes	no	no
-SB-ACLREPL	ALIAS	no	yes	no	no	no	no	no	no	yes	no	no	no
-SB-ACLREPL	MAKE-REPL-FUN	yes	no	no	no	no	no	no	no	yes	no	no	no

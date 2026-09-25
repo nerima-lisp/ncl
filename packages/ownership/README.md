@@ -1,8 +1,7 @@
 # ncl-ownership
 
 `ncl-ownership` is the test-support crate that proves a crate registered every
-symbol the ownership table assigns to it. It embeds
-`conformance/ownership/symbols.tsv` and exposes no Lisp values.
+symbol in the table supplied by its coverage test. It exposes no Lisp values.
 
 ## Usage
 
@@ -15,7 +14,10 @@ fn registers_every_owned_symbol() {
     let mut ctx = ncl_object::ThreadContext::new();
     ctx.register(&runtime).unwrap();
     ncl_<crate>::register(&runtime).unwrap();
-    ncl_ownership::assert_crate_coverage(&runtime, &mut ctx, "ncl-<crate>").unwrap();
+    const TABLE: &str = include_str!("../ownership.tsv");
+    ncl_ownership::assert_crate_coverage_from_table(
+        &runtime, &mut ctx, TABLE, "ncl-<crate>",
+    ).unwrap();
 }
 ```
 
@@ -24,13 +26,12 @@ each lane; `ncl-ownership` does not call it.
 
 ## Failure report
 
-`assert_crate_coverage` prints `package::symbol (kind): reason`, one line per
+`assert_crate_coverage_from_table` prints `package::symbol (kind): reason`, one line per
 unregistered symbol:
 
 ```text
 COMMON-LISP::CAR (function): function not registered
 COMMON-LISP::CDR (function): symbol not interned
-SB-EXT::*GC-RUN-TIME* (variable): package not found
 ```
 
 A crate with no Phase 1 rows returns `OwnershipError::NoRows` rather than

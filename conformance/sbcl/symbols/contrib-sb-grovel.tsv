@@ -1,2 +1,0 @@
-package	symbol	function	macro	special-operator	variable	constant	type	class	condition	fboundp	boundp	find-class	sb-int-type-kind
-SB-GROVEL	GROVEL-CONSTANTS-FILE	no	no	no	no	no	no	yes	no	no	no	yes	yes

@@ -1,7 +1,7 @@
 //! Static table of the symbols owned by `ncl-ffi`.
 //!
-//! Every row mirrors `conformance/ownership/symbols.tsv` for crate `ncl-ffi`,
-//! phase 1. The rows are split by package across the submodules below; the
+//! Every row mirrors the crate-local ownership table for `ncl-ffi`, phase 1.
+//! The rows are split by package across the submodules below; the
 //! `symbols` accessor yields them in ownership-table order.
 
 mod sb_alien;

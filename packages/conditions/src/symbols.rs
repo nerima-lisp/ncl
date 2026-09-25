@@ -1,7 +1,7 @@
 //! Static table of the symbols owned by `ncl-conditions`.
 //!
-//! Every row mirrors `conformance/ownership/symbols.tsv` for crate
-//! `ncl-conditions`, phase 1. The rows are split by package across the
+//! Every row mirrors the crate-local ownership table for `ncl-conditions`,
+//! phase 1. The rows are split by package across the
 //! submodules below; the `symbols` accessor yields them in ownership-table
 //! order.
 

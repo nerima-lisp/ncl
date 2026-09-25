@@ -381,6 +381,10 @@ impl Runtime {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .insert(*function_word, implementation);
+                self.builtin_addresses
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(format!("{package}::{name}"), implementation.entry);
                 FunctionObject::try_from(*function_word)
             })
         })
@@ -485,4 +489,56 @@ macro_rules! builtin {
     (@descriptor $name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $lambda_list, convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
     (@variadic $name:ident) => { pub extern "C" fn $name(_ctx: *mut $crate::ThreadContext, _argc: usize, _args: *const $crate::Word, _values: *mut $crate::MultipleValues) -> $crate::NclStatus { $crate::NclStatus::Error };
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    };
+    use crate::{
+        BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError, Runtime,
+        ThreadContext,
+    };
+    use ncl_sys::Word;
+
+    fn callback(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _args: &BuiltinArgs<'_>,
+        _values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        Ok(Word::NIL)
+    }
+
+    extern "C" fn native_entry(_ctx: *mut ThreadContext, _left: Word, _right: Word) -> Word {
+        Word::NIL
+    }
+
+    #[test]
+    fn registered_builtin_address_uses_native_entry() {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime)
+            .unwrap_or_else(|error| panic!("context: {error:?}"));
+        let descriptor = Builtin {
+            lambda_list: LambdaList::fixed(&[]),
+            convention: BuiltinConvention::Direct(Arity::exact(2)),
+        };
+        let native_address = native_entry as *const () as usize;
+        let implementation =
+            BuiltinImplementation::direct(descriptor, callback).with_entry(native_address);
+        runtime
+            .register_builtin(
+                &mut ctx,
+                BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADD")),
+                implementation,
+            )
+            .unwrap_or_else(|error| panic!("builtin: {error:?}"));
+
+        assert_eq!(
+            runtime.builtin_address("NCL-TEST::ADD"),
+            Some(native_address as u64)
+        );
+    }
 }

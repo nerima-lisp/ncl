@@ -33,7 +33,7 @@ mod input;
 mod number;
 mod reader;
 mod readtable;
-mod token;
+pub(crate) mod token;
 
 use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word};
 
@@ -41,8 +41,8 @@ pub use error::ReadError;
 pub use input::{CharSource, StringSource};
 pub use number::parse_integer;
 pub use reader::{
-    FloatFormat, ReadOptions, read, read_delimited_list, read_from_string,
-    read_preserving_whitespace,
+    FloatFormat, PackageName, ReadBase, ReadEvaluation, ReadOptions, ReadSuppression, read,
+    read_delimited_list, read_from_string, read_preserving_whitespace,
 };
 pub use readtable::{
     Readtable, ReadtableCase, copy_readtable, get_dispatch_macro_character, get_macro_character,

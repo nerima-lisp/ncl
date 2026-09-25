@@ -2,7 +2,7 @@ use super::{
     emit, load_value, lower_alloc, lower_builtin, lower_call, lower_closure_call,
     lower_runtime_builtin, lower_safepoint, store_value,
 };
-use crate::{Allocation, CodegenError, RuntimeAbi};
+use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 
@@ -13,7 +13,7 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u6
         ncl_ir::Constant::Nil | ncl_ir::Constant::Unbound => Ok(0),
         ncl_ir::Constant::T => Ok(abi.encode_fixnum(1).cast_unsigned()),
         ncl_ir::Constant::FunctionEntry(function) => abi
-            .constant_word(&format!("function-entry:{}", function.0))
+            .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))
             .map(i64::cast_unsigned)
             .ok_or_else(|| {
                 CodegenError::Unsupported("function entry constant is unavailable".into())

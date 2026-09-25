@@ -39,7 +39,9 @@ Phase 1a execution coverage is recorded by the AArch64 integration fixture: cons
 - クロージャ越えの `return-from`/`go`: 脱出しないと証明できない block/tagbody は catch
   record(HandlerRegion + `Throw`)で実装する。同一関数内で完結するものは `Jump`。
 
-`HandlerRegion` は通常の CFG の edge では表せない動的な脱出範囲を表す。protected block
+`HandlerRegion` は通常の CFG の edge では表せない動的な脱出範囲を表す。各 region は kind に応じて
+`Catch` なら `catch_tag`、`UnwindProtect` なら cleanup block、`Progv` なら
+`binding_targets` (束縛対象の Word 値) を必須とする。protected block
 から handler または cleanup へ遷移する record を runtime unwinder が dynamic depth と
 catch tag で選ぶため、クロージャ越しの `return-from`/`go` を単なる `Jump` にしない。
 この分離により、通常の branch は SSA CFG のまま保ち、非局所脱出だけが handler record を
@@ -102,7 +104,7 @@ Inline-cache keys are the triple `(call-site, generic-function identity, class-l
 - `BlockParam`: `value: ValueId`、`ty: Ty`。SSA の phi 値に相当する。
 - `BasicBlock`: `id: BlockId`、`params: Vec<BlockParam>`、`ops: Vec<Op>`、`terminator: Terminator`。
 - `Op`: `results: Vec<(ValueId, Ty)>`、`kind: OpKind`、`loc: Option<DebugLocationId>`。
-- `HandlerRegion`: `protected: Vec<BlockId>`、`handler: BlockId`、`cleanup: Option<BlockId>`、`catch_tag: Option<ValueId>`、`depth: u32`。
+- `HandlerRegion`: `kind: HandlerKind`、`protected: Vec<BlockId>`、`handler: BlockId`、`cleanup: Option<BlockId>`、`catch_tag: Option<ValueId>`、`binding_targets: Vec<ValueId>`、`depth: u32`。
 - `DebugLocation`: `file: FileId`、`line: u32`、`column: u32`、`form: FormId`。
 
 `Ty` の variant は `Word` (処理系の汎用値)、`I64`、`F64`、`Address`、`Bool`、`Unit` である。
@@ -159,7 +161,7 @@ debug          = count, count * (id, id, id, id) ;
 block          = id, count, count * (id, type), count, count * op, terminator ;
 op             = count, count * (id, type), optional-location, op-kind ;
 optional-location = absent-location | id ;
-handler        = count, count * id, id, optional-block, optional-value, id ;
+handler        = count, count * id, id, optional-block, optional-value, count, count * id, id ;
 optional-block = flag | flag, id ;
 optional-value = flag | flag, id ;
 constant      = fixnum | character | single-float | double-float

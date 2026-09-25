@@ -237,11 +237,46 @@ pub fn lower_op(
             }
         }
         OpKind::EnterHandler { region } => {
-            lower_runtime_builtin(assembler, "enter-handler", &[i64::from(region.0)], &[], slots, abi)?;
+            let definition = function
+                .handler_regions
+                .iter()
+                .find(|candidate| candidate.id == *region)
+                .ok_or_else(|| CodegenError::Unsupported("handler region is unavailable".into()))?;
+            let (name, immediate_args, value_args) = match definition.kind {
+                ncl_ir::HandlerKind::Catch => (
+                    "enter-catch",
+                    vec![i64::from(region.0), i64::from(definition.depth)],
+                    definition.catch_tag.into_iter().collect(),
+                ),
+                ncl_ir::HandlerKind::UnwindProtect => (
+                    "enter-unwind-protect",
+                    vec![
+                        i64::from(region.0),
+                        i64::from(definition.cleanup.ok_or_else(|| CodegenError::Unsupported("cleanup block is unavailable".into()))?.0),
+                    ],
+                    Vec::new(),
+                ),
+                ncl_ir::HandlerKind::Progv => (
+                    "enter-progv",
+                    vec![i64::from(region.0)],
+                    definition.binding_targets.clone(),
+                ),
+            };
+            lower_runtime_builtin(assembler, name, &immediate_args, &value_args, slots, abi)?;
             call_pc = Some(emit_call(assembler)?);
         }
         OpKind::LeaveHandler { region } => {
-            lower_runtime_builtin(assembler, "leave-handler", &[i64::from(region.0)], &[], slots, abi)?;
+            let definition = function
+                .handler_regions
+                .iter()
+                .find(|candidate| candidate.id == *region)
+                .ok_or_else(|| CodegenError::Unsupported("handler region is unavailable".into()))?;
+            let name = match definition.kind {
+                ncl_ir::HandlerKind::Catch => "leave-catch",
+                ncl_ir::HandlerKind::UnwindProtect => "leave-unwind-protect",
+                ncl_ir::HandlerKind::Progv => "leave-progv",
+            };
+            lower_runtime_builtin(assembler, name, &[i64::from(region.0)], &[], slots, abi)?;
             call_pc = Some(emit_call(assembler)?);
         }
     }

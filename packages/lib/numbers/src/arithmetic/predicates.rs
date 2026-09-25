@@ -1,29 +1,35 @@
-use super::*;
+use super::{bool_word, integer, number, Number, ObjectError, ThreadContext, Word};
 
+#[allow(clippy::unnecessary_wraps)]
 pub fn numberp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
     Ok(bool_word(number(ctx, args[0]).is_ok()))
 }
+#[allow(clippy::unnecessary_wraps)]
 pub fn integerp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
     Ok(bool_word(integer(ctx, args[0]).is_ok()))
 }
+#[allow(clippy::unnecessary_wraps)]
 pub fn rationalp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
     Ok(bool_word(matches!(
         number(ctx, args[0]),
         Ok(Number::Integer(_) | Number::Ratio(_, _))
     )))
 }
+#[allow(clippy::unnecessary_wraps)]
 pub fn floatp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
     Ok(bool_word(matches!(
         number(ctx, args[0]),
         Ok(Number::Float(_))
     )))
 }
+#[allow(clippy::unnecessary_wraps)]
 pub fn realp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
     Ok(bool_word(matches!(
         number(ctx, args[0]),
         Ok(Number::Integer(_) | Number::Ratio(_, _) | Number::Float(_))
     )))
 }
+#[allow(clippy::unnecessary_wraps)]
 pub fn complexp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
     Ok(bool_word(matches!(
         number(ctx, args[0]),

@@ -4,9 +4,9 @@ mod arithmetic;
 mod bitops;
 
 use ncl_object::{
-    Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, ObjectError, Package, Parameter, ParameterType, Runtime,
-    RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_value,
+    make_double, set_symbol_constant, set_symbol_value, Arity, Builtin, BuiltinConvention,
+    BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, LambdaList, ObjectError,
+    Package, Parameter, ParameterType, Runtime, RustBuiltin, ThreadContext, Word,
 };
 
 fn install(
@@ -91,6 +91,11 @@ fn install_set(
 }
 
 /// Register numeric predicates, arithmetic, rounding, and integer operations.
+///
+/// # Errors
+///
+/// Returns an error if registration or package initialization fails.
+#[allow(clippy::too_many_lines)]
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;

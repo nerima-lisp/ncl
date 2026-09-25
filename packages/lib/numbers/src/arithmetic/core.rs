@@ -1,14 +1,11 @@
 //! Numeric predicates and the core arithmetic callbacks.
 
-use super::*;
-
 use ncl_object::Word;
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, bignum_limbs,
-    bignum_sign, classify_object, complex_imag, complex_real, double_value, make_bignum_from_i128,
-    make_complex, make_double, make_ratio, ratio_denominator, ratio_numerator,
+    bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
+    make_bignum_from_i128, make_complex, make_double, make_ratio, ratio_denominator,
+    ratio_numerator, ObjectError, ObjectRef, Runtime, ThreadContext,
 };
-use std::cmp::Ordering;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Number {
@@ -18,7 +15,7 @@ pub(super) enum Number {
     Complex(f64, f64),
 }
 
-pub(super) fn gcd_i128(mut a: i128, mut b: i128) -> i128 {
+pub(super) const fn gcd_i128(mut a: i128, mut b: i128) -> i128 {
     a = a.abs();
     b = b.abs();
     while b != 0 {
@@ -27,7 +24,7 @@ pub(super) fn gcd_i128(mut a: i128, mut b: i128) -> i128 {
     a
 }
 
-pub(super) fn ratio(n: i128, d: i128) -> Number {
+pub(super) const fn ratio(n: i128, d: i128) -> Number {
     if d == 0 {
         return Number::Ratio(n, d);
     }
@@ -98,15 +95,16 @@ pub(super) fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectEr
 }
 
 impl Number {
+    #[allow(clippy::cast_precision_loss)]
     pub(super) fn to_f64(self) -> f64 {
         match self {
-            Number::Integer(v) => v as f64,
-            Number::Ratio(n, d) => n as f64 / d as f64,
-            Number::Float(v) => v,
-            Number::Complex(r, _) => r,
+            Self::Integer(v) => v as f64,
+            Self::Ratio(n, d) => n as f64 / d as f64,
+            Self::Float(v) => v,
+            Self::Complex(r, _) => r,
         }
     }
-    pub(super) fn is_complex(self) -> bool {
+    pub(super) const fn is_complex(self) -> bool {
         matches!(self, Self::Complex(_, _))
     }
 }
@@ -173,6 +171,7 @@ pub(super) fn sub_pair(a: Number, b: Number) -> Number {
     }
     real_pair(a, b, |x, y| x - y, |x, y| x - y)
 }
+#[allow(clippy::suboptimal_flops)]
 pub(super) fn mul_pair(a: Number, b: Number) -> Number {
     if let (Number::Complex(ar, ai), Number::Complex(br, bi)) = (a, b) {
         return Number::Complex(ar * br - ai * bi, ar * bi + ai * br);
@@ -187,6 +186,7 @@ pub(super) fn mul_pair(a: Number, b: Number) -> Number {
     }
     real_pair(a, b, |x, y| x * y, |x, y| x * y)
 }
+#[allow(clippy::suboptimal_flops)]
 pub(super) fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
     if b.to_f64() == 0.0 {
         return Err(ObjectError::TypeError);
@@ -209,8 +209,12 @@ pub(super) fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
     }
 }
 
-pub(super) fn bool_word(value: bool) -> Word {
-    if value { Word::TRUE } else { Word::NIL }
+pub(super) const fn bool_word(value: bool) -> Word {
+    if value {
+        Word::TRUE
+    } else {
+        Word::NIL
+    }
 }
 pub(super) fn args_numbers(ctx: &ThreadContext, args: &[Word]) -> Result<Vec<Number>, ObjectError> {
     args.iter().map(|arg| number(ctx, *arg)).collect()

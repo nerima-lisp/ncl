@@ -1,9 +1,7 @@
 //! Numeric builtins split by arithmetic responsibility.
 
-pub(crate) use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word,
-};
-pub(crate) use std::cmp::Ordering;
+use ncl_object::{BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word};
+use std::cmp::Ordering;
 
 mod basic;
 mod comparison;
@@ -15,13 +13,21 @@ mod rounding;
 
 pub use basic::*;
 pub use comparison::*;
-pub(crate) use core::*;
+use core::{
+    add_pair, args_numbers, bool_word, div_pair, gcd_i128, integer, mul_pair, number, ratio,
+    sub_pair, word, Number,
+};
 pub use dispatch::*;
 pub use number_theory::*;
 pub use predicates::*;
 pub use rounding::*;
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::cast_possible_truncation,
+    clippy::needless_borrow
+)]
 mod tests {
     include!("arithmetic/test_cases.inc");
 }

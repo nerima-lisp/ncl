@@ -1,6 +1,6 @@
-use super::*;
+use super::{number, word, MultipleValues, Number, ObjectError, Runtime, ThreadContext, Word};
 
-fn round_pair(value: f64, mode: u8) -> f64 {
+const fn round_pair(value: f64, mode: u8) -> f64 {
     match mode {
         0 => value.floor(),
         1 => value.ceil(),
@@ -8,6 +8,7 @@ fn round_pair(value: f64, mode: u8) -> f64 {
         _ => value.round(),
     }
 }
+#[allow(clippy::suboptimal_flops)]
 pub fn round_dispatch(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -96,6 +97,7 @@ pub fn fround(
     round(ctx, runtime, args, values)
 }
 
+#[allow(clippy::suboptimal_flops)]
 pub fn modulo(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -108,6 +110,7 @@ pub fn modulo(
     }
     word(ctx, runtime, Number::Float(a - (a / b).floor() * b))
 }
+#[allow(clippy::suboptimal_flops)]
 pub fn remainder(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

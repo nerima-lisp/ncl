@@ -1,4 +1,6 @@
-use super::*;
+use super::{
+    args_numbers, bool_word, word, Number, ObjectError, Ordering, Runtime, ThreadContext, Word,
+};
 
 fn comparison(
     ctx: &ThreadContext,
@@ -21,10 +23,10 @@ fn compare_numbers(left: Number, right: Number) -> Ordering {
             .unwrap_or(Ordering::Equal),
     }
 }
-pub fn equal(ctx: &mut ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
+pub fn equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     comparison(ctx, args, |ordering| ordering == Ordering::Equal)
 }
-pub fn not_equal(ctx: &mut ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
+pub fn not_equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
     Ok(bool_word(ns.iter().enumerate().all(|(i, value)| {
         ns[i + 1..]
@@ -32,24 +34,16 @@ pub fn not_equal(ctx: &mut ThreadContext, _: &Runtime, args: &[Word]) -> Result<
             .all(|other| compare_numbers(*value, *other) != Ordering::Equal)
     })))
 }
-pub fn less(ctx: &mut ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
+pub fn less(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     comparison(ctx, args, |ordering| ordering == Ordering::Less)
 }
-pub fn greater(ctx: &mut ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
+pub fn greater(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     comparison(ctx, args, |ordering| ordering == Ordering::Greater)
 }
-pub fn less_equal(
-    ctx: &mut ThreadContext,
-    _: &Runtime,
-    args: &[Word],
-) -> Result<Word, ObjectError> {
+pub fn less_equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     comparison(ctx, args, |ordering| ordering != Ordering::Greater)
 }
-pub fn greater_equal(
-    ctx: &mut ThreadContext,
-    _: &Runtime,
-    args: &[Word],
-) -> Result<Word, ObjectError> {
+pub fn greater_equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     comparison(ctx, args, |ordering| ordering != Ordering::Less)
 }
 pub fn max(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {

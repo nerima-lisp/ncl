@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    add_pair, args_numbers, div_pair, mul_pair, number, ratio, sub_pair, word, Number, ObjectError,
+    Runtime, ThreadContext, Word,
+};
 
 pub fn add(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;

@@ -1,4 +1,4 @@
-use super::*;
+use super::{gcd_i128, integer, word, Number, ObjectError, Runtime, ThreadContext, Word};
 
 pub fn gcd(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let value = args.iter().try_fold(0i128, |acc, arg| {
@@ -17,6 +17,11 @@ pub fn lcm(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<
     })?;
     word(ctx, runtime, Number::Integer(value.abs()))
 }
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 pub fn isqrt(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -26,5 +31,7 @@ pub fn isqrt(
     if x < 0 {
         return Err(ObjectError::TypeError);
     }
-    word(ctx, runtime, Number::Integer((x as f64).sqrt() as i128))
+    let root = (x as f64).sqrt();
+    let root = i128::try_from(root as u128).map_err(|_| ObjectError::TypeError)?;
+    word(ctx, runtime, Number::Integer(root))
 }

@@ -1,9 +1,11 @@
-use super::*;
+#![allow(clippy::needless_pass_by_ref_mut)]
+
+use super::{integer, integer_word, MultipleValues, ObjectError, Runtime, ThreadContext, Word};
 
 fn byte_parts(spec: Word) -> Result<(u32, u32), ObjectError> {
     let bits = spec.bits();
     Ok((
-        u32::try_from(bits & u32::MAX as u64).map_err(|_| ObjectError::TypeError)?,
+        u32::try_from(bits & u64::from(u32::MAX)).map_err(|_| ObjectError::TypeError)?,
         u32::try_from(bits >> 32).map_err(|_| ObjectError::TypeError)?,
     ))
 }

@@ -11,6 +11,9 @@ const NCL_MOP: &str = "NCL-MOP";
 const CLASS_NAME: usize = 0;
 
 /// Allocate a class descriptor backed by an object-layer vector.
+///
+/// # Errors
+/// Returns an allocation or layout error.
 pub fn make_class(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -23,11 +26,17 @@ pub fn make_class(
 }
 
 /// Return the name stored in a class descriptor.
+///
+/// # Errors
+/// Returns an error when `class` is not a class descriptor.
 pub fn class_name(ctx: &ThreadContext, class: Word) -> Result<Word, ObjectError> {
     simple_vector_ref(ctx, class, CLASS_NAME)
 }
 
 /// Return the class of an object using the existing object-layer layouts.
+///
+/// # Errors
+/// Returns an allocation, layout, or registry error.
 pub fn class_of(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -62,6 +71,9 @@ pub fn class_of(
 }
 
 /// Allocate an instance with an already finalized slot vector.
+///
+/// # Errors
+/// Returns an allocation or layout error.
 pub fn make_instance(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -71,7 +83,8 @@ pub fn make_instance(
     Ok(allocate_instance(ctx, runtime, class, slots)?.as_word())
 }
 
-fn unsupported(
+const fn unsupported(
+    _runtime: &Runtime,
     _ctx: &mut ThreadContext,
     _args: &[Word],
     _values: &mut ncl_object::MultipleValues,
@@ -80,6 +93,7 @@ fn unsupported(
 }
 
 fn slot_value_builtin(
+    _runtime: &Runtime,
     ctx: &mut ThreadContext,
     args: &[Word],
     _values: &mut ncl_object::MultipleValues,
@@ -96,6 +110,7 @@ fn slot_value_builtin(
 }
 
 fn slot_set_builtin(
+    _runtime: &Runtime,
     ctx: &mut ThreadContext,
     args: &[Word],
     _values: &mut ncl_object::MultipleValues,
@@ -110,11 +125,12 @@ fn slot_set_builtin(
 }
 
 fn slot_boundp_builtin(
+    runtime: &Runtime,
     ctx: &mut ThreadContext,
     args: &[Word],
     values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let value = slot_value_builtin(ctx, args, values)?;
+    let value = slot_value_builtin(runtime, ctx, args, values)?;
     Ok(if value == Word::UNBOUND {
         Word::NIL
     } else {
@@ -123,6 +139,7 @@ fn slot_boundp_builtin(
 }
 
 fn slot_makunbound_builtin(
+    _runtime: &Runtime,
     ctx: &mut ThreadContext,
     args: &[Word],
     _values: &mut ncl_object::MultipleValues,
@@ -141,6 +158,42 @@ fn slot_makunbound_builtin(
     Ok(args[0])
 }
 
+fn class_name_builtin(
+    _runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    class_name(ctx, args[0])
+}
+
+fn class_of_builtin(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    class_of(ctx, runtime, args[0])
+}
+
+fn slot_exists_builtin(
+    _runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    _values: &mut ncl_object::MultipleValues,
+) -> Result<Word, ObjectError> {
+    let index = args
+        .get(1)
+        .and_then(|word| word.as_fixnum())
+        .ok_or(ObjectError::TypeError)?;
+    let index = usize::try_from(index).map_err(|_| ObjectError::TypeError)?;
+    match slot_ref(ctx, ncl_object::Instance::from(args[0]), index) {
+        Ok(_) => Ok(Word::TRUE),
+        Err(ObjectError::Layout) => Ok(Word::NIL),
+        Err(error) => Err(error),
+    }
+}
+
 fn install_class(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -153,6 +206,34 @@ fn install_class(
         .unwrap_or(Word::NIL);
     let class = make_class(ctx, runtime, name_word, supers, Word::NIL, Word::fixnum(0))?;
     runtime.define_class(ctx, name, class)
+}
+
+fn install_builtin_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
+    for &(name, superclass) in &[
+        ("NUMBER", "T"),
+        ("INTEGER", "NUMBER"),
+        ("BIGNUM", "INTEGER"),
+        ("RATIO", "NUMBER"),
+        ("DOUBLE-FLOAT", "NUMBER"),
+        ("COMPLEX", "NUMBER"),
+        ("LIST", "T"),
+        ("CONS", "LIST"),
+        ("SYMBOL", "T"),
+        ("ARRAY", "T"),
+        ("VECTOR", "ARRAY"),
+        ("STRING", "VECTOR"),
+        ("HASH-TABLE", "T"),
+        ("STREAM", "T"),
+        ("PACKAGE", "T"),
+        ("FUNCTION", "T"),
+        ("CHARACTER", "T"),
+        ("SIMPLE-VECTOR", "VECTOR"),
+    ] {
+        if runtime.class(ctx, name).is_none() {
+            install_class(ctx, runtime, name, Some(superclass))?;
+        }
+    }
+    Ok(())
 }
 
 fn bind(
@@ -180,6 +261,9 @@ fn bind(
 }
 
 /// Register CLOS classes, NCL-MOP names, and the implemented slot builtins.
+///
+/// # Errors
+/// Returns the first allocation, layout, or registry error.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
@@ -239,6 +323,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             install_class(&mut ctx, runtime, name, superclass)?;
         }
     }
+    install_builtin_classes(&mut ctx, runtime)?;
     for row in include_str!("../ownership.tsv").lines().skip(1) {
         let fields: Vec<_> = row.split('\t').collect();
         if fields.len() < 3 {
@@ -256,16 +341,20 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             continue;
         }
         let arity = match fields[1] {
-            "SLOT-VALUE" | "SLOT-MAKUNBOUND" | "SLOT-BOUNDP" | "SLOT-EXISTS-P" => 2,
+            "SLOT-VALUE" | "SLOT-MAKUNBOUND" | "SLOT-BOUNDP" | "SLOT-EXISTS-P" | "SLOT-UNBOUND" => {
+                2
+            }
             "SLOT-MISSING" => 4,
-            "SLOT-UNBOUND" => 2,
-            "CLASS-OF" => 1,
+            "CLASS-OF" | "CLASS-NAME" => 1,
             _ => 0,
         };
         let callback = match fields[1] {
             "SLOT-MAKUNBOUND" => slot_makunbound_builtin,
             "SLOT-BOUNDP" => slot_boundp_builtin,
-            "SLOT-VALUE" | "SLOT-EXISTS-P" | "SLOT-UNBOUND" => slot_value_builtin,
+            "SLOT-VALUE" | "SLOT-UNBOUND" => slot_value_builtin,
+            "SLOT-EXISTS-P" => slot_exists_builtin,
+            "CLASS-OF" => class_of_builtin,
+            "CLASS-NAME" => class_name_builtin,
             _ => unsupported,
         };
         bind(&mut ctx, runtime, fields[0], fields[1], arity, callback)?;

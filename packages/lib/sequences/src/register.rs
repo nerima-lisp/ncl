@@ -1,4 +1,4 @@
-use crate::builtins;
+use crate::{builtins, domain};
 use ncl_object::{ObjectError, Runtime, ThreadContext};
 
 /// Register every Phase 1 function owned by the sequences crate.
@@ -11,8 +11,10 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             continue;
         }
         let name = fields[1];
-        let implementation =
-            builtins::entry(name).unwrap_or_else(builtins::unsupported_implementation);
+        let implementation = domain::set_entry(name)
+            .or_else(|| domain::map_entry(name))
+            .or_else(|| builtins::entry(name))
+            .unwrap_or_else(builtins::unsupported_implementation);
         runtime.register_builtin(&mut ctx, builtins::identifier(name), implementation)?;
     }
     Ok(())

@@ -21,40 +21,40 @@ struct Row {
     kind: Kind,
 }
 
-/// The Phase 1 rows formerly assigned to `ncl-image`.
+/// The public `NCL-IMAGE` ownership surface.
 const ROWS: &[Row] = &[
     Row {
-        package: "SB-EXT",
+        package: "NCL-IMAGE",
         name: "*POSIX-ARGV*",
         kind: Kind::Variable,
     },
     Row {
-        package: "SB-EXT",
+        package: "NCL-IMAGE",
         name: "EXIT",
         kind: Kind::ClassAndFunction,
     },
     Row {
-        package: "SB-EXT",
+        package: "NCL-IMAGE",
         name: "QUIT",
         kind: Kind::Function,
     },
     Row {
-        package: "SB-EXT",
+        package: "NCL-IMAGE",
         name: "SAVE-LISP-AND-DIE",
         kind: Kind::Function,
     },
     Row {
-        package: "SB-SYS",
+        package: "NCL-IMAGE",
         name: "OS-COLD-INIT-OR-REINIT",
         kind: Kind::Function,
     },
     Row {
-        package: "SB-SYS",
+        package: "NCL-IMAGE",
         name: "OS-DEINIT",
         kind: Kind::Function,
     },
     Row {
-        package: "SB-SYS",
+        package: "NCL-IMAGE",
         name: "OS-EXIT",
         kind: Kind::Function,
     },

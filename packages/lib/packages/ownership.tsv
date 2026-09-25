@@ -40,4 +40,10 @@ COMMON-LISP	SYMBOLP	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	UNEXPORT	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	UNINTERN	function	ncl-lib-packages	1	no	package or symbol operation
 COMMON-LISP	UNUSE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
+NCL-EXT	ADD-PACKAGE-LOCAL-NICKNAME	function	ncl-lib-packages	1	no	package-local nickname extension
+NCL-EXT	REMOVE-PACKAGE-LOCAL-NICKNAME	function	ncl-lib-packages	1	no	package-local nickname extension
+NCL-EXT	PACKAGE-LOCAL-NICKNAMES	function	ncl-lib-packages	1	no	package-local nickname extension
+NCL-EXT	LOCK-PACKAGE	function	ncl-lib-packages	1	no	package lock extension
+NCL-EXT	UNLOCK-PACKAGE	function	ncl-lib-packages	1	no	package lock extension
+NCL-EXT	PACKAGE-LOCKED-P	function	ncl-lib-packages	1	no	package lock extension
 COMMON-LISP	USE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation

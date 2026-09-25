@@ -11,7 +11,7 @@ use ncl_object::{
 use std::cmp::Ordering;
 
 #[derive(Clone, Copy, Debug)]
-enum Number {
+pub(super) enum Number {
     Integer(i128),
     Ratio(i128, i128),
     Float(f64),
@@ -98,7 +98,7 @@ pub(super) fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectEr
 }
 
 impl Number {
-    fn to_f64(self) -> f64 {
+    pub(super) fn to_f64(self) -> f64 {
         match self {
             Number::Integer(v) => v as f64,
             Number::Ratio(n, d) => n as f64 / d as f64,
@@ -106,7 +106,7 @@ impl Number {
             Number::Complex(r, _) => r,
         }
     }
-    fn is_complex(self) -> bool {
+    pub(super) fn is_complex(self) -> bool {
         matches!(self, Self::Complex(_, _))
     }
 }

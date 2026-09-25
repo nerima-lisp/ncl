@@ -1,5 +1,8 @@
 use crate::isa_x86_64::{SCRATCH, THREAD_CONTEXT};
-use crate::{Allocation, CodegenError, ContextField, Location, RuntimeAbi, RuntimeFunction};
+use crate::{
+    Allocation, BuiltinName, CodegenError, ContextField, Location, RuntimeAbi, RuntimeEntry,
+    RuntimeFunction,
+};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, ValueId};
 
@@ -263,7 +266,7 @@ pub(super) fn lower_runtime_builtin(
         ));
     }
     let address = abi
-        .runtime_address(RuntimeFunction::Builtin, Some(name))
+        .runtime_entry_address(RuntimeEntry::Builtin(BuiltinName::new(name)))
         .map(u64::cast_signed)
         .ok_or_else(|| {
             CodegenError::Unsupported(format!("runtime address is unavailable: {name}"))
@@ -393,9 +396,11 @@ fn lower_builtin(
             "x86-64 builtins support at most four arguments".into(),
         ));
     }
-    let address = abi.builtin_address(name).ok_or_else(|| {
+    let address = abi
+        .builtin_address_named(BuiltinName::new(name))
+        .ok_or_else(|| {
         CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
-    })?;
+        })?;
     emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
     load_immediate(assembler, ENTRY, address.cast_signed())?;
     for (index, argument) in args.iter().enumerate() {

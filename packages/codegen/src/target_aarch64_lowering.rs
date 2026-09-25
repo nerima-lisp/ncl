@@ -1,4 +1,7 @@
-use crate::{Allocation, CodegenError, ContextField, Location, RuntimeAbi, RuntimeFunction};
+use crate::{
+    Allocation, BuiltinName, CodegenError, ContextField, Location, RuntimeAbi, RuntimeEntry,
+    RuntimeFunction,
+};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::ValueId;
 
@@ -146,7 +149,7 @@ pub(super) fn lower_runtime_builtin(
         ));
     }
     let address = abi
-        .runtime_address(RuntimeFunction::Builtin, Some(name))
+        .runtime_entry_address(RuntimeEntry::Builtin(BuiltinName::new(name)))
         .ok_or_else(|| {
             CodegenError::Unsupported(format!("runtime address is unavailable: {name}"))
         })?;
@@ -353,9 +356,11 @@ fn lower_builtin(
             "AArch64 builtins support at most four arguments".into(),
         ));
     }
-    let address = abi.builtin_address(name).ok_or_else(|| {
+    let address = abi
+        .builtin_address_named(BuiltinName::new(name))
+        .ok_or_else(|| {
         CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
-    })?;
+        })?;
     emit(
         assembler,
         Inst::Mov {

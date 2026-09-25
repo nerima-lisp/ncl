@@ -233,6 +233,9 @@ impl From<ObjectRef> for WordView {
             ObjectRef::Readtable(value) => Self::Readtable(crate::Readtable::from_word(value)),
             ObjectRef::Stream(value) => Self::Stream(crate::Stream::from_word(value)),
             ObjectRef::Code(value) => Self::Code(crate::CodeObject::from_word(value)),
+            ObjectRef::Other { word, widetag } if word == Word::TRUE && widetag == 0 => {
+                Self::Immediate(word)
+            }
             ObjectRef::Other { word, widetag } => Self::Other { word, widetag },
             ObjectRef::Immediate(value) => Self::Immediate(value),
         }

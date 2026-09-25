@@ -218,11 +218,16 @@ fn adapted<F>(args: &BuiltinArgs<'_>, f: F) -> Result<Word, ncl_object::LispErro
 where
     F: FnOnce(&[Word]) -> Result<Word, ncl_object::LispError>,
 {
-    f((0..args.len())
-        .map(|i| args.get(i).expect("builtin argument index"))
-        .collect::<Vec<_>>()
-        .as_slice())
-    .map_err(|error| error)
+    let values = (0..args.len())
+        .map(|i| args.get(i))
+        .collect::<Option<Vec<_>>>()
+        .ok_or(ncl_object::LispError::ProgramError(
+            ncl_object::ProgramError::WrongNumberOfArguments {
+                minimum: args.len(),
+                maximum: Some(args.len()),
+            },
+        ))?;
+    f(&values)
 }
 fn list_builtin(
     ctx: &mut ThreadContext,
@@ -486,27 +491,4 @@ pub(crate) fn entry(name: &str) -> Option<BuiltinImplementation> {
     })
 }
 
-pub(crate) fn unsupported(
-    _ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    _args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    Err(ObjectError::Unsupported)
-}
-pub(crate) fn passthrough(_args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
-    Err(ObjectError::Unsupported)
-}
-pub(crate) fn unsupported_implementation() -> BuiltinImplementation {
-    BuiltinImplementation::adapted(
-        Builtin {
-            lambda_list: LambdaList::with_rest(&[], parameter("arguments", ParameterType::Any)),
-            convention: BuiltinConvention::Adapted,
-        },
-        unsupported,
-        passthrough,
-    )
-}
-pub(crate) fn identifier(name: &'static str) -> BuiltinIdentifier {
-    BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name))
-}
+include!("builtins/fallback.rs");

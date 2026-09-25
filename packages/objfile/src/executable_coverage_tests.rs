@@ -34,3 +34,38 @@ fn private_elf_header_parser_rejects_truncated_and_wrong_class_inputs() {
         Err(ObjectError::InvalidStructure("not an ELF executable"))
     );
 }
+
+#[test]
+fn private_mach_writer_reports_unrepresentable_fields() {
+    let mut header = [0; 24];
+    assert_eq!(
+        write_mach_header(&mut header, MachArchitecture::X86_64, usize::MAX),
+        Err(ObjectError::InvalidField {
+            field: "Mach-O command size",
+            value: u64::MAX,
+        })
+    );
+
+    let mut out = vec![0; 300];
+    let segment = ExecSegment {
+        at: 0,
+        segment: "__TEXT",
+        vmaddr: 0,
+        fileoff: 1,
+        vmsize: 0,
+        filesize: 0,
+        maxprot: 0,
+        initprot: 0,
+        section_offset: (u32::MAX as usize) + 1,
+        section_size: 0,
+        section_name: "__text",
+        section_segment: "__TEXT",
+    };
+    assert_eq!(
+        write_exec_segment(&mut out, &segment),
+        Err(ObjectError::InvalidField {
+            field: "Mach-O section offset",
+            value: u64::MAX,
+        })
+    );
+}

@@ -60,3 +60,20 @@ fn empty_elf_sections_allow_zero_offset_relocations() {
     });
     assert!(value.write().is_ok());
 }
+
+#[test]
+fn private_section_header_rejects_unrepresentable_symbol_count() {
+    assert_eq!(
+        write_section_header(
+            &mut Vec::new(),
+            &[(0, 0); 9],
+            &[0; 8],
+            6,
+            u32::MAX as usize,
+        ),
+        Err(ObjectError::InvalidField {
+            field: "symbol count",
+            value: u64::MAX,
+        })
+    );
+}

@@ -18,7 +18,7 @@ use ncl_object::{
     BuiltinName, BuiltinPackage, FunctionObject, LambdaList, MultipleValues, ObjectError,
     ObjectRef, ObjectType, Runtime, ThreadContext, WordView,
 };
-use ncl_sys::Word;
+use ncl_sys::{LowTag, Word};
 
 fn context() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
@@ -98,6 +98,7 @@ fn builtin_value_objects_and_failure_paths_are_observable() {
 fn arrays_cover_mutation_displacement_and_validation() {
     let (runtime, mut context) = context();
     let string = make_string(&mut context, &runtime, &['a', 'b']).unwrap_or(Word::NIL);
+    assert_eq!(classify_object(&context, string), ObjectRef::String(string));
     assert_eq!(string_length(&context, string), Ok(2));
     assert!(string_set(&mut context, string, 1, 'z').is_ok());
     assert_eq!(string_ref(&context, string, 1), Ok('z'));
@@ -107,6 +108,10 @@ fn arrays_cover_mutation_displacement_and_validation() {
     );
     let vector = make_simple_vector(&mut context, &runtime, &[Word::fixnum(1), Word::fixnum(2)])
         .unwrap_or(Word::NIL);
+    assert_eq!(
+        classify_object(&context, vector),
+        ObjectRef::SimpleVector(vector)
+    );
     assert_eq!(simple_vector_length(&context, vector), Ok(2));
     assert!(simple_vector_set(&mut context, vector, 1, Word::fixnum(3)).is_ok());
     assert_eq!(
@@ -131,6 +136,7 @@ fn arrays_cover_mutation_displacement_and_validation() {
         },
     )
     .unwrap_or(Word::NIL);
+    assert_eq!(classify_object(&context, array), ObjectRef::Array(array));
     assert_eq!(array_dimensions(&context, array), Ok(vec![2]));
     assert_eq!(array_row_major_ref(&context, array, 0), Ok(Word::fixnum(1)));
     assert!(array_row_major_set(&mut context, array, 1, Word::fixnum(9)).is_ok());
@@ -182,6 +188,10 @@ fn arrays_cover_mutation_displacement_and_validation() {
     )
     .unwrap_or(Word::NIL);
     assert_eq!(
+        classify_object(&context, specialized),
+        ObjectRef::SpecializedArray(specialized)
+    );
+    assert_eq!(
         specialized_array_element_type(&context, specialized),
         Ok(ArrayElementType::Unsigned)
     );
@@ -193,6 +203,25 @@ fn cons_numbers_and_object_views_round_trip() {
     let (runtime, mut context) = context();
     let cons =
         make_cons(&mut context, &runtime, Word::fixnum(1), Word::fixnum(2)).unwrap_or(Word::NIL);
+    assert_eq!(classify(cons), ObjectRef::Cons(cons));
+    let function_pointer = Word::pointer(0, LowTag::Function);
+    assert_eq!(
+        classify(function_pointer),
+        ObjectRef::Function(function_pointer)
+    );
+    let instance_pointer = Word::pointer(0, LowTag::Instance);
+    assert_eq!(
+        classify(instance_pointer),
+        ObjectRef::Instance(instance_pointer)
+    );
+    let other_pointer = Word::pointer(0, LowTag::OtherPointer);
+    assert_eq!(
+        classify(other_pointer),
+        ObjectRef::Other {
+            word: other_pointer,
+            widetag: 0
+        }
+    );
     assert_eq!(car(&mut context, cons), Ok(Word::fixnum(1)));
     assert_eq!(cdr(&mut context, cons), Ok(Word::fixnum(2)));
     assert_eq!(rplaca(&mut context, cons, Word::fixnum(3)), Ok(cons));
@@ -222,6 +251,18 @@ fn cons_numbers_and_object_views_round_trip() {
         classify_object(&context, complex.into()),
         ObjectRef::Complex(_)
     ));
+    assert!(matches!(
+        classify_object(&context, bignum.into()),
+        ObjectRef::Bignum(_)
+    ));
+    assert!(matches!(
+        classify_object(&context, ratio.into()),
+        ObjectRef::Ratio(_)
+    ));
+    assert!(matches!(
+        classify_object(&context, double.into()),
+        ObjectRef::DoubleFloat(_)
+    ));
     assert_eq!(
         WordView::try_from_word(Word::fixnum(7), ObjectType::Fixnum).map(WordView::as_word),
         Ok(Word::fixnum(7))
@@ -248,12 +289,20 @@ fn structures_instances_streams_readtables_and_symbols_are_mutable() {
         &[Word::fixnum(1), Word::fixnum(2)],
     )
     .unwrap_or(Word::NIL);
+    assert_eq!(
+        classify_object(&context, structure),
+        ObjectRef::Structure(structure)
+    );
     assert_eq!(structure_layout(&context, structure), Ok(layout));
     assert_eq!(structure_ref(&context, structure, 1), Ok(Word::fixnum(2)));
     assert!(structure_set(&mut context, structure, 0, Word::fixnum(8)).is_ok());
     assert_eq!(structure_ref(&context, structure, 0), Ok(Word::fixnum(8)));
     let instance = make_instance(&mut context, &runtime, Word::NIL, &[Word::fixnum(5)])
         .unwrap_or_else(|error| panic!("instance: {error:?}"));
+    assert_eq!(
+        classify_object(&context, instance.into()),
+        ObjectRef::Instance(instance.into())
+    );
     assert_eq!(slot_ref(&context, instance, 0), Ok(Word::fixnum(5)));
     assert!(slot_set(&mut context, instance, 0, Word::fixnum(6)).is_ok());
     assert_eq!(slot_ref(&context, instance, 0), Ok(Word::fixnum(6)));
@@ -267,6 +316,10 @@ fn structures_instances_streams_readtables_and_symbols_are_mutable() {
         Word::fixnum(5),
     )
     .unwrap_or_else(|error| panic!("stream: {error:?}"));
+    assert_eq!(
+        classify_object(&context, stream.into()),
+        ObjectRef::Stream(stream.into())
+    );
     assert_eq!(stream_direction(&context, stream), Ok(Word::fixnum(1)));
     assert_eq!(stream_element_type(&context, stream), Ok(Word::fixnum(2)));
     assert_eq!(
@@ -284,6 +337,10 @@ fn structures_instances_streams_readtables_and_symbols_are_mutable() {
     )
     .unwrap_or_else(|error| panic!("readtable: {error:?}"));
     assert_eq!(
+        classify_object(&context, readtable.into()),
+        ObjectRef::Readtable(readtable.into())
+    );
+    assert_eq!(
         ncl_object::readtable_case(&context, readtable),
         Ok(Word::fixnum(3))
     );
@@ -296,6 +353,7 @@ fn structures_instances_streams_readtables_and_symbols_are_mutable() {
         Ok(Word::fixnum(1))
     );
     let symbol = make_symbol(&mut context, &runtime, Word::NIL).unwrap_or(Word::NIL);
+    assert_eq!(classify_object(&context, symbol), ObjectRef::Symbol(symbol));
     assert_eq!(symbol_package(&context, symbol), Ok(Word::NIL));
     assert_eq!(symbol_plist(&context, symbol), Ok(Word::NIL));
     assert_eq!(symbol_function(&context, symbol), Ok(Word::UNBOUND));
@@ -322,6 +380,10 @@ fn roots_hash_tables_and_function_slots_report_contracts() {
     assert!(pop_root(&mut context, token));
     let table = HashTable::new(&mut context, &runtime, HashTest::Equalp, Weakness::Key)
         .unwrap_or_else(|_| panic!("table"));
+    assert_eq!(
+        classify_object(&context, table.as_word()),
+        ObjectRef::HashTable(table.as_word())
+    );
     assert!(table
         .insert(&mut context, &runtime, Word::fixnum(1), Word::fixnum(2))
         .is_ok());
@@ -344,8 +406,16 @@ fn roots_hash_tables_and_function_slots_report_contracts() {
         Word::NIL,
     )
     .unwrap_or_else(|error| panic!("code: {error:?}"));
+    assert_eq!(
+        classify_object(&context, code.into()),
+        ObjectRef::Code(code.into())
+    );
     let fun = make_simple_fun(&mut context, &runtime, 13, Word::NIL, Word::NIL, code)
         .unwrap_or_else(|error| panic!("function: {error:?}"));
+    assert_eq!(
+        classify_object(&context, fun.into()),
+        ObjectRef::Function(fun.into())
+    );
     assert_eq!(function_code(&context, fun), Ok(code));
     assert_eq!(function_lambda_list(&context, fun), Ok(Word::NIL));
     let closure = make_closure(
@@ -358,6 +428,10 @@ fn roots_hash_tables_and_function_slots_report_contracts() {
         &[Word::fixnum(1)],
     )
     .unwrap_or_else(|error| panic!("closure: {error:?}"));
+    assert_eq!(
+        classify_object(&context, closure.into()),
+        ObjectRef::Closure(closure.into())
+    );
     assert_eq!(
         ncl_object::closure_ref(&context, closure, 0),
         Ok(Word::fixnum(1))

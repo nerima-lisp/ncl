@@ -3,9 +3,10 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     array_dimensions, array_row_major_ref, array_row_major_set, classify, classify_object,
-    make_array, make_string, make_structure, structure_layout, structure_ref, structure_set,
-    ArrayElementType, ArrayOptions, FindStatus, ObjectError, ObjectRef, Package, Runtime,
-    ThreadContext, WordView,
+    code_slot, make_array, make_cons, make_instance, make_readtable, make_stream, make_string,
+    make_structure, readtable_slot, rplaca, rplacd, slot_ref, slot_set, stream_slot,
+    structure_layout, structure_ref, structure_set, ArrayElementType, ArrayOptions, FindStatus,
+    ObjectError, ObjectRef, Package, Runtime, ThreadContext, WordView,
 };
 use ncl_sys::Word;
 
@@ -241,4 +242,61 @@ fn hash_tables_resize_replace_and_iterate_meaningful_entries() {
         })
         .is_ok());
     assert_eq!(count, 15);
+}
+
+#[test]
+fn raw_slots_and_mutators_report_boundary_errors() {
+    let (runtime, mut context) = setup();
+    let cons = make_cons(&mut context, &runtime, Word::NIL, Word::NIL).unwrap_or(Word::NIL);
+    assert_eq!(rplaca(&mut context, Word::TRUE, Word::NIL), Err(ObjectError::TypeError));
+    assert_eq!(rplacd(&mut context, Word::TRUE, Word::NIL), Err(ObjectError::TypeError));
+
+    let mut unregistered = ThreadContext::new();
+    assert_eq!(
+        rplaca(&mut unregistered, cons, Word::TRUE),
+        Err(ObjectError::Storage(ncl_sys::StorageCondition::ThreadNotRegistered))
+    );
+    assert_eq!(
+        rplacd(&mut unregistered, cons, Word::TRUE),
+        Err(ObjectError::Storage(ncl_sys::StorageCondition::ThreadNotRegistered))
+    );
+
+    let instance = make_instance(&mut context, &runtime, Word::NIL, &[Word::NIL])
+        .unwrap_or_else(|error| panic!("instance: {error:?}"));
+    assert_eq!(slot_ref(&context, instance, 1), Err(ObjectError::TypeError));
+    assert_eq!(
+        slot_set(&mut context, instance, 1, Word::TRUE),
+        Err(ObjectError::TypeError)
+    );
+
+    let readtable = make_readtable(
+        &mut context,
+        &runtime,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+    )
+    .unwrap_or_else(|error| panic!("readtable: {error:?}"));
+    assert_eq!(
+        readtable_slot(&context, readtable, 3),
+        Err(ObjectError::Storage(ncl_sys::StorageCondition::ThreadNotRegistered))
+    );
+    let stream = make_stream(
+        &mut context,
+        &runtime,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+    )
+    .unwrap_or_else(|error| panic!("stream: {error:?}"));
+    assert_eq!(
+        stream_slot(&context, stream, 5),
+        Err(ObjectError::Storage(ncl_sys::StorageCondition::ThreadNotRegistered))
+    );
+    assert_eq!(
+        code_slot(&context, ncl_object::CodeObject::from(Word::TRUE), 0),
+        Err(ObjectError::TypeError)
+    );
 }

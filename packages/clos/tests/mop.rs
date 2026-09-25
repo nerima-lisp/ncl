@@ -4,7 +4,7 @@
 mod mop;
 
 use ncl_object::{
-    make_simple_vector, BuiltinArgs, BuiltinPackage, MultipleValues, Runtime, ThreadContext, Word,
+    BuiltinArgs, BuiltinPackage, MultipleValues, Runtime, ThreadContext, Word, make_simple_vector,
 };
 
 fn setup() -> (Runtime, ThreadContext) {

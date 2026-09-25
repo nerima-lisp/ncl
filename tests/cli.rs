@@ -63,3 +63,10 @@ fn eval_load_script_and_repl_use_runtime() {
         panic!("source file cleanup failed: {error}");
     }
 }
+
+#[test]
+fn eval_addition_uses_native_builtin_binding() {
+    let eval = output(ncl().args(["--eval", "(+ 1 2)"]));
+    assert!(eval.status.success());
+    assert_eq!(String::from_utf8_lossy(&eval.stdout).trim(), "3");
+}

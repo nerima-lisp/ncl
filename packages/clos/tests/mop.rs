@@ -50,7 +50,15 @@ fn descriptors_expose_typed_class_and_slot_metadata() {
         ncl_object::simple_vector_length(&ctx, precedence).unwrap(),
         3
     );
-    assert_eq!(call(&mut ctx, &runtime, "CLASS-SLOTS", &[class]), Ok(slots));
+    let effective_slots = call(&mut ctx, &runtime, "CLASS-SLOTS", &[class]).unwrap();
+    assert_eq!(
+        ncl_object::simple_vector_length(&ctx, effective_slots),
+        Ok(1)
+    );
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, effective_slots, 0),
+        Ok(slot)
+    );
     assert_eq!(
         call(&mut ctx, &runtime, "SLOT-DEFINITION-NAME", &[slot]),
         Ok(name)
@@ -58,6 +66,63 @@ fn descriptors_expose_typed_class_and_slot_metadata() {
     assert_eq!(
         call(&mut ctx, &runtime, "SLOT-DEFINITION-LOCATION", &[slot]),
         Ok(Word::fixnum(0))
+    );
+}
+
+#[test]
+fn class_slots_and_class_direct_slots_distinguish_inherited_metadata() {
+    let (runtime, mut ctx) = setup();
+    let superclass = runtime.class(&mut ctx, "STANDARD-OBJECT").unwrap();
+    let parent_name = Word::fixnum(10);
+    let child_name = Word::fixnum(11);
+    let parent_slot = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        parent_name,
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(0)).unwrap()),
+    )
+    .unwrap();
+    let child_slot = mop::make_slot_descriptor(
+        &mut ctx,
+        &runtime,
+        child_name,
+        Some(ncl_object::Fixnum::try_from_word(Word::fixnum(1)).unwrap()),
+    )
+    .unwrap();
+    let parent_slots = make_simple_vector(&mut ctx, &runtime, &[parent_slot]).unwrap();
+    let child_slots = make_simple_vector(&mut ctx, &runtime, &[child_slot]).unwrap();
+    let parent = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        parent_name,
+        superclass,
+        parent_slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+    let child = ncl_clos::make_class(
+        &mut ctx,
+        &runtime,
+        child_name,
+        parent,
+        child_slots,
+        Word::fixnum(0),
+    )
+    .unwrap();
+
+    assert_eq!(
+        call(&mut ctx, &runtime, "CLASS-DIRECT-SLOTS", &[child]),
+        Ok(child_slots)
+    );
+    let effective = call(&mut ctx, &runtime, "CLASS-SLOTS", &[child]).unwrap();
+    assert_eq!(ncl_object::simple_vector_length(&ctx, effective), Ok(2));
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, effective, 0),
+        Ok(parent_slot)
+    );
+    assert_eq!(
+        ncl_object::simple_vector_ref(&ctx, effective, 1),
+        Ok(child_slot)
     );
 }
 

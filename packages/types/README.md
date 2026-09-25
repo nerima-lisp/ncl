@@ -9,10 +9,13 @@ registrations for NCL.
 pub enum TypeSpecifier { /* Named, IntegerRange, Or, And, Not, Member, Eql,
                             Satisfies, Array, Vector, Cons, Function, Values,
                             Deftype */ }
-pub enum ArrayDimensions { Wild, Ranks(Vec<Option<Word>>), Rank(usize) }
+pub enum ArrayDimensions { Wild, Ranks(Vec<ArrayDimension>), Rank(usize) }
+pub enum ArrayDimension { Any, Exact(usize), Exclusive(usize) }
+pub enum IntegerBound { Unbounded, Inclusive(i64), Exclusive(i64) }
+pub enum Value { /* Nil, True, Integer, Character, String, Symbol, Opaque */ }
 pub enum NamedType { /* T, Nil, Boolean, ..., ValuesType */ }
 pub enum TypeError { /* InvalidSpecifier, Object, CannotInvoke,
-                       UnexpandedDeftype */ }
+                       InvalidForm, UnexpandedDeftype */ }
 
 pub fn parse_type_specifier(ctx: &mut ThreadContext, spec: Word)
     -> Result<TypeSpecifier, TypeError>;

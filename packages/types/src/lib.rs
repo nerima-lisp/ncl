@@ -6,6 +6,7 @@
 //! it owns ([`register()`]) into a [`ncl_object::Runtime`].
 
 mod adapter;
+mod domain;
 pub mod error;
 pub mod parse;
 pub mod register;

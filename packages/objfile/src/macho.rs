@@ -35,7 +35,8 @@ pub struct MachObject {
 }
 impl MachObject {
     /// Writes a structurally valid Mach-O 64-bit relocatable object.
-    /// # Errors: returns an error when section counts or sizes exceed Mach-O limits.
+    /// # Errors
+    /// Returns an error when section counts or sizes exceed Mach-O limits.
     pub fn write(&self) -> Result<Vec<u8>, ObjectError> {
         validate_input(self)?;
         let cputype = match self.architecture {
@@ -237,7 +238,8 @@ fn align(bytes: &mut Vec<u8>, alignment: usize) {
     );
 }
 /// Checks Mach-O magic, class, and endianness before parsing.
-/// # Errors: returns an error when input is truncated or targets another CPU.
+/// # Errors
+/// Returns an error when input is truncated or targets another CPU.
 pub fn validate_macho(bytes: &[u8], architecture: MachArchitecture) -> Result<(), ObjectError> {
     if bytes.len() < 32 {
         return Err(ObjectError::Truncated {
@@ -391,7 +393,8 @@ fn read_u64(bytes: &[u8], offset: usize, field: &'static str) -> Result<u64, Obj
 pub struct MachReader;
 impl MachReader {
     /// Validates a 64-bit Mach-O object for the requested architecture.
-    /// # Errors: returns an error when the header or load commands are malformed.
+    /// # Errors
+    /// Returns an error when the header or load commands are malformed.
     pub fn validate(bytes: &[u8], architecture: MachArchitecture) -> Result<(), ObjectError> {
         validate_macho(bytes, architecture)
     }

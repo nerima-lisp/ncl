@@ -2,10 +2,9 @@
 
 use ncl_object::Word;
 use ncl_object::{
-    Builtin, BuiltinImplementation, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext,
-    bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
-    make_bignum_from_i128, make_complex, make_double, make_ratio, ratio_denominator,
-    ratio_numerator,
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, bignum_limbs,
+    bignum_sign, classify_object, complex_imag, complex_real, double_value, make_bignum_from_i128,
+    make_complex, make_double, make_ratio, ratio_denominator, ratio_numerator,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -227,6 +226,40 @@ pub fn complexp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError>
         number(ctx, args[0]),
         Ok(Number::Complex(_, _))
     )))
+}
+
+pub fn zerop(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
+    Ok(bool_word(
+        number(ctx, *args.first().ok_or(ObjectError::TypeError)?)?.to_f64() == 0.0,
+    ))
+}
+
+pub fn plusp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
+    let value = number(ctx, *args.first().ok_or(ObjectError::TypeError)?)?;
+    if value.is_complex() {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(bool_word(value.to_f64() > 0.0))
+}
+
+pub fn minusp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
+    let value = number(ctx, *args.first().ok_or(ObjectError::TypeError)?)?;
+    if value.is_complex() {
+        return Err(ObjectError::TypeError);
+    }
+    Ok(bool_word(value.to_f64() < 0.0))
+}
+
+pub fn evenp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
+    Ok(bool_word(
+        integer(ctx, *args.first().ok_or(ObjectError::TypeError)?)? % 2 == 0,
+    ))
+}
+
+pub fn oddp(ctx: &ThreadContext, args: &[Word]) -> Result<Word, ObjectError> {
+    Ok(bool_word(
+        integer(ctx, *args.first().ok_or(ObjectError::TypeError)?)? % 2 != 0,
+    ))
 }
 
 pub fn add(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
@@ -634,12 +667,132 @@ values_dispatch!(dispatch_fceiling, fceiling);
 values_dispatch!(dispatch_ftruncate, ftruncate);
 values_dispatch!(dispatch_fround, fround);
 
-pub fn builtin(descriptor: Builtin, callback: ncl_object::RustBuiltin) -> BuiltinImplementation {
-    BuiltinImplementation::direct(descriptor, callback)
+pub fn dispatch_not_equal(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    not_equal(ctx, runtime, args)
+}
+pub fn dispatch_less(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    less(ctx, runtime, args)
+}
+pub fn dispatch_greater(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    greater(ctx, runtime, args)
+}
+pub fn dispatch_less_equal(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    less_equal(ctx, runtime, args)
+}
+pub fn dispatch_greater_equal(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    args: &[Word],
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    greater_equal(ctx, runtime, args)
 }
 
-pub fn dispatch_not_equal(runtime: &Runtime, ctx: &mut ThreadContext, args: &[Word], _: &mut MultipleValues) -> Result<Word, ObjectError> { not_equal(ctx, runtime, args) }
-pub fn dispatch_less(runtime: &Runtime, ctx: &mut ThreadContext, args: &[Word], _: &mut MultipleValues) -> Result<Word, ObjectError> { less(ctx, runtime, args) }
-pub fn dispatch_greater(runtime: &Runtime, ctx: &mut ThreadContext, args: &[Word], _: &mut MultipleValues) -> Result<Word, ObjectError> { greater(ctx, runtime, args) }
-pub fn dispatch_less_equal(runtime: &Runtime, ctx: &mut ThreadContext, args: &[Word], _: &mut MultipleValues) -> Result<Word, ObjectError> { less_equal(ctx, runtime, args) }
-pub fn dispatch_greater_equal(runtime: &Runtime, ctx: &mut ThreadContext, args: &[Word], _: &mut MultipleValues) -> Result<Word, ObjectError> { greater_equal(ctx, runtime, args) }
+macro_rules! typed_legacy_dispatch {
+    ($name:ident, $legacy:ident) => {
+        pub fn $name(
+            ctx: &mut ThreadContext,
+            runtime: &Runtime,
+            args: &BuiltinArgs<'_>,
+            values: &mut MultipleValues,
+        ) -> Result<Word, ObjectError> {
+            $legacy(runtime, ctx, args.as_slice(), values)
+        }
+    };
+}
+
+typed_legacy_dispatch!(typed_dispatch_numberp, dispatch_numberp);
+typed_legacy_dispatch!(typed_dispatch_integerp, dispatch_integerp);
+typed_legacy_dispatch!(typed_dispatch_rationalp, dispatch_rationalp);
+typed_legacy_dispatch!(typed_dispatch_floatp, dispatch_floatp);
+typed_legacy_dispatch!(typed_dispatch_realp, dispatch_realp);
+typed_legacy_dispatch!(typed_dispatch_complexp, dispatch_complexp);
+pub fn typed_dispatch_zerop(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    zerop(ctx, args.as_slice())
+}
+pub fn typed_dispatch_plusp(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    plusp(ctx, args.as_slice())
+}
+pub fn typed_dispatch_minusp(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    minusp(ctx, args.as_slice())
+}
+pub fn typed_dispatch_evenp(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    evenp(ctx, args.as_slice())
+}
+pub fn typed_dispatch_oddp(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    oddp(ctx, args.as_slice())
+}
+typed_legacy_dispatch!(typed_dispatch_add, dispatch_add);
+typed_legacy_dispatch!(typed_dispatch_sub, dispatch_sub);
+typed_legacy_dispatch!(typed_dispatch_mul, dispatch_mul);
+typed_legacy_dispatch!(typed_dispatch_div, dispatch_div);
+typed_legacy_dispatch!(typed_dispatch_equal, dispatch_equal);
+typed_legacy_dispatch!(typed_dispatch_not_equal, dispatch_not_equal);
+typed_legacy_dispatch!(typed_dispatch_less, dispatch_less);
+typed_legacy_dispatch!(typed_dispatch_greater, dispatch_greater);
+typed_legacy_dispatch!(typed_dispatch_less_equal, dispatch_less_equal);
+typed_legacy_dispatch!(typed_dispatch_greater_equal, dispatch_greater_equal);
+typed_legacy_dispatch!(typed_dispatch_max, dispatch_max);
+typed_legacy_dispatch!(typed_dispatch_min, dispatch_min);
+typed_legacy_dispatch!(typed_dispatch_one_plus, dispatch_one_plus);
+typed_legacy_dispatch!(typed_dispatch_one_minus, dispatch_one_minus);
+typed_legacy_dispatch!(typed_dispatch_abs, dispatch_abs);
+typed_legacy_dispatch!(typed_dispatch_signum, dispatch_signum);
+typed_legacy_dispatch!(typed_dispatch_floor, dispatch_floor);
+typed_legacy_dispatch!(typed_dispatch_ceiling, dispatch_ceiling);
+typed_legacy_dispatch!(typed_dispatch_truncate, dispatch_truncate);
+typed_legacy_dispatch!(typed_dispatch_round, dispatch_round);
+typed_legacy_dispatch!(typed_dispatch_ffloor, dispatch_ffloor);
+typed_legacy_dispatch!(typed_dispatch_fceiling, dispatch_fceiling);
+typed_legacy_dispatch!(typed_dispatch_ftruncate, dispatch_ftruncate);
+typed_legacy_dispatch!(typed_dispatch_fround, dispatch_fround);
+typed_legacy_dispatch!(typed_dispatch_mod, dispatch_mod);
+typed_legacy_dispatch!(typed_dispatch_rem, dispatch_rem);
+typed_legacy_dispatch!(typed_dispatch_gcd, dispatch_gcd);
+typed_legacy_dispatch!(typed_dispatch_lcm, dispatch_lcm);
+typed_legacy_dispatch!(typed_dispatch_isqrt, dispatch_isqrt);

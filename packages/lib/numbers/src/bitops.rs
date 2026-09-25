@@ -4,11 +4,11 @@
 //! numbers registrar can install them alongside the other numeric callbacks.
 
 use ncl_object::{
-    bignum_limbs, bignum_sign, classify_object, make_bignum_from_i128, Bignum, ObjectError,
-    ObjectRef, Runtime, ThreadContext, Word,
+    Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,
+    classify_object, make_bignum_from_i128,
 };
 
-use ncl_object::MultipleValues;
+use ncl_object::{BuiltinArgs, MultipleValues};
 
 fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
     if let Some(value) = value.as_fixnum() {
@@ -218,11 +218,7 @@ pub fn logbitp(
     let index = usize::try_from(integer(ctx, *index)?).map_err(|_| ObjectError::TypeError)?;
     let value = integer(ctx, *value)?;
     Ok(if index >= 127 {
-        if value < 0 {
-            Word::TRUE
-        } else {
-            Word::NIL
-        }
+        if value < 0 { Word::TRUE } else { Word::NIL }
     } else if (value & (1_i128 << index)) != 0 {
         Word::TRUE
     } else {
@@ -480,3 +476,42 @@ pub fn boole(
     };
     integer_word(ctx, runtime, result)
 }
+
+macro_rules! typed_dispatch {
+    ($name:ident, $legacy:ident) => {
+        pub fn $name(
+            ctx: &mut ThreadContext,
+            runtime: &Runtime,
+            args: &BuiltinArgs<'_>,
+            values: &mut MultipleValues,
+        ) -> Result<Word, ObjectError> {
+            $legacy(runtime, ctx, args.as_slice(), values)
+        }
+    };
+}
+
+typed_dispatch!(typed_logand, logand);
+typed_dispatch!(typed_logior, logior);
+typed_dispatch!(typed_logxor, logxor);
+typed_dispatch!(typed_lognot, lognot);
+typed_dispatch!(typed_logeqv, logeqv);
+typed_dispatch!(typed_lognand, lognand);
+typed_dispatch!(typed_lognor, lognor);
+typed_dispatch!(typed_logandc1, logandc1);
+typed_dispatch!(typed_logandc2, logandc2);
+typed_dispatch!(typed_logorc1, logorc1);
+typed_dispatch!(typed_logorc2, logorc2);
+typed_dispatch!(typed_logtest, logtest);
+typed_dispatch!(typed_logbitp, logbitp);
+typed_dispatch!(typed_logcount, logcount);
+typed_dispatch!(typed_integer_length, integer_length);
+typed_dispatch!(typed_ash, ash);
+typed_dispatch!(typed_byte, byte);
+typed_dispatch!(typed_byte_size, byte_size);
+typed_dispatch!(typed_byte_position, byte_position);
+typed_dispatch!(typed_ldb, ldb);
+typed_dispatch!(typed_dpb, dpb);
+typed_dispatch!(typed_ldb_test, ldb_test);
+typed_dispatch!(typed_mask_field, mask_field);
+typed_dispatch!(typed_deposit_field, deposit_field);
+typed_dispatch!(typed_boole, boole);

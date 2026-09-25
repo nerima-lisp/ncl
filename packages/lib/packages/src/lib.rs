@@ -146,3 +146,60 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ncl_object::FunctionObject;
+
+    #[test]
+    fn package_lock_builtins_change_and_read_lock_state() {
+        let runtime = Runtime::new().expect("runtime");
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).expect("thread");
+        register(&runtime).expect("register");
+        let package = runtime
+            .ensure_package(&mut ctx, "LOCK-TEST")
+            .expect("package");
+        let lock = FunctionObject::from(
+            runtime
+                .function(&mut ctx, "NCL-EXT", "LOCK-PACKAGE")
+                .expect("lock"),
+        );
+        let unlock = FunctionObject::from(
+            runtime
+                .function(&mut ctx, "NCL-EXT", "UNLOCK-PACKAGE")
+                .expect("unlock"),
+        );
+        let locked = FunctionObject::from(
+            runtime
+                .function(&mut ctx, "NCL-EXT", "PACKAGE-LOCKED-P")
+                .expect("locked"),
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, lock, &[package]),
+            Ok(package)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, locked, &[package]),
+            Ok(Word::TRUE)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, unlock, &[package]),
+            Ok(package)
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, locked, &[package]),
+            Ok(Word::NIL)
+        );
+        let unsupported = FunctionObject::from(
+            runtime
+                .function(&mut ctx, "COMMON-LISP", "BOUNDP")
+                .expect("boundp"),
+        );
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, unsupported, &[Word::NIL]),
+            Err(ObjectError::Unsupported)
+        );
+    }
+}

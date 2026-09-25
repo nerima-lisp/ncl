@@ -2,7 +2,7 @@
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::object_access::{get, put};
 use crate::widetag;
-use crate::{ObjectError, Runtime, ThreadContext, make_cons, make_string, make_symbol};
+use crate::{make_cons, make_string, make_symbol, ObjectError, Runtime, ThreadContext};
 use ncl_sys::Word;
 mod lists;
 crate::word_newtype!(Package);
@@ -92,26 +92,42 @@ impl Package {
     }
 
     /// Return whether this package is locked against namespace mutation.
+    ///
+    /// # Errors
+    /// Returns a layout error when the package object is malformed.
     pub fn is_locked(self, ctx: &ThreadContext) -> Result<bool, ObjectError> {
         Ok(get(ctx, self.0, widetag::PACKAGE, LOCK)? != Word::fixnum(0))
     }
 
     /// Set the package lock state.
+    ///
+    /// # Errors
+    /// Returns a layout error when the package object is malformed.
     pub fn set_locked(self, ctx: &mut ThreadContext, locked: bool) -> Result<(), ObjectError> {
         put(
             ctx,
             self.0,
             LOCK,
-            if locked { Word::fixnum(1) } else { Word::fixnum(0) },
+            if locked {
+                Word::fixnum(1)
+            } else {
+                Word::fixnum(0)
+            },
         )
     }
 
     /// Return package-local nicknames as an association list.
+    ///
+    /// # Errors
+    /// Returns a layout error when the package object is malformed.
     pub fn local_nicknames(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
         get(ctx, self.0, widetag::PACKAGE, LOCAL_NICKNAMES)
     }
 
     /// Replace package-local nicknames with an association list.
+    ///
+    /// # Errors
+    /// Returns a layout error when the package object is malformed.
     pub fn set_local_nicknames(
         self,
         ctx: &mut ThreadContext,
@@ -429,11 +445,9 @@ mod tests {
         .insert(&mut ctx, &runtime, name, external)
         .unwrap_or_else(|error| panic!("external insert: {error:?}"));
 
-        assert!(
-            Package::from(package)
-                .unintern(&mut ctx, &runtime, name)
-                .unwrap_or_else(|error| panic!("unintern: {error:?}"))
-        );
+        assert!(Package::from(package)
+            .unintern(&mut ctx, &runtime, name)
+            .unwrap_or_else(|error| panic!("unintern: {error:?}")));
         assert_eq!(
             HashTable::from(
                 get(&ctx, package, widetag::PACKAGE, EXTERNAL)

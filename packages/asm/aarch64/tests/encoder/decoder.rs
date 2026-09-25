@@ -177,3 +177,4 @@ fn decoder_covers_supported_instruction_families() {
         Err(ncl_asm_aarch64::EncodeError::UnsupportedInstruction(0))
     ));
 }
+

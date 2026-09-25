@@ -4,18 +4,18 @@ use ncl_asm_aarch64::{Assembler, CodeBlob, Inst, Label, Reg};
     clippy::option_if_let_else,
     reason = "The helper is const so test register literals remain compile-time values."
 )]
-pub(crate) const fn x(n: u8) -> Reg {
+pub const fn x(n: u8) -> Reg {
     match Reg::new(n) {
         Ok(register) => register,
         Err(_) => Reg(0),
     }
 }
 
-pub(crate) fn word_at(blob: &CodeBlob, offset: usize) -> u32 {
+pub fn word_at(blob: &CodeBlob, offset: usize) -> u32 {
     u32::from_le_bytes(blob.bytes[offset..offset + 4].try_into().unwrap())
 }
 
-pub(crate) fn assert_negative_delta<F>(make: F, expected: u32)
+pub fn assert_negative_delta<F>(make: F, expected: u32)
 where
     F: FnOnce(Label) -> Inst,
 {
@@ -27,7 +27,7 @@ where
     assert_eq!(word_at(&assembler.finish().unwrap(), 4), expected);
 }
 
-pub(crate) fn assert_boundary_deltas<F>(make: F, max_delta: usize)
+pub fn assert_boundary_deltas<F>(make: F, max_delta: usize)
 where
     F: Fn(Label) -> Inst + Copy,
 {

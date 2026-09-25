@@ -367,7 +367,7 @@ fn fasl_bounds_and_relocation_errors_are_specific() {
         FaslWriter::write(&overflowing),
         Err(ObjectError::InvalidField {
             field: "relocation addend",
-            value: i64::from(i32::MAX) as u64 + 1
+            value: i64::from(i32::MAX).unsigned_abs() + 1
         })
     );
 }

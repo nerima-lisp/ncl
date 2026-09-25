@@ -265,15 +265,14 @@ pub fn without_interrupts<T>(
 /// [`ThreadError::Timeout`].
 ///
 /// # Errors
-/// Returns [`ThreadError::Unsupported`] when `ncl-conditions` has not registered
+/// Returns [`ThreadError::MissingClass`] when `ncl-conditions` has not registered
 /// the deadline condition class, and a condition error when construction fails.
 pub fn deadline_timeout_condition(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
 ) -> Result<Word, ThreadError> {
-    let class = ncl_conditions::condition_class(ctx, runtime, "DEADLINE-TIMEOUT").ok_or(
-        ThreadError::Unsupported("DEADLINE-TIMEOUT condition class is not registered"),
-    )?;
+    let class = ncl_conditions::condition_class(ctx, runtime, "DEADLINE-TIMEOUT")
+        .ok_or(ThreadError::MissingClass)?;
     Ok(ncl_conditions::make_condition(ctx, runtime, class, &[])?)
 }
 

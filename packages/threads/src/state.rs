@@ -23,8 +23,6 @@ pub fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// `ncl-object` keeps its own root helper crate-private, so this layer
 /// re-establishes the same contract over the public root API.
 ///
-/// # Panics
-/// Panics if a root token cannot be removed in stack order.
 pub fn with_root<T>(
     ctx: &mut ThreadContext,
     value: &mut Word,
@@ -37,7 +35,9 @@ pub fn with_root<T>(
         f(ctx, &root)
     };
     *value = slot.get();
-    assert!(pop_root(ctx, token), "root token popped out of order");
+    if !pop_root(ctx, token) {
+        return Err(ThreadError::RootStackCorrupted);
+    }
     result
 }
 
@@ -108,15 +108,13 @@ pub fn read_handle(ctx: &ThreadContext, object: Word, slot: usize) -> Result<u64
 /// # Errors
 /// Returns an object-layer error when the string or instance cannot be built.
 ///
-/// # Panics
-/// Panics if a root token cannot be removed in stack order.
 pub fn make_object(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     class: &str,
     slots: &[Word],
 ) -> Result<Word, ThreadError> {
-    let class_word = runtime.class(ctx, class).unwrap_or(Word::NIL);
+    let class_word = runtime.class(ctx, class).ok_or(ThreadError::MissingClass)?;
     Ok(make_instance(ctx, runtime, class_word, slots)?.as_word())
 }
 
@@ -125,8 +123,6 @@ pub fn make_object(
 /// # Errors
 /// Returns an object-layer error when the string or instance cannot be built.
 ///
-/// # Panics
-/// Panics if a root token cannot be removed in stack order.
 pub fn make_named_object(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

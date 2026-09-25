@@ -26,9 +26,28 @@ impl TimerId {
     }
 }
 
+/// An absolute monotonic deadline measured from the runtime monotonic clock.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct MonotonicDeadline(u64);
+
+impl MonotonicDeadline {
+    /// Construct a deadline at a monotonic nanosecond offset.
+    #[must_use]
+    pub const fn from_nanos(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Return the serialized nanosecond offset used at the object boundary.
+    #[must_use]
+    pub const fn as_nanos(self) -> u64 {
+        self.0
+    }
+}
+
 #[derive(Debug)]
 struct TimerRecord {
-    deadline: Option<u64>,
+    deadline: Option<MonotonicDeadline>,
 }
 
 static TIMERS: OnceLock<Mutex<HashMap<u64, TimerRecord>>> = OnceLock::new();
@@ -60,7 +79,9 @@ pub fn make_timer(
 ) -> Result<Word, ThreadError> {
     let handle = {
         let mut table = lock(timers());
-        let handle = table.len() as u64 + 1;
+        let handle = u64::try_from(table.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
         table.insert(handle, TimerRecord { deadline: None });
         handle
     };
@@ -98,11 +119,11 @@ fn push_all_timers(
 pub fn schedule_timer(
     ctx: &mut ThreadContext,
     timer: Word,
-    deadline_nanos: u64,
+    deadline: MonotonicDeadline,
 ) -> Result<Word, ThreadError> {
     let handle = timer_handle(ctx, timer)?;
     if let Some(record) = lock(timers()).get_mut(&handle) {
-        record.deadline = Some(deadline_nanos);
+        record.deadline = Some(deadline);
     }
     Ok(Word::TRUE)
 }
@@ -155,14 +176,14 @@ pub fn list_all_timers(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<Wor
 
 /// Unschedule and return every timer whose deadline is at or before `now_nanos`.
 #[must_use]
-pub fn run_expired_timers(now_nanos: u64) -> Vec<TimerId> {
+pub fn run_expired_timers(now: MonotonicDeadline) -> Vec<TimerId> {
     let mut expired: Vec<u64> = {
         let mut table = lock(timers());
         table
             .iter_mut()
             .filter_map(|(handle, record)| {
                 let deadline = record.deadline?;
-                if deadline > now_nanos {
+                if deadline > now {
                     return None;
                 }
                 record.deadline = None;

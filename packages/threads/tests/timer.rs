@@ -48,19 +48,24 @@ fn a_timer_schedules_and_expires() {
         ncl_threads::timer_scheduled_p(ctx, timer).unwrap(),
         Word::NIL
     );
-    ncl_threads::schedule_timer(ctx, timer, 100).unwrap();
+    ncl_threads::schedule_timer(ctx, timer, ncl_threads::MonotonicDeadline::from_nanos(100))
+        .unwrap();
     assert_eq!(
         ncl_threads::timer_scheduled_p(ctx, timer).unwrap(),
         Word::TRUE
     );
-    assert!(ncl_threads::run_expired_timers(50).is_empty());
-    let expired = ncl_threads::run_expired_timers(100);
+    assert!(
+        ncl_threads::run_expired_timers(ncl_threads::MonotonicDeadline::from_nanos(50)).is_empty()
+    );
+    let expired = ncl_threads::run_expired_timers(ncl_threads::MonotonicDeadline::from_nanos(100));
     assert_eq!(expired.len(), 1);
     assert_eq!(
         ncl_threads::timer_scheduled_p(ctx, timer).unwrap(),
         Word::NIL
     );
-    assert!(ncl_threads::run_expired_timers(200).is_empty());
+    assert!(
+        ncl_threads::run_expired_timers(ncl_threads::MonotonicDeadline::from_nanos(200)).is_empty()
+    );
 }
 
 #[test]
@@ -68,9 +73,13 @@ fn unscheduling_clears_the_deadline() {
     let mut fixture = fixture();
     let Fixture { runtime, ctx, .. } = &mut fixture;
     let timer = ncl_threads::make_timer(ctx, runtime, "cancel").unwrap();
-    ncl_threads::schedule_timer(ctx, timer, 10).unwrap();
+    ncl_threads::schedule_timer(ctx, timer, ncl_threads::MonotonicDeadline::from_nanos(10))
+        .unwrap();
     ncl_threads::unschedule_timer(ctx, timer).unwrap();
-    assert!(ncl_threads::run_expired_timers(u64::MAX).is_empty());
+    assert!(
+        ncl_threads::run_expired_timers(ncl_threads::MonotonicDeadline::from_nanos(u64::MAX))
+            .is_empty()
+    );
     let name = ncl_threads::timer_name(ctx, timer).unwrap();
     assert_eq!(ncl_object::string_length(ctx, name).unwrap(), 6);
 }
@@ -211,7 +220,7 @@ fn the_deadline_condition_requires_the_condition_system() {
     let Fixture { runtime, ctx, .. } = &mut fixture;
     assert!(matches!(
         ncl_threads::deadline_timeout_condition(ctx, runtime),
-        Err(ThreadError::Unsupported(_))
+        Err(ThreadError::MissingClass)
     ));
     ncl_conditions::register(runtime).unwrap();
     let condition = ncl_threads::deadline_timeout_condition(ctx, runtime).unwrap();

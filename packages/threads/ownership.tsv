@@ -1,131 +1,82 @@
 package	symbol	kind	crate	phase	direct-expansion	notes
-NCL-THREADS	*ALLOW-WITH-INTERRUPTS*	variable	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	*INTERRUPT-PENDING*	variable	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	*INTERRUPTS-ENABLED*	variable	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	*PERIODIC-POLLING-FUNCTION*	variable	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	*PERIODIC-POLLING-PERIOD*	variable	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	ALLOW-WITH-INTERRUPTS	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	CANCEL-DEADLINE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	DECODE-TIMEOUT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	DEFER-DEADLINE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	ENABLE-INTERRUPT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	IN-INTERRUPTION	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	INVOKE-INTERRUPTION	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SIGNAL-DEADLINE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-DEADLINE	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-INTERRUPT-BINDINGS	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-INTERRUPTS	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-LOCAL-INTERRUPTS	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITHOUT-INTERRUPTS	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	%DISPOSE-THREAD-STRUCTS	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	%THREAD-LOCAL-REFERENCES	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	*CURRENT-THREAD*	variable	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	*INTERRUPT-HANDLER*	variable	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-ABORT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	ALLOCATOR-HISTOGRAM	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	AVL-FIND<=	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	AVL-FIND>=	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	AVLTREE-LIST	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	BARRIER	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-NOTIFICATION-CLEAR	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	CONDITION-BROADCAST	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	CONDITION-NOTIFY	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	CONDITION-WAIT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	CURRENT-THREAD-SAP	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	DESTROY-THREAD	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	FOREIGN-THREAD	class	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	FUTEX-WAKE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	GET-FOREGROUND	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MUTEX-LOCK	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	GET-SPINLOCK	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MUTEX-TRY-LOCK	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	HOLDING-MUTEX-P	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	INTERRUPT-THREAD	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	INTERRUPT-THREAD-ERROR-THREAD	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-JOIN	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-JOIN-ERROR-THREAD	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-JOIN-PROBLEM	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	LIST-THREADS	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MAIN-THREAD	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MAIN-THREAD-P	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	LISTENER-THREAD-SPAWN	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MUTEX-MAKE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	RWLOCK-MAKE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-MAKE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-MAKE-NOTIFICATION	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-SPAWN	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WAITQUEUE-MAKE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MUTEX	class	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MUTEX-NAME	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MUTEX-OWNER	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MUTEX-VALUE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PRINT-ALLOCATOR-HISTOGRAM	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	RELEASE-FOREGROUND	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	MUTEX-UNLOCK	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	RELEASE-SPINLOCK	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	RESET-ALLOCATOR-HISTOGRAM	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	RETURN-FROM-THREAD	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	RWLOCK-RDLOCK	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	RWLOCK-UNLOCK	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	RWLOCK-WRLOCK	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE	class	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-COUNT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-NAME	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-NOTIFICATION	class	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-NOTIFICATION-STATUS	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-POST	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SPINLOCK	type	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SYMBOL-VALUE-IN-THREAD	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-TERMINATE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD	class	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-LIVE-P	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-DEADLOCK-CYCLE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-EPHEMERAL-P	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-ERROR-THREAD	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-NAME	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-NATIVE-ID	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	THREAD-YIELD	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-TRY-WAIT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	SEMAPHORE-WAIT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WAITQUEUE	class	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WAITQUEUE-NAME	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-LOCK	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-NEW-SESSION	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-RECURSIVE-LOCK	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-SESSION-LOCK	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-SPINLOCK	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-TLS-LOCK	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	*TIMEOUT-EXIT*	variable	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	ATOMIC-DECF	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	ATOMIC-INCF	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	ATOMIC-POP	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	ATOMIC-PUSH	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	ATOMIC-UPDATE	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	CALL-WITH-TIMING	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	CAS	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	COMPARE-AND-SWAP	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	GET-TIME-OF-DAY	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	LIST-TIMERS	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	TIMER-MAKE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-ALIVE-P	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-CLOSE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-CORE-DUMPED	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-ERROR	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-EXIT-CODE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-INPUT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-KILL	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-OUTPUT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-P	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-PID	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-PLIST	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-PTY	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-STATUS	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-STATUS-HOOK	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	PROCESS-WAIT	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	TIMER-SCHEDULE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	TIMER	class	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	TIMER-NAME	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	TIMER-SCHEDULED-P	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	TIMER-UNSCHEDULE	function	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WAIT-FOR	macro	ncl-threads	1	no	NCL-THREADS concurrency API
-NCL-THREADS	WITH-TIMEOUT	macro	ncl-threads	1	no	NCL-THREADS concurrency API
+NCL-THREADS	*CURRENT-THREAD*	variable	ncl-threads	1	no	current thread object
+NCL-THREADS	*TIMEOUT-EXIT*	variable	ncl-threads	1	no	timeout binding
+NCL-THREADS	DECODE-TIMEOUT	function	ncl-threads	1	no	timeout decoder
+NCL-THREADS	DEFER-DEADLINE	function	ncl-threads	1	no	deadline control
+NCL-THREADS	ENABLE-INTERRUPT	function	ncl-threads	1	no	interrupt control
+NCL-THREADS	SIGNAL-DEADLINE	function	ncl-threads	1	no	deadline control
+NCL-THREADS	WITH-DEADLINE	macro	ncl-threads	1	no	deadline scope
+NCL-THREADS	WITH-INTERRUPTS	macro	ncl-threads	1	no	interrupt scope
+NCL-THREADS	WITHOUT-INTERRUPTS	macro	ncl-threads	1	no	interrupt scope
+NCL-THREADS	CONDITION-BROADCAST	function	ncl-threads	1	no	condition notification
+NCL-THREADS	CONDITION-NOTIFY	function	ncl-threads	1	no	condition notification
+NCL-THREADS	CONDITION-WAIT	function	ncl-threads	1	no	condition wait
+NCL-THREADS	GET-FOREGROUND	function	ncl-threads	1	no	foreground lock
+NCL-THREADS	RELEASE-FOREGROUND	function	ncl-threads	1	no	foreground lock
+NCL-THREADS	GET-SPINLOCK	function	ncl-threads	1	no	spinlock
+NCL-THREADS	RELEASE-SPINLOCK	function	ncl-threads	1	no	spinlock
+NCL-THREADS	HOLDING-MUTEX-P	function	ncl-threads	1	no	mutex state
+NCL-THREADS	MUTEX-LOCK	function	ncl-threads	1	no	mutex lock
+NCL-THREADS	MUTEX-TRY-LOCK	function	ncl-threads	1	no	mutex try lock
+NCL-THREADS	MUTEX-UNLOCK	function	ncl-threads	1	no	mutex unlock
+NCL-THREADS	MUTEX-MAKE	function	ncl-threads	1	no	mutex creation
+NCL-THREADS	MUTEX-NAME	function	ncl-threads	1	no	mutex accessor
+NCL-THREADS	MUTEX-OWNER	function	ncl-threads	1	no	mutex accessor
+NCL-THREADS	MUTEX-VALUE	function	ncl-threads	1	no	mutex accessor
+NCL-THREADS	WITH-LOCK	macro	ncl-threads	1	no	mutex scope
+NCL-THREADS	WITH-RECURSIVE-LOCK	macro	ncl-threads	1	no	mutex scope
+NCL-THREADS	RWLOCK-MAKE	function	ncl-threads	1	no	read write lock
+NCL-THREADS	RWLOCK-RDLOCK	function	ncl-threads	1	no	read write lock
+NCL-THREADS	RWLOCK-WRLOCK	function	ncl-threads	1	no	read write lock
+NCL-THREADS	RWLOCK-UNLOCK	function	ncl-threads	1	no	read write lock
+NCL-THREADS	SEMAPHORE-MAKE	function	ncl-threads	1	no	semaphore creation
+NCL-THREADS	SEMAPHORE-WAIT	function	ncl-threads	1	no	semaphore wait
+NCL-THREADS	SEMAPHORE-TRY-WAIT	function	ncl-threads	1	no	semaphore wait
+NCL-THREADS	SEMAPHORE-POST	function	ncl-threads	1	no	semaphore post
+NCL-THREADS	SEMAPHORE-COUNT	function	ncl-threads	1	no	semaphore accessor
+NCL-THREADS	SEMAPHORE-NAME	function	ncl-threads	1	no	semaphore accessor
+NCL-THREADS	SEMAPHORE-MAKE-NOTIFICATION	function	ncl-threads	1	no	semaphore notification
+NCL-THREADS	SEMAPHORE-NOTIFICATION-STATUS	function	ncl-threads	1	no	semaphore notification
+NCL-THREADS	SEMAPHORE-NOTIFICATION-CLEAR	function	ncl-threads	1	no	semaphore notification
+NCL-THREADS	WAITQUEUE-MAKE	function	ncl-threads	1	no	wait queue creation
+NCL-THREADS	WAITQUEUE-NAME	function	ncl-threads	1	no	wait queue accessor
+NCL-THREADS	THREAD-SPAWN	function	ncl-threads	1	no	thread creation
+NCL-THREADS	THREAD-JOIN	function	ncl-threads	1	no	thread lifecycle
+NCL-THREADS	THREAD-TERMINATE	function	ncl-threads	1	no	thread lifecycle
+NCL-THREADS	THREAD-LIVE-P	function	ncl-threads	1	no	thread lifecycle
+NCL-THREADS	THREAD-NAME	function	ncl-threads	1	no	thread accessor
+NCL-THREADS	THREAD-NATIVE-ID	function	ncl-threads	1	no	thread accessor
+NCL-THREADS	THREAD-YIELD	function	ncl-threads	1	no	thread scheduling
+NCL-THREADS	INTERRUPT-THREAD	function	ncl-threads	1	no	thread interrupt
+NCL-THREADS	LIST-THREADS	function	ncl-threads	1	no	thread listing
+NCL-THREADS	MAIN-THREAD	function	ncl-threads	1	no	main thread accessor
+NCL-THREADS	MAIN-THREAD-P	function	ncl-threads	1	no	main thread predicate
+NCL-THREADS	TIMER-MAKE	function	ncl-threads	1	no	timer creation
+NCL-THREADS	TIMER-SCHEDULE	function	ncl-threads	1	no	timer scheduling
+NCL-THREADS	TIMER-UNSCHEDULE	function	ncl-threads	1	no	timer scheduling
+NCL-THREADS	TIMER-NAME	function	ncl-threads	1	no	timer accessor
+NCL-THREADS	TIMER-SCHEDULED-P	function	ncl-threads	1	no	timer accessor
+NCL-THREADS	LIST-TIMERS	function	ncl-threads	1	no	timer listing
+NCL-THREADS	CALL-WITH-TIMING	function	ncl-threads	1	no	timing
+NCL-THREADS	GET-TIME-OF-DAY	function	ncl-threads	1	no	wall clock
+NCL-THREADS	PROCESS-P	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-ALIVE-P	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-CLOSE	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-CORE-DUMPED	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-ERROR	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-EXIT-CODE	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-INPUT	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-KILL	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-OUTPUT	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-PID	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-PLIST	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-PTY	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-STATUS	function	ncl-threads	1	no	process accessor
+NCL-THREADS	PROCESS-WAIT	function	ncl-threads	1	no	process accessor
+NCL-THREADS	THREAD	class	ncl-threads	1	no	thread object class
+NCL-THREADS	MUTEX	class	ncl-threads	1	no	mutex object class
+NCL-THREADS	SEMAPHORE	class	ncl-threads	1	no	semaphore object class
+NCL-THREADS	SEMAPHORE-NOTIFICATION	class	ncl-threads	1	no	semaphore object class
+NCL-THREADS	WAITQUEUE	class	ncl-threads	1	no	wait queue object class
+NCL-THREADS	TIMER	class	ncl-threads	1	no	timer object class
+NCL-THREADS	FOREIGN-THREAD	class	ncl-threads	1	no	thread object class

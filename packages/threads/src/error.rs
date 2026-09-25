@@ -36,8 +36,10 @@ pub enum ThreadError {
     Deadlock,
     /// The OS refused to create the underlying thread.
     SpawnFailed,
-    /// The facility is not available in Phase 1.
-    Unsupported(&'static str),
+    /// The registered class descriptor is missing.
+    MissingClass,
+    /// A root was removed in a different order than it was added.
+    RootStackCorrupted,
 }
 
 impl std::fmt::Display for ThreadError {
@@ -45,7 +47,6 @@ impl std::fmt::Display for ThreadError {
         match self {
             Self::Object(error) => write!(f, "object error: {error}"),
             Self::Condition(error) => write!(f, "condition error: {error}"),
-            Self::Unsupported(what) => write!(f, "unsupported in Phase 1: {what}"),
             other => write!(f, "{other:?}"),
         }
     }

@@ -10,7 +10,8 @@ use ncl_object::{Runtime, ThreadContext, Word};
 use crate::ThreadError;
 use crate::state::{lock, make_named_object, read_handle, read_slot};
 use crate::sync::{
-    MutexKind, MutexRecord, RwLockRecord, SyncState, block_until, mutex_handle, next_handle, sync,
+    MutexKind, MutexRecord, RwLockRecord, SyncHandle, SyncState, block_until, mutex_handle,
+    next_handle, sync,
 };
 use crate::thread::current_id;
 
@@ -43,7 +44,7 @@ pub fn make_mutex(
         runtime,
         "MUTEX",
         name,
-        handle,
+        handle.get(),
         &[Word::fixnum(recursive)],
     )
 }
@@ -63,7 +64,7 @@ pub fn make_rwlock(
     let (mutex, _) = sync();
     let handle = next_handle(&mut lock(mutex));
     lock(mutex).rwlocks.insert(handle, RwLockRecord::default());
-    make_named_object(ctx, runtime, "RWLOCK", name, handle, &[])
+    make_named_object(ctx, runtime, "RWLOCK", name, handle.get(), &[])
 }
 
 /// Return a mutex's name.
@@ -125,7 +126,7 @@ fn fixnum_or_nil(value: Option<u64>) -> Word {
         .map_or(Word::NIL, Word::fixnum)
 }
 
-fn try_acquire(state: &mut SyncState, handle: u64, me: u64) -> Option<()> {
+fn try_acquire(state: &mut SyncState, handle: SyncHandle, me: u64) -> Option<()> {
     let record = state.mutexes.get_mut(&handle)?;
     match record.owner {
         None => {
@@ -226,8 +227,9 @@ pub fn with_recursive_lock<T>(
     with_mutex(ctx, mutex, f)
 }
 
-fn rwlock_handle(ctx: &ThreadContext, lock_word: Word) -> Result<u64, ThreadError> {
-    let handle = read_handle(ctx, lock_word, 1).map_err(|_| ThreadError::NotARwLock)?;
+fn rwlock_handle(ctx: &ThreadContext, lock_word: Word) -> Result<SyncHandle, ThreadError> {
+    let handle =
+        SyncHandle::from_raw(read_handle(ctx, lock_word, 1).map_err(|_| ThreadError::NotARwLock)?);
     let (table, _) = sync();
     if lock(table).rwlocks.contains_key(&handle) {
         Ok(handle)

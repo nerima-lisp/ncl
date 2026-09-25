@@ -10,5 +10,7 @@ fn registers_every_owned_symbol() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     ncl_types::register(&runtime).unwrap();
-    ncl_ownership::assert_crate_coverage(&runtime, &mut ctx, "ncl-types").unwrap();
+    let table = include_str!("../ownership.tsv");
+    ncl_ownership::assert_crate_coverage_from_table(&runtime, &mut ctx, table, "ncl-types")
+        .unwrap();
 }

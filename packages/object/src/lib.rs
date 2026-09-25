@@ -27,38 +27,41 @@ mod stream;
 mod structure;
 mod symbol_extensions;
 pub use array::{
-    ArrayElementType, ArrayOptions, array_dimensions, array_row_major_ref, array_row_major_set,
-    make_array, make_simple_vector, make_string, simple_vector_length, simple_vector_ref,
-    simple_vector_set, string_length, string_ref, string_set,
+    array_dimensions, array_row_major_ref, array_row_major_set, make_array, make_simple_vector,
+    make_string, simple_vector_length, simple_vector_ref, simple_vector_set, string_length,
+    string_ref, string_set, ArrayElementType, ArrayOptions,
 };
-pub use builtin::{Builtin, FunctionObject, MultipleValues, NclStatus, RegisterFn};
-pub use classify::{ObjectRef, classify, classify_object};
+pub use builtin::{
+    Builtin, BuiltinImplementation, FunctionObject, KeywordAdapter, MultipleValues, NclStatus,
+    RegisterFn, RustBuiltin,
+};
+pub use classify::{classify, classify_object, ObjectRef};
 pub use code::code_slot;
 pub use code::{
-    CodeObject, code_constants, code_debug, code_entry, code_size, code_stack_map, make_code_object,
+    code_constants, code_debug, code_entry, code_size, code_stack_map, make_code_object, CodeObject,
 };
 pub use cons::{rplaca, rplacd};
 pub use function::{
-    Function, closure_ref, function_entry, function_name, make_closure, make_simple_fun,
+    closure_ref, function_entry, function_name, make_closure, make_simple_fun, Function,
 };
 pub use function::{function_code, function_lambda_list};
 pub use gc::register;
-pub use instance::{Instance, instance_class, make_instance, slot_ref, slot_set};
+pub use instance::{instance_class, make_instance, slot_ref, slot_set, Instance};
 pub use layout::{
     array_offset, code_offset, function_offset, instance_offset, number_offset, readtable_offset,
     simple_vector_offset, specialized_array_offset, stream_offset, string_offset, structure_offset,
     symbol_offset, widetag,
 };
-pub use ncl_sys::{ThreadLayout, thread_layout};
+pub use ncl_sys::{thread_layout, ThreadLayout};
 pub use number::{
-    Bignum, Complex, DoubleFloat, Ratio, bignum_limbs, double_value, make_bignum_from_i128,
-    make_complex, make_double, make_ratio,
+    bignum_limbs, double_value, make_bignum_from_i128, make_complex, make_double, make_ratio,
+    Bignum, Complex, DoubleFloat, Ratio,
 };
 pub use number::{bignum_sign, complex_imag, complex_real, ratio_denominator, ratio_numerator};
 pub use package::{FindStatus, Package};
 pub use readtable::readtable_slot;
 pub use readtable::{
-    Readtable, make_readtable, readtable_case, readtable_dispatch, readtable_syntax,
+    make_readtable, readtable_case, readtable_dispatch, readtable_syntax, Readtable,
 };
 pub(crate) use roots::{finish_root, with_root, with_roots};
 pub use roots::{pop_root, push_root, try_pop_root, try_push_root};
@@ -68,14 +71,15 @@ pub use specialized_array::{
 };
 pub use stream::stream_slot;
 pub use stream::{
-    Stream, make_stream, stream_direction, stream_element_type, stream_external_format,
-    stream_implementation, stream_state,
+    make_stream, stream_direction, stream_element_type, stream_external_format,
+    stream_implementation, stream_state, Stream,
 };
 pub use structure::{
-    StructureLayout, make_structure, structure_layout, structure_ref, structure_set,
+    make_structure, structure_layout, structure_ref, structure_set, StructureLayout,
 };
 pub use symbol_extensions::{
-    set_symbol_value, symbol_function, symbol_name, symbol_package, symbol_plist, symbol_value,
+    set_symbol_flags, set_symbol_value, symbol_flags, symbol_function, symbol_name, symbol_package,
+    symbol_plist, symbol_value,
 };
 /// Object-layer failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -109,6 +113,7 @@ pub struct Runtime {
     layouts: Mutex<HashMap<u32, usize>>,
     next_layout: Mutex<u32>,
     layouts_registered: Mutex<bool>,
+    builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
 }
 
 #[derive(Debug)]
@@ -138,6 +143,7 @@ impl Runtime {
             layouts: Mutex::new(HashMap::new()),
             next_layout: Mutex::new(1),
             layouts_registered: Mutex::new(false),
+            builtins: Mutex::new(HashMap::new()),
         };
         runtime.register_layouts()?;
         let mut context = ThreadContext::new();
@@ -454,6 +460,7 @@ pub fn make_symbol(
         Ok(symbol)
     })
 }
+
 /// Return the car of a cons cell.
 ///
 /// # Errors

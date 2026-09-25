@@ -74,3 +74,38 @@ pub fn symbol_name(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectErro
 pub fn symbol_package(ctx: &ThreadContext, symbol: Word) -> Result<Word, ObjectError> {
     symbol_slot(ctx, symbol, symbol_offset::PACKAGE)
 }
+
+/// Read the implementation flags of a symbol. Bits 0, 1, and 2 mean special,
+/// constant, and macro respectively.
+///
+/// # Errors
+/// Returns a type or layout error when `symbol` is not a symbol with fixnum flags.
+pub fn symbol_flags(ctx: &ThreadContext, symbol: Word) -> Result<u64, ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::FLAGS)?
+        .as_fixnum()
+        .ok_or(ObjectError::Layout)
+        .map(i64::cast_unsigned)
+}
+
+/// Set implementation flags on a symbol. Bits 0, 1, and 2 mean special,
+/// constant, and macro respectively.
+///
+/// # Errors
+/// Returns a type or layout error when `symbol` is invalid or `flags` does not fit.
+pub fn set_symbol_flags(
+    ctx: &mut ThreadContext,
+    symbol: Word,
+    flags: u64,
+) -> Result<(), ObjectError> {
+    symbol_slot(ctx, symbol, symbol_offset::FLAGS)?;
+    if !ncl_sys::write_object_word(
+        &mut ctx.thread,
+        symbol,
+        symbol_offset::FLAGS,
+        Word::fixnum(i64::try_from(flags).map_err(|_| ObjectError::Layout)?),
+    ) {
+        return Err(ObjectError::TypeError);
+    }
+    ncl_sys::write_barrier(&mut ctx.thread, symbol, symbol_offset::FLAGS);
+    Ok(())
+}

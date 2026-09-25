@@ -1,4 +1,5 @@
-use super::{SafepointMap, Word};
+use super::SafepointMap;
+use crate::Word;
 
 /// One source location entry in a code object's debug table.
 #[derive(Clone, Debug, Eq, PartialEq)]

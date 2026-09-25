@@ -349,3 +349,4 @@ fn addressing_logical_shift_and_float_edges_are_observed() {
         .is_err()
     );
 }
+

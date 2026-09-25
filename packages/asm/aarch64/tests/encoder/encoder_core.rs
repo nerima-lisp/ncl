@@ -59,7 +59,7 @@ fn golden_core_words() {
 
 #[test]
 fn golden_coverage_corpus_is_present() {
-    let lines = include_str!("golden/coverage.txt")
+    let lines = include_str!("../golden/coverage.txt")
         .lines()
         .filter(|line| !line.trim().is_empty())
         .count();

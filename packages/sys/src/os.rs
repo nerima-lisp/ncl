@@ -187,7 +187,7 @@ pub mod declarations {
 
             let mut byte = 0_u8;
             // SAFETY: byte is valid for one-byte output and fd was successfully opened.
-            assert_eq!(unsafe { read(fd, (&mut byte as *mut u8).cast(), 1) }, 0);
+            assert_eq!(unsafe { read(fd, (&raw mut byte).cast(), 1) }, 0);
             // SAFETY: fd was returned by open and has not been closed.
             assert_eq!(unsafe { close(fd) }, 0);
 

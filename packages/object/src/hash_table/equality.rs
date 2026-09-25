@@ -1,5 +1,5 @@
 use super::HashTest;
-use crate::{ObjectError, ThreadContext, string_length, string_ref, widetag};
+use crate::{string_length, string_ref, widetag, ObjectError, ThreadContext};
 use ncl_sys::Word;
 
 pub(super) fn equal(
@@ -187,4 +187,77 @@ fn numeric_hash(ctx: &ThreadContext, word: Word) -> Result<Option<u64>, ObjectEr
         ),
         _ => None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{equal, hash_key};
+    use crate::hash_table::HashTest;
+    use crate::{
+        make_bignum_from_i128, make_complex, make_cons, make_double, make_ratio, make_string,
+        Runtime, ThreadContext,
+    };
+    use ncl_sys::Word;
+
+    #[test]
+    fn equality_and_hashing_cover_strings_numbers_and_depth_limits() {
+        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+        let mut context = ThreadContext::new();
+        context
+            .register(&runtime)
+            .unwrap_or_else(|error| panic!("register: {error:?}"));
+        let left_string = make_string(&mut context, &runtime, &['a', 'b']).unwrap_or(Word::NIL);
+        let right_string = make_string(&mut context, &runtime, &['A', 'B']).unwrap_or(Word::NIL);
+        assert!(!equal(&context, HashTest::Equal, left_string, right_string, 0).unwrap());
+        assert!(equal(&context, HashTest::Equalp, left_string, right_string, 0).unwrap());
+        assert!(!equal(&context, HashTest::Equalp, left_string, Word::NIL, 0).unwrap());
+        assert_eq!(
+            equal(&context, HashTest::Equal, Word::NIL, Word::NIL, 65),
+            Ok(false)
+        );
+
+        let bignum =
+            make_bignum_from_i128(&mut context, &runtime, 1_234_567_890_123).unwrap_or(Word::NIL);
+        let same_bignum =
+            make_bignum_from_i128(&mut context, &runtime, 1_234_567_890_123).unwrap_or(Word::NIL);
+        let double = make_double(&mut context, &runtime, 2.5).unwrap_or(Word::NIL);
+        let same_double = make_double(&mut context, &runtime, 2.5).unwrap_or(Word::NIL);
+        let ratio = make_ratio(&mut context, &runtime, bignum, double).unwrap_or(Word::NIL);
+        let same_ratio =
+            make_ratio(&mut context, &runtime, same_bignum, same_double).unwrap_or(Word::NIL);
+        let complex = make_complex(&mut context, &runtime, ratio, bignum).unwrap_or(Word::NIL);
+        let same_complex =
+            make_complex(&mut context, &runtime, same_ratio, same_bignum).unwrap_or(Word::NIL);
+        for (left, right) in [
+            (bignum, same_bignum),
+            (double, same_double),
+            (ratio, same_ratio),
+            (complex, same_complex),
+        ] {
+            assert!(equal(&context, HashTest::Eql, left, right, 0).unwrap());
+            assert_eq!(
+                hash_key(&context, HashTest::Eql, left),
+                hash_key(&context, HashTest::Eql, right)
+            );
+        }
+        assert!(equal(&context, HashTest::Equal, ratio, same_ratio, 0).unwrap());
+        assert!(equal(&context, HashTest::Equalp, complex, same_complex, 0).unwrap());
+        assert_eq!(
+            hash_key(&context, HashTest::Equal, complex),
+            hash_key(&context, HashTest::Equal, same_complex)
+        );
+
+        let left_cons = make_cons(&mut context, &runtime, left_string, ratio).unwrap_or(Word::NIL);
+        let right_cons =
+            make_cons(&mut context, &runtime, right_string, same_ratio).unwrap_or(Word::NIL);
+        assert!(equal(&context, HashTest::Equalp, left_cons, right_cons, 0).unwrap());
+        assert_eq!(
+            hash_key(&context, HashTest::Equalp, left_cons),
+            hash_key(&context, HashTest::Equalp, right_cons)
+        );
+        assert_eq!(
+            hash_key(&context, HashTest::Eq, Word::fixnum(4)),
+            Ok(crate::hash_table::sxhash(Word::fixnum(4)))
+        );
+    }
 }

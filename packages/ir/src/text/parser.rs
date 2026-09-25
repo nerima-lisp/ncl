@@ -422,6 +422,9 @@ fn handler_read(r: &mut Reader<'_>) -> Result<HandlerRegion, ParseError> {
     } else {
         None
     };
+    let binding_targets = (0..r.u()?)
+        .map(|_| Ok(ValueId(u32(r.u()?)?)))
+        .collect::<Result<Vec<_>, ParseError>>()?;
     Ok(HandlerRegion {
         id,
         kind,
@@ -429,6 +432,7 @@ fn handler_read(r: &mut Reader<'_>) -> Result<HandlerRegion, ParseError> {
         handler,
         cleanup,
         catch_tag,
+        binding_targets,
         depth: u32(r.u()?)?,
         parent: if r.b()? { Some(HandlerRegionId(u32(r.u()?)?)) } else { None },
     })

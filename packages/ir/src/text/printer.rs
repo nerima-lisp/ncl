@@ -100,6 +100,10 @@ fn encode_function(w: &mut Writer, f: &Function) {
         if let Some(v) = h.catch_tag {
             w.u(v.0.into());
         }
+        vec_len(w, h.binding_targets.len());
+        for v in &h.binding_targets {
+            w.u(v.0.into());
+        }
         w.u(h.depth.into());
         w.b(h.parent.is_some());
         if let Some(parent) = h.parent { w.u(parent.0.into()); }

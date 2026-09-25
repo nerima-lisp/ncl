@@ -63,6 +63,7 @@ nav:
       - Threads: design/threads.md
       - Compiler pipeline: design/compiler-pipeline.md
       - Crates: design/crates.md
+      - Extension API: design/extension-api.md
   - Project:
       - Development: project/development.md
       - Roadmap: project/roadmap.md

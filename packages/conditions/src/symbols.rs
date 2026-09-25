@@ -12,30 +12,7 @@ mod sb_ext;
 mod sb_sys;
 mod sb_thread;
 
-/// Registration kind of an owned symbol.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SymbolKind {
-    /// A function, registered with `define_function`.
-    Function,
-    /// A condition class, registered with `define_class`.
-    Class,
-    /// A condition class that is also a function.
-    ClassAndFunction,
-    /// A variable, interned with its special bit set.
-    Variable,
-    /// A symbol with no dedicated registry, which only needs to be interned.
-    Other,
-}
-
-/// One owned symbol.
-pub struct SymbolRow {
-    /// Owning package name.
-    pub package: &'static str,
-    /// Symbol name.
-    pub name: &'static str,
-    /// Registration kind.
-    pub kind: SymbolKind,
-}
+pub use ncl_ownership::{SymbolKind, SymbolRow};
 
 pub use common_lisp::COMMON_LISP;
 pub use sb_alien::SB_ALIEN;

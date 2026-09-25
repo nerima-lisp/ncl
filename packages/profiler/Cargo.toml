@@ -1,5 +1,5 @@
 [package]
-name = "ncl-conditions"
+name = "ncl-profiler"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,9 @@ license.workspace = true
 
 [dependencies]
 ncl-object = { path = "../object" }
-ncl-ownership = { path = "../ownership" }
+ncl-sys = { path = "../sys" }
+ncl-threads = { path = "../threads" }
+ncl-conditions = { path = "../conditions" }
 
 [lints]
 workspace = true

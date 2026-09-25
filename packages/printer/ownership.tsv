@@ -1,0 +1,21 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	*PRINT-PPRINT-DISPATCH*	variable	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	*PRINT-READABLY*	variable	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COPY-PPRINT-DISPATCH	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-DISPATCH	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-FILL	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-INDENT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-LINEAR	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-NEWLINE	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-TAB	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PPRINT-TABULAR	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRIN1	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRIN1-TO-STRING	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRINC	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRINC-TO-STRING	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRINT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRINT-NOT-READABLE-OBJECT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PRINT-OBJECT	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SET-PPRINT-DISPATCH	function	ncl-printer	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	WRITE-TO-STRING	function	ncl-printer	1	no	reclassified by subsystem ownership rule

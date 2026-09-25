@@ -1,0 +1,43 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	*GENSYM-COUNTER*	variable	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	*PACKAGE*	variable	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	BOUNDP	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	COPY-SYMBOL	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	DELETE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	EXPORT	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	FBOUNDP	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	FIND-ALL-SYMBOLS	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	FIND-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	FIND-SYMBOL	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	FMAKUNBOUND	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	GENSYM	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	GENTEMP	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	GET	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	IMPORT	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	INTERN	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	LIST-ALL-PACKAGES	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	MAKE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	MAKE-SYMBOL	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	MAKUNBOUND	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	PACKAGE-ERROR-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	PACKAGE-NAME	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	PACKAGE-NICKNAMES	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	PACKAGE-SHADOWING-SYMBOLS	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	PACKAGE-USE-LIST	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	PACKAGE-USED-BY-LIST	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	PACKAGEP	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	REMPROP	function	ncl-lib-packages	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	RENAME-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SET	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SHADOW	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SHADOWING-IMPORT	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SYMBOL-FUNCTION	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SYMBOL-NAME	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SYMBOL-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SYMBOL-PLIST	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SYMBOL-VALUE	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	SYMBOLP	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	UNEXPORT	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	UNINTERN	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	UNUSE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation
+COMMON-LISP	USE-PACKAGE	function	ncl-lib-packages	1	no	package or symbol operation

@@ -1,0 +1,2 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	FORMAT	function	ncl-lib-format	1	no	FORMAT facility

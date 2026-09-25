@@ -1,0 +1,98 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	*MACROEXPAND-HOOK*	variable	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	AND	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	APPLY	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ASSERT	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	CALL-METHOD	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	CASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	CCASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	CHECK-TYPE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	COMPILED-FUNCTION-P	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COMPILER-MACRO-FUNCTION	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COMPLEMENT	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COND	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	CONSTANTLY	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CONSTANTP	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CTYPECASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DECF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFCONSTANT	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFINE-COMPILER-MACRO	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFINE-MODIFY-MACRO	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFINE-SETF-EXPANDER	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFINE-SYMBOL-MACRO	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFMACRO	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFPACKAGE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFPARAMETER	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFSETF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DEFVAR	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DESTRUCTURING-BIND	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DO	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DO*	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DO-ALL-SYMBOLS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DO-EXTERNAL-SYMBOLS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DO-SYMBOLS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DOLIST	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	DOTIMES	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	ECASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	ETYPECASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	FDEFINITION	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FORMATTER	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	FUNCALL	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FUNCTION-LAMBDA-EXPRESSION	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FUNCTIONP	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	GET-SETF-EXPANSION	function	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	HANDLER-BIND	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	HANDLER-CASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	IDENTITY	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	IGNORE-ERRORS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	IN-PACKAGE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	INCF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	LAMBDA	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	LOOP	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	LOOP-FINISH	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	MACRO-FUNCTION	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MACROEXPAND	function	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	MACROEXPAND-1	function	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	NOT	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NTH-VALUE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	OR	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	POP	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PPRINT-EXIT-IF-LIST-EXHAUSTED	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PPRINT-LOGICAL-BLOCK	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PPRINT-POP	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PRINT-UNREADABLE-OBJECT	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PROG	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PROG*	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PROG1	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PROG2	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PSETF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PUSH	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	PUSHNEW	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	REMF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	REPLACE	function	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	RESTART-BIND	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	RESTART-CASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	RETURN	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	SETF	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	SPECIAL-OPERATOR-P	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STEP	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	TIME	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	TRACE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	TYPECASE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	UNLESS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	UNTRACE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	VALUES	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	VALUES-LIST	function	ncl-lib-macros	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	WARN	function	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WHEN	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-ACCESSORS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-COMPILATION-UNIT	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-CONDITION-RESTARTS	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-HASH-TABLE-ITERATOR	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-INPUT-FROM-STRING	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-OPEN-FILE	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-OPEN-STREAM	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-OUTPUT-TO-STRING	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-PACKAGE-ITERATOR	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-SIMPLE-RESTART	macro	ncl-lib-macros	1	no	macro expansion/setf surface
+COMMON-LISP	WITH-SLOTS	macro	ncl-lib-macros	1	no	macro expansion/setf surface

@@ -1,0 +1,78 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	&ALLOW-OTHER-KEYS	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&AUX	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&BODY	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&ENVIRONMENT	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&KEY	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&OPTIONAL	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&REST	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	&WHOLE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BLOCK	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	CALL-ARGUMENTS-LIMIT	constant	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CATCH	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	COMPILATION-SPEED	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COMPILER-MACRO	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	DEBUG	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	DECLAIM	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DECLARE	other	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DEFCLASS	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DEFGENERIC	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DEFINE-CONDITION	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DEFINE-METHOD-COMBINATION	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DEFMETHOD	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DEFSTRUCT	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DEFTYPE	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DEFUN	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	DISASSEMBLE	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	DYNAMIC-EXTENT	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	EVAL-WHEN	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	FLET	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	FTYPE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FUNCTION	special-operator+class	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	FUNCTION-KEYWORDS	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	GO	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	IF	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	IGNORABLE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	IGNORE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	INLINE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	LABELS	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	LAMBDA-LIST-KEYWORDS	constant	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	LAMBDA-PARAMETERS-LIMIT	constant	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	LET	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	LET*	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	LOAD-TIME-VALUE	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	LOCALLY	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	MACROLET	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	MAKE-LOAD-FORM	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-LOAD-FORM-SAVING-SLOTS	function	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MULTIPLE-VALUE-BIND	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	MULTIPLE-VALUE-CALL	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	MULTIPLE-VALUE-LIST	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	MULTIPLE-VALUE-PROG1	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	MULTIPLE-VALUE-SETQ	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	MULTIPLE-VALUES-LIMIT	constant	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NOTINLINE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	OPTIMIZE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	OTHERWISE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PROCLAIM	function	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	PROGN	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	PROGV	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	PSETQ	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	QUOTE	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	RETURN-FROM	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	ROTATEF	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	SAFETY	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SATISFIES	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SETQ	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	SHIFTF	macro	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	SPACE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SPECIAL	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SPEED	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STANDARD	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SYMBOL-MACROLET	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	TAGBODY	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	THE	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	THROW	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	TYPE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	UNWIND-PROTECT	special-operator	ncl-compiler-front	1	no	core syntax/declaration owned by compiler front end
+COMMON-LISP	VARIABLE	other	ncl-compiler-front	1	no	reclassified by subsystem ownership rule

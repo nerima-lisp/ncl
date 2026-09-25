@@ -114,6 +114,24 @@ The library crates do not own compilation or allocation policy. They receive `Ru
 
 Each crate exposes the smallest API needed by its neighboring contract.
 
+## Extension crates
+
+The Gate 0 extension crates and their dependency edges are:
+
+```text
+ncl-os -> ncl-object, ncl-sys, ncl-conditions, ncl-lib-streams
+ncl-uiop -> ncl-object, ncl-conditions, ncl-lib-streams, ncl-lib-pathnames,
+            ncl-lib-strings, ncl-os
+ncl-asdf -> ncl-object, ncl-conditions, ncl-clos, ncl-uiop
+ncl-profiler -> ncl-object, ncl-sys, ncl-threads, ncl-conditions
+ncl-coverage -> ncl-object, ncl-compiler-front
+ncl-debug -> ncl-object, ncl-sys, ncl-conditions, ncl-codegen, ncl-lib-streams
+ncl-disasm -> ncl-object
+```
+
+These crates are workspace members. `ncl-disasm` keeps both assembler crates
+in dev-dependencies for encoder round-trip tests only.
+
 `ncl-sys` does not expose Lisp values.
 
 `ncl-object` does not expose platform register names.

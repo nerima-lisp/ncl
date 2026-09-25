@@ -1,0 +1,51 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	ARRAY	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BASE-CHAR	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BASE-STRING	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BIGNUM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BIT-VECTOR	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BOOLEAN	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	BROADCAST-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	COERCE	function	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	COMPILED-FUNCTION	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CONCATENATED-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	DOUBLE-FLOAT	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ECHO-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	EXTENDED-CHAR	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FILE-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	FIXNUM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	HASH-TABLE	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	INTEGER	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	KEYWORD	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	KEYWORDP	function	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	LONG-FLOAT	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NIL	constant	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NULL	class+function	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	NUMBER	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	PACKAGE	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	RANDOM-STATE	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	RATIO	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	REAL	class	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	RESTART	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SEQUENCE	class	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	SHORT-FLOAT	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SIGNED-BYTE	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SIMPLE-ARRAY	class	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	SIMPLE-BASE-STRING	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SIMPLE-BIT-VECTOR	class	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	SIMPLE-STRING	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SIMPLE-VECTOR	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SINGLE-FLOAT	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STANDARD-CHAR	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STREAM	class	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	STRING-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SUBTYPEP	function	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	SXHASH	function	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SYMBOL	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SYNONYM-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	T	constant+class	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	TWO-WAY-STREAM	class	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	TYPE-OF	function	ncl-types	1	no	type predicate/coercion surface
+COMMON-LISP	TYPEP	function	ncl-types	1	yes	type predicate/coercion surface
+COMMON-LISP	UNSIGNED-BYTE	type	ncl-types	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	UPGRADED-COMPLEX-PART-TYPE	function	ncl-types	1	no	type predicate/coercion surface

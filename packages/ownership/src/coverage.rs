@@ -139,6 +139,24 @@ pub fn assert_crate_coverage(
     }
 }
 
+/// Check a crate against table text supplied by its ownership test.
+pub fn assert_crate_coverage_from_table(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    table: &str,
+    crate_name: &str,
+) -> Result<(), OwnershipError> {
+    let rows = crate::table::rows_for_crate_from_str(table, crate_name, PHASE_ONE)?;
+    if rows.is_empty() {
+        return Err(OwnershipError::NoRows { crate_name: crate_name.to_owned() });
+    }
+    let mut missing = Vec::new();
+    for row in &rows {
+        check_row(runtime, ctx, row, &mut missing)?;
+    }
+    if missing.is_empty() { Ok(()) } else { Err(OwnershipError::Missing(missing)) }
+}
+
 /// Check one table row, appending every failure to `missing`.
 fn check_row(
     runtime: &Runtime,

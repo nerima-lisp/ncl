@@ -31,6 +31,13 @@ members = [
     "packages/image",
     "packages/runtime",
     "packages/conformance",
+    "packages/os",
+    "packages/uiop",
+    "packages/asdf",
+    "packages/profiler",
+    "packages/coverage",
+    "packages/debug",
+    "packages/disasm",
 ]
 default-members = [
     ".",
@@ -63,6 +70,13 @@ default-members = [
     "packages/image",
     "packages/runtime",
     "packages/conformance",
+    "packages/os",
+    "packages/uiop",
+    "packages/asdf",
+    "packages/profiler",
+    "packages/coverage",
+    "packages/debug",
+    "packages/disasm",
 ]
 
 [workspace.package]

@@ -94,7 +94,12 @@ pub struct Row {
 ///
 /// Returns [`OwnershipError::BadRow`] when the embedded table is malformed.
 pub fn rows() -> Result<Vec<Row>, OwnershipError> {
-    TABLE
+    rows_from_str(TABLE)
+}
+
+/// Parse ownership rows from caller-provided table text.
+pub fn rows_from_str(source: &str) -> Result<Vec<Row>, OwnershipError> {
+    source
         .lines()
         .enumerate()
         .skip(1)
@@ -108,7 +113,12 @@ pub fn rows() -> Result<Vec<Row>, OwnershipError> {
 ///
 /// Returns [`OwnershipError::BadRow`] when the embedded table is malformed.
 pub fn rows_for_crate(crate_name: &str, phase: u8) -> Result<Vec<Row>, OwnershipError> {
-    Ok(rows()?
+    rows_for_crate_from_str(TABLE, crate_name, phase)
+}
+
+/// Return rows for a crate from caller-provided table text.
+pub fn rows_for_crate_from_str(source: &str, crate_name: &str, phase: u8) -> Result<Vec<Row>, OwnershipError> {
+    Ok(rows_from_str(source)?
         .into_iter()
         .filter(|row| row.crate_name == crate_name && row.phase == phase)
         .collect())

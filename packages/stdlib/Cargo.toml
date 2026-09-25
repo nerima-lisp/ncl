@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+ncl-object = { path = "../object" }
 ncl-types = { path = "../types" }
 ncl-reader = { path = "../reader" }
 ncl-printer = { path = "../printer" }
@@ -20,6 +21,16 @@ ncl-lib-pathnames = { path = "../lib/pathnames" }
 ncl-lib-packages = { path = "../lib/packages" }
 ncl-lib-format = { path = "../lib/format" }
 ncl-lib-macros = { path = "../lib/macros" }
+ncl-threads = { path = "../threads" }
+ncl-ffi = { path = "../ffi" }
+ncl-image = { path = "../image" }
+ncl-os = { path = "../os" }
+ncl-uiop = { path = "../uiop" }
+ncl-asdf = { path = "../asdf" }
+ncl-profiler = { path = "../profiler" }
+ncl-coverage = { path = "../coverage" }
+ncl-debug = { path = "../debug" }
+ncl-disasm = { path = "../disasm" }
 
 [lints]
 workspace = true

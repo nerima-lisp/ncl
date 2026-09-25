@@ -1,0 +1,46 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+COMMON-LISP	ADD-METHOD	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	ALLOCATE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	BUILT-IN-CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	CALL-NEXT-METHOD	other	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	CHANGE-CLASS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	CLASS-NAME	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	CLASS-OF	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	COMPUTE-APPLICABLE-METHODS	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	COPY-STRUCTURE	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	DESCRIBE	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	DESCRIBE-OBJECT	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	DOCUMENTATION	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	ENSURE-GENERIC-FUNCTION	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	FIND-CLASS	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	FIND-METHOD	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	GENERIC-FUNCTION	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	INITIALIZE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	MAKE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	MAKE-INSTANCES-OBSOLETE	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	MAKE-METHOD	other	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	METHOD	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	METHOD-COMBINATION	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	METHOD-QUALIFIERS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	NEXT-METHOD-P	other	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	NO-APPLICABLE-METHOD	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	NO-NEXT-METHOD	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	REINITIALIZE-INSTANCE	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	REMOVE-METHOD	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	SHARED-INITIALIZE	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	SLOT-BOUNDP	function	ncl-clos	1	yes	CLOS/class/slot surface
+COMMON-LISP	SLOT-EXISTS-P	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	SLOT-MAKUNBOUND	function	ncl-clos	1	yes	CLOS/class/slot surface
+COMMON-LISP	SLOT-MISSING	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	SLOT-UNBOUND	function	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	SLOT-VALUE	function	ncl-clos	1	yes	CLOS/class/slot surface
+COMMON-LISP	STANDARD-CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	STANDARD-GENERIC-FUNCTION	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	STANDARD-METHOD	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	STANDARD-OBJECT	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	STRUCTURE	other	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	STRUCTURE-CLASS	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	STRUCTURE-OBJECT	class	ncl-clos	1	no	CLOS/class/slot surface
+COMMON-LISP	UPDATE-INSTANCE-FOR-DIFFERENT-CLASS	function	ncl-clos	1	no	reclassified by subsystem ownership rule
+COMMON-LISP	UPDATE-INSTANCE-FOR-REDEFINED-CLASS	function	ncl-clos	1	no	reclassified by subsystem ownership rule

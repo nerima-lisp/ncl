@@ -40,7 +40,7 @@ fn registration_covers_the_owned_symbols() {
     assert!(symbol_is_macro(&ctx, defun).unwrap());
     let limit = find(&runtime, &mut ctx, "COMMON-LISP", "CALL-ARGUMENTS-LIMIT");
     assert!(symbol_is_constant(&ctx, limit).unwrap());
-    let verbose = find(&runtime, &mut ctx, "SB-EXT", "*COMPILE-PROGRESS*");
+    let verbose = find(&runtime, &mut ctx, "NCL-EXT", "*COMPILE-PROGRESS*");
     assert!(symbol_is_special(&ctx, verbose).unwrap());
 }
 

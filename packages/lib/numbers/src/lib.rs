@@ -4,9 +4,9 @@ mod arithmetic;
 mod bitops;
 
 use ncl_object::{
-    Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, ObjectError, Package, Parameter, ParameterType, Runtime,
-    RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_value,
+    make_double, set_symbol_constant, set_symbol_value, Arity, Builtin, BuiltinConvention,
+    BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, LambdaList, ObjectError,
+    Package, Parameter, ParameterType, Runtime, RustBuiltin, ThreadContext, Word,
 };
 
 fn install(
@@ -17,9 +17,44 @@ fn install(
     direct: bool,
     callback: RustBuiltin,
 ) -> Result<(), ObjectError> {
+    const NO_PARAMETERS: &[Parameter] = &[];
+    const ONE_PARAMETER: &[Parameter] = &[Parameter {
+        name: BuiltinName::new("NUMBER"),
+        ty: ParameterType::Number,
+    }];
+    const TWO_PARAMETERS: &[Parameter] = &[
+        Parameter {
+            name: BuiltinName::new("NUMBER"),
+            ty: ParameterType::Number,
+        },
+        Parameter {
+            name: BuiltinName::new("DIVISOR"),
+            ty: ParameterType::Number,
+        },
+    ];
+    const THREE_PARAMETERS: &[Parameter] = &[
+        Parameter {
+            name: BuiltinName::new("NUMBER"),
+            ty: ParameterType::Number,
+        },
+        Parameter {
+            name: BuiltinName::new("NUMBER"),
+            ty: ParameterType::Number,
+        },
+        Parameter {
+            name: BuiltinName::new("NUMBER"),
+            ty: ParameterType::Number,
+        },
+    ];
     let descriptor = if direct {
         Builtin {
-            lambda_list: LambdaList::fixed(&[]),
+            lambda_list: LambdaList::fixed(match arity {
+                0 => NO_PARAMETERS,
+                1 => ONE_PARAMETER,
+                2 => TWO_PARAMETERS,
+                3 => THREE_PARAMETERS,
+                _ => return Err(ObjectError::TypeError),
+            }),
             convention: BuiltinConvention::Direct(Arity::exact(arity)),
         }
     } else {
@@ -140,7 +175,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         .find_package(&ctx, "COMMON-LISP")
         .ok_or(ObjectError::PackageConflict)?;
     for name in ["PI", "MOST-POSITIVE-FIXNUM", "MOST-NEGATIVE-FIXNUM"] {
-        let (symbol, _) = Package::from(package).intern(&mut ctx, runtime, name)?;
+        let (symbol, _) = Package::from_word(package).intern(&mut ctx, runtime, name)?;
         set_symbol_constant(&mut ctx, symbol, true)?;
         let value = match name {
             "PI" => make_double(&mut ctx, runtime, std::f64::consts::PI)?.into(),
@@ -167,7 +202,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         ("BOOLE-ORC2", bitops::BOOLE_ORC2),
         ("BOOLE-SET", bitops::BOOLE_SET),
     ] {
-        let (symbol, _) = Package::from(package).intern(&mut ctx, runtime, name)?;
+        let (symbol, _) = Package::from_word(package).intern(&mut ctx, runtime, name)?;
         set_symbol_constant(&mut ctx, symbol, true)?;
         set_symbol_value(&mut ctx, symbol, Word::fixnum(value))?;
     }

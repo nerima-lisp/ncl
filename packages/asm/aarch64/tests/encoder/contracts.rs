@@ -10,7 +10,7 @@ fn public_value_and_error_contracts_are_exercised() {
 
     assert_eq!(Reg::new(30).unwrap().number(), 30);
     assert_eq!(Reg::new(31), Err(EncodeError::InvalidRegister(31)));
-    assert_eq!(disassemble(0xD65F_03C0), Ok("ret x30".to_owned()));
+    assert_eq!(encode(&Inst::Ret { rn: x(30) }, 0), Ok(0xD65F_03C0));
     assert_eq!(mov_imm64(x(0), u64::MAX).len(), 1);
     assert_eq!(mov_imm64(x(0), 0x0001_0002_0003_0004).len(), 4);
     assert_eq!(encode(&Inst::Bl { label: Label(0) }, 0), Ok(0x9400_0000));

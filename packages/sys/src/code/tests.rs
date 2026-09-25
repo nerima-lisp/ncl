@@ -1,5 +1,5 @@
 use super::*;
-use crate::LowTag;
+use crate::{LowTag, Word};
 
 #[test]
 fn code_lifecycle_and_write_bounds() {

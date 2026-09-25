@@ -1,10 +1,8 @@
 //! Test-support helpers that check per-crate symbol coverage against the
 //! ownership table.
 //!
-//! `ncl-ownership` is not part of the runtime. It embeds
-//! `conformance/ownership/symbols.tsv` and verifies that a crate registered
-//! every symbol the table assigns to it, so a lane can prove completeness with
-//! one test:
+//! `ncl-ownership` is not part of the runtime. It verifies that a crate
+//! registered every symbol in the table supplied by its coverage test:
 //!
 //! ```no_run
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,7 +10,10 @@
 //! let mut ctx = ncl_object::ThreadContext::new();
 //! ctx.register(&runtime)?;
 //! // `ncl_<crate>::register(&Runtime)` is implemented by each lane.
-//! ncl_ownership::assert_crate_coverage(&runtime, &mut ctx, "ncl-types")?;
+//! const TABLE: &str = include_str!("../../types/ownership.tsv");
+//! ncl_ownership::assert_crate_coverage_from_table(
+//!     &runtime, &mut ctx, TABLE, "ncl-types",
+//! )?;
 //! # Ok(())
 //! # }
 //! ```
@@ -46,8 +47,8 @@ mod symbols;
 mod table;
 
 pub use coverage::{
-    Missing, OwnershipError, assert_crate_coverage, assert_crate_coverage_from_table,
-    assert_crate_function_bindings, assert_crate_function_bindings_from_table,
+    Missing, OwnershipError, assert_crate_coverage_from_table,
+    assert_crate_function_bindings_from_table,
 };
-pub use table::{Kind, Row, rows, rows_for_crate, rows_for_crate_from_str, rows_from_str};
+pub use table::{Kind, Row, rows_for_crate_from_str, rows_from_str};
 pub use symbols::{SymbolKind, SymbolRow};

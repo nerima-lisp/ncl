@@ -1,6 +1,35 @@
-# Symbol ownership for Phase 1 lanes
+# Symbol ownership for crate-local tables
 
-This note summarizes `conformance/ownership/symbols.tsv`. The checker is the source of truth for coverage and field validity.
+Ownership is recorded in one seven-column table per implementation crate at
+`packages/<crate>/ownership.tsv`. The tables are intentionally independent so
+parallel lanes can add their ownership rows without a shared-file merge
+conflict. The checker is the source of truth for coverage and field validity.
+
+## Surface policy
+
+The retained public surface has three fixed groups:
+
+- `COMMON-LISP`, with exactly 978 symbols, each owned once.
+- `ASDF/INTERFACE` and `UIOP/DRIVER`, which retain the ASDF and UIOP public
+  surfaces.
+- The ten NCL extension packages: `NCL-THREADS`, `NCL-FFI`, `NCL-MOP`,
+  `NCL-GRAY`, `NCL-GC`, `NCL-IMAGE`, `NCL-UNICODE`, `NCL-OS`, `NCL-EXT`,
+  and `NCL-SYS`.
+
+NCL extension tables are open-ended. Their rows are validated for shape and
+package policy, but the checker does not compare them with a precomputed
+symbol list. No package beginning with `SB-` is part of the retained surface.
+
+Each row has the following columns:
+
+```text
+package	symbol	kind	crate	phase	direct-expansion	notes
+```
+
+`kind` may contain multiple values joined by `+`. `phase` identifies lane
+implementation, runtime integration, or supporting work. The
+`direct-expansion` flag records the primitive set defined by the compiler
+pipeline contract.
 
 ## Lane summary
 
@@ -26,12 +55,29 @@ This note summarizes `conformance/ownership/symbols.tsv`. The checker is the sou
 | `ncl-threads` | 130 | ATOMIC-INCF, PROCESS-WAIT, TIMER-NAME, WAIT-FOR, WITH-DEADLINE, WITH-INTERRUPTS | ncl-object, ncl-conditions, ncl-sys |
 | `ncl-types` | 64 | BASE-STRING, BIGNUM, BROADCAST-STREAM, FLOAT, KEYWORD, WORD | ncl-object |
 
-Phase 1 has 1,617 symbols, Phase 2 has 59, and Phase 3 has 1,884.
-
 ## Runtime boundary
 
-The 59 Phase 2 rows are limited to evaluation and compilation, loading and module/feature state, implementation-environment and time functions, REPL/debugger operations, and the explicitly retained SB-EXT evaluator/compiler/image hooks. The table contains no other `ncl-runtime` rows.
+Phase 2 rows are limited to evaluation and compilation, loading and
+module/feature state, implementation-environment and time functions,
+REPL/debugger operations, and runtime integration hooks. The table contains
+no SBCL compatibility surface.
 
 ## Direct-expansion primitives
 
-The `direct-expansion=yes` rows are the compiler pipeline primitive surface: list access and mutation, array access, fixnum arithmetic/comparison, `eq`, `eql`, type and character predicates, and structure slot accessors. The machine-checkable set is the `direct-expansion` column.
+The `direct-expansion=yes` rows are the compiler pipeline primitive surface:
+list access and mutation, array access, fixnum arithmetic/comparison, `eq`,
+`eql`, type and character predicates, and structure slot accessors. The
+machine-checkable set is the `direct-expansion` column.
+
+## Verification
+
+Run the ownership gate from the repository root:
+
+```sh
+python3 conformance/ownership/check.py
+```
+
+It reads every crate-local table, requires complete unique coverage of the
+978 `COMMON-LISP` symbols, rejects `SB-` packages, and validates the allowed
+packages and seven-column fields. NCL extension row counts remain a crate
+contract rather than a global fixed list.

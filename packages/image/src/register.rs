@@ -21,7 +21,7 @@ struct Row {
     kind: Kind,
 }
 
-/// The Phase 1 `ncl-image` rows of `conformance/ownership/symbols.tsv`.
+/// The Phase 1 rows formerly assigned to `ncl-image`.
 const ROWS: &[Row] = &[
     Row {
         package: "SB-EXT",

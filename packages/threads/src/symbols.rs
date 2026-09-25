@@ -1,9 +1,8 @@
 //! Static table of the symbols owned by `ncl-threads`.
 //!
-//! Every row mirrors `conformance/ownership/symbols.tsv` for crate
-//! `ncl-threads`, phase 1. The rows are split by package across the
-//! submodules below; the `rows` accessor yields them in ownership-table
-//! order.
+//! Every row mirrors the crate-local ownership table for `ncl-threads`. The
+//! phase-one rows are split by package across the submodules below; the `rows`
+//! accessor yields them in ownership-table order.
 
 mod sb_ext;
 mod sb_sys;

@@ -73,8 +73,8 @@ asm crates have no neighbors, so encoding is independent of object model and OS.
 | ncl-codegen | MachineFunction, register allocation, frame and safepoint metadata |
 | ncl-asm-x86-64 / ncl-asm-aarch64 | target instruction model and encoder, no codegen dependency |
 | ncl-objfile | FASL and native object writer, returns bytes and calls no OS API |
-| ncl-ownership | `symbols.tsv` の行型、`rows_for_crate`、`assert_crate_coverage(&Runtime, &mut ThreadContext, crate)`。テスト支援専用で Lisp 値を公開しない |
-| ncl-stdlib | `register_all(&Runtime)`: 全 `ncl-lib-*` と types/reader/printer/conditions/clos の `register` を依存順に呼ぶ唯一の入口。順序表を持つ |
+| ncl-ownership | crate-local ownership table の行型、`rows_for_crate_from_str`、`assert_crate_coverage_from_table`。テスト支援専用で Lisp 値を公開しない |
+| ncl-stdlib | `register_all(&mut ThreadContext, &Runtime)`: 登録関数を持つ crate の `register` を依存順に呼ぶ唯一の入口。順序表を持つ |
 | ncl-lib-numbers | 数値塔の builtin 登録(所有表 164 行)。bignum/ratio/float/complex の演算、`ash`、`random`、`boole` |
 | ncl-lib-sequences | list/sequence/tree の builtin 登録(150 行)。`equal`/`equalp`、`sort`、`map` 系 |
 | ncl-lib-strings | 文字・文字列の builtin 登録(108 行)。文字述語、`char=` 系、名前と符号 |
@@ -94,9 +94,9 @@ The dependency graph is acyclic. `ncl-ir -> none` and `ncl-objfile -> none` are 
 
 ### Registration and ownership rules
 
-Each `ncl-lib-*` crate's `register(&Runtime)` is its per-crate registration function. It installs symbols, functions, classes, and compiler macros into Runtime registries and does not create a second global table. `ncl-stdlib::register_all(&Runtime)` is the only integrated entry point and calls those per-crate `register` functions in dependency order, holding the order table. `ncl-runtime` calls only `register_all`, once at startup; a second call returns `ObjectError`. `ThreadContext` is created and registered by the runtime, owns its TLAB, binding stack, roots, handlers, safepoint state, and multiple-value area, and is unregistered before its OS thread exits.
+Each `ncl-lib-*` crate's `register(&Runtime)` is its per-crate registration function. It installs symbols, functions, classes, and compiler macros into Runtime registries and does not create a second global table. `ncl-stdlib::register_all(&mut ThreadContext, &Runtime)` is the only integrated entry point and calls available per-crate `register` functions in dependency order, holding the order table. `ncl-runtime` calls only `register_all`, once at startup; a second call returns `ObjectError`. `ThreadContext` is created and registered by the runtime, owns its TLAB, binding stack, roots, handlers, safepoint state, and multiple-value area, and is unregistered before its OS thread exits.
 
-`ncl-stdlib::register_all(&Runtime)` が標準ライブラリ登録の唯一の入口である。各
+`ncl-stdlib::register_all(&mut ThreadContext, &Runtime)` が標準ライブラリ登録の唯一の入口である。各
 `ncl-lib-*` の `register(&Runtime)` は他 crate の `register` を呼ばない。`ncl-runtime` は
 起動時に `register_all` を一度だけ呼び、二度目の呼出は `ObjectError` を返す。
 

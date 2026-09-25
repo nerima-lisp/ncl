@@ -1,12 +1,8 @@
 //! Parsing and querying of the embedded symbol-ownership table.
 //!
-//! The table is `conformance/ownership/symbols.tsv`, embedded with
-//! [`include_str!`] so the gate never depends on the working directory.
+//! Each caller supplies its crate-local table with [`include_str!`].
 
 use crate::coverage::OwnershipError;
-
-/// The embedded ownership table, compiled into this crate.
-const TABLE: &str = include_str!("../../../conformance/ownership/symbols.tsv");
 
 /// Number of tab-separated columns in a table row.
 const COLUMNS: usize = 7;
@@ -86,18 +82,11 @@ pub struct Row {
     pub direct_expansion: bool,
 }
 
-/// Parse every data row of the embedded ownership table.
-///
-/// The first line is a header and is skipped.
+/// Parse ownership rows from caller-provided table text.
 ///
 /// # Errors
 ///
-/// Returns [`OwnershipError::BadRow`] when the embedded table is malformed.
-pub fn rows() -> Result<Vec<Row>, OwnershipError> {
-    rows_from_str(TABLE)
-}
-
-/// Parse ownership rows from caller-provided table text.
+/// Returns [`OwnershipError::BadRow`] when the table is malformed.
 pub fn rows_from_str(source: &str) -> Result<Vec<Row>, OwnershipError> {
     source
         .lines()
@@ -107,16 +96,11 @@ pub fn rows_from_str(source: &str) -> Result<Vec<Row>, OwnershipError> {
         .collect()
 }
 
-/// Return the ownership rows for one crate and phase.
+/// Return rows for a crate from caller-provided table text.
 ///
 /// # Errors
 ///
-/// Returns [`OwnershipError::BadRow`] when the embedded table is malformed.
-pub fn rows_for_crate(crate_name: &str, phase: u8) -> Result<Vec<Row>, OwnershipError> {
-    rows_for_crate_from_str(TABLE, crate_name, phase)
-}
-
-/// Return rows for a crate from caller-provided table text.
+/// Returns [`OwnershipError::BadRow`] when the table is malformed.
 pub fn rows_for_crate_from_str(source: &str, crate_name: &str, phase: u8) -> Result<Vec<Row>, OwnershipError> {
     Ok(rows_from_str(source)?
         .into_iter()
@@ -166,12 +150,12 @@ fn parse_row(line_number: usize, line: &str) -> Result<Row, OwnershipError> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "tests assert on parser failures")]
 mod tests {
-    use super::{Kind, OwnershipError, parse_row, rows};
+    use super::{Kind, OwnershipError, parse_row, rows_from_str};
 
     #[test]
     fn embedded_table_parses_completely() {
-        let source = include_str!("../../../conformance/ownership/symbols.tsv");
-        let parsed = rows().unwrap();
+        let source = include_str!("../../types/ownership.tsv");
+        let parsed = rows_from_str(source).unwrap();
         assert_eq!(parsed.len(), source.lines().count() - 1);
         assert!(parsed.iter().all(|row| (1..=3).contains(&row.phase)));
     }

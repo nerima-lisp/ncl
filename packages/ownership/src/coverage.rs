@@ -5,7 +5,7 @@ use ncl_object::{
     symbol_function, symbol_is_constant, symbol_is_macro, symbol_is_special,
 };
 
-use crate::table::{Kind, Row, rows_for_crate};
+use crate::table::{Kind, Row};
 
 /// Implementation phase whose rows the gate requires a crate to register.
 const PHASE_ONE: u8 = 1;
@@ -109,37 +109,14 @@ impl std::error::Error for OwnershipError {
     }
 }
 
-/// Check that every Phase 1 symbol owned by `crate_name` is registered.
+/// Check a crate against table text supplied by its ownership test.
 ///
 /// # Errors
 ///
 /// Returns [`OwnershipError::NoRows`] when the crate has no Phase 1 rows, so an
 /// empty selection cannot pass vacuously, and [`OwnershipError::Missing`]
-/// listing every unregistered symbol. A failed object-layer lookup is returned
-/// as [`OwnershipError::Object`].
-pub fn assert_crate_coverage(
-    runtime: &Runtime,
-    ctx: &mut ThreadContext,
-    crate_name: &str,
-) -> Result<(), OwnershipError> {
-    let rows = rows_for_crate(crate_name, PHASE_ONE)?;
-    if rows.is_empty() {
-        return Err(OwnershipError::NoRows {
-            crate_name: crate_name.to_owned(),
-        });
-    }
-    let mut missing = Vec::new();
-    for row in &rows {
-        check_row(runtime, ctx, row, &mut missing)?;
-    }
-    if missing.is_empty() {
-        Ok(())
-    } else {
-        Err(OwnershipError::Missing(missing))
-    }
-}
-
-/// Check a crate against table text supplied by its ownership test.
+/// listing every unregistered symbol. A failed object-layer lookup or malformed
+/// table is returned as the corresponding error variant.
 pub fn assert_crate_coverage_from_table(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -157,23 +134,12 @@ pub fn assert_crate_coverage_from_table(
     if missing.is_empty() { Ok(()) } else { Err(OwnershipError::Missing(missing)) }
 }
 
-/// Check that every owned function is present in both registries and its
-/// symbol function cell.
-pub fn assert_crate_function_bindings(
-    runtime: &Runtime,
-    ctx: &mut ThreadContext,
-    crate_name: &str,
-) -> Result<(), OwnershipError> {
-    let rows = rows_for_crate(crate_name, PHASE_ONE)?;
-    if rows.is_empty() {
-        return Err(OwnershipError::NoRows {
-            crate_name: crate_name.to_owned(),
-        });
-    }
-    check_function_bindings(runtime, ctx, &rows)
-}
-
 /// Check function-cell bindings against caller-supplied ownership table text.
+///
+/// # Errors
+///
+/// Returns [`OwnershipError::NoRows`] when the crate has no Phase 1 rows and
+/// [`OwnershipError::Missing`] for an unregistered or unbound function.
 pub fn assert_crate_function_bindings_from_table(
     runtime: &Runtime,
     ctx: &mut ThreadContext,

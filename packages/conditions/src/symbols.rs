@@ -6,28 +6,25 @@
 //! order.
 
 mod common_lisp;
-mod sb_alien;
-mod sb_debug;
-mod sb_ext;
-mod sb_sys;
-mod sb_thread;
+mod ncl_ext;
+mod ncl_ffi;
+mod ncl_sys;
+mod ncl_threads;
 
 pub use ncl_ownership::{SymbolKind, SymbolRow};
 
 pub use common_lisp::COMMON_LISP;
-pub use sb_alien::SB_ALIEN;
-pub use sb_debug::SB_DEBUG;
-pub use sb_ext::SB_EXT;
-pub use sb_sys::SB_SYS;
-pub use sb_thread::SB_THREAD;
+pub use ncl_ext::NCL_EXT;
+pub use ncl_ffi::NCL_FFI;
+pub use ncl_sys::NCL_SYS;
+pub use ncl_threads::NCL_THREADS;
 
 /// Every Phase-1 symbol owned by this crate, in ownership-table order.
 pub fn symbols() -> impl Iterator<Item = &'static SymbolRow> {
     COMMON_LISP
         .iter()
-        .chain(SB_ALIEN)
-        .chain(SB_DEBUG)
-        .chain(SB_EXT)
-        .chain(SB_SYS)
-        .chain(SB_THREAD)
+        .chain(NCL_EXT)
+        .chain(NCL_FFI)
+        .chain(NCL_SYS)
+        .chain(NCL_THREADS)
 }

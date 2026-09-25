@@ -30,3 +30,4 @@ pub const NCL_THREADS: &[SymbolRow] = &[
         kind: SymbolKind::Class,
     },
 ];
+

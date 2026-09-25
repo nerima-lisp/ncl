@@ -130,3 +130,4 @@ pub const NCL_EXT: &[SymbolRow] = &[
         kind: SymbolKind::Class,
     },
 ];
+

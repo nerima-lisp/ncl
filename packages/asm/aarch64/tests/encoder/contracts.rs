@@ -77,4 +77,3 @@ fn public_value_and_error_contracts_are_exercised() {
         assert!(!error.to_string().is_empty());
     }
 }
-

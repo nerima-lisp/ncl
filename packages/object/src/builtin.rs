@@ -510,6 +510,11 @@ fn abi_pending_status(ctx: &mut ThreadContext) -> Option<NclStatus> {
 }
 
 /// Invoke a generated ABI callback while preserving pending state.
+///
+/// # Errors
+///
+/// Returns the pending NCL status when the callback raises an object, Lisp, or
+/// non-local-exit condition.
 pub fn invoke_abi(
     ctx: &mut ThreadContext,
     callback: AbiBuiltin,

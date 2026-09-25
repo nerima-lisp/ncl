@@ -3,10 +3,11 @@
 mod unicode_data;
 
 use ncl_object::{
-    make_simple_vector, make_string, simple_vector_length, simple_vector_ref, string_length,
-    string_ref, string_set, Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier,
-    BuiltinImplementation, BuiltinName, BuiltinPackage, LambdaList, MultipleValues, ObjectError,
-    Parameter, ParameterType, Runtime, ThreadContext, Word,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, Character, LambdaList, LispError, MultipleValues, ObjectError,
+    Package, Parameter, ParameterType, Runtime, ThreadContext, Word, make_simple_vector,
+    make_string, set_symbol_constant, set_symbol_value, simple_vector_length, simple_vector_ref,
+    string_length, string_ref, string_set,
 };
 
 /// Return the Unicode `General_Category` abbreviation for a scalar value.
@@ -40,11 +41,38 @@ pub const fn characterp(value: Word) -> Word {
 }
 
 fn character(value: Word) -> Result<char, ObjectError> {
-    if !value.is_character() {
-        return Err(ObjectError::TypeError);
-    }
-    char::from_u32(u32::try_from(value.bits() >> 4).map_err(|_| ObjectError::TypeError)?)
-        .ok_or(ObjectError::TypeError)
+    let value = typed_character(value).map_err(|_| ObjectError::TypeError)?;
+    char::from_u32(value.value()).ok_or(ObjectError::TypeError)
+}
+
+fn typed_character(value: Word) -> Result<Character, LispError> {
+    Character::try_from_word(value).map_err(LispError::from)
+}
+
+fn char_code_typed(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    value: Character,
+) -> Result<Word, LispError> {
+    Ok(Word::fixnum(i64::from(value.value())))
+}
+
+fn char_code_typed_entry(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let value = typed_character(args.required(0)?).map_err(|error| {
+        ctx.set_pending_lisp_error(error);
+        ObjectError::TypeError
+    })?;
+    let result = char_code_typed(ctx, runtime, value).map_err(|error| {
+        ctx.set_pending_lisp_error(error);
+        ObjectError::TypeError
+    })?;
+    values.clear();
+    Ok(result)
 }
 
 #[allow(clippy::missing_const_for_fn, clippy::unnecessary_wraps)]
@@ -55,17 +83,6 @@ fn characterp_builtin(
     _values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     Ok(characterp(args.required(0)?))
-}
-
-fn char_code_builtin(
-    _ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _values: &mut ncl_object::MultipleValues,
-) -> Result<Word, ObjectError> {
-    Ok(Word::fixnum(
-        i64::from(character(args.required(0)?)? as u32),
-    ))
 }
 
 fn code_char_builtin(
@@ -235,7 +252,7 @@ fn char_int_builtin(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    char_code_builtin(ctx, runtime, args, values)
+    char_code_typed_entry(ctx, runtime, args, values)
 }
 fn general_category_builtin(
     ctx: &mut ThreadContext,
@@ -853,6 +870,24 @@ fn stringp_builtin(
     )
 }
 
+fn character_builtin(
+    ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let value = args.required(0)?;
+    if value.is_character() {
+        return Ok(value);
+    }
+    let chars = string_chars(ctx, value)?;
+    if chars.len() == 1 {
+        Ok(Word::character(chars[0] as u32))
+    } else {
+        Err(ObjectError::TypeError)
+    }
+}
+
 fn string_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -1291,6 +1326,21 @@ fn identity_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
+
+    // These three names are owned by the character/string subsystem.  The
+    // class registry may also be populated by CLOS later; defining the
+    // placeholder here keeps this crate's ownership table complete when it is
+    // registered in isolation.
+    for name in ["CHARACTER", "STRING"] {
+        runtime.define_class(&mut ctx, name, Word::fixnum(1))?;
+    }
+    let common_lisp = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    let (char_code_limit, _) =
+        Package::from_word(common_lisp).intern(&mut ctx, runtime, "CHAR-CODE-LIMIT")?;
+    set_symbol_value(&mut ctx, char_code_limit, Word::fixnum(0x11_0000))?;
+    set_symbol_constant(&mut ctx, char_code_limit, true)?;
     macro_rules! register {
         ($name:literal, $params:expr, $function:ident) => {
             let descriptor = descriptor($params);
@@ -1311,12 +1361,13 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         LambdaList::fixed(&[OBJECT]),
         characterp_builtin
     );
+    register!("CHARACTER", LambdaList::fixed(&[OBJECT]), character_builtin);
     register!("CHAR", LambdaList::fixed(&[STRING, INDEX]), char_builtin);
     register!("SCHAR", LambdaList::fixed(&[STRING, INDEX]), schar_builtin);
     register!(
         "CHAR-CODE",
         LambdaList::fixed(&[CHARACTER]),
-        char_code_builtin
+        char_code_typed_entry
     );
     register!(
         "CHAR-NAME",
@@ -1688,14 +1739,18 @@ mod tests {
             Err(ncl_object::ObjectError::TypeError)
         );
 
+        let char_name = call(
+            &runtime,
+            &mut ctx,
+            "CHAR-NAME",
+            &[Word::character(' ' as u32)],
+        );
+        assert_eq!(ncl_object::string_length(&ctx, char_name), Ok(5));
         assert_eq!(
-            call(
-                &runtime,
-                &mut ctx,
-                "CHAR-NAME",
-                &[Word::character(' ' as u32)]
-            ),
-            ncl_object::make_string(&mut ctx, &runtime, &['S', 'P', 'A', 'C', 'E']).unwrap()
+            (0..5)
+                .map(|index| ncl_object::string_ref(&ctx, char_name, index).unwrap())
+                .collect::<String>(),
+            "SPACE"
         );
         let name = ncl_object::make_string(&mut ctx, &runtime, &['t', 'a', 'b']).unwrap();
         assert_eq!(
@@ -1707,6 +1762,15 @@ mod tests {
 
         assert_eq!(
             call(&runtime, &mut ctx, "DIGIT-CHAR", &[Word::fixnum(15)]),
+            Word::NIL
+        );
+        assert_eq!(
+            call(
+                &runtime,
+                &mut ctx,
+                "DIGIT-CHAR",
+                &[Word::fixnum(15), Word::fixnum(16)]
+            ),
             Word::character('F' as u32)
         );
         assert_eq!(

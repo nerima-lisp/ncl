@@ -17,11 +17,30 @@ UCD_URL = "https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt"
 
 def read_categories(path: Path) -> list[tuple[int, str]]:
     values: list[tuple[int, str]] = []
+    pending_range: tuple[int, str] | None = None
     for line in path.read_text(encoding="ascii").splitlines():
         if not line or line.startswith("#"):
             continue
         fields = line.split(";")
-        values.append((int(fields[0], 16), fields[2]))
+        codepoint = int(fields[0], 16)
+        name = fields[1]
+        if name.endswith(", First>"):
+            pending_range = (codepoint, fields[2])
+            continue
+        if name.endswith(", Last>"):
+            if pending_range is None:
+                raise ValueError(f"range terminator without start: {line}")
+            start, category = pending_range
+            if category != fields[2] or codepoint < start:
+                raise ValueError(f"invalid UnicodeData range: {line}")
+            values.extend((value, category) for value in range(start, codepoint + 1))
+            pending_range = None
+            continue
+        if pending_range is not None:
+            raise ValueError(f"range start without terminator before: {line}")
+        values.append((codepoint, fields[2]))
+    if pending_range is not None:
+        raise ValueError("unterminated UnicodeData range")
     return values
 
 

@@ -35,6 +35,26 @@ pub use thread::{
     MULTIPLE_VALUE_AREA_WORDS, NativeState, RootToken, SafepointState, Thread, ThreadLayout,
     thread_layout,
 };
+
+/// Run a callback with the opaque context installed for synchronous native execution.
+pub fn with_native_context<T, R>(
+    thread: std::ptr::NonNull<Thread>,
+    callback: impl FnOnce(&mut T) -> R,
+) -> Option<R> {
+    // SAFETY: native callbacks receive the live thread pointer supplied by the
+    // invocation ABI.
+    unsafe { thread.as_ptr().as_mut()?.with_native_context(callback) }
+}
+
+/// Replace the opaque context installed for synchronous native execution.
+pub fn replace_native_context(
+    thread: std::ptr::NonNull<Thread>,
+    context: Option<std::ptr::NonNull<()>>,
+) -> Option<std::ptr::NonNull<()>> {
+    // SAFETY: native callbacks receive the live thread pointer supplied by the
+    // invocation ABI.
+    unsafe { thread.as_ptr().as_mut()?.replace_native_context(context) }
+}
 pub use word::{
     CHARACTER_MAX, CHARACTER_SHIFT, CHARACTER_TAG, FIXNUM_TAG, FIXNUM_TAG_BITS, LOWTAG_BITS,
     LOWTAG_MASK, LowTag, Word,

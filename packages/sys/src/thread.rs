@@ -67,6 +67,7 @@ pub struct Thread {
     frame_snapshot_failed: bool,
     frame_last_written: Vec<Word>,
     native_error: Option<NativeError>,
+    native_context: Option<ptr::NonNull<()>>,
 }
 /// Native offsets consumed by the code generator when addressing a thread context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -137,6 +138,7 @@ impl Thread {
             frame_snapshot_failed: false,
             frame_last_written: Vec::new(),
             native_error: None,
+            native_context: None,
         }
     }
     /// Return the heap this thread is registered with.
@@ -291,6 +293,22 @@ impl Thread {
     /// Take and clear the direct-native failure.
     pub const fn take_native_error(&mut self) -> Option<NativeError> {
         self.native_error.take()
+    }
+    /// Install a synchronous native callback context, returning the previous one.
+    pub(crate) const fn replace_native_context(
+        &mut self,
+        context: Option<ptr::NonNull<()>>,
+    ) -> Option<ptr::NonNull<()>> {
+        std::mem::replace(&mut self.native_context, context)
+    }
+    pub(crate) fn with_native_context<T, R>(
+        &mut self,
+        callback: impl FnOnce(&mut T) -> R,
+    ) -> Option<R> {
+        let context = self.native_context?;
+        // SAFETY: the installing caller guarantees that the slot points to a
+        // live T until the synchronous native invocation returns.
+        Some(callback(unsafe { &mut *context.as_ptr().cast::<T>() }))
     }
     /// Install a precise native frame and register snapshot for collection.
     pub fn set_frame_snapshot(&mut self, frames: Vec<Word>, registers: Vec<Word>) {

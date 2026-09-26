@@ -29,7 +29,7 @@ fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
 
-fn spill_mem(allocation: &Allocation, value: ValueId) -> Result<MemOperand, CodegenError> {
+fn spill_offset(allocation: &Allocation, value: ValueId) -> Result<u16, CodegenError> {
     let Location::Spill(index) = allocation
         .location(value)
         .ok_or(CodegenError::UnknownValue(value))?
@@ -38,12 +38,8 @@ fn spill_mem(allocation: &Allocation, value: ValueId) -> Result<MemOperand, Code
             "register value has no spill slot".into(),
         ));
     };
-    let offset = i16::try_from((index.saturating_add(1)).saturating_mul(8))
-        .map_err(|_| CodegenError::FrameOverflow)?;
-    Ok(MemOperand::Unscaled {
-        base: RegOrSp::Reg(Reg(29)),
-        offset: -offset,
-    })
+    u16::try_from((index.saturating_add(1)).saturating_mul(8))
+        .map_err(|_| CodegenError::FrameOverflow)
 }
 
 pub(super) fn load_value(
@@ -65,13 +61,28 @@ pub(super) fn load_value(
                 )),
             },
         ),
-        Location::Spill(_) => emit(
-            assembler,
-            Inst::Ldr {
-                rt: register,
-                mem: spill_mem(allocation, value)?,
-            },
-        ),
+        Location::Spill(_) => {
+            let offset = spill_offset(allocation, value)?;
+            emit(
+                assembler,
+                Inst::SubImm {
+                    rd: RegOrSp::Reg(register),
+                    rn: RegOrSp::Reg(Reg(29)),
+                    imm: offset,
+                    shift: false,
+                },
+            )?;
+            emit(
+                assembler,
+                Inst::Ldr {
+                    rt: register,
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(register),
+                        offset: 0,
+                    },
+                },
+            )
+        }
     }
 }
 
@@ -94,13 +105,40 @@ pub(super) fn store_value(
                 rn: RegOrSp::Reg(register),
             },
         ),
-        Location::Spill(_) => emit(
-            assembler,
-            Inst::Str {
-                rt: register,
-                mem: spill_mem(allocation, value)?,
-            },
-        ),
+        Location::Spill(_) => {
+            let offset = spill_offset(allocation, value)?;
+            let source = if register == Reg(16) {
+                emit(
+                    assembler,
+                    Inst::Mov {
+                        rd: RegOrSp::Reg(Reg(17)),
+                        rn: RegOrSp::Reg(Reg(16)),
+                    },
+                )?;
+                Reg(17)
+            } else {
+                register
+            };
+            emit(
+                assembler,
+                Inst::SubImm {
+                    rd: RegOrSp::Reg(Reg(16)),
+                    rn: RegOrSp::Reg(Reg(29)),
+                    imm: offset,
+                    shift: false,
+                },
+            )?;
+            emit(
+                assembler,
+                Inst::Str {
+                    rt: source,
+                    mem: MemOperand::Unscaled {
+                        base: RegOrSp::Reg(Reg(16)),
+                        offset: 0,
+                    },
+                },
+            )
+        }
     }
 }
 
@@ -110,7 +148,12 @@ pub(super) fn lower_call(
     args: &[ValueId],
     allocation: &Allocation,
 ) -> Result<(), CodegenError> {
-    if args.len() > 4 {
+    let Some((argc, arguments)) = args.split_first() else {
+        return Err(CodegenError::Unsupported(
+            "calls require a tagged argc argument".into(),
+        ));
+    };
+    if arguments.len() > 4 {
         return Err(CodegenError::Unsupported(
             "AArch64 calls support at most four register arguments".into(),
         ));
@@ -123,10 +166,16 @@ pub(super) fn lower_call(
             rn: RegOrSp::Reg(Reg(16)),
         },
     )?;
-    for instruction in ncl_asm_aarch64::mov_imm64(Reg(0), args.len() as u64) {
-        emit(assembler, instruction)?;
-    }
-    for (index, argument) in args.iter().enumerate() {
+    emit(
+        assembler,
+        Inst::AndImm {
+            rd: Reg(17),
+            rn: Reg(17),
+            imm: !ncl_sys::LOWTAG_MASK,
+        },
+    )?;
+    load_value(assembler, allocation, *argc, Reg(0))?;
+    for (index, argument) in arguments.iter().enumerate() {
         let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
         load_value(assembler, allocation, *argument, register)?;
     }
@@ -145,9 +194,19 @@ pub(super) fn lower_closure_call(
         Inst::Ldr {
             rt: Reg(17),
             mem: MemOperand::Unscaled {
-                base: RegOrSp::Reg(Reg(16)),
-                offset: 0,
+                base: RegOrSp::Reg(Reg(17)),
+                offset: i16::try_from((ncl_object::function_offset::ENTRY + 1) * 8)
+                    .map_err(|_| CodegenError::FrameOverflow)?,
             },
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::AsrImm {
+            rd: Reg(17),
+            rn: Reg(17),
+            amount: u8::try_from(ncl_sys::FIXNUM_TAG_BITS)
+                .map_err(|_| CodegenError::FrameOverflow)?,
         },
     )
 }

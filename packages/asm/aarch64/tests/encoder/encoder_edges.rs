@@ -226,6 +226,52 @@ fn addressing_logical_shift_and_float_edges_are_observed() {
             assert!(encode(&instruction, 0).is_ok());
         }
     }
+
+    let expected_shifts = [
+        (0, 0xD340_FC20, 0xD340_FC20, 0x9340_FC20),
+        (1, 0xD37F_F820, 0xD341_FC20, 0x9341_FC20),
+        (7, 0xD379_E020, 0xD347_FC20, 0x9347_FC20),
+        (31, 0xD361_8020, 0xD35F_FC20, 0x935F_FC20),
+        (63, 0xD341_0020, 0xD37F_FC20, 0x937F_FC20),
+    ];
+    for (amount, lsl, lsr, asr) in expected_shifts {
+        assert_eq!(
+            encode(
+                &Inst::LslImm {
+                    rd: r0,
+                    rn: r1,
+                    amount,
+                },
+                0
+            ),
+            Ok(lsl),
+            "LSL amount {amount}"
+        );
+        assert_eq!(
+            encode(
+                &Inst::LsrImm {
+                    rd: r0,
+                    rn: r1,
+                    amount,
+                },
+                0
+            ),
+            Ok(lsr),
+            "LSR amount {amount}"
+        );
+        assert_eq!(
+            encode(
+                &Inst::AsrImm {
+                    rd: r0,
+                    rn: r1,
+                    amount,
+                },
+                0
+            ),
+            Ok(asr),
+            "ASR amount {amount}"
+        );
+    }
     assert!(matches!(
         encode(
             &Inst::LslImm {

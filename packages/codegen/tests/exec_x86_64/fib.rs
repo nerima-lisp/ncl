@@ -32,6 +32,14 @@ fn executes_recursive_fib_twenty_five() {
     let two = builder
         .push_op(OpKind::Const { result: two }, &[Ty::Word])
         .expect("two")[0];
+    let argc_one = builder.add_constant(Constant::Fixnum(1));
+    let argc_one = builder
+        .push_op(OpKind::Const { result: argc_one }, &[Ty::Word])
+        .expect("argc one")[0];
+    let argc_two = builder.add_constant(Constant::Fixnum(2));
+    let argc_two = builder
+        .push_op(OpKind::Const { result: argc_two }, &[Ty::Word])
+        .expect("argc two")[0];
     let condition = builder
         .push_op(
             OpKind::Compare {
@@ -81,7 +89,7 @@ fn executes_recursive_fib_twenty_five() {
         .push_op(
             OpKind::Call {
                 function: recursive_callee,
-                args: vec![recursive_callee, n_minus_one],
+                args: vec![argc_one, recursive_callee, n_minus_one],
             },
             &[Ty::Word],
         )
@@ -100,7 +108,7 @@ fn executes_recursive_fib_twenty_five() {
         .push_op(
             OpKind::Call {
                 function: recursive_callee,
-                args: vec![recursive_callee, n_minus_two],
+                args: vec![argc_two, recursive_callee, n_minus_two],
             },
             &[Ty::Word],
         )

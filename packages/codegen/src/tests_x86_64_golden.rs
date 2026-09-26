@@ -205,12 +205,21 @@ fn golden_x86_64_call_map_matches_return_address() {
     );
     assert!(callee.is_ok());
     let callee = callee.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
+    let argc_constant = builder.add_constant(Constant::Fixnum(0));
+    let argc = builder.push_op(
+        OpKind::Const {
+            result: argc_constant,
+        },
+        &[Ty::Word],
+    );
+    assert!(argc.is_ok());
+    let argc = argc.map_or(ncl_ir::ValueId(0), |ids| ids[0]);
     assert!(
         builder
             .push_op(
                 OpKind::Call {
                     function: callee,
-                    args: Vec::new(),
+                    args: vec![argc],
                 },
                 &[Ty::Word],
             )

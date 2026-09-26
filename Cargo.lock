@@ -290,6 +290,7 @@ dependencies = [
  "ncl-compiler-front",
  "ncl-ffi",
  "ncl-image",
+ "ncl-ir",
  "ncl-object",
  "ncl-opt",
  "ncl-reader",

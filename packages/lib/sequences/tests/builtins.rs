@@ -12,9 +12,11 @@ fn call(
     let function = *functions
         .get(name)
         .unwrap_or_else(|| panic!("missing builtin {name}"));
-    runtime
-        .call_builtin(ctx, function, args)
-        .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let rooted_args = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        runtime.call_builtin(ctx, function, &rooted_args)
+    })
+    .unwrap_or_else(|error| panic!("{name} failed: {error:?}"))
 }
 
 fn assert_list(ctx: &mut ThreadContext, list: Word, expected: &[Word]) {

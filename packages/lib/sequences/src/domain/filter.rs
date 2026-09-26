@@ -33,17 +33,21 @@ fn list_word(list: ncl_object::List) -> Word {
 }
 
 fn sequence(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
+    if word == Word::NIL {
+        return Ok(Sequence::List(ncl_object::List::Nil));
+    }
+    if word.is_cons() {
+        return Ok(Sequence::List(ncl_object::List::Cons(
+            ncl_object::Cons::from_word(word),
+        )));
+    }
     match ncl_object::classify_object(ctx, word) {
-        ObjectRef::Cons(cons) => Ok(Sequence::List(ncl_object::List::Cons(
-            ncl_object::Cons::from_word(cons),
-        ))),
         ObjectRef::SimpleVector(vector) => Ok(Sequence::Vector(
             ncl_object::SimpleVector::from_word(vector),
         )),
         ObjectRef::String(string) => Ok(Sequence::String(ncl_object::StringObject::from_word(
             string,
         ))),
-        _ if word == Word::NIL => Ok(Sequence::List(ncl_object::List::Nil)),
         _ => Err(ObjectError::TypeError),
     }
 }

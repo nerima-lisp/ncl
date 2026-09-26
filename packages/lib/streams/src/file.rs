@@ -2,12 +2,13 @@ use super::character::{ensure_open, fail, stream_from_args};
 use super::{CLOSED, DATA, POSITION};
 
 use std::fs;
+use std::io::{IsTerminal, Read};
 
 use ncl_object::{
     BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, Stream, ThreadContext, Word,
     classify_object, make_simple_vector, make_stream, simple_vector_length, simple_vector_ref,
     simple_vector_set, stream_direction, stream_element_type, stream_external_format, stream_state,
-    string_length, string_ref, symbol_name,
+    string_length, string_ref, symbol_name, with_roots,
 };
 
 pub(crate) fn text(ctx: &ThreadContext, value: Word) -> Result<String, ObjectError> {
@@ -58,8 +59,17 @@ pub(crate) fn open_adapter(
     {
         return Ok(Word::NIL);
     }
-    let data = match direction.as_str() {
-        "INPUT" => fs::read(&path).map_err(|_| ObjectError::Unsupported)?,
+    let (data, interactive) = match direction.as_str() {
+        "INPUT" => {
+            let mut file = fs::File::open(&path).map_err(|_| ObjectError::Unsupported)?;
+            let interactive = file.is_terminal();
+            let mut data = Vec::new();
+            if !interactive {
+                file.read_to_end(&mut data)
+                    .map_err(|_| ObjectError::Unsupported)?;
+            }
+            (data, interactive)
+        }
         "OUTPUT" => {
             let exists_policy = option(ctx, args, "IF-EXISTS")?
                 .map(|word| symbol_text(ctx, word))
@@ -67,28 +77,45 @@ pub(crate) fn open_adapter(
             if exists && exists_policy.as_deref() == Some("ERROR") {
                 return Ok(fail(ctx, ObjectError::Unsupported));
             }
-            fs::File::create(&path).map_err(|_| ObjectError::Unsupported)?;
-            Vec::new()
+            let file = fs::File::create(&path).map_err(|_| ObjectError::Unsupported)?;
+            (Vec::new(), file.is_terminal())
         }
-        "IO" => fs::read(&path).map_err(|_| ObjectError::Unsupported)?,
+        "IO" => {
+            let mut file = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&path)
+                .map_err(|_| ObjectError::Unsupported)?;
+            let interactive = file.is_terminal();
+            let mut data = Vec::new();
+            if !interactive {
+                file.read_to_end(&mut data)
+                    .map_err(|_| ObjectError::Unsupported)?;
+            }
+            (data, interactive)
+        }
         _ => return Ok(fail(ctx, ObjectError::TypeError)),
     };
+    let direction_word = option(ctx, args, "DIRECTION")?.unwrap_or(Word::NIL);
+    let format_word = option(ctx, args, "EXTERNAL-FORMAT")?.unwrap_or(Word::NIL);
     let state_values = std::iter::once(Word::fixnum(0))
         .chain(data.into_iter().map(|byte| Word::fixnum(i64::from(byte))))
         .collect::<Vec<_>>();
     let state = make_simple_vector(ctx, runtime, &state_values)?;
-    let direction_word = option(ctx, args, "DIRECTION")?.unwrap_or(Word::NIL);
-    let format_word = option(ctx, args, "EXTERNAL-FORMAT")?.unwrap_or(Word::NIL);
-    Ok(make_stream(
-        ctx,
-        runtime,
-        direction_word,
-        Word::NIL,
-        format_word,
-        state,
-        Word::NIL,
-    )?
-    .into())
+    with_roots(ctx, &[direction_word, format_word], |ctx, roots| {
+        let direction = roots.first().ok_or(ObjectError::Layout)?;
+        let format = roots.get(1).ok_or(ObjectError::Layout)?;
+        Ok(make_stream(
+            ctx,
+            runtime,
+            **direction,
+            Word::NIL,
+            **format,
+            state,
+            if interactive { Word::TRUE } else { Word::NIL },
+        )?
+        .into())
+    })
 }
 
 pub(crate) fn close_adapter(
@@ -230,14 +257,18 @@ pub(crate) fn open_stream_p_adapter(
     }
 }
 
-#[allow(clippy::missing_const_for_fn, clippy::unnecessary_wraps)]
 pub(crate) fn interactive_stream_p_adapter(
-    _ctx: &mut ThreadContext,
+    ctx: &mut ThreadContext,
     _runtime: &Runtime,
-    _args: &BuiltinArgs<'_>,
+    args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    Ok(Word::NIL)
+    let implementation = ncl_object::stream_implementation(ctx, stream_from_args(args, 0)?)?;
+    Ok(if implementation == Word::TRUE {
+        Word::TRUE
+    } else {
+        Word::NIL
+    })
 }
 
 pub(crate) fn stream_element_type_adapter(

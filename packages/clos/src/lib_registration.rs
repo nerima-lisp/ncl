@@ -1,17 +1,58 @@
-fn bind(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
+#[derive(Clone, Copy)]
+struct Registration {
+    identifier: BuiltinIdentifier,
+    implementation: BuiltinImplementation,
+}
+
+fn direct_registration(
     package: BuiltinPackage,
     name: &'static str,
     arity: u8,
-    function: ncl_object::RustBuiltin,
-) -> Result<(), ObjectError> {
-    runtime.register_builtin(
-        ctx,
-        BuiltinIdentifier::new(package, BuiltinName::new(name)),
-        BuiltinImplementation::direct(descriptor(arity), function),
-    )?;
-    Ok(())
+    callback: ncl_object::RustBuiltin,
+) -> Registration {
+    Registration {
+        identifier: BuiltinIdentifier::new(package, BuiltinName::new(name)),
+        implementation: BuiltinImplementation::direct(descriptor(arity), callback),
+    }
+}
+
+fn builtin_manifest() -> Vec<Registration> {
+    let mut manifest = vec![
+        direct_registration(BuiltinPackage::CommonLisp, "CLASS-NAME", 1, class_name_builtin),
+        direct_registration(BuiltinPackage::CommonLisp, "CLASS-OF", 1, class_of_builtin),
+        direct_registration(BuiltinPackage::CommonLisp, "SLOT-BOUNDP", 2, slot_boundp_builtin),
+        direct_registration(BuiltinPackage::CommonLisp, "SLOT-EXISTS-P", 2, slot_exists_builtin),
+        direct_registration(BuiltinPackage::CommonLisp, "SLOT-MAKUNBOUND", 2, slot_makunbound_builtin),
+        direct_registration(BuiltinPackage::CommonLisp, "SLOT-VALUE", 2, slot_value_builtin),
+        direct_registration(BuiltinPackage::NclMop, "CLASS-NAME", 1, class_name_builtin),
+    ];
+    manifest.extend(mop::builtin_descriptors().iter().map(|descriptor| Registration {
+        identifier: BuiltinIdentifier::new(descriptor.package, descriptor.name),
+        implementation: mop::implementation(*descriptor),
+    }));
+    for descriptor in initialization::builtin_descriptors() {
+        let implementation = initialization::implementation(*descriptor);
+        manifest.push(Registration {
+            identifier: BuiltinIdentifier::new(descriptor.package, descriptor.name),
+            implementation,
+        });
+        if descriptor.name.as_str() == "MAKE-INSTANCE" {
+            manifest.push(Registration {
+                identifier: BuiltinIdentifier::new(BuiltinPackage::NclMop, descriptor.name),
+                implementation,
+            });
+        }
+    }
+    manifest
+}
+
+/// Every callable installed by the CLOS production registration path.
+#[must_use]
+pub fn production_function_names() -> Vec<BuiltinIdentifier> {
+    builtin_manifest()
+        .into_iter()
+        .map(|registration| registration.identifier)
+        .collect()
 }
 
 fn register_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
@@ -100,6 +141,7 @@ fn register_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
 }
 
 fn register_owned_symbols(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
+    let manifest = builtin_manifest();
     for row in include_str!("../ownership.tsv").lines().skip(1) {
         let fields: Vec<_> = row.split('\t').collect();
         if fields.len() != 7 {
@@ -120,59 +162,28 @@ fn register_owned_symbols(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<
             }
             "other" => {}
             "function" => {
+                let registration = manifest
+                    .iter()
+                    .find(|registration| {
+                        registration.identifier.package.as_str() == fields[0]
+                            && registration.identifier.name.as_str() == fields[1]
+                    })
+                    .ok_or(ObjectError::TypeError)?;
                 let package = runtime.ensure_package(ctx, fields[0])?;
                 Package::from_word(package).intern(ctx, runtime, fields[1])?;
-                let binding: Option<(u8, ncl_object::RustBuiltin)> = match (fields[0], fields[1]) {
-                    (COMMON_LISP, "SLOT-BOUNDP") => Some((2, slot_boundp_builtin)),
-                    (COMMON_LISP, "SLOT-EXISTS-P") => Some((2, slot_exists_builtin)),
-                    (COMMON_LISP, "SLOT-MAKUNBOUND") => Some((2, slot_makunbound_builtin)),
-                    (COMMON_LISP, "SLOT-VALUE") => Some((2, slot_value_builtin)),
-                    (COMMON_LISP, "CLASS-OF") => Some((1, class_of_builtin)),
-                    (COMMON_LISP, "CLASS-NAME") | (NCL_MOP, "CLASS-NAME") => {
-                        Some((1, class_name_builtin))
-                    }
-                    _ if is_registered_elsewhere(fields[0], fields[1]) => None,
-                    _ => return Err(ObjectError::TypeError),
-                };
-                if let Some((arity, callback)) = binding {
-                    let builtin_package = match fields[0] {
-                        COMMON_LISP => BuiltinPackage::CommonLisp,
-                        NCL_MOP => BuiltinPackage::NclMop,
-                        _ => return Err(ObjectError::TypeError),
-                    };
-                    bind(ctx, runtime, builtin_package, fields[1], arity, callback)?;
+                let function = runtime
+                    .function(ctx, fields[0], fields[1])
+                    .ok_or(ObjectError::TypeError)?;
+                let function = ncl_object::FunctionObject::try_from(function)
+                    .map_err(|_| ObjectError::TypeError)?;
+                if runtime.builtin_descriptor(function) != Some(registration.implementation.descriptor) {
+                    return Err(ObjectError::TypeError);
                 }
             }
             _ => return Err(ObjectError::TypeError),
         }
     }
-    bind(
-        ctx,
-        runtime,
-        BuiltinPackage::CommonLisp,
-        "SLOT-VALUE-SET",
-        3,
-        slot_set_builtin,
-    )
-}
-
-fn is_registered_elsewhere(package: &str, name: &str) -> bool {
-    matches!(
-        (package, name),
-        (COMMON_LISP, "MAKE-INSTANCE")
-            | (COMMON_LISP, "INITIALIZE-INSTANCE")
-            | (COMMON_LISP, "SHARED-INITIALIZE")
-            | (NCL_MOP, "MAKE-INSTANCE")
-            | (NCL_MOP, "CLASS-DIRECT-SLOTS")
-            | (NCL_MOP, "CLASS-PRECEDENCE-LIST")
-            | (NCL_MOP, "CLASS-SLOTS")
-            | (NCL_MOP, "SLOT-DEFINITION-NAME")
-            | (NCL_MOP, "SLOT-DEFINITION-LOCATION")
-            | (NCL_MOP, "SLOT-VALUE-USING-CLASS")
-            | (NCL_MOP, "SLOT-BOUNDP-USING-CLASS")
-            | (NCL_MOP, "SLOT-MAKUNBOUND-USING-CLASS")
-            | (NCL_MOP, "EQL-SPECIALIZER-OBJECT")
-    )
+    Ok(())
 }
 
 /// Register CLOS classes, NCL-MOP names, and the implemented slot builtins.
@@ -185,14 +196,16 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     ctx.register(runtime)?;
     runtime.ensure_package(&mut ctx, NCL_MOP)?;
     register_classes(&mut ctx, runtime)?;
-    for descriptor in mop::builtin_descriptors() {
-        runtime.register_builtin(
-            &mut ctx,
-            BuiltinIdentifier::new(descriptor.package, descriptor.name),
-            mop::implementation(*descriptor),
-        )?;
+    for registration in builtin_manifest() {
+        runtime.register_builtin(&mut ctx, registration.identifier, registration.implementation)?;
     }
-    initialization::register_initialization_builtins(runtime)?;
+    let slot_value_set = direct_registration(
+        BuiltinPackage::CommonLisp,
+        "SLOT-VALUE-SET",
+        3,
+        slot_set_builtin,
+    );
+    runtime.register_builtin(&mut ctx, slot_value_set.identifier, slot_value_set.implementation)?;
     register_owned_symbols(&mut ctx, runtime)?;
     Ok(())
 }

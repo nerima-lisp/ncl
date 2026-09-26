@@ -10,6 +10,22 @@ use ncl_object::{
     slot_ref, symbol_name,
 };
 
+pub(super) fn with_rooted_words<T>(
+    ctx: &mut ThreadContext,
+    words: &mut [Word],
+    f: impl FnOnce(&mut ThreadContext, &mut [Word]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let tokens = words
+        .iter_mut()
+        .map(|word| ncl_object::push_root(ctx, word))
+        .collect::<Vec<_>>();
+    let result = f(ctx, words);
+    for token in tokens.into_iter().rev() {
+        assert!(ncl_object::pop_root(ctx, token));
+    }
+    result
+}
+
 const OBJECT: Parameter = Parameter {
     name: BuiltinName::new("OBJECT"),
     ty: ParameterType::Any,
@@ -159,13 +175,16 @@ fn list_all_packages(
     _: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    runtime
-        .all_packages(ctx)?
-        .into_iter()
-        .rev()
-        .try_fold(Word::NIL, |list, package| {
-            ncl_object::make_cons(ctx, runtime, package, list)
+    let mut packages = runtime.all_packages(ctx)?;
+    with_rooted_words(ctx, &mut packages, |ctx, packages| {
+        let mut list = [Word::NIL];
+        with_rooted_words(ctx, &mut list, |ctx, list| {
+            for package in packages.iter().rev().copied() {
+                list[0] = ncl_object::make_cons(ctx, runtime, package, list[0])?;
+            }
+            Ok(list[0])
         })
+    })
 }
 
 fn find_all_symbols(
@@ -174,33 +193,42 @@ fn find_all_symbols(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let name = string_designator(ctx, args.required(0)?).map(StringObject::as_word)?;
+    let mut name = string_designator(ctx, args.required(0)?).map(StringObject::as_word)?;
     let name_length = ncl_object::string_length(ctx, name)?;
     let mut candidates = Vec::new();
     for package in runtime.all_packages(ctx)? {
         Package::from_word(package).for_each_symbol(ctx, |symbol| candidates.push(symbol))?;
     }
     let mut symbols = Vec::new();
-    for symbol in candidates {
-        if symbols.contains(&symbol) {
-            continue;
-        }
-        let symbol_name = symbol_name(ctx, symbol)?;
-        if ncl_object::string_length(ctx, symbol_name)? == name_length
-            && (0..name_length).all(|index| {
-                ncl_object::string_ref(ctx, symbol_name, index)
-                    == ncl_object::string_ref(ctx, name, index)
-            })
-        {
-            symbols.push(symbol);
-        }
-    }
-    symbols
-        .into_iter()
-        .rev()
-        .try_fold(Word::NIL, |list, symbol| {
-            ncl_object::make_cons(ctx, runtime, symbol, list)
+    with_rooted_words(ctx, std::slice::from_mut(&mut name), |ctx, name| {
+        with_rooted_words(ctx, &mut candidates, |ctx, candidates| {
+            for symbol in candidates.iter().copied() {
+                if symbols.contains(&symbol) {
+                    continue;
+                }
+                let symbol_name = symbol_name(ctx, symbol)?;
+                if ncl_object::string_length(ctx, symbol_name)? == name_length
+                    && (0..name_length).all(|index| {
+                        ncl_object::string_ref(ctx, symbol_name, index)
+                            == ncl_object::string_ref(ctx, name[0], index)
+                    })
+                {
+                    symbols.push(symbol);
+                }
+            }
+            Ok(())
+        })?;
+        Ok(())
+    })?;
+    with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
+        let mut list = [Word::NIL];
+        with_rooted_words(ctx, &mut list, |ctx, list| {
+            for symbol in symbols.iter().rev().copied() {
+                list[0] = ncl_object::make_cons(ctx, runtime, symbol, list[0])?;
+            }
+            Ok(list[0])
         })
+    })
 }
 
 fn package_error_package(
@@ -243,7 +271,10 @@ fn find_symbol(
         values.set(&[Word::NIL, Word::NIL]);
         return Ok(Word::NIL);
     };
-    let status = status_word(ctx, runtime, status)?;
+    let mut symbol = symbol;
+    let status = with_rooted_words(ctx, std::slice::from_mut(&mut symbol), |ctx, _| {
+        status_word(ctx, runtime, status)
+    })?;
     values.set(&[symbol, status]);
     Ok(symbol)
 }
@@ -261,7 +292,10 @@ fn intern(
         .map(|index| ncl_object::string_ref(ctx, name.as_word(), index))
         .collect::<Result<String, _>>()?;
     let (symbol, status) = package.intern(ctx, runtime, &name)?;
-    let status = status_word(ctx, runtime, status)?;
+    let mut symbol = symbol;
+    let status = with_rooted_words(ctx, std::slice::from_mut(&mut symbol), |ctx, _| {
+        status_word(ctx, runtime, status)
+    })?;
     values.set(&[symbol, status]);
     Ok(symbol)
 }
@@ -272,16 +306,20 @@ fn mutate_symbols(
     args: &BuiltinArgs<'_>,
     operation: fn(Package, &mut ThreadContext, &Runtime, Word) -> Result<bool, ObjectError>,
 ) -> Result<Word, ObjectError> {
-    let symbols = list_items(ctx, args.required(0)?)?;
-    let package = package_arg(ctx, runtime, args, 1)?;
-    for symbol in symbols {
-        let name = match classify_object(ctx, symbol) {
-            ObjectRef::Symbol(symbol) => symbol_name(ctx, symbol)?,
-            _ => return Err(ObjectError::TypeError),
-        };
-        operation(package, ctx, runtime, name)?;
-    }
-    Ok(Word::TRUE)
+    let mut symbols = list_items(ctx, args.required(0)?)?;
+    let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
+    with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
+        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+            for symbol in symbols.iter().copied() {
+                let name = match classify_object(ctx, symbol) {
+                    ObjectRef::Symbol(symbol) => symbol_name(ctx, symbol)?,
+                    _ => return Err(ObjectError::TypeError),
+                };
+                operation(Package::from_word(package[0]), ctx, runtime, name)?;
+            }
+            Ok(Word::TRUE)
+        })
+    })
 }
 
 fn export(
@@ -323,16 +361,20 @@ fn import(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let symbols = list_items(ctx, args.required(0)?)?;
-    let package = package_arg(ctx, runtime, args, 1)?;
-    for symbol in symbols {
-        if !matches!(classify_object(ctx, symbol), ObjectRef::Symbol(_)) {
-            return Err(ObjectError::TypeError);
-        }
-        let name = symbol_name(ctx, symbol)?;
-        package.import(ctx, runtime, name, symbol)?;
-    }
-    Ok(Word::TRUE)
+    let mut symbols = list_items(ctx, args.required(0)?)?;
+    let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
+    with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
+        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+            for symbol in symbols.iter().copied() {
+                if !matches!(classify_object(ctx, symbol), ObjectRef::Symbol(_)) {
+                    return Err(ObjectError::TypeError);
+                }
+                let name = symbol_name(ctx, symbol)?;
+                Package::from_word(package[0]).import(ctx, runtime, name, symbol)?;
+            }
+            Ok(Word::TRUE)
+        })
+    })
 }
 
 fn shadow(
@@ -341,13 +383,17 @@ fn shadow(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let names = list_items(ctx, args.required(0)?)?;
-    let package = package_arg(ctx, runtime, args, 1)?;
-    for name in names {
-        let name = string_designator(ctx, name)?.as_word();
-        package.shadow(ctx, runtime, name)?;
-    }
-    Ok(Word::TRUE)
+    let mut names = list_items(ctx, args.required(0)?)?;
+    let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
+    with_rooted_words(ctx, &mut names, |ctx, names| {
+        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+            for name in names.iter().copied() {
+                let name = string_designator(ctx, name)?.as_word();
+                Package::from_word(package[0]).shadow(ctx, runtime, name)?;
+            }
+            Ok(Word::TRUE)
+        })
+    })
 }
 
 fn use_package(

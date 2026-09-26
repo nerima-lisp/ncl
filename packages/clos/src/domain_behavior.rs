@@ -219,6 +219,27 @@ mod tests {
     }
 
     #[test]
+    fn finalization_uses_c3_precedence_for_a_diamond() {
+        let mut left = Class::new(ClassId::new(2), vec![ClassId::new(1)], Vec::new());
+        let mut right = Class::new(ClassId::new(3), vec![ClassId::new(1)], Vec::new());
+        let root = Class::new(ClassId::new(1), Vec::new(), Vec::new());
+        let mut root = root;
+        assert!(root.finalize_inheritance(&[]).is_ok());
+        assert!(left.finalize_inheritance(&[root.clone()]).is_ok());
+        assert!(right.finalize_inheritance(&[root]).is_ok());
+        let mut leaf = Class::new(
+            ClassId::new(4),
+            vec![ClassId::new(2), ClassId::new(3)],
+            Vec::new(),
+        );
+        assert!(leaf.finalize_inheritance(&[left, right]).is_ok());
+        assert_eq!(
+            leaf.class_precedence_list(),
+            &[ClassId::new(4), ClassId::new(2), ClassId::new(3), ClassId::new(1)]
+        );
+    }
+
+    #[test]
     fn method_changes_invalidate_dispatch_cache() {
         let mut generic = GenericFunction::default();
         let method = Method::new(

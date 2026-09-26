@@ -200,7 +200,7 @@ impl Class {
     /// Returns an error when a superclass is absent or unfinalized, or when a
     /// slot identifier is duplicated.
     pub fn finalize_inheritance(&mut self, parents: &[Self]) -> Result<(), DomainError> {
-        let mut precedence = vec![self.id];
+        let mut parent_precedences = Vec::new();
         for parent_id in &self.direct_supers {
             let parent = parents
                 .iter()
@@ -209,9 +209,24 @@ impl Class {
             if !parent.finalized {
                 return Err(DomainError::UnfinalizedClass);
             }
-            for ancestor in &parent.precedence {
-                if !precedence.contains(ancestor) {
-                    precedence.push(*ancestor);
+            parent_precedences.push(parent.precedence.clone());
+        }
+        parent_precedences.push(self.direct_supers.clone());
+        let mut precedence = vec![self.id];
+        while parent_precedences.iter().any(|sequence| !sequence.is_empty()) {
+            let candidate = parent_precedences
+                .iter()
+                .filter_map(|sequence| sequence.first().copied())
+                .find(|candidate| {
+                    !parent_precedences
+                        .iter()
+                        .any(|sequence| sequence.get(1..).is_some_and(|tail| tail.contains(candidate)))
+                })
+                .ok_or(DomainError::InvalidClassPrecedenceList)?;
+            precedence.push(candidate);
+            for sequence in &mut parent_precedences {
+                if sequence.first() == Some(&candidate) {
+                    sequence.remove(0);
                 }
             }
         }

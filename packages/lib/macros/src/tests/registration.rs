@@ -1,3 +1,10 @@
+<<<<<<< ours
+=======
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
+>>>>>>> theirs
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 use super::*;
 
 #[test]
@@ -47,3 +54,5 @@ fn registration_marks_owned_macros_and_installs_function_cells() {
 }
 
 mod gc_stress_tests;
+mod iteration_tests;
+mod loop_tests;

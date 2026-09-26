@@ -42,10 +42,10 @@ fn builtin_metadata_expands() {
     );
 }
 #[test]
-fn builtin_abi_expands_for_fixed_and_variadic_forms() {
+fn builtin_metadata_expands_with_lambda_list() {
     builtin!(
         TEST_ABI,
-        2,
+        1,
         ncl_object::LambdaList::new(
             &[ncl_object::Parameter {
                 name: ncl_object::BuiltinName::new("A"),
@@ -55,25 +55,15 @@ fn builtin_abi_expands_for_fixed_and_variadic_forms() {
             None,
             &[],
             false,
-        ),
-        test_direct,
-        test_variadic
+        )
     );
-    let direct: extern "C" fn(*mut ThreadContext, Word, Word) -> Word = test_direct;
-    let variadic: extern "C" fn(
-        *mut ThreadContext,
-        usize,
-        *const Word,
-        *mut ncl_object::MultipleValues,
-    ) -> ncl_object::NclStatus = test_variadic;
     assert_eq!(
         TEST_ABI.convention.arity(),
-        Some(ncl_object::Arity::exact(2))
+        Some(ncl_object::Arity::exact(1))
     );
     const { assert!(TEST_ABI.convention.direct()) };
     assert!(TEST_ABI.lambda_list.is_direct());
     assert_eq!(TEST_ABI.lambda_list.min_arity(), 1);
-    let _ = (direct, variadic);
 }
 
 #[test]

@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn calls_registered_builtin_through_function_and_symbol_designators() {
+    fn calls_registered_builtin_through_function_and_symbol_designators_under_gc_stress_and_forwarding() {
         let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
         let function = register_builtin(&mut runtime);
         let package = runtime
@@ -170,6 +170,8 @@ mod tests {
                 || panic!("test symbol was not interned"),
                 |(symbol, _)| ncl_object::typed::Symbol::from_word(symbol),
             );
+        runtime.context.set_gc_stress(true);
+        runtime.context.set_strict_forwarding(true);
         let argument_words = [Word::fixnum(2), Word::fixnum(3)];
         let args = FunctionArguments::new(&argument_words);
         let mut caller = RuntimeFunctionCaller;

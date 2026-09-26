@@ -1,6 +1,6 @@
 use super::{
-    ArrayOptions, ObjectError, Runtime, ThreadContext, Word, allocate, layout, metadata_offset,
-    validate_element, with_roots, write,
+    ArrayElementType, ArrayOptions, ObjectError, Runtime, ThreadContext, Word, allocate, layout,
+    metadata_offset, validate_element, with_roots, write,
 };
 
 /// Allocate a general, possibly displaced, multidimensional array.
@@ -36,6 +36,13 @@ pub fn make_array(
         return Err(ObjectError::Layout);
     }
     validate_element(element_type, initial_element)?;
+    if let Some(target) = displaced_to {
+        if let Ok(target_type) = super::array_element_type(ctx, target) {
+            if element_type != ArrayElementType::T && element_type != target_type {
+                return Err(ObjectError::TypeError);
+            }
+        }
+    }
     let rank = dimensions.len();
     let capacity = if adjustable && fill_pointer.is_some() && displaced_to.is_none() {
         total.checked_mul(2).unwrap_or(total)

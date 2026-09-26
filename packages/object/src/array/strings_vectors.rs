@@ -67,7 +67,8 @@ pub fn string_ref(ctx: &ThreadContext, object: Word, index: usize) -> Result<cha
         layout::string_offset::DATA + index,
         layout::widetag::STRING,
     )?;
-    char::from_u32(u32::try_from(word.bits() >> 4).map_err(|_| ObjectError::Layout)?)
+    word.as_character()
+        .and_then(char::from_u32)
         .ok_or(ObjectError::Layout)
 }
 

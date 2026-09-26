@@ -373,10 +373,10 @@ pub fn array_row_major_set(
             return specialized_array_set(ctx, object, index, value);
         }
         Some(layout::widetag::STRING) => {
-            let code = value.bits() >> 4;
-            let character =
-                char::from_u32(u32::try_from(code).map_err(|_| ObjectError::TypeError)?)
-                    .ok_or(ObjectError::TypeError)?;
+            let character = value
+                .as_character()
+                .and_then(char::from_u32)
+                .ok_or(ObjectError::TypeError)?;
             return string_set(ctx, object, index, character);
         }
         Some(layout::widetag::NON_SIMPLE_ARRAY) => {}

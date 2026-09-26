@@ -248,4 +248,5 @@ pub fn file_author(pathname: &Pathname) -> Result<Option<String>, FsError> {
 }
 
 #[cfg(test)]
+#[path = "fs/tests.rs"]
 mod tests;

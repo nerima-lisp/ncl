@@ -2,8 +2,8 @@
 
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, FromLispArg, Instance, LambdaList, MultipleValues, ObjectError,
-    ObjectRef, Parameter, ParameterType, Pathname as PathnameView, Runtime, ThreadContext, Word,
+    BuiltinName, BuiltinPackage, Instance, LambdaList, MultipleValues, ObjectError, ObjectRef,
+    Parameter, ParameterType, Runtime, ThreadContext, Word,
     classify_object, instance_class, make_instance, make_string, slot_ref, string_length,
     string_ref,
 };
@@ -117,10 +117,15 @@ fn namestring_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let pathname = args.required(0)?;
-    let instance =
-        PathnameView::from_lisp_arg(ctx, pathname).map_err(|_| ObjectError::TypeError)?;
+    let class = runtime.class(ctx, "PATHNAME").ok_or(ObjectError::Layout)?;
+    let instance = match classify_object(ctx, pathname) {
+        ObjectRef::Instance(_) => Instance::from_word(pathname),
+        _ => return Err(ObjectError::TypeError),
+    };
+    if instance_class(ctx, instance)? != class {
+        return Err(ObjectError::TypeError);
+    }
     let text = slot_ref(ctx, Instance::from_word(instance.as_word()), 0)?;
-    let _ = runtime;
     Ok(text)
 }
 

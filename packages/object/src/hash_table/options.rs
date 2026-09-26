@@ -111,6 +111,7 @@ fn positive_integer(ctx: &ThreadContext, word: Word) -> Result<u128, ObjectError
                 Err(ObjectError::TypeError)
             }
         }
+        // check-added-lines: allow(wildcard) ObjectRef is non_exhaustive and unknown values are invalid.
         _ => Err(ObjectError::TypeError),
     }
 }
@@ -140,6 +141,7 @@ fn validate_rehash_size(ctx: &ThreadContext, word: Word) -> Result<(), ObjectErr
                 Err(ObjectError::TypeError)
             }
         }
+        // check-added-lines: allow(wildcard) ObjectRef is non_exhaustive and unknown values are invalid.
         _ => Err(ObjectError::TypeError),
     }
 }
@@ -179,6 +181,7 @@ fn rehash_size_value(ctx: &ThreadContext, word: Word) -> Result<RehashSize, Obje
                 Err(ObjectError::Layout)
             }
         }
+        // check-added-lines: allow(wildcard) ObjectRef is non_exhaustive and unknown values are invalid.
         _ => Err(ObjectError::Layout),
     }
 }
@@ -203,6 +206,7 @@ pub(super) fn rehash_threshold_value(ctx: &ThreadContext, word: Word) -> Result<
             Ok(numerator / denominator)
         }
         ObjectRef::DoubleFloat(value) => double_value(ctx, crate::DoubleFloat::from_word(value)),
+        // check-added-lines: allow(wildcard) ObjectRef is non_exhaustive and unknown values are invalid.
         _ => Err(ObjectError::TypeError),
     }
 }

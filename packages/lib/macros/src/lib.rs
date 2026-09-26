@@ -191,6 +191,7 @@ fn rotatef_callback(
 ) -> Result<Word, ObjectError> {
     call_macro(runtime, ctx, args, values, expand_rotatef)
 }
+
 fn get_setf_expansion_callback(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -198,12 +199,11 @@ fn get_setf_expansion_callback(
     values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let place_word = expansion_arg(args)?;
-    let expansion =
-        expand_get_setf_expansion(ctx, runtime, &PlaceRegistry::new(runtime), place_word)?;
-    values.set(&expansion);
-    Ok(expansion[4])
+    let [temporary, value_forms, store, store_form, access_form] =
+        setf_support::get_setf_expansion_values(ctx, runtime, place_word)?;
+    values.set(&[temporary, value_forms, store, store_form, access_form]);
+    Ok(access_form)
 }
-
 fn get_setf_adapter(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

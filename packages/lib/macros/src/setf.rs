@@ -405,71 +405,8 @@ pub fn expand_get_setf_expansion(
     runtime: &Runtime,
     registry: &PlaceRegistry,
     place_word: Word,
-) -> Result<Vec<Word>, ObjectError> {
-    let expansion = place(ctx, runtime, registry, place_word)?;
-    let temporary_len = expansion.temporary_variables.len();
-    let value_len = expansion.value_forms.len();
-    let store_len = expansion.store_variables.len();
-    let mut values = Vec::with_capacity(temporary_len + value_len + store_len + 2);
-    values.extend_from_slice(&expansion.temporary_variables);
-    values.extend_from_slice(&expansion.value_forms);
-    values.extend_from_slice(&expansion.store_variables);
-    values.push(expansion.store_form);
-    values.push(expansion.access_form);
-    ncl_object::with_roots(ctx, &values, |ctx, roots| {
-        let temporary_values = roots
-            .get(..temporary_len)
-            .ok_or(ObjectError::TypeError)?
-            .iter()
-            .map(|value| **value)
-            .collect::<Vec<_>>();
-        let value_values = roots
-            .get(temporary_len..temporary_len + value_len)
-            .ok_or(ObjectError::TypeError)?
-            .iter()
-            .map(|value| **value)
-            .collect::<Vec<_>>();
-        let store_values = roots
-            .get(temporary_len + value_len..temporary_len + value_len + store_len)
-            .ok_or(ObjectError::TypeError)?
-            .iter()
-            .map(|value| **value)
-            .collect::<Vec<_>>();
-        let store_form = roots
-            .get(temporary_len + value_len + store_len)
-            .map(|value| **value)
-            .ok_or(ObjectError::TypeError)?;
-        let access_form = roots
-            .get(temporary_len + value_len + store_len + 1)
-            .map(|value| **value)
-            .ok_or(ObjectError::TypeError)?;
-        ncl_object::with_roots(ctx, &[store_form, access_form], |ctx, fixed_roots| {
-            let mut temporary_variables = list(ctx, runtime, &temporary_values)?;
-            ncl_object::with_root(ctx, &mut temporary_variables, |ctx, temporary_variables| {
-                let mut value_forms = list(ctx, runtime, &value_values)?;
-                ncl_object::with_root(ctx, &mut value_forms, |ctx, value_forms| {
-                    let mut store_variables = list(ctx, runtime, &store_values)?;
-                    ncl_object::with_root(ctx, &mut store_variables, |_, store_variables| {
-                        let store_form = fixed_roots
-                            .first()
-                            .map(|value| **value)
-                            .ok_or(ObjectError::TypeError)?;
-                        let access_form = fixed_roots
-                            .get(1)
-                            .map(|value| **value)
-                            .ok_or(ObjectError::TypeError)?;
-                        Ok(vec![
-                            *temporary_variables,
-                            *value_forms,
-                            *store_variables,
-                            store_form,
-                            access_form,
-                        ])
-                    })
-                })
-            })
-        })
-    })
+) -> Result<SetfExpansion, ObjectError> {
+    place(ctx, runtime, registry, place_word)
 }
 
 #[cfg(test)]

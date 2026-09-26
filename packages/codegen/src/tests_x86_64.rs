@@ -181,17 +181,24 @@ fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() {
         Ok(compiled) => compiled,
         Err(error) => unreachable!("tail-call lowering: {error:?}"),
     };
-    assert!(
-        compiled
-            .code
-            .windows(3)
-            .any(|bytes| bytes == [0x41, 0xff, 0xe3])
+    // push rbp; mov rbp, rsp; mov [rbp+16], r10; mov r11, 0;
+    // mov [rbp+24], r11; sub rsp, 32
+    assert_eq!(
+        compiled.code[0..23],
+        [
+            0x55, 0x48, 0x89, 0xe5, 0x4c, 0x89, 0x55, 0x10, 0x49, 0xc7, 0xc3, 0x00, 0x00, 0x00,
+            0x00, 0x4c, 0x89, 0x5d, 0x18, 0x48, 0x83, 0xec, 0x20,
+        ]
     );
-    assert!(
-        !compiled
-            .code
-            .windows(3)
-            .any(|bytes| bytes == [0x41, 0xff, 0xd3])
+    // mov rsp, rbp; pop rbp; mov rax, [rsp]; mov [rsp-16], rax;
+    // mov [rsp-8], r10; sub rsp, 16; jmp r11
+    let tail_transfer_start = compiled.code.len() - 25;
+    assert_eq!(
+        compiled.code[tail_transfer_start..],
+        [
+            0x48, 0x89, 0xec, 0x5d, 0x48, 0x8b, 0x04, 0x24, 0x48, 0x89, 0x44, 0x24, 0xf0, 0x4c,
+            0x89, 0x54, 0x24, 0xf8, 0x48, 0x83, 0xec, 0x10, 0x41, 0xff, 0xe3,
+        ]
     );
     assert!(compiled.safepoint_maps.is_empty());
 }

@@ -5,16 +5,22 @@ use ncl_object::{
 
 use super::adapters::{
     close_adapter, file_length_adapter, file_position_adapter, file_string_length_adapter,
-    fresh_line_adapter, get_output_stream_string_adapter, input_stream_p_adapter,
-    interactive_stream_p_adapter, make_string_input_adapter, make_string_output_adapter,
-    open_adapter, open_stream_p_adapter, output_stream_p_adapter, pass_arguments,
-    peek_char_adapter, read_byte_adapter, read_char_adapter, read_line_adapter,
+    finish_output_adapter, fresh_line_adapter, get_output_stream_string_adapter,
+    input_stream_p_adapter, interactive_stream_p_adapter, make_string_input_adapter,
+    make_string_output_adapter, open_adapter, open_stream_p_adapter, output_stream_p_adapter,
+    pass_arguments, peek_char_adapter, read_byte_adapter, read_char_adapter, read_line_adapter,
     stream_element_type_adapter, stream_external_format_adapter, streamp_adapter, terpri_adapter,
-    unread_char_adapter, write_char_adapter, write_line_adapter, write_string_adapter,
+    unread_char_adapter, write_byte_adapter, write_char_adapter, write_line_adapter,
+    write_string_adapter,
 };
 use super::{
     ARGUMENTS_PARAMETER, CHARACTER_AND_STREAM, CHARACTER_REQUIRED, OPEN_PARAMETERS,
     STREAM_PARAMETERS, STRING_PARAMETER, STRING_PARAMETERS,
+};
+
+const BYTE_PARAMETER: Parameter = Parameter {
+    name: BuiltinName::new("byte"),
+    ty: ParameterType::Integer,
 };
 
 /// Register the implemented file-stream functions.
@@ -147,6 +153,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         )?;
     }
     register_character_builtins(runtime, &mut ctx)?;
+    super::standard::register(runtime, &mut ctx)?;
     Ok(())
 }
 
@@ -229,6 +236,14 @@ fn register_character_builtins(
             write_char_adapter,
         ),
         (
+            "WRITE-BYTE",
+            Builtin {
+                lambda_list: LambdaList::with_optional(&[BYTE_PARAMETER], STREAM_PARAMETERS),
+                convention: BuiltinConvention::Adapted,
+            },
+            write_byte_adapter,
+        ),
+        (
             "WRITE-STRING",
             Builtin {
                 lambda_list: LambdaList::with_rest(&[STRING_PARAMETER], ARGUMENTS_PARAMETER),
@@ -259,6 +274,14 @@ fn register_character_builtins(
                 convention: BuiltinConvention::Adapted,
             },
             fresh_line_adapter,
+        ),
+        (
+            "FINISH-OUTPUT",
+            Builtin {
+                lambda_list: LambdaList::with_optional(&[], STREAM_PARAMETERS),
+                convention: BuiltinConvention::Adapted,
+            },
+            finish_output_adapter,
         ),
         (
             "MAKE-STRING-INPUT-STREAM",

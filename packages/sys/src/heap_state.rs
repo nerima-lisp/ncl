@@ -18,6 +18,7 @@ pub struct State {
     pub(crate) used: usize,
     pub(crate) gc_epoch: u64,
     pub(crate) objects: Vec<Object>,
+    pub(crate) object_starts: HashMap<usize, usize>,
     pub(crate) layouts: HashMap<u8, ReferenceLayout>,
     pub(crate) threads: Vec<*mut Thread>,
     pub(crate) dirty_cards: HashSet<(usize, usize)>,

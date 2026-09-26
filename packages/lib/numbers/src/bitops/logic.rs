@@ -6,8 +6,8 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
 
 use ncl_object::{
-    Bignum, ObjectError, ObjectRef, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign,
-    classify_object, make_bignum_from_i128,
+    bignum_limbs, bignum_sign, classify_object, make_bignum_from_i128, Bignum, ObjectError,
+    ObjectRef, Runtime, ThreadContext, Word,
 };
 
 use ncl_object::MultipleValues;
@@ -51,11 +51,8 @@ pub(super) fn integer_word(
     runtime: &Runtime,
     value: i128,
 ) -> Result<Word, ObjectError> {
-    if let Some((value, bits)) = i64::try_from(value)
-        .ok()
-        .and_then(|value| value.checked_shl(1).map(|bits| (value, bits)))
-    {
-        let word = Word::from_bits(bits.cast_unsigned());
+    if let Ok(value) = i64::try_from(value) {
+        let word = Word::fixnum(value);
         if word.as_fixnum() == Some(value) {
             return Ok(word);
         }
@@ -230,7 +227,11 @@ pub fn logbitp(
     let index = usize::try_from(integer(ctx, *index)?).map_err(|_| ObjectError::TypeError)?;
     let value = integer(ctx, *value)?;
     Ok(if index >= 127 {
-        if value < 0 { Word::TRUE } else { Word::NIL }
+        if value < 0 {
+            Word::TRUE
+        } else {
+            Word::NIL
+        }
     } else if (value & (1_i128 << index)) != 0 {
         Word::TRUE
     } else {

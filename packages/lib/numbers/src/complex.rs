@@ -1,20 +1,58 @@
 //! Complex-number accessors and constructors.
 
-use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    classify_object, complex_imag, complex_real, double_value, make_complex, make_double,
-};
+use core::cell::Cell;
 
-const fn fixnum_to_f64(value: i64) -> f64 {
-    #[allow(clippy::cast_precision_loss)]
-    {
-        value as f64
+use ncl_object::{
+    classify_object, complex_imag, complex_real, double_value, make_complex, make_double,
+    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+};
+use ncl_sys::{RootSlot, RootToken};
+
+fn with_root<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut slot = Cell::new(*value);
+    let token = ncl_object::push_root(ctx, slot.get_mut());
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
     }
+    result
+}
+
+fn with_roots<T>(
+    ctx: &mut ThreadContext,
+    values: &[Word],
+    f: impl FnOnce(&mut ThreadContext, &[RootSlot<'_>]) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut cells: Vec<Cell<Word>> = values.iter().copied().map(Cell::new).collect();
+    let mut tokens: Vec<RootToken> = Vec::with_capacity(cells.len());
+    for cell in &mut cells {
+        tokens.push(ncl_object::push_root(ctx, cell.get_mut()));
+    }
+    let slots: Vec<RootSlot<'_>> = cells.iter().map(RootSlot::new).collect();
+    let result = f(ctx, &slots);
+    for token in tokens.into_iter().rev() {
+        if !ncl_object::pop_root(ctx, token) {
+            return Err(ObjectError::Layout);
+        }
+    }
+    result
+}
+
+fn fixnum_to_f64(value: i64) -> Result<f64, ObjectError> {
+    value
+        .to_string()
+        .parse::<f64>()
+        .map_err(|_| ObjectError::Layout)
 }
 
 fn real(ctx: &ThreadContext, value: Word) -> Result<f64, ObjectError> {
     match classify_object(ctx, value) {
-        ObjectRef::Fixnum(value) => Ok(fixnum_to_f64(value)),
+        ObjectRef::Fixnum(value) => fixnum_to_f64(value),
         ObjectRef::DoubleFloat(value) => {
             double_value(ctx, ncl_object::DoubleFloat::from_word(value))
         }
@@ -50,15 +88,19 @@ pub fn typed_complex(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let real_word = args.required(0)?;
-    let real_value = real(ctx, real_word)?;
-    let imag_value = real(ctx, args.required(1)?)?;
-    if imag_value == 0.0 {
-        return Ok(real_word);
-    }
-    let real = make_double(ctx, runtime, real_value)?.into();
-    let imag = make_double(ctx, runtime, imag_value)?.into();
-    make_complex(ctx, runtime, real, imag).map(Into::into)
+    let values = [args.required(0)?, args.required(1)?];
+    with_roots(ctx, &values, |ctx, values| {
+        let real_value = real(ctx, *values[0])?;
+        let imag_value = real(ctx, *values[1])?;
+        if imag_value == 0.0 {
+            return Ok(*values[0]);
+        }
+        let mut real = make_double(ctx, runtime, real_value)?.into();
+        with_root(ctx, &mut real, |ctx, real| {
+            let imag = make_double(ctx, runtime, imag_value)?.into();
+            make_complex(ctx, runtime, *real, imag).map(Into::into)
+        })
+    })
 }
 
 pub fn typed_conjugate(
@@ -67,17 +109,21 @@ pub fn typed_conjugate(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let value = args.required(0)?;
-    if let ObjectRef::Complex(value) = classify_object(ctx, value) {
-        let object = ncl_object::Complex::from_word(value);
-        let real_word = complex_real(ctx, object)?;
-        let imag_value = -real(ctx, complex_imag(ctx, object)?)?;
-        let imag = make_double(ctx, runtime, imag_value)?.into();
-        make_complex(ctx, runtime, real_word, imag).map(Into::into)
-    } else {
-        real(ctx, value)?;
-        Ok(value)
-    }
+    let mut value = args.required(0)?;
+    with_root(ctx, &mut value, |ctx, value| {
+        if let ObjectRef::Complex(value) = classify_object(ctx, *value) {
+            let object = ncl_object::Complex::from_word(value);
+            let mut real_word = complex_real(ctx, object)?;
+            let imag_value = -real(ctx, complex_imag(ctx, object)?)?;
+            with_root(ctx, &mut real_word, |ctx, real_word| {
+                let imag = make_double(ctx, runtime, imag_value)?.into();
+                make_complex(ctx, runtime, *real_word, imag).map(Into::into)
+            })
+        } else {
+            real(ctx, *value)?;
+            Ok(*value)
+        }
+    })
 }
 
 pub fn typed_realpart(
@@ -124,7 +170,9 @@ pub fn typed_cis(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let angle = real(ctx, args.required(0)?)?;
-    let real = make_double(ctx, runtime, angle.cos())?.into();
-    let imag = make_double(ctx, runtime, angle.sin())?.into();
-    make_complex(ctx, runtime, real, imag).map(Into::into)
+    let mut real = make_double(ctx, runtime, angle.cos())?.into();
+    with_root(ctx, &mut real, |ctx, real| {
+        let imag = make_double(ctx, runtime, angle.sin())?.into();
+        make_complex(ctx, runtime, *real, imag).map(Into::into)
+    })
 }

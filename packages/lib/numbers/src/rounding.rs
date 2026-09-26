@@ -1,15 +1,36 @@
 //! Common Lisp rounding builtins.
 
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     bignum_limbs, bignum_sign, classify_object, double_value, make_bignum_from_i128, make_double,
-    make_ratio, ratio_denominator, ratio_numerator,
+    make_ratio, ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues, ObjectError,
+    ObjectRef, Runtime, ThreadContext, Word,
 };
+use ncl_sys::RootSlot;
+use std::cell::Cell;
 
-const fn integer_to_f64(value: i128) -> f64 {
-    #[allow(clippy::cast_precision_loss)]
-    {
-        value as f64
+fn with_rooted_word<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut slot = Cell::new(*value);
+    let token = ncl_object::push_root(ctx, slot.get_mut());
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
+    assert!(ncl_object::pop_root(ctx, token));
+    result
+}
+
+fn integer_to_f64(value: i128) -> f64 {
+    let magnitude = value.unsigned_abs();
+    let limb =
+        |shift| f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).unwrap_or(0));
+    let result =
+        limb(96) * 2_f64.powi(96) + limb(64) * 2_f64.powi(64) + limb(32) * 2_f64.powi(32) + limb(0);
+    if value.is_negative() {
+        -result
+    } else {
+        result
     }
 }
 
@@ -21,8 +42,27 @@ fn float_to_i128(value: f64) -> Option<i128> {
     if !value.is_finite() || !(I128_MIN..I128_MAX_EXCLUSIVE).contains(&value) {
         return None;
     }
-    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    Some(value as i128)
+    let bits = value.to_bits();
+    let negative = bits >> 63 != 0;
+    let exponent = i32::try_from((bits >> 52) & 0x7ff).ok()? - 1023;
+    if exponent < 0 {
+        return Some(0);
+    }
+    let mantissa = u128::from((bits & ((1_u64 << 52) - 1)) | (1_u64 << 52));
+    let magnitude = if exponent < 52 {
+        mantissa >> u32::try_from(52 - exponent).ok()?
+    } else {
+        mantissa.checked_shl(u32::try_from(exponent - 52).ok()?)?
+    };
+    if negative {
+        if magnitude == 1_u128 << 127 {
+            Some(i128::MIN)
+        } else {
+            i128::try_from(magnitude).ok()?.checked_neg()
+        }
+    } else {
+        i128::try_from(magnitude).ok()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -140,9 +180,11 @@ fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Wor
                 Ok,
             ),
         Number::Ratio(numerator, denominator) => {
-            let numerator = word(ctx, runtime, Number::Integer(numerator))?;
-            let denominator = word(ctx, runtime, Number::Integer(denominator))?;
-            make_ratio(ctx, runtime, numerator, denominator).map(Into::into)
+            let mut numerator = word(ctx, runtime, Number::Integer(numerator))?;
+            with_rooted_word(ctx, &mut numerator, |ctx, numerator| {
+                let denominator = word(ctx, runtime, Number::Integer(denominator))?;
+                make_ratio(ctx, runtime, *numerator, denominator).map(Into::into)
+            })
         }
         Number::Float(value) => make_double(ctx, runtime, value).map(Into::into),
     }
@@ -274,17 +316,20 @@ fn round(
             Number::Float(as_float(value) - quotient * divisor),
         )
     };
-    let result = word(
-        ctx,
-        runtime,
-        if float_result {
-            Number::Float(as_float(quotient))
-        } else {
-            quotient
-        },
-    )?;
-    values.set(&[result, word(ctx, runtime, remainder)?]);
-    Ok(result)
+    let mut remainder = word(ctx, runtime, remainder)?;
+    with_rooted_word(ctx, &mut remainder, |ctx, remainder| {
+        let result = word(
+            ctx,
+            runtime,
+            if float_result {
+                Number::Float(as_float(quotient))
+            } else {
+                quotient
+            },
+        )?;
+        values.set(&[result, *remainder]);
+        Ok(result)
+    })
 }
 
 macro_rules! typed_rounding {

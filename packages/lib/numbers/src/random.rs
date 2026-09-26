@@ -1,19 +1,19 @@
 //! Random-state objects and Common Lisp numeric constants.
 
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
-    BuiltinPackage, LambdaList, MultipleValues, ObjectError, ObjectRef, Package, Parameter,
-    ParameterType, Runtime, ThreadContext, Word, classify_object, instance_class, make_double,
-    make_instance, set_symbol_constant, set_symbol_special, set_symbol_value, slot_ref, slot_set,
+    classify_object, instance_class, make_double, make_instance, set_symbol_constant,
+    set_symbol_special, set_symbol_value, slot_ref, slot_set, Builtin, BuiltinArgs,
+    BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
+    LambdaList, MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime,
+    ThreadContext, Word,
 };
 
 use crate::MOST_POSITIVE_FIXNUM;
 
-const fn u64_to_f64(value: u64) -> f64 {
-    #[allow(clippy::cast_precision_loss)]
-    {
-        value as f64
-    }
+fn u64_to_f64(value: u64) -> Result<f64, ObjectError> {
+    let high = u32::try_from(value >> 32).map_err(|_| ObjectError::Layout)?;
+    let low = u32::try_from(value & u64::from(u32::MAX)).map_err(|_| ObjectError::Layout)?;
+    Ok(f64::from(high) * 4_294_967_296.0 + f64::from(low))
 }
 
 const STATE_SLOT: usize = 0;
@@ -135,7 +135,7 @@ fn random_builtin(
                 .ok()
                 .and_then(|value| value.checked_add(1))
                 .ok_or(ObjectError::TypeError)?;
-            let fraction = u64_to_f64(next_word(ctx, state)?) / u64_to_f64(modulus);
+            let fraction = u64_to_f64(next_word(ctx, state)?)? / u64_to_f64(modulus)?;
             make_double(ctx, runtime, bound * fraction).map(Into::into)
         }
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {

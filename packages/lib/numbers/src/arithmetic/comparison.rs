@@ -1,8 +1,8 @@
 use super::{
-    Number, ObjectError, Ordering, Runtime, ThreadContext, Word, args_numbers, bool_word, number,
-    word,
+    args_numbers, bool_word, number, word, Number, ObjectError, Ordering, Runtime, ThreadContext,
+    Word,
 };
-use ncl_object::{ObjectRef, classify_object};
+use ncl_object::{classify_object, ObjectRef};
 
 fn comparison(
     ctx: &ThreadContext,
@@ -10,19 +10,22 @@ fn comparison(
     cmp: impl Fn(Ordering) -> bool,
 ) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
-    Ok(bool_word(ns.windows(2).all(|pair| {
-        let [left, right] = pair else { return false };
-        cmp(compare_numbers(*left, *right))
-    })))
+    for pair in ns.windows(2) {
+        let [left, right] = pair else { continue };
+        if !cmp(compare_numbers(*left, *right)?) {
+            return Ok(Word::NIL);
+        }
+    }
+    Ok(Word::TRUE)
 }
 
-fn compare_numbers(left: Number, right: Number) -> Ordering {
+fn compare_numbers(left: Number, right: Number) -> Result<Ordering, ObjectError> {
     match (left, right) {
-        (Number::Integer(left), Number::Integer(right)) => left.cmp(&right),
-        (left, right) => left
-            .to_f64()
-            .partial_cmp(&right.to_f64())
-            .unwrap_or(Ordering::Equal),
+        (Number::Integer(left), Number::Integer(right)) => Ok(left.cmp(&right)),
+        (left, right) => Ok(left
+            .to_f64()?
+            .partial_cmp(&right.to_f64()?)
+            .unwrap_or(Ordering::Equal)),
     }
 }
 pub fn equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
@@ -77,11 +80,14 @@ pub fn eql(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, Obje
 }
 pub fn not_equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
-    Ok(bool_word(ns.iter().enumerate().all(|(index, value)| {
-        ns.iter()
-            .skip(index + 1)
-            .all(|other| compare_numbers(*value, *other) != Ordering::Equal)
-    })))
+    for (index, value) in ns.iter().enumerate() {
+        for other in ns.iter().skip(index + 1) {
+            if compare_numbers(*value, *other)? == Ordering::Equal {
+                return Ok(Word::NIL);
+            }
+        }
+    }
+    Ok(Word::TRUE)
 }
 pub fn less(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     comparison(ctx, args, |ordering| ordering == Ordering::Less)
@@ -97,17 +103,23 @@ pub fn greater_equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<
 }
 pub fn max(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
-    let value = ns
-        .into_iter()
-        .reduce(|a, b| if a.to_f64() >= b.to_f64() { a } else { b })
-        .ok_or(ObjectError::TypeError)?;
+    let mut values = ns.into_iter();
+    let mut value = values.next().ok_or(ObjectError::TypeError)?;
+    for next in values {
+        if next.to_f64()? > value.to_f64()? {
+            value = next;
+        }
+    }
     word(ctx, runtime, value)
 }
 pub fn min(ctx: &mut ThreadContext, runtime: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {
     let ns = args_numbers(ctx, args)?;
-    let value = ns
-        .into_iter()
-        .reduce(|a, b| if a.to_f64() <= b.to_f64() { a } else { b })
-        .ok_or(ObjectError::TypeError)?;
+    let mut values = ns.into_iter();
+    let mut value = values.next().ok_or(ObjectError::TypeError)?;
+    for next in values {
+        if next.to_f64()? < value.to_f64()? {
+            value = next;
+        }
+    }
     word(ctx, runtime, value)
 }

@@ -1,42 +1,76 @@
 //! Rational and binary64 numeric builtins.
 
 use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
     classify_object, double_value, make_bignum_from_i128, make_double, make_ratio,
-    ratio_denominator, ratio_numerator,
+    ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues, ObjectError, ObjectRef,
+    Runtime, ThreadContext, Word,
 };
+use ncl_sys::RootSlot;
+use std::cell::Cell;
 
-const fn integer_to_f64(value: i128) -> f64 {
-    #[allow(clippy::cast_precision_loss)]
-    {
-        value as f64
-    }
+fn with_rooted_word<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut slot = Cell::new(*value);
+    let token = ncl_object::push_root(ctx, slot.get_mut());
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
+    assert!(ncl_object::pop_root(ctx, token));
+    result
 }
 
-const fn u64_to_f64(value: u64) -> f64 {
-    #[allow(clippy::cast_precision_loss)]
-    {
-        value as f64
+fn integer_to_f64(value: i128) -> f64 {
+    let magnitude = value.unsigned_abs();
+    let limb =
+        |shift| f64::from(u32::try_from((magnitude >> shift) & u128::from(u32::MAX)).unwrap_or(0));
+    let result =
+        limb(96) * 2_f64.powi(96) + limb(64) * 2_f64.powi(64) + limb(32) * 2_f64.powi(32) + limb(0);
+    if value.is_negative() {
+        -result
+    } else {
+        result
     }
 }
-
+fn u64_to_f64(value: u64) -> f64 {
+    f64::from(u32::try_from(value >> 32).unwrap_or(0)) * 2_f64.powi(32)
+        + f64::from(u32::try_from(value & u64::from(u32::MAX)).unwrap_or(0))
+}
 fn float_to_i128(value: f64) -> Option<i128> {
     const I128_MIN: f64 = -170_141_183_460_469_231_731_687_303_715_884_105_728.0;
     const I128_MAX_EXCLUSIVE: f64 = 170_141_183_460_469_231_731_687_303_715_884_105_728.0;
     if !value.is_finite() || !(I128_MIN..I128_MAX_EXCLUSIVE).contains(&value) {
         return None;
     }
-    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    Some(value as i128)
+    let bits = value.to_bits();
+    let negative = bits >> 63 != 0;
+    let exponent = i32::try_from((bits >> 52) & 0x7ff).ok()? - 1023;
+    if exponent < 0 {
+        return Some(0);
+    }
+    let mantissa = u128::from((bits & ((1_u64 << 52) - 1)) | (1_u64 << 52));
+    let magnitude = if exponent < 52 {
+        mantissa >> u32::try_from(52 - exponent).ok()?
+    } else {
+        mantissa.checked_shl(u32::try_from(exponent - 52).ok()?)?
+    };
+    if negative {
+        if magnitude == 1_u128 << 127 {
+            Some(i128::MIN)
+        } else {
+            i128::try_from(magnitude).ok()?.checked_neg()
+        }
+    } else {
+        i128::try_from(magnitude).ok()
+    }
 }
-
 #[derive(Clone, Copy)]
 enum Real {
     Integer(i128),
     Ratio(i128, i128),
     Float(f64),
 }
-
 fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(value) => Ok(i128::from(value)),
@@ -78,7 +112,6 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
         _ => Err(ObjectError::TypeError),
     }
 }
-
 fn gcd(a: i128, b: i128) -> Option<i128> {
     let mut a = a.unsigned_abs();
     let mut b = b.unsigned_abs();
@@ -91,7 +124,6 @@ fn gcd(a: i128, b: i128) -> Option<i128> {
         i128::try_from(a).ok()
     }
 }
-
 fn normalized(n: i128, d: i128) -> Result<Real, ObjectError> {
     if d == 0 {
         return Ok(Real::Ratio(n, d));
@@ -115,7 +147,6 @@ fn normalized(n: i128, d: i128) -> Result<Real, ObjectError> {
         Ok(Real::Ratio(n, d))
     }
 }
-
 fn real(ctx: &ThreadContext, word: Word) -> Result<Real, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => Ok(Real::Integer(integer(ctx, word)?)),
@@ -136,7 +167,6 @@ fn real(ctx: &ThreadContext, word: Word) -> Result<Real, ObjectError> {
         _ => Err(ObjectError::TypeError),
     }
 }
-
 fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Real) -> Result<Word, ObjectError> {
     match value {
         Real::Integer(value) => i64::try_from(value)
@@ -150,14 +180,15 @@ fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Real) -> Result<Word,
                 Ok,
             ),
         Real::Ratio(n, d) => {
-            let n = word(ctx, runtime, Real::Integer(n))?;
-            let d = word(ctx, runtime, Real::Integer(d))?;
-            make_ratio(ctx, runtime, n, d).map(Into::into)
+            let mut n = word(ctx, runtime, Real::Integer(n))?;
+            with_rooted_word(ctx, &mut n, |ctx, n| {
+                let d = word(ctx, runtime, Real::Integer(d))?;
+                make_ratio(ctx, runtime, *n, d).map(Into::into)
+            })
         }
         Real::Float(value) => make_double(ctx, runtime, value).map(Into::into),
     }
 }
-
 fn float_value(ctx: &ThreadContext, value: Word) -> Result<f64, ObjectError> {
     match classify_object(ctx, value) {
         ObjectRef::DoubleFloat(value) => {
@@ -166,7 +197,6 @@ fn float_value(ctx: &ThreadContext, value: Word) -> Result<f64, ObjectError> {
         _ => Err(ObjectError::TypeError),
     }
 }
-
 fn exact_float(value: f64) -> Result<(i128, i128), ObjectError> {
     if !value.is_finite() {
         return Err(ObjectError::TypeError);
@@ -197,7 +227,6 @@ fn exact_float(value: f64) -> Result<(i128, i128), ObjectError> {
         ))
     }
 }
-
 fn continued_fraction_between(mut lower: f64, mut upper: f64) -> Result<(i128, i128), ObjectError> {
     if upper < 0.0 {
         let (n, d) = continued_fraction_between(-upper, -lower)?;
@@ -227,7 +256,6 @@ fn continued_fraction_between(mut lower: f64, mut upper: f64) -> Result<(i128, i
     }
     Err(ObjectError::TypeError)
 }
-
 fn rationalize_float(value: f64, tolerance: Option<f64>) -> Result<(i128, i128), ObjectError> {
     if !value.is_finite() {
         return Err(ObjectError::TypeError);
@@ -243,7 +271,6 @@ fn rationalize_float(value: f64, tolerance: Option<f64>) -> Result<(i128, i128),
     }
     exact_float(value)
 }
-
 pub fn numerator(
     ctx: &mut ThreadContext,
     _: &Runtime,
@@ -274,7 +301,6 @@ pub fn denominator(
     values.clear();
     Ok(result)
 }
-
 pub fn rational(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

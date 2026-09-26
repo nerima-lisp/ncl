@@ -1,16 +1,34 @@
 //! Transcendental numeric builtins.
 
-use ncl_object::{
-    BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
-    bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
-    make_complex, make_double, ratio_denominator, ratio_numerator,
-};
+use core::cell::Cell;
 
-const fn integer_to_f64(value: i128) -> f64 {
-    #[allow(clippy::cast_precision_loss)]
-    {
-        value as f64
+use ncl_object::{
+    bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
+    make_complex, make_double, ratio_denominator, ratio_numerator, BuiltinArgs, MultipleValues,
+    ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+};
+use ncl_sys::RootSlot;
+
+fn with_root<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut slot = Cell::new(*value);
+    let token = ncl_object::push_root(ctx, slot.get_mut());
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
     }
+    result
+}
+
+fn integer_to_f64(value: i128) -> Result<f64, ObjectError> {
+    value
+        .to_string()
+        .parse::<f64>()
+        .map_err(|_| ObjectError::Layout)
 }
 
 #[derive(Clone, Copy)]
@@ -59,8 +77,8 @@ fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
 
 fn number(ctx: &ThreadContext, value: Word) -> Result<Number, ObjectError> {
     match classify_object(ctx, value) {
-        ObjectRef::Fixnum(value) => Ok(Number::Real(integer_to_f64(i128::from(value)))),
-        ObjectRef::Bignum(value) => Ok(Number::Real(integer_to_f64(integer(ctx, value)?))),
+        ObjectRef::Fixnum(value) => Ok(Number::Real(integer_to_f64(i128::from(value))?)),
+        ObjectRef::Bignum(value) => Ok(Number::Real(integer_to_f64(integer(ctx, value)?)?)),
         ObjectRef::Ratio(value) => {
             let numerator = integer(
                 ctx,
@@ -71,7 +89,7 @@ fn number(ctx: &ThreadContext, value: Word) -> Result<Number, ObjectError> {
                 ratio_denominator(ctx, ncl_object::Ratio::from_word(value))?,
             )?;
             Ok(Number::Real(
-                integer_to_f64(numerator) / integer_to_f64(denominator),
+                integer_to_f64(numerator)? / integer_to_f64(denominator)?,
             ))
         }
         ObjectRef::DoubleFloat(value) => Ok(Number::Real(double_value(
@@ -111,9 +129,11 @@ fn output(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<W
     match value {
         Number::Real(value) => make_double(ctx, runtime, value).map(Into::into),
         Number::Complex(real, imag) => {
-            let real = make_double(ctx, runtime, real)?.into();
-            let imag = make_double(ctx, runtime, imag)?.into();
-            make_complex(ctx, runtime, real, imag).map(Into::into)
+            let mut real = make_double(ctx, runtime, real)?.into();
+            with_root(ctx, &mut real, |ctx, real| {
+                let imag = make_double(ctx, runtime, imag)?.into();
+                make_complex(ctx, runtime, *real, imag).map(Into::into)
+            })
         }
     }
 }

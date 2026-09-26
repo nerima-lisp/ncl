@@ -2,9 +2,9 @@
 
 use ncl_object::Word;
 use ncl_object::{
-    ObjectError, ObjectRef, Runtime, ThreadContext, bignum_limbs, bignum_sign, classify_object,
-    complex_imag, complex_real, double_value, make_bignum_from_i128, make_complex, make_double,
-    make_ratio, ratio_denominator, ratio_numerator,
+    bignum_limbs, bignum_sign, classify_object, complex_imag, complex_real, double_value,
+    make_bignum_from_i128, make_complex, make_double, make_ratio, ratio_denominator,
+    ratio_numerator, ObjectError, ObjectRef, Runtime, ThreadContext,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -127,20 +127,40 @@ pub(super) fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectEr
                 ctx,
                 complex_imag(ctx, ncl_object::Complex::from_word(value))?,
             )?;
-            Ok(Number::Complex(real.to_f64(), imag.to_f64()))
+            Ok(Number::Complex(real.to_f64()?, imag.to_f64()?))
         }
         _ => Err(ObjectError::TypeError),
     }
 }
 
+fn u64_to_f64(value: u64) -> Result<f64, ObjectError> {
+    let high = u32::try_from(value >> 32).map_err(|_| ObjectError::Layout)?;
+    let low = u32::try_from(value & u64::from(u32::MAX)).map_err(|_| ObjectError::Layout)?;
+    Ok(f64::from(high) * 4_294_967_296.0 + f64::from(low))
+}
+
+fn u128_to_f64(value: u128) -> Result<f64, ObjectError> {
+    let high = u64::try_from(value >> 64).map_err(|_| ObjectError::Layout)?;
+    let low = u64::try_from(value & u128::from(u64::MAX)).map_err(|_| ObjectError::Layout)?;
+    Ok(u64_to_f64(high)?.mul_add(18_446_744_073_709_551_616.0, u64_to_f64(low)?))
+}
+
+fn i128_to_f64(value: i128) -> Result<f64, ObjectError> {
+    let magnitude = u128_to_f64(value.unsigned_abs())?;
+    if value.is_negative() {
+        Ok(-magnitude)
+    } else {
+        Ok(magnitude)
+    }
+}
+
 impl Number {
-    #[allow(clippy::cast_precision_loss)]
-    pub(super) fn to_f64(self) -> f64 {
+    pub(super) fn to_f64(self) -> Result<f64, ObjectError> {
         match self {
-            Self::Integer(v) => v as f64,
-            Self::Ratio(n, d) => n as f64 / d as f64,
-            Self::Float(v) => v,
-            Self::Complex(r, _) => r,
+            Self::Integer(v) => i128_to_f64(v),
+            Self::Ratio(n, d) => Ok(i128_to_f64(n)? / i128_to_f64(d)?),
+            Self::Float(v) => Ok(v),
+            Self::Complex(r, _) => Ok(r),
         }
     }
     pub(super) const fn is_complex(self) -> bool {
@@ -218,7 +238,10 @@ pub(super) fn real_pair(
             };
             iop(left, y).map_or(Number::Ratio(0, 0), |value| ratio(value, yd))
         }
-        (x, y) => Number::Float(op(x.to_f64(), y.to_f64())),
+        (x, y) => match (x.to_f64(), y.to_f64()) {
+            (Ok(x), Ok(y)) => Number::Float(op(x, y)),
+            _ => Number::Ratio(0, 0),
+        },
     }
 }
 
@@ -227,10 +250,14 @@ pub(super) fn add_pair(a: Number, b: Number) -> Number {
         return Number::Complex(ar + br, ai + bi);
     }
     if let Number::Complex(ar, ai) = a {
-        return Number::Complex(ar + b.to_f64(), ai);
+        return b
+            .to_f64()
+            .map_or(Number::Ratio(0, 0), |b| Number::Complex(ar + b, ai));
     }
     if let Number::Complex(br, bi) = b {
-        return Number::Complex(a.to_f64() + br, bi);
+        return a
+            .to_f64()
+            .map_or(Number::Ratio(0, 0), |a| Number::Complex(a + br, bi));
     }
     real_pair(a, b, |x, y| x + y, i128::checked_add)
 }
@@ -239,10 +266,14 @@ pub(super) fn sub_pair(a: Number, b: Number) -> Number {
         return Number::Complex(ar - br, ai - bi);
     }
     if let Number::Complex(ar, ai) = a {
-        return Number::Complex(ar - b.to_f64(), ai);
+        return b
+            .to_f64()
+            .map_or(Number::Ratio(0, 0), |b| Number::Complex(ar - b, ai));
     }
     if let Number::Complex(br, bi) = b {
-        return Number::Complex(a.to_f64() - br, -bi);
+        return a
+            .to_f64()
+            .map_or(Number::Ratio(0, 0), |a| Number::Complex(a - br, -bi));
     }
     real_pair(a, b, |x, y| x - y, i128::checked_sub)
 }
@@ -252,11 +283,15 @@ pub(super) fn mul_pair(a: Number, b: Number) -> Number {
         return Number::Complex(ar * br - ai * bi, ar * bi + ai * br);
     }
     if let Number::Complex(ar, ai) = a {
-        let x = b.to_f64();
+        let Ok(x) = b.to_f64() else {
+            return Number::Ratio(0, 0);
+        };
         return Number::Complex(ar * x, ai * x);
     }
     if let Number::Complex(br, bi) = b {
-        let x = a.to_f64();
+        let Ok(x) = a.to_f64() else {
+            return Number::Ratio(0, 0);
+        };
         return Number::Complex(x * br, x * bi);
     }
     real_pair(a, b, |x, y| x * y, i128::checked_mul)
@@ -266,7 +301,7 @@ pub(super) fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
     if matches!(a, Number::Ratio(_, 0)) || matches!(b, Number::Ratio(_, 0)) {
         return Err(ObjectError::TypeError);
     }
-    if b.to_f64() == 0.0 {
+    if b.to_f64()? == 0.0 {
         return Err(ObjectError::TypeError);
     }
     if let (Number::Complex(ar, ai), Number::Complex(br, bi)) = (a, b) {
@@ -277,18 +312,22 @@ pub(super) fn div_pair(a: Number, b: Number) -> Result<Number, ObjectError> {
         ));
     }
     if a.is_complex() || b.is_complex() {
-        let x = a.to_f64();
-        let y = b.to_f64();
+        let x = a.to_f64()?;
+        let y = b.to_f64()?;
         return Ok(Number::Complex(x / y, 0.0));
     }
     match (a, b) {
         (Number::Integer(x), Number::Integer(y)) => Ok(ratio(x, y)),
-        (x, y) => Ok(Number::Float(x.to_f64() / y.to_f64())),
+        (x, y) => Ok(Number::Float(x.to_f64()? / y.to_f64()?)),
     }
 }
 
 pub(super) const fn bool_word(value: bool) -> Word {
-    if value { Word::TRUE } else { Word::NIL }
+    if value {
+        Word::TRUE
+    } else {
+        Word::NIL
+    }
 }
 pub(super) fn args_numbers(ctx: &ThreadContext, args: &[Word]) -> Result<Vec<Number>, ObjectError> {
     args.iter().map(|arg| number(ctx, *arg)).collect()

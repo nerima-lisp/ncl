@@ -145,7 +145,9 @@ impl Profile {
     /// Number of accepted samples.
     #[must_use]
     pub fn sample_count(&self) -> u64 {
-        u64::try_from(self.samples.len()).unwrap_or(u64::MAX)
+        self.samples
+            .iter()
+            .fold(0_u64, |count, _| count.saturating_add(1))
     }
 
     /// Aggregate leaf-only counts in frame-id order.

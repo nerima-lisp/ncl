@@ -220,6 +220,12 @@ pub fn register_code(
         .register_code(code, metadata)
 }
 
+/// Return a snapshot of the published code registry for a registered thread.
+#[must_use]
+pub fn code_registry(thread: &Thread) -> Option<CodeRegistry> {
+    thread.heap().map(crate::Heap::code_registry)
+}
+
 /// Configure strict stale-word checking for a registered thread's heap.
 pub fn set_strict_forwarding(thread: &Thread, on: bool) {
     if let Some(heap) = thread.heap() {

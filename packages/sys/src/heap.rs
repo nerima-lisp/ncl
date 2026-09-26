@@ -129,6 +129,12 @@ impl Heap {
     ) -> Result<(), CodeError> {
         self.lock_state().code_registry.register(code, metadata)
     }
+
+    /// Return a read-only snapshot of the published code registry.
+    #[must_use]
+    pub fn code_registry(&self) -> crate::CodeRegistry {
+        self.lock_state().code_registry.clone()
+    }
     pub(crate) fn safepoint_map_for_pc(&self, pc: usize) -> Option<crate::Safepoint> {
         {
             let state = self.lock_state();

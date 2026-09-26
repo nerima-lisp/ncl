@@ -16,6 +16,10 @@ const BODY_PARAMETERS: &[Parameter] = &[Parameter {
     name: BuiltinName::new("BODY"),
     ty: ParameterType::Any,
 }];
+const REPORT_PARAMETERS: &[Parameter] = &[Parameter {
+    name: BuiltinName::new("FORMAT"),
+    ty: ParameterType::Fixnum,
+}];
 
 /// Register the profiler package and all callable Lisp-facing entries.
 ///
@@ -28,8 +32,36 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     context.register(runtime)?;
     register_function(runtime, &mut context, "PROFILE-START", profile_start)?;
     register_function(runtime, &mut context, "PROFILE-STOP", profile_stop)?;
-    register_function(runtime, &mut context, "PROFILE-REPORT", profile_report)?;
+    register_report(runtime, &mut context)?;
     register_macro(runtime, &mut context, "WITH-PROFILING", with_profiling)
+}
+
+fn register_report(runtime: &Runtime, context: &mut ThreadContext) -> Result<(), ObjectError> {
+    runtime.register_builtin(
+        context,
+        BuiltinIdentifier::new(
+            BuiltinPackage::NclProfiler,
+            BuiltinName::new("PROFILE-REPORT"),
+        ),
+        BuiltinImplementation::adapted(
+            Builtin {
+                lambda_list: LambdaList::with_optional(NO_PARAMETERS, REPORT_PARAMETERS),
+                convention: BuiltinConvention::Adapted,
+            },
+            profile_report,
+            identity_args,
+        ),
+    )?;
+    Ok(())
+}
+
+fn identity_args(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
+    for value in args.as_slice() {
+        if !matches!(value.as_fixnum(), Some(0..=3)) {
+            return Err(ObjectError::TypeError);
+        }
+    }
+    Ok(args.as_slice().to_vec())
 }
 
 const fn descriptor(parameters: &'static [Parameter], arity: u8) -> Builtin {
@@ -77,35 +109,63 @@ fn session(runtime: &Runtime) -> Result<Arc<crate::ProfileSession>, ObjectError>
 }
 
 fn profile_start(
-    _ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    _args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    session(runtime)?.start().map_err(|_| ObjectError::Layout)?;
-    Ok(Word::NIL)
-}
-
-fn profile_stop(
-    _ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    _args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let _snapshot = session(runtime)?.stop().map_err(|_| ObjectError::Layout)?;
-    Ok(Word::NIL)
-}
-
-fn profile_report(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     _args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
+    let session = session(runtime)?;
+    session.start().map_err(|_| ObjectError::Layout)?;
+    sample_boundary(&session, ctx)?;
+    Ok(Word::NIL)
+}
+
+fn profile_stop(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    _args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let session = session(runtime)?;
+    sample_boundary(&session, ctx)?;
+    let _snapshot = session.stop().map_err(|_| ObjectError::Layout)?;
+    Ok(Word::NIL)
+}
+
+fn sample_boundary(
+    session: &crate::ProfileSession,
+    ctx: &mut ThreadContext,
+) -> Result<(), ObjectError> {
+    match session.sample_current_thread(ctx.thread_mut()) {
+        Ok(()) | Err(crate::SessionError::Sampling(crate::SampleError::EmptyStack)) => Ok(()),
+        Err(_) => Err(ObjectError::Layout),
+    }
+}
+
+fn profile_report(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let format = report_format(args)?;
     let report = session(runtime)?
-        .report(ReportFormat::Flat)
+        .report(format)
         .map_err(|_| ObjectError::Layout)?;
     make_string(ctx, runtime, &report.as_str().chars().collect::<Vec<_>>())
+}
+
+fn report_format(args: &BuiltinArgs<'_>) -> Result<ReportFormat, ObjectError> {
+    let Some(value) = args.get(0) else {
+        return Ok(ReportFormat::Flat);
+    };
+    match value.as_fixnum() {
+        Some(0) => Ok(ReportFormat::Flat),
+        Some(1) => Ok(ReportFormat::Cumulative),
+        Some(2) => Ok(ReportFormat::Callgraph),
+        Some(3) => Ok(ReportFormat::Folded),
+        _ => Err(ObjectError::TypeError),
+    }
 }
 
 fn with_profiling(
@@ -171,6 +231,8 @@ pub enum ProfilerBuiltin {
 pub enum Arity {
     /// A fixed number of arguments.
     Exact(u8),
+    /// A fixed minimum and maximum argument count.
+    Range(u8, u8),
 }
 
 /// Typed result category for a builtin.
@@ -207,7 +269,7 @@ pub const BUILTIN_CONTRACTS: &[BuiltinContract] = &[
     },
     BuiltinContract {
         builtin: ProfilerBuiltin::Report,
-        arity: Arity::Exact(0),
+        arity: Arity::Range(0, 1),
         returns: ReturnKind::Report,
     },
     BuiltinContract {
@@ -296,5 +358,32 @@ mod tests {
         .intern(&mut context, &runtime, "UNWIND-PROTECT")
         .expect("unwind symbol");
         assert_eq!(operator, unwind);
+    }
+
+    #[test]
+    fn report_accepts_each_typed_format_selector() {
+        let runtime = Runtime::new().expect("runtime");
+        register(&runtime).expect("registration");
+        let mut context = ThreadContext::new();
+        context.register(&runtime).expect("context");
+        let report = function(&runtime, &mut context, "PROFILE-REPORT");
+        assert!(runtime.call_builtin(&mut context, report, &[]).is_err());
+        let start = function(&runtime, &mut context, "PROFILE-START");
+        assert_eq!(
+            runtime.call_builtin(&mut context, start, &[]),
+            Ok(Word::NIL)
+        );
+        for selector in 0..4 {
+            assert!(
+                runtime
+                    .call_builtin(&mut context, report, &[Word::fixnum(selector)])
+                    .is_ok()
+            );
+        }
+        assert!(
+            runtime
+                .call_builtin(&mut context, report, &[Word::fixnum(4)])
+                .is_err()
+        );
     }
 }

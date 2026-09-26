@@ -13,6 +13,7 @@ struct SessionState {
     started: bool,
     profile: Profile,
     catalog: FrameCatalog,
+    snapshot: Option<ProfileSnapshot>,
 }
 
 /// Errors returned by the profile session service.
@@ -84,6 +85,7 @@ impl ProfileSession {
                 started: false,
                 profile: Profile::new(),
                 catalog: FrameCatalog::new(),
+                snapshot: None,
             })),
         }
     }
@@ -99,6 +101,7 @@ impl ProfileSession {
         state.started = true;
         state.profile = Profile::new();
         state.catalog = FrameCatalog::new();
+        state.snapshot = None;
         drop(state);
         Ok(())
     }
@@ -119,10 +122,13 @@ impl ProfileSession {
             });
         }
         state.active = false;
-        Ok(ProfileSnapshot {
+        let snapshot = ProfileSnapshot {
             profile: state.profile.clone(),
             catalog: state.catalog.clone(),
-        })
+        };
+        state.snapshot = Some(snapshot.clone());
+        drop(state);
+        Ok(snapshot)
     }
 
     /// Record one already-adapted sample from a cooperative sampler.
@@ -170,6 +176,21 @@ impl ProfileSession {
         Ok(())
     }
 
+    /// Sample the supplied mutator's already-published safepoint snapshot.
+    ///
+    /// # Errors
+    /// Returns a session or sampling error when no published snapshot or code
+    /// metadata is available.
+    pub fn sample_current_thread(&self, thread: &mut Thread) -> Result<(), SessionError> {
+        if thread.frame_word(0).is_none() {
+            return Err(SessionError::Sampling(SampleError::EmptyStack));
+        }
+        let registry = ncl_sys::code_registry(thread)
+            .ok_or(SessionError::Sampling(SampleError::UnknownCodeAddress))?;
+        let sampler = ThreadSampler::new(256, 64)?;
+        self.sample_thread(&sampler, thread, &registry)
+    }
+
     /// Render the current session without stopping it.
     ///
     /// # Errors
@@ -180,6 +201,11 @@ impl ProfileSession {
             let state = self.state.lock().map_err(|_| SessionError::Poisoned)?;
             if !state.started {
                 return Err(SessionError::NotStarted);
+            }
+            if !state.active
+                && let Some(snapshot) = &state.snapshot
+            {
+                return Ok(snapshot.report(format));
             }
             (state.profile.clone(), state.catalog.clone())
         };
@@ -278,6 +304,11 @@ mod tests {
         assert!(snapshot.is_ok());
         if let Ok(snapshot) = snapshot {
             assert_eq!(snapshot.sample_count(), 1);
+        }
+        let retained = api.profile_report(ReportFormat::Flat);
+        assert!(retained.is_ok());
+        if let Ok(retained) = retained {
+            assert_eq!(retained.as_str(), "<unknown> 1");
         }
     }
 

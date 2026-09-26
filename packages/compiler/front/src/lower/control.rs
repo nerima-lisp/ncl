@@ -340,10 +340,17 @@ impl Context<'_> {
         if normal_path {
             f.position(body_end)?;
             self.leave(f, region_id)?;
-            f.terminate(Terminator::Jump {
-                target: merge,
-                args: vec![value],
-            })?;
+            for form in cleanup {
+                if !f.is_terminated() {
+                    self.lower_expr(f, form)?;
+                }
+            }
+            if !f.is_terminated() {
+                f.terminate(Terminator::Jump {
+                    target: merge,
+                    args: vec![value],
+                })?;
+            }
         }
         let cleanup_block = self.block(f, Vec::new());
         for form in cleanup {

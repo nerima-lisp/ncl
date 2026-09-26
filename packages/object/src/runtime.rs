@@ -2,8 +2,8 @@
 
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
-    BuiltinImplementation, LispErrorConverter, ObjectError, ThreadContext, Word, make_string,
-    with_root,
+    BuiltinImplementation, LispErrorConverter, ObjectError, PlaceExpander, ThreadContext, Word,
+    make_string, with_root,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
@@ -21,6 +21,7 @@ pub struct Runtime {
     pub(crate) next_layout: Mutex<u32>,
     layouts_registered: Mutex<bool>,
     pub(crate) builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
+    pub(crate) place_expanders: Mutex<crate::place::PlaceExpanders>,
     lisp_error_converter: Mutex<Option<LispErrorConverter>>,
 }
 /// Per-mutator object-layer context. Generated code obtains its stable thread
@@ -54,6 +55,7 @@ impl Runtime {
             next_layout: Mutex::new(1),
             layouts_registered: Mutex::new(false),
             builtins: Mutex::new(HashMap::new()),
+            place_expanders: Mutex::new(crate::place::PlaceExpanders::default()),
             lisp_error_converter: Mutex::new(None),
         };
         runtime.register_layouts()?;
@@ -114,6 +116,41 @@ impl Runtime {
     /// Configure strict stale-word checking for this runtime heap.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.heap.set_strict_forwarding(on);
+    }
+
+    /// Register a generalized-reference expander owned by this runtime.
+    ///
+    /// The operator must be a symbol. The callback is copied out of the
+    /// registry before invocation, so no registry lock is held while Lisp
+    /// objects or another registry may be touched.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::TypeError`] when `operator` is not a symbol.
+    pub fn register_place_expander(
+        &self,
+        ctx: &ThreadContext,
+        operator: Word,
+        expander: PlaceExpander,
+    ) -> Result<(), ObjectError> {
+        self.place_expanders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .register(ctx, operator, expander)
+    }
+
+    /// Look up a generalized-reference expander without invoking it.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::TypeError`] when `operator` is not a symbol.
+    pub fn place_expander(
+        &self,
+        ctx: &ThreadContext,
+        operator: Word,
+    ) -> Result<Option<PlaceExpander>, ObjectError> {
+        self.place_expanders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(ctx, operator)
     }
     /// Register a function object under a package and name.
     ///

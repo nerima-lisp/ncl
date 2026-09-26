@@ -27,3 +27,15 @@ pub(super) fn simple_bit_vector_p_builtin(
         && array_shape(ctx, value)?.len() == 1;
     Ok(if simple_bit_vector { truth() } else { nil() })
 }
+
+pub(super) fn bit_vector_p_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let value = args.required(0)?;
+    let bit_vector = array_element_type(ctx, value) == Ok(ArrayElementType::Bit)
+        && array_shape(ctx, value).is_ok_and(|shape| shape.len() == 1);
+    Ok(if bit_vector { truth() } else { nil() })
+}

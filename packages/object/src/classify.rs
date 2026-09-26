@@ -1,5 +1,5 @@
-use crate::layout::widetag;
 use crate::ThreadContext;
+use crate::layout::widetag;
 use ncl_sys::{LowTag, Word};
 
 /// Classification of a tagged value.

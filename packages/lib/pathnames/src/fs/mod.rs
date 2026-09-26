@@ -219,8 +219,32 @@ pub fn delete_file(pathname: &Pathname) -> Result<(), FsError> {
 
 /// Return the file author when the host exposes a portable author name.
 pub fn file_author(pathname: &Pathname) -> Result<Option<String>, FsError> {
-    fs::metadata(pathname.as_path()).map_err(|error| io_error(Operation::FileAuthor, error))?;
-    Ok(None)
+    let metadata =
+        fs::metadata(pathname.as_path()).map_err(|error| io_error(Operation::FileAuthor, error))?;
+    // CLHS permits NIL when the host cannot expose an author. Unix metadata
+    // exposes the owner uid, but resolving that uid is host policy and may
+    // fail in containers or when passwd is unavailable.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+
+        let uid = metadata.uid().to_string();
+        let passwd = fs::read_to_string("/etc/passwd").ok();
+        return Ok(passwd.and_then(|contents| {
+            contents.lines().find_map(|line| {
+                let mut fields = line.split(':');
+                let name = fields.next()?;
+                let _password = fields.next()?;
+                let user_id = fields.next()?;
+                (user_id == uid).then(|| name.to_string())
+            })
+        }));
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = metadata;
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

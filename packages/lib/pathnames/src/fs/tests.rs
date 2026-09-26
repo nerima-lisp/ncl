@@ -1,3 +1,4 @@
+#![allow(clippy::expect_used)]
 use super::*;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -37,7 +38,9 @@ fn file_lifecycle_and_directory_listing() {
     assert_eq!(file_length(&source).expect("length"), 5);
     assert!(probe_file(&source).expect("probe").is_some());
     assert!(file_write_date(&source).expect("write date").is_some());
-    assert_eq!(file_author(&source).expect("author"), None);
+    if let Some(author) = file_author(&source).expect("author") {
+        assert!(!author.is_empty());
+    }
 
     let renamed = Pathname::new(nested.as_path().join("renamed.txt")).expect("destination path");
     assert_eq!(rename_file(&source, &renamed).expect("rename"), renamed);

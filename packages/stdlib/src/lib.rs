@@ -46,6 +46,7 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     ncl_conditions::register(runtime)?;
     ncl_clos::register(runtime)?;
     ncl_lib_streams::register(runtime)?;
+    ncl_lib_pathnames::register(runtime)?;
     ncl_threads::register(runtime)?;
     ncl_ffi::register(runtime)?;
     ncl_image::register(runtime)?;

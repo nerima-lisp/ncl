@@ -223,7 +223,14 @@ pub fn lower_op(
             let values = std::iter::once(*entry)
                 .chain(captures.iter().copied())
                 .collect::<Vec<_>>();
-            lower_runtime_builtin(assembler, RuntimeFunction::MakeClosure, &[], &values, slots, abi)?;
+            lower_runtime_builtin(
+                assembler,
+                RuntimeFunction::MakeClosure,
+                &[],
+                &values,
+                slots,
+                abi,
+            )?;
             call_pc = Some(emit_call(assembler)?);
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;
@@ -276,7 +283,14 @@ pub fn lower_op(
                     definition.binding_targets.clone(),
                 ),
             };
-            lower_runtime_builtin(assembler, function, &immediate_args, &value_args, slots, abi)?;
+            lower_runtime_builtin(
+                assembler,
+                function,
+                &immediate_args,
+                &value_args,
+                slots,
+                abi,
+            )?;
             call_pc = Some(emit_call(assembler)?);
         }
         OpKind::LeaveHandler { region } => {

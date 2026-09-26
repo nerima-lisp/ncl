@@ -302,7 +302,14 @@ pub fn lower_op(
             let values = std::iter::once(*entry)
                 .chain(captures.iter().copied())
                 .collect::<Vec<_>>();
-            lower_runtime_builtin(assembler, RuntimeFunction::MakeClosure, &[], &values, allocation, abi)?;
+            lower_runtime_builtin(
+                assembler,
+                RuntimeFunction::MakeClosure,
+                &[],
+                &values,
+                allocation,
+                abi,
+            )?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
                 store_value(assembler, allocation, result, Reg(0))?;

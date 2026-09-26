@@ -1,7 +1,7 @@
 use crate::isa_x86_64::{SCRATCH, THREAD_CONTEXT};
 use crate::{
-    common_lisp_builtin, Allocation, CodegenError, ContextField, Location, RuntimeAbi,
-    RuntimeFunction,
+    Allocation, CodegenError, ContextField, Location, RuntimeAbi, RuntimeFunction,
+    common_lisp_builtin,
 };
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, ValueId};

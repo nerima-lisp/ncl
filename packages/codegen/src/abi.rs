@@ -135,10 +135,19 @@ impl RegisterId {
 /// Runtime values and entry points needed by code generation.
 pub trait RuntimeAbi {
     /// Returns the address of a typed builtin or a precise lookup error.
+    ///
+    /// # Errors
+    /// Returns [`AbiError::MissingBuiltin`] when the identifier is not registered.
     fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError>;
     /// Returns the `ThreadContext` field offset used by a runtime operation.
+    ///
+    /// # Errors
+    /// Returns [`AbiError::UnsupportedContextField`] when the field is unavailable.
     fn field_offset(&self, field: ContextField) -> Result<i32, AbiError>;
     /// Returns a runtime function address or a precise lookup error.
+    ///
+    /// # Errors
+    /// Returns [`AbiError::UnsupportedRuntimeFunction`] when the function is unavailable.
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError>;
     /// Returns a runtime constant encoded as a machine word.
     fn constant_word(&self, _name: &str) -> Option<i64> {
@@ -162,6 +171,7 @@ pub enum AbiError {
 }
 
 /// Converts an IR builtin spelling into the object-layer registry key.
+#[must_use]
 pub fn common_lisp_builtin(name: &str) -> ncl_object::BuiltinIdentifier {
     ncl_object::BuiltinIdentifier::new(
         ncl_object::BuiltinPackage::CommonLisp,

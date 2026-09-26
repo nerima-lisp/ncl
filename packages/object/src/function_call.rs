@@ -101,12 +101,16 @@ impl Runtime {
         if function.is_unbound() {
             return Err(ObjectError::Unbound);
         }
+        let function_word = self
+            .heap
+            .forwarded_word(function.as_word())
+            .ok_or(ObjectError::Unbound)?;
         let implementation = self
             .builtins
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
-            .find(|entry| *entry.function == function.as_word())
+            .find(|entry| *entry.function == function_word)
             .map(|entry| entry.implementation)
             .ok_or(ObjectError::Unbound)?;
         if args.len() < implementation.descriptor.lambda_list.min_arity()

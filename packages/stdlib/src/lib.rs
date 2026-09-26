@@ -59,6 +59,25 @@ pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     ncl_threads::register(runtime)?;
     ncl_ffi::register(runtime)?;
     ncl_image::register(runtime)?;
+    register_core_native_addresses(runtime)?;
+    Ok(())
+}
+
+fn register_core_native_addresses(runtime: &Runtime) -> Result<(), ObjectError> {
+    runtime.register_builtin_address(
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("CAR")),
+        usize::try_from(
+            ncl_sys::function_address!(ncl_sys::native_car).map_err(|_| ObjectError::Layout)?,
+        )
+        .map_err(|_| ObjectError::Layout)?,
+    );
+    runtime.register_builtin_address(
+        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("CONS")),
+        usize::try_from(
+            ncl_sys::function_address!(ncl_sys::native_cons).map_err(|_| ObjectError::Layout)?,
+        )
+        .map_err(|_| ObjectError::Layout)?,
+    );
     Ok(())
 }
 

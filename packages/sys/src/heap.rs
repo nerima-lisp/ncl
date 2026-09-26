@@ -88,6 +88,27 @@ impl Heap {
     pub fn set_strict_forwarding(&self, on: bool) {
         self.strict_forwarding.store(on, Ordering::Relaxed);
     }
+
+    /// Resolve a heap word through its forwarding chain for registry lookups.
+    #[must_use]
+    pub fn forwarded_word(&self, value: Word) -> Option<Word> {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let index = Self::find(&state, value)?;
+        let object = state.objects.get(index)?;
+        let tag = match value.lowtag() {
+            x if x == crate::LowTag::List as u8 => crate::LowTag::List,
+            x if x == crate::LowTag::Function as u8 => crate::LowTag::Function,
+            x if x == crate::LowTag::Instance as u8 => crate::LowTag::Instance,
+            x if x == crate::LowTag::OtherPointer as u8 => crate::LowTag::OtherPointer,
+            _ => return None,
+        };
+        let address = object.words.as_ptr() as usize;
+        drop(state);
+        Some(Word::pointer(address, tag))
+    }
     /// Register a heap-owned precise root slot.
     ///
     /// The referenced slot must outlive the returned token and remain at the

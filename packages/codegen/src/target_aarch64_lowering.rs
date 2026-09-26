@@ -1,6 +1,6 @@
 use crate::{
-    common_lisp_builtin, Allocation, CodegenError, ContextField, Location, RuntimeAbi,
-    RuntimeFunction,
+    Allocation, CodegenError, ContextField, Location, RuntimeAbi, RuntimeFunction,
+    common_lisp_builtin,
 };
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{Constant, ConstantIndex, ValueId};

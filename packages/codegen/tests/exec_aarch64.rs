@@ -23,12 +23,17 @@ use std::time::Instant;
 static ALLOC_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static SAFEPOINT_SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
 static COLLECT_IN_SAFEPOINT: AtomicBool = AtomicBool::new(false);
+static TAIL_GC_STRESS: AtomicBool = AtomicBool::new(false);
+static TAIL_GC_POLLS: AtomicUsize = AtomicUsize::new(0);
+static TAIL_GC_COLLECTIONS: AtomicUsize = AtomicUsize::new(0);
 static FRAME_WORD_BEFORE: AtomicU64 = AtomicU64::new(0);
 static FRAME_WORD_AFTER: AtomicU64 = AtomicU64::new(0);
 static FRAME_LOCAL_BEFORE: AtomicU64 = AtomicU64::new(0);
 static FRAME_LOCAL_AFTER: AtomicU64 = AtomicU64::new(0);
 static SLOW_STORAGE: [u64; 8] = [0; 8];
 static TEST_SERIAL: Mutex<()> = Mutex::new(());
+
+const TAIL_GC_COLLECTION_INTERVAL: usize = 4_096;
 
 const extern "C" fn builtin_add(_ctx: *mut Thread, left: u64, right: u64) -> u64 {
     left + right
@@ -40,39 +45,38 @@ extern "C" fn alloc_slow(_ctx: *mut Thread, words: u64) -> u64 {
 }
 extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize) {
     SAFEPOINT_SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
-    if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) {
+    let tail_gc_stress = TAIL_GC_STRESS.load(Ordering::SeqCst);
+    let periodic_tail_collection = tail_gc_stress
+        && (TAIL_GC_POLLS.fetch_add(1, Ordering::SeqCst) + 1)
+            % TAIL_GC_COLLECTION_INTERVAL
+            == 0;
+    if COLLECT_IN_SAFEPOINT.swap(false, Ordering::SeqCst) || periodic_tail_collection {
         ctx.capture_native_frame(frame_fp, return_pc);
-        FRAME_WORD_BEFORE.store(
-            ctx.frame_word(2)
-                .expect("captured frame function object")
-                .bits(),
-            Ordering::SeqCst,
-        );
-        FRAME_LOCAL_BEFORE.store(
-            ctx.frame_word(4).expect("captured live local").bits(),
-            Ordering::SeqCst,
-        );
         ctx.clear_safepoint_request();
         ctx.enter_native();
         ncl_sys::collect(ctx, true);
+        if tail_gc_stress {
+            TAIL_GC_COLLECTIONS.fetch_add(1, Ordering::SeqCst);
+        }
         ctx.leave_native();
         ctx.clear_safepoint_request();
-        let after = ctx
-            .last_written_frame_word(2)
-            .expect("written-back frame function object");
-        FRAME_WORD_AFTER.store(after.bits(), Ordering::SeqCst);
-        FRAME_LOCAL_AFTER.store(
-            ctx.last_written_frame_word(4)
-                .expect("written-back live local")
-                .bits(),
-            Ordering::SeqCst,
-        );
-        assert!(ctx.frame_word(2).is_none());
-        println!(
-            "frame word 2: before=0x{:x}, after=0x{:x}",
-            FRAME_WORD_BEFORE.load(Ordering::SeqCst),
-            FRAME_WORD_AFTER.load(Ordering::SeqCst)
-        );
+        if tail_gc_stress {
+            ctx.request_poll();
+        } else {
+            let after = ctx
+                .last_written_frame_word(2)
+                .expect("written-back frame function object");
+            FRAME_WORD_AFTER.store(after.bits(), Ordering::SeqCst);
+            assert!(ctx.frame_word(2).is_none());
+            println!(
+                "frame word 2: before=0x{:x}, after=0x{:x}",
+                FRAME_WORD_BEFORE.load(Ordering::SeqCst),
+                FRAME_WORD_AFTER.load(Ordering::SeqCst)
+            );
+        }
+    } else if tail_gc_stress {
+        ctx.clear_safepoint_request();
+        ctx.request_poll();
     }
 }
 struct BuiltinAbi;
@@ -415,3 +419,6 @@ mod rest_key;
 
 #[path = "exec_aarch64/basic.rs"]
 mod basic;
+
+#[path = "exec_aarch64/tail.rs"]
+mod tail;

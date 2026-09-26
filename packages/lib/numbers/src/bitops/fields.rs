@@ -116,11 +116,7 @@ pub fn dpb(
     let new_value = integer(ctx, *new_value)?
         .checked_shl(byte_parts(*spec)?.1)
         .ok_or(ObjectError::Layout)?;
-    integer_word(
-        ctx,
-        runtime,
-        (old & !mask) | (new_value & mask),
-    )
+    integer_word(ctx, runtime, (old & !mask) | (new_value & mask))
 }
 
 pub fn deposit_field(

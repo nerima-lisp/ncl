@@ -11,8 +11,8 @@ mod predicates;
 pub use basic::*;
 pub use comparison::*;
 use core::{
-    add_pair, args_numbers, bool_word, div_pair, integer, mul_pair, number, ratio, sub_pair, word,
-    Number,
+    Number, add_pair, args_numbers, bool_word, div_pair, integer, mul_pair, number, ratio,
+    sub_pair, word,
 };
 pub use predicates::*;
 

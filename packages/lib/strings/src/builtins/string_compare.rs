@@ -58,16 +58,20 @@ fn string_compare_values(
     let words = args.as_slice();
     let mut index = 2;
     while index < words.len() {
-        let name = keyword_name(ctx, words[index])?;
+        let name = keyword_name(ctx, *words.get(index).ok_or(ObjectError::TypeError)?)?;
         let value = words.get(index + 1).ok_or(ObjectError::TypeError)?;
         let number = usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
             .map_err(|_| ObjectError::TypeError)?;
-        match name.as_str() {
-            "START" | "START1" => left_start = number,
-            "END" | "END1" => left_end = number,
-            "START2" => right_start = number,
-            "END2" => right_end = number,
-            _ => return Err(ObjectError::TypeError),
+        if matches!(name.as_str(), "START" | "START1") {
+            left_start = number;
+        } else if matches!(name.as_str(), "END" | "END1") {
+            left_end = number;
+        } else if name == "START2" {
+            right_start = number;
+        } else if name == "END2" {
+            right_end = number;
+        } else {
+            return Err(ObjectError::TypeError);
         }
         index += 2;
     }
@@ -78,23 +82,29 @@ fn string_compare_values(
     {
         return Err(ObjectError::TypeError);
     }
+    let left_range = left_chars
+        .get(left_start..left_end)
+        .ok_or(ObjectError::TypeError)?;
+    let right_range = right_chars
+        .get(right_start..right_end)
+        .ok_or(ObjectError::TypeError)?;
     let left = if fold {
-        left_chars[left_start..left_end]
+        left_range
             .iter()
             .copied()
             .flat_map(char::to_lowercase)
             .collect()
     } else {
-        left_chars[left_start..left_end].to_vec()
+        left_range.to_vec()
     };
     let right = if fold {
-        right_chars[right_start..right_end]
+        right_range
             .iter()
             .copied()
             .flat_map(char::to_lowercase)
             .collect()
     } else {
-        right_chars[right_start..right_end].to_vec()
+        right_range.to_vec()
     };
     Ok((left, right))
 }
@@ -292,11 +302,15 @@ fn string_case_builtin(
     make_result_string(
         ctx,
         runtime,
-        chars[start..end].iter().copied().flat_map(|c| {
-            if upper {
-                c.to_uppercase().collect::<Vec<_>>()
+        chars.iter().enumerate().flat_map(|(index, &character)| {
+            if (start..end).contains(&index) {
+                if upper {
+                    character.to_uppercase().collect::<Vec<_>>()
+                } else {
+                    character.to_lowercase().collect::<Vec<_>>()
+                }
             } else {
-                c.to_lowercase().collect::<Vec<_>>()
+                vec![character]
             }
         }),
     )
@@ -331,18 +345,19 @@ fn string_capitalize_builtin(
     make_result_string(
         ctx,
         runtime,
-        chars[range_start..range_end]
-            .iter()
-            .copied()
-            .flat_map(|character| {
-            let mapped = if start {
-                character.to_uppercase().collect::<Vec<_>>()
+        chars.iter().enumerate().flat_map(|(index, &character)| {
+            if (range_start..range_end).contains(&index) {
+                let mapped = if start {
+                    character.to_uppercase().collect::<Vec<_>>()
+                } else {
+                    character.to_lowercase().collect::<Vec<_>>()
+                };
+                start = !character.is_alphanumeric();
+                mapped
             } else {
-                character.to_lowercase().collect::<Vec<_>>()
-            };
-            start = !character.is_alphanumeric();
-            mapped
-            }),
+                vec![character]
+            }
+        }),
     )
 }
 
@@ -385,7 +400,8 @@ fn trim_builtin(
             end -= 1;
         }
     }
-    make_result_string(ctx, runtime, input[start..end].iter().copied())
+    let trimmed = input.get(start..end).ok_or(ObjectError::TypeError)?;
+    make_result_string(ctx, runtime, trimmed.iter().copied())
 }
 fn string_trim_builtin(
     ctx: &mut ThreadContext,

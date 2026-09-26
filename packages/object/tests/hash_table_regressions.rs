@@ -1,5 +1,11 @@
 #![allow(missing_docs)]
 
+#[path = "hash_table_regressions/weak_entries.rs"]
+mod weak_entries;
+
+#[path = "hash_table_regressions/equalp.rs"]
+mod equalp;
+
 use ncl_object::hash_table::{HashTable, HashTest, Weakness, sxhash};
 use ncl_object::{Package, Runtime, ThreadContext, allocate, make_cons, make_string, make_symbol};
 use ncl_sys::StorageCondition;
@@ -440,26 +446,6 @@ fn weak_entry_after_gc(
 }
 
 #[test]
-fn weak_key_entry_is_removed_when_key_dies() {
-    weak_entry_after_gc(Weakness::Key, false, false, 0, Word::NIL);
-}
-
-#[test]
-fn weak_value_entry_is_removed_when_value_dies() {
-    weak_entry_after_gc(Weakness::Value, true, false, 0, Word::NIL);
-}
-
-#[test]
-fn weak_key_and_value_entry_requires_both_referents() {
-    weak_entry_after_gc(Weakness::KeyAndValue, false, false, 0, Word::NIL);
-}
-
-#[test]
-fn weak_key_or_value_entry_survives_when_key_is_live() {
-    weak_entry_after_gc(Weakness::KeyOrValue, true, false, 1, Word::fixnum(99));
-}
-
-#[test]
 fn moving_keys_are_rehashed_in_every_table() {
     let (runtime, mut ctx) = setup();
     let mut first_table = HashTable::new(&mut ctx, &runtime, HashTest::Eq, Weakness::None)
@@ -506,26 +492,4 @@ fn moving_keys_are_rehashed_in_every_table() {
     }
     assert!(ncl_object::pop_root(&mut ctx, second_table_token));
     assert!(ncl_object::pop_root(&mut ctx, first_table_token));
-}
-
-const fn key_word(value: i64) -> Word {
-    Word::fixnum(value)
-}
-
-#[test]
-fn equalp_recurses_with_case_folding_through_cons_keys() {
-    let (runtime, mut ctx) = setup();
-    let table = HashTable::new(&mut ctx, &runtime, HashTest::Equalp, Weakness::None)
-        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"));
-    let first = string(&mut ctx, &runtime, "A");
-    let second = string(&mut ctx, &runtime, "b");
-    let left = make_cons(&mut ctx, &runtime, first, second)
-        .unwrap_or_else(|error| panic!("cons allocation failed: {error:?}"));
-    let first = string(&mut ctx, &runtime, "a");
-    let second = string(&mut ctx, &runtime, "B");
-    let right = make_cons(&mut ctx, &runtime, first, second)
-        .unwrap_or_else(|error| panic!("cons allocation failed: {error:?}"));
-
-    assert!(table.insert(&mut ctx, &runtime, left, Word::TRUE).is_ok());
-    assert_eq!(table.get(&mut ctx, right), Ok(Some(Word::TRUE)));
 }

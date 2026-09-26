@@ -23,7 +23,7 @@ pub use heap::{
     Finalizer, Heap, HeapConfig, LayoutError, PageKind, ReferenceLayout, StorageCondition, TypeTag,
     Weakness,
 };
-pub use invoke::{invoke_entry, invoke_entry_with_function};
+pub use invoke::{invoke_entry, invoke_entry_with_function, invoke_entry_with_function_address};
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{NativeState, RootToken, SafepointState, Thread, ThreadLayout, thread_layout};
 pub use word::{

@@ -329,7 +329,7 @@ fn lowers_a_named_global_call_through_the_function_cell() {
         OpKind::LoadField {
             field,
             ..
-        } if *field == ncl_object::symbol_offset::FUNCTION as u32
+        } if *field == u32::try_from(ncl_object::symbol_offset::FUNCTION).unwrap_or_default()
     )));
     assert!(any_op(&lowered.entry, |kind| matches!(
         kind,

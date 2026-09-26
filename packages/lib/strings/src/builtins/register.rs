@@ -22,6 +22,32 @@ const RADIX: Parameter = Parameter {
     name: BuiltinName::new("RADIX"),
     ty: ParameterType::Fixnum,
 };
+const START1: Parameter = Parameter {
+    name: BuiltinName::new("START1"),
+    ty: ParameterType::Fixnum,
+};
+const END1: Parameter = Parameter {
+    name: BuiltinName::new("END1"),
+    ty: ParameterType::Fixnum,
+};
+const START2: Parameter = Parameter {
+    name: BuiltinName::new("START2"),
+    ty: ParameterType::Fixnum,
+};
+const END2: Parameter = Parameter {
+    name: BuiltinName::new("END2"),
+    ty: ParameterType::Fixnum,
+};
+const START: Parameter = Parameter {
+    name: BuiltinName::new("START"),
+    ty: ParameterType::Fixnum,
+};
+const END: Parameter = Parameter {
+    name: BuiltinName::new("END"),
+    ty: ParameterType::Fixnum,
+};
+const STRING_COMPARE_KEYS: &[Parameter] = &[START1, END1, START2, END2];
+const STRING_CASE_KEYS: &[Parameter] = &[START, END];
 const STRING: Parameter = Parameter {
     name: BuiltinName::new("STRING"),
     ty: ParameterType::StringDesignator,
@@ -161,7 +187,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     );
     register!(
         "DIGIT-CHAR-P",
-        LambdaList::fixed(&[CHARACTER]),
+        LambdaList::with_optional(&[CHARACTER], &[RADIX]),
         digit_char_p_builtin
     );
     register!(
@@ -251,86 +277,86 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     );
     register!("STRINGP", LambdaList::fixed(&[OBJECT]), stringp_builtin);
     register!("STRING", LambdaList::fixed(&[OBJECT]), string_builtin);
-    register!("STRING=", LambdaList::fixed(STRINGS), string_equal_builtin);
+    register!("STRING=", LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false), string_equal_builtin);
     register!(
         "STRING/=",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_not_equal_builtin
     );
-    register!("STRING<", LambdaList::fixed(STRINGS), string_less_builtin);
+    register!("STRING<", LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false), string_less_builtin);
     register!(
         "STRING>",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_greater_builtin
     );
     register!(
         "STRING<=",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_not_greater_builtin
     );
     register!(
         "STRING>=",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_not_less_builtin
     );
     register!(
         "STRING-EQUAL",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_equal_ci_builtin
     );
     register!(
         "STRING-NOT-EQUAL",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_not_equal_ci_builtin
     );
     register!(
         "STRING-LESSP",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_less_ci_builtin
     );
     register!(
         "STRING-GREATERP",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_greater_ci_builtin
     );
     register!(
         "STRING-NOT-GREATERP",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_not_greater_ci_builtin
     );
     register!(
         "STRING-NOT-LESSP",
-        LambdaList::fixed(STRINGS),
+        LambdaList::with_keys(STRINGS, STRING_COMPARE_KEYS, false),
         string_not_less_ci_builtin
     );
     register!(
         "STRING-UPCASE",
-        LambdaList::fixed(STRING_ARGS),
+        LambdaList::with_keys(STRING_ARGS, STRING_CASE_KEYS, false),
         string_upcase_builtin
     );
     register!(
         "STRING-DOWNCASE",
-        LambdaList::fixed(STRING_ARGS),
+        LambdaList::with_keys(STRING_ARGS, STRING_CASE_KEYS, false),
         string_downcase_builtin
     );
     register!(
         "STRING-CAPITALIZE",
-        LambdaList::fixed(STRING_ARGS),
+        LambdaList::with_keys(STRING_ARGS, STRING_CASE_KEYS, false),
         string_capitalize_builtin
     );
     register!(
         "NSTRING-UPCASE",
-        LambdaList::fixed(&[STRING]),
+        LambdaList::with_keys(&[STRING], STRING_CASE_KEYS, false),
         nstring_upcase_builtin
     );
     register!(
         "NSTRING-DOWNCASE",
-        LambdaList::fixed(&[STRING]),
+        LambdaList::with_keys(&[STRING], STRING_CASE_KEYS, false),
         nstring_downcase_builtin
     );
     register!(
         "NSTRING-CAPITALIZE",
-        LambdaList::fixed(&[STRING]),
+        LambdaList::with_keys(&[STRING], STRING_CASE_KEYS, false),
         nstring_capitalize_builtin
     );
     register!(

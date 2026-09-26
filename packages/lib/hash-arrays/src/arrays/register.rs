@@ -7,8 +7,9 @@ use super::{
     bit_and_builtin, bit_andc1_builtin, bit_andc2_builtin, bit_builtin, bit_eqv_builtin,
     bit_ior_builtin, bit_nand_builtin, bit_nor_builtin, bit_not_builtin, bit_orc1_builtin,
     bit_orc2_builtin, bit_xor_builtin, fill_pointer_builtin, make_array_builtin, register_one,
-    row_major_aref_builtin, sbit_builtin, simple_vector_p_builtin, svref_builtin,
-    vector_pop_builtin, vector_push_builtin, vector_push_extend_builtin, vectorp_builtin,
+    row_major_aref_builtin, sbit_builtin, simple_bit_vector_p_builtin, simple_vector_p_builtin,
+    svref_builtin, vector_builtin, vector_pop_builtin, vector_push_builtin,
+    vector_push_extend_builtin, vectorp_builtin,
 };
 
 pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
@@ -77,6 +78,13 @@ fn register_array_properties(
     register_one(
         runtime,
         ctx,
+        "SIMPLE-BIT-VECTOR-P",
+        LambdaList::fixed(&[ARRAY]),
+        simple_bit_vector_p_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
         "ARRAY-RANK",
         LambdaList::fixed(&[ARRAY]),
         array_rank_builtin,
@@ -137,6 +145,13 @@ fn register_array_operations(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
 ) -> Result<(), ObjectError> {
+    register_one(
+        runtime,
+        ctx,
+        "VECTOR",
+        LambdaList::with_rest(&[], ELEMENT),
+        vector_builtin,
+    )?;
     register_one(
         runtime,
         ctx,

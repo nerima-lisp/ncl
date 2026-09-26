@@ -9,11 +9,13 @@ use ncl_object::{
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 
 fn form(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, args: &[Word]) -> Result {
-    let operator = symbol(ctx, runtime, name)?;
-    let mut values = Vec::with_capacity(args.len() + 1);
-    values.push(operator);
-    values.extend_from_slice(args);
-    list(ctx, runtime, &values)
+    ncl_object::with_roots(ctx, args, |ctx, roots| {
+        let operator = symbol(ctx, runtime, name)?;
+        let mut values = Vec::with_capacity(roots.len() + 1);
+        values.push(operator);
+        values.extend(roots.iter().map(|value| **value));
+        list(ctx, runtime, &values)
+    })
 }
 
 fn args(ctx: &mut ThreadContext, form: Word) -> Result<Vec<Word>> {
@@ -42,28 +44,36 @@ fn bindings(ctx: &mut ThreadContext, runtime: &Runtime, pairs: &[(Word, Word)]) 
 }
 
 fn and(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    match values {
-        [] => Ok(Word::TRUE),
-        [value] => Ok(*value),
-        [value, rest @ ..] => {
-            let next = and(ctx, runtime, rest)?;
-            form(ctx, runtime, "IF", &[*value, next, Word::NIL])
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let values = roots.iter().map(|value| **value).collect::<Vec<_>>();
+        match values.as_slice() {
+            [] => Ok(Word::TRUE),
+            [value] => Ok(*value),
+            [value, rest @ ..] => {
+                let next = and(ctx, runtime, rest)?;
+                form(ctx, runtime, "IF", &[*value, next, Word::NIL])
+            }
         }
-    }
+    })
 }
 
 fn or(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    match values {
-        [] => Ok(Word::NIL),
-        [value] => Ok(*value),
-        [value, rest @ ..] => {
-            let temporary = fresh_symbol(ctx, runtime)?;
-            let let_bindings = bindings(ctx, runtime, &[(temporary, *value)])?;
-            let next = or(ctx, runtime, rest)?;
-            let test = form(ctx, runtime, "IF", &[temporary, temporary, next])?;
-            form(ctx, runtime, "LET", &[let_bindings, test])
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let values = roots.iter().map(|value| **value).collect::<Vec<_>>();
+        match values.as_slice() {
+            [] => Ok(Word::NIL),
+            [value] => Ok(*value),
+            [value, rest @ ..] => {
+                let mut temporary = fresh_symbol(ctx, runtime)?;
+                ncl_object::with_root(ctx, &mut temporary, |ctx, temporary| {
+                    let let_bindings = bindings(ctx, runtime, &[(*temporary, *value)])?;
+                    let next = or(ctx, runtime, rest)?;
+                    let test = form(ctx, runtime, "IF", &[*temporary, *temporary, next])?;
+                    form(ctx, runtime, "LET", &[let_bindings, test])
+                })
+            }
         }
-    }
+    })
 }
 
 fn cond(ctx: &mut ThreadContext, runtime: &Runtime, clauses: &[Word]) -> Result {

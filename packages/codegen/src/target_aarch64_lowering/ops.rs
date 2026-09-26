@@ -254,7 +254,9 @@ pub fn lower_op(
         }
         OpKind::SetMultipleValues { values } => {
             if values.len() != 1 {
-                for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), values.len() as u64) {
+                let value_count =
+                    u64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?;
+                for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), value_count) {
                     emit(assembler, instruction)?;
                 }
             }

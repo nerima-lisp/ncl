@@ -1,13 +1,13 @@
-use ncl_object::package::{nil, truth};
 use ncl_object::array::{
     adjust_array, adjustable_array_p, array_displacement, array_element_type,
     array_has_fill_pointer_p, fill_pointer, vector_pop, vector_push, vector_push_extend,
 };
+use ncl_object::package::{nil, truth};
 use ncl_object::{
-    ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
-    ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
     array_dimensions, array_row_major_ref, array_row_major_set, car, cdr, classify_object,
     make_array, make_cons, simple_vector_length, simple_vector_ref, string_length,
+    ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
+    ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
 };
 
 use super::{register_one, symbol_text};
@@ -38,6 +38,10 @@ const EXTENSION: Parameter = Parameter {
 };
 const RESULT: Parameter = Parameter {
     name: BuiltinName::new("RESULT"),
+    ty: ParameterType::Any,
+};
+const VALUE: Parameter = Parameter {
+    name: BuiltinName::new("VALUE"),
     ty: ParameterType::Any,
 };
 
@@ -232,7 +236,9 @@ fn fill_pointer_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     fill_pointer(ctx, args.required(0)?).and_then(|value| {
-        Ok(Word::fixnum(i64::try_from(value).map_err(|_| ObjectError::Layout)?))
+        Ok(Word::fixnum(
+            i64::try_from(value).map_err(|_| ObjectError::Layout)?,
+        ))
     })
 }
 
@@ -244,7 +250,10 @@ fn adjust_array_builtin(
 ) -> Result<Word, ObjectError> {
     let dimensions = list_values(ctx, args.required(1)?)?
         .into_iter()
-        .map(|value| usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?).map_err(|_| ObjectError::TypeError))
+        .map(|value| {
+            usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
+                .map_err(|_| ObjectError::TypeError)
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let initial = args.as_slice().get(2).copied().unwrap_or(Word::NIL);
     adjust_array(ctx, runtime, args.required(0)?, &dimensions, initial)
@@ -270,9 +279,20 @@ fn vector_push_extend_builtin(
     let extension = args.as_slice().get(2).copied().unwrap_or(Word::fixnum(1));
     let extension = usize::try_from(extension.as_fixnum().ok_or(ObjectError::TypeError)?)
         .map_err(|_| ObjectError::TypeError)?;
-    let (index, adjusted) = vector_push_extend(ctx, runtime, args.required(0)?, args.required(1)?, extension)?;
-    values.set(&[Word::fixnum(i64::try_from(index).map_err(|_| ObjectError::Layout)?), adjusted]);
-    Ok(Word::fixnum(i64::try_from(index).map_err(|_| ObjectError::Layout)?))
+    let (index, adjusted) = vector_push_extend(
+        ctx,
+        runtime,
+        args.required(0)?,
+        args.required(1)?,
+        extension,
+    )?;
+    values.set(&[
+        Word::fixnum(i64::try_from(index).map_err(|_| ObjectError::Layout)?),
+        adjusted,
+    ]);
+    Ok(Word::fixnum(
+        i64::try_from(index).map_err(|_| ObjectError::Layout)?,
+    ))
 }
 
 fn vector_pop_builtin(
@@ -402,23 +422,7 @@ fn aref_builtin(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
-    let shape = array_shape(ctx, array)?;
-    let indices = &args.as_slice()[1..];
-    if shape.len() != indices.len() {
-        return Err(ObjectError::TypeError);
-    }
-    let mut offset = 0usize;
-    for (dimension, index) in shape.iter().copied().zip(indices.iter().copied()) {
-        let index = usize::try_from(index.as_fixnum().ok_or(ObjectError::TypeError)?)
-            .map_err(|_| ObjectError::TypeError)?;
-        if index >= dimension {
-            return Err(ObjectError::TypeError);
-        }
-        offset = offset
-            .checked_mul(dimension)
-            .and_then(|value| value.checked_add(index))
-            .ok_or(ObjectError::Layout)?;
-    }
+    let offset = row_major_index(&array_shape(ctx, array)?, &args.as_slice()[1..])?;
     array_row_major_ref(ctx, array, offset)
 }
 
@@ -438,7 +442,10 @@ fn array_displacement_builtin(
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let (target, offset) = array_displacement(ctx, args.required(0)?)?;
-    values.set(&[target, Word::fixnum(i64::try_from(offset).map_err(|_| ObjectError::Layout)?)]);
+    values.set(&[
+        target,
+        Word::fixnum(i64::try_from(offset).map_err(|_| ObjectError::Layout)?),
+    ]);
     Ok(target)
 }
 
@@ -451,7 +458,9 @@ fn array_row_major_index_builtin(
     let shape = array_shape(ctx, args.required(0)?)?;
     let indices = &args.as_slice()[1..];
     let offset = row_major_index(&shape, indices)?;
-    Ok(Word::fixnum(i64::try_from(offset).map_err(|_| ObjectError::Layout)?))
+    Ok(Word::fixnum(
+        i64::try_from(offset).map_err(|_| ObjectError::Layout)?,
+    ))
 }
 
 fn row_major_index(shape: &[usize], indices: &[Word]) -> Result<usize, ObjectError> {
@@ -459,16 +468,22 @@ fn row_major_index(shape: &[usize], indices: &[Word]) -> Result<usize, ObjectErr
         return Err(ObjectError::TypeError);
     }
     let mut offset = 0usize;
-    for (dimension, index) in shape.iter().copied().zip(indices.iter().copied()) {
+    let mut stride = 1usize;
+    for (dimension, index) in shape
+        .iter()
+        .copied()
+        .rev()
+        .zip(indices.iter().copied().rev())
+    {
         let index = usize::try_from(index.as_fixnum().ok_or(ObjectError::TypeError)?)
             .map_err(|_| ObjectError::TypeError)?;
         if index >= dimension {
             return Err(ObjectError::TypeError);
         }
         offset = offset
-            .checked_mul(dimension)
-            .and_then(|value| value.checked_add(index))
+            .checked_add(index.checked_mul(stride).ok_or(ObjectError::Layout)?)
             .ok_or(ObjectError::Layout)?;
+        stride = stride.checked_mul(dimension).ok_or(ObjectError::Layout)?;
     }
     Ok(offset)
 }
@@ -536,7 +551,10 @@ fn bit_binary_builtin(
             ctx,
             result,
             index,
-            Word::fixnum(i64::from(op(bit_value(ctx, left, index)?, bit_value(ctx, right, index)?))),
+            Word::fixnum(i64::from(op(
+                bit_value(ctx, left, index)?,
+                bit_value(ctx, right, index)?,
+            ))),
         )?;
     }
     Ok(result)
@@ -573,8 +591,7 @@ fn bit_builtin(
 ) -> Result<Word, ObjectError> {
     let array = args.required(0)?;
     let index = row_major_index(&array_shape(ctx, array)?, &args.as_slice()[1..])?;
-    bit_value(ctx, array, index)
-        .map(|value| Word::fixnum(i64::from(value)))
+    bit_value(ctx, array, index).map(|value| Word::fixnum(i64::from(value)))
 }
 
 fn sbit_builtin(
@@ -594,23 +611,59 @@ fn sbit_builtin(
     let index = args.required(1)?;
     let index = usize::try_from(index.as_fixnum().ok_or(ObjectError::TypeError)?)
         .map_err(|_| ObjectError::TypeError)?;
-    bit_value(ctx, array, index).map(|value| Word::fixnum(i64::from(value)))
+    let current = bit_value(ctx, array, index)?;
+    match args.get(2) {
+        Some(value) => {
+            let value = match value.as_fixnum() {
+                Some(0) | Some(1) => value,
+                _ => return Err(ObjectError::TypeError),
+            };
+            array_row_major_set(ctx, array, index, value)?;
+            Ok(value)
+        }
+        None => Ok(Word::fixnum(i64::from(current))),
+    }
 }
 
-fn bit_and(a: u8, b: u8) -> u8 { a & b }
-fn bit_andc1(a: u8, b: u8) -> u8 { (1 - a) & b }
-fn bit_andc2(a: u8, b: u8) -> u8 { a & (1 - b) }
-fn bit_eqv(a: u8, b: u8) -> u8 { 1 - (a ^ b) }
-fn bit_ior(a: u8, b: u8) -> u8 { a | b }
-fn bit_nand(a: u8, b: u8) -> u8 { 1 - (a & b) }
-fn bit_nor(a: u8, b: u8) -> u8 { 1 - (a | b) }
-fn bit_orc1(a: u8, b: u8) -> u8 { (1 - a) | b }
-fn bit_orc2(a: u8, b: u8) -> u8 { a | (1 - b) }
-fn bit_xor(a: u8, b: u8) -> u8 { a ^ b }
+fn bit_and(a: u8, b: u8) -> u8 {
+    a & b
+}
+fn bit_andc1(a: u8, b: u8) -> u8 {
+    (1 - a) & b
+}
+fn bit_andc2(a: u8, b: u8) -> u8 {
+    a & (1 - b)
+}
+fn bit_eqv(a: u8, b: u8) -> u8 {
+    1 - (a ^ b)
+}
+fn bit_ior(a: u8, b: u8) -> u8 {
+    a | b
+}
+fn bit_nand(a: u8, b: u8) -> u8 {
+    1 - (a & b)
+}
+fn bit_nor(a: u8, b: u8) -> u8 {
+    1 - (a | b)
+}
+fn bit_orc1(a: u8, b: u8) -> u8 {
+    (1 - a) | b
+}
+fn bit_orc2(a: u8, b: u8) -> u8 {
+    a | (1 - b)
+}
+fn bit_xor(a: u8, b: u8) -> u8 {
+    a ^ b
+}
 
 macro_rules! binary_bit_builtin {
     ($name:ident, $op:ident) => {
-        fn $name(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, values: &mut MultipleValues) -> Result<Word, ObjectError> {
+        fn $name(
+            ctx: &mut ThreadContext,
+            runtime: &Runtime,
+            args: &BuiltinArgs<'_>,
+            values: &mut MultipleValues,
+        ) -> Result<Word, ObjectError> {
             let _ = values;
             bit_binary_builtin(ctx, runtime, args, $op)
         }
@@ -712,28 +765,166 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
         LambdaList::with_rest(&[ARRAY], INDEX),
         array_in_bounds_builtin,
     )?;
-    register_one(runtime, ctx, "ADJUSTABLE-ARRAY-P", LambdaList::fixed(&[ARRAY]), adjustable_array_p_builtin)?;
-    register_one(runtime, ctx, "ARRAY-HAS-FILL-POINTER-P", LambdaList::fixed(&[ARRAY]), array_has_fill_pointer_p_builtin)?;
-    register_one(runtime, ctx, "FILL-POINTER", LambdaList::fixed(&[ARRAY]), fill_pointer_builtin)?;
-    register_one(runtime, ctx, "ADJUST-ARRAY", LambdaList::with_optional(&[ARRAY, DIMENSIONS], &[OPTIONS]), adjust_array_builtin)?;
-    register_one(runtime, ctx, "VECTOR-PUSH", LambdaList::fixed(&[ELEMENT, ARRAY]), vector_push_builtin)?;
-    register_one(runtime, ctx, "VECTOR-PUSH-EXTEND", LambdaList::with_optional(&[ELEMENT, ARRAY], &[EXTENSION]), vector_push_extend_builtin)?;
-    register_one(runtime, ctx, "VECTOR-POP", LambdaList::fixed(&[ARRAY]), vector_pop_builtin)?;
-    register_one(runtime, ctx, "ARRAY-ELEMENT-TYPE", LambdaList::fixed(&[ARRAY]), array_element_type_builtin)?;
-    register_one(runtime, ctx, "ARRAY-DISPLACEMENT", LambdaList::fixed(&[ARRAY]), array_displacement_builtin)?;
-    register_one(runtime, ctx, "ARRAY-ROW-MAJOR-INDEX", LambdaList::with_rest(&[ARRAY], INDEX), array_row_major_index_builtin)?;
-    register_one(runtime, ctx, "BIT", LambdaList::with_rest(&[ARRAY], INDEX), bit_builtin)?;
-    register_one(runtime, ctx, "SBIT", LambdaList::fixed(&[ARRAY, INDEX]), sbit_builtin)?;
-    register_one(runtime, ctx, "BIT-AND", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_and_builtin)?;
-    register_one(runtime, ctx, "BIT-ANDC1", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_andc1_builtin)?;
-    register_one(runtime, ctx, "BIT-ANDC2", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_andc2_builtin)?;
-    register_one(runtime, ctx, "BIT-EQV", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_eqv_builtin)?;
-    register_one(runtime, ctx, "BIT-IOR", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_ior_builtin)?;
-    register_one(runtime, ctx, "BIT-NAND", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_nand_builtin)?;
-    register_one(runtime, ctx, "BIT-NOR", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_nor_builtin)?;
-    register_one(runtime, ctx, "BIT-NOT", LambdaList::with_optional(&[ARRAY], &[RESULT]), bit_not_builtin)?;
-    register_one(runtime, ctx, "BIT-ORC1", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_orc1_builtin)?;
-    register_one(runtime, ctx, "BIT-ORC2", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_orc2_builtin)?;
-    register_one(runtime, ctx, "BIT-XOR", LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]), bit_xor_builtin)?;
+    register_one(
+        runtime,
+        ctx,
+        "ADJUSTABLE-ARRAY-P",
+        LambdaList::fixed(&[ARRAY]),
+        adjustable_array_p_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "ARRAY-HAS-FILL-POINTER-P",
+        LambdaList::fixed(&[ARRAY]),
+        array_has_fill_pointer_p_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "FILL-POINTER",
+        LambdaList::fixed(&[ARRAY]),
+        fill_pointer_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "ADJUST-ARRAY",
+        LambdaList::with_optional(&[ARRAY, DIMENSIONS], &[OPTIONS]),
+        adjust_array_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "VECTOR-PUSH",
+        LambdaList::fixed(&[ELEMENT, ARRAY]),
+        vector_push_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "VECTOR-PUSH-EXTEND",
+        LambdaList::with_optional(&[ELEMENT, ARRAY], &[EXTENSION]),
+        vector_push_extend_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "VECTOR-POP",
+        LambdaList::fixed(&[ARRAY]),
+        vector_pop_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "ARRAY-ELEMENT-TYPE",
+        LambdaList::fixed(&[ARRAY]),
+        array_element_type_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "ARRAY-DISPLACEMENT",
+        LambdaList::fixed(&[ARRAY]),
+        array_displacement_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "ARRAY-ROW-MAJOR-INDEX",
+        LambdaList::with_rest(&[ARRAY], INDEX),
+        array_row_major_index_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT",
+        LambdaList::with_rest(&[ARRAY], INDEX),
+        bit_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "SBIT",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[VALUE]),
+        sbit_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-AND",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_and_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-ANDC1",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_andc1_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-ANDC2",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_andc2_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-EQV",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_eqv_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-IOR",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_ior_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-NAND",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_nand_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-NOR",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_nor_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-NOT",
+        LambdaList::with_optional(&[ARRAY], &[RESULT]),
+        bit_not_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-ORC1",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_orc1_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-ORC2",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_orc2_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-XOR",
+        LambdaList::with_optional(&[ARRAY, INDEX], &[RESULT]),
+        bit_xor_builtin,
+    )?;
     Ok(())
 }

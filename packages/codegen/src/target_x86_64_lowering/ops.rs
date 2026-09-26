@@ -272,11 +272,13 @@ pub fn lower_op(
             }
         }
         OpKind::SetMultipleValues { values } => {
-            load_immediate(
-                assembler,
-                VALUE_COUNT,
-                i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
-            )?;
+            if values.len() != 1 {
+                load_immediate(
+                    assembler,
+                    VALUE_COUNT,
+                    i64::try_from(values.len()).map_err(|_| CodegenError::FrameOverflow)?,
+                )?;
+            }
             if let (Some(first), Some(result)) = (values.first(), result) {
                 load_slot(assembler, slots, *first, FUNCTION_OBJECT)?;
                 store_slot(assembler, slots, result, FUNCTION_OBJECT)?;

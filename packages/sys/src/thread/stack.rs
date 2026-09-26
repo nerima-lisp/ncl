@@ -6,7 +6,7 @@ pub(super) fn current_stack_bounds() -> Option<(usize, usize)> {
     // SAFETY: pthread_self identifies the calling thread and both APIs return its live stack extent.
     unsafe {
         let thread = crate::os::declarations::pthread_self();
-        let top = crate::os::declarations::pthread_get_stackaddr_np(thread) as usize;
+        let top = crate::os::declarations::pthread_get_stackaddr_np(thread).addr();
         let size = crate::os::declarations::pthread_get_stacksize_np(thread);
         top.checked_sub(size).map(|start| (start, top))
     }
@@ -33,7 +33,7 @@ pub(super) fn current_stack_bounds() -> Option<(usize, usize)> {
             result
         }
     };
-    (result == 0).then_some((start as usize, (start as usize).saturating_add(size)))
+    (result == 0).then_some((start.addr(), start.addr().saturating_add(size)))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]

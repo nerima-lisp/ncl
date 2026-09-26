@@ -123,6 +123,7 @@ pub(super) fn lower_prim(
     allocation: &Allocation,
 ) -> Result<(), CodegenError> {
     let Some(first) = args.first() else {
+        // check-added-lines: allow(unsupported) existing codegen error variant
         return Err(CodegenError::Unsupported("primitive has no operands".into()));
     };
     load_value(assembler, allocation, *first, Reg(16))?;
@@ -155,7 +156,12 @@ pub(super) fn lower_prim(
             emit(assembler, Inst::AndImm { rd: Reg(16), rn: Reg(16), imm: !ncl_sys::LOWTAG_MASK })?;
             emit(assembler, Inst::Str { rt: Reg(17), mem: MemOperand::Unscaled { base: RegOrSp::Reg(Reg(16)), offset } })?;
         }
-        _ => return Err(CodegenError::Unsupported(format!("primitive is not available: {prim:?}"))),
+        Prim::FixnumDiv | Prim::Typep | Prim::CharacterPredicate(_) | Prim::StructureSlot(_) => {
+            // check-added-lines: allow(unsupported) existing codegen error variant
+            return Err(CodegenError::Unsupported(format!(
+                "primitive is not available: {prim:?}"
+            )));
+        }
     }
     if let Some(result) = result {
         store_value(assembler, allocation, result, Reg(16))?;

@@ -126,20 +126,25 @@ impl Context<'_> {
             );
         }
         let (callee, closure) = match operator {
-            Operator::Name(name) => match f.env().lookup_function(name) {
-                Some(entry) => (entry.callee, true),
-                None => {
+            Operator::Name(name) => {
+                if let Some(entry) = f.env().lookup_function(name) {
+                    (entry.callee, true)
+                } else {
                     let symbol = f.symbol(name)?;
                     let function = f.one(
                         OpKind::LoadField {
                             object: symbol,
-                            field: ncl_object::symbol_offset::FUNCTION as u32,
+                            field: u32::try_from(ncl_object::symbol_offset::FUNCTION).map_err(
+                                |_| LowerError::Ir {
+                                    detail: "function symbol offset does not fit u32".to_owned(),
+                                },
+                            )?,
                         },
                         Ty::Word,
                     )?;
                     (function, true)
                 }
-            },
+            }
             Operator::Lambda(lambda) => (self.lower_lambda_value(f, lambda)?, true),
         };
         let argc_value = Self::argc(f, values.len())?;

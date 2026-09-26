@@ -296,11 +296,7 @@ pub fn compile_function_aarch64(
                 }
                 let area_offset = abi
                     .field_offset(crate::ContextField::MultipleValueArea)
-                    .ok_or_else(|| {
-                        CodegenError::Unsupported(
-                            "context offset is unavailable: MultipleValueArea".into(),
-                        )
-                    })?;
+                    .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
                 for (index, value) in values.iter().copied().enumerate() {
                     let byte_offset = i32::try_from(index)
                         .ok()

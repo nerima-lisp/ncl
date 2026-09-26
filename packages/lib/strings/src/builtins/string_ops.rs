@@ -131,14 +131,15 @@ fn nstring_case_builtin(
     args: &BuiltinArgs<'_>,
     map: fn(char) -> char,
 ) -> Result<Word, ObjectError> {
-    let string = args.required(0)?;
-    let length = string_length(ctx, string)?;
+    let length = string_length(ctx, args.required(0)?)?;
     let (start, end) = string_range(ctx, args, 1, length, &["START"], &["END"])?;
     for index in start..end {
+        let string = args.required(0)?;
         let mapped = map(string_ref(ctx, string, index)?);
+        let string = args.required(0)?;
         string_set(ctx, string, index, mapped)?;
     }
-    Ok(string)
+    args.required(0)
 }
 
 fn nstring_upcase_builtin(
@@ -169,21 +170,22 @@ fn nstring_capitalize_builtin(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let string = args.required(0)?;
-    let length = string_length(ctx, string)?;
+    let length = string_length(ctx, args.required(0)?)?;
     let mut start = true;
     let (range_start, range_end) = string_range(ctx, args, 1, length, &["START"], &["END"])?;
     for index in range_start..range_end {
+        let string = args.required(0)?;
         let value = string_ref(ctx, string, index)?;
         let mapped = if start {
             value.to_uppercase().next().unwrap_or(value)
         } else {
             value.to_lowercase().next().unwrap_or(value)
         };
+        let string = args.required(0)?;
         string_set(ctx, string, index, mapped)?;
         start = !value.is_alphanumeric();
     }
-    Ok(string)
+    args.required(0)
 }
 
 fn simple_string_p_builtin(

@@ -63,14 +63,6 @@ fn golden_aarch64_branch_decodes() {
 fn golden_aarch64_builtin_decodes() {
     struct Abi;
     impl RuntimeAbi for Abi {
-        fn encode_fixnum(&self, value: i64) -> i64 {
-            value << 3
-        }
-
-        fn encode_character(&self, value: u32) -> i64 {
-            i64::from(value) << 8 | 0x0f
-        }
-
         fn builtin_address(&self, name: &str) -> Option<u64> {
             (name == "identity").then_some(0x1000)
         }

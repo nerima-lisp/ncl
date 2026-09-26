@@ -29,6 +29,6 @@ fn executes_constant_return_in_published_code() {
         [0; 4],
         0,
     );
-    assert_eq!(value, abi.encode_fixnum(42) as u64);
+    assert_eq!(value, Word::fixnum(42).bits());
     assert_eq!(count, 1);
 }

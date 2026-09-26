@@ -283,7 +283,7 @@ pub fn compile_function_aarch64(
                     load_value(&mut assembler, &allocation, *value, Reg(0))?;
                 } else {
                     for instruction in
-                        ncl_asm_aarch64::mov_imm64(Reg(0), abi.encode_fixnum(0).cast_unsigned())
+                        ncl_asm_aarch64::mov_imm64(Reg(0), ncl_sys::Word::fixnum(0).bits())
                     {
                         emit(&mut assembler, instruction)?;
                     }

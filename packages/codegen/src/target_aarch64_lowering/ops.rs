@@ -8,11 +8,11 @@ use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 
 fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<u64, CodegenError> {
     match constant {
-        ncl_ir::Constant::Fixnum(value) => Ok(abi.encode_fixnum(*value).cast_unsigned()),
-        ncl_ir::Constant::Character(value) => Ok(abi.encode_character(*value).cast_unsigned()),
-        ncl_ir::Constant::Nil => Ok(abi.encode_nil().cast_unsigned()),
-        ncl_ir::Constant::Unbound => Ok(abi.encode_unbound().cast_unsigned()),
-        ncl_ir::Constant::T => Ok(abi.encode_fixnum(1).cast_unsigned()),
+        ncl_ir::Constant::Fixnum(value) => Ok(ncl_sys::Word::fixnum(*value).bits()),
+        ncl_ir::Constant::Character(value) => Ok(ncl_sys::Word::character(*value).bits()),
+        ncl_ir::Constant::Nil => Ok(ncl_sys::Word::NIL.bits()),
+        ncl_ir::Constant::Unbound => Ok(ncl_sys::Word::UNBOUND.bits()),
+        ncl_ir::Constant::T => Ok(ncl_sys::Word::TRUE.bits()),
         ncl_ir::Constant::FunctionEntry(function) => abi
             .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))
             .map(i64::cast_unsigned)

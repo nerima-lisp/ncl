@@ -22,13 +22,19 @@ pub(super) fn constant_value(
     abi: &dyn RuntimeAbi,
 ) -> Result<i64, CodegenError> {
     match constant {
-        Constant::Fixnum(value) => Ok(abi.encode_fixnum(*value)),
-        Constant::Character(value) => Ok(abi.encode_character(*value)),
+        Constant::Fixnum(value) => Ok(i64::from_ne_bytes(
+            ncl_sys::Word::fixnum(*value).bits().to_ne_bytes(),
+        )),
+        Constant::Character(value) => Ok(i64::from_ne_bytes(
+            ncl_sys::Word::character(*value).bits().to_ne_bytes(),
+        )),
         Constant::SingleFloat(value) => Ok(i64::from(value.to_bits())),
         Constant::DoubleFloat(value) => Ok(i64::from_ne_bytes(value.to_bits().to_ne_bytes())),
-        Constant::Nil => Ok(abi.encode_nil()),
-        Constant::Unbound => Ok(abi.encode_unbound()),
-        Constant::T => Ok(abi.encode_fixnum(1)),
+        Constant::Nil => Ok(i64::from_ne_bytes(ncl_sys::Word::NIL.bits().to_ne_bytes())),
+        Constant::Unbound => Ok(i64::from_ne_bytes(
+            ncl_sys::Word::UNBOUND.bits().to_ne_bytes(),
+        )),
+        Constant::T => Ok(i64::from_ne_bytes(ncl_sys::Word::TRUE.bits().to_ne_bytes())),
         Constant::FunctionEntry(function) => abi
             .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))
             .ok_or_else(|| CodegenError::Unsupported("entry unavailable".into())),
@@ -229,14 +235,19 @@ pub(super) fn emit_return(
     assembler: &mut Assembler,
     values: &[ValueId],
     slots: &[(ValueId, u32)],
-    abi: &dyn RuntimeAbi,
+    _abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     if let Some(value) = values.first() {
         load(assembler, slots, *value, Reg::Rax)?;
     } else {
         emit(
             assembler,
-            &Inst::MovRI(Reg::Rax, Imm::I64(abi.encode_fixnum(0))),
+            &Inst::MovRI(
+                Reg::Rax,
+                Imm::I64(i64::from_ne_bytes(
+                    ncl_sys::Word::fixnum(0).bits().to_ne_bytes(),
+                )),
+            ),
         )?;
     }
     emit(

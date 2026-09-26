@@ -5,14 +5,6 @@ use crate::{ContextField, RuntimeAbi, RuntimeFunction};
 pub struct X86_64FixtureAbi;
 
 impl RuntimeAbi for X86_64FixtureAbi {
-    fn encode_fixnum(&self, value: i64) -> i64 {
-        value << 3
-    }
-
-    fn encode_character(&self, value: u32) -> i64 {
-        i64::from(value) << 8 | 0x0f
-    }
-
     fn builtin_address(&self, _name: &str) -> Option<u64> {
         None
     }

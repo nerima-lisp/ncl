@@ -152,7 +152,7 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
         [0; 4],
         0,
     );
-    assert_eq!(value, abi.encode_fixnum(30) as u64);
+    assert_eq!(value, Word::fixnum(30).bits());
     assert_eq!(count, 1);
     assert_eq!(tlab_bump(&thread), bump + 16);
     let Some(map) = compiled.safepoint_maps.first() else {
@@ -241,7 +241,7 @@ fn executes_safepoint_poll_without_and_with_request() {
         [0; 4],
         0,
     );
-    assert_eq!(native_no_request, (abi.encode_fixnum(7) as u64, 1));
+    assert_eq!(native_no_request, (Word::fixnum(7).bits(), 1));
     assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 0);
     leave_native(&mut thread);
     let no_request = invoke_entry(
@@ -252,7 +252,7 @@ fn executes_safepoint_poll_without_and_with_request() {
         [0; 4],
         0,
     );
-    assert_eq!(no_request, (abi.encode_fixnum(7) as u64, 1));
+    assert_eq!(no_request, (Word::fixnum(7).bits(), 1));
     assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 0);
     request_safepoint(&mut thread);
     let requested = invoke_entry(
@@ -263,7 +263,7 @@ fn executes_safepoint_poll_without_and_with_request() {
         [0; 4],
         0,
     );
-    assert_eq!(requested, (abi.encode_fixnum(7) as u64, 1));
+    assert_eq!(requested, (Word::fixnum(7).bits(), 1));
     assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 1);
     let Some(map) = compiled.safepoint_maps.first() else {
         panic!("safepoint map missing");

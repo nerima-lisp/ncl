@@ -372,12 +372,6 @@ impl MacroCaller for RuntimeMacroCaller {
 #[derive(Clone, Copy, Debug)]
 struct NativeAbi;
 impl RuntimeAbi for NativeAbi {
-    fn encode_fixnum(&self, value: i64) -> i64 {
-        i64::from_ne_bytes(Word::fixnum(value).bits().to_ne_bytes())
-    }
-    fn encode_character(&self, value: u32) -> i64 {
-        i64::from_ne_bytes(Word::character(value).bits().to_ne_bytes())
-    }
     fn builtin_address(&self, _name: &str) -> Option<u64> {
         None
     }

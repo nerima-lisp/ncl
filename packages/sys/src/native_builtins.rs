@@ -116,6 +116,70 @@ pub extern "C" fn native_add(mut thread: NonNull<Thread>, left: Word, right: Wor
     Word::NIL
 }
 
+/// Subtract two fixnums through the native-entry boundary.
+#[must_use]
+pub extern "C" fn native_sub(mut thread: NonNull<Thread>, left: Word, right: Word) -> Word {
+    // SAFETY: the caller provides a valid registered thread.
+    let thread = unsafe { thread.as_mut() };
+    if thread.heap().is_none() {
+        thread.set_native_error(NativeError::ThreadNotRegistered {
+            operation: NativeOperation::Sub,
+        });
+        return Word::NIL;
+    }
+    if let (Some(left), Some(right)) = (left.as_fixnum(), right.as_fixnum()) {
+        if let Some(value) = left.checked_sub(right) {
+            let word = Word::fixnum(value);
+            if word.as_fixnum() == Some(value) {
+                return word;
+            }
+        }
+        thread.set_native_error(NativeError::Overflow {
+            operation: NativeOperation::Sub,
+            semantics: OverflowSemantics::ArithmeticFixnum,
+        });
+    } else {
+        let (operand, value) = if left.as_fixnum().is_none() {
+            (0, left)
+        } else {
+            (1, right)
+        };
+        thread.set_native_error(NativeError::TypeMismatch {
+            operation: NativeOperation::Sub,
+            operand,
+            value,
+        });
+    }
+    Word::NIL
+}
+
+/// Compare two fixnums through the native-entry boundary.
+#[must_use]
+pub extern "C" fn native_less(mut thread: NonNull<Thread>, left: Word, right: Word) -> Word {
+    // SAFETY: the caller provides a valid registered thread.
+    let thread = unsafe { thread.as_mut() };
+    if thread.heap().is_none() {
+        thread.set_native_error(NativeError::ThreadNotRegistered {
+            operation: NativeOperation::Less,
+        });
+        return Word::NIL;
+    }
+    if let (Some(left), Some(right)) = (left.as_fixnum(), right.as_fixnum()) {
+        return if left < right { Word::TRUE } else { Word::NIL };
+    }
+    let (operand, value) = if left.as_fixnum().is_none() {
+        (0, left)
+    } else {
+        (1, right)
+    };
+    thread.set_native_error(NativeError::TypeMismatch {
+        operation: NativeOperation::Less,
+        operand,
+        value,
+    });
+    Word::NIL
+}
+
 /// Multiply two fixnums through the native-entry boundary.
 #[must_use]
 pub extern "C" fn native_mul(mut thread: NonNull<Thread>, left: Word, right: Word) -> Word {

@@ -1,6 +1,6 @@
 //! Expression lowering for the IR v2 path.
 
-use ncl_ir::{Compare, Constant, Convert, FunctionId, OpKind, Prim, Terminator, Ty, ValueId};
+use ncl_ir::{Compare, Constant, Convert, FunctionId, OpKind, Terminator, Ty, ValueId};
 
 use crate::ast::{Expr, FunctionDesignator, LambdaExpr, Operator};
 use crate::symbols::SymbolRef;
@@ -98,7 +98,7 @@ impl Context<'_> {
                             }
                         })?,
                     },
-                    Ty::Word,
+                    Ty::Bool,
                 )
             }
         }
@@ -131,26 +131,6 @@ impl Context<'_> {
                         args,
                     },
                     Ty::Word,
-                );
-            }
-            if values.len() == 2 && name.name == "-" {
-                return f.one(
-                    OpKind::Prim {
-                        op: Prim::FixnumSub,
-                        args: values,
-                        condition: None,
-                    },
-                    Ty::Word,
-                );
-            }
-            if values.len() == 2 && name.name == "<" {
-                return f.one(
-                    OpKind::Prim {
-                        op: Prim::FixnumLt,
-                        args: values,
-                        condition: None,
-                    },
-                    Ty::Bool,
                 );
             }
         }

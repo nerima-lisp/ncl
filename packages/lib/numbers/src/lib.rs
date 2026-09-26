@@ -36,14 +36,18 @@ fn with_root<T>(
 #[derive(Clone, Copy)]
 enum NativeEntry {
     Add,
+    Sub,
     Mul,
+    Less,
 }
 
 impl NativeEntry {
     fn address(self) -> Result<usize, ObjectError> {
         let address = match self {
             Self::Add => ncl_sys::function_address!(ncl_sys::native_add),
+            Self::Sub => ncl_sys::function_address!(ncl_sys::native_sub),
             Self::Mul => ncl_sys::function_address!(ncl_sys::native_mul),
+            Self::Less => ncl_sys::function_address!(ncl_sys::native_less),
         }
         .map_err(|_| ObjectError::Layout)?;
         usize::try_from(address).map_err(|_| ObjectError::Layout)
@@ -244,14 +248,20 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ("REALP", 1, true, arithmetic::typed_realp, None),
             ("COMPLEXP", 1, true, arithmetic::typed_complexp, None),
             ("+", 0, false, arithmetic::typed_add, Some(NativeEntry::Add)),
-            ("-", 0, false, arithmetic::typed_sub, None),
+            ("-", 0, false, arithmetic::typed_sub, Some(NativeEntry::Sub)),
             ("*", 0, false, arithmetic::typed_mul, Some(NativeEntry::Mul)),
             ("/", 0, false, arithmetic::typed_div, None),
             ("=", 0, false, arithmetic::typed_equal, None),
             ("EQ", 2, true, arithmetic::typed_eq, None),
             ("EQL", 2, true, arithmetic::typed_eql, None),
             ("/=", 0, false, arithmetic::typed_not_equal, None),
-            ("<", 0, false, arithmetic::typed_less, None),
+            (
+                "<",
+                0,
+                false,
+                arithmetic::typed_less,
+                Some(NativeEntry::Less),
+            ),
             (">", 0, false, arithmetic::typed_greater, None),
             ("<=", 0, false, arithmetic::typed_less_equal, None),
             (">=", 0, false, arithmetic::typed_greater_equal, None),

@@ -28,7 +28,9 @@ pub use heap::{
     Weakness,
 };
 pub use invoke::{invoke_entry, invoke_entry_with_function, invoke_entry_with_function_address};
-pub use native_builtins::{native_add, native_car, native_cons, native_mul, native_safepoint};
+pub use native_builtins::{
+    native_add, native_car, native_cons, native_less, native_mul, native_safepoint, native_sub,
+};
 pub use native_error::{NativeError, NativeOperation, OverflowSemantics};
 pub use sync::{Condvar, Mutex, Semaphore, WaitQueue};
 pub use thread::{

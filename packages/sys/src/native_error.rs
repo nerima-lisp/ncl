@@ -10,8 +10,12 @@ pub enum NativeOperation {
     Car,
     /// Fixnum addition.
     Add,
+    /// Fixnum subtraction.
+    Sub,
     /// Fixnum multiplication.
     Mul,
+    /// Fixnum less-than comparison.
+    Less,
     /// Safepoint service.
     Safepoint,
 }

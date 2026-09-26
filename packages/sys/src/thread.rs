@@ -1,7 +1,6 @@
 use crate::native_error::NativeError;
 use crate::word::Word;
 use std::ptr;
-
 /// Number of words in the machine-visible multiple-value return area.
 pub const MULTIPLE_VALUE_AREA_WORDS: usize = 20;
 
@@ -35,7 +34,6 @@ pub struct RootToken {
     pub(crate) index: usize,
     pub(crate) count: usize,
 }
-
 /// Machine-visible mutator context.
 ///
 /// This type is `repr(C)` so the offsets returned by [`thread_layout`] are a
@@ -70,7 +68,6 @@ pub struct Thread {
     frame_last_written: Vec<Word>,
     native_error: Option<NativeError>,
 }
-
 /// Native offsets consumed by the code generator when addressing a thread context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ThreadLayout {
@@ -91,7 +88,6 @@ pub struct ThreadLayout {
     /// Offset of the catch chain.
     pub catch: usize,
 }
-
 /// Return byte offsets for the machine-visible part of [`Thread`].
 #[must_use]
 pub const fn thread_layout() -> ThreadLayout {
@@ -106,7 +102,6 @@ pub const fn thread_layout() -> ThreadLayout {
         catch: std::mem::offset_of!(Thread, catch),
     }
 }
-
 impl Default for Thread {
     fn default() -> Self {
         Self::new()
@@ -144,7 +139,6 @@ impl Thread {
             native_error: None,
         }
     }
-
     /// Return the heap this thread is registered with.
     #[must_use]
     pub(crate) fn heap(&self) -> Option<&crate::heap::Heap> {
@@ -167,7 +161,6 @@ impl Thread {
         token.index + token.count == self.roots.len()
             && (0..token.count).all(|_| self.roots.pop().is_some())
     }
-
     /// Return the native ABI multiple-value area.
     #[must_use]
     pub const fn multiple_values(&self) -> &[Word] {
@@ -274,7 +267,6 @@ impl Thread {
         self.state = SafepointState::PollRequested;
         self.safepoint_request = 1;
     }
-
     /// Request a local poll without starting a stop-the-world epoch.
     pub const fn request_poll(&mut self) {
         self.state = SafepointState::PollRequested;
@@ -286,20 +278,17 @@ impl Thread {
         self.interrupt = false;
         pending
     }
-
     /// Clear a delivered cooperative safepoint request.
     pub const fn clear_safepoint_request(&mut self) {
         self.safepoint_request = 0;
     }
-
-    /// Record the latest direct-native failure for the invoking runtime.
+    /// Record the first direct-native failure.
     pub const fn set_native_error(&mut self, error: NativeError) {
         if self.native_error.is_none() {
             self.native_error = Some(error);
         }
     }
-
-    /// Take and clear the latest direct-native failure.
+    /// Take and clear the direct-native failure.
     pub const fn take_native_error(&mut self) -> Option<NativeError> {
         self.native_error.take()
     }
@@ -311,7 +300,6 @@ impl Thread {
         self.frame_snapshot_failed = false;
         self.frame_last_written.clear();
     }
-
     /// Capture the current generated frame header for collection.
     ///
     /// # Safety

@@ -88,14 +88,10 @@ impl Heap {
     pub fn set_strict_forwarding(&self, on: bool) {
         self.strict_forwarding.store(on, Ordering::Relaxed);
     }
-
-    /// Resolve a heap word through its forwarding chain for registry lookups.
+    /// Resolve a heap word through forwarding for registry lookups.
     #[must_use]
     pub fn forwarded_word(&self, value: Word) -> Option<Word> {
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = self.lock_state();
         let index = Self::find(&state, value)?;
         let object = state.objects.get(index)?;
         let tag = match value.lowtag() {

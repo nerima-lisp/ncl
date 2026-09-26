@@ -68,6 +68,7 @@ impl RuntimeAbi for Aarch64FixtureAbi {
             ContextField::TlabBump => layout.tlab_bump,
             ContextField::TlabLimit => layout.tlab_limit,
             ContextField::SafepointRequest => layout.safepoint_request,
+            ContextField::MultipleValueArea => layout.mv,
             _ => return Err(AbiError::UnsupportedContextField(field)),
         };
         i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))

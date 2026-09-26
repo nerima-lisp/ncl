@@ -15,6 +15,7 @@ use crate::form::{elements, list, symbol};
 
 const DEFINITION_PROPERTY: &str = "NCL::DEFINITION";
 
+#[cfg(test)]
 type DefinitionCallback = fn(
     &Runtime,
     &mut ThreadContext,
@@ -22,7 +23,7 @@ type DefinitionCallback = fn(
     &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError>;
 
-#[allow(dead_code)]
+#[cfg(test)]
 fn callback_for(name: &str) -> Option<DefinitionCallback> {
     Some(match name {
         "DEFUN" => defun,

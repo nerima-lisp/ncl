@@ -2,7 +2,9 @@
 #![allow(clippy::redundant_pub_crate)]
 
 use crate::{elements, fresh_symbol, list, symbol};
-use ncl_object::{BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word};
+use ncl_object::{
+    BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word, symbol_name,
+};
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 
@@ -189,8 +191,16 @@ fn do_macro(
     let mut initial = Vec::with_capacity(variable_specs.len());
     let mut updates = Vec::with_capacity(variable_specs.len() * 2);
     for spec in variable_specs {
-        let parts = elements(ctx, spec).unwrap_or_else(|_| vec![spec]);
+        let parts = if spec.is_cons() {
+            elements(ctx, spec)?
+        } else {
+            vec![spec]
+        };
         let variable = parts.first().copied().ok_or(ObjectError::TypeError)?;
+        symbol_name(ctx, variable)?;
+        if parts.len() > 3 {
+            return Err(ObjectError::TypeError);
+        }
         let init = parts.get(1).copied().unwrap_or(Word::NIL);
         initial.push((variable, init));
         if let Some(step) = parts.get(2).copied() {
@@ -236,8 +246,16 @@ fn prog_macro(
     let variables = elements(ctx, values.first().copied().ok_or(ObjectError::TypeError)?)?;
     let mut bindings = Vec::with_capacity(variables.len());
     for variable in variables {
-        let parts = elements(ctx, variable).unwrap_or_else(|_| vec![variable]);
+        let parts = if variable.is_cons() {
+            elements(ctx, variable)?
+        } else {
+            vec![variable]
+        };
         let name = parts.first().copied().ok_or(ObjectError::TypeError)?;
+        symbol_name(ctx, name)?;
+        if parts.len() > 2 {
+            return Err(ObjectError::TypeError);
+        }
         let initial = parts.get(1).copied().unwrap_or(Word::NIL);
         bindings.push(binding(ctx, runtime, name, initial)?);
     }

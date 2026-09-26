@@ -35,6 +35,46 @@ const SHARED_INITIALIZE_BUILTIN: Builtin = Builtin {
     convention: ncl_object::BuiltinConvention::Adapted,
 };
 
+/// A registration-ready initialization callback descriptor.
+#[derive(Clone, Copy, Debug)]
+pub struct BuiltinDescriptor {
+    /// Package containing the function name.
+    pub package: BuiltinPackage,
+    /// External Lisp name.
+    pub name: BuiltinName,
+    /// Typed argument and calling convention metadata.
+    pub builtin: Builtin,
+    /// Rust callback used by `Runtime::register_builtin`.
+    pub callback: ncl_object::RustBuiltin,
+}
+
+/// Return the initialization callbacks owned by this module.
+#[must_use]
+pub const fn builtin_descriptors() -> &'static [BuiltinDescriptor] {
+    &BUILTINS
+}
+
+const BUILTINS: [BuiltinDescriptor; 3] = [
+    BuiltinDescriptor {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("MAKE-INSTANCE"),
+        builtin: MAKE_INSTANCE_BUILTIN,
+        callback: make_instance_builtin,
+    },
+    BuiltinDescriptor {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("INITIALIZE-INSTANCE"),
+        builtin: INITIALIZE_INSTANCE_BUILTIN,
+        callback: initialize_instance_builtin,
+    },
+    BuiltinDescriptor {
+        package: BuiltinPackage::CommonLisp,
+        name: BuiltinName::new("SHARED-INITIALIZE"),
+        builtin: SHARED_INITIALIZE_BUILTIN,
+        callback: shared_initialize_builtin,
+    },
+];
+
 #[derive(Clone, Copy)]
 struct InitArgKey(u64);
 
@@ -180,20 +220,10 @@ fn shared_initialize_builtin(
     initialize_instance_builtin(ctx, runtime, args, values)
 }
 
-fn register_one(
-    runtime: &Runtime,
-    ctx: &mut ThreadContext,
-    package: BuiltinPackage,
-    name: &'static str,
-    descriptor: Builtin,
-    function: ncl_object::RustBuiltin,
-) -> Result<(), ObjectError> {
-    runtime.register_builtin(
-        ctx,
-        BuiltinIdentifier::new(package, BuiltinName::new(name)),
-        BuiltinImplementation::adapted(descriptor, function, initarg_adapter),
-    )?;
-    Ok(())
+/// Build the adapted implementation for an initialization descriptor.
+#[must_use]
+pub fn implementation(descriptor: BuiltinDescriptor) -> BuiltinImplementation {
+    BuiltinImplementation::adapted(descriptor.builtin, descriptor.callback, initarg_adapter)
 }
 
 /// Register the instance initialization protocol without modifying CLOS class registration.
@@ -203,32 +233,14 @@ fn register_one(
 pub fn register_initialization_builtins(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
-    for package in [BuiltinPackage::CommonLisp, BuiltinPackage::NclMop] {
-        register_one(
-            runtime,
+    for descriptor in builtin_descriptors() {
+        runtime.register_builtin(
             &mut ctx,
-            package,
-            "MAKE-INSTANCE",
-            MAKE_INSTANCE_BUILTIN,
-            make_instance_builtin,
+            BuiltinIdentifier::new(descriptor.package, descriptor.name),
+            implementation(*descriptor),
         )?;
     }
-    register_one(
-        runtime,
-        &mut ctx,
-        BuiltinPackage::CommonLisp,
-        "INITIALIZE-INSTANCE",
-        INITIALIZE_INSTANCE_BUILTIN,
-        initialize_instance_builtin,
-    )?;
-    register_one(
-        runtime,
-        &mut ctx,
-        BuiltinPackage::CommonLisp,
-        "SHARED-INITIALIZE",
-        SHARED_INITIALIZE_BUILTIN,
-        shared_initialize_builtin,
-    )
+    Ok(())
 }
 
 /// Alias intended for the parent CLOS registration coordinator.

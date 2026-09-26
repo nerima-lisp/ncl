@@ -3,6 +3,7 @@ COMMON-LISP	*BREAK-ON-SIGNALS*	variable	ncl-conditions	1	no	reclassified by subs
 COMMON-LISP	*DEBUGGER-HOOK*	variable	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	ABORT	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	ARITHMETIC-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface
+COMMON-LISP	ARITHMETIC-ERROR-OPERATION	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	ARITHMETIC-ERROR-OPERANDS	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	BREAK	function	ncl-conditions	1	no	condition/restart surface
 COMMON-LISP	CELL-ERROR	condition+class	ncl-conditions	1	no	condition/restart surface

@@ -126,6 +126,10 @@ fn output_stream_survives_gc_stress_and_strict_forwarding() {
     let make_output_root = push_root(&mut ctx, &mut make_output);
     let mut write_char = function(&runtime, &mut ctx, "WRITE-CHAR").as_word();
     let write_char_root = push_root(&mut ctx, &mut write_char);
+    let mut write_string = function(&runtime, &mut ctx, "WRITE-STRING").as_word();
+    let write_string_root = push_root(&mut ctx, &mut write_string);
+    let mut write_line = function(&runtime, &mut ctx, "WRITE-LINE").as_word();
+    let write_line_root = push_root(&mut ctx, &mut write_line);
     let stream = runtime
         .call_builtin(
             &mut ctx,
@@ -142,9 +146,25 @@ fn output_stream_survives_gc_stress_and_strict_forwarding() {
         &[Word::character(u32::from('g')), stream],
     );
     assert_eq!(result, Ok(Word::character(u32::from('g'))));
+    let text = make_string(&mut ctx, &runtime, "hi");
+    let written = runtime.call_builtin(
+        &mut ctx,
+        FunctionObject::try_from(write_string).unwrap(),
+        &[text, stream],
+    );
+    assert_eq!(string(&ctx, written.unwrap()), "hi");
+    let line = make_string(&mut ctx, &runtime, "x");
+    let written_line = runtime.call_builtin(
+        &mut ctx,
+        FunctionObject::try_from(write_line).unwrap(),
+        &[line, stream],
+    );
+    assert_eq!(string(&ctx, written_line.unwrap()), "x");
     let state = stream_state(&ctx, ncl_object::Stream::from_word(stream)).unwrap();
-    assert_eq!(simple_vector_ref(&ctx, state, 1), Ok(Word::fixnum(1)));
+    assert_eq!(simple_vector_ref(&ctx, state, 1), Ok(Word::fixnum(5)));
     assert!(pop_root(&mut ctx, stream_root));
+    assert!(pop_root(&mut ctx, write_line_root));
+    assert!(pop_root(&mut ctx, write_string_root));
     assert!(pop_root(&mut ctx, write_char_root));
     assert!(pop_root(&mut ctx, make_output_root));
 }

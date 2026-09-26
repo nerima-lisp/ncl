@@ -15,8 +15,9 @@ pub use error::{
 };
 pub use numeric::{Fixnum, Integer, Number, Rational, Real};
 pub use sequence::{
-    Array, Closure, Cons, FunctionDesignator, LispString, List, PackageDesignator, Sequence,
-    SimpleVector, SpecializedArray, StringDesignator, StringObject, StructureObject, Symbol,
+    Array, Closure, Cons, FunctionDesignator, LispString, List, PackageDesignator, Pathname,
+    Sequence, SimpleVector, SpecializedArray, StringDesignator, StringObject, StructureObject,
+    Symbol,
 };
 
 /// Converts one raw ABI argument at the generated adapter boundary.
@@ -49,6 +50,17 @@ impl FromLispArg for List {
                 datum: word,
                 expected: ObjectType::Cons,
             })
+        }
+    }
+}
+impl FromLispArg for Pathname {
+    fn from_lisp_arg(ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
+        match crate::classify_object(ctx, word) {
+            crate::ObjectRef::Instance(_) => Ok(Self::from_word(word)),
+            _ => Err(LispError::TypeError {
+                datum: word,
+                expected: ObjectType::Instance,
+            }),
         }
     }
 }

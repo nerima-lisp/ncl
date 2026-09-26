@@ -22,6 +22,7 @@ pub use pathname::Pathname;
 pub use translate::translate_pathname;
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -67,7 +68,7 @@ mod tests {
         let defaults = parse_namestring("/tmp/default.txt").expect("valid pathname");
         let supplied = parse_namestring("result.txt").expect("valid pathname");
         let merged = merge_pathnames(&supplied, &defaults);
-        assert_eq!(merged.namestring(), "result.txt");
+        assert_eq!(merged.namestring(), "/tmp/result.txt");
         let from = parse_namestring("/tmp/*.txt").expect("valid pathname");
         let to = parse_namestring("/out/*.bak").expect("valid pathname");
         let source = parse_namestring("/tmp/report.txt").expect("valid pathname");
@@ -76,6 +77,35 @@ mod tests {
                 .expect("matching pathname")
                 .namestring(),
             "/out/report.bak"
+        );
+    }
+
+    #[test]
+    fn merges_absolute_and_nested_relative_directories_by_clhs_rules() {
+        let defaults = parse_namestring("/tmp/base/default.txt").expect("valid defaults");
+        let relative = parse_namestring("child/result.txt").expect("valid relative");
+        assert_eq!(
+            merge_pathnames(&relative, &defaults).namestring(),
+            "/tmp/base/child/result.txt"
+        );
+
+        let absolute = parse_namestring("/var/result.txt").expect("valid absolute");
+        assert_eq!(
+            merge_pathnames(&absolute, &defaults).namestring(),
+            "/var/result.txt"
+        );
+    }
+
+    #[test]
+    fn translates_wild_inferiors_without_losing_captured_directories() {
+        let from = parse_namestring("/tmp/**/file.txt").expect("valid source pattern");
+        let to = parse_namestring("/out/**/new.txt").expect("valid target pattern");
+        let source = parse_namestring("/tmp/a/b/file.txt").expect("valid source");
+        assert_eq!(
+            translate_pathname(&source, &from, &to)
+                .expect("matching pathname")
+                .namestring(),
+            "/out/a/b/new.txt"
         );
     }
 }

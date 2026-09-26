@@ -60,25 +60,36 @@ fn translate_directory(
     let Some(actual) = &source.directory else {
         return Some(target.clone());
     };
-    let elements = target
-        .elements
-        .iter()
-        .map(|element| match element {
-            DirectoryElement::Wild => actual
-                .elements
-                .first()
-                .cloned()
-                .unwrap_or(DirectoryElement::Wild),
-            DirectoryElement::WildInferiors => actual
-                .elements
-                .clone()
-                .into_iter()
-                .next()
-                .unwrap_or(DirectoryElement::WildInferiors),
-            literal => literal.clone(),
-        })
-        .collect();
-    let _ = pattern;
+    let mut captures = Vec::new();
+    let mut source_index = 0;
+    for element in &pattern.elements {
+        match element {
+            DirectoryElement::Wild => {
+                if let Some(value) = actual.elements.get(source_index) {
+                    captures.push(vec![value.clone()]);
+                    source_index += 1;
+                }
+            }
+            DirectoryElement::WildInferiors => {
+                captures.push(actual.elements[source_index..].to_vec());
+                source_index = actual.elements.len();
+            }
+            _ => source_index += 1,
+        }
+    }
+    let mut capture_index = 0;
+    let mut elements = Vec::new();
+    for element in &target.elements {
+        match element {
+            DirectoryElement::Wild | DirectoryElement::WildInferiors => {
+                if let Some(capture) = captures.get(capture_index) {
+                    elements.extend(capture.iter().cloned());
+                }
+                capture_index += 1;
+            }
+            literal => elements.push(literal.clone()),
+        }
+    }
     Some(super::Directory {
         kind: target.kind,
         elements,

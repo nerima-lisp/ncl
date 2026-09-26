@@ -105,5 +105,29 @@ pub fn make_pathname(defaults: &Pathname, supplied: &Pathname) -> Pathname {
 }
 
 pub fn merge_pathnames(primary: &Pathname, defaults: &Pathname) -> Pathname {
-    make_pathname(defaults, primary)
+    let directory = match primary.directory.as_ref() {
+        Some(directory) if directory.kind == DirectoryKind::Absolute => Some(directory.clone()),
+        Some(directory) => merge_directory(defaults.directory.as_ref(), directory),
+        None => defaults.directory.clone(),
+    };
+    Pathname {
+        host: primary.host.clone().or_else(|| defaults.host.clone()),
+        device: primary.device.clone().or_else(|| defaults.device.clone()),
+        directory,
+        name: primary.name.clone().or_else(|| defaults.name.clone()),
+        type_: primary.type_.clone().or_else(|| defaults.type_.clone()),
+        version: primary.version.clone().or_else(|| defaults.version.clone()),
+    }
+}
+
+fn merge_directory(defaults: Option<&Directory>, primary: &Directory) -> Option<Directory> {
+    let Some(defaults) = defaults else {
+        return Some(primary.clone());
+    };
+    let mut elements = defaults.elements.clone();
+    elements.extend(primary.elements.iter().cloned());
+    Some(Directory {
+        kind: defaults.kind,
+        elements,
+    })
 }

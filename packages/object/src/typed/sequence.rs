@@ -11,6 +11,7 @@ crate::word_newtype!(SpecializedArray);
 crate::word_newtype!(Array);
 crate::word_newtype!(Closure);
 crate::word_newtype!(StructureObject);
+crate::word_newtype!(Pathname);
 /// The CL-facing name for the string view.
 pub type LispString = StringObject;
 /// A proper list view, preserving the distinct NIL and cons cases.

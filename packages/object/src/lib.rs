@@ -94,7 +94,7 @@ pub use symbol_extensions::{
 pub use typed::{
     ArithmeticError, Array, CellError, Character, Closure, Cons, ControlError, FileError, Fixnum,
     FromLispArg, FunctionDesignator, Integer, LispError, LispString, List, Number, ObjectErrorKind,
-    ObjectType, PackageDesignator, PackageError, ProgramError, Rational, Real, Sequence,
+    ObjectType, PackageDesignator, PackageError, Pathname, ProgramError, Rational, Real, Sequence,
     SimpleVector, SpecializedArray, StreamError, StringDesignator, StringObject, StructureObject,
     Symbol, TypeError, TypedRustBuiltin, WordView,
 };

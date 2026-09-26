@@ -9,6 +9,7 @@ license.workspace = true
 ncl-object = { path = "../../object" }
 ncl-types = { path = "../../types" }
 ncl-conditions = { path = "../../conditions" }
+ncl-sys = { path = "../../sys" }
 
 [lints]
 workspace = true

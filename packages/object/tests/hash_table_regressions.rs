@@ -18,6 +18,10 @@ fn setup() -> (Runtime, Box<ThreadContext>) {
     (runtime, ctx)
 }
 
+const fn key_word(value: i64) -> Word {
+    Word::fixnum(value)
+}
+
 #[test]
 fn moved_registered_context_remains_usable() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));

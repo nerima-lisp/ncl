@@ -1,8 +1,11 @@
 #![allow(missing_docs)]
 
+use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, Runtime, ThreadContext,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
+    BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
+    LambdaList, LispError, MultipleValues, ObjectError, Parameter, ParameterType, ProgramError,
+    Runtime, ThreadContext,
 };
 use ncl_sys::Word;
 
@@ -33,9 +36,43 @@ fn keyword_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ncl_object::Obje
 }
 
 const TEST_ID: BuiltinIdentifier =
-    BuiltinIdentifier::new(BuiltinPackage::new("NCL-TEST"), BuiltinName::new("ADD"));
+    BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADD"));
 const ADAPTED_ID: BuiltinIdentifier =
-    BuiltinIdentifier::new(BuiltinPackage::new("NCL-TEST"), BuiltinName::new("ADAPTED"));
+    BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADAPTED"));
+
+const REQUIRED_PARAMETERS: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("LEFT"),
+        ty: ParameterType::Fixnum,
+    },
+    Parameter {
+        name: BuiltinName::new("RIGHT"),
+        ty: ParameterType::Fixnum,
+    },
+];
+const KEY_PARAMETERS: &[Parameter] = &[
+    Parameter {
+        name: BuiltinName::new("LEFT"),
+        ty: ParameterType::Fixnum,
+    },
+    Parameter {
+        name: BuiltinName::new("RIGHT"),
+        ty: ParameterType::Fixnum,
+    },
+];
+
+fn arity_error_converter(
+    _ctx: &mut ThreadContext,
+    _runtime: &Runtime,
+    error: LispError,
+) -> Result<Word, ObjectError> {
+    match error {
+        LispError::ProgramError(ProgramError::WrongNumberOfArguments { minimum, maximum }) => {
+            Ok(Word::fixnum((minimum * 10 + maximum.unwrap_or(0)) as i64))
+        }
+        _ => panic!("unexpected Lisp error: {error:?}"),
+    }
+}
 
 #[test]
 fn registered_builtin_has_a_function_object_and_rust_call_boundary() {
@@ -44,7 +81,7 @@ fn registered_builtin_has_a_function_object_and_rust_call_boundary() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     let descriptor = Builtin {
-        lambda_list: LambdaList::new("left right"),
+        lambda_list: LambdaList::new(REQUIRED_PARAMETERS, &[], None, &[], false),
         convention: BuiltinConvention::Direct(Arity::exact(2)),
     };
     let implementation = BuiltinImplementation::direct(descriptor, add_builtin);
@@ -57,8 +94,16 @@ fn registered_builtin_has_a_function_object_and_rust_call_boundary() {
         Some(function.as_word())
     );
     assert_eq!(
-        ncl_object::function_entry(&ctx, function.as_word().into()),
+        ncl_object::function_entry(&ctx, ncl_object::Function::from_word(function.as_word())),
         Ok(entry)
+    );
+    assert_eq!(
+        ncl_object::FunctionObject::try_from(function.as_word()),
+        Ok(function)
+    );
+    assert_eq!(
+        ncl_object::FunctionObject::try_from(Word::NIL),
+        Err(ncl_object::ObjectError::TypeError)
     );
     assert_eq!(
         runtime.call_builtin(&mut ctx, function, &[Word::fixnum(2), Word::fixnum(3)]),
@@ -74,7 +119,7 @@ fn adapted_builtin_reorders_keyword_payload_before_rust_call() {
     ctx.register(&runtime)
         .unwrap_or_else(|error| panic!("register: {error:?}"));
     let descriptor = Builtin {
-        lambda_list: LambdaList::new("&key left right"),
+        lambda_list: LambdaList::new(&[], &[], None, KEY_PARAMETERS, false),
         convention: BuiltinConvention::Adapted,
     };
     let function = runtime
@@ -88,4 +133,69 @@ fn adapted_builtin_reorders_keyword_payload_before_rust_call() {
         runtime.call_builtin(&mut ctx, function, &[Word::fixnum(3), Word::fixnum(2)]),
         Ok(Word::fixnum(5))
     );
+}
+
+#[test]
+fn builtin_arity_mismatch_records_a_program_error() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    runtime.register_lisp_error_converter(arity_error_converter);
+    let descriptor = Builtin {
+        lambda_list: LambdaList::new(REQUIRED_PARAMETERS, &[], None, &[], false),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    };
+    let function = runtime
+        .register_builtin(
+            &mut ctx,
+            TEST_ID,
+            BuiltinImplementation::direct(descriptor, add_builtin),
+        )
+        .unwrap_or_else(|error| panic!("builtin: {error:?}"));
+
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[Word::fixnum(2)]),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(ctx.take_pending_condition(), Some(Word::fixnum(22)));
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            function,
+            &[Word::fixnum(1), Word::fixnum(2), Word::fixnum(3)],
+        ),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(ctx.take_pending_condition(), Some(Word::fixnum(22)));
+}
+
+#[test]
+fn builtin_function_caller_preserves_multiple_values() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let descriptor = Builtin {
+        lambda_list: LambdaList::new(REQUIRED_PARAMETERS, &[], None, &[], false),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    };
+    let function = runtime
+        .register_builtin(
+            &mut ctx,
+            TEST_ID,
+            BuiltinImplementation::direct(descriptor, add_builtin),
+        )
+        .unwrap_or_else(|error| panic!("builtin: {error:?}"));
+    let mut caller = BuiltinFunctionCaller;
+    let mut values = MultipleValues::new();
+    let result = caller.call_function(
+        &mut ctx,
+        &runtime,
+        FunctionDesignator::Function(function),
+        FunctionArguments::new(&[Word::fixnum(2), Word::fixnum(3)]),
+        &mut values,
+    );
+    assert_eq!(result, Ok(Word::fixnum(5)));
+    assert_eq!(values.as_slice(), &[Word::fixnum(99), Word::fixnum(100)]);
 }

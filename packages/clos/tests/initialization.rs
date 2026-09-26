@@ -5,8 +5,8 @@
 )]
 
 use ncl_object::{
-    FunctionObject, Instance, Runtime, ThreadContext, Word, make_simple_vector, pop_root,
-    push_root, slot_ref, slot_set,
+    make_simple_vector, pop_root, push_root, slot_ref, slot_set, FunctionObject, Instance, Package,
+    Runtime, ThreadContext, Word,
 };
 
 #[path = "../src/initialization.rs"]
@@ -98,6 +98,41 @@ fn initialization_paths_survive_gc_stress_and_strict_forwarding() {
     assert!(pop_root(&mut ctx, instance_token));
     assert!(pop_root(&mut ctx, make_token));
     assert!(pop_root(&mut ctx, class_token));
+}
+
+#[test]
+fn make_instance_symbol_initarg_survives_gc_stress_and_strict_forwarding() {
+    let (runtime, mut ctx) = setup();
+    let package = runtime.find_package(&ctx, "KEYWORD").unwrap();
+    let (mut key, _) = Package::from_word(package)
+        .intern(&mut ctx, &runtime, "N26-SYMBOL-INITARG")
+        .unwrap();
+    let key_token = push_root(&mut ctx, &mut key);
+    let mut class = class_with_slots(&mut ctx, &runtime, &[key]);
+    let class_token = push_root(&mut ctx, &mut class);
+    let make = function(&runtime, &mut ctx, "COMMON-LISP", "MAKE-INSTANCE");
+    let mut make_word = make.as_word();
+    let make_token = push_root(&mut ctx, &mut make_word);
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let mut instance = runtime
+        .call_builtin(
+            &mut ctx,
+            FunctionObject::try_from(make_word).unwrap(),
+            &[class, key, Word::TRUE],
+        )
+        .unwrap();
+    let instance_token = push_root(&mut ctx, &mut instance);
+    assert_eq!(
+        slot_ref(&ctx, Instance::from_word(instance), 0),
+        Ok(Word::TRUE)
+    );
+
+    assert!(pop_root(&mut ctx, instance_token));
+    assert!(pop_root(&mut ctx, make_token));
+    assert!(pop_root(&mut ctx, class_token));
+    assert!(pop_root(&mut ctx, key_token));
 }
 
 #[test]

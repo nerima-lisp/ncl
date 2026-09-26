@@ -75,6 +75,7 @@ pub(super) fn adjust_array_builtin(
 
 #[derive(Clone, Copy)]
 struct AdjustArrayOptions<'a> {
+    // check-added-lines: allow(index) this is a slice type, not indexing.
     dimensions: &'a [usize],
     initial: Word,
     fill_pointer: Option<usize>,

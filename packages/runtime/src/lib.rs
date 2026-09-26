@@ -382,18 +382,16 @@ impl RuntimeAbi for NativeAbi<'_> {
     fn encode_character(&self, value: u32) -> i64 {
         i64::from_ne_bytes(Word::character(value).bits().to_ne_bytes())
     }
-    fn builtin_address(&self, _name: &str) -> Option<u64> {
-        let name = match _name {
+    fn builtin_address(&self, name: &str) -> Option<u64> {
+        let name = match name {
             "+" => BuiltinName::new("+"),
             "*" => BuiltinName::new("*"),
             "CAR" => BuiltinName::new("CAR"),
             "CONS" => BuiltinName::new("CONS"),
             _ => return None,
         };
-        self.object.builtin_address(BuiltinIdentifier::new(
-            BuiltinPackage::CommonLisp,
-            name,
-        ))
+        self.object
+            .builtin_address(BuiltinIdentifier::new(BuiltinPackage::CommonLisp, name))
     }
     fn context_offset(&self, _field: &str) -> Option<i32> {
         None
@@ -410,9 +408,7 @@ impl RuntimeAbi for NativeAbi<'_> {
     }
     fn runtime_address(&self, function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
         match function {
-            RuntimeFunction::SafepointSlow => {
-                Some(ncl_sys::native_safepoint as *const () as u64)
-            }
+            RuntimeFunction::SafepointSlow => Some(ncl_sys::native_safepoint as *const () as u64),
             _ => None,
         }
     }

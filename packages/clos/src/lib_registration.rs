@@ -121,11 +121,20 @@ fn register_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Ob
     install_typed_class(ctx, runtime, root.name, root.superclass)?;
     install_typed_class(ctx, runtime, null.name, null.superclass)?;
     for definition in remaining {
-        if runtime.class(ctx, definition.name.as_str()).is_none() {
+        // A `Class`-kind entry in the ownership table (see
+        // `ncl-compiler-front::owned_symbols`) registers a `Word::UNBOUND`
+        // placeholder before this crate ever runs, so "already defined"
+        // must exclude that placeholder, not just `None`.
+        if !is_installed_class(ctx, runtime, definition.name.as_str()) {
             install_typed_class(ctx, runtime, definition.name, definition.superclass)?;
         }
     }
     Ok(())
+}
+
+/// Whether `name` already names a *real* (non-placeholder) class.
+fn is_installed_class(ctx: &mut ThreadContext, runtime: &Runtime, name: &str) -> bool {
+    matches!(runtime.class(ctx, name), Some(word) if word != Word::UNBOUND)
 }
 
 fn install_typed_class(
@@ -134,9 +143,15 @@ fn install_typed_class(
     name: BuiltinName,
     superclass: Option<BuiltinName>,
 ) -> Result<(), ObjectError> {
-    let name_word = ncl_object::make_string(ctx, runtime, &name.as_str().chars().collect::<Vec<_>>())?;
+    let name_word =
+        ncl_object::make_string(ctx, runtime, &name.as_str().chars().collect::<Vec<_>>())?;
+    // A superclass may exist only as the ownership table's `Word::UNBOUND`
+    // placeholder (see `is_installed_class`); treat that the same as "not
+    // registered yet" rather than passing the sentinel through as if it
+    // were a real superclass object.
     let supers = superclass
         .and_then(|parent| runtime.class(ctx, parent.as_str()))
+        .filter(|word| *word != Word::UNBOUND)
         .unwrap_or(Word::NIL);
     let class = make_class(ctx, runtime, name_word, supers, Word::NIL, Word::fixnum(0))?;
     runtime.define_class(ctx, name.as_str(), class)

@@ -5,10 +5,12 @@
 //! non-destructive functions their required copy-on-write behaviour and makes
 //! `:from-end` and `:count` deterministic for lists, vectors, and strings.
 
+use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinConvention, BuiltinImplementation, BuiltinName, LambdaList,
-    MultipleValues, ObjectError, ObjectRef, Parameter, ParameterType, Runtime, Sequence,
-    ThreadContext, Word,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinImplementation,
+    BuiltinName, FunctionArguments, FunctionCaller, LambdaList, MultipleValues, ObjectError,
+    ObjectRef, Parameter, ParameterType, Runtime, Sequence, ThreadContext, Word, pop_root,
+    push_root,
 };
 
 const fn parameter(name: &'static str, ty: ParameterType) -> Parameter {
@@ -128,17 +130,33 @@ fn call(
     designator: Word,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let function = match ncl_object::classify_object(ctx, designator) {
-        ObjectRef::Function(function) => {
-            ncl_object::FunctionObject::try_from(function).map_err(|_| ObjectError::TypeError)?
-        }
-        ObjectRef::Symbol(symbol) => {
-            ncl_object::FunctionObject::try_from(ncl_object::symbol_function(ctx, symbol)?)
-                .map_err(|_| ObjectError::TypeError)?
-        }
-        _ => return Err(ObjectError::TypeError),
-    };
-    runtime.call_builtin(ctx, function, args)
+    let mut designator_word = designator;
+    let mut rooted_args = args.to_vec();
+    let designator_token = push_root(ctx, &mut designator_word);
+    let argument_tokens = rooted_args
+        .iter_mut()
+        .map(|argument| push_root(ctx, argument))
+        .collect::<Vec<_>>();
+    let result = FunctionDesignator::try_from_word(ctx, designator_word).and_then(|designator| {
+        let mut caller = BuiltinFunctionCaller;
+        let mut values = MultipleValues::new();
+        caller.call_function(
+            ctx,
+            runtime,
+            designator,
+            FunctionArguments::new(&rooted_args),
+            &mut values,
+        )
+    });
+    let argument_root_error = argument_tokens
+        .into_iter()
+        .rev()
+        .find_map(|token| (!pop_root(ctx, token)).then_some(ObjectError::Layout));
+    let designator_root_error = (!pop_root(ctx, designator_token)).then_some(ObjectError::Layout);
+    if let Some(error) = argument_root_error.or(designator_root_error) {
+        return Err(error);
+    }
+    result
 }
 
 fn truth(value: Word) -> bool {
@@ -362,7 +380,7 @@ fn filter_callback(
         }
         return result(ctx, runtime, sequence, &output);
     }
-    let (positional, options) = parse_options(ctx, args.as_slice(), if mode == 0 { 2 } else { 2 })?;
+    let (positional, options) = parse_options(ctx, args.as_slice(), 2)?;
     let (item, sequence_word) = (positional[0], positional[1]);
     let sequence = sequence(ctx, sequence_word)?;
     let items = values(ctx, sequence)?;
@@ -386,7 +404,7 @@ fn filter_callback(
             matches(ctx, runtime, items[index], item, options)?
         };
         let matched = if mode == 2 { !matched } else { matched };
-        if matched && options.count.map_or(true, |count| hit < count) {
+        if matched && options.count.is_none_or(|count| hit < count) {
             keep[index] = mode == 3;
             hit += 1;
         }
@@ -451,7 +469,7 @@ fn replace_callback(
         } else {
             matches(ctx, runtime, items[index], old_or_pred, options)?
         };
-        if matched && options.count.map_or(true, |count| hit < count) {
+        if matched && options.count.is_none_or(|count| hit < count) {
             output[index] = new;
             hit += 1;
             if nsubstitute {
@@ -549,7 +567,7 @@ fn fill_entry_callback(
 
 fn replace_entry_callback(
     ctx: &mut ThreadContext,
-    runtime: &Runtime,
+    _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
@@ -563,7 +581,6 @@ fn replace_entry_callback(
     for index in 0..amount {
         set_value(ctx, destination, start + index, source[index])?;
     }
-    let _ = runtime;
     Ok(positional[0])
 }
 

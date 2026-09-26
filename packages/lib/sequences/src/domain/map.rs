@@ -1,9 +1,11 @@
+use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    Builtin, BuiltinArgs, BuiltinConvention, BuiltinImplementation, BuiltinName, Cons,
-    FunctionObject, LambdaList, LispError, List, MultipleValues, ObjectError, ObjectRef, Parameter,
-    ParameterType, Runtime, RustBuiltin, Sequence, SimpleVector, StringObject, ThreadContext, Word,
-    car as object_car, cdr as object_cdr, classify_object, make_cons, rplaca as object_rplaca,
-    string_length, string_ref, symbol_function, symbol_name,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinImplementation,
+    BuiltinName, Cons, FunctionArguments, FunctionCaller, LambdaList, LispError, List,
+    MultipleValues, ObjectError, ObjectRef, Parameter, ParameterType, Runtime, RustBuiltin,
+    Sequence, SimpleVector, StringObject, ThreadContext, Word, car as object_car,
+    cdr as object_cdr, classify_object, make_cons, pop_root, push_root, rplaca as object_rplaca,
+    string_length, string_ref, symbol_name,
 };
 
 fn list_word(value: List) -> Word {
@@ -18,9 +20,31 @@ fn list_from(
     runtime: &Runtime,
     values: &[Word],
 ) -> Result<Word, ObjectError> {
-    values.iter().rev().try_fold(Word::NIL, |tail, &value| {
-        make_cons(ctx, runtime, value, tail)
-    })
+    let mut rooted_values = values.to_vec();
+    let value_tokens = rooted_values
+        .iter_mut()
+        .map(|value| push_root(ctx, value))
+        .collect::<Vec<_>>();
+    let mut result = Word::NIL;
+    let result_token = push_root(ctx, &mut result);
+    let result_value = rooted_values
+        .iter()
+        .rev()
+        .try_fold(Word::NIL, |tail, &value| {
+            result = tail;
+            let next = make_cons(ctx, runtime, value, result)?;
+            result = next;
+            Ok(next)
+        });
+    let result_root_error = (!pop_root(ctx, result_token)).then_some(ObjectError::Layout);
+    let value_root_error = value_tokens
+        .into_iter()
+        .rev()
+        .find_map(|token| (!pop_root(ctx, token)).then_some(ObjectError::Layout));
+    if let Some(error) = value_root_error.or(result_root_error) {
+        return Err(error);
+    }
+    result_value
 }
 
 fn sequence_value(ctx: &mut ThreadContext, value: Word) -> Result<Sequence, ObjectError> {
@@ -72,12 +96,33 @@ fn call_designator(
     designator: Word,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let function = match classify_object(ctx, designator) {
-        ObjectRef::Function(function) => FunctionObject::try_from(function)?,
-        ObjectRef::Symbol(symbol) => FunctionObject::try_from(symbol_function(ctx, symbol)?)?,
-        _ => return Err(ObjectError::TypeError),
-    };
-    runtime.call_builtin(ctx, function, args)
+    let mut designator_word = designator;
+    let mut rooted_args = args.to_vec();
+    let designator_token = push_root(ctx, &mut designator_word);
+    let argument_tokens = rooted_args
+        .iter_mut()
+        .map(|argument| push_root(ctx, argument))
+        .collect::<Vec<_>>();
+    let result = FunctionDesignator::try_from_word(ctx, designator_word).and_then(|designator| {
+        let mut caller = BuiltinFunctionCaller;
+        let mut values = MultipleValues::new();
+        caller.call_function(
+            ctx,
+            runtime,
+            designator,
+            FunctionArguments::new(&rooted_args),
+            &mut values,
+        )
+    });
+    let argument_root_error = argument_tokens
+        .into_iter()
+        .rev()
+        .find_map(|token| (!pop_root(ctx, token)).then_some(ObjectError::Layout));
+    let designator_root_error = (!pop_root(ctx, designator_token)).then_some(ObjectError::Layout);
+    if let Some(error) = argument_root_error.or(designator_root_error) {
+        return Err(error);
+    }
+    result
 }
 
 const fn parameter(name: &'static str, ty: ParameterType) -> Parameter {

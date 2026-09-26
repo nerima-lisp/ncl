@@ -1,16 +1,17 @@
+use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    FunctionObject, LispError, List, ObjectError, ObjectRef, Runtime, Sequence, ThreadContext,
-    Word, classify_object, make_cons, symbol_function,
+    BuiltinFunctionCaller, FunctionArguments, FunctionCaller, LispError, List, MultipleValues,
+    ObjectError, ObjectRef, Runtime, Sequence, ThreadContext, Word, classify_object, make_cons,
 };
 
-pub(crate) fn list_word(list: List) -> Word {
+pub fn list_word(list: List) -> Word {
     match list {
         List::Nil => Word::NIL,
         List::Cons(value) => value.into(),
     }
 }
 
-pub(crate) fn sequence_value(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
+pub fn sequence_value(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
     if word == Word::NIL {
         return Ok(Sequence::List(List::Nil));
     }
@@ -28,48 +29,7 @@ pub(crate) fn sequence_value(ctx: &ThreadContext, word: Word) -> Result<Sequence
     }
 }
 
-pub(crate) fn seq_values(
-    ctx: &mut ThreadContext,
-    value: Sequence,
-) -> Result<Vec<Word>, ObjectError> {
-    let mut result = Vec::new();
-    match value {
-        Sequence::List(list) => {
-            let mut cursor = list_word(list);
-            while cursor != Word::NIL {
-                if !cursor.is_cons() {
-                    return Err(ObjectError::TypeError);
-                }
-                result.push(ncl_object::car(ctx, cursor)?);
-                cursor = ncl_object::cdr(ctx, cursor)?;
-            }
-        }
-        Sequence::Vector(vector) => {
-            let word: Word = vector.into();
-            for index in 0..ncl_object::simple_vector_length(ctx, word)? {
-                result.push(ncl_object::simple_vector_ref(ctx, word, index)?);
-            }
-        }
-        Sequence::String(string) => {
-            let word: Word = string.into();
-            for index in 0..ncl_object::string_length(ctx, word)? {
-                result.push(Word::character(
-                    ncl_object::string_ref(ctx, word, index)? as u32
-                ));
-            }
-        }
-    }
-    Ok(result)
-}
-
-pub(crate) fn sequence_length(
-    ctx: &mut ThreadContext,
-    value: Sequence,
-) -> Result<usize, ObjectError> {
-    Ok(seq_values(ctx, value)?.len())
-}
-
-pub(crate) fn list_from(
+pub fn list_from(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     values: &[Word],
@@ -86,32 +46,48 @@ pub(crate) fn list_from(
     Ok(result)
 }
 
-pub(crate) fn call_designator(
+pub fn call_designator(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     designator: Word,
     args: &[Word],
 ) -> Result<Word, LispError> {
-    let function = match classify_object(ctx, designator) {
-        ObjectRef::Function(value) => FunctionObject::try_from(value).map_err(LispError::from)?,
-        ObjectRef::Symbol(value) => {
-            let function = symbol_function(ctx, value).map_err(LispError::from)?;
-            FunctionObject::try_from(function).map_err(LispError::from)?
-        }
-        _ => {
-            return Err(LispError::TypeError {
-                datum: designator,
-                expected: ncl_object::ObjectType::Function,
-            });
-        }
-    };
-    runtime
-        .call_builtin(ctx, function, args)
+    let mut designator_word = designator;
+    let designator_token = ncl_object::push_root(ctx, &mut designator_word);
+    let mut rooted_args = args.to_vec();
+    let argument_tokens = rooted_args
+        .iter_mut()
+        .map(|argument| ncl_object::push_root(ctx, argument))
+        .collect::<Vec<_>>();
+    let result = FunctionDesignator::try_from_word(ctx, designator_word)
         .map_err(LispError::from)
+        .and_then(|designator| {
+            let mut caller = BuiltinFunctionCaller;
+            let mut values = MultipleValues::new();
+            caller
+                .call_function(
+                    ctx,
+                    runtime,
+                    designator,
+                    FunctionArguments::new(&rooted_args),
+                    &mut values,
+                )
+                .map_err(LispError::from)
+        });
+    let argument_root_error = argument_tokens
+        .into_iter()
+        .rev()
+        .find_map(|token| (!ncl_object::pop_root(ctx, token)).then_some(ObjectError::Layout));
+    let designator_root_error =
+        (!ncl_object::pop_root(ctx, designator_token)).then_some(ObjectError::Layout);
+    if let Some(error) = argument_root_error.or(designator_root_error) {
+        return Err(LispError::from(error));
+    }
+    result
 }
 
-pub(crate) mod filter;
-pub(crate) mod list;
-pub(crate) mod map;
-pub(crate) mod set;
-pub(crate) mod sort;
+pub mod filter;
+pub mod list;
+pub mod map;
+pub mod set;
+pub mod sort;

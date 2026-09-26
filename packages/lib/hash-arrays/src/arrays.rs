@@ -104,7 +104,11 @@ fn make_array_builtin(
     let mut fill_pointer = None;
     let mut displaced_to = None;
     let mut displaced_index_offset = 0;
-    for pair in args.as_slice()[1..].as_chunks::<2>().0 {
+    let options = &args.as_slice()[1..];
+    if options.len() % 2 != 0 {
+        return Err(ObjectError::TypeError);
+    }
+    for pair in options.as_chunks::<2>().0 {
         match symbol_text(ctx, pair[0])?
             .to_ascii_uppercase()
             .trim_start_matches(':')
@@ -116,6 +120,10 @@ fn make_array_builtin(
                     "CHARACTER" => ArrayElementType::Character,
                     "BASE-CHAR" => ArrayElementType::BaseChar,
                     "FIXNUM" => ArrayElementType::Fixnum,
+                    "SIGNED-BYTE" => ArrayElementType::Signed,
+                    "UNSIGNED-BYTE" => ArrayElementType::Unsigned,
+                    "SINGLE-FLOAT" => ArrayElementType::SingleFloat,
+                    "DOUBLE-FLOAT" => ArrayElementType::DoubleFloat,
                     _ => return Err(ObjectError::TypeError),
                 }
             }

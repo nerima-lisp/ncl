@@ -68,6 +68,42 @@ fn hash_builtins_cover_lifecycle_and_multiple_values() -> Result<(), ObjectError
 }
 
 #[test]
+fn vector_builtins_cover_simple_and_bit_vectors() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let vector = call(
+        &runtime,
+        &mut ctx,
+        "VECTOR",
+        &[Word::fixnum(3), Word::fixnum(5)],
+    )?;
+    assert_eq!(call(&runtime, &mut ctx, "VECTORP", &[vector])?, Word::TRUE);
+    assert_eq!(
+        call(&runtime, &mut ctx, "SIMPLE-VECTOR-P", &[vector])?,
+        Word::TRUE
+    );
+    assert_eq!(
+        call(&runtime, &mut ctx, "SIMPLE-BIT-VECTOR-P", &[vector])?,
+        Word::NIL
+    );
+
+    let bits = make_specialized_array(
+        &mut ctx,
+        &runtime,
+        ArrayElementType::Bit,
+        &[Word::fixnum(0), Word::fixnum(1)],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "SIMPLE-BIT-VECTOR-P", &[bits])?,
+        Word::TRUE
+    );
+    Ok(())
+}
+
+#[test]
 fn maphash_accepts_function_designators_and_rejects_other_values() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();

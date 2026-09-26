@@ -267,7 +267,12 @@ impl RuntimeAbi for X86_64Abi {
         Err(AbiError::MissingBuiltin(identifier))
     }
     fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
-        Err(AbiError::UnsupportedContextField(field))
+        if field == ContextField::MultipleValueArea {
+            i32::try_from(ncl_sys::thread_layout().mv)
+                .map_err(|_| AbiError::UnsupportedContextField(field))
+        } else {
+            Err(AbiError::UnsupportedContextField(field))
+        }
     }
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
         Err(AbiError::UnsupportedRuntimeFunction(function))
@@ -283,7 +288,12 @@ impl RuntimeAbi for Aarch64Abi {
         Err(AbiError::MissingBuiltin(identifier))
     }
     fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
-        Err(AbiError::UnsupportedContextField(field))
+        if field == ContextField::MultipleValueArea {
+            i32::try_from(ncl_sys::thread_layout().mv)
+                .map_err(|_| AbiError::UnsupportedContextField(field))
+        } else {
+            Err(AbiError::UnsupportedContextField(field))
+        }
     }
     fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
         Err(AbiError::UnsupportedRuntimeFunction(function))

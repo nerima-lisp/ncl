@@ -7,6 +7,8 @@ use ncl_object::{
     make_instance as allocate_instance, simple_vector_length, simple_vector_ref, slot_set,
 };
 
+const CLASS_EFFECTIVE_SLOTS: usize = 4;
+
 const CLASS_ARGUMENT: Parameter = Parameter {
     name: BuiltinName::new("CLASS"),
     ty: ParameterType::Any,
@@ -51,11 +53,12 @@ struct InitArgList {
 
 impl InitArgList {
     fn parse(words: &[Word]) -> Result<Self, ObjectError> {
-        let pairs = words.chunks_exact(2);
-        if !pairs.remainder().is_empty() {
+        let (pairs, remainder) = words.as_chunks::<2>();
+        if !remainder.is_empty() {
             return Err(ObjectError::TypeError);
         }
         let values = pairs
+            .iter()
             .map(|pair| InitArg {
                 key: InitArgKey(pair[0].bits()),
                 value: InitArgValue(pair[1]),
@@ -64,7 +67,7 @@ impl InitArgList {
         Ok(Self { values })
     }
 
-    fn value_for(self: &Self, key: InitArgKey) -> Option<InitArgValue> {
+    fn value_for(&self, key: InitArgKey) -> Option<InitArgValue> {
         self.values
             .iter()
             .find(|argument| argument.key.0 == key.0)
@@ -77,7 +80,7 @@ fn initarg_adapter(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     Ok(args.as_slice().to_vec())
 }
 
-fn type_error(ctx: &mut ThreadContext, datum: Word, expected: ObjectType) -> ObjectError {
+const fn type_error(ctx: &mut ThreadContext, datum: Word, expected: ObjectType) -> ObjectError {
     ctx.set_pending_lisp_error(LispError::TypeError { datum, expected });
     ObjectError::TypeError
 }
@@ -93,7 +96,13 @@ fn class_slots(ctx: &ThreadContext, class: Word) -> Result<Vec<Word>, ObjectErro
     if !matches!(classify_object(ctx, class), ObjectRef::SimpleVector(_)) {
         return Err(ObjectError::TypeError);
     }
-    let descriptor = simple_vector_ref(ctx, class, 2)?;
+    let class_length = simple_vector_length(ctx, class)?;
+    let field = if class_length > CLASS_EFFECTIVE_SLOTS {
+        CLASS_EFFECTIVE_SLOTS
+    } else {
+        2
+    };
+    let descriptor = simple_vector_ref(ctx, class, field)?;
     if descriptor == Word::NIL {
         return Ok(Vec::new());
     }
@@ -109,7 +118,14 @@ fn initialize_slots(
     class: Word,
     initargs: &InitArgList,
 ) -> Result<(), ObjectError> {
-    for (index, key) in class_slots(ctx, class)?.into_iter().enumerate() {
+    for (index, slot) in class_slots(ctx, class)?.into_iter().enumerate() {
+        let key = if matches!(classify_object(ctx, slot), ObjectRef::SimpleVector(_))
+            && simple_vector_length(ctx, slot)? > 0
+        {
+            simple_vector_ref(ctx, slot, 0)?
+        } else {
+            slot
+        };
         if let Some(value) = initargs.value_for(InitArgKey(key.bits())) {
             slot_set(ctx, instance, index, value.0)?;
         }
@@ -181,6 +197,9 @@ fn register_one(
 }
 
 /// Register the instance initialization protocol without modifying CLOS class registration.
+///
+/// # Errors
+/// Returns an object error when builtin registration fails.
 pub fn register_initialization_builtins(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
@@ -213,6 +232,9 @@ pub fn register_initialization_builtins(runtime: &Runtime) -> Result<(), ObjectE
 }
 
 /// Alias intended for the parent CLOS registration coordinator.
+///
+/// # Errors
+/// Returns an object error when builtin registration fails.
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     register_initialization_builtins(runtime)
 }

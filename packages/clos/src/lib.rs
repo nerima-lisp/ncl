@@ -17,6 +17,7 @@ const NCL_MOP: &str = "NCL-MOP";
 const CLASS_NAME: usize = 0;
 const CLASS_DIRECT_SUPERCLASS: usize = 1;
 const CLASS_SLOTS: usize = 2;
+const CLASS_EFFECTIVE_SLOTS: usize = 4;
 
 const ARGUMENT: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("ARG"),
@@ -56,7 +57,69 @@ pub fn make_class(
     slots: Word,
     kind: Word,
 ) -> Result<Word, ObjectError> {
-    make_simple_vector(ctx, runtime, &[name, direct_superclasses, slots, kind])
+    let mut effective = Vec::new();
+    if direct_superclasses != Word::NIL {
+        let inherited = class_effective_slots(ctx, direct_superclasses)?;
+        for slot in inherited {
+            let slot_name = slot_key(ctx, slot)?;
+            let mut found = false;
+            for candidate in &effective {
+                if slot_key(ctx, *candidate)? == slot_name {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                effective.push(slot);
+            }
+        }
+    }
+    if slots != Word::NIL {
+        for index in 0..simple_vector_length(ctx, slots)? {
+            let slot = simple_vector_ref(ctx, slots, index)?;
+            let key = slot_key(ctx, slot)?;
+            let mut retained = Vec::with_capacity(effective.len());
+            for candidate in effective {
+                if slot_key(ctx, candidate)? != key {
+                    retained.push(candidate);
+                }
+            }
+            effective = retained;
+            effective.push(slot);
+        }
+    }
+    let effective_slots = make_simple_vector(ctx, runtime, &effective)?;
+    make_simple_vector(
+        ctx,
+        runtime,
+        &[name, direct_superclasses, slots, kind, effective_slots],
+    )
+}
+
+fn slot_key(ctx: &ThreadContext, slot: Word) -> Result<Word, ObjectError> {
+    if matches!(classify_object(ctx, slot), ObjectRef::SimpleVector(_))
+        && simple_vector_length(ctx, slot)? > 0
+    {
+        simple_vector_ref(ctx, slot, 0)
+    } else {
+        Ok(slot)
+    }
+}
+
+fn class_effective_slots(ctx: &ThreadContext, class: Word) -> Result<Vec<Word>, ObjectError> {
+    let length = simple_vector_length(ctx, class)?;
+    let field = if length > CLASS_EFFECTIVE_SLOTS {
+        CLASS_EFFECTIVE_SLOTS
+    } else {
+        CLASS_SLOTS
+    };
+    let slots = simple_vector_ref(ctx, class, field)?;
+    if slots == Word::NIL {
+        return Ok(Vec::new());
+    }
+    (0..simple_vector_length(ctx, slots)?)
+        .map(|index| simple_vector_ref(ctx, slots, index))
+        .collect()
 }
 
 /// Return the name stored in a class descriptor.

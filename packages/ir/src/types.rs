@@ -144,6 +144,26 @@ pub enum Prim {
     CharacterPredicate(String),
     StructureSlot(String),
 }
+
+impl Prim {
+    #[must_use]
+    pub const fn is_pure(&self) -> bool {
+        !matches!(self, Self::Rplaca | Self::Rplacd | Self::Aset)
+    }
+
+    #[must_use]
+    pub const fn reads_memory(&self) -> bool {
+        matches!(
+            self,
+            Self::Car | Self::Cdr | Self::Svref | Self::Aref | Self::StructureSlot(_)
+        )
+    }
+
+    #[must_use]
+    pub const fn invalidates_memory(&self) -> bool {
+        matches!(self, Self::Rplaca | Self::Rplacd | Self::Aset)
+    }
+}
 /// A comparison operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Compare {

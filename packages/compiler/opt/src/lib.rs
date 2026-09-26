@@ -164,6 +164,13 @@ impl PassManager {
         self.module_passes.push(Box::new(pass));
     }
 
+    /// Adds the default Phase 3 pipeline in dependency order.
+    pub fn add_default_optimization_pipeline(&mut self) {
+        self.add_function_pass(InlineDirectCalls::default());
+        self.add_function_pass(GlobalValueNumbering);
+        self.add_function_pass(Sccp);
+    }
+
     /// Runs all passes until unchanged or until the configured limit.
     ///
     /// # Errors
@@ -383,6 +390,16 @@ impl FunctionPass for InlineDirectCalls {
 
 pub(crate) mod remap;
 use remap::{next_value, remap_kind, remap_op_values, remap_term_values};
+mod gvn;
+pub use gvn::GlobalValueNumbering;
+mod sccp;
+pub use sccp::Sccp;
+#[cfg(test)]
+#[path = "gvn_tests.rs"]
+mod gvn_tests;
+#[cfg(test)]
+#[path = "sccp_tests.rs"]
+mod sccp_tests;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

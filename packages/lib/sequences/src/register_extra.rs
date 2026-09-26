@@ -57,8 +57,7 @@ pub(super) fn selection_transform_entry(
         domain::selection::object_sequence(ctx, sequence)?,
     )?;
     let mut caller = BuiltinFunctionCaller;
-    let result =
-        domain::selection::remove(ctx, runtime, &mut caller, &mut items, object, options)?;
+    let result = domain::selection::remove(ctx, runtime, &mut caller, &mut items, object, options)?;
     values.clear();
     let mut result = result;
     domain::selection::list_from_values(ctx, runtime, &mut result)
@@ -306,11 +305,16 @@ pub(super) fn order_set_entry(
     values: &mut MultipleValues,
     operation: OrderSetOperation,
 ) -> Result<Word, ObjectError> {
-    let (positional, options) = domain::order_sets::parse_options(ctx, args.as_slice(), 2)?;
-    let first = *positional.first().ok_or(ObjectError::TypeError)?;
-    let second = *positional.get(1).ok_or(ObjectError::TypeError)?;
-    values.clear();
-    operation(ctx, runtime, first, second, options)
+    let rooted_args = (0..args.len())
+        .map(|index| args.get(index).ok_or(ObjectError::Layout))
+        .collect::<Result<Vec<_>, _>>()?;
+    ncl_object::with_rooted_slice(ctx, &rooted_args, |ctx, rooted_args| {
+        let (positional, options) = domain::order_sets::parse_options(ctx, rooted_args, 2)?;
+        let first = *positional.first().ok_or(ObjectError::TypeError)?;
+        let second = *positional.get(1).ok_or(ObjectError::TypeError)?;
+        values.clear();
+        operation(ctx, runtime, first, second, options)
+    })
 }
 pub(super) fn set_sort_entry(
     ctx: &mut ThreadContext,
@@ -319,12 +323,18 @@ pub(super) fn set_sort_entry(
     values: &mut MultipleValues,
     stable: bool,
 ) -> Result<Word, ObjectError> {
-    let (positional, options) = domain::order_sets::parse_options(ctx, args.as_slice(), 2)?;
-    let sequence = *positional.first().ok_or(ObjectError::TypeError)?;
-    let predicate = *positional.get(1).ok_or(ObjectError::TypeError)?;
-    let result = domain::order_sets::sort(ctx, runtime, sequence, predicate, options.key, stable);
-    values.clear();
-    result
+    let rooted_args = (0..args.len())
+        .map(|index| args.get(index).ok_or(ObjectError::Layout))
+        .collect::<Result<Vec<_>, _>>()?;
+    ncl_object::with_rooted_slice(ctx, &rooted_args, |ctx, rooted_args| {
+        let (positional, options) = domain::order_sets::parse_options(ctx, rooted_args, 2)?;
+        let sequence = *positional.first().ok_or(ObjectError::TypeError)?;
+        let predicate = *positional.get(1).ok_or(ObjectError::TypeError)?;
+        let result =
+            domain::order_sets::sort(ctx, runtime, sequence, predicate, options.key, stable);
+        values.clear();
+        result
+    })
 }
 pub(super) fn sort_entry(
     ctx: &mut ThreadContext,

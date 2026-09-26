@@ -23,7 +23,7 @@ pub struct Runtime {
     pub(crate) layouts: Mutex<HashMap<u32, usize>>,
     pub(crate) next_layout: Mutex<u32>,
     layouts_registered: Mutex<bool>,
-    pub(crate) builtins: Mutex<Vec<BuiltinEntry>>,
+    pub(crate) builtins: Mutex<Vec<crate::builtin::BuiltinEntry>>,
     pub(crate) builtin_addresses: Mutex<HashMap<BuiltinIdentifier, usize>>,
     pub(crate) place_expanders: Mutex<crate::place::PlaceExpanders>,
     lisp_error_converter: Mutex<Option<LispErrorConverter>>,
@@ -36,12 +36,6 @@ pub struct RootedTable {
     _token: RootToken,
 }
 
-#[derive(Debug)]
-pub struct BuiltinEntry {
-    pub(crate) function: Box<Word>,
-    pub(crate) implementation: BuiltinImplementation,
-    pub(crate) _token: RootToken,
-}
 const KEYWORD_LIST: Parameter = Parameter {
     name: BuiltinName::new("LIST"),
     ty: ParameterType::Any,
@@ -236,17 +230,6 @@ impl Runtime {
     /// Configure strict stale-word checking for this runtime heap.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.heap.set_strict_forwarding(on);
-    }
-
-    /// Return the native entry registered for a typed builtin identifier.
-    #[must_use]
-    pub fn builtin_address(&self, identifier: BuiltinIdentifier) -> Option<u64> {
-        self.builtin_addresses
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(&identifier)
-            .copied()
-            .and_then(|entry| u64::try_from(entry).ok())
     }
 
     /// Register a generalized-reference expander owned by this runtime.

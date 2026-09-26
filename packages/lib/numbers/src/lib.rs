@@ -89,10 +89,10 @@ fn install(
     };
     let identifier = BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new(name));
     let implementation = BuiltinImplementation::direct(descriptor, callback);
-    let implementation = match native_entry.map(NativeEntry::address).transpose()? {
-        Some(entry) => implementation.with_entry(entry),
-        None => implementation,
-    };
+    let implementation = native_entry
+        .map(NativeEntry::address)
+        .transpose()?
+        .map_or(implementation, |entry| implementation.with_entry(entry));
     runtime
         .register_builtin(ctx, identifier, implementation)
         .map(|_| ())

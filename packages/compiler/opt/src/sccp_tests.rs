@@ -10,7 +10,7 @@ impl<T, E: Debug> Fixture<T> for Result<T, E> {
         self.unwrap_or_else(|_| std::process::exit(1))
     }
 }
-use ncl_ir::{Constant, FunctionBuilder, FunctionId, OpKind, Prim, Terminator, Ty};
+use ncl_ir::{Constant, Convert, FunctionBuilder, FunctionId, OpKind, Prim, Terminator, Ty};
 
 #[test]
 fn folds_checked_fixnum_arithmetic() {
@@ -74,4 +74,34 @@ fn leaves_fixnum_overflow_unfolded() {
         function.blocks[0].ops[2].kind,
         OpKind::Prim { .. }
     ));
+}
+
+#[test]
+fn does_not_replace_word_conversion_with_i64_constant() {
+    let mut builder = FunctionBuilder::new(FunctionId(2), "word-convert", vec![], vec![Ty::Word]);
+    let source = builder.add_constant(Constant::Fixnum(7));
+    let raw = builder
+        .push_op(OpKind::Const { result: source }, &[Ty::I64])
+        .fixture()[0];
+    let converted = builder
+        .push_op(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: raw,
+            },
+            &[Ty::Word],
+        )
+        .fixture()[0];
+    builder
+        .terminate(Terminator::Return {
+            values: vec![converted],
+        })
+        .fixture();
+    let mut function = builder.finish();
+    assert!(!Sccp.run(&mut function, &Module::default()).fixture());
+    assert!(matches!(
+        function.blocks[0].ops[1].kind,
+        OpKind::Convert { .. }
+    ));
+    ncl_ir::verify(&function).fixture();
 }

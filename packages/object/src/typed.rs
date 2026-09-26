@@ -1,66 +1,117 @@
 //! Additive typed views over the stable tagged-word ABI.
 
-use crate::{ObjectError, ObjectRef, classify};
-use ncl_sys::{StorageCondition, Word};
+use crate::{ObjectRef, Runtime, ThreadContext};
+use ncl_sys::Word;
 
-crate::word_newtype!(Cons);
-crate::word_newtype!(Symbol);
-crate::word_newtype!(StringObject);
-crate::word_newtype!(SimpleVector);
-crate::word_newtype!(SpecializedArray);
-crate::word_newtype!(Array);
-crate::word_newtype!(Closure);
-crate::word_newtype!(StructureObject);
+mod character;
+mod error;
+mod numeric;
+mod sequence;
 
-/// The runtime kind expected by an object-layer operation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum ObjectType {
-    Fixnum,
-    Character,
-    Cons,
-    Symbol,
-    String,
-    SimpleVector,
-    SpecializedArray,
-    Array,
-    HashTable,
-    Function,
-    Closure,
-    Instance,
-    Structure,
-    Bignum,
-    Ratio,
-    DoubleFloat,
-    Complex,
-    Package,
-    Readtable,
-    Stream,
-    Code,
+pub use character::Character;
+pub use error::{
+    ArithmeticError, CellError, ControlError, FileError, LispError, ObjectErrorKind, ObjectType,
+    PackageError, ProgramError, StreamError, TypeError,
+};
+pub use numeric::{Fixnum, Integer, Number, Rational, Real};
+pub use sequence::{
+    Array, Closure, Cons, FunctionDesignator, LispString, List, PackageDesignator, Sequence,
+    SimpleVector, SpecializedArray, StringDesignator, StringObject, StructureObject, Symbol,
+};
+
+/// Converts one raw ABI argument at the generated adapter boundary.
+pub trait FromLispArg: Sized {
+    /// Convert an argument without exposing an unchecked index to builtin code.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed condition when the word does not satisfy the argument type.
+    fn from_lisp_arg(ctx: &ThreadContext, word: Word) -> Result<Self, LispError>;
 }
-
-/// A failed conversion from an ABI word to a domain view.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct TypeError {
-    /// The value that failed validation.
-    pub datum: Word,
-    /// The view required by the operation.
-    pub expected: ObjectType,
-}
-
-impl std::fmt::Display for TypeError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "expected {:?}, got {:?}",
-            self.expected,
-            classify(self.datum)
-        )
+impl FromLispArg for Word {
+    fn from_lisp_arg(_ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
+        Ok(word)
     }
 }
-
-impl std::error::Error for TypeError {}
-
+impl FromLispArg for Fixnum {
+    fn from_lisp_arg(_ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
+        Self::try_from_word(word).map_err(LispError::from)
+    }
+}
+impl FromLispArg for List {
+    fn from_lisp_arg(_ctx: &ThreadContext, word: Word) -> Result<Self, LispError> {
+        if word == Word::NIL {
+            Ok(Self::Nil)
+        } else if word.lowtag() == ncl_sys::LowTag::List as u8 {
+            Ok(Self::Cons(crate::Cons::from_word(word)))
+        } else {
+            Err(LispError::TypeError {
+                datum: word,
+                expected: ObjectType::Cons,
+            })
+        }
+    }
+}
+/// Declare a fixed-arity typed builtin adapter.
+#[macro_export]
+macro_rules! typed_builtin {
+    ($name:ident, $implementation:path, ($a:ident : $at:ty)) => {
+        fn $name(
+            ctx: &mut $crate::ThreadContext,
+            runtime: &$crate::Runtime,
+            args: &$crate::BuiltinArgs<'_>,
+            values: &mut $crate::MultipleValues,
+        ) -> Result<$crate::Word, $crate::ObjectError> {
+            let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?).map_err(
+                |error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                },
+            )?;
+            $implementation(ctx, runtime, $a)
+                .map_err(|error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                })
+                .map(|result| {
+                    values.clear();
+                    result
+                })
+        }
+    };
+    ($name:ident, $implementation:path, ($a:ident : $at:ty, $b:ident : $bt:ty)) => {
+        fn $name(
+            ctx: &mut $crate::ThreadContext,
+            runtime: &$crate::Runtime,
+            args: &$crate::BuiltinArgs<'_>,
+            values: &mut $crate::MultipleValues,
+        ) -> Result<$crate::Word, $crate::ObjectError> {
+            let $a = <$at as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(0)?).map_err(
+                |error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                },
+            )?;
+            let $b = <$bt as $crate::FromLispArg>::from_lisp_arg(ctx, args.required(1)?).map_err(
+                |error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                },
+            )?;
+            $implementation(ctx, runtime, $a, $b)
+                .map_err(|error| {
+                    ctx.set_pending_lisp_error(error);
+                    $crate::ObjectError::TypeError
+                })
+                .map(|result| {
+                    values.clear();
+                    result
+                })
+        }
+    };
+}
+/// Typed callback shape for a domain function that owns argument conversion.
+pub type TypedRustBuiltin = fn(&mut ThreadContext, &Runtime) -> Result<Word, LispError>;
 /// A typed view of a tagged word without changing its ABI representation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -69,7 +120,7 @@ pub enum WordView {
     Character(u32),
     Cons(Cons),
     Symbol(Symbol),
-    HashTable(crate::HashTable),
+    HashTable(crate::hash_table::HashTable),
     String(StringObject),
     SimpleVector(SimpleVector),
     SpecializedArray(SpecializedArray),
@@ -89,7 +140,6 @@ pub enum WordView {
     Other { word: Word, widetag: u8 },
     Immediate(Word),
 }
-
 impl WordView {
     /// Convert an immediate or lowtagged word to the requested view.
     ///
@@ -108,6 +158,12 @@ impl WordView {
                 | (Self::Symbol(_), ObjectType::Symbol)
                 | (Self::Function(_), ObjectType::Function)
                 | (Self::Instance(_), ObjectType::Instance)
+                | (Self::Bignum(_), ObjectType::Bignum)
+                | (Self::Ratio(_), ObjectType::Ratio)
+                | (Self::DoubleFloat(_), ObjectType::DoubleFloat)
+                | (Self::Complex(_), ObjectType::Complex)
+                | (Self::Package(_), ObjectType::Package)
+                | (Self::Stream(_), ObjectType::Stream)
         );
         if valid {
             Ok(view)
@@ -118,7 +174,6 @@ impl WordView {
             })
         }
     }
-
     /// Return the untyped ABI value represented by this view.
     #[must_use]
     pub fn as_word(self) -> Word {
@@ -148,60 +203,41 @@ impl WordView {
         }
     }
 }
-
 impl From<ObjectRef> for WordView {
     fn from(value: ObjectRef) -> Self {
         match value {
             ObjectRef::Fixnum(value) => Self::Fixnum(value),
             ObjectRef::Character(value) => Self::Character(value),
-            ObjectRef::Cons(value) => Self::Cons(value.into()),
-            ObjectRef::Symbol(value) => Self::Symbol(value.into()),
-            ObjectRef::HashTable(value) => Self::HashTable(value.into()),
-            ObjectRef::String(value) => Self::String(value.into()),
-            ObjectRef::SimpleVector(value) => Self::SimpleVector(value.into()),
-            ObjectRef::SpecializedArray(value) => Self::SpecializedArray(value.into()),
-            ObjectRef::Array(value) => Self::Array(value.into()),
-            ObjectRef::Function(value) => Self::Function(value.into()),
-            ObjectRef::Closure(value) => Self::Closure(value.into()),
-            ObjectRef::Instance(value) => Self::Instance(value.into()),
-            ObjectRef::Structure(value) => Self::Structure(value.into()),
-            ObjectRef::Bignum(value) => Self::Bignum(value.into()),
-            ObjectRef::Ratio(value) => Self::Ratio(value.into()),
-            ObjectRef::DoubleFloat(value) => Self::DoubleFloat(value.into()),
-            ObjectRef::Complex(value) => Self::Complex(value.into()),
-            ObjectRef::Package(value) => Self::Package(value.into()),
-            ObjectRef::Readtable(value) => Self::Readtable(value.into()),
-            ObjectRef::Stream(value) => Self::Stream(value.into()),
-            ObjectRef::Code(value) => Self::Code(value.into()),
+            ObjectRef::Cons(value) => Self::Cons(Cons::from_word(value)),
+            ObjectRef::Symbol(value) => Self::Symbol(Symbol::from_word(value)),
+            ObjectRef::HashTable(value) => {
+                Self::HashTable(crate::hash_table::HashTable::from_word(value))
+            }
+            ObjectRef::String(value) => Self::String(StringObject::from_word(value)),
+            ObjectRef::SimpleVector(value) => Self::SimpleVector(SimpleVector::from_word(value)),
+            ObjectRef::SpecializedArray(value) => {
+                Self::SpecializedArray(SpecializedArray::from_word(value))
+            }
+            ObjectRef::Array(value) => Self::Array(Array::from_word(value)),
+            ObjectRef::Function(value) => Self::Function(crate::Function::from_word(value)),
+            ObjectRef::Closure(value) => Self::Closure(Closure::from_word(value)),
+            ObjectRef::Instance(value) => Self::Instance(crate::Instance::from_word(value)),
+            ObjectRef::Structure(value) => Self::Structure(StructureObject::from_word(value)),
+            ObjectRef::Bignum(value) => Self::Bignum(crate::Bignum::from_word(value)),
+            ObjectRef::Ratio(value) => Self::Ratio(crate::Ratio::from_word(value)),
+            ObjectRef::DoubleFloat(value) => {
+                Self::DoubleFloat(crate::DoubleFloat::from_word(value))
+            }
+            ObjectRef::Complex(value) => Self::Complex(crate::Complex::from_word(value)),
+            ObjectRef::Package(value) => Self::Package(crate::Package::from_word(value)),
+            ObjectRef::Readtable(value) => Self::Readtable(crate::Readtable::from_word(value)),
+            ObjectRef::Stream(value) => Self::Stream(crate::Stream::from_word(value)),
+            ObjectRef::Code(value) => Self::Code(crate::CodeObject::from_word(value)),
+            ObjectRef::Other { word, widetag } if word == Word::TRUE && widetag == 0 => {
+                Self::Immediate(word)
+            }
             ObjectRef::Other { word, widetag } => Self::Other { word, widetag },
             ObjectRef::Immediate(value) => Self::Immediate(value),
-        }
-    }
-}
-
-/// Stable categories for the existing object-layer error ABI.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum ObjectErrorKind {
-    Type,
-    Storage(StorageCondition),
-    Layout,
-    Unbound,
-    Unsupported,
-    PackageConflict,
-}
-
-impl ObjectError {
-    /// Return the typed category without changing the existing error enum.
-    #[must_use]
-    pub const fn kind(self) -> ObjectErrorKind {
-        match self {
-            Self::TypeError => ObjectErrorKind::Type,
-            Self::Storage(condition) => ObjectErrorKind::Storage(condition),
-            Self::Layout => ObjectErrorKind::Layout,
-            Self::Unbound => ObjectErrorKind::Unbound,
-            Self::Unsupported => ObjectErrorKind::Unsupported,
-            Self::PackageConflict => ObjectErrorKind::PackageConflict,
         }
     }
 }

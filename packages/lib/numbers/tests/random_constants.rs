@@ -150,6 +150,26 @@ fn random_and_constants_survive_gc_stress_and_strict_forwarding() {
 }
 
 #[test]
+fn registration_survives_gc_stress_and_strict_forwarding() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    ncl_lib_numbers::register(&runtime).unwrap();
+
+    let random_state = common_lisp_symbol(&runtime, &mut ctx, "*RANDOM-STATE*");
+    let state = symbol_value(&ctx, random_state).unwrap();
+    assert!(matches!(
+        classify_object(&ctx, state),
+        ObjectRef::Instance(_)
+    ));
+    let pi = common_lisp_symbol(&runtime, &mut ctx, "PI");
+    assert!(float(&ctx, symbol_value(&ctx, pi).unwrap()).is_finite());
+}
+
+#[test]
 fn numeric_constants_are_constant_and_bound() {
     let (runtime, mut ctx) = setup();
     for name in ["PI", "DOUBLE-FLOAT-EPSILON", "MOST-POSITIVE-FIXNUM"] {

@@ -172,7 +172,8 @@ fn nstring_capitalize_builtin(
     let string = args.required(0)?;
     let length = string_length(ctx, string)?;
     let mut start = true;
-    for index in 0..length {
+    let (range_start, range_end) = string_range(ctx, args, 1, length, &["START"], &["END"])?;
+    for index in range_start..range_end {
         let value = string_ref(ctx, string, index)?;
         let mapped = if start {
             value.to_uppercase().next().unwrap_or(value)

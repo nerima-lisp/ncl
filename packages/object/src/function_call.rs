@@ -1,6 +1,6 @@
 //! The object-layer port for calling Lisp functions from Rust builtins.
 
-use crate::typed::FunctionDesignator;
+use crate::typed::{FunctionDesignator, LispError, ProgramError};
 use crate::{FunctionObject, MultipleValues, ObjectError, Runtime, ThreadContext, Word};
 
 /// A GC-safe borrowed sequence of Lisp arguments.
@@ -108,24 +108,31 @@ impl Runtime {
             .get(&function.as_word())
             .copied()
             .ok_or(ObjectError::Unbound)?;
-        if args.len() < implementation.descriptor.lambda_list.min_arity()
+        let result = if args.len() < implementation.descriptor.lambda_list.min_arity()
             || implementation
                 .descriptor
                 .lambda_list
                 .max_arity()
                 .is_some_and(|max| args.len() > max)
         {
-            return Err(ObjectError::TypeError);
-        }
-        let original = args.to_vec();
-        let args = crate::BuiltinArgs::new(&original);
-        let adapted = if let Some(adapter) = implementation.keyword_adapter {
-            adapter(&args)?
+            ctx.set_pending_lisp_error(LispError::ProgramError(
+                ProgramError::WrongNumberOfArguments {
+                    minimum: implementation.descriptor.lambda_list.min_arity(),
+                    maximum: implementation.descriptor.lambda_list.max_arity(),
+                },
+            ));
+            Err(ObjectError::TypeError)
         } else {
-            original
+            let original = args.to_vec();
+            let args = crate::BuiltinArgs::new(&original);
+            let adapted = if let Some(adapter) = implementation.keyword_adapter {
+                adapter(&args)?
+            } else {
+                original
+            };
+            let adapted = crate::BuiltinArgs::new(&adapted);
+            (implementation.function)(ctx, self, &adapted, values)
         };
-        let adapted = crate::BuiltinArgs::new(&adapted);
-        let result = (implementation.function)(ctx, self, &adapted, values);
         ctx.set_values(values.as_slice());
         if let Some(error) = ctx.take_pending_lisp_error()
             && let Some(converter) = self.lisp_error_converter()

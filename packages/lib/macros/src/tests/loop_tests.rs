@@ -80,3 +80,73 @@ fn loop_finish_becomes_go_to_the_generated_end_tag() -> Result<(), ObjectError> 
     assert_ne!(expansion, Word::NIL);
     Ok(())
 }
+
+#[test]
+fn parses_arithmetic_boundaries_and_equals_then() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let for_word = symbol(&mut ctx, &runtime, "FOR")?;
+    let equals = symbol(&mut ctx, &runtime, "=")?;
+    let then = symbol(&mut ctx, &runtime, "THEN")?;
+    let ast = parse_loop(
+        &ctx,
+        &[for_word, x, equals, Word::fixnum(1), then, Word::fixnum(2)],
+    )?;
+    assert!(matches!(ast.clauses[0], LoopClause::EqualsThen { .. }));
+    Ok(())
+}
+
+#[test]
+fn parses_list_vector_and_hash_iteration_clauses() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let x = symbol(&mut ctx, &runtime, "X")?;
+    let list = symbol(&mut ctx, &runtime, "LIST")?;
+    let input = [
+        symbol(&mut ctx, &runtime, "FOR")?,
+        x,
+        symbol(&mut ctx, &runtime, "IN")?,
+        list,
+        symbol(&mut ctx, &runtime, "BY")?,
+        symbol(&mut ctx, &runtime, "NEXT")?,
+        symbol(&mut ctx, &runtime, "FOR")?,
+        symbol(&mut ctx, &runtime, "Y")?,
+        symbol(&mut ctx, &runtime, "ON")?,
+        list,
+        symbol(&mut ctx, &runtime, "FOR")?,
+        symbol(&mut ctx, &runtime, "Z")?,
+        symbol(&mut ctx, &runtime, "ACROSS")?,
+        symbol(&mut ctx, &runtime, "VECTOR")?,
+        symbol(&mut ctx, &runtime, "FOR")?,
+        symbol(&mut ctx, &runtime, "KEY")?,
+        symbol(&mut ctx, &runtime, "BEING")?,
+        symbol(&mut ctx, &runtime, "THE")?,
+        symbol(&mut ctx, &runtime, "HASH-KEYS")?,
+        symbol(&mut ctx, &runtime, "OF")?,
+        symbol(&mut ctx, &runtime, "TABLE")?,
+    ];
+    let ast = parse_loop(&ctx, &input)?;
+    assert!(matches!(ast.clauses[0], LoopClause::In { on: false, .. }));
+    assert!(matches!(ast.clauses[1], LoopClause::In { on: true, .. }));
+    assert!(matches!(ast.clauses[2], LoopClause::Across { .. }));
+    assert!(matches!(ast.clauses[3], LoopClause::Hash { .. }));
+    Ok(())
+}
+
+#[test]
+fn expansion_rejects_hash_iteration_at_the_callback_boundary() -> Result<(), ObjectError> {
+    let (runtime, mut ctx) = fixture()?;
+    let ast = LoopAst {
+        name: None,
+        clauses: vec![LoopClause::Hash {
+            variable: symbol(&mut ctx, &runtime, "KEY")?,
+            table: symbol(&mut ctx, &runtime, "TABLE")?,
+            kind: HashIterationKind::Keys,
+            using: None,
+        }],
+    };
+    assert_eq!(
+        expand_loop_ast(&mut ctx, &runtime, &ast),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
+}

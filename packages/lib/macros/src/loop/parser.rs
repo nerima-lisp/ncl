@@ -1,6 +1,7 @@
 use super::{
-    AccumulatorKind, ForClause, LimitDirection, LoopAst, LoopClause, ObjectError, Result,
-    StepDirection, ThreadContext, Word, string_length, string_ref, symbol_name,
+    AccumulatorKind, ForClause, HashIterationKind, LimitDirection, LoopAst, LoopClause,
+    ObjectError, Result, StepDirection, ThreadContext, Word, string_length, string_ref,
+    symbol_name,
 };
 fn word_name(ctx: &ThreadContext, word: Word) -> Result<String> {
     let name = symbol_name(ctx, word)?;
@@ -40,7 +41,18 @@ fn is_keyword(ctx: &ThreadContext, word: Word) -> bool {
                 | "UPTO"
                 | "BELOW"
                 | "DOWNTO"
+                | "ABOVE"
                 | "BY"
+                | "THEN"
+                | "IN"
+                | "ON"
+                | "ACROSS"
+                | "BEING"
+                | "THE"
+                | "HASH-KEYS"
+                | "HASH-VALUES"
+                | "OF"
+                | "USING"
         )
     })
 }
@@ -64,11 +76,13 @@ fn required(input: &[Word], cursor: &mut usize) -> Result<Word> {
     Ok(value)
 }
 
+#[allow(clippy::too_many_lines)]
 fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<LoopClause> {
     let variable = required(input, cursor)?;
     symbol_name(ctx, variable)?;
     let mut init = Word::NIL;
     let mut step = None;
+    let mut then = None;
     let mut direction = None;
     let mut limit = None;
     while let Some(word) = input.get(*cursor).copied() {
@@ -94,11 +108,21 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
                 init = next;
                 *cursor += 2;
             }
-            "THEN" | "BY" => {
+            "THEN" => {
+                if then.is_some() {
+                    return Err(ObjectError::TypeError);
+                }
+                then = Some(next);
+                *cursor += 2;
+            }
+            "BY" => {
+                if step.is_some() {
+                    return Err(ObjectError::TypeError);
+                }
                 step = Some(next);
                 *cursor += 2;
             }
-            "TO" | "UPTO" | "BELOW" | "DOWNTO" => {
+            "TO" | "UPTO" | "BELOW" | "DOWNTO" | "ABOVE" => {
                 limit = Some((
                     if name == "TO" {
                         LimitDirection::To
@@ -108,6 +132,8 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
                         LimitDirection::Below
                     } else if name == "DOWNTO" {
                         LimitDirection::DownTo
+                    } else if name == "ABOVE" {
+                        LimitDirection::Above
                     } else {
                         return Err(ObjectError::TypeError);
                     },
@@ -127,6 +153,7 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
                         | "UPTO"
                         | "BELOW"
                         | "DOWNTO"
+                        | "ABOVE"
                 ) =>
             {
                 break;
@@ -134,16 +161,78 @@ fn parse_for(ctx: &ThreadContext, input: &[Word], cursor: &mut usize) -> Result<
             _other => return Err(ObjectError::TypeError),
         }
     }
-    Ok(LoopClause::For(ForClause {
+    if let Some(then) = then {
+        if step.is_some() || direction.is_some() || limit.is_some() {
+            return Err(ObjectError::TypeError);
+        }
+        Ok(LoopClause::EqualsThen {
+            variable,
+            init,
+            then,
+        })
+    } else {
+        Ok(LoopClause::For(ForClause {
+            variable,
+            init,
+            step,
+            direction,
+            limit,
+        }))
+    }
+}
+
+fn parse_sequence_for(
+    ctx: &ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+    variable: Word,
+    on: bool,
+) -> Result<LoopClause> {
+    let sequence = required(input, cursor)?;
+    let by = if input
+        .get(*cursor)
+        .is_some_and(|word| word_name(ctx, *word).ok().as_deref() == Some("BY"))
+    {
+        *cursor += 1;
+        Some(required(input, cursor)?)
+    } else {
+        None
+    };
+    Ok(LoopClause::In {
         variable,
-        init,
-        step,
-        direction,
-        limit,
-    }))
+        sequence,
+        on,
+        by,
+    })
+}
+
+fn parse_hash(
+    ctx: &ThreadContext,
+    input: &[Word],
+    cursor: &mut usize,
+    variable: Word,
+    kind: HashIterationKind,
+) -> Result<LoopClause> {
+    let table = required(input, cursor)?;
+    let using = if input
+        .get(*cursor)
+        .is_some_and(|word| word_name(ctx, *word).ok().as_deref() == Some("USING"))
+    {
+        *cursor += 1;
+        Some(required(input, cursor)?)
+    } else {
+        None
+    };
+    Ok(LoopClause::Hash {
+        variable,
+        table,
+        kind,
+        using,
+    })
 }
 
 /// Parse the body of a LOOP form (the operator itself is not included).
+#[allow(clippy::too_many_lines)]
 pub fn parse_loop(ctx: &ThreadContext, input: &[Word]) -> Result<LoopAst> {
     let mut cursor = 0;
     let mut name = None;
@@ -170,7 +259,65 @@ pub fn parse_loop(ctx: &ThreadContext, input: &[Word]) -> Result<LoopAst> {
                 };
                 clauses.push(LoopClause::With { variable, init });
             }
-            "FOR" | "AS" => clauses.push(parse_for(ctx, input, &mut cursor)?),
+            "FOR" | "AS" => {
+                let variable = input.get(cursor).copied().ok_or(ObjectError::TypeError)?;
+                let next = input
+                    .get(cursor + 1)
+                    .copied()
+                    .ok_or(ObjectError::TypeError)?;
+                match word_name(ctx, next)?.as_str() {
+                    "IN" => {
+                        cursor += 2;
+                        clauses.push(parse_sequence_for(
+                            ctx,
+                            input,
+                            &mut cursor,
+                            variable,
+                            false,
+                        )?);
+                    }
+                    "ON" => {
+                        cursor += 2;
+                        clauses.push(parse_sequence_for(ctx, input, &mut cursor, variable, true)?);
+                    }
+                    "ACROSS" => {
+                        cursor += 2;
+                        clauses.push(LoopClause::Across {
+                            variable,
+                            vector: required(input, &mut cursor)?,
+                        });
+                        symbol_name(ctx, variable)?;
+                    }
+                    "BEING" => {
+                        cursor += 3;
+                        let the = input
+                            .get(cursor.saturating_sub(1))
+                            .copied()
+                            .ok_or(ObjectError::TypeError)
+                            .and_then(|word| word_name(ctx, word))?;
+                        if the != "THE" {
+                            return Err(ObjectError::TypeError);
+                        }
+                        let kind_name = word_name(ctx, required(input, &mut cursor)?)?;
+                        let kind = if kind_name == "HASH-KEYS" {
+                            HashIterationKind::Keys
+                        } else if kind_name == "HASH-VALUES" {
+                            HashIterationKind::Values
+                        } else {
+                            return Err(ObjectError::TypeError);
+                        };
+                        if word_name(ctx, required(input, &mut cursor)?)? != "OF" {
+                            return Err(ObjectError::TypeError);
+                        }
+                        clauses.push(parse_hash(ctx, input, &mut cursor, variable, kind)?);
+                    }
+                    "=" | "FROM" | "UPFROM" | "DOWNFROM" | "BY" | "THEN" | "TO" | "UPTO"
+                    | "BELOW" | "DOWNTO" | "ABOVE" => {
+                        clauses.push(parse_for(ctx, input, &mut cursor)?);
+                    }
+                    _other => return Err(ObjectError::TypeError),
+                }
+            }
             "REPEAT" => clauses.push(LoopClause::Repeat(required(input, &mut cursor)?)),
             "WHILE" => clauses.push(LoopClause::While(required(input, &mut cursor)?)),
             "UNTIL" => clauses.push(LoopClause::Until(required(input, &mut cursor)?)),
@@ -206,6 +353,9 @@ pub fn parse_loop(ctx: &ThreadContext, input: &[Word]) -> Result<LoopAst> {
                 } else {
                     None
                 };
+                if let Some(variable) = variable {
+                    symbol_name(ctx, variable)?;
+                }
                 clauses.push(LoopClause::Accumulate {
                     kind,
                     form,

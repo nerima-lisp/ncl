@@ -1,140 +1,9 @@
+use super::clause::HeldLoopClause;
+use super::held::{expand_body, held_form, held_fresh_symbol, held_get, held_list};
 use super::{
-    AccumulatorKind, BuiltinArgs, LimitDirection, LoopAst, LoopClause, MultipleValues, ObjectError,
-    Result, Runtime, StepDirection, ThreadContext, Word, elements, fresh_symbol, list, parse_loop,
-    symbol,
+    AccumulatorKind, LimitDirection, LoopAst, LoopClause, ObjectError, Result, Runtime,
+    StepDirection, ThreadContext, Word, symbol_name,
 };
-
-#[derive(Clone, Debug)]
-enum HeldLoopClause {
-    With {
-        variable: usize,
-        init: usize,
-    },
-    For {
-        variable: usize,
-        init: usize,
-        step: Option<usize>,
-        direction: Option<StepDirection>,
-        limit: Option<(LimitDirection, usize)>,
-    },
-    Repeat(usize),
-    While(usize),
-    Until(usize),
-    Initially(Vec<usize>),
-    Finally(Vec<usize>),
-    Do(Vec<usize>),
-    Accumulate {
-        kind: AccumulatorKind,
-        form: usize,
-        variable: Option<usize>,
-    },
-    Return(usize),
-}
-
-fn form(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, args: &[Word]) -> Result {
-    ncl_object::with_roots(ctx, args, |ctx, roots| {
-        let mut operator = symbol(ctx, runtime, name)?;
-        ncl_object::with_root(ctx, &mut operator, |ctx, operator| {
-            let values = std::iter::once(*operator)
-                .chain(roots.iter().map(|root| **root))
-                .collect::<Vec<_>>();
-            list(ctx, runtime, &values)
-        })
-    })
-}
-
-fn held_get(held: &[Word], index: usize) -> Result<Word> {
-    held.get(index).copied().ok_or(ObjectError::TypeError)
-}
-
-fn held_form(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    held: &mut Vec<Word>,
-    name: &str,
-    indexes: &[usize],
-) -> Result<usize> {
-    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
-        let args = indexes
-            .iter()
-            .map(|index| {
-                roots
-                    .get(*index)
-                    .map(|root| **root)
-                    .ok_or(ObjectError::TypeError)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let value = form(ctx, runtime, name, &args)?;
-        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        Ok((value, refreshed))
-    })?;
-    *held = refreshed;
-    held.push(value);
-    Ok(held.len() - 1)
-}
-
-fn held_list(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    held: &mut Vec<Word>,
-    indexes: &[usize],
-) -> Result<usize> {
-    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
-        let values = indexes
-            .iter()
-            .map(|index| {
-                roots
-                    .get(*index)
-                    .map(|root| **root)
-                    .ok_or(ObjectError::TypeError)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let value = list(ctx, runtime, &values)?;
-        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        Ok((value, refreshed))
-    })?;
-    *held = refreshed;
-    held.push(value);
-    Ok(held.len() - 1)
-}
-
-fn held_fresh_symbol(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    held: &mut Vec<Word>,
-) -> Result<usize> {
-    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
-        let value = fresh_symbol(ctx, runtime)?;
-        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        Ok((value, refreshed))
-    })?;
-    *held = refreshed;
-    held.push(value);
-    Ok(held.len() - 1)
-}
-
-fn expand_body(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    held: &mut Vec<Word>,
-    body: &[usize],
-    end: usize,
-) -> Result<Vec<usize>> {
-    let finish = held_fresh_symbol(ctx, runtime, held)?;
-    let mut result = Vec::with_capacity(body.len());
-    for index in body {
-        let word = held_get(held, *index)?;
-        if word.is_cons() {
-            let parts = elements(ctx, word)?;
-            if parts.first().copied() == Some(held_get(held, finish)?) && parts.len() == 1 {
-                result.push(held_form(ctx, runtime, held, "GO", &[end])?);
-                continue;
-            }
-        }
-        result.push(*index);
-    }
-    Ok(result)
-}
 
 /// Expand a parsed LOOP AST into portable CL primitive forms.
 #[allow(clippy::too_many_lines)]
@@ -180,6 +49,59 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     limit,
                 }
             }
+            LoopClause::EqualsThen {
+                variable,
+                init,
+                then,
+            } => {
+                symbol_name(ctx, variable)?;
+                let variable_index = held.len();
+                held.push(variable);
+                let init_index = held.len();
+                held.push(init);
+                let then_index = held.len();
+                held.push(then);
+                HeldLoopClause::EqualsThen {
+                    variable: variable_index,
+                    init: init_index,
+                    then: then_index,
+                }
+            }
+            LoopClause::In {
+                variable,
+                sequence,
+                on,
+                by,
+            } => {
+                symbol_name(ctx, variable)?;
+                let variable_index = held.len();
+                held.push(variable);
+                let sequence_index = held.len();
+                held.push(sequence);
+                let by = by.map(|by| {
+                    let index = held.len();
+                    held.push(by);
+                    index
+                });
+                HeldLoopClause::In {
+                    variable: variable_index,
+                    sequence: sequence_index,
+                    on,
+                    by,
+                }
+            }
+            LoopClause::Across { variable, vector } => {
+                symbol_name(ctx, variable)?;
+                let variable_index = held.len();
+                held.push(variable);
+                let vector_index = held.len();
+                held.push(vector);
+                HeldLoopClause::Across {
+                    variable: variable_index,
+                    vector: vector_index,
+                }
+            }
+            LoopClause::Hash { .. } => HeldLoopClause::Hash,
             LoopClause::Repeat(count) => {
                 let index = held.len();
                 held.push(count);
@@ -262,7 +184,8 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
     let nil = held.len();
     held.push(Word::NIL);
     let mut result = nil;
-    let mut accumulators = Vec::new();
+    let mut result_kind = None;
+    let mut initialized_accumulators = Vec::new();
 
     for clause in &clauses {
         match *clause {
@@ -290,20 +213,25 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     ));
                     step
                 };
-                {
-                    let operator = if matches!(direction, Some(StepDirection::DownFrom)) {
-                        "-"
-                    } else {
-                        "+"
-                    };
-                    let update = held_form(ctx, runtime, &mut held, operator, &[variable, step])?;
-                    updates.extend([variable, update]);
-                }
+                let down = matches!(direction, Some(StepDirection::DownFrom))
+                    || matches!(
+                        limit.map(|(kind, _)| kind),
+                        Some(LimitDirection::DownTo | LimitDirection::Above)
+                    );
+                let operator = if down { "-" } else { "+" };
+                let update = held_form(ctx, runtime, &mut held, operator, &[variable, step])?;
+                updates.extend([variable, update]);
                 if let Some((limit_direction, limit)) = limit {
-                    let operator = match limit_direction {
-                        LimitDirection::To => ">",
-                        LimitDirection::UpTo | LimitDirection::Below => ">=",
-                        LimitDirection::DownTo => "<",
+                    let operator = if down {
+                        if matches!(limit_direction, LimitDirection::Above) {
+                            "<="
+                        } else {
+                            "<"
+                        }
+                    } else if matches!(limit_direction, LimitDirection::Below) {
+                        ">="
+                    } else {
+                        ">"
                     };
                     tests.push(held_form(
                         ctx,
@@ -314,6 +242,71 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     )?);
                 }
             }
+            HeldLoopClause::EqualsThen {
+                variable,
+                init,
+                then,
+            } => {
+                bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
+                updates.extend([variable, then]);
+            }
+            HeldLoopClause::In {
+                variable,
+                sequence,
+                on,
+                by,
+            } => {
+                let cursor = held_fresh_symbol(ctx, runtime, &mut held)?;
+                let nil_index = held.len();
+                held.push(Word::NIL);
+                bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil_index])?);
+                bindings.push(held_list(ctx, runtime, &mut held, &[cursor, sequence])?);
+                tests.push(held_form(ctx, runtime, &mut held, "ENDP", &[cursor])?);
+                let current = if on {
+                    cursor
+                } else {
+                    held_form(ctx, runtime, &mut held, "CAR", &[cursor])?
+                };
+                body.push(held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "SETQ",
+                    &[variable, current],
+                )?);
+                let next = if let Some(by) = by {
+                    held_form(ctx, runtime, &mut held, "FUNCALL", &[by, cursor])?
+                } else {
+                    held_form(ctx, runtime, &mut held, "CDR", &[cursor])?
+                };
+                updates.extend([cursor, next]);
+            }
+            HeldLoopClause::Across { variable, vector } => {
+                let index = held_fresh_symbol(ctx, runtime, &mut held)?;
+                let zero = held.len();
+                held.push(Word::fixnum(0));
+                let nil_index = held.len();
+                held.push(Word::NIL);
+                bindings.push(held_list(ctx, runtime, &mut held, &[index, zero])?);
+                bindings.push(held_list(ctx, runtime, &mut held, &[variable, nil_index])?);
+                let length = held_form(ctx, runtime, &mut held, "ARRAY-TOTAL-SIZE", &[vector])?;
+                tests.push(held_form(ctx, runtime, &mut held, ">=", &[index, length])?);
+                let element = held_form(ctx, runtime, &mut held, "AREF", &[vector, index])?;
+                body.push(held_form(
+                    ctx,
+                    runtime,
+                    &mut held,
+                    "SETQ",
+                    &[variable, element],
+                )?);
+                let one = held.len();
+                held.push(Word::fixnum(1));
+                updates.extend([
+                    index,
+                    held_form(ctx, runtime, &mut held, "+", &[index, one])?,
+                ]);
+            }
+            HeldLoopClause::Hash => return Err(ObjectError::TypeError),
             HeldLoopClause::Repeat(count) => {
                 let counter = held_fresh_symbol(ctx, runtime, &mut held)?;
                 bindings.push(held_list(ctx, runtime, &mut held, &[counter, count])?);
@@ -353,12 +346,18 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     Some(variable) => variable,
                     None => held_fresh_symbol(ctx, runtime, &mut held)?,
                 };
+                if !initialized_accumulators
+                    .iter()
+                    .any(|index| held.get(*index) == held.get(accumulator))
                 {
-                    accumulators.push((kind, accumulator));
-                    let init = if matches!(kind, AccumulatorKind::Count) {
-                        Word::fixnum(0)
-                    } else {
-                        Word::NIL
+                    initialized_accumulators.push(accumulator);
+                    let init = match kind {
+                        AccumulatorKind::Count | AccumulatorKind::Sum => Word::fixnum(0),
+                        AccumulatorKind::Collect
+                        | AccumulatorKind::Append
+                        | AccumulatorKind::Nconc
+                        | AccumulatorKind::Maximize
+                        | AccumulatorKind::Minimize => Word::NIL,
                     };
                     let init_index = held.len();
                     held.push(init);
@@ -370,6 +369,7 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     )?);
                 }
                 result = accumulator;
+                result_kind = Some(kind);
                 match kind {
                     AccumulatorKind::Collect => {
                         body.push(held_form(
@@ -381,9 +381,8 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                         )?);
                     }
                     AccumulatorKind::Append => {
-                        let values = held_form(ctx, runtime, &mut held, "LIST", &[value])?;
                         let appended =
-                            held_form(ctx, runtime, &mut held, "APPEND", &[accumulator, values])?;
+                            held_form(ctx, runtime, &mut held, "APPEND", &[accumulator, value])?;
                         body.push(held_form(
                             ctx,
                             runtime,
@@ -406,12 +405,14 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     AccumulatorKind::Count => {
                         let one = held.len();
                         held.push(Word::fixnum(1));
+                        let increment =
+                            held_form(ctx, runtime, &mut held, "INCF", &[accumulator, one])?;
                         body.push(held_form(
                             ctx,
                             runtime,
                             &mut held,
-                            "INCF",
-                            &[accumulator, one],
+                            "WHEN",
+                            &[value, increment],
                         )?);
                     }
                     AccumulatorKind::Sum => {
@@ -424,6 +425,10 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                         )?);
                     }
                     AccumulatorKind::Maximize | AccumulatorKind::Minimize => {
+                        let first = held_fresh_symbol(ctx, runtime, &mut held)?;
+                        let truth = held.len();
+                        held.push(Word::TRUE);
+                        bindings.push(held_list(ctx, runtime, &mut held, &[first, truth])?);
                         let operator = if matches!(kind, AccumulatorKind::Maximize) {
                             "MAX"
                         } else {
@@ -431,13 +436,22 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                         };
                         let selected =
                             held_form(ctx, runtime, &mut held, operator, &[accumulator, value])?;
+                        let selected =
+                            held_form(ctx, runtime, &mut held, "SETQ", &[accumulator, selected])?;
+                        let set_first =
+                            held_form(ctx, runtime, &mut held, "SETQ", &[accumulator, value])?;
+                        let nil = held.len();
+                        held.push(Word::NIL);
+                        let clear_first =
+                            held_form(ctx, runtime, &mut held, "SETQ", &[first, nil])?;
                         body.push(held_form(
                             ctx,
                             runtime,
                             &mut held,
-                            "SETQ",
-                            &[accumulator, selected],
+                            "IF",
+                            &[first, set_first, selected],
                         )?);
+                        body.push(clear_first);
                     }
                 }
             }
@@ -461,14 +475,11 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
     tagbody.push(held_form(ctx, runtime, &mut held, "GO", &[start])?);
     tagbody.push(end);
     tagbody.extend(finally);
-    let mut value = result;
-    for (kind, variable) in accumulators.into_iter().rev() {
-        if matches!(kind, AccumulatorKind::Collect) {
-            value = held_form(ctx, runtime, &mut held, "NREVERSE", &[variable])?;
-        } else {
-            value = variable;
-        }
-    }
+    let value = if matches!(result_kind, Some(AccumulatorKind::Collect)) {
+        held_form(ctx, runtime, &mut held, "NREVERSE", &[result])?
+    } else {
+        result
+    };
     let tagbody = held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?;
     let mut block_body = initially;
     block_body.extend([tagbody, value]);
@@ -483,18 +494,4 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
     let binding_list = held_list(ctx, runtime, &mut held, &bindings)?;
     let expansion = held_form(ctx, runtime, &mut held, "LET", &[binding_list, block])?;
     held_get(&held, expansion)
-}
-
-/// Adapted callback for a LOOP macro function.
-pub fn expand_loop_callback(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result {
-    let form = args.get(0).ok_or(ObjectError::TypeError)?;
-    let input = elements(ctx, form)?;
-    let input = input.get(1..).ok_or(ObjectError::TypeError)?;
-    let ast = parse_loop(ctx, input)?;
-    expand_loop_ast(ctx, runtime, &ast)
 }

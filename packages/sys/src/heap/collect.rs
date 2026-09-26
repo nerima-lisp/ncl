@@ -9,9 +9,9 @@ const HASH_TABLE_WEAKNESS: usize = 2;
 const HASH_TABLE_COUNT: usize = 3;
 const HASH_TABLE_FREE_HEAD: usize = 6;
 const HASH_TABLE_HIGH_WATER: usize = 7;
-const HASH_TABLE_MARKER: usize = 9;
-const HASH_TABLE_KV: usize = 10;
-const HASH_TABLE_INDEX: usize = 11;
+const HASH_TABLE_MARKER: usize = 11;
+const HASH_TABLE_KV: usize = 12;
+const HASH_TABLE_INDEX: usize = 13;
 const VECTOR_DATA: usize = 2;
 const TOMBSTONE: i64 = -2;
 

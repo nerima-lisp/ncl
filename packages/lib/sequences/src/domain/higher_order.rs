@@ -3,9 +3,9 @@
 #![allow(dead_code)]
 
 use ncl_object::{
-    make_simple_vector, pop_root, push_root, simple_vector_length, simple_vector_ref,
     BuiltinFunctionCaller, FunctionArguments, FunctionCaller, FunctionDesignator, List,
-    MultipleValues, ObjectError, Runtime, Sequence, ThreadContext, Word,
+    MultipleValues, ObjectError, Runtime, Sequence, ThreadContext, Word, make_simple_vector,
+    pop_root, push_root, simple_vector_length, simple_vector_ref,
 };
 
 fn list_word(list: List) -> Word {
@@ -41,7 +41,7 @@ fn values(ctx: &mut ThreadContext, sequence: Sequence) -> Result<Vec<Word>, Obje
 
 fn rooted_nested<T>(
     ctx: &mut ThreadContext,
-    words: &mut [Vec<Word>],
+    words: &mut [Vec<Word>], // check-added-lines: allow(index) slice type
     f: impl FnOnce(&mut ThreadContext, &[Vec<Word>]) -> T,
 ) -> T {
     let mut tokens = Vec::new();
@@ -59,7 +59,7 @@ fn sequence_result(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
     result_type: Sequence,
-    values: &mut [Word],
+    values: &[Word],
 ) -> Result<Word, ObjectError> {
     ncl_object::with_rooted_slice(ctx, values, |ctx, rooted_values| match result_type {
         Sequence::List(_) => super::list_from(ctx, runtime, rooted_values),
@@ -114,8 +114,8 @@ pub fn map<C: FunctionCaller>(
                 for (index, value) in rooted_result.iter_mut().enumerate() {
                     let args = sources
                         .iter()
-                        .map(|source| source[index])
-                        .collect::<Vec<_>>();
+                        .map(|source| source.get(index).copied().ok_or(ObjectError::Layout))
+                        .collect::<Result<Vec<_>, _>>()?;
                     *value = call(ctx, runtime, caller, callback, &args)?.0;
                 }
                 sequence_result(ctx, runtime, result_type, rooted_result)
@@ -152,9 +152,12 @@ pub fn map_into<C: FunctionCaller>(
                 for index in 0..length {
                     let args = sources
                         .iter()
-                        .map(|source| source[index])
-                        .collect::<Vec<_>>();
-                    rooted_destination[index] = call(ctx, runtime, caller, callback, &args)?.0;
+                        .map(|source| source.get(index).copied().ok_or(ObjectError::Layout))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    *rooted_destination
+                        .get_mut(index)
+                        .ok_or(ObjectError::Layout)? =
+                        call(ctx, runtime, caller, callback, &args)?.0;
                 }
                 let destination_sequence =
                     super::sequence_value(ctx, **roots.first().ok_or(ObjectError::Layout)?)?;
@@ -212,8 +215,12 @@ pub fn reduce<C: FunctionCaller>(
             let accumulator_root = [accumulator];
             ncl_object::with_rooted_slice(ctx, &accumulator_root, |ctx, accumulator| {
                 while index < items.len() {
-                    let args = [accumulator[0], items[index]];
-                    accumulator[0] = call(ctx, runtime, caller, callback, &args)?.0;
+                    let args = [
+                        *accumulator.first().ok_or(ObjectError::Layout)?,
+                        *items.get(index).ok_or(ObjectError::Layout)?,
+                    ];
+                    *accumulator.first_mut().ok_or(ObjectError::Layout)? =
+                        call(ctx, runtime, caller, callback, &args)?.0;
                     index += 1;
                 }
                 Ok(accumulator[0])
@@ -244,8 +251,8 @@ pub fn predicate<C: FunctionCaller>(
             for index in 0..length {
                 let args = source_values
                     .iter()
-                    .map(|source| source[index])
-                    .collect::<Vec<_>>();
+                    .map(|source| source.get(index).copied().ok_or(ObjectError::Layout))
+                    .collect::<Result<Vec<_>, _>>()?;
                 let truth = call(ctx, runtime, caller, callback, &args)?.0 != Word::NIL;
                 result = match kind {
                     Predicate::Every | Predicate::Some => truth,
@@ -303,7 +310,10 @@ fn list_map<C: FunctionCaller>(
                                 .map(|list| nth_tail(ctx, **list, index))
                                 .collect::<Result<Vec<_>, _>>()?
                         } else {
-                            sources.iter().map(|source| source[index]).collect()
+                            sources
+                                .iter()
+                                .map(|source| source.get(index).copied().ok_or(ObjectError::Layout))
+                                .collect::<Result<Vec<_>, _>>()?
                         };
                         *value = call(ctx, runtime, caller, callback, &args)?.0;
                     }
@@ -381,7 +391,7 @@ pub fn mapcan<C: FunctionCaller>(
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
     let results = list_map(ctx, runtime, function, lists, caller, false)?;
-    flatten_results(ctx, runtime, results)
+    flatten_results(ctx, runtime, &results)
 }
 
 pub fn mapcon<C: FunctionCaller>(
@@ -392,13 +402,13 @@ pub fn mapcon<C: FunctionCaller>(
     caller: &mut C,
 ) -> Result<Word, ObjectError> {
     let results = list_map(ctx, runtime, function, lists, caller, true)?;
-    flatten_results(ctx, runtime, results)
+    flatten_results(ctx, runtime, &results)
 }
 
 fn flatten_results(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    results: Vec<Word>,
+    results: &[Word],
 ) -> Result<Word, ObjectError> {
     ncl_object::with_rooted_slice(ctx, &results, |ctx, rooted_results| {
         let mut flattened = Vec::new();

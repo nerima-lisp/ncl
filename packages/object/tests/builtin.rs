@@ -1,9 +1,10 @@
 #![allow(missing_docs)]
 
+use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
-    BuiltinName, BuiltinPackage, LambdaList, MultipleValues, Parameter, ParameterType, Runtime,
-    ThreadContext,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinFunctionCaller, BuiltinIdentifier,
+    BuiltinImplementation, BuiltinName, BuiltinPackage, FunctionArguments, FunctionCaller,
+    LambdaList, MultipleValues, Parameter, ParameterType, Runtime, ThreadContext,
 };
 use ncl_sys::Word;
 
@@ -118,4 +119,34 @@ fn adapted_builtin_reorders_keyword_payload_before_rust_call() {
         runtime.call_builtin(&mut ctx, function, &[Word::fixnum(3), Word::fixnum(2)]),
         Ok(Word::fixnum(5))
     );
+}
+
+#[test]
+fn builtin_function_caller_preserves_multiple_values() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let descriptor = Builtin {
+        lambda_list: LambdaList::new(REQUIRED_PARAMETERS, &[], None, &[], false),
+        convention: BuiltinConvention::Direct(Arity::exact(2)),
+    };
+    let function = runtime
+        .register_builtin(
+            &mut ctx,
+            TEST_ID,
+            BuiltinImplementation::direct(descriptor, add_builtin),
+        )
+        .unwrap_or_else(|error| panic!("builtin: {error:?}"));
+    let mut caller = BuiltinFunctionCaller;
+    let mut values = MultipleValues::new();
+    let result = caller.call_function(
+        &mut ctx,
+        &runtime,
+        FunctionDesignator::Function(function),
+        FunctionArguments::new(&[Word::fixnum(2), Word::fixnum(3)]),
+        &mut values,
+    );
+    assert_eq!(result, Ok(Word::fixnum(5)));
+    assert_eq!(values.as_slice(), &[Word::fixnum(99), Word::fixnum(100)]);
 }

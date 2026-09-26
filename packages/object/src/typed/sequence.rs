@@ -1,6 +1,6 @@
 //! Sequence, list, and designator typed views over the tagged-word ABI.
 
-use crate::FunctionObject;
+use crate::{FunctionObject, ObjectError, ObjectRef, ThreadContext, classify_object};
 use ncl_sys::Word;
 
 crate::word_newtype!(Cons);
@@ -38,6 +38,26 @@ pub enum StringDesignator {
 pub enum FunctionDesignator {
     Function(FunctionObject),
     Symbol(Symbol),
+}
+
+impl FunctionDesignator {
+    /// Convert a Lisp function designator after inspecting its heap widetag.
+    ///
+    /// This distinguishes symbols from function and closure objects before a
+    /// runtime resolves the symbol's function cell.
+    ///
+    /// # Errors
+    /// Returns [`ObjectError::TypeError`] when `word` is not a symbol or
+    /// function object.
+    pub fn try_from_word(ctx: &ThreadContext, word: Word) -> Result<Self, ObjectError> {
+        match classify_object(ctx, word) {
+            ObjectRef::Function(value) | ObjectRef::Closure(value) => {
+                Ok(Self::Function(FunctionObject::try_from(value)?))
+            }
+            ObjectRef::Symbol(value) => Ok(Self::Symbol(Symbol::from_word(value))),
+            _ => Err(ObjectError::TypeError),
+        }
+    }
 }
 /// A package designator view.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

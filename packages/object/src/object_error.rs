@@ -9,6 +9,8 @@ pub enum ObjectError {
     Storage(StorageCondition),
     Layout,
     Unbound,
+    UndefinedFunction,
+    NonLocalExit,
     Unsupported,
     PackageConflict,
 }

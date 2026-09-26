@@ -1,8 +1,8 @@
 //! Calling convention metadata and the safe Rust builtin boundary.
 
 use crate::{
-    LispError, ObjectError, Package, Runtime, ThreadContext, make_code_object, make_simple_fun,
-    with_root,
+    BuiltinFunctionCaller, FunctionCaller, LispError, ObjectError, Package, Runtime, ThreadContext,
+    make_code_object, make_simple_fun, with_root,
 };
 use ncl_sys::Word;
 
@@ -400,6 +400,23 @@ impl Runtime {
         function: FunctionObject,
         args: &[Word],
     ) -> Result<Word, ObjectError> {
+        let mut caller = BuiltinFunctionCaller;
+        self.call_builtin_with_caller(ctx, &mut caller, function, args, &mut MultipleValues::new())
+    }
+
+    /// Call a registered builtin with a runtime-provided Lisp function port.
+    ///
+    /// # Errors
+    /// Returns an arity, pending-condition, or builtin callback error.
+    pub fn call_builtin_with_caller(
+        &self,
+        ctx: &mut ThreadContext,
+        caller: &mut dyn FunctionCaller,
+        function: FunctionObject,
+        args: &[Word],
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        let _ = caller;
         if function.is_unbound() {
             return Err(ObjectError::Unbound);
         }
@@ -426,9 +443,8 @@ impl Runtime {
         } else {
             original
         };
-        let mut values = MultipleValues::new();
         let adapted = BuiltinArgs::new(&adapted);
-        let result = (implementation.function)(ctx, self, &adapted, &mut values);
+        let result = (implementation.function)(ctx, self, &adapted, values);
         ctx.set_values(values.as_slice());
         if let Some(error) = ctx.take_pending_lisp_error()
             && let Some(converter) = self.lisp_error_converter()
@@ -474,18 +490,4 @@ impl BuiltinImplementation {
     pub const fn with_entry(self, entry: usize) -> Self {
         Self { entry, ..self }
     }
-}
-
-#[macro_export]
-macro_rules! builtin {
-    ($name:ident, $arity:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $crate::LambdaList::new(&[], &[], None, &[], false), convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
-    ($name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $lambda_list, convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
-    ($name:ident, 0, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 0, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
-    ($name:ident, 1, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 1, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
-    ($name:ident, 2, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 2, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word, _a1: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
-    ($name:ident, 3, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 3, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word, _a1: $crate::Word, _a2: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
-    ($name:ident, 4, $lambda_list:expr, $direct:ident, $variadic:ident) => { $crate::builtin!(@descriptor $name, 4, $lambda_list); pub extern "C" fn $direct(_ctx: *mut $crate::ThreadContext, _a0: $crate::Word, _a1: $crate::Word, _a2: $crate::Word, _a3: $crate::Word) -> $crate::Word { $crate::Word::UNBOUND } $crate::builtin!(@variadic $variadic); };
-    (@descriptor $name:ident, $arity:expr, $lambda_list:expr) => { pub const $name: $crate::Builtin = $crate::Builtin { lambda_list: $lambda_list, convention: $crate::BuiltinConvention::Direct($crate::Arity::exact($arity)) }; };
-    (@variadic $name:ident) => { pub extern "C" fn $name(_ctx: *mut $crate::ThreadContext, _argc: usize, _args: *const $crate::Word, _values: *mut $crate::MultipleValues) -> $crate::NclStatus { $crate::NclStatus::Error };
-    };
 }

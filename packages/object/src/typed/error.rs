@@ -164,6 +164,8 @@ pub enum ObjectErrorKind {
     Storage(StorageCondition),
     Layout,
     Unbound,
+    UndefinedFunction,
+    NonLocalExit,
     Unsupported,
     PackageConflict,
 }
@@ -176,6 +178,8 @@ impl ObjectError {
             Self::Storage(condition) => ObjectErrorKind::Storage(condition),
             Self::Layout => ObjectErrorKind::Layout,
             Self::Unbound => ObjectErrorKind::Unbound,
+            Self::UndefinedFunction => ObjectErrorKind::UndefinedFunction,
+            Self::NonLocalExit => ObjectErrorKind::NonLocalExit,
             Self::Unsupported => ObjectErrorKind::Unsupported,
             Self::PackageConflict => ObjectErrorKind::PackageConflict,
         }

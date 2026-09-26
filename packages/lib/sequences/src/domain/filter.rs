@@ -33,7 +33,7 @@ const COUNT: Parameter = parameter("count", ParameterType::Fixnum);
 const RANGE_KEYS: &[Parameter] = &[START, END, FROM_END, COUNT, KEY, TEST, TEST_NOT];
 const SEARCH_KEYS: &[Parameter] = &[START, END, FROM_END, KEY, TEST, TEST_NOT];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct Options {
     start: usize,
     end: Option<usize>,
@@ -42,20 +42,6 @@ struct Options {
     key: Option<Word>,
     test: Option<Word>,
     test_not: Option<Word>,
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Self {
-            start: 0,
-            end: None,
-            from_end: false,
-            count: None,
-            key: None,
-            test: None,
-            test_not: None,
-        }
-    }
 }
 
 fn list_word(list: ncl_object::List) -> Word {
@@ -96,7 +82,7 @@ fn values(ctx: &mut ThreadContext, sequence: Sequence) -> Result<Vec<Word>, Obje
     Ok(result)
 }
 
-fn sequence(ctx: &mut ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
+fn sequence(ctx: &ThreadContext, word: Word) -> Result<Sequence, ObjectError> {
     match ncl_object::classify_object(ctx, word) {
         ObjectRef::Cons(cons) => Ok(Sequence::List(ncl_object::List::Cons(
             ncl_object::Cons::from_word(cons),
@@ -163,7 +149,7 @@ fn truth(value: Word) -> bool {
     value != Word::NIL
 }
 
-fn keyword_name(ctx: &mut ThreadContext, word: Word) -> Result<String, ObjectError> {
+fn keyword_name(ctx: &ThreadContext, word: Word) -> Result<String, ObjectError> {
     let ObjectRef::Symbol(symbol) = ncl_object::classify_object(ctx, word) else {
         return Err(ObjectError::TypeError);
     };
@@ -184,13 +170,12 @@ fn parse_options(
     while index < args.len() {
         if args[index] != Word::NIL
             && keyword_name(ctx, args[index])
-                .map(|n| {
+                .is_ok_and(|n| {
                     matches!(
                         n.as_str(),
                         "START" | "END" | "FROM-END" | "COUNT" | "KEY" | "TEST" | "TEST-NOT"
                     )
                 })
-                .unwrap_or(false)
         {
             let name = keyword_name(ctx, args[index])?;
             let value = *args.get(index + 1).ok_or(ObjectError::TypeError)?;
@@ -198,20 +183,20 @@ fn parse_options(
                 "START" => {
                     options.start =
                         usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
-                            .map_err(|_| ObjectError::TypeError)?
+                            .map_err(|_| ObjectError::TypeError)?;
                 }
                 "END" => {
                     options.end = Some(
                         usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
                             .map_err(|_| ObjectError::TypeError)?,
-                    )
+                    );
                 }
                 "FROM-END" => options.from_end = truth(value),
                 "COUNT" => {
                     options.count = Some(
                         usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
                             .map_err(|_| ObjectError::TypeError)?,
-                    )
+                    );
                 }
                 "KEY" => options.key = (value != Word::NIL).then_some(value),
                 "TEST" => options.test = Some(value),
@@ -283,6 +268,19 @@ fn selected_indices(
     Ok(selected)
 }
 
+fn character(value: Word) -> Result<char, ObjectError> {
+    char::from_u32(
+        u32::try_from(value.bits() >> 4).map_err(|_| ObjectError::TypeError)?,
+    )
+    .ok_or(ObjectError::TypeError)
+}
+
+fn fixnum(value: usize) -> Result<Word, ObjectError> {
+    Ok(Word::fixnum(
+        i64::try_from(value).map_err(|_| ObjectError::TypeError)?,
+    ))
+}
+
 fn set_value(
     ctx: &mut ThreadContext,
     sequence: Sequence,
@@ -298,13 +296,13 @@ fn set_value(
             ncl_object::rplaca(ctx, cursor, value)?;
         }
         Sequence::Vector(vector) => {
-            ncl_object::simple_vector_set(ctx, vector.into(), index, value)?
+            ncl_object::simple_vector_set(ctx, vector.into(), index, value)?;
         }
         Sequence::String(string) => ncl_object::string_set(
             ctx,
             string.into(),
             index,
-            char::from_u32(value.bits() as u32 >> 4).ok_or(ObjectError::TypeError)?,
+            character(value)?,
         )?,
     }
     Ok(())
@@ -322,7 +320,7 @@ fn result(
         Sequence::String(_) => {
             let chars = items
                 .iter()
-                .map(|v| char::from_u32(v.bits() as u32 >> 4).ok_or(ObjectError::TypeError))
+                .map(|v| character(*v))
                 .collect::<Result<Vec<_>, _>>()?;
             ncl_object::make_string(ctx, runtime, &chars)
         }
@@ -330,7 +328,9 @@ fn result(
 }
 
 fn pass(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
-    Ok(args.as_slice().to_vec())
+    (0..args.len())
+        .map(|index| args.get(index).ok_or(ObjectError::TypeError))
+        .collect()
 }
 
 fn filter_callback(
@@ -438,11 +438,11 @@ fn find_position_count(
     let sequence = sequence(ctx, positional[1])?;
     let items = values(ctx, sequence)?;
     let found = selected_indices(ctx, runtime, &items, positional[0], options)?;
-    Ok(match kind {
-        0 => found.first().map_or(Word::NIL, |i| items[*i]),
-        1 => found.first().map_or(Word::NIL, |i| Word::fixnum(*i as i64)),
-        _ => Word::fixnum(found.len() as i64),
-    })
+    match kind {
+        0 => Ok(found.first().map_or(Word::NIL, |i| items[*i])),
+        1 => found.first().map_or(Ok(Word::NIL), |i| fixnum(*i)),
+        _ => fixnum(found.len()),
+    }
 }
 
 fn replace_callback(
@@ -545,11 +545,11 @@ fn find_if_callback(
             }
         }
     }
-    Ok(match kind {
-        0 => found.first().map_or(Word::NIL, |i| items[*i]),
-        1 => found.first().map_or(Word::NIL, |i| Word::fixnum(*i as i64)),
-        _ => Word::fixnum(found.len() as i64),
-    })
+    match kind {
+        0 => Ok(found.first().map_or(Word::NIL, |i| items[*i])),
+        1 => found.first().map_or(Ok(Word::NIL), |i| fixnum(*i)),
+        _ => fixnum(found.len()),
+    }
 }
 macro_rules! find_if_callbacks {
     ($($name:ident, $kind:expr, $negate:expr);+ $(;)?) => { $(fn $name(ctx: &mut ThreadContext, runtime: &Runtime, args: &BuiltinArgs<'_>, _: &mut MultipleValues) -> Result<Word, ObjectError> { find_if_callback(ctx, runtime, args, $kind, $negate) })+ };
@@ -578,8 +578,8 @@ fn replace_entry_callback(
     let destination_len = values(ctx, destination)?.len();
     let (start, end) = bounds(options, destination_len)?;
     let amount = (end - start).min(source.len());
-    for index in 0..amount {
-        set_value(ctx, destination, start + index, source[index])?;
+    for (index, value) in source.iter().copied().enumerate().take(amount) {
+        set_value(ctx, destination, start + index, value)?;
     }
     Ok(positional[0])
 }
@@ -599,18 +599,18 @@ fn mismatch_entry_callback(
     let limit = (end - start).min(right.len());
     for offset in 0..limit {
         if left[start + offset] != right[offset] {
-            return Ok(Word::fixnum((start + offset) as i64));
+            return fixnum(start + offset);
         }
     }
-    if end - start != right.len() {
-        Ok(Word::fixnum((start + limit) as i64))
-    } else {
+    if end - start == right.len() {
         Ok(Word::NIL)
+    } else {
+        fixnum(start + limit)
     }
 }
 
 /// Return the typed implementation for a sequence filtering builtin.
-pub(crate) fn filter_entry(name: &str) -> Option<BuiltinImplementation> {
+pub fn filter_entry(name: &str) -> Option<BuiltinImplementation> {
     let required = |parameters: &'static [Parameter]| Builtin {
         lambda_list: LambdaList::new(parameters, &[], None, RANGE_KEYS, true),
         convention: BuiltinConvention::Adapted,
@@ -704,11 +704,7 @@ fn search_entry_callback(
     let haystack = values(ctx, haystack_sequence)?;
     let (start, end) = bounds(options, haystack.len())?;
     if needle.is_empty() {
-        return Ok(Word::fixnum(if options.from_end {
-            end as i64
-        } else {
-            start as i64
-        }));
+        return fixnum(if options.from_end { end } else { start });
     }
     let range = if options.from_end {
         (start..=end.saturating_sub(needle.len()))
@@ -719,7 +715,7 @@ fn search_entry_callback(
     };
     for index in range {
         if haystack[index..index + needle.len()] == needle[..] {
-            return Ok(Word::fixnum(index as i64));
+            return fixnum(index);
         }
     }
     Ok(Word::NIL)

@@ -270,6 +270,44 @@ present:
 let designator = FunctionDesignator::Symbol(Symbol::from_word(symbol_word));
 ```
 
+### Calling Lisp functions from a builtin
+
+The object crate owns the call port, while the runtime owns its implementation:
+
+```rust
+pub trait FunctionCaller {
+    fn call_function(
+        &mut self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        designator: FunctionDesignator,
+        args: FunctionArguments<'_>,
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError>;
+}
+```
+
+`FunctionArguments` is a borrowed, typed sequence. It is the only public
+boundary that exposes argument words to an adapter; builtin domain code uses
+its checked accessors. A caller must root every heap word that remains live
+across allocation. The runtime implementation is responsible for rooting the
+designator and argument vector before entering compiled code, then reading
+relocated values after each safepoint.
+
+Function designators are represented by the typed
+`FunctionDesignator::Function` and `FunctionDesignator::Symbol` variants.
+Symbol resolution reads the symbol function cell and returns
+`ObjectError::UndefinedFunction` when it is unbound. Builtin dispatch may use
+the object-layer `BuiltinFunctionCaller`; compiled-function dispatch belongs to
+the runtime implementation of `FunctionCaller` and must use the existing
+`invoke_entry_with_function` ABI and published code registry.
+
+Non-local exits do not unwind Rust frames. A runtime caller preserves the
+thread's pending unwind state and returns `ObjectError::NonLocalExit` after the
+generated frame has transferred control to the established Lisp handler. This
+keeps Rust builtin stack frames outside the machine-code unwind path and makes
+the boundary explicit to every callback.
+
 Compiler-macro declarations and lambda-list parsing are outside the inspected
 object sources and are intentionally not specified here.
 

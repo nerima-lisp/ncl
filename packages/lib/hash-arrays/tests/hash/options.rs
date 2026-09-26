@@ -45,17 +45,18 @@ fn make_hash_table_accepts_size_and_rehash_options() -> Result<(), ObjectError> 
         Word::fixnum(16)
     );
     let returned_rehash_size = call(&runtime, &mut ctx, "HASH-TABLE-REHASH-SIZE", &[table])?;
-    assert_eq!(
-        double_value(
+    assert!(
+        (double_value(
             &ctx,
             ncl_object::DoubleFloat::from_word(returned_rehash_size)
-        )?,
-        2.0
+        )? - 2.0)
+            .abs()
+            < f64::EPSILON
     );
     let returned_threshold = call(&runtime, &mut ctx, "HASH-TABLE-REHASH-THRESHOLD", &[table])?;
-    assert_eq!(
-        double_value(&ctx, ncl_object::DoubleFloat::from_word(returned_threshold))?,
-        0.5
+    assert!(
+        (double_value(&ctx, ncl_object::DoubleFloat::from_word(returned_threshold))? - 0.5).abs()
+            < f64::EPSILON
     );
 
     for key in 0..9 {

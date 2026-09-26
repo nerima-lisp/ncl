@@ -1,7 +1,4 @@
-#![allow(missing_docs)]
-
-#[path = "../src/random.rs"]
-mod random;
+#![allow(clippy::unwrap_used, missing_docs)]
 
 use ncl_object::{
     DoubleFloat, FunctionObject, ObjectError, ObjectRef, Package, Runtime, ThreadContext, Word,
@@ -13,7 +10,6 @@ fn setup() -> (Runtime, ThreadContext) {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     ncl_lib_numbers::register(&runtime).unwrap();
-    random::register(&mut ctx, &runtime).unwrap();
     (runtime, ctx)
 }
 

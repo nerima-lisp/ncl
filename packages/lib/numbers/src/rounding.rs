@@ -6,6 +6,25 @@ use ncl_object::{
     make_ratio, ratio_denominator, ratio_numerator,
 };
 
+const fn integer_to_f64(value: i128) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    {
+        value as f64
+    }
+}
+
+const HALF: f64 = 0.5;
+
+fn float_to_i128(value: f64) -> Option<i128> {
+    const I128_MIN: f64 = -170_141_183_460_469_231_731_687_303_715_884_105_728.0;
+    const I128_MAX_EXCLUSIVE: f64 = 170_141_183_460_469_231_731_687_303_715_884_105_728.0;
+    if !value.is_finite() || !(I128_MIN..I128_MAX_EXCLUSIVE).contains(&value) {
+        return None;
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    Some(value as i128)
+}
+
 #[derive(Clone, Copy)]
 enum Number {
     Integer(i128),
@@ -82,8 +101,8 @@ fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
 
 fn as_float(value: Number) -> f64 {
     match value {
-        Number::Integer(value) => value as f64,
-        Number::Ratio(n, d) => n as f64 / d as f64,
+        Number::Integer(value) => integer_to_f64(value),
+        Number::Ratio(n, d) => integer_to_f64(n) / integer_to_f64(d),
         Number::Float(value) => value,
     }
 }
@@ -102,7 +121,7 @@ fn word(ctx: &mut ThreadContext, runtime: &Runtime, value: Number) -> Result<Wor
     }
 }
 
-fn quotient(numerator: i128, denominator: i128, mode: u8) -> i128 {
+const fn quotient(numerator: i128, denominator: i128, mode: u8) -> i128 {
     match mode {
         0 => numerator.div_euclid(denominator),
         1 => (-numerator).div_euclid(denominator).wrapping_neg(),
@@ -157,10 +176,15 @@ fn float_quotient(value: f64, mode: u8) -> f64 {
         _ => {
             let lower = value.floor();
             let fraction = value - lower;
-            if fraction < 0.5 || (fraction == 0.5 && (lower as i128).unsigned_abs() % 2 == 0) {
-                lower
+            let Some(lower) = float_to_i128(lower) else {
+                return value.round();
+            };
+            #[allow(clippy::float_cmp)]
+            let round_down = fraction < HALF || (fraction == HALF && lower.unsigned_abs() % 2 == 0);
+            if round_down {
+                integer_to_f64(lower)
             } else {
-                lower + 1.0
+                integer_to_f64(lower) + 1.0
             }
         }
     }

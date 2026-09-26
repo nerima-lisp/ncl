@@ -21,11 +21,10 @@ pub fn round_dispatch(
     values: &mut MultipleValues,
     mode: u8,
 ) -> Result<Word, ObjectError> {
-    let x = number(ctx, args[0])?.to_f64();
-    let divisor = if args.len() > 1 {
-        number(ctx, args[1])?.to_f64()
-    } else {
-        1.0
+    let (x, divisor) = match args {
+        [x, divisor] => (number(ctx, *x)?.to_f64(), number(ctx, *divisor)?.to_f64()),
+        [x] => (number(ctx, *x)?.to_f64(), 1.0),
+        _ => return Err(ObjectError::TypeError),
     };
     if divisor == 0.0 {
         return Err(ObjectError::TypeError);
@@ -108,8 +107,11 @@ pub fn modulo(
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let a = number(ctx, args[0])?.to_f64();
-    let b = number(ctx, args[1])?.to_f64();
+    let [a, b] = args else {
+        return Err(ObjectError::TypeError);
+    };
+    let a = number(ctx, *a)?.to_f64();
+    let b = number(ctx, *b)?.to_f64();
     if b == 0.0 {
         return Err(ObjectError::TypeError);
     }
@@ -121,8 +123,11 @@ pub fn remainder(
     runtime: &Runtime,
     args: &[Word],
 ) -> Result<Word, ObjectError> {
-    let a = number(ctx, args[0])?.to_f64();
-    let b = number(ctx, args[1])?.to_f64();
+    let [a, b] = args else {
+        return Err(ObjectError::TypeError);
+    };
+    let a = number(ctx, *a)?.to_f64();
+    let b = number(ctx, *b)?.to_f64();
     if b == 0.0 {
         return Err(ObjectError::TypeError);
     }

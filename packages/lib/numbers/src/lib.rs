@@ -210,6 +210,8 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             ("*", 0, false, arithmetic::typed_dispatch_mul),
             ("/", 0, false, arithmetic::typed_dispatch_div),
             ("=", 0, false, arithmetic::typed_dispatch_equal),
+            ("EQ", 2, true, arithmetic::typed_dispatch_eq),
+            ("EQL", 2, true, arithmetic::typed_dispatch_eql),
             ("/=", 0, false, arithmetic::typed_dispatch_not_equal),
             ("<", 0, false, arithmetic::typed_dispatch_less),
             (">", 0, false, arithmetic::typed_dispatch_greater),

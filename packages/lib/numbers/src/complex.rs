@@ -5,9 +5,16 @@ use ncl_object::{
     classify_object, complex_imag, complex_real, double_value, make_complex, make_double,
 };
 
+const fn fixnum_to_f64(value: i64) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    {
+        value as f64
+    }
+}
+
 fn real(ctx: &ThreadContext, value: Word) -> Result<f64, ObjectError> {
     match classify_object(ctx, value) {
-        ObjectRef::Fixnum(value) => Ok(value as f64),
+        ObjectRef::Fixnum(value) => Ok(fixnum_to_f64(value)),
         ObjectRef::DoubleFloat(value) => {
             double_value(ctx, ncl_object::DoubleFloat::from_word(value))
         }
@@ -21,22 +28,18 @@ fn component(
     value: Word,
     imaginary: bool,
 ) -> Result<Word, ObjectError> {
-    let value = match classify_object(ctx, value) {
-        ObjectRef::Complex(value) => {
-            if imaginary {
-                complex_imag(ctx, ncl_object::Complex::from_word(value))?
-            } else {
-                complex_real(ctx, ncl_object::Complex::from_word(value))?
-            }
-        }
-        _ => {
-            return make_double(
-                ctx,
-                runtime,
-                if imaginary { 0.0 } else { real(ctx, value)? },
-            )
-            .map(Into::into);
-        }
+    let ObjectRef::Complex(value) = classify_object(ctx, value) else {
+        return make_double(
+            ctx,
+            runtime,
+            if imaginary { 0.0 } else { real(ctx, value)? },
+        )
+        .map(Into::into);
+    };
+    let value = if imaginary {
+        complex_imag(ctx, ncl_object::Complex::from_word(value))?
+    } else {
+        complex_real(ctx, ncl_object::Complex::from_word(value))?
     };
     Ok(value)
 }
@@ -65,18 +68,15 @@ pub fn typed_conjugate(
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let value = args.required(0)?;
-    match classify_object(ctx, value) {
-        ObjectRef::Complex(value) => {
-            let object = ncl_object::Complex::from_word(value);
-            let real_word = complex_real(ctx, object)?;
-            let imag_value = -real(ctx, complex_imag(ctx, object)?)?;
-            let imag = make_double(ctx, runtime, imag_value)?.into();
-            make_complex(ctx, runtime, real_word, imag).map(Into::into)
-        }
-        _ => {
-            real(ctx, value)?;
-            Ok(value)
-        }
+    if let ObjectRef::Complex(value) = classify_object(ctx, value) {
+        let object = ncl_object::Complex::from_word(value);
+        let real_word = complex_real(ctx, object)?;
+        let imag_value = -real(ctx, complex_imag(ctx, object)?)?;
+        let imag = make_double(ctx, runtime, imag_value)?.into();
+        make_complex(ctx, runtime, real_word, imag).map(Into::into)
+    } else {
+        real(ctx, value)?;
+        Ok(value)
     }
 }
 

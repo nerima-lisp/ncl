@@ -42,9 +42,10 @@ pub(super) const fn ratio(n: i128, d: i128) -> Number {
 pub(super) fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(value) => Ok(i128::from(value)),
-        ObjectRef::Character(_) if word.as_fixnum().is_some() => {
-            Ok(i128::from(word.as_fixnum().unwrap_or(0)))
-        }
+        ObjectRef::Character(_) => word
+            .as_fixnum()
+            .map(i128::from)
+            .ok_or(ObjectError::TypeError),
         ObjectRef::Bignum(value) => {
             let limbs = bignum_limbs(ctx, ncl_object::Bignum::from_word(value))?;
             if limbs.len() > 4 {
@@ -67,9 +68,11 @@ pub(super) fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectErr
 pub(super) fn number(ctx: &ThreadContext, word: Word) -> Result<Number, ObjectError> {
     match classify_object(ctx, word) {
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => Ok(Number::Integer(integer(ctx, word)?)),
-        ObjectRef::Character(_) if word.as_fixnum().is_some() => {
-            Ok(Number::Integer(i128::from(word.as_fixnum().unwrap_or(0))))
-        }
+        ObjectRef::Character(_) => word
+            .as_fixnum()
+            .map(i128::from)
+            .map(Number::Integer)
+            .ok_or(ObjectError::TypeError),
         ObjectRef::Ratio(value) => {
             let n = integer(
                 ctx,

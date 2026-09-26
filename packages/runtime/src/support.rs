@@ -18,7 +18,7 @@ pub struct NativeInvocation<'a> {
     /// Native entry address -> that function's own `CODE` object, so
     /// `MakeClosure` can attach the callee's code (and constants table)
     /// rather than always inheriting the currently-executing function's.
-    pub(crate) entry_codes: &'a BTreeMap<usize, Word>, // check-added-lines: allow(word-table) borrowed from Runtime's rooted table
+    pub(crate) entry_codes: &'a BTreeMap<usize, (Box<Word>, ncl_sys::RootToken)>, // check-added-lines: allow(word-table) borrowed rooted code entries
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -161,7 +161,7 @@ pub extern "C" fn native_make_closure(
         let code = invocation
             .entry_codes
             .get(&entry)
-            .map_or(invocation.code, |word| CodeObject::from_word(*word));
+            .map_or(invocation.code, |(word, _)| CodeObject::from_word(**word));
         match make_closure(
             ctx,
             invocation.object,

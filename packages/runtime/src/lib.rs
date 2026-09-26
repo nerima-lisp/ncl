@@ -106,14 +106,8 @@ pub struct Runtime {
     context: ThreadContext,
     code: Vec<CodePtr>,
     functions: BTreeMap<u32, PublishedFunction>,
-    /// Maps a published function's native entry address to the `CODE`
-    /// object built for *that* function's own constants table.
-    ///
-    /// `MakeClosure` must attach this code object (not the caller's) when
-    /// it mints a closure over a separately-published top-level function;
-    /// otherwise the closure inherits the caller's constants table and any
-    /// constant load inside the callee reads the wrong slot.
-    entry_codes: BTreeMap<usize, Word>, // check-added-lines: allow(word-table) every value is also rooted in rooted_functions
+    /// Published entry addresses retain their own rooted `CODE` objects.
+    entry_codes: BTreeMap<usize, (Box<Word>, RootToken)>, // check-added-lines: allow(word-table) every code Word has its own root token
     rooted_functions: Vec<(Box<Word>, RootToken)>,
     object: ObjectRuntime,
 }
@@ -226,7 +220,7 @@ impl Runtime {
             .saturating_add(entry_metadata.entry_offset);
         let (entry_function, entry_code) =
             self.make_function_object(&entry, &(&compiled.0, &compiled.1))?;
-        self.entry_codes.insert(entry_address, entry_code);
+        self.root_entry_code(entry_address, entry_code);
         self.functions.insert(
             entry.id.0,
             PublishedFunction {
@@ -309,6 +303,11 @@ impl Runtime {
         Ok((function_object.as_word(), code_object.as_word()))
     }
 
+    fn root_entry_code(&mut self, entry: usize, code: Word) {
+        let mut rooted = Box::new(code);
+        let token = ncl_object::push_root(&mut self.context, &mut rooted);
+        self.entry_codes.insert(entry, (rooted, token));
+    }
     fn make_constants(&mut self, function: &ncl_ir::Function) -> Result<Word, RuntimeError> {
         let mut values = Vec::with_capacity(function.constants.len());
         for constant in &function.constants {
@@ -338,10 +337,8 @@ impl Runtime {
         let entry = code.address().saturating_add(metadata.entry_offset);
         let (_function_object, code_object) =
             self.make_function_object(function, &(&code, &metadata))?;
-        // Record this function's own CODE object (with its own constants
-        // table) so `MakeClosure` can attach it when a closure is minted
-        // over this entry, instead of inheriting the caller's CODE object.
-        self.entry_codes.insert(entry, code_object);
+        // Preserve this entry's own constants table for `MakeClosure`.
+        self.root_entry_code(entry, code_object);
         self.functions.insert(id.0, PublishedFunction { entry });
         self.code.push(code);
         Ok(())
@@ -411,6 +408,9 @@ impl Runtime {
 
 impl Drop for Runtime {
     fn drop(&mut self) {
+        for (_, (_, token)) in std::mem::take(&mut self.entry_codes) {
+            let _ = ncl_object::pop_root(&mut self.context, token);
+        }
         for (_, token) in self.rooted_functions.drain(..).rev() {
             let _ = ncl_object::pop_root(&mut self.context, token);
         }

@@ -101,6 +101,37 @@ impl Package {
         get(ctx, self.0, widetag::PACKAGE, SHADOWING)
     }
 
+    /// Return the packages used by this package.
+    ///
+    /// # Errors
+    /// Returns an object error when package metadata is malformed.
+    pub fn use_list(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
+        get(ctx, self.0, widetag::PACKAGE, USE_LIST)
+    }
+
+    /// Return the packages that use this package.
+    ///
+    /// # Errors
+    /// Returns an object error when package metadata is malformed.
+    pub fn used_by_list(self, ctx: &ThreadContext) -> Result<Word, ObjectError> {
+        get(ctx, self.0, widetag::PACKAGE, USED_BY)
+    }
+
+    /// Visit every symbol interned in this package.
+    ///
+    /// # Errors
+    /// Returns an object error when package symbol tables are malformed.
+    pub fn for_each_symbol<F>(self, ctx: &ThreadContext, mut visit: F) -> Result<(), ObjectError>
+    where
+        F: FnMut(Word),
+    {
+        for table in [INTERNAL, EXTERNAL] {
+            HashTable::from_word(get(ctx, self.0, widetag::PACKAGE, table)?)
+                .for_each_entry(ctx, |_, symbol| visit(symbol))?;
+        }
+        Ok(())
+    }
+
     /// Add a nickname to this package.
     ///
     /// # Errors

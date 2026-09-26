@@ -2,7 +2,7 @@ use super::{EXTERNAL, INTERNAL, NICKNAMES, SHADOWING, USE_LIST, USED_BY};
 use crate::hash_table::HashTable;
 use crate::object_access::{get, put};
 use crate::widetag;
-use crate::{ObjectError, Runtime, ThreadContext, make_cons, rplacd};
+use crate::{ObjectError, Runtime, ThreadContext, make_cons, rplacd, symbol_name};
 use ncl_sys::Word;
 
 impl super::Package {
@@ -223,6 +223,47 @@ impl super::Package {
                     ctx,
                     runtime,
                     symbol,
+                    get(ctx, *package, widetag::PACKAGE, SHADOWING)?,
+                )?;
+                put(ctx, *package, SHADOWING, list)
+            })
+        })
+    }
+
+    /// Import a symbol and record it in this package's shadowing list.
+    ///
+    /// An accessible symbol with the same name is first uninterned so the
+    /// imported symbol wins lookup in this package.
+    ///
+    /// # Errors
+    /// Returns an object error when the package is locked, the symbol is
+    /// malformed, or the package tables cannot be updated.
+    pub fn shadowing_import(
+        self,
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        symbol: Word,
+    ) -> Result<(), ObjectError> {
+        self.ensure_unlocked(ctx)?;
+        let name = symbol_name(ctx, symbol)?;
+        self.unintern(ctx, runtime, name)?;
+        self.import(ctx, runtime, name, symbol)?;
+        let mut package = self.0;
+        crate::with_root(ctx, &mut package, |ctx, package| {
+            let mut symbol = symbol;
+            crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
+                while list != Word::NIL {
+                    if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(*symbol) {
+                        return Ok(());
+                    }
+                    list =
+                        ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
+                }
+                let list = make_cons(
+                    ctx,
+                    runtime,
+                    *symbol,
                     get(ctx, *package, widetag::PACKAGE, SHADOWING)?,
                 )?;
                 put(ctx, *package, SHADOWING, list)

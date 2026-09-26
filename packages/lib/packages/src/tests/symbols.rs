@@ -1,7 +1,9 @@
 #![allow(clippy::unwrap_used)]
 
 use super::super::*;
-use ncl_object::{FunctionObject, make_symbol, symbol_value};
+use ncl_object::{
+    FunctionObject, ObjectError, make_string, make_symbol, symbol_name, symbol_value,
+};
 
 #[test]
 fn symbol_cells_and_plist_round_trip() {
@@ -31,4 +33,31 @@ fn symbol_cells_and_plist_round_trip() {
         runtime.call_builtin(&mut ctx, get, &[symbol, key]),
         Ok(Word::TRUE)
     );
+}
+
+#[test]
+fn make_symbol_builtin_creates_uninterned_symbol_and_checks_designator() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    register(&runtime)?;
+    let function = FunctionObject::try_from(
+        runtime
+            .function(&mut ctx, "COMMON-LISP", "MAKE-SYMBOL")
+            .ok_or(ObjectError::Layout)?,
+    )?;
+    let name = make_string(&mut ctx, &runtime, &['N', '2', '5'])?;
+    let symbol = runtime.call_builtin(&mut ctx, function, &[name])?;
+    let symbol_name = symbol_name(&ctx, symbol)?;
+    assert_eq!(ncl_object::string_length(&ctx, symbol_name)?, 3);
+    assert_eq!(ncl_object::string_ref(&ctx, symbol_name, 0)?, 'N');
+    assert_eq!(ncl_object::string_ref(&ctx, symbol_name, 1)?, '2');
+    assert_eq!(ncl_object::string_ref(&ctx, symbol_name, 2)?, '5');
+    assert_eq!(ncl_object::symbol_package(&ctx, symbol)?, Word::NIL);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, function, &[Word::fixnum(25)]),
+        Err(ObjectError::TypeError)
+    );
+    Ok(())
 }

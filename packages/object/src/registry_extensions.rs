@@ -1,8 +1,21 @@
 use crate::hash_table::HashTable;
+use crate::object_access::put;
+use crate::package::{NAME, NICKNAMES};
 use crate::{ObjectError, Package, Runtime, ThreadContext, make_string, string_length, string_ref};
 use ncl_sys::{HeapConfig, Word};
 
 impl Runtime {
+    /// Return all packages currently registered in the runtime.
+    ///
+    /// # Errors
+    /// Returns an object error when the package registry is malformed.
+    pub fn all_packages(&self, ctx: &ThreadContext) -> Result<Vec<Word>, ObjectError> {
+        let table = Self::table(&self.packages)?;
+        let mut packages = Vec::new();
+        HashTable::from_word(table).for_each_entry(ctx, |_, package| packages.push(package))?;
+        Ok(packages)
+    }
+
     /// Create a package if it does not already exist.
     ///
     /// # Errors
@@ -21,6 +34,91 @@ impl Runtime {
             })?;
             Ok(package)
         })
+    }
+
+    /// Rename a package and replace its registered nicknames.
+    ///
+    /// # Errors
+    /// Returns an object error when the package is locked, a name is
+    /// malformed, or a name or nickname conflicts with another package.
+    pub fn rename_package(
+        &self,
+        ctx: &mut ThreadContext,
+        package: Package,
+        name: Word,
+        nicknames: Word,
+    ) -> Result<(), ObjectError> {
+        package.ensure_unlocked(ctx)?;
+        string_length(ctx, name)?;
+
+        let table = Self::table(&self.packages)?;
+        let mut names = nicknames;
+        while names != Word::NIL {
+            let nickname =
+                ncl_sys::read_cons_word(&ctx.thread, names, 0).ok_or(ObjectError::Layout)?;
+            string_length(ctx, nickname)?;
+            if let Some(found) = HashTable::from_word(table).get(ctx, nickname)?
+                && found != package.as_word()
+            {
+                return Err(ObjectError::PackageConflict);
+            }
+            names = ncl_sys::read_cons_word(&ctx.thread, names, 1).ok_or(ObjectError::Layout)?;
+        }
+        if let Some(found) = HashTable::from_word(table).get(ctx, name)?
+            && found != package.as_word()
+        {
+            return Err(ObjectError::PackageConflict);
+        }
+
+        let old_name = package.name(ctx)?;
+        HashTable::from_word(table).remove(ctx, self, old_name)?;
+        let old_nicknames = package.nicknames(ctx)?;
+        let mut old = old_nicknames;
+        while old != Word::NIL {
+            let nickname =
+                ncl_sys::read_cons_word(&ctx.thread, old, 0).ok_or(ObjectError::Layout)?;
+            HashTable::from_word(table).remove(ctx, self, nickname)?;
+            old = ncl_sys::read_cons_word(&ctx.thread, old, 1).ok_or(ObjectError::Layout)?;
+        }
+        put(ctx, package.as_word(), NAME, name)?;
+        put(ctx, package.as_word(), NICKNAMES, nicknames)?;
+        HashTable::from_word(table).insert(ctx, self, name, package.as_word())?;
+        let mut names = nicknames;
+        while names != Word::NIL {
+            let nickname =
+                ncl_sys::read_cons_word(&ctx.thread, names, 0).ok_or(ObjectError::Layout)?;
+            HashTable::from_word(table).insert(ctx, self, nickname, package.as_word())?;
+            names = ncl_sys::read_cons_word(&ctx.thread, names, 1).ok_or(ObjectError::Layout)?;
+        }
+        Ok(())
+    }
+
+    /// Remove a package from the runtime package registry.
+    ///
+    /// # Errors
+    /// Returns an object error when the package is locked, its metadata is
+    /// malformed, or the registry cannot be updated.
+    pub fn delete_package(
+        &self,
+        ctx: &mut ThreadContext,
+        package: Package,
+    ) -> Result<bool, ObjectError> {
+        package.ensure_unlocked(ctx)?;
+        let table = Self::table(&self.packages)?;
+        let mut removed = HashTable::from_word(table)
+            .remove(ctx, self, package.name(ctx)?)?
+            .is_some();
+        let mut nicknames = package.nicknames(ctx)?;
+        while nicknames != Word::NIL {
+            let nickname =
+                ncl_sys::read_cons_word(&ctx.thread, nicknames, 0).ok_or(ObjectError::Layout)?;
+            removed |= HashTable::from_word(table)
+                .remove(ctx, self, nickname)?
+                .is_some();
+            nicknames =
+                ncl_sys::read_cons_word(&ctx.thread, nicknames, 1).ok_or(ObjectError::Layout)?;
+        }
+        Ok(removed)
     }
 
     #[must_use]

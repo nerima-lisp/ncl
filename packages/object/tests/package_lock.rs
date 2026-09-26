@@ -1,7 +1,8 @@
 //! Package-lock mutation regression coverage.
 
 use ncl_object::{
-    LispError, ObjectError, Package, PackageError, Runtime, ThreadContext, make_string,
+    LispError, ObjectError, Package, PackageError, Runtime, ThreadContext, Word, make_cons,
+    make_string,
 };
 
 #[test]
@@ -61,6 +62,54 @@ fn locked_package_rejects_namespace_mutations_with_typed_error() {
     assert_eq!(ctx.take_pending_lisp_error(), expected);
     assert_eq!(
         package.remove_nickname(&mut ctx, nickname),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(ctx.take_pending_lisp_error(), expected);
+}
+
+#[test]
+fn locked_package_rejects_local_nickname_shadowing_import_rename_and_delete() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    let package = Package::new(&mut ctx, &runtime, "LOCKED-EXTRA")
+        .unwrap_or_else(|error| panic!("package: {error:?}"));
+    let source = Package::new(&mut ctx, &runtime, "SOURCE-EXTRA")
+        .unwrap_or_else(|error| panic!("source: {error:?}"));
+    let nickname = make_string(&mut ctx, &runtime, &['N', 'I', 'C', 'K'])
+        .unwrap_or_else(|error| panic!("nickname: {error:?}"));
+    let new_name = make_string(&mut ctx, &runtime, &['R', 'E', 'N', 'A', 'M', 'E', 'D'])
+        .unwrap_or_else(|error| panic!("new name: {error:?}"));
+    let (symbol, _) = source
+        .intern(&mut ctx, &runtime, "NAME")
+        .unwrap_or_else(|error| panic!("symbol: {error:?}"));
+    let local_entry = make_cons(&mut ctx, &runtime, nickname, source.as_word())
+        .unwrap_or_else(|error| panic!("local nickname: {error:?}"));
+    let nicknames = make_cons(&mut ctx, &runtime, nickname, Word::NIL)
+        .unwrap_or_else(|error| panic!("nicknames: {error:?}"));
+    package
+        .set_locked(&mut ctx, true)
+        .unwrap_or_else(|error| panic!("lock: {error:?}"));
+    let expected = Some(LispError::PackageError(PackageError::Locked));
+
+    assert_eq!(
+        package.set_local_nicknames(&mut ctx, local_entry),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(ctx.take_pending_lisp_error(), expected);
+    assert_eq!(
+        package.shadowing_import(&mut ctx, &runtime, symbol),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(ctx.take_pending_lisp_error(), expected);
+    assert_eq!(
+        runtime.rename_package(&mut ctx, package, new_name, nicknames),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(ctx.take_pending_lisp_error(), expected);
+    assert_eq!(
+        runtime.delete_package(&mut ctx, package),
         Err(ObjectError::TypeError)
     );
     assert_eq!(ctx.take_pending_lisp_error(), expected);

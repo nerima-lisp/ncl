@@ -26,42 +26,54 @@ pub fn make_class(
     slots: Word,
     kind: Word,
 ) -> Result<Word, ObjectError> {
-    let mut effective = Vec::new();
-    if direct_superclasses != Word::NIL {
-        let inherited = class_effective_slots(ctx, direct_superclasses)?;
-        for slot in inherited {
-            let slot_name = slot_key(ctx, slot)?;
-            let mut found = false;
-            for candidate in &effective {
-                if slot_key(ctx, *candidate)? == slot_name {
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                effective.push(slot);
-            }
-        }
-    }
-    if slots != Word::NIL {
-        for index in 0..simple_vector_length(ctx, slots)? {
-            let slot = simple_vector_ref(ctx, slots, index)?;
-            let key = slot_key(ctx, slot)?;
-            let mut retained = Vec::with_capacity(effective.len());
-            for candidate in effective {
-                if slot_key(ctx, candidate)? != key {
-                    retained.push(candidate);
-                }
-            }
-            effective = retained;
-            effective.push(slot);
-        }
-    }
-    let effective_slots = make_simple_vector(ctx, runtime, &effective)?;
-    make_simple_vector(
+    with_roots(
         ctx,
-        runtime,
-        &[name, direct_superclasses, slots, kind, effective_slots],
+        &[name, direct_superclasses, slots, kind],
+        |ctx, rooted| {
+            let mut effective = Vec::new();
+            if *rooted[1] != Word::NIL {
+                let inherited = class_effective_slots(ctx, *rooted[1])?;
+                for slot in inherited {
+                    let slot_name = slot_key(ctx, slot)?;
+                    let mut found = false;
+                    for candidate in &effective {
+                        if slot_key(ctx, *candidate)? == slot_name {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        effective.push(slot);
+                    }
+                }
+            }
+            if *rooted[2] != Word::NIL {
+                for index in 0..simple_vector_length(ctx, *rooted[2])? {
+                    let slot = simple_vector_ref(ctx, *rooted[2], index)?;
+                    let key = slot_key(ctx, slot)?;
+                    let mut retained = Vec::with_capacity(effective.len());
+                    for candidate in effective {
+                        if slot_key(ctx, candidate)? != key {
+                            retained.push(candidate);
+                        }
+                    }
+                    effective = retained;
+                    effective.push(slot);
+                }
+            }
+            let effective_slots = make_simple_vector(ctx, runtime, &effective)?;
+            make_simple_vector(
+                ctx,
+                runtime,
+                &[
+                    *rooted[0],
+                    *rooted[1],
+                    *rooted[2],
+                    *rooted[3],
+                    effective_slots,
+                ],
+            )
+        },
     )
 }
 
@@ -129,7 +141,10 @@ pub fn class_of(
             "STRING"
         } else if matches!(object_ref, ObjectRef::SimpleVector(_)) {
             "SIMPLE-VECTOR"
-        } else if matches!(object_ref, ObjectRef::Array(_) | ObjectRef::SpecializedArray(_)) {
+        } else if matches!(
+            object_ref,
+            ObjectRef::Array(_) | ObjectRef::SpecializedArray(_)
+        ) {
             "ARRAY"
         } else if matches!(object_ref, ObjectRef::HashTable(_)) {
             "HASH-TABLE"

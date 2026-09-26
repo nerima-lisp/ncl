@@ -155,7 +155,8 @@ mod tests {
     }
 
     #[test]
-    fn calls_registered_builtin_through_function_and_symbol_designators_under_gc_stress_and_forwarding() {
+    fn calls_registered_builtin_through_function_and_symbol_designators_under_gc_stress_and_forwarding()
+     {
         let mut runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
         let function = register_builtin(&mut runtime);
         let package = runtime

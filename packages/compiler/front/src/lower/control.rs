@@ -346,6 +346,9 @@ impl Context<'_> {
                 }
             }
             if !f.is_terminated() {
+                f.none(OpKind::SetMultipleValues {
+                    values: vec![value],
+                })?;
                 f.terminate(Terminator::Jump {
                     target: merge,
                     args: vec![value],

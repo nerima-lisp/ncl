@@ -74,6 +74,33 @@ pub struct LoopAst {
     pub clauses: Vec<LoopClause>,
 }
 
+#[derive(Clone, Debug)]
+enum HeldLoopClause {
+    With {
+        variable: usize,
+        init: usize,
+    },
+    For {
+        variable: usize,
+        init: usize,
+        step: Option<usize>,
+        direction: Option<StepDirection>,
+        limit: Option<(LimitDirection, usize)>,
+    },
+    Repeat(usize),
+    While(usize),
+    Until(usize),
+    Initially(Vec<usize>),
+    Finally(Vec<usize>),
+    Do(Vec<usize>),
+    Accumulate {
+        kind: AccumulatorKind,
+        form: usize,
+        variable: Option<usize>,
+    },
+    Return(usize),
+}
+
 fn word_name(ctx: &ThreadContext, word: Word) -> Result<String> {
     let name = symbol_name(ctx, word)?;
     Ok((0..string_length(ctx, name)?)
@@ -264,31 +291,95 @@ fn form(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, args: &[Word]) -
     })
 }
 
-fn progn(ctx: &mut ThreadContext, runtime: &Runtime, body: &[Word]) -> Result {
-    form(ctx, runtime, "PROGN", body)
+fn held_get(held: &[Word], index: usize) -> Result<Word> {
+    held.get(index).copied().ok_or(ObjectError::TypeError)
 }
 
-fn binding(ctx: &mut ThreadContext, runtime: &Runtime, variable: Word, value: Word) -> Result {
-    list(ctx, runtime, &[variable, value])
+fn held_form(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    name: &str,
+    indexes: &[usize],
+) -> Result<usize> {
+    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
+        let args = indexes
+            .iter()
+            .map(|index| {
+                roots
+                    .get(*index)
+                    .map(|root| **root)
+                    .ok_or(ObjectError::TypeError)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let value = form(ctx, runtime, name, &args)?;
+        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        Ok((value, refreshed))
+    })?;
+    *held = refreshed;
+    held.push(value);
+    Ok(held.len() - 1)
+}
+
+fn held_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    indexes: &[usize],
+) -> Result<usize> {
+    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
+        let values = indexes
+            .iter()
+            .map(|index| {
+                roots
+                    .get(*index)
+                    .map(|root| **root)
+                    .ok_or(ObjectError::TypeError)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let value = list(ctx, runtime, &values)?;
+        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        Ok((value, refreshed))
+    })?;
+    *held = refreshed;
+    held.push(value);
+    Ok(held.len() - 1)
+}
+
+fn held_fresh_symbol(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+) -> Result<usize> {
+    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
+        let value = fresh_symbol(ctx, runtime)?;
+        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        Ok((value, refreshed))
+    })?;
+    *held = refreshed;
+    held.push(value);
+    Ok(held.len() - 1)
 }
 
 fn expand_body(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    body: &[Word],
-    end: Word,
-) -> Result<Vec<Word>> {
-    let finish = symbol(ctx, runtime, "LOOP-FINISH")?;
+    held: &mut Vec<Word>,
+    body: &[usize],
+    end: usize,
+) -> Result<Vec<usize>> {
+    let finish = held_fresh_symbol(ctx, runtime, held)?;
     let mut result = Vec::with_capacity(body.len());
-    for word in body {
+    for index in body {
+        let word = held_get(held, *index)?;
         if word.is_cons() {
-            let parts = elements(ctx, *word)?;
-            if parts.first().copied() == Some(finish) && parts.len() == 1 {
-                result.push(form(ctx, runtime, "GO", &[end])?);
+            let parts = elements(ctx, word)?;
+            if parts.first().copied() == Some(held_get(held, finish)?) && parts.len() == 1 {
+                result.push(held_form(ctx, runtime, held, "GO", &[end])?);
                 continue;
             }
         }
-        result.push(*word);
+        result.push(*index);
     }
     Ok(result)
 }
@@ -296,77 +387,220 @@ fn expand_body(
 /// Expand a parsed LOOP AST into portable CL primitive forms.
 #[allow(clippy::too_many_lines)]
 pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst) -> Result {
-    let end = fresh_symbol(ctx, runtime)?;
-    let start = fresh_symbol(ctx, runtime)?;
+    let mut held = Vec::new();
+    let name = ast.name.map(|name| {
+        held.push(name);
+        held.len() - 1
+    });
+    let mut clauses: Vec<HeldLoopClause> = Vec::with_capacity(ast.clauses.len());
+    for clause in &ast.clauses {
+        let clause = match *clause {
+            LoopClause::With { variable, init } => {
+                let variable_index = held.len();
+                held.push(variable);
+                let init_index = held.len();
+                held.push(init);
+                HeldLoopClause::With {
+                    variable: variable_index,
+                    init: init_index,
+                }
+            }
+            LoopClause::For(spec) => {
+                let variable = held.len();
+                held.push(spec.variable);
+                let init = held.len();
+                held.push(spec.init);
+                let step = spec.step.map(|step| {
+                    let index = held.len();
+                    held.push(step);
+                    index
+                });
+                let limit = spec.limit.map(|(direction, limit)| {
+                    let index = held.len();
+                    held.push(limit);
+                    (direction, index)
+                });
+                HeldLoopClause::For {
+                    variable,
+                    init,
+                    step,
+                    direction: spec.direction,
+                    limit,
+                }
+            }
+            LoopClause::Repeat(count) => {
+                let index = held.len();
+                held.push(count);
+                HeldLoopClause::Repeat(index)
+            }
+            LoopClause::While(test) => {
+                let index = held.len();
+                held.push(test);
+                HeldLoopClause::While(index)
+            }
+            LoopClause::Until(test) => {
+                let index = held.len();
+                held.push(test);
+                HeldLoopClause::Until(index)
+            }
+            LoopClause::Initially(ref forms) => HeldLoopClause::Initially(
+                forms
+                    .iter()
+                    .map(|word| {
+                        let index = held.len();
+                        held.push(*word);
+                        index
+                    })
+                    .collect(),
+            ),
+            LoopClause::Finally(ref forms) => HeldLoopClause::Finally(
+                forms
+                    .iter()
+                    .map(|word| {
+                        let index = held.len();
+                        held.push(*word);
+                        index
+                    })
+                    .collect(),
+            ),
+            LoopClause::Do(ref forms) => HeldLoopClause::Do(
+                forms
+                    .iter()
+                    .map(|word| {
+                        let index = held.len();
+                        held.push(*word);
+                        index
+                    })
+                    .collect(),
+            ),
+            LoopClause::Accumulate {
+                kind,
+                form,
+                variable,
+            } => {
+                let form_index = held.len();
+                held.push(form);
+                let variable = variable.map(|variable| {
+                    let index = held.len();
+                    held.push(variable);
+                    index
+                });
+                HeldLoopClause::Accumulate {
+                    kind,
+                    form: form_index,
+                    variable,
+                }
+            }
+            LoopClause::Return(value) => {
+                let index = held.len();
+                held.push(value);
+                HeldLoopClause::Return(index)
+            }
+        };
+        clauses.push(clause);
+    }
+    let end = held_fresh_symbol(ctx, runtime, &mut held)?;
+    let start = held_fresh_symbol(ctx, runtime, &mut held)?;
     let mut bindings = Vec::new();
     let mut updates = Vec::new();
     let mut tests = Vec::new();
     let mut body = Vec::new();
     let mut initially = Vec::new();
-    let mut finally: Vec<Word> = Vec::new();
-    let mut result = Word::NIL;
+    let mut finally: Vec<usize> = Vec::new();
+    let nil = held.len();
+    held.push(Word::NIL);
+    let mut result = nil;
     let mut accumulators = Vec::new();
 
-    for clause in &ast.clauses {
+    for clause in &clauses {
         match *clause {
-            LoopClause::With { variable, init } => {
-                bindings.push(binding(ctx, runtime, variable, init)?);
+            HeldLoopClause::With { variable, init } => {
+                bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
             }
-            LoopClause::For(spec) => {
-                bindings.push(binding(ctx, runtime, spec.variable, spec.init)?);
-                let step = spec.step.unwrap_or_else(|| {
-                    if matches!(spec.direction, Some(StepDirection::DownFrom)) {
-                        Word::fixnum(-1)
-                    } else {
-                        Word::fixnum(1)
-                    }
-                });
+            HeldLoopClause::For {
+                variable,
+                init,
+                step: spec_step,
+                direction,
+                limit,
+            } => {
+                bindings.push(held_list(ctx, runtime, &mut held, &[variable, init])?);
+                let step = if spec_step.is_some() {
+                    spec_step.ok_or(ObjectError::TypeError)?
+                } else {
+                    let step = held.len();
+                    held.push(Word::fixnum(
+                        if matches!(direction, Some(StepDirection::DownFrom)) {
+                            -1
+                        } else {
+                            1
+                        },
+                    ));
+                    step
+                };
                 {
-                    let operator = if matches!(spec.direction, Some(StepDirection::DownFrom)) {
+                    let operator = if matches!(direction, Some(StepDirection::DownFrom)) {
                         "-"
                     } else {
                         "+"
                     };
-                    let update = form(ctx, runtime, operator, &[spec.variable, step])?;
-                    updates.extend([spec.variable, update]);
+                    let update = held_form(ctx, runtime, &mut held, operator, &[variable, step])?;
+                    updates.extend([variable, update]);
                 }
-                if let Some((direction, limit)) = spec.limit {
-                    let operator = match direction {
+                if let Some((limit_direction, limit)) = limit {
+                    let operator = match limit_direction {
                         LimitDirection::To => ">",
                         LimitDirection::UpTo | LimitDirection::Below => ">=",
                         LimitDirection::DownTo => "<",
                     };
-                    tests.push(form(ctx, runtime, operator, &[spec.variable, limit])?);
+                    tests.push(held_form(
+                        ctx,
+                        runtime,
+                        &mut held,
+                        operator,
+                        &[variable, limit],
+                    )?);
                 }
             }
-            LoopClause::Repeat(count) => {
-                let counter = fresh_symbol(ctx, runtime)?;
-                bindings.push(binding(ctx, runtime, counter, count)?);
-                tests.push(form(ctx, runtime, "<=", &[counter, Word::fixnum(0)])?);
+            HeldLoopClause::Repeat(count) => {
+                let counter = held_fresh_symbol(ctx, runtime, &mut held)?;
+                bindings.push(held_list(ctx, runtime, &mut held, &[counter, count])?);
+                let zero = held.len();
+                held.push(Word::fixnum(0));
+                tests.push(held_form(ctx, runtime, &mut held, "<=", &[counter, zero])?);
+                let one = held.len();
+                held.push(Word::fixnum(1));
                 updates.extend([
                     counter,
-                    form(ctx, runtime, "-", &[counter, Word::fixnum(1)])?,
+                    held_form(ctx, runtime, &mut held, "-", &[counter, one])?,
                 ]);
             }
-            LoopClause::While(test) => tests.push(form(ctx, runtime, "NOT", &[test])?),
-            LoopClause::Until(test) => tests.push(test),
-            LoopClause::Initially(ref forms) => initially.extend(forms),
-            LoopClause::Finally(ref forms) => finally.extend(forms),
-            LoopClause::Do(ref forms) => body.extend(forms),
-            LoopClause::Return(value) => {
-                body.push(form(
+            HeldLoopClause::While(test) => {
+                tests.push(held_form(ctx, runtime, &mut held, "NOT", &[test])?);
+            }
+            HeldLoopClause::Until(test) => tests.push(test),
+            HeldLoopClause::Initially(ref forms) => initially.extend(forms),
+            HeldLoopClause::Finally(ref forms) => finally.extend(forms),
+            HeldLoopClause::Do(ref forms) => body.extend(forms),
+            HeldLoopClause::Return(value) => {
+                let name = name.unwrap_or(nil);
+                body.push(held_form(
                     ctx,
                     runtime,
+                    &mut held,
                     "RETURN-FROM",
-                    &[ast.name.unwrap_or(Word::NIL), value],
+                    &[name, value],
                 )?);
             }
-            LoopClause::Accumulate {
+            HeldLoopClause::Accumulate {
                 kind,
                 form: value,
                 variable,
             } => {
-                let accumulator = variable.unwrap_or(fresh_symbol(ctx, runtime)?);
+                let accumulator = match variable {
+                    Some(variable) => variable,
+                    None => held_fresh_symbol(ctx, runtime, &mut held)?,
+                };
                 {
                     accumulators.push((kind, accumulator));
                     let init = if matches!(kind, AccumulatorKind::Count) {
@@ -374,27 +608,68 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                     } else {
                         Word::NIL
                     };
-                    bindings.push(binding(ctx, runtime, accumulator, init)?);
+                    let init_index = held.len();
+                    held.push(init);
+                    bindings.push(held_list(
+                        ctx,
+                        runtime,
+                        &mut held,
+                        &[accumulator, init_index],
+                    )?);
                 }
                 result = accumulator;
                 match kind {
                     AccumulatorKind::Collect => {
-                        body.push(form(ctx, runtime, "PUSH", &[value, accumulator])?);
+                        body.push(held_form(
+                            ctx,
+                            runtime,
+                            &mut held,
+                            "PUSH",
+                            &[value, accumulator],
+                        )?);
                     }
                     AccumulatorKind::Append => {
-                        let values = form(ctx, runtime, "LIST", &[value])?;
-                        let appended = form(ctx, runtime, "APPEND", &[accumulator, values])?;
-                        body.push(form(ctx, runtime, "SETQ", &[accumulator, appended])?);
+                        let values = held_form(ctx, runtime, &mut held, "LIST", &[value])?;
+                        let appended =
+                            held_form(ctx, runtime, &mut held, "APPEND", &[accumulator, values])?;
+                        body.push(held_form(
+                            ctx,
+                            runtime,
+                            &mut held,
+                            "SETQ",
+                            &[accumulator, appended],
+                        )?);
                     }
                     AccumulatorKind::Nconc => {
-                        let concatenated = form(ctx, runtime, "NCONC", &[accumulator, value])?;
-                        body.push(form(ctx, runtime, "SETQ", &[accumulator, concatenated])?);
+                        let concatenated =
+                            held_form(ctx, runtime, &mut held, "NCONC", &[accumulator, value])?;
+                        body.push(held_form(
+                            ctx,
+                            runtime,
+                            &mut held,
+                            "SETQ",
+                            &[accumulator, concatenated],
+                        )?);
                     }
                     AccumulatorKind::Count => {
-                        body.push(form(ctx, runtime, "INCF", &[accumulator, Word::fixnum(1)])?);
+                        let one = held.len();
+                        held.push(Word::fixnum(1));
+                        body.push(held_form(
+                            ctx,
+                            runtime,
+                            &mut held,
+                            "INCF",
+                            &[accumulator, one],
+                        )?);
                     }
                     AccumulatorKind::Sum => {
-                        body.push(form(ctx, runtime, "INCF", &[accumulator, value])?);
+                        body.push(held_form(
+                            ctx,
+                            runtime,
+                            &mut held,
+                            "INCF",
+                            &[accumulator, value],
+                        )?);
                     }
                     AccumulatorKind::Maximize | AccumulatorKind::Minimize => {
                         let operator = if matches!(kind, AccumulatorKind::Maximize) {
@@ -402,49 +677,60 @@ pub fn expand_loop_ast(ctx: &mut ThreadContext, runtime: &Runtime, ast: &LoopAst
                         } else {
                             "MIN"
                         };
-                        let selected = form(ctx, runtime, operator, &[accumulator, value])?;
-                        body.push(form(ctx, runtime, "SETQ", &[accumulator, selected])?);
+                        let selected =
+                            held_form(ctx, runtime, &mut held, operator, &[accumulator, value])?;
+                        body.push(held_form(
+                            ctx,
+                            runtime,
+                            &mut held,
+                            "SETQ",
+                            &[accumulator, selected],
+                        )?);
                     }
                 }
             }
         }
     }
-    let body = expand_body(ctx, runtime, &body, end)?;
+    let body = expand_body(ctx, runtime, &mut held, &body, end)?;
     let stop = if tests.is_empty() {
-        Word::NIL
+        let index = held.len();
+        held.push(Word::NIL);
+        index
     } else {
-        let test = form(ctx, runtime, "OR", &tests)?;
-        let go_end = form(ctx, runtime, "GO", &[end])?;
-        form(ctx, runtime, "WHEN", &[test, go_end])?
+        let test = held_form(ctx, runtime, &mut held, "OR", &tests)?;
+        let go_end = held_form(ctx, runtime, &mut held, "GO", &[end])?;
+        held_form(ctx, runtime, &mut held, "WHEN", &[test, go_end])?
     };
     let mut tagbody = vec![start, stop];
     tagbody.extend(body);
     if !updates.is_empty() {
-        tagbody.push(form(ctx, runtime, "SETQ", &updates)?);
+        tagbody.push(held_form(ctx, runtime, &mut held, "SETQ", &updates)?);
     }
-    tagbody.push(form(ctx, runtime, "GO", &[start])?);
+    tagbody.push(held_form(ctx, runtime, &mut held, "GO", &[start])?);
     tagbody.push(end);
     tagbody.extend(finally);
     let mut value = result;
     for (kind, variable) in accumulators.into_iter().rev() {
         if matches!(kind, AccumulatorKind::Collect) {
-            value = form(ctx, runtime, "NREVERSE", &[variable])?;
+            value = held_form(ctx, runtime, &mut held, "NREVERSE", &[variable])?;
         } else {
             value = variable;
         }
     }
-    let tagbody = form(ctx, runtime, "TAGBODY", &tagbody)?;
+    let tagbody = held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?;
     let mut block_body = initially;
     block_body.extend([tagbody, value]);
-    let block_progn = progn(ctx, runtime, &block_body)?;
-    let block = form(
+    let block_progn = held_form(ctx, runtime, &mut held, "PROGN", &block_body)?;
+    let block = held_form(
         ctx,
         runtime,
+        &mut held,
         "BLOCK",
-        &[ast.name.unwrap_or(Word::NIL), block_progn],
+        &[name.unwrap_or(nil), block_progn],
     )?;
-    let binding_list = list(ctx, runtime, &bindings)?;
-    form(ctx, runtime, "LET", &[binding_list, block])
+    let binding_list = held_list(ctx, runtime, &mut held, &bindings)?;
+    let expansion = held_form(ctx, runtime, &mut held, "LET", &[binding_list, block])?;
+    held_get(&held, expansion)
 }
 
 /// Adapted callback for a LOOP macro function.

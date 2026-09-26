@@ -8,6 +8,10 @@ use ncl_object::{
 
 type Result<T = Word> = std::result::Result<T, ObjectError>;
 
+fn held_get(held: &[Word], index: usize) -> Result<Word> {
+    held.get(index).copied().ok_or(ObjectError::TypeError)
+}
+
 fn form(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, args: &[Word]) -> Result {
     ncl_object::with_roots(ctx, args, |ctx, roots| {
         let operator = symbol(ctx, runtime, name)?;
@@ -18,100 +22,166 @@ fn form(ctx: &mut ThreadContext, runtime: &Runtime, name: &str, args: &[Word]) -
     })
 }
 
-fn binding(ctx: &mut ThreadContext, runtime: &Runtime, name: Word, value: Word) -> Result {
-    list(ctx, runtime, &[name, value])
+fn held_form(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    name: &str,
+    indexes: &[usize],
+) -> Result<usize> {
+    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
+        let args = indexes
+            .iter()
+            .map(|index| {
+                roots
+                    .get(*index)
+                    .map(|root| **root)
+                    .ok_or(ObjectError::TypeError)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let value = form(ctx, runtime, name, &args)?;
+        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        Ok((value, refreshed))
+    })?;
+    *held = refreshed;
+    held.push(value);
+    Ok(held.len() - 1)
 }
 
-fn progn(ctx: &mut ThreadContext, runtime: &Runtime, body: &[Word]) -> Result {
-    form(ctx, runtime, "PROGN", body)
+fn held_list(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+    indexes: &[usize],
+) -> Result<usize> {
+    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
+        let values = indexes
+            .iter()
+            .map(|index| {
+                roots
+                    .get(*index)
+                    .map(|root| **root)
+                    .ok_or(ObjectError::TypeError)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let value = list(ctx, runtime, &values)?;
+        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        Ok((value, refreshed))
+    })?;
+    *held = refreshed;
+    held.push(value);
+    Ok(held.len() - 1)
+}
+
+fn held_fresh_symbol(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    held: &mut Vec<Word>,
+) -> Result<usize> {
+    let (value, refreshed) = ncl_object::with_roots(ctx, held, |ctx, roots| {
+        let value = fresh_symbol(ctx, runtime)?;
+        let refreshed = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        Ok((value, refreshed))
+    })?;
+    *held = refreshed;
+    held.push(value);
+    Ok(held.len() - 1)
 }
 
 fn destructuring_bind_call(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    let lambda_list = values.first().copied().ok_or(ObjectError::TypeError)?;
-    elements(ctx, lambda_list)?;
-    let value = values.get(1).copied().ok_or(ObjectError::TypeError)?;
-    let body = progn(ctx, runtime, values.get(2..).ok_or(ObjectError::TypeError)?)?;
-    ncl_object::with_roots(ctx, &[lambda_list, body, value], |ctx, roots| {
-        let lambda = form(
-            ctx,
-            runtime,
-            "LAMBDA",
-            &[
-                **roots.first().ok_or(ObjectError::TypeError)?,
-                **roots.get(1).ok_or(ObjectError::TypeError)?,
-            ],
-        )?;
-        ncl_object::with_root(ctx, &mut lambda.clone(), |ctx, lambda| {
-            form(
-                ctx,
-                runtime,
-                "FUNCALL",
-                &[*lambda, **roots.get(2).ok_or(ObjectError::TypeError)?],
-            )
-        })
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let lambda_list = *roots.first().ok_or(ObjectError::TypeError)?;
+        elements(ctx, *lambda_list)?;
+        roots.get(1).ok_or(ObjectError::TypeError)?;
+        let mut held = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        let body_indexes = (2..held.len()).collect::<Vec<_>>();
+        let body = held_form(ctx, runtime, &mut held, "PROGN", &body_indexes)?;
+        let lambda = held_form(ctx, runtime, &mut held, "LAMBDA", &[0, body])?;
+        let index = held_form(ctx, runtime, &mut held, "FUNCALL", &[lambda, 1])?;
+        held_get(&held, index)
     })
 }
 
 fn dolist(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    let spec = elements(ctx, values.first().copied().ok_or(ObjectError::TypeError)?)?;
-    if !(2..=3).contains(&spec.len()) {
-        return Err(ObjectError::TypeError);
-    }
-    let variable = spec[0];
-    symbol_name(ctx, variable)?;
-    let list_form = spec[1];
-    let result = spec.get(2).copied().unwrap_or(Word::NIL);
-    let cursor = fresh_symbol(ctx, runtime)?;
-    let loop_tag = fresh_symbol(ctx, runtime)?;
-    let end_tag = fresh_symbol(ctx, runtime)?;
-    let endp = form(ctx, runtime, "ENDP", &[cursor])?;
-    let go_end = form(ctx, runtime, "GO", &[end_tag])?;
-    let test = form(ctx, runtime, "IF", &[endp, go_end])?;
-    let car = form(ctx, runtime, "CAR", &[cursor])?;
-    let set_variable = form(ctx, runtime, "SETQ", &[variable, car])?;
-    let cdr = form(ctx, runtime, "CDR", &[cursor])?;
-    let advance = form(ctx, runtime, "SETQ", &[cursor, cdr])?;
-    let jump = form(ctx, runtime, "GO", &[loop_tag])?;
-    let mut tagbody = vec![loop_tag, test, set_variable];
-    tagbody.extend_from_slice(values.get(1..).ok_or(ObjectError::TypeError)?);
-    tagbody.extend([advance, jump, end_tag]);
-    let tagbody = form(ctx, runtime, "TAGBODY", &tagbody)?;
-    let clear = form(ctx, runtime, "SETQ", &[variable, Word::NIL])?;
-    let tagbody = form(ctx, runtime, "PROGN", &[tagbody, clear])?;
-    let variable_binding = binding(ctx, runtime, variable, Word::NIL)?;
-    let cursor_binding = binding(ctx, runtime, cursor, list_form)?;
-    let bindings = list(ctx, runtime, &[variable_binding, cursor_binding])?;
-    let body = form(ctx, runtime, "LET", &[bindings, tagbody, result])?;
-    form(ctx, runtime, "BLOCK", &[Word::NIL, body])
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let spec = elements(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
+        if !(2..=3).contains(&spec.len()) {
+            return Err(ObjectError::TypeError);
+        }
+        let mut held = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        let variable = held.len();
+        held.push(spec.first().copied().ok_or(ObjectError::TypeError)?);
+        symbol_name(ctx, held_get(&held, variable)?)?;
+        let list_form = held.len();
+        held.push(spec.get(1).copied().ok_or(ObjectError::TypeError)?);
+        let result = held.len();
+        held.push(spec.get(2).copied().unwrap_or(Word::NIL));
+        let cursor = held_fresh_symbol(ctx, runtime, &mut held)?;
+        let loop_tag = held_fresh_symbol(ctx, runtime, &mut held)?;
+        let end_tag = held_fresh_symbol(ctx, runtime, &mut held)?;
+        let endp = held_form(ctx, runtime, &mut held, "ENDP", &[cursor])?;
+        let go_end = held_form(ctx, runtime, &mut held, "GO", &[end_tag])?;
+        let test = held_form(ctx, runtime, &mut held, "IF", &[endp, go_end])?;
+        let car = held_form(ctx, runtime, &mut held, "CAR", &[cursor])?;
+        let set_variable = held_form(ctx, runtime, &mut held, "SETQ", &[variable, car])?;
+        let cdr = held_form(ctx, runtime, &mut held, "CDR", &[cursor])?;
+        let advance = held_form(ctx, runtime, &mut held, "SETQ", &[cursor, cdr])?;
+        let jump = held_form(ctx, runtime, &mut held, "GO", &[loop_tag])?;
+        let mut tagbody = vec![loop_tag, test, set_variable];
+        tagbody.extend(1..values.len());
+        tagbody.extend([advance, jump, end_tag]);
+        let tagbody = held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?;
+        let nil = held.len();
+        held.push(Word::NIL);
+        let clear = held_form(ctx, runtime, &mut held, "SETQ", &[variable, nil])?;
+        let tagbody = held_form(ctx, runtime, &mut held, "PROGN", &[tagbody, clear])?;
+        let variable_binding = held_list(ctx, runtime, &mut held, &[variable, result])?;
+        let cursor_binding = held_list(ctx, runtime, &mut held, &[cursor, list_form])?;
+        let bindings = held_list(ctx, runtime, &mut held, &[variable_binding, cursor_binding])?;
+        let body = held_form(ctx, runtime, &mut held, "LET", &[bindings, tagbody, result])?;
+        let block = held_form(ctx, runtime, &mut held, "BLOCK", &[0, body])?;
+        held_get(&held, block)
+    })
 }
 
 fn dotimes(ctx: &mut ThreadContext, runtime: &Runtime, values: &[Word]) -> Result {
-    let spec = elements(ctx, values.first().copied().ok_or(ObjectError::TypeError)?)?;
-    if !(2..=3).contains(&spec.len()) {
-        return Err(ObjectError::TypeError);
-    }
-    let variable = spec[0];
-    symbol_name(ctx, variable)?;
-    let limit_form = spec[1];
-    let result = spec.get(2).copied().unwrap_or(Word::NIL);
-    let limit = fresh_symbol(ctx, runtime)?;
-    let loop_tag = fresh_symbol(ctx, runtime)?;
-    let end_tag = fresh_symbol(ctx, runtime)?;
-    let comparison = form(ctx, runtime, ">=", &[variable, limit])?;
-    let go_end = form(ctx, runtime, "GO", &[end_tag])?;
-    let test = form(ctx, runtime, "IF", &[comparison, go_end])?;
-    let next = form(ctx, runtime, "+", &[variable, Word::fixnum(1)])?;
-    let increment = form(ctx, runtime, "SETQ", &[variable, next])?;
-    let jump = form(ctx, runtime, "GO", &[loop_tag])?;
-    let mut tagbody = vec![loop_tag, test];
-    tagbody.extend_from_slice(values.get(1..).ok_or(ObjectError::TypeError)?);
-    tagbody.extend([increment, jump, end_tag]);
-    let tagbody = form(ctx, runtime, "TAGBODY", &tagbody)?;
-    let variable_binding = binding(ctx, runtime, variable, Word::fixnum(0))?;
-    let limit_binding = binding(ctx, runtime, limit, limit_form)?;
-    let bindings = list(ctx, runtime, &[variable_binding, limit_binding])?;
-    let body = form(ctx, runtime, "LET", &[bindings, tagbody, result])?;
-    form(ctx, runtime, "BLOCK", &[Word::NIL, body])
+    ncl_object::with_roots(ctx, values, |ctx, roots| {
+        let spec = elements(ctx, **roots.first().ok_or(ObjectError::TypeError)?)?;
+        if !(2..=3).contains(&spec.len()) {
+            return Err(ObjectError::TypeError);
+        }
+        let mut held = roots.iter().map(|root| **root).collect::<Vec<_>>();
+        let variable = held.len();
+        held.push(spec.first().copied().ok_or(ObjectError::TypeError)?);
+        symbol_name(ctx, held_get(&held, variable)?)?;
+        let limit_form = held.len();
+        held.push(spec.get(1).copied().ok_or(ObjectError::TypeError)?);
+        let result = held.len();
+        held.push(spec.get(2).copied().unwrap_or(Word::NIL));
+        let limit = held_fresh_symbol(ctx, runtime, &mut held)?;
+        let loop_tag = held_fresh_symbol(ctx, runtime, &mut held)?;
+        let end_tag = held_fresh_symbol(ctx, runtime, &mut held)?;
+        let comparison = held_form(ctx, runtime, &mut held, ">=", &[variable, limit])?;
+        let go_end = held_form(ctx, runtime, &mut held, "GO", &[end_tag])?;
+        let test = held_form(ctx, runtime, &mut held, "IF", &[comparison, go_end])?;
+        let one = held.len();
+        held.push(Word::fixnum(1));
+        let next = held_form(ctx, runtime, &mut held, "+", &[variable, one])?;
+        let increment = held_form(ctx, runtime, &mut held, "SETQ", &[variable, next])?;
+        let jump = held_form(ctx, runtime, &mut held, "GO", &[loop_tag])?;
+        let mut tagbody = vec![loop_tag, test];
+        tagbody.extend(1..values.len());
+        tagbody.extend([increment, jump, end_tag]);
+        let tagbody = held_form(ctx, runtime, &mut held, "TAGBODY", &tagbody)?;
+        let zero = held.len();
+        held.push(Word::fixnum(0));
+        let variable_binding = held_list(ctx, runtime, &mut held, &[variable, zero])?;
+        let limit_binding = held_list(ctx, runtime, &mut held, &[limit, limit_form])?;
+        let bindings = held_list(ctx, runtime, &mut held, &[variable_binding, limit_binding])?;
+        let body = held_form(ctx, runtime, &mut held, "LET", &[bindings, tagbody, result])?;
+        let block = held_form(ctx, runtime, &mut held, "BLOCK", &[0, body])?;
+        held_get(&held, block)
+    })
 }
 
 fn args(ctx: &mut ThreadContext, form_word: Word) -> Result<Vec<Word>> {

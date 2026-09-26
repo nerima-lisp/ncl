@@ -35,10 +35,22 @@ fn load_heap_constant(
     assembler: &mut Assembler,
     index: ncl_ir::ConstantIndex,
 ) -> Result<(), CodegenError> {
-    let offset = i32::try_from(
-        (ncl_object::function_offset::CODE + ncl_object::code_offset::CONSTANTS + 1)
+    let function_code_offset = i32::try_from(
+        (ncl_object::function_offset::CODE + 1)
             .checked_mul(8)
-            .and_then(|base| base.checked_add(usize::try_from(index.0).ok()?.checked_mul(8)?))
+            .ok_or(CodegenError::FrameOverflow)?,
+    )
+    .map_err(|_| CodegenError::FrameOverflow)?;
+    let code_constants_offset = i32::try_from(
+        (ncl_object::code_offset::CONSTANTS + 1)
+            .checked_mul(8)
+            .ok_or(CodegenError::FrameOverflow)?,
+    )
+    .map_err(|_| CodegenError::FrameOverflow)?;
+    let vector_element_offset = i32::try_from(
+        (ncl_object::simple_vector_offset::DATA + 1)
+            .checked_add(usize::try_from(index.0).map_err(|_| CodegenError::FrameOverflow)?)
+            .and_then(|slot| slot.checked_mul(8))
             .ok_or(CodegenError::FrameOverflow)?,
     )
     .map_err(|_| CodegenError::FrameOverflow)?;
@@ -48,7 +60,15 @@ fn load_heap_constant(
     )?;
     emit(
         assembler,
-        Inst::MovRM(FUNCTION_OBJECT, Mem::base(FUNCTION_OBJECT, offset)),
+        Inst::MovRM(ENTRY, Mem::base(FUNCTION_OBJECT, function_code_offset)),
+    )?;
+    emit(
+        assembler,
+        Inst::MovRM(ENTRY, Mem::base(ENTRY, code_constants_offset)),
+    )?;
+    emit(
+        assembler,
+        Inst::MovRM(FUNCTION_OBJECT, Mem::base(ENTRY, vector_element_offset)),
     )
 }
 
@@ -67,6 +87,19 @@ const fn compare_condition(op: Compare) -> Cond {
 fn materialise_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), CodegenError> {
     emit(assembler, Inst::Setcc(condition, FUNCTION_OBJECT))?;
     emit(assembler, Inst::Movzx(FUNCTION_OBJECT, FUNCTION_OBJECT, 8))
+}
+
+fn closure_capture_count(function: &Function, closure: ValueId) -> usize {
+    function
+        .blocks
+        .iter()
+        .flat_map(|block| block.ops.iter())
+        .find(|op| op.results.iter().any(|(value, _)| *value == closure))
+        .and_then(|op| match &op.kind {
+            OpKind::MakeClosure { captures, .. } => Some(captures.len()),
+            _ => None,
+        })
+        .unwrap_or(0)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -172,8 +205,10 @@ pub fn lower_op(
         } => {
             load_slot(assembler, slots, *address, FUNCTION_OBJECT)?;
             let offset = match &op.kind {
-                OpKind::LoadField { field, .. } => i32::try_from(field.saturating_mul(8))
-                    .map_err(|_| CodegenError::FrameOverflow)?,
+                OpKind::LoadField { field, .. } => {
+                    i32::try_from(field.saturating_add(1).saturating_mul(8))
+                        .map_err(|_| CodegenError::FrameOverflow)?
+                }
                 _ => 0,
             };
             emit(
@@ -193,8 +228,10 @@ pub fn lower_op(
             load_slot(assembler, slots, *address, FUNCTION_OBJECT)?;
             load_slot(assembler, slots, *value, ENTRY)?;
             let offset = match &op.kind {
-                OpKind::StoreField { field, .. } => i32::try_from(field.saturating_mul(8))
-                    .map_err(|_| CodegenError::FrameOverflow)?,
+                OpKind::StoreField { field, .. } => {
+                    i32::try_from(field.saturating_add(1).saturating_mul(8))
+                        .map_err(|_| CodegenError::FrameOverflow)?
+                }
                 _ => 0,
             };
             emit(
@@ -269,7 +306,13 @@ pub fn lower_op(
             }
         }
         OpKind::CallClosure { closure, args } => {
-            lower_closure_call(assembler, *closure, args, slots)?;
+            lower_closure_call(
+                assembler,
+                *closure,
+                args,
+                closure_capture_count(function, *closure),
+                slots,
+            )?;
             call_pc = Some(emit_call(assembler)?);
             if let Some(result) = result {
                 store_slot(assembler, slots, result, RETURN_VALUE)?;

@@ -119,14 +119,15 @@ impl Context<'_> {
                 }
                 None => {
                     let symbol = f.symbol(name)?;
-                    f.safepoint()?;
-                    f.one(
-                        OpKind::Builtin {
-                            name: "set-symbol-value".to_owned(),
-                            args: vec![symbol, value],
-                        },
-                        Ty::Word,
-                    )?;
+                    f.none(OpKind::StoreField {
+                        object: symbol,
+                        field: u32::try_from(ncl_object::symbol_offset::VALUE).map_err(|_| {
+                            LowerError::Ir {
+                                detail: "symbol value offset does not fit u32".to_owned(),
+                            }
+                        })?,
+                        value,
+                    })?;
                 }
             }
             last = Some(value);

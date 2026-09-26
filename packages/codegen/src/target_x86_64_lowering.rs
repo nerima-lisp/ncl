@@ -3,7 +3,7 @@ use crate::{
     Allocation, CodegenError, ContextField, Location, RuntimeAbi, RuntimeFunction,
     common_lisp_builtin,
 };
-use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
+use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg, Shift};
 use ncl_ir::{Function, ValueId};
 
 /// Register carrying the callee function object on entry, stored as frame header word 2.
@@ -224,19 +224,20 @@ pub(super) fn lower_call(
     args: &[ValueId],
     slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
-    if args.len() > ARGUMENT_REGISTERS.len() {
+    let Some((argc, arguments)) = args.split_first() else {
+        return Err(CodegenError::Unsupported(
+            "calls require a tagged argc argument".into(),
+        ));
+    };
+    if arguments.len() > ARGUMENT_REGISTERS.len() {
         return Err(CodegenError::Unsupported(
             "x86-64 calls support at most four register arguments".into(),
         ));
     }
     load_slot(assembler, slots, callee, FUNCTION_OBJECT)?;
     emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
-    load_immediate(
-        assembler,
-        ARGUMENT_COUNT,
-        i64::try_from(args.len()).map_err(|_| CodegenError::FrameOverflow)?,
-    )?;
-    for (index, argument) in args.iter().enumerate() {
+    load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
+    for (index, argument) in arguments.iter().enumerate() {
         load_slot(assembler, slots, *argument, ARGUMENT_REGISTERS[index])?;
     }
     Ok(())
@@ -246,10 +247,76 @@ pub(super) fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
     args: &[ValueId],
+    capture_count: usize,
     slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
-    lower_call(assembler, closure, args, slots)?;
-    emit(assembler, Inst::MovRM(ENTRY, Mem::base(FUNCTION_OBJECT, 0)))
+    let Some((argc, arguments)) = args.split_first() else {
+        return Err(CodegenError::Unsupported(
+            "closure calls require a tagged argc argument".into(),
+        ));
+    };
+    if args
+        .len()
+        .saturating_sub(1)
+        .checked_add(capture_count)
+        .is_none_or(|count| count > ARGUMENT_REGISTERS.len())
+    {
+        return Err(CodegenError::Unsupported(
+            "x86-64 closure calls support at most four forwarded arguments".into(),
+        ));
+    }
+    load_slot(assembler, slots, closure, FUNCTION_OBJECT)?;
+    emit(assembler, Inst::MovRR(ENTRY, FUNCTION_OBJECT))?;
+    load_slot(assembler, slots, *argc, ARGUMENT_COUNT)?;
+    for index in 0..capture_count {
+        let offset = i32::try_from(
+            ncl_object::function_offset::CAPTURES
+                .checked_add(index)
+                .and_then(|slot| slot.checked_add(1))
+                .and_then(|slot| slot.checked_mul(8))
+                .ok_or(CodegenError::FrameOverflow)?,
+        )
+        .map_err(|_| CodegenError::FrameOverflow)?;
+        emit(
+            assembler,
+            Inst::MovRM(
+                ARGUMENT_REGISTERS[index],
+                Mem::base(FUNCTION_OBJECT, offset),
+            ),
+        )?;
+    }
+    for (index, argument) in arguments.iter().enumerate() {
+        load_slot(
+            assembler,
+            slots,
+            *argument,
+            ARGUMENT_REGISTERS[capture_count + index],
+        )?;
+    }
+    emit(
+        assembler,
+        Inst::MovRM(
+            ENTRY,
+            Mem::base(
+                FUNCTION_OBJECT,
+                i32::try_from(
+                    ncl_object::function_offset::ENTRY
+                        .checked_add(1)
+                        .and_then(|slot| slot.checked_mul(8))
+                        .ok_or(CodegenError::FrameOverflow)?,
+                )
+                .map_err(|_| CodegenError::FrameOverflow)?,
+            ),
+        ),
+    )?;
+    emit(
+        assembler,
+        Inst::ShiftImm(
+            Shift::Sar,
+            ENTRY,
+            u8::try_from(ncl_sys::FIXNUM_TAG_BITS).map_err(|_| CodegenError::FrameOverflow)?,
+        ),
+    )
 }
 
 pub(super) fn lower_runtime_builtin(

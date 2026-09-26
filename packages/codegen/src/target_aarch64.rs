@@ -87,10 +87,11 @@ fn initialize_arguments(
                 assembler,
                 Inst::Ldr {
                     rt: Reg(16),
-                    mem: MemOperand::Unscaled {
+                    mem: MemOperand::Unsigned {
                         base: RegOrSp::Reg(Reg(5)),
-                        offset: i16::try_from((register_index - 5).saturating_mul(8))
+                        offset: u16::try_from(register_index - 5)
                             .map_err(|_| CodegenError::FrameOverflow)?,
+                        scale: 8,
                     },
                 },
             )?;

@@ -232,14 +232,29 @@ fn encode_bitmask(value: u64) -> Option<(u32, u32, u32)> {
     }
     None
 }
-fn bit_shift(base: u32, rd: Reg, rn: Reg, amount: u8) -> Result<u32, EncodeError> {
+fn lsl_immediates(amount: u8) -> (u32, u32) {
+    (u32::from((64 - amount) % 64), u32::from(63 - amount))
+}
+
+fn right_shift_immediates(amount: u8) -> (u32, u32) {
+    (u32::from(amount), 63)
+}
+
+fn bit_shift(
+    base: u32,
+    rd: Reg,
+    rn: Reg,
+    amount: u8,
+    immediates: fn(u8) -> (u32, u32),
+) -> Result<u32, EncodeError> {
     if amount > 63 {
         return Err(EncodeError::ImmediateOutOfRange {
             value: i64::from(amount),
             bits: 6,
         });
     }
-    Ok(base | u32::from(63 - amount) << 16 | u32::from(amount) << 10 | r(rn) << 5 | r(rd))
+    let (immr, imms) = immediates(amount);
+    Ok(base | immr << 16 | imms << 10 | r(rn) << 5 | r(rd))
 }
 fn test_branch(base: u32, rt: Reg, bit: u8) -> Result<u32, EncodeError> {
     if bit > 63 {
@@ -432,9 +447,15 @@ pub fn encode(i: &Inst, _at: usize) -> Result<u32, EncodeError> {
             shift: s,
         } => reg3(0xCA00_0000, *rd, RegOrSp::Reg(*rn), *rm, *s),
         Inst::Tst { rn, rm, shift: s } => reg3(0xEA00_001F, Reg(31), RegOrSp::Reg(*rn), *rm, *s),
-        Inst::LslImm { rd, rn, amount } => bit_shift(0xD340_0000, *rd, *rn, *amount),
-        Inst::LsrImm { rd, rn, amount } => bit_shift(0xD340_FC00, *rd, *rn, *amount),
-        Inst::AsrImm { rd, rn, amount } => bit_shift(0x9340_FC00, *rd, *rn, *amount),
+        Inst::LslImm { rd, rn, amount } => {
+            bit_shift(0xD340_0000, *rd, *rn, *amount, lsl_immediates)
+        }
+        Inst::LsrImm { rd, rn, amount } => {
+            bit_shift(0xD340_0000, *rd, *rn, *amount, right_shift_immediates)
+        }
+        Inst::AsrImm { rd, rn, amount } => {
+            bit_shift(0x9340_0000, *rd, *rn, *amount, right_shift_immediates)
+        }
         Inst::LslReg { rd, rn, rm } => Ok(0x9AC0_2000 | r(*rm) << 16 | r(*rn) << 5 | r(*rd)),
         Inst::LsrReg { rd, rn, rm } => Ok(0x9AC0_2400 | r(*rm) << 16 | r(*rn) << 5 | r(*rd)),
         Inst::AsrReg { rd, rn, rm } => Ok(0x9AC0_2800 | r(*rm) << 16 | r(*rn) << 5 | r(*rd)),

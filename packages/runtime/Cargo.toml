@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 ncl-compiler-front = { path = "../compiler/front" }
 ncl-opt = { path = "../compiler/opt" }
+ncl-ir = { path = "../ir" }
 ncl-codegen = { path = "../codegen" }
 ncl-stdlib = { path = "../stdlib" }
 ncl-image = { path = "../image" }

@@ -1,6 +1,6 @@
 use super::{
     constant_table_entry, emit, load_value, lower_alloc, lower_builtin, lower_call,
-    lower_closure_call, lower_runtime_builtin, lower_safepoint, store_value,
+    lower_runtime_builtin, lower_safepoint, store_value,
 };
 use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
@@ -29,10 +29,11 @@ fn load_heap_constant(
     assembler: &mut Assembler,
     index: ncl_ir::ConstantIndex,
 ) -> Result<(), CodegenError> {
-    let offset = (ncl_object::function_offset::CODE + ncl_object::code_offset::CONSTANTS + 1)
-        .checked_mul(8)
-        .and_then(|base| base.checked_add(usize::try_from(index.0).ok()?.checked_mul(8)?))
-        .and_then(|value| i16::try_from(value).ok())
+    let element_offset = ncl_object::simple_vector_offset::DATA
+        .checked_add(1)
+        .and_then(|base| base.checked_add(usize::try_from(index.0).ok()?))
+        .and_then(|value| value.checked_mul(8))
+        .and_then(|value| u16::try_from(value).ok())
         .ok_or(CodegenError::FrameOverflow)?;
     emit(
         assembler,
@@ -46,12 +47,183 @@ fn load_heap_constant(
     )?;
     emit(
         assembler,
+        Inst::AndImm {
+            rd: Reg(16),
+            rn: Reg(16),
+            imm: !ncl_sys::LOWTAG_MASK,
+        },
+    )?;
+    emit(
+        assembler,
         Inst::Ldr {
             rt: Reg(16),
             mem: MemOperand::Unscaled {
                 base: RegOrSp::Reg(Reg(16)),
-                offset,
+                offset: i16::try_from((ncl_object::function_offset::CODE + 1) * 8)
+                    .map_err(|_| CodegenError::FrameOverflow)?,
             },
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::AndImm {
+            rd: Reg(16),
+            rn: Reg(16),
+            imm: !ncl_sys::LOWTAG_MASK,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(16)),
+                offset: i16::try_from((ncl_object::code_offset::CONSTANTS + 1) * 8)
+                    .map_err(|_| CodegenError::FrameOverflow)?,
+            },
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::AndImm {
+            rd: Reg(16),
+            rn: Reg(16),
+            imm: !ncl_sys::LOWTAG_MASK,
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(16),
+            mem: MemOperand::Unsigned {
+                base: RegOrSp::Reg(Reg(16)),
+                offset: element_offset,
+                scale: 8,
+            },
+        },
+    )
+}
+
+fn closure_captures(function: &Function, closure: ValueId) -> Option<&[ValueId]> {
+    function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.ops)
+        .find_map(|op| {
+            op.results
+                .iter()
+                .any(|(value, _)| *value == closure)
+                .then_some(&op.kind)
+                .and_then(|kind| match kind {
+                    OpKind::MakeClosure { captures, .. } => Some(captures.as_slice()),
+                    _ => None,
+                })
+        })
+}
+
+fn emit_lisp_boolean(assembler: &mut Assembler, condition: Cond) -> Result<(), CodegenError> {
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(16), ncl_sys::Word::TRUE.bits()) {
+        emit(assembler, instruction)?;
+    }
+    for instruction in ncl_asm_aarch64::mov_imm64(Reg(17), ncl_sys::Word::NIL.bits()) {
+        emit(assembler, instruction)?;
+    }
+    emit(
+        assembler,
+        Inst::Csel {
+            rd: Reg(16),
+            rn: Reg(16),
+            rm: Reg(17),
+            cond: condition,
+        },
+    )
+}
+
+fn lower_closure_call(
+    assembler: &mut Assembler,
+    closure: ValueId,
+    args: &[ValueId],
+    function: &Function,
+    allocation: &Allocation,
+) -> Result<(), CodegenError> {
+    let Some(captures) = closure_captures(function, closure) else {
+        return super::lower_closure_call(assembler, closure, args, allocation);
+    };
+    let Some((argc, arguments)) = args.split_first() else {
+        return Err(CodegenError::Unsupported(
+            "closure calls require a tagged argc argument".into(),
+        ));
+    };
+    let argument_count = captures
+        .len()
+        .checked_add(arguments.len())
+        .ok_or(CodegenError::FrameOverflow)?;
+    if argument_count > 4 {
+        return Err(CodegenError::Unsupported(
+            "AArch64 closure calls support at most four capture and register arguments".into(),
+        ));
+    }
+    load_value(assembler, allocation, closure, Reg(16))?;
+    emit(
+        assembler,
+        Inst::Mov {
+            rd: RegOrSp::Reg(Reg(17)),
+            rn: RegOrSp::Reg(Reg(16)),
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::AndImm {
+            rd: Reg(17),
+            rn: Reg(17),
+            imm: !ncl_sys::LOWTAG_MASK,
+        },
+    )?;
+    load_value(assembler, allocation, *argc, Reg(0))?;
+    for (index, _capture) in captures.iter().enumerate() {
+        let offset = ncl_object::function_offset::CAPTURES
+            .checked_add(index)
+            .and_then(|slot| slot.checked_add(1))
+            .and_then(|slot| slot.checked_mul(8))
+            .and_then(|offset| i16::try_from(offset).ok())
+            .ok_or(CodegenError::FrameOverflow)?;
+        emit(
+            assembler,
+            Inst::Ldr {
+                rt: Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?),
+                mem: MemOperand::Unscaled {
+                    base: RegOrSp::Reg(Reg(17)),
+                    offset,
+                },
+            },
+        )?;
+    }
+    for (index, argument) in arguments.iter().enumerate() {
+        let register_index = captures
+            .len()
+            .checked_add(index + 1)
+            .ok_or(CodegenError::FrameOverflow)?;
+        let register = Reg(u8::try_from(register_index).map_err(|_| CodegenError::FrameOverflow)?);
+        load_value(assembler, allocation, *argument, register)?;
+    }
+    emit(
+        assembler,
+        Inst::Ldr {
+            rt: Reg(17),
+            mem: MemOperand::Unscaled {
+                base: RegOrSp::Reg(Reg(17)),
+                offset: i16::try_from((ncl_object::function_offset::ENTRY + 1) * 8)
+                    .map_err(|_| CodegenError::FrameOverflow)?,
+            },
+        },
+    )?;
+    emit(
+        assembler,
+        Inst::AsrImm {
+            rd: Reg(17),
+            rn: Reg(17),
+            amount: u8::try_from(ncl_sys::FIXNUM_TAG_BITS)
+                .map_err(|_| CodegenError::FrameOverflow)?,
         },
     )
 }
@@ -120,13 +292,7 @@ fn lower_prim(
                     shift: Shift::Lsl(0),
                 },
             )?;
-            emit(
-                assembler,
-                Inst::Cset {
-                    rd: Reg(16),
-                    cond: Cond::Eq,
-                },
-            )?;
+            emit_lisp_boolean(assembler, Cond::Eq)?;
         }
         Prim::FixnumLt => {
             emit(
@@ -137,13 +303,7 @@ fn lower_prim(
                     shift: Shift::Lsl(0),
                 },
             )?;
-            emit(
-                assembler,
-                Inst::Cset {
-                    rd: Reg(16),
-                    cond: Cond::Lt,
-                },
-            )?;
+            emit_lisp_boolean(assembler, Cond::Lt)?;
         }
         Prim::FixnumLe => {
             emit(
@@ -154,16 +314,18 @@ fn lower_prim(
                     shift: Shift::Lsl(0),
                 },
             )?;
-            emit(
-                assembler,
-                Inst::Cset {
-                    rd: Reg(16),
-                    cond: Cond::Le,
-                },
-            )?;
+            emit_lisp_boolean(assembler, Cond::Le)?;
         }
         Prim::Car | Prim::Cdr | Prim::Svref | Prim::Aref => {
             let offset = if matches!(prim, Prim::Cdr) { 8 } else { 0 };
+            emit(
+                assembler,
+                Inst::AndImm {
+                    rd: Reg(16),
+                    rn: Reg(16),
+                    imm: !ncl_sys::LOWTAG_MASK,
+                },
+            )?;
             emit(
                 assembler,
                 Inst::Ldr {
@@ -177,6 +339,14 @@ fn lower_prim(
         }
         Prim::Rplaca | Prim::Rplacd | Prim::Aset => {
             let offset = if matches!(prim, Prim::Rplacd) { 8 } else { 0 };
+            emit(
+                assembler,
+                Inst::AndImm {
+                    rd: Reg(16),
+                    rn: Reg(16),
+                    imm: !ncl_sys::LOWTAG_MASK,
+                },
+            )?;
             emit(
                 assembler,
                 Inst::Str {
@@ -242,9 +412,19 @@ pub fn lower_op(
             object: address, ..
         } => {
             load_value(assembler, allocation, *address, Reg(16))?;
+            emit(
+                assembler,
+                Inst::AndImm {
+                    rd: Reg(16),
+                    rn: Reg(16),
+                    imm: !ncl_sys::LOWTAG_MASK,
+                },
+            )?;
             let offset = match &op.kind {
-                OpKind::LoadField { field, .. } => i16::try_from(field.saturating_mul(8))
-                    .map_err(|_| CodegenError::FrameOverflow)?,
+                OpKind::LoadField { field, .. } => {
+                    i16::try_from(field.saturating_add(1).saturating_mul(8))
+                        .map_err(|_| CodegenError::FrameOverflow)?
+                }
                 _ => 0,
             };
             emit(
@@ -269,9 +449,19 @@ pub fn lower_op(
         } => {
             load_value(assembler, allocation, *address, Reg(16))?;
             load_value(assembler, allocation, *value, Reg(17))?;
+            emit(
+                assembler,
+                Inst::AndImm {
+                    rd: Reg(16),
+                    rn: Reg(16),
+                    imm: !ncl_sys::LOWTAG_MASK,
+                },
+            )?;
             let offset = match &op.kind {
-                OpKind::StoreField { field, .. } => i16::try_from(field.saturating_mul(8))
-                    .map_err(|_| CodegenError::FrameOverflow)?,
+                OpKind::StoreField { field, .. } => {
+                    i16::try_from(field.saturating_add(1).saturating_mul(8))
+                        .map_err(|_| CodegenError::FrameOverflow)?
+                }
                 _ => 0,
             };
             emit(
@@ -358,7 +548,7 @@ pub fn lower_op(
             }
         }
         OpKind::CallClosure { closure, args } => {
-            lower_closure_call(assembler, *closure, args, allocation)?;
+            lower_closure_call(assembler, *closure, args, function, allocation)?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
                 store_value(assembler, allocation, result, Reg(0))?;

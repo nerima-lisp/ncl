@@ -68,7 +68,8 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() {
     let entry = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
     let entry_value = ncl_ir::ValueId(0);
     let closure = ncl_ir::ValueId(1);
-    let result = ncl_ir::ValueId(2);
+    let argc = builder.add_constant(Constant::Fixnum(0));
+    let result = ncl_ir::ValueId(3);
     assert!(
         builder
             .push_op(OpKind::Const { result: entry }, &[Ty::Word])
@@ -85,12 +86,18 @@ fn lowers_ir_v2_closure_and_handler_ops_aarch64() {
             )
             .is_ok()
     );
+    let argc_value = ncl_ir::ValueId(2);
+    assert!(
+        builder
+            .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+            .is_ok()
+    );
     assert!(
         builder
             .push_op(
                 OpKind::CallClosure {
                     closure,
-                    args: Vec::new()
+                    args: vec![argc_value],
                 },
                 &[Ty::Word]
             )
@@ -238,11 +245,19 @@ fn golden_aarch64_tail_call_restores_frame_and_branches() {
     else {
         unreachable!("callee result")
     };
+    let argc = builder.add_constant(Constant::Fixnum(0));
+    let Some(argc) = builder
+        .push_op(OpKind::Const { result: argc }, &[Ty::Word])
+        .ok()
+        .and_then(|values| values.first().copied())
+    else {
+        unreachable!("argc result")
+    };
     assert!(
         builder
             .terminate(Terminator::TailCall {
                 function: callee,
-                args: Vec::new()
+                args: vec![argc]
             })
             .is_ok()
     );

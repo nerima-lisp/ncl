@@ -1,9 +1,10 @@
 #![allow(missing_docs, clippy::unwrap_used)]
 
 use crate::{
-    AllocationTarget, ContextField, RuntimeAbi, RuntimeFunction, allocate, compile_function_aarch64,
+    AllocationTarget, CodegenError, ContextField, RuntimeAbi, RuntimeFunction, allocate,
+    compile_function_aarch64,
 };
-use ncl_ir::{Constant, FunctionBuilder, OpKind, Terminator, Ty};
+use ncl_ir::{Constant, ConstantIndex, FunctionBuilder, OpKind, Terminator, Ty};
 
 fn decoded_text(bytes: [u8; 4], label: &str) -> String {
     let decoded = ncl_disasm::decode(ncl_disasm::Architecture::Aarch64, &bytes, 0);
@@ -426,4 +427,29 @@ fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
         "safepoint-crossing values are spilled"
     );
     assert!(map.bitmap.iter().any(|byte| byte & (1 << 4) != 0));
+}
+
+#[test]
+fn aarch64_rejects_constant_index_out_of_range() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(30),
+        "invalid-constant-index",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    assert!(builder
+        .push_op(
+            OpKind::Const {
+                result: ConstantIndex(1),
+            },
+            &[Ty::Word],
+        )
+        .is_ok());
+    let function = builder.finish();
+
+    let result = compile_function_aarch64(&function, &Aarch64FixtureAbi);
+    assert!(matches!(
+        result,
+        Err(CodegenError::InvalidConstantIndex { index: 1, length: 0 })
+    ));
 }

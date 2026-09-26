@@ -1,6 +1,6 @@
 use crate::isa_x86_64::{SCRATCH, THREAD_CONTEXT};
 use crate::{
-    Allocation, BuiltinName, CodegenError, ContextField, Location, RuntimeAbi, RuntimeEntry,
+    common_lisp_builtin, Allocation, CodegenError, ContextField, Location, RuntimeAbi,
     RuntimeFunction,
 };
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
@@ -254,7 +254,7 @@ pub(super) fn lower_closure_call(
 
 pub(super) fn lower_runtime_builtin(
     assembler: &mut Assembler,
-    name: &str,
+    function: RuntimeFunction,
     immediate_args: &[i64],
     value_args: &[ValueId],
     slots: &ValueSlots,
@@ -266,11 +266,9 @@ pub(super) fn lower_runtime_builtin(
         ));
     }
     let address = abi
-        .runtime_entry_address(RuntimeEntry::Builtin(BuiltinName::new(name)))
-        .map(u64::cast_signed)
-        .ok_or_else(|| {
-            CodegenError::Unsupported(format!("runtime address is unavailable: {name}"))
-        })?;
+        .runtime_address(function)
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))?
+        .cast_signed();
     emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
     load_immediate(assembler, ENTRY, address)?;
     for (index, value) in immediate_args.iter().copied().enumerate() {
@@ -288,18 +286,16 @@ pub(super) fn lower_runtime_builtin(
 }
 
 fn context_mem(abi: &dyn RuntimeAbi, field: ContextField) -> Result<Mem, CodegenError> {
-    let offset = abi.field_offset(field).ok_or_else(|| {
-        CodegenError::Unsupported(format!("context offset is unavailable: {field:?}"))
-    })?;
+    let offset = abi
+        .field_offset(field)
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
     Ok(Mem::base(THREAD_CONTEXT, offset))
 }
 
 fn runtime_address(abi: &dyn RuntimeAbi, function: RuntimeFunction) -> Result<i64, CodegenError> {
-    abi.runtime_address(function, None)
+    abi.runtime_address(function)
         .map(u64::cast_signed)
-        .ok_or_else(|| {
-            CodegenError::Unsupported(format!("runtime address is unavailable: {function:?}"))
-        })
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))
 }
 
 fn lower_alloc(
@@ -397,10 +393,8 @@ fn lower_builtin(
         ));
     }
     let address = abi
-        .builtin_address_named(BuiltinName::new(name))
-        .ok_or_else(|| {
-            CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
-        })?;
+        .builtin_address(common_lisp_builtin(name))
+        .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
     emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
     load_immediate(assembler, ENTRY, address.cast_signed())?;
     for (index, argument) in args.iter().enumerate() {

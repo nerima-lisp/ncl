@@ -21,35 +21,33 @@ fn decoded_text(bytes: [u8; 4], label: &str) -> String {
 struct Aarch64FixtureAbi;
 
 impl RuntimeAbi for Aarch64FixtureAbi {
-    fn builtin_address(&self, _name: &str) -> Option<u64> {
-        None
+    fn builtin_address(
+        &self,
+        _identifier: ncl_object::BuiltinIdentifier,
+    ) -> Result<u64, crate::AbiError> {
+        Ok(0x1000)
     }
 
-    fn context_offset(&self, _field: &str) -> Option<i32> {
-        None
-    }
-
-    fn field_offset(&self, field: ContextField) -> Option<i32> {
+    fn field_offset(&self, field: ContextField) -> Result<i32, crate::AbiError> {
         let layout = ncl_sys::thread_layout();
         let offset = match field {
             ContextField::SafepointRequest => layout.safepoint_request,
-            _ => return None,
+            _ => return Err(crate::AbiError::UnsupportedContextField(field)),
         };
-        i32::try_from(offset).ok()
+        i32::try_from(offset).map_err(|_| crate::AbiError::UnsupportedContextField(field))
     }
 
-    fn runtime_address(&self, function: RuntimeFunction, name: Option<&str>) -> Option<u64> {
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, crate::AbiError> {
         match function {
-            RuntimeFunction::SafepointSlow => Some(0x1000),
-            RuntimeFunction::Builtin
-                if matches!(
-                    name,
-                    Some("make-closure" | "enter-unwind-protect" | "leave-unwind-protect")
-                ) =>
-            {
-                Some(0x1000)
-            }
-            _ => None,
+            RuntimeFunction::SafepointSlow
+            | RuntimeFunction::MakeClosure
+            | RuntimeFunction::EnterCatch
+            | RuntimeFunction::EnterUnwindProtect
+            | RuntimeFunction::EnterProgv
+            | RuntimeFunction::LeaveCatch
+            | RuntimeFunction::LeaveUnwindProtect
+            | RuntimeFunction::LeaveProgv => Ok(0x1000),
+            _ => Err(crate::AbiError::UnsupportedRuntimeFunction(function)),
         }
     }
 

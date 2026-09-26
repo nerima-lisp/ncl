@@ -144,10 +144,8 @@ pub(super) fn lower_op(
         }
         OpKind::Builtin { name, .. } => {
             let address = abi
-                .builtin_address_named(crate::BuiltinName::new(name))
-                .ok_or_else(|| {
-                    CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
-                })?;
+                .builtin_address(crate::common_lisp_builtin(name))
+                .map_err(|error| CodegenError::Unsupported(error.to_string()))?;
             emit(
                 assembler,
                 &Inst::MovRI(Reg::R11, Imm::I64(address.cast_signed())),

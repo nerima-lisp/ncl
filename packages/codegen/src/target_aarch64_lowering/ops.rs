@@ -2,7 +2,7 @@ use super::{
     constant_table_entry, emit, load_value, lower_alloc, lower_builtin, lower_call,
     lower_closure_call, lower_runtime_builtin, lower_safepoint, store_value,
 };
-use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi};
+use crate::{Allocation, CodegenError, ConstantName, RuntimeAbi, RuntimeFunction};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
 use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 
@@ -302,7 +302,7 @@ pub fn lower_op(
             let values = std::iter::once(*entry)
                 .chain(captures.iter().copied())
                 .collect::<Vec<_>>();
-            lower_runtime_builtin(assembler, "make-closure", &[], &values, allocation, abi)?;
+            lower_runtime_builtin(assembler, RuntimeFunction::MakeClosure, &[], &values, allocation, abi)?;
             emit(assembler, Inst::Blr { rn: Reg(17) })?;
             if let Some(result) = result {
                 store_value(assembler, allocation, result, Reg(0))?;
@@ -328,14 +328,14 @@ pub fn lower_op(
                 .iter()
                 .find(|candidate| candidate.id == *region)
                 .ok_or_else(|| CodegenError::Unsupported("handler region is unavailable".into()))?;
-            let (name, immediate_args, value_args) = match definition.kind {
+            let (function, immediate_args, value_args) = match definition.kind {
                 ncl_ir::HandlerKind::Catch => (
-                    "enter-catch",
+                    RuntimeFunction::EnterCatch,
                     vec![u64::from(region.0), u64::from(definition.depth)],
                     definition.catch_tag.into_iter().collect(),
                 ),
                 ncl_ir::HandlerKind::UnwindProtect => (
-                    "enter-unwind-protect",
+                    RuntimeFunction::EnterUnwindProtect,
                     vec![
                         u64::from(region.0),
                         u64::from(
@@ -350,14 +350,14 @@ pub fn lower_op(
                     Vec::new(),
                 ),
                 ncl_ir::HandlerKind::Progv => (
-                    "enter-progv",
+                    RuntimeFunction::EnterProgv,
                     vec![u64::from(region.0)],
                     definition.binding_targets.clone(),
                 ),
             };
             lower_runtime_builtin(
                 assembler,
-                name,
+                function,
                 &immediate_args,
                 &value_args,
                 allocation,
@@ -371,14 +371,14 @@ pub fn lower_op(
                 .iter()
                 .find(|candidate| candidate.id == *region)
                 .ok_or_else(|| CodegenError::Unsupported("handler region is unavailable".into()))?;
-            let name = match definition.kind {
-                ncl_ir::HandlerKind::Catch => "leave-catch",
-                ncl_ir::HandlerKind::UnwindProtect => "leave-unwind-protect",
-                ncl_ir::HandlerKind::Progv => "leave-progv",
+            let function = match definition.kind {
+                ncl_ir::HandlerKind::Catch => RuntimeFunction::LeaveCatch,
+                ncl_ir::HandlerKind::UnwindProtect => RuntimeFunction::LeaveUnwindProtect,
+                ncl_ir::HandlerKind::Progv => RuntimeFunction::LeaveProgv,
             };
             lower_runtime_builtin(
                 assembler,
-                name,
+                function,
                 &[u64::from(region.0)],
                 &[],
                 allocation,

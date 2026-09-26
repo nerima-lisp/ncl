@@ -24,8 +24,8 @@ mod tests_x86_64_fixture;
 mod tests_x86_64_golden;
 
 pub use abi::{
-    Aarch64Abi, BuiltinName, ConstantName, ContextField, RegisterId, RuntimeAbi, RuntimeEntry,
-    RuntimeFunction, X86_64Abi,
+    Aarch64Abi, AbiError, BuiltinAddressProvider, BuiltinAddressTable, ConstantName, ContextField,
+    RegisterId, RuntimeAbi, RuntimeFunction, X86_64Abi, common_lisp_builtin,
 };
 pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
 pub use lowering::compile_function;

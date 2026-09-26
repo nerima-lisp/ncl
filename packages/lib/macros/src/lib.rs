@@ -3,6 +3,7 @@
 
 mod control;
 mod defining;
+mod definition_support;
 mod form;
 mod functions;
 mod place;
@@ -139,7 +140,13 @@ fn push_callback(
 ) -> Result<Word, ObjectError> {
     let form = expansion_arg(args)?;
     let arguments = macro_arguments(ctx, form)?;
-    expand_push(ctx, runtime, &PlaceRegistry::new(runtime), &arguments, false)
+    expand_push(
+        ctx,
+        runtime,
+        &PlaceRegistry::new(runtime),
+        &arguments,
+        false,
+    )
 }
 fn pushnew_callback(
     runtime: &Runtime,
@@ -190,7 +197,8 @@ fn get_setf_expansion_callback(
     values: &mut ncl_object::MultipleValues,
 ) -> Result<Word, ObjectError> {
     let place_word = expansion_arg(args)?;
-    let expansion = expand_get_setf_expansion(ctx, runtime, &PlaceRegistry::new(runtime), place_word)?;
+    let expansion =
+        expand_get_setf_expansion(ctx, runtime, &PlaceRegistry::new(runtime), place_word)?;
     values.set(&expansion);
     Ok(expansion[4])
 }
@@ -267,6 +275,7 @@ fn callback_for(name: &str) -> Option<ncl_object::RustBuiltin> {
 pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     let mut ctx = ThreadContext::new();
     ctx.register(runtime)?;
+    definition_support::register_runtime_support(&mut ctx, runtime)?;
     for &name in OWNED_MACROS {
         let symbol = Package::from_word(runtime.ensure_package(&mut ctx, CL)?)
             .intern(&mut ctx, runtime, name)?

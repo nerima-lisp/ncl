@@ -1,4 +1,8 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
+#![allow(
+    dead_code,
+    reason = "legacy adapters retained while split numeric modules own registration"
+)]
 
 use super::{
     BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word, abs, add, ceiling,

@@ -437,19 +437,24 @@ fn aarch64_rejects_constant_index_out_of_range() {
         Vec::new(),
         vec![Ty::Word],
     );
-    assert!(builder
-        .push_op(
-            OpKind::Const {
-                result: ConstantIndex(1),
-            },
-            &[Ty::Word],
-        )
-        .is_ok());
+    assert!(
+        builder
+            .push_op(
+                OpKind::Const {
+                    result: ConstantIndex(1),
+                },
+                &[Ty::Word],
+            )
+            .is_ok()
+    );
     let function = builder.finish();
 
     let result = compile_function_aarch64(&function, &Aarch64FixtureAbi);
     assert!(matches!(
         result,
-        Err(CodegenError::InvalidConstantIndex { index: 1, length: 0 })
+        Err(CodegenError::InvalidConstantIndex {
+            index: 1,
+            length: 0
+        })
     ));
 }

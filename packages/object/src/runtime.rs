@@ -2,11 +2,11 @@
 
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
-    car, cdr, classify_object, make_cons, make_string, string_length, string_ref, symbol_name,
-    symbol_package, with_root, with_roots, Arity, Builtin, BuiltinArgs, BuiltinConvention,
-    BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage, LambdaList, LispError,
-    LispErrorConverter, ObjectError, ObjectRef, Parameter, ParameterType, ProgramError,
-    ThreadContext, Word,
+    Arity, Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation,
+    BuiltinName, BuiltinPackage, LambdaList, LispError, LispErrorConverter, ObjectError, ObjectRef,
+    Parameter, ParameterType, ProgramError, ThreadContext, Word, car, cdr, classify_object,
+    make_cons, make_string, string_length, string_ref, symbol_name, symbol_package, with_root,
+    with_roots,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;
@@ -263,20 +263,23 @@ impl Runtime {
 fn make_rest_list_builtin(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
+    builtin_args: &BuiltinArgs<'_>,
     _values: &mut crate::MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let argc = args
+    let argc = builtin_args
         .required(0)?
         .as_fixnum()
         .and_then(|value| usize::try_from(value).ok())
         .ok_or(ObjectError::TypeError)?;
-    let start = args
+    let start = builtin_args
         .required(1)?
         .as_fixnum()
         .and_then(|value| usize::try_from(value).ok())
         .ok_or(ObjectError::TypeError)?;
-    let values = args.as_slice().get(2..).ok_or(ObjectError::TypeError)?;
+    let values = builtin_args
+        .as_slice()
+        .get(2..)
+        .ok_or(ObjectError::TypeError)?;
     if start > argc || argc > values.len() {
         return Err(ObjectError::TypeError);
     }

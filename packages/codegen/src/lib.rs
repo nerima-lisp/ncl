@@ -84,7 +84,10 @@ impl core::fmt::Display for CodegenError {
             Self::Encode(message) => write!(f, "encoding failed: {message}"),
             Self::FrameOverflow => f.write_str("frame layout overflowed"),
             Self::InvalidConstantIndex { index, length } => {
-                write!(f, "constant index {index} is out of range for table of length {length}")
+                write!(
+                    f,
+                    "constant index {index} is out of range for table of length {length}"
+                )
             }
             Self::Unsupported(message) => write!(f, "unsupported operation: {message}"),
         }

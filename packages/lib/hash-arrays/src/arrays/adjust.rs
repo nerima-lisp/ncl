@@ -27,28 +27,29 @@ pub(super) fn adjust_array_builtin(
     let mut fill_pointer_value = None;
     let mut displaced_to = None;
     let mut displaced_index_offset = 0;
-    let options = &args.as_slice()[2..];
+    let options = args.as_slice().get(2..).ok_or(ObjectError::TypeError)?;
     if !options.len().is_multiple_of(2) {
         return Err(ObjectError::TypeError);
     }
-    for pair in options.as_chunks::<2>().0 {
-        match symbol_text(ctx, pair[0])?
+    for &[key, value] in options.as_chunks::<2>().0 {
+        match symbol_text(ctx, key)?
             .to_ascii_uppercase()
             .trim_start_matches(':')
         {
-            "INITIAL-ELEMENT" => initial = pair[1],
+            "INITIAL-ELEMENT" => initial = value,
             "FILL-POINTER" => {
                 fill_pointer_value = Some(
-                    usize::try_from(pair[1].as_fixnum().ok_or(ObjectError::TypeError)?)
+                    usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
                         .map_err(|_| ObjectError::TypeError)?,
                 );
             }
-            "DISPLACED-TO" => displaced_to = (pair[1] != Word::NIL).then_some(pair[1]),
+            "DISPLACED-TO" => displaced_to = (value != Word::NIL).then_some(value),
             "DISPLACED-INDEX-OFFSET" => {
                 displaced_index_offset =
-                    usize::try_from(pair[1].as_fixnum().ok_or(ObjectError::TypeError)?)
+                    usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?)
                         .map_err(|_| ObjectError::TypeError)?;
             }
+            // check-added-lines: allow(wildcard) unknown keyword names are rejected explicitly.
             _ => return Err(ObjectError::TypeError),
         }
     }

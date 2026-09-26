@@ -54,30 +54,29 @@ fn constant_return(id: u32, name: &str, value: i64) -> ncl_ir::Function {
 struct Aarch64FixtureAbi;
 
 impl RuntimeAbi for Aarch64FixtureAbi {
-    fn builtin_address(&self, name: &str) -> Option<u64> {
-        (name == "identity").then_some(0x1000)
+    fn builtin_address(&self, identifier: ncl_object::BuiltinIdentifier) -> Result<u64, AbiError> {
+        if identifier.name.as_str() == "identity" {
+            Ok(0x1000)
+        } else {
+            Err(AbiError::MissingBuiltin(identifier))
+        }
     }
 
-    fn context_offset(&self, _field: &str) -> Option<i32> {
-        None
-    }
-
-    fn field_offset(&self, field: ContextField) -> Option<i32> {
+    fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
         let layout = ncl_sys::thread_layout();
         let offset = match field {
             ContextField::TlabBump => layout.tlab_bump,
             ContextField::TlabLimit => layout.tlab_limit,
             ContextField::SafepointRequest => layout.safepoint_request,
-            ContextField::MultipleValueArea => layout.mv,
-            _ => return None,
+            _ => return Err(AbiError::UnsupportedContextField(field)),
         };
-        i32::try_from(offset).ok()
+        i32::try_from(offset).map_err(|_| AbiError::UnsupportedContextField(field))
     }
 
-    fn runtime_address(&self, function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
         match function {
-            RuntimeFunction::AllocateSlow | RuntimeFunction::SafepointSlow => Some(0x1000),
-            _ => None,
+            RuntimeFunction::AllocateSlow | RuntimeFunction::SafepointSlow => Ok(0x1000),
+            _ => Err(AbiError::UnsupportedRuntimeFunction(function)),
         }
     }
 }
@@ -284,17 +283,21 @@ fn golden_builtin_call_has_call_safepoint() {
     #[derive(Clone, Copy)]
     struct Abi;
     impl RuntimeAbi for Abi {
-        fn builtin_address(&self, name: &str) -> Option<u64> {
-            (name == "identity").then_some(0x1000)
+        fn builtin_address(
+            &self,
+            identifier: ncl_object::BuiltinIdentifier,
+        ) -> Result<u64, AbiError> {
+            if identifier.name.as_str() == "identity" {
+                Ok(0x1000)
+            } else {
+                Err(AbiError::MissingBuiltin(identifier))
+            }
         }
-        fn context_offset(&self, _field: &str) -> Option<i32> {
-            None
+        fn field_offset(&self, field: ContextField) -> Result<i32, AbiError> {
+            Err(AbiError::UnsupportedContextField(field))
         }
-
-        fn field_offset(&self, field: ContextField) -> Option<i32> {
-            (field == ContextField::MultipleValueArea)
-                .then(|| i32::try_from(ncl_sys::thread_layout().mv).ok())
-                .flatten()
+        fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, AbiError> {
+            Err(AbiError::UnsupportedRuntimeFunction(function))
         }
     }
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(13), "builtin", Vec::new(), vec![]);

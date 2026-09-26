@@ -98,31 +98,33 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
 }
 struct BuiltinAbi;
 impl RuntimeAbi for BuiltinAbi {
-    fn builtin_address(&self, name: &str) -> Option<u64> {
-        (name == "add").then_some(builtin_add as *const () as usize as u64)
+    fn builtin_address(
+        &self,
+        identifier: ncl_object::BuiltinIdentifier,
+    ) -> Result<u64, ncl_codegen::AbiError> {
+        if identifier.name.as_str() == "add" {
+            Ok(builtin_add as *const () as usize as u64)
+        } else {
+            Err(ncl_codegen::AbiError::MissingBuiltin(identifier))
+        }
     }
 
-    fn context_offset(&self, _field: &str) -> Option<i32> {
-        None
-    }
-
-    fn field_offset(&self, field: ContextField) -> Option<i32> {
+    fn field_offset(&self, field: ContextField) -> Result<i32, ncl_codegen::AbiError> {
         let layout = thread_layout();
         let offset = match field {
             ContextField::TlabBump => layout.tlab_bump,
             ContextField::TlabLimit => layout.tlab_limit,
             ContextField::SafepointRequest => layout.safepoint_request,
-            ContextField::MultipleValueArea => layout.mv,
-            _ => return None,
+            _ => return Err(ncl_codegen::AbiError::UnsupportedContextField(field)),
         };
-        i32::try_from(offset).ok()
+        i32::try_from(offset).map_err(|_| ncl_codegen::AbiError::UnsupportedContextField(field))
     }
 
-    fn runtime_address(&self, function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
+    fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, ncl_codegen::AbiError> {
         match function {
-            RuntimeFunction::AllocateSlow => Some(alloc_slow as *const () as usize as u64),
-            RuntimeFunction::SafepointSlow => Some(safepoint_slow as *const () as usize as u64),
-            _ => None,
+            RuntimeFunction::AllocateSlow => Ok(alloc_slow as *const () as usize as u64),
+            RuntimeFunction::SafepointSlow => Ok(safepoint_slow as *const () as usize as u64),
+            _ => Err(ncl_codegen::AbiError::UnsupportedRuntimeFunction(function)),
         }
     }
 }

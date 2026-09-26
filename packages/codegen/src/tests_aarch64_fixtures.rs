@@ -63,12 +63,23 @@ fn golden_aarch64_branch_decodes() {
 fn golden_aarch64_builtin_decodes() {
     struct Abi;
     impl RuntimeAbi for Abi {
-        fn builtin_address(&self, name: &str) -> Option<u64> {
-            (name == "identity").then_some(0x1000)
+        fn builtin_address(
+            &self,
+            identifier: ncl_object::BuiltinIdentifier,
+        ) -> Result<u64, crate::AbiError> {
+            if identifier.name.as_str() == "identity" {
+                Ok(0x1000)
+            } else {
+                Err(crate::AbiError::MissingBuiltin(identifier))
+            }
         }
 
-        fn context_offset(&self, _field: &str) -> Option<i32> {
-            None
+        fn field_offset(&self, field: ContextField) -> Result<i32, crate::AbiError> {
+            Err(crate::AbiError::UnsupportedContextField(field))
+        }
+
+        fn runtime_address(&self, function: RuntimeFunction) -> Result<u64, crate::AbiError> {
+            Err(crate::AbiError::UnsupportedRuntimeFunction(function))
         }
 
         fn field_offset(&self, field: ContextField) -> Option<i32> {

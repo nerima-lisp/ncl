@@ -69,10 +69,12 @@ fn options(
         let keyword = name.as_deref().map(str::to_ascii_uppercase);
         if matches!(keyword.as_deref(), Some("KEY" | "TEST" | "TEST-NOT")) {
             let value = *args.get(i + 1).ok_or(ObjectError::TypeError)?;
-            match keyword.as_deref() {
-                Some("KEY") => out.key = value,
-                Some("TEST") => out.test = value,
-                _ => out.test_not = value,
+            if keyword.as_deref() == Some("KEY") {
+                out.key = value;
+            } else if keyword.as_deref() == Some("TEST") {
+                out.test = value;
+            } else if keyword.as_deref() == Some("TEST-NOT") {
+                out.test_not = value;
             }
             i += 2;
         } else {
@@ -108,15 +110,14 @@ fn sequence_values(ctx: &mut ThreadContext, sequence: Word) -> Result<Vec<Word>,
         }
         return Ok(result);
     }
-    match classify_object(ctx, sequence) {
-        ObjectRef::SimpleVector(vector) => {
-            let vector: Word = ncl_object::SimpleVector::from_word(vector).into();
-            for i in 0..simple_vector_length(ctx, vector)? {
-                result.push(simple_vector_ref(ctx, vector, i)?);
-            }
-            Ok(result)
+    if let ObjectRef::SimpleVector(vector) = classify_object(ctx, sequence) {
+        let vector: Word = ncl_object::SimpleVector::from_word(vector).into();
+        for i in 0..simple_vector_length(ctx, vector)? {
+            result.push(simple_vector_ref(ctx, vector, i)?);
         }
-        _ => Err(ObjectError::TypeError),
+        Ok(result)
+    } else {
+        Err(ObjectError::TypeError)
     }
 }
 fn set_sequence_value(

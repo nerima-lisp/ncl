@@ -84,14 +84,23 @@ fn register_core(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Objec
     runtime.register_builtin(
         ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("CAR")),
-        BuiltinImplementation::direct(car_descriptor, car_builtin)
-            .with_entry(ncl_sys::native_car as *const () as usize),
+        BuiltinImplementation::direct(car_descriptor, car_builtin).with_entry(
+            usize::try_from(
+                ncl_sys::function_address!(ncl_sys::native_car).map_err(|_| ObjectError::Layout)?,
+            )
+            .map_err(|_| ObjectError::Layout)?,
+        ),
     )?;
     runtime.register_builtin(
         ctx,
         BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("CONS")),
-        BuiltinImplementation::direct(cons_descriptor, cons_builtin)
-            .with_entry(ncl_sys::native_cons as *const () as usize),
+        BuiltinImplementation::direct(cons_descriptor, cons_builtin).with_entry(
+            usize::try_from(
+                ncl_sys::function_address!(ncl_sys::native_cons)
+                    .map_err(|_| ObjectError::Layout)?,
+            )
+            .map_err(|_| ObjectError::Layout)?,
+        ),
     )?;
     Ok(())
 }

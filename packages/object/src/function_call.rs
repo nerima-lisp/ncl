@@ -105,8 +105,9 @@ impl Runtime {
             .builtins
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(&function.as_word())
-            .copied()
+            .iter()
+            .find(|entry| *entry.function == function.as_word())
+            .map(|entry| entry.implementation)
             .ok_or(ObjectError::Unbound)?;
         if args.len() < implementation.descriptor.lambda_list.min_arity()
             || implementation

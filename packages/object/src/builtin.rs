@@ -380,10 +380,16 @@ impl Runtime {
                     *function_word,
                 )?;
                 self.define_function(ctx, package, name, *function_word)?;
+                let mut rooted_function = Box::new(*function_word);
+                let token = ncl_sys::push_heap_root(&self.heap, &mut rooted_function);
                 self.builtins
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(*function_word, implementation);
+                    .push(crate::runtime::BuiltinEntry {
+                        function: rooted_function,
+                        implementation,
+                        _token: token,
+                    });
                 self.builtin_addresses
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -413,8 +419,9 @@ impl Runtime {
         self.builtins
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(&function.as_word())
-            .map(|entry| entry.descriptor)
+            .iter()
+            .find(|entry| *entry.function == function.as_word())
+            .map(|entry| entry.implementation.descriptor)
     }
 }
 impl BuiltinImplementation {

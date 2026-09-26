@@ -1,3 +1,5 @@
+//! Package-lock mutation regression coverage.
+
 use ncl_object::{
     LispError, ObjectError, Package, PackageError, Runtime, ThreadContext, make_string,
 };

@@ -253,8 +253,10 @@ pub fn lower_op(
             }
         }
         OpKind::SetMultipleValues { values } => {
-            for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), values.len() as u64) {
-                emit(assembler, instruction)?;
+            if values.len() != 1 {
+                for instruction in ncl_asm_aarch64::mov_imm64(Reg(1), values.len() as u64) {
+                    emit(assembler, instruction)?;
+                }
             }
             if let (Some(first), Some(result)) = (values.first(), result) {
                 load_value(assembler, allocation, *first, Reg(16))?;

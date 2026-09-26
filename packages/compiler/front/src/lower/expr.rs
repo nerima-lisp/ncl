@@ -98,7 +98,7 @@ impl Context<'_> {
                             }
                         })?,
                     },
-                    Ty::Bool,
+                    Ty::Word,
                 )
             }
         }

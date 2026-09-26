@@ -113,7 +113,7 @@ pub struct Runtime {
     /// it mints a closure over a separately-published top-level function;
     /// otherwise the closure inherits the caller's constants table and any
     /// constant load inside the callee reads the wrong slot.
-    entry_codes: BTreeMap<usize, Word>,
+    entry_codes: BTreeMap<usize, Word>, // check-added-lines: allow(word-table) every value is also rooted in rooted_functions
     rooted_functions: Vec<(Box<Word>, RootToken)>,
     object: ObjectRuntime,
 }

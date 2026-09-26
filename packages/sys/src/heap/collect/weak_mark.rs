@@ -2,6 +2,7 @@ use super::{
     HASH_TABLE_HIGH_WATER, HASH_TABLE_KV, HASH_TABLE_MARKER, HashMap, HashSet, VECTOR_DATA,
     Weakness, Word, scan,
 };
+use crate::LowTag;
 
 pub(super) struct WeakMarkContext<'a> {
     pub(super) state: &'a super::super::State,

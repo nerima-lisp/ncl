@@ -68,6 +68,7 @@ impl RuntimeAbi for Aarch64FixtureAbi {
             ContextField::TlabBump => layout.tlab_bump,
             ContextField::TlabLimit => layout.tlab_limit,
             ContextField::SafepointRequest => layout.safepoint_request,
+            ContextField::MultipleValueArea => layout.mv,
             _ => return None,
         };
         i32::try_from(offset).ok()
@@ -288,6 +289,12 @@ fn golden_builtin_call_has_call_safepoint() {
         }
         fn context_offset(&self, _field: &str) -> Option<i32> {
             None
+        }
+
+        fn field_offset(&self, field: ContextField) -> Option<i32> {
+            (field == ContextField::MultipleValueArea)
+                .then(|| i32::try_from(ncl_sys::thread_layout().mv).ok())
+                .flatten()
         }
     }
     let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(13), "builtin", Vec::new(), vec![]);

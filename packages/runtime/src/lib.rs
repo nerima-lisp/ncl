@@ -1,7 +1,10 @@
 //! Evaluation, compilation, loading, and registration orchestration.
 
 mod compile;
+mod function_call;
 mod load;
+
+pub use function_call::RuntimeFunctionCaller;
 
 use ncl_codegen::{RuntimeAbi, RuntimeFunction};
 use ncl_compiler_front::{FormExpander, MacroCaller, MacroRegistry, lower_toplevel};
@@ -227,6 +230,12 @@ impl Runtime {
             |number| number.to_string(),
         )
     }
+
+    /// Create a function caller that can invoke this runtime's published code.
+    #[must_use]
+    pub const fn function_caller(&self) -> RuntimeFunctionCaller {
+        RuntimeFunctionCaller
+    }
 }
 
 #[cfg(test)]
@@ -384,6 +393,7 @@ impl RuntimeAbi for NativeAbi {
             ncl_codegen::ContextField::TlabBump => layout.tlab_bump,
             ncl_codegen::ContextField::TlabLimit => layout.tlab_limit,
             ncl_codegen::ContextField::SafepointRequest => layout.safepoint_request,
+            ncl_codegen::ContextField::MultipleValueArea => layout.mv,
             _ => return None,
         };
         i32::try_from(offset).ok()

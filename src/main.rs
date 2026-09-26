@@ -1,6 +1,6 @@
 //! NCL command-line entry point.
 
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 
 fn main() -> std::process::ExitCode {
     let mut arguments = std::env::args().skip(1);
@@ -14,6 +14,10 @@ fn main() -> std::process::ExitCode {
                 eprintln!("--eval requires a source string");
                 return std::process::ExitCode::from(2);
             };
+            if arguments.next().is_some() {
+                eprintln!("--eval accepts exactly one source string");
+                return std::process::ExitCode::from(2);
+            }
             let mut runtime = match ncl_runtime::Runtime::new() {
                 Ok(runtime) => runtime,
                 Err(error) => {
@@ -40,6 +44,10 @@ fn main() -> std::process::ExitCode {
                 eprintln!("{mode} requires a file path");
                 return std::process::ExitCode::from(2);
             };
+            if arguments.next().is_some() {
+                eprintln!("{mode} accepts exactly one file path");
+                return std::process::ExitCode::from(2);
+            }
             let mut runtime = match ncl_runtime::Runtime::new() {
                 Ok(runtime) => runtime,
                 Err(error) => {
@@ -83,15 +91,29 @@ fn repl() -> std::process::ExitCode {
     let stdin = std::io::stdin();
     let mut input = stdin.lock();
     let mut line = String::new();
+    let mut form = String::new();
     loop {
         eprint!("> ");
+        if let Err(error) = std::io::stderr().flush() {
+            eprintln!("ncl: {error}");
+            return std::process::ExitCode::from(1);
+        }
         line.clear();
         match input.read_line(&mut line) {
             Ok(0) => break,
-            Ok(_) => match runtime.eval(&line) {
-                Ok(value) => println!("{}", runtime.format_result(value)),
-                Err(error) => eprintln!("ncl: {error}"),
-            },
+            Ok(_) => {
+                form.push_str(&line);
+                match runtime.eval(&form) {
+                    Ok(value) => println!("{}", runtime.format_result(value)),
+                    Err(error) if error.is_incomplete_read() => {
+                        continue;
+                    }
+                    Err(error) => {
+                        eprintln!("ncl: {error}");
+                    }
+                }
+                form.clear();
+            }
             Err(error) => {
                 eprintln!("ncl: {error}");
                 return std::process::ExitCode::from(1);

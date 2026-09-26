@@ -12,6 +12,7 @@ ncl-ir = { path = "../ir" }
 ncl-codegen = { path = "../codegen" }
 ncl-stdlib = { path = "../stdlib" }
 ncl-image = { path = "../image" }
+ncl-objfile = { path = "../objfile" }
 ncl-threads = { path = "../threads" }
 ncl-ffi = { path = "../ffi" }
 ncl-object = { path = "../object" }

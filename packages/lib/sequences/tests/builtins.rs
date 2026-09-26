@@ -44,6 +44,24 @@ fn with_list(
     assert!(ncl_object::pop_root(ctx, root));
 }
 
+fn probe(
+    runtime: &Runtime,
+    ctx: &mut ThreadContext,
+    functions: &HashMap<String, FunctionObject>,
+    name: &str,
+) {
+    let function = *functions
+        .get(name)
+        .unwrap_or_else(|| panic!("missing builtin {name}"));
+    let _ = ncl_object::with_roots(ctx, &[Word::NIL], |ctx, roots| {
+        runtime.call_builtin(
+            ctx,
+            function,
+            &[**roots.first().ok_or(ncl_object::ObjectError::Layout)?],
+        )
+    });
+}
+
 #[test]
 #[allow(clippy::too_many_lines)]
 fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
@@ -90,6 +108,32 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         "SUBSEQ",
         "FILL",
         "REPLACE",
+        "MAPCAR",
+        "MAPC",
+        "MAPLIST",
+        "MAPL",
+        "MAPCAN",
+        "MAPCON",
+        "MAP",
+        "MAP-INTO",
+        "REDUCE",
+        "EVERY",
+        "SOME",
+        "NOTANY",
+        "NOTEVERY",
+        "REMOVE",
+        "SUBSTITUTE",
+        "SORT",
+        "STABLE-SORT",
+        "UNION",
+        "INTERSECTION",
+        "SET-DIFFERENCE",
+        "SET-EXCLUSIVE-OR",
+        "SUBSETP",
+        "ADJOIN",
+        "ASSOC",
+        "RASSOC",
+        "MEMBER",
     ];
     ctx.set_gc_stress(false);
     let functions = names
@@ -346,4 +390,34 @@ fn registered_builtins_survive_gc_stress_and_strict_forwarding() {
         },
     );
     assert!(ncl_object::pop_root(&mut ctx, list_symbol_root));
+    for name in [
+        "MAPCAR",
+        "MAPC",
+        "MAPLIST",
+        "MAPL",
+        "MAPCAN",
+        "MAPCON",
+        "MAP",
+        "MAP-INTO",
+        "REDUCE",
+        "EVERY",
+        "SOME",
+        "NOTANY",
+        "NOTEVERY",
+        "REMOVE",
+        "SUBSTITUTE",
+        "SORT",
+        "STABLE-SORT",
+        "UNION",
+        "INTERSECTION",
+        "SET-DIFFERENCE",
+        "SET-EXCLUSIVE-OR",
+        "SUBSETP",
+        "ADJOIN",
+        "ASSOC",
+        "RASSOC",
+        "MEMBER",
+    ] {
+        probe(&runtime, &mut ctx, &functions, name);
+    }
 }

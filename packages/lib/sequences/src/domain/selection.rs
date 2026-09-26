@@ -125,19 +125,17 @@ fn call_one<C: FunctionCaller>(
     designator: Word,
     argument: Word,
 ) -> Result<Word, ObjectError> {
-    let designator_root = push_root(ctx, &mut { designator });
-    let argument_root = push_root(ctx, &mut { argument });
-    let mut values = MultipleValues::new();
-    let result = caller.call_function(
-        ctx,
-        runtime,
-        function(ctx, designator)?,
-        FunctionArguments::new(&[argument]),
-        &mut values,
-    );
-    pop_root(ctx, argument_root);
-    pop_root(ctx, designator_root);
-    result
+    let roots = [designator, argument];
+    ncl_object::with_roots(ctx, &roots, |ctx, roots| {
+        let mut values = MultipleValues::new();
+        caller.call_function(
+            ctx,
+            runtime,
+            function(ctx, **roots.first().ok_or(ObjectError::Layout)?)?,
+            FunctionArguments::new(&[**roots.get(1).ok_or(ObjectError::Layout)?]),
+            &mut values,
+        )
+    })
 }
 
 fn matches<C: FunctionCaller>(
@@ -153,38 +151,49 @@ fn matches<C: FunctionCaller>(
     } else {
         item
     };
-    let result = if let Some(test) = options.test {
-        let designator = function(ctx, test)?;
-        let mut values = MultipleValues::new();
-        let args = [keyed, object];
-        caller.call_function(
-            ctx,
-            runtime,
-            designator,
-            FunctionArguments::new(&args),
-            &mut values,
-        )?
-    } else if let Some(test_not) = options.test_not {
-        let designator = function(ctx, test_not)?;
-        let mut values = MultipleValues::new();
-        let args = [keyed, object];
-        caller.call_function(
-            ctx,
-            runtime,
-            designator,
-            FunctionArguments::new(&args),
-            &mut values,
-        )?
-    } else {
-        Word::NIL
-    };
-    let truth = result != Word::NIL;
-    Ok(if options.test_not.is_some() {
-        !truth
-    } else if options.test.is_some() {
-        truth
-    } else {
-        keyed == object
+    let predicate_roots = [
+        keyed,
+        object,
+        options.key.unwrap_or(Word::NIL),
+        options.test.unwrap_or(Word::NIL),
+        options.test_not.unwrap_or(Word::NIL),
+    ];
+    ncl_object::with_roots(ctx, &predicate_roots, |ctx, roots| {
+        let keyed = **roots.first().ok_or(ObjectError::Layout)?;
+        let object = **roots.get(1).ok_or(ObjectError::Layout)?;
+        let result = if options.test.is_some() {
+            let designator = function(ctx, **roots.get(3).ok_or(ObjectError::Layout)?)?;
+            let mut values = MultipleValues::new();
+            let args = [keyed, object];
+            caller.call_function(
+                ctx,
+                runtime,
+                designator,
+                FunctionArguments::new(&args),
+                &mut values,
+            )?
+        } else if options.test_not.is_some() {
+            let designator = function(ctx, **roots.get(4).ok_or(ObjectError::Layout)?)?;
+            let mut values = MultipleValues::new();
+            let args = [keyed, object];
+            caller.call_function(
+                ctx,
+                runtime,
+                designator,
+                FunctionArguments::new(&args),
+                &mut values,
+            )?
+        } else {
+            Word::NIL
+        };
+        let truth = result != Word::NIL;
+        Ok(if options.test_not.is_some() {
+            !truth
+        } else if options.test.is_some() {
+            truth
+        } else {
+            keyed == object
+        })
     })
 }
 
@@ -213,24 +222,58 @@ pub fn matching_indices<C: FunctionCaller>(
     options: SelectionOptions,
 ) -> Result<Vec<usize>, ObjectError> {
     ncl_object::with_roots(ctx, values, |ctx, roots| {
-        let snapshot = roots.iter().map(|root| **root).collect::<Vec<_>>();
-        let (start, end) = bounds(options, values.len())?;
-        let mut indices = (start..end).collect::<Vec<_>>();
-        if options.from_end {
-            indices.reverse();
-        }
-        let mut found = Vec::new();
-        for index in indices {
-            if matches(caller, ctx, runtime, options, snapshot[index], object)? {
-                found.push(index);
-                if let Some(count) = options.count
-                    && found.len() >= count
-                {
-                    break;
+        let option_roots = [
+            object,
+            options.key.unwrap_or(Word::NIL),
+            options.test.unwrap_or(Word::NIL),
+            options.test_not.unwrap_or(Word::NIL),
+        ];
+        ncl_object::with_roots(ctx, &option_roots, |ctx, option_roots| {
+            let rooted_options = || -> Result<SelectionOptions, ObjectError> {
+                let key = option_roots
+                    .get(1)
+                    .ok_or(ObjectError::Layout)
+                    .map(|r| **r)?;
+                let test = option_roots
+                    .get(2)
+                    .ok_or(ObjectError::Layout)
+                    .map(|r| **r)?;
+                let test_not = option_roots
+                    .get(3)
+                    .ok_or(ObjectError::Layout)
+                    .map(|r| **r)?;
+                Ok(SelectionOptions {
+                    key: (key != Word::NIL).then_some(key),
+                    test: (test != Word::NIL).then_some(test),
+                    test_not: (test_not != Word::NIL).then_some(test_not),
+                    ..options
+                })
+            };
+            let (start, end) = bounds(options, values.len())?;
+            let mut indices = (start..end).collect::<Vec<_>>();
+            if options.from_end {
+                indices.reverse();
+            }
+            let mut found = Vec::new();
+            for index in indices {
+                if matches(
+                    caller,
+                    ctx,
+                    runtime,
+                    rooted_options()?,
+                    **roots.get(index).ok_or(ObjectError::Layout)?,
+                    **option_roots.first().ok_or(ObjectError::Layout)?,
+                )? {
+                    found.push(index);
+                    if let Some(count) = options.count
+                        && found.len() >= count
+                    {
+                        break;
+                    }
                 }
             }
-        }
-        Ok(found)
+            Ok(found)
+        })
     })
 }
 

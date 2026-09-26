@@ -24,11 +24,9 @@ const ARGUMENT: ncl_object::Parameter = ncl_object::Parameter {
     name: BuiltinName::new("ARG"),
     ty: ncl_object::ParameterType::Any,
 };
-const ARGS_0: &[ncl_object::Parameter] = &[];
 const ARGS_1: &[ncl_object::Parameter] = &[ARGUMENT];
 const ARGS_2: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT];
 const ARGS_3: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT, ARGUMENT];
-const ARGS_4: &[ncl_object::Parameter] = &[ARGUMENT, ARGUMENT, ARGUMENT, ARGUMENT];
 
 include!("lib_core.rs");
 include!("lib_registration.rs");

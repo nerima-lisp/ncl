@@ -311,7 +311,7 @@ fn sequence_values(ctx: &mut ThreadContext, value: Sequence) -> Result<Vec<Word>
         Sequence::String(string) => {
             let word: Word = string.into();
             (0..string_length(ctx, word)?)
-                .map(|i| Ok(Word::character(string_ref(ctx, word, i)? as u32)))
+                .map(|i| Ok(Word::character(u32::from(string_ref(ctx, word, i)?))))
                 .collect()
         }
         Sequence::Vector(vector) => {

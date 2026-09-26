@@ -296,7 +296,7 @@ fn set_value(
             ncl_object::simple_vector_set(ctx, vector.into(), index, value)?;
         }
         Sequence::String(string) => {
-            ncl_object::string_set(ctx, string.into(), index, character(value)?)?
+            ncl_object::string_set(ctx, string.into(), index, character(value)?)?;
         }
     }
     Ok(())

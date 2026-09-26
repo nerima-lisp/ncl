@@ -151,3 +151,88 @@ fn lowers_ir_v2_closure_and_handler_ops_x86_64() {
     assert!(!compiled.code.is_empty());
     assert!(compiled.safepoint_maps.len() >= 4);
 }
+
+#[test]
+fn x86_64_tail_call_restores_frame_and_jumps_without_safepoint() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(73),
+        "tail-call",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let callee = builder.add_constant(Constant::Fixnum(74));
+    let Some(callee) = builder
+        .push_op(OpKind::Const { result: callee }, &[Ty::Word])
+        .ok()
+        .and_then(|values| values.first().copied())
+    else {
+        unreachable!("callee result")
+    };
+    assert!(
+        builder
+            .terminate(Terminator::TailCall {
+                function: callee,
+                args: Vec::new(),
+            })
+            .is_ok()
+    );
+
+    let compiled = match compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi) {
+        Ok(compiled) => compiled,
+        Err(error) => unreachable!("tail-call lowering: {error:?}"),
+    };
+    assert!(
+        compiled
+            .code
+            .windows(3)
+            .any(|bytes| bytes == [0x41, 0xff, 0xe3])
+    );
+    assert!(
+        !compiled
+            .code
+            .windows(3)
+            .any(|bytes| bytes == [0x41, 0xff, 0xd3])
+    );
+    assert!(compiled.safepoint_maps.is_empty());
+}
+
+#[test]
+fn x86_64_prologue_spills_argc_from_rdi_before_arguments() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(75),
+        "argc-prologue",
+        vec![
+            ncl_ir::Param {
+                name: "argc".into(),
+                ty: Ty::Word,
+            },
+            ncl_ir::Param {
+                name: "argument".into(),
+                ty: Ty::Word,
+            },
+        ],
+        vec![],
+    );
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+
+    let compiled = match compile_function_x86_64(&builder.finish(), &X86_64FixtureAbi) {
+        Ok(compiled) => compiled,
+        Err(error) => unreachable!("argc lowering: {error:?}"),
+    };
+    assert!(
+        compiled
+            .code
+            .windows(4)
+            .any(|bytes| bytes == [0x48, 0x89, 0x7d, 0xf8])
+    );
+    assert!(
+        compiled
+            .code
+            .windows(4)
+            .any(|bytes| bytes == [0x48, 0x89, 0x75, 0xf0])
+    );
+}

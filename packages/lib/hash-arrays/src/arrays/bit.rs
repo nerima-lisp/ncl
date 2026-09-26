@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    array_element_type, array_row_major_ref, array_row_major_set, array_shape, classify_object,
+    make_array, row_major_index, ArrayElementType, ArrayOptions, BuiltinArgs, MultipleValues,
+    ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+};
 
 fn bit_value(ctx: &ThreadContext, array: Word, index: usize) -> Result<u8, ObjectError> {
     match array_row_major_ref(ctx, array, index)?.as_fixnum() {
@@ -127,7 +131,7 @@ pub(super) fn sbit_builtin(
     match args.get(2) {
         Some(value) => {
             let value = match value.as_fixnum() {
-                Some(0) | Some(1) => value,
+                Some(0 | 1) => value,
                 _ => return Err(ObjectError::TypeError),
             };
             array_row_major_set(ctx, array, index, value)?;
@@ -137,34 +141,34 @@ pub(super) fn sbit_builtin(
     }
 }
 
-fn bit_and(a: u8, b: u8) -> u8 {
+const fn bit_and(a: u8, b: u8) -> u8 {
     a & b
 }
-fn bit_andc1(a: u8, b: u8) -> u8 {
+const fn bit_andc1(a: u8, b: u8) -> u8 {
     (1 - a) & b
 }
-fn bit_andc2(a: u8, b: u8) -> u8 {
+const fn bit_andc2(a: u8, b: u8) -> u8 {
     a & (1 - b)
 }
-fn bit_eqv(a: u8, b: u8) -> u8 {
+const fn bit_eqv(a: u8, b: u8) -> u8 {
     1 - (a ^ b)
 }
-fn bit_ior(a: u8, b: u8) -> u8 {
+const fn bit_ior(a: u8, b: u8) -> u8 {
     a | b
 }
-fn bit_nand(a: u8, b: u8) -> u8 {
+const fn bit_nand(a: u8, b: u8) -> u8 {
     1 - (a & b)
 }
-fn bit_nor(a: u8, b: u8) -> u8 {
+const fn bit_nor(a: u8, b: u8) -> u8 {
     1 - (a | b)
 }
-fn bit_orc1(a: u8, b: u8) -> u8 {
+const fn bit_orc1(a: u8, b: u8) -> u8 {
     (1 - a) | b
 }
-fn bit_orc2(a: u8, b: u8) -> u8 {
+const fn bit_orc2(a: u8, b: u8) -> u8 {
     a | (1 - b)
 }
-fn bit_xor(a: u8, b: u8) -> u8 {
+const fn bit_xor(a: u8, b: u8) -> u8 {
     a ^ b
 }
 

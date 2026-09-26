@@ -2,9 +2,9 @@ use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{nil, truth};
 use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    BuiltinArgs, BuiltinFunctionCaller, BuiltinName, FunctionArguments, FunctionCaller, LambdaList,
-    MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime,
-    ThreadContext, Word, classify_object, make_double, pop_root, push_root,
+    classify_object, make_double, pop_root, push_root, BuiltinArgs, BuiltinFunctionCaller,
+    BuiltinName, FunctionArguments, FunctionCaller, LambdaList, MultipleValues, ObjectError,
+    ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
 };
 
 use super::{register_one, symbol_text};
@@ -98,10 +98,7 @@ fn gethash_builtin(
 ) -> Result<Word, ObjectError> {
     let key = args.required(0)?;
     let table = table(ctx, args.required(1)?)?;
-    let default = match args.get(2) {
-        Some(value) => value,
-        None => Word::NIL,
-    };
+    let default = args.get(2).unwrap_or(Word::NIL);
     let result = table.get(ctx, key)?;
     let (value, present) = result.map_or((default, nil()), |value| (value, truth()));
     values.set(&[value, present]);
@@ -151,7 +148,7 @@ fn maphash_builtin(
     let mut entries = Vec::new();
     table.for_each_entry(ctx, |key, value| entries.push((key, value)))?;
     for (key, value) in entries {
-        let mut callback_args = [key, value];
+        let mut callback_args = <[Word; 2]>::from((key, value));
         let key_token = push_root(ctx, &mut callback_args[0]);
         let value_token = push_root(ctx, &mut callback_args[1]);
         let mut caller = BuiltinFunctionCaller;

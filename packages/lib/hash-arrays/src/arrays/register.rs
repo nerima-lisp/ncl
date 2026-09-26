@@ -1,3 +1,4 @@
+use super::vector::{simple_bit_vector_p_builtin, vector_builtin};
 use super::{
     ARRAY, DIMENSIONS, ELEMENT, EXTENSION, INDEX, LambdaList, OPTIONS, ObjectError, RESULT,
     Runtime, ThreadContext, VALUE, adjust_array_builtin, adjustable_array_p_builtin, aref_builtin,
@@ -7,9 +8,8 @@ use super::{
     bit_and_builtin, bit_andc1_builtin, bit_andc2_builtin, bit_builtin, bit_eqv_builtin,
     bit_ior_builtin, bit_nand_builtin, bit_nor_builtin, bit_not_builtin, bit_orc1_builtin,
     bit_orc2_builtin, bit_xor_builtin, fill_pointer_builtin, make_array_builtin, register_one,
-    row_major_aref_builtin, sbit_builtin, simple_bit_vector_p_builtin, simple_vector_p_builtin,
-    svref_builtin, vector_builtin, vector_pop_builtin, vector_push_builtin,
-    vector_push_extend_builtin, vectorp_builtin,
+    row_major_aref_builtin, sbit_builtin, simple_vector_p_builtin, svref_builtin,
+    vector_pop_builtin, vector_push_builtin, vector_push_extend_builtin, vectorp_builtin,
 };
 
 pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {

@@ -33,8 +33,8 @@ enum Number {
 }
 
 fn gcd(mut a: i128, mut b: i128) -> i128 {
-    a = a.checked_abs().unwrap_or(i128::MAX);
-    b = b.checked_abs().unwrap_or(i128::MAX);
+    a = a.saturating_abs();
+    b = b.saturating_abs();
     while b != 0 {
         (a, b) = (b, a % b);
     }
@@ -43,7 +43,7 @@ fn gcd(mut a: i128, mut b: i128) -> i128 {
 
 fn ratio(numerator: i128, denominator: i128) -> Number {
     let sign = if denominator < 0 { -1 } else { 1 };
-    let denominator = denominator.checked_abs().unwrap_or(0);
+    let denominator = denominator.saturating_abs();
     let divisor = gcd(numerator, denominator);
     let numerator = numerator / divisor * sign;
     let denominator = denominator / divisor;
@@ -67,8 +67,12 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
                     .into_iter()
                     .enumerate()
                     .try_fold(0i128, |value, (index, limb)| {
+                        let shift = u32::try_from(index)
+                            .ok()
+                            .and_then(|index| index.checked_mul(32))
+                            .ok_or(ObjectError::TypeError)?;
                         value
-                            .checked_add(i128::from(limb) << (index * 32))
+                            .checked_add(i128::from(limb).checked_shl(shift).ok_or(ObjectError::TypeError)?)
                             .ok_or(ObjectError::TypeError)
                     })?;
             if bignum_sign(ctx, ncl_object::Bignum::from_word(value))? {

@@ -32,9 +32,13 @@ fn integer(ctx: &ThreadContext, value: Word) -> Result<i128, ObjectError> {
         .into_iter()
         .enumerate()
         .try_fold(0_i128, |sum, (index, limb)| {
+            let shift = u32::try_from(index)
+                .ok()
+                .and_then(|index| index.checked_mul(32))
+                .ok_or(ObjectError::Layout)?;
             sum.checked_add(
                 i128::from(limb)
-                    .checked_shl(u32::try_from(index * 32).map_err(|_| ObjectError::Layout)?)
+                    .checked_shl(shift)
                     .ok_or(ObjectError::Layout)?,
             )
             .ok_or(ObjectError::Layout)

@@ -19,10 +19,10 @@ fn comparison(
 fn compare_numbers(left: Number, right: Number) -> Ordering {
     match (left, right) {
         (Number::Integer(left), Number::Integer(right)) => left.cmp(&right),
-        (left, right) => left
-            .to_f64()
-            .partial_cmp(&right.to_f64())
-            .unwrap_or(Ordering::Equal),
+        (left, right) => match left.to_f64().partial_cmp(&right.to_f64()) {
+            Some(ordering) => ordering,
+            None => Ordering::Equal,
+        },
     }
 }
 pub fn equal(ctx: &ThreadContext, _: &Runtime, args: &[Word]) -> Result<Word, ObjectError> {

@@ -1,10 +1,6 @@
-#![allow(
-    dead_code,
-    reason = "legacy adapters retained while split numeric modules own registration"
-)]
-
 use super::{MultipleValues, Number, ObjectError, Runtime, ThreadContext, Word, number, word};
 
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 const fn round_pair(value: f64, mode: u8) -> f64 {
     match mode {
         0 => value.floor(),
@@ -14,6 +10,7 @@ const fn round_pair(value: f64, mode: u8) -> f64 {
     }
 }
 #[allow(clippy::suboptimal_flops)]
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn round_dispatch(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -36,6 +33,7 @@ pub fn round_dispatch(
     values.set(&[quotient, remainder]);
     Ok(quotient)
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn floor(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -44,6 +42,7 @@ pub fn floor(
 ) -> Result<Word, ObjectError> {
     round_dispatch(ctx, runtime, args, values, 0)
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn ceiling(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -52,6 +51,7 @@ pub fn ceiling(
 ) -> Result<Word, ObjectError> {
     round_dispatch(ctx, runtime, args, values, 1)
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn truncate(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -60,6 +60,7 @@ pub fn truncate(
 ) -> Result<Word, ObjectError> {
     round_dispatch(ctx, runtime, args, values, 2)
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn round(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -68,6 +69,7 @@ pub fn round(
 ) -> Result<Word, ObjectError> {
     round_dispatch(ctx, runtime, args, values, 3)
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn ffloor(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -76,6 +78,7 @@ pub fn ffloor(
 ) -> Result<Word, ObjectError> {
     floor(ctx, runtime, args, values)
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn fceiling(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -84,6 +87,7 @@ pub fn fceiling(
 ) -> Result<Word, ObjectError> {
     ceiling(ctx, runtime, args, values)
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn ftruncate(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -92,6 +96,7 @@ pub fn ftruncate(
 ) -> Result<Word, ObjectError> {
     truncate(ctx, runtime, args, values)
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn fround(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -102,6 +107,7 @@ pub fn fround(
 }
 
 #[allow(clippy::suboptimal_flops)]
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn modulo(
     ctx: &mut ThreadContext,
     runtime: &Runtime,
@@ -118,6 +124,7 @@ pub fn modulo(
     word(ctx, runtime, Number::Float(a - (a / b).floor() * b))
 }
 #[allow(clippy::suboptimal_flops)]
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn remainder(
     ctx: &mut ThreadContext,
     runtime: &Runtime,

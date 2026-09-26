@@ -23,11 +23,7 @@ pub use predicates::*;
 pub use rounding::*;
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::cast_possible_truncation,
-    clippy::needless_borrow
-)]
+#[allow(clippy::needless_borrow)]
 mod tests {
     include!("arithmetic/test_cases.inc");
 }

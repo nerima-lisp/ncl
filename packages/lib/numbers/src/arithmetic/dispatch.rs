@@ -1,9 +1,4 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
-#![allow(
-    dead_code,
-    reason = "legacy adapters retained while split numeric modules own registration"
-)]
-
 use super::{
     BuiltinArgs, MultipleValues, ObjectError, Runtime, ThreadContext, Word, abs, add, ceiling,
     complexp, div, eq, eql, equal, evenp, fceiling, ffloor, floatp, floor, fround, ftruncate, gcd,
@@ -52,6 +47,7 @@ pub fn dispatch_equal(
 ) -> Result<Word, ObjectError> {
     equal(ctx, runtime, args)
 }
+#[allow(dead_code, reason = "legacy dispatch adapter")]
 pub fn dispatch_floor(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -63,6 +59,7 @@ pub fn dispatch_floor(
 
 macro_rules! predicate_dispatch {
     ($name:ident, $predicate:ident) => {
+        #[allow(dead_code, reason = "legacy dispatch adapter")]
         pub fn $name(
             _: &Runtime,
             ctx: &ThreadContext,
@@ -82,6 +79,7 @@ predicate_dispatch!(dispatch_complexp, complexp);
 
 macro_rules! runtime_dispatch {
     ($name:ident, $function:ident) => {
+        #[allow(dead_code, reason = "legacy dispatch adapter")]
         pub fn $name(
             runtime: &Runtime,
             ctx: &mut ThreadContext,
@@ -106,6 +104,7 @@ runtime_dispatch!(dispatch_isqrt, isqrt);
 
 macro_rules! values_dispatch {
     ($name:ident, $function:ident) => {
+        #[allow(dead_code, reason = "legacy dispatch adapter")]
         pub fn $name(
             runtime: &Runtime,
             ctx: &mut ThreadContext,
@@ -167,6 +166,7 @@ pub fn dispatch_greater_equal(
 
 macro_rules! typed_legacy_dispatch {
     ($name:ident, $legacy:ident) => {
+        #[allow(dead_code, reason = "legacy dispatch adapter")]
         pub fn $name(
             ctx: &mut ThreadContext,
             runtime: &Runtime,

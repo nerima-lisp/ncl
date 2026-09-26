@@ -50,7 +50,13 @@ fn integer(ctx: &ThreadContext, word: Word) -> Result<i128, ObjectError> {
                 if index >= 4 {
                     return Err(ObjectError::TypeError);
                 }
-                result |= i128::from(limb) << (index * 32);
+                let shift = u32::try_from(index)
+                    .ok()
+                    .and_then(|index| index.checked_mul(32))
+                    .ok_or(ObjectError::TypeError)?;
+                result = result
+                    .checked_add(i128::from(limb).checked_shl(shift).ok_or(ObjectError::TypeError)?)
+                    .ok_or(ObjectError::TypeError)?;
             }
             if ncl_object::bignum_sign(ctx, value)? {
                 Ok(-result)
@@ -348,13 +354,11 @@ pub fn scale_float(
 ) -> Result<Word, ObjectError> {
     let value = float_value(ctx, args.required(0)?)?;
     let scale = integer(ctx, args.required(1)?)?;
-    let scale = i32::try_from(scale).unwrap_or_else(|_| {
-        if scale.is_negative() {
-            i32::MIN
-        } else {
-            i32::MAX
-        }
-    });
+    let scale = match i32::try_from(scale) {
+        Ok(scale) => scale,
+        Err(_) if scale.is_negative() => i32::MIN,
+        Err(_) => i32::MAX,
+    };
     values.clear();
     make_double(ctx, runtime, value * 2_f64.powi(scale)).map(Into::into)
 }
@@ -369,7 +373,7 @@ pub fn float_sign(
         .get(1)
         .map(|v| float_value(ctx, v))
         .transpose()?
-        .unwrap_or(1.0);
+        .map_or(1.0, |value| value);
     values.clear();
     make_double(ctx, runtime, second.abs().copysign(first)).map(Into::into)
 }

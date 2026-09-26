@@ -448,115 +448,12 @@ fn sequence_nreverse(ctx: &mut ThreadContext, value: Sequence) -> Result<Word, O
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn empty_list_sequence_has_no_elements() {
-        let runtime = match Runtime::new() {
-            Ok(runtime) => runtime,
-            Err(error) => panic!("Runtime::new failed: {error:?}"),
-        };
-        let mut ctx = ThreadContext::new();
-        if let Err(error) = ctx.register(&runtime) {
-            panic!("ThreadContext::register failed: {error:?}");
-        }
-        let sequence = Sequence::List(List::Nil);
+#[path = "../../tests/support/list_tests.rs"]
+mod tests;
 
-        let length = match sequence_length(&mut ctx, sequence) {
-            Ok(length) => length,
-            Err(error) => panic!("sequence_length failed: {error:?}"),
-        };
-        assert_eq!(length, 0);
-        assert!(sequence_elt(&mut ctx, sequence, Word::fixnum(0)).is_err());
-    }
-
-    #[test]
-    fn string_sequence_conversion_validates_word_character() {
-        let runtime = match Runtime::new() {
-            Ok(runtime) => runtime,
-            Err(error) => panic!("Runtime::new failed: {error:?}"),
-        };
-        let mut ctx = ThreadContext::new();
-        if let Err(error) = ctx.register(&runtime) {
-            panic!("ThreadContext::register failed: {error:?}");
-        }
-        let marker = Sequence::String(ncl_object::StringObject::from_word(Word::NIL));
-        let string = match sequence_result(
-            &mut ctx,
-            &runtime,
-            marker,
-            &[Word::character(u32::from('λ'))],
-        ) {
-            Ok(string) => string,
-            Err(error) => panic!("sequence_result failed: {error:?}"),
-        };
-        let character = match ncl_object::string_ref(&ctx, string, 0) {
-            Ok(character) => character,
-            Err(error) => panic!("string_ref failed: {error:?}"),
-        };
-        assert_eq!(character, 'λ');
-        assert!(sequence_result(&mut ctx, &runtime, marker, &[Word::fixnum(65)]).is_err());
-    }
-}
-
-fn nth_word(ctx: &mut ThreadContext, index: i64, mut cursor: Word) -> Result<Word, LispError> {
-    if index < 0 {
-        return Err(LispError::TypeError {
-            datum: Word::fixnum(index),
-            expected: ncl_object::ObjectType::Fixnum,
-        });
-    }
-    for _ in 0..index {
-        if cursor == Word::NIL {
-            return Ok(Word::NIL);
-        }
-        cursor = object_cdr(ctx, cursor)?;
-    }
-    if cursor == Word::NIL {
-        Ok(Word::NIL)
-    } else {
-        Ok(object_car(ctx, cursor)?)
-    }
-}
-pub fn nth(
-    ctx: &mut ThreadContext,
-    _: &Runtime,
-    index: ncl_object::Fixnum,
-    value: List,
-) -> Result<Word, LispError> {
-    let cursor = list_word(value);
-    proper_list(ctx, cursor)?;
-    nth_word(ctx, index.value(), cursor)
-}
-pub fn nthcdr(
-    ctx: &mut ThreadContext,
-    _: &Runtime,
-    index: ncl_object::Fixnum,
-    value: List,
-) -> Result<Word, LispError> {
-    if index.value() < 0 {
-        return Err(LispError::TypeError {
-            datum: index.as_word(),
-            expected: ncl_object::ObjectType::Fixnum,
-        });
-    }
-    let mut cursor = list_word(value);
-    for _ in 0..index.value() {
-        if cursor == Word::NIL {
-            return Ok(Word::NIL);
-        }
-        cursor = object_cdr(ctx, cursor)?;
-    }
-    proper_list(ctx, cursor)?;
-    Ok(cursor)
-}
-pub fn list_length(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    value: List,
-) -> Result<Word, LispError> {
-    length(ctx, runtime, Sequence::List(value))
-}
-
-macro_rules! list_nth { ($($name:ident => $index:literal),+ $(,)?) => { $(pub fn $name(ctx: &mut ThreadContext, _: &Runtime, value: List) -> Result<Word, LispError> { let cursor = list_word(value); proper_list(ctx, cursor)?; nth_word(ctx, $index, cursor) })+ }; }
-list_nth!(first => 0, second => 1, third => 2, fourth => 3, fifth => 4, sixth => 5, seventh => 6, eighth => 7, ninth => 8, tenth => 9);
+#[path = "accessors.rs"]
+mod accessors;
+pub use accessors::{
+    eighth, fifth, first, fourth, list_length, ninth, nth, nthcdr, second, seventh, sixth, tenth,
+    third,
+};

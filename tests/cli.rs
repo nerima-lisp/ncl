@@ -92,3 +92,16 @@ fn eval_load_script_and_repl_use_runtime() {
         panic!("source file cleanup failed: {error}");
     }
 }
+
+#[test]
+fn evals_core_forms_through_native_builtin_entries() {
+    for (source, expected) in [
+        ("(+ 1 2)", "3"),
+        ("(* 6 7)", "42"),
+        ("(car (cons 1 2))", "1"),
+    ] {
+        let result = output(ncl().args(["--eval", source]));
+        assert!(result.status.success(), "{source}: {result:?}");
+        assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), expected);
+    }
+}

@@ -7,14 +7,14 @@ mod load;
 pub use function_call::RuntimeFunctionCaller;
 
 use ncl_codegen::{RuntimeAbi, RuntimeFunction};
-use ncl_compiler_front::{lower_toplevel, FormExpander, MacroCaller, MacroRegistry};
+use ncl_compiler_front::{FormExpander, MacroCaller, MacroRegistry, lower_toplevel};
 use ncl_object::{
-    symbol_function, FunctionObject, ObjectError, Package, Runtime as ObjectRuntime, ThreadContext,
-    Word,
+    FunctionObject, ObjectError, Package, Runtime as ObjectRuntime, ThreadContext, Word,
+    symbol_function,
 };
 use ncl_sys::{
-    alloc_code, invoke_entry, publish_code, register_code, thread_layout, write_code,
-    CodeObjectMetadata, CodePtr, SafepointMap, SourceLocation,
+    CodeObjectMetadata, CodePtr, SafepointMap, SourceLocation, alloc_code, invoke_entry,
+    publish_code, register_code, thread_layout, write_code,
 };
 
 /// Errors raised while setting up or executing one compilation unit.
@@ -233,8 +233,8 @@ impl Runtime {
 
     /// Create a function caller that can invoke this runtime's published code.
     #[must_use]
-    pub fn function_caller(&self) -> RuntimeFunctionCaller<'_> {
-        RuntimeFunctionCaller::new(&self.code)
+    pub fn function_caller(&self) -> RuntimeFunctionCaller {
+        RuntimeFunctionCaller
     }
 }
 

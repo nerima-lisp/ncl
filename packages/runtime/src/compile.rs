@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{Runtime, RuntimeError};
 use ncl_object::Word;
 use ncl_object::{Runtime as ObjectRuntime, ThreadContext};
-use ncl_reader::{read, ReadOptions, StringSource};
+use ncl_reader::{ReadOptions, StringSource, read};
 
 pub fn source(runtime: &mut Runtime, source: &str) -> Result<Word, RuntimeError> {
     runtime.eval(source)

@@ -2,8 +2,8 @@
 
 use crate::hash_table::{HashTable, HashTest, Weakness};
 use crate::{
-    BuiltinIdentifier, BuiltinImplementation, LispErrorConverter, ObjectError, ThreadContext,
-    Word, make_string, with_root,
+    BuiltinIdentifier, BuiltinImplementation, LispErrorConverter, ObjectError, ThreadContext, Word,
+    make_string, with_root,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
 use std::collections::HashMap;

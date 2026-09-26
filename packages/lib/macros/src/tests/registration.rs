@@ -1,8 +1,3 @@
-<<<<<<< ours
-=======
-#![allow(clippy::expect_used, clippy::unwrap_used)]
-
->>>>>>> theirs
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use super::*;

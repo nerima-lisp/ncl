@@ -263,7 +263,9 @@ impl InlineDirectCalls {
         let entry = caller.blocks.iter().flat_map(|b| &b.ops).find_map(|op| {
             if op.results.len() == 1 && op.results[0].0 == function {
                 match op.kind {
-                    OpKind::Const { result } => caller.constants.get(result.0 as usize),
+                    OpKind::Const { result } => usize::try_from(result.0)
+                        .ok()
+                        .and_then(|index| caller.constants.get(index)),
                     _ => None,
                 }
             } else {

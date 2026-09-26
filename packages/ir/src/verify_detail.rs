@@ -17,16 +17,23 @@ pub(super) fn check_op(
     };
     match &op.kind {
         OpKind::Const { result } => {
-            if result.0 as usize >= function.constants.len() {
+            let Some(result_index) = usize::try_from(result.0).ok() else {
                 errors.push(VerifyError::ConstantOutOfBounds(block.id));
-            }
-            if let Some(constant) = function.constants.get(result.0 as usize) {
+                return;
+            };
+            if let Some(constant) = function.constants.get(result_index) {
                 if let crate::Constant::Object(index) = constant {
-                    if index.0 as usize >= function.constants.len() {
+                    let Some(object_index) = usize::try_from(index.0).ok() else {
+                        errors.push(VerifyError::ConstantOutOfBounds(block.id));
+                        return;
+                    };
+                    if object_index >= function.constants.len() {
                         errors.push(VerifyError::ConstantOutOfBounds(block.id));
                     }
                 }
                 require_results(op, &[constant_type(constant)], block.id, errors);
+            } else {
+                errors.push(VerifyError::ConstantOutOfBounds(block.id));
             }
         }
         OpKind::Move { value } => require_results(
@@ -55,7 +62,10 @@ pub(super) fn check_op(
         }
         OpKind::Alloc { .. } => require_results(op, &[Ty::Address], block.id, errors),
         OpKind::LoadArg { index } => {
-            if let Some(parameter) = function.params.get(*index as usize) {
+            if let Some(parameter) = usize::try_from(*index)
+                .ok()
+                .and_then(|parameter_index| function.params.get(parameter_index))
+            {
                 require_results(op, &[parameter.ty], block.id, errors);
             } else {
                 errors.push(VerifyError::TypeMismatch(block.id));

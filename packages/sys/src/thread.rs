@@ -1,3 +1,4 @@
+use crate::native_error::NativeError;
 use crate::word::Word;
 use std::ptr;
 
@@ -64,6 +65,7 @@ pub struct Thread {
     frame_address: Option<usize>,
     frame_snapshot_failed: bool,
     frame_last_written: Vec<Word>,
+    native_error: Option<NativeError>,
 }
 
 /// Native offsets consumed by the code generator when addressing a thread context.
@@ -136,6 +138,7 @@ impl Thread {
             frame_address: None,
             frame_snapshot_failed: false,
             frame_last_written: Vec::new(),
+            native_error: None,
         }
     }
 
@@ -278,6 +281,18 @@ impl Thread {
     /// Clear a delivered cooperative safepoint request.
     pub const fn clear_safepoint_request(&mut self) {
         self.safepoint_request = 0;
+    }
+
+    /// Record the latest direct-native failure for the invoking runtime.
+    pub const fn set_native_error(&mut self, error: NativeError) {
+        if self.native_error.is_none() {
+            self.native_error = Some(error);
+        }
+    }
+
+    /// Take and clear the latest direct-native failure.
+    pub const fn take_native_error(&mut self) -> Option<NativeError> {
+        self.native_error.take()
     }
     /// Install a precise native frame and register snapshot for collection.
     pub fn set_frame_snapshot(&mut self, frames: Vec<Word>, registers: Vec<Word>) {

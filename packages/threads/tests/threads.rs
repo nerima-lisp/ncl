@@ -129,7 +129,11 @@ fn all_ids_is_sorted_and_contains_spawned_threads() {
     let ids = ncl_threads::all_ids();
     assert!(ids.contains(&first));
     assert!(ids.contains(&second));
-    assert!(ids.windows(2).all(|pair| pair[0].get() < pair[1].get()));
+    assert!(ids.windows(2).all(|pair| {
+        pair.first()
+            .zip(pair.get(1))
+            .is_some_and(|(left, right)| left.get() < right.get())
+    }));
     assert!(ncl_threads::dispose_finished() >= 2);
 }
 

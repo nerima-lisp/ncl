@@ -59,6 +59,24 @@ pub enum ContextField {
     Catch,
 }
 
+impl ContextField {
+    /// Returns the legacy identifier used by existing runtime providers.
+    #[must_use]
+    pub const fn identifier(self) -> &'static str {
+        match self {
+            Self::TlabBump => "tlab_bump",
+            Self::TlabLimit => "tlab_limit",
+            Self::SafepointRequest => "safepoint_request",
+            Self::Pending => "pending",
+            Self::MultipleValueCount => "mv_count",
+            Self::MultipleValueArea => "mv_area",
+            Self::Handler => "handler",
+            Self::Cleanup => "cleanup",
+            Self::Catch => "catch",
+        }
+    }
+}
+
 /// A runtime entry point called by generated code.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum RuntimeFunction {
@@ -74,6 +92,51 @@ pub enum RuntimeFunction {
     ConstantTable,
 }
 
+/// A named builtin without exposing a raw string as the ABI selector.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct BuiltinName<'a>(&'a str);
+
+impl<'a> BuiltinName<'a> {
+    /// Creates a builtin name borrowed from the caller.
+    #[must_use]
+    pub const fn new(name: &'a str) -> Self {
+        Self(name)
+    }
+
+    /// Returns the underlying legacy identifier.
+    #[must_use]
+    pub const fn as_str(self) -> &'a str {
+        self.0
+    }
+}
+
+/// A named runtime constant without exposing a raw string as the ABI selector.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ConstantName<'a>(&'a str);
+
+impl<'a> ConstantName<'a> {
+    /// Creates a runtime constant name borrowed from the caller.
+    #[must_use]
+    pub const fn new(name: &'a str) -> Self {
+        Self(name)
+    }
+
+    /// Returns the underlying legacy identifier.
+    #[must_use]
+    pub const fn as_str(self) -> &'a str {
+        self.0
+    }
+}
+
+/// Selects a runtime address without using a nullable function/name pair.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum RuntimeEntry<'a> {
+    /// A fixed runtime function.
+    Function(RuntimeFunction),
+    /// A named runtime builtin.
+    Builtin(BuiltinName<'a>),
+}
+
 impl RegisterId {
     /// Returns the stable numeric identifier used by stack maps.
     #[must_use]
@@ -84,35 +147,38 @@ impl RegisterId {
 
 /// Runtime values and entry points needed by code generation.
 pub trait RuntimeAbi {
-    /// Encodes a fixnum as a machine word.
-    fn encode_fixnum(&self, value: i64) -> i64;
-    /// Encodes a character as a machine word.
-    fn encode_character(&self, value: u32) -> i64;
     /// Returns the address of a runtime symbol.
     fn builtin_address(&self, name: &str) -> Option<u64>;
+    /// Returns the address of a named builtin through the typed ABI boundary.
+    fn builtin_address_named(&self, name: BuiltinName<'_>) -> Option<u64> {
+        self.builtin_address(name.as_str())
+    }
     /// Returns the `ThreadContext` field offset used by a runtime operation.
     fn context_offset(&self, field: &str) -> Option<i32>;
     /// Returns a typed `ThreadContext` field offset in bytes.
     fn field_offset(&self, field: ContextField) -> Option<i32> {
-        self.context_offset(match field {
-            ContextField::TlabBump => "tlab_bump",
-            ContextField::TlabLimit => "tlab_limit",
-            ContextField::SafepointRequest => "safepoint_request",
-            ContextField::Pending => "pending",
-            ContextField::MultipleValueCount => "mv_count",
-            ContextField::MultipleValueArea => "mv_area",
-            ContextField::Handler => "handler",
-            ContextField::Cleanup => "cleanup",
-            ContextField::Catch => "catch",
-        })
+        self.context_offset(field.identifier())
     }
     /// Returns a runtime function address.
     fn runtime_address(&self, _function: RuntimeFunction, _name: Option<&str>) -> Option<u64> {
         None
     }
+    /// Returns a runtime entry address through a typed selector.
+    fn runtime_entry_address(&self, entry: RuntimeEntry<'_>) -> Option<u64> {
+        match entry {
+            RuntimeEntry::Function(function) => self.runtime_address(function, None),
+            RuntimeEntry::Builtin(name) => {
+                self.runtime_address(RuntimeFunction::Builtin, Some(name.as_str()))
+            }
+        }
+    }
     /// Returns a runtime constant encoded as a machine word.
     fn constant_word(&self, _name: &str) -> Option<i64> {
         None
+    }
+    /// Returns a runtime constant through a typed selector.
+    fn constant_word_named(&self, name: ConstantName<'_>) -> Option<i64> {
+        self.constant_word(name.as_str())
     }
 }
 
@@ -121,6 +187,11 @@ pub trait RuntimeAbi {
 pub trait BuiltinAddressProvider {
     /// Return the process address for a named builtin.
     fn builtin_address(&self, name: &str) -> Option<u64>;
+
+    /// Return the process address for a typed builtin name.
+    fn builtin_address_named(&self, name: BuiltinName<'_>) -> Option<u64> {
+        self.builtin_address(name.as_str())
+    }
 }
 
 /// Small deterministic address table suitable for embedders and tests.
@@ -155,7 +226,7 @@ impl BuiltinAddressProvider for BuiltinAddressTable {
 
 #[cfg(test)]
 mod builtin_address_tests {
-    use super::{BuiltinAddressProvider, BuiltinAddressTable};
+    use super::{BuiltinAddressProvider, BuiltinAddressTable, BuiltinName, ContextField};
 
     #[test]
     fn address_table_replaces_and_reads_entries() {
@@ -164,6 +235,16 @@ mod builtin_address_tests {
         assert_eq!(table.builtin_address("NCL-TEST::ADD"), Some(0x10));
         table.insert("NCL-TEST::ADD", 0x20);
         assert_eq!(table.builtin_address("NCL-TEST::ADD"), Some(0x20));
+        assert_eq!(
+            table.builtin_address_named(BuiltinName::new("NCL-TEST::ADD")),
+            Some(0x20)
+        );
+    }
+
+    #[test]
+    fn context_fields_keep_the_stable_legacy_identifiers() {
+        assert_eq!(ContextField::TlabBump.identifier(), "tlab_bump");
+        assert_eq!(ContextField::MultipleValueCount.identifier(), "mv_count");
     }
 }
 
@@ -172,12 +253,6 @@ mod builtin_address_tests {
 pub struct X86_64Abi;
 
 impl RuntimeAbi for X86_64Abi {
-    fn encode_fixnum(&self, value: i64) -> i64 {
-        value << 3
-    }
-    fn encode_character(&self, value: u32) -> i64 {
-        i64::from(value) << 8 | 0x0f
-    }
     fn builtin_address(&self, _name: &str) -> Option<u64> {
         None
     }
@@ -200,14 +275,6 @@ impl RuntimeAbi for X86_64Abi {
 pub struct Aarch64Abi;
 
 impl RuntimeAbi for Aarch64Abi {
-    fn encode_fixnum(&self, value: i64) -> i64 {
-        value << 3
-    }
-
-    fn encode_character(&self, value: u32) -> i64 {
-        i64::from(value) << 8 | 0x0f
-    }
-
     fn builtin_address(&self, _name: &str) -> Option<u64> {
         None
     }

@@ -101,3 +101,20 @@ fn private_macho_readers_report_truncation() {
         })
     );
 }
+
+#[test]
+fn private_macho_command_parser_reports_missing_and_bad_sizes() {
+    let mut command = vec![0; 40];
+    command[32..36].copy_from_slice(&0u32.to_le_bytes());
+    command[36..40].copy_from_slice(&8u32.to_le_bytes());
+    assert_eq!(
+        validate_macho_commands(&command, 40, 1),
+        Err(ObjectError::InvalidStructure("missing Mach-O load command"))
+    );
+
+    command[36..40].copy_from_slice(&7u32.to_le_bytes());
+    assert_eq!(
+        validate_macho_commands(&command, 40, 1),
+        Err(ObjectError::InvalidStructure("invalid Mach-O command size"))
+    );
+}

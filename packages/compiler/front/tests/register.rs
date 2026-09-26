@@ -14,7 +14,7 @@ use ncl_object::{
 fn find(runtime: &Runtime, ctx: &mut ThreadContext, package: &str, name: &str) -> ncl_object::Word {
     let package_word = runtime.find_package(ctx, package).unwrap();
     let name = ncl_object::make_string(ctx, runtime, &name.chars().collect::<Vec<char>>()).unwrap();
-    Package::from(package_word)
+    Package::from_word(package_word)
         .find_symbol(ctx, name)
         .unwrap()
         .expect("interned symbol")
@@ -40,7 +40,7 @@ fn registration_covers_the_owned_symbols() {
     assert!(symbol_is_macro(&ctx, defun).unwrap());
     let limit = find(&runtime, &mut ctx, "COMMON-LISP", "CALL-ARGUMENTS-LIMIT");
     assert!(symbol_is_constant(&ctx, limit).unwrap());
-    let verbose = find(&runtime, &mut ctx, "SB-EXT", "*COMPILE-PROGRESS*");
+    let verbose = find(&runtime, &mut ctx, "NCL-EXT", "*COMPILE-PROGRESS*");
     assert!(symbol_is_special(&ctx, verbose).unwrap());
 }
 

@@ -21,7 +21,9 @@ copy_pprint_dispatch(&mut ThreadContext, &Runtime, Word) -> Result<Word, ObjectE
 | --- | --- |
 | `CharSink` | output trait: `write_char`, `write_str`. `ncl-lib-streams` adapts streams to it. |
 | `StringSink` | in-crate `CharSink` that accumulates a `String`. |
-| `PrintOptions` | one-to-one mirror of the `*print-*` variables, with `new`, `with_*` builders, and `from_specials`. |
+| `PrintOptions` | opaque, validated value object for the `*print-*` variables, with `new`, typed builders, and `from_specials`. |
+| `PrintBase` | validated radix newtype restricted to 2 through 36. |
+| `NonNegative` | validated non-negative limit value used by length and level options. |
 | `PrintCase` | `:upcase`, `:downcase`, `:capitalize`. |
 | `PrintError` | `Object`, `Sink`, `NotReadable`, `Circularity`. |
 
@@ -67,14 +69,10 @@ special variables `*PRINT-PPRINT-DISPATCH*`, `*PRINT-READABLY*`,
 
 ## Known gaps
 
-- **`classify_object` is unusable for headerless conses and characters**:
-  it reads a widetag from the first payload word, which a cons does not have,
-  and `Word::character` encodes `(scalar << 4) | 1`, whose `lowtag()` reads as
-  `List`, so `Word::is_character` never matches and `classify` reports a
-  character as a cons. The printer detects conses with `Word::is_cons` and
-  characters with the scalar bound in `print::character_code`. Needed fixes in
-  `ncl-sys`/`ncl-object`: make `character` encode the `Character` lowtag, or
-  make `classify_object` consult the lowtag before the widetag.
+- **`classify_object` is unusable for headerless conses**: it reads a widetag
+  from the first payload word, which a cons does not have. The printer detects
+  conses with `Word::is_cons` and characters with the sys word API before the
+  widetag path.
 - **Specialized and non-simple array length**: `ncl-object` exposes no length
   or rank accessor, so the printer probes `specialized_array_ref` for the
   length and uses `array_dimensions` for the rank. Needed additions:

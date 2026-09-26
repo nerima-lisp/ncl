@@ -12,14 +12,14 @@ impl Printer<'_> {
         let name = self.symbol_text(symbol)?;
         let package = symbol_package(self.ctx, symbol)?;
         if package == Word::NIL {
-            if self.options.gensym {
+            if self.options.gensym() {
                 self.write_str("#:")?;
             }
-            let rendered = render_name(&name, self.options.escape, self.options.case);
+            let rendered = render_name(&name, self.options.escape(), self.options.case());
             return self.write_str(&rendered);
         }
         let package_name = {
-            let name = Package::from(package).name(&*self.ctx)?;
+            let name = Package::from_word(package).name(&*self.ctx)?;
             self.string_text(name)?
         };
         if package_name == "KEYWORD" {
@@ -28,7 +28,7 @@ impl Printer<'_> {
             self.write_str(&package_name)?;
             self.write_str(":")?;
         }
-        let rendered = render_name(&name, self.options.escape, self.options.case);
+        let rendered = render_name(&name, self.options.escape(), self.options.case());
         self.write_str(&rendered)
     }
 }

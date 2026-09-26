@@ -1,6 +1,9 @@
-use crate::{CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
+use crate::{
+    Allocation, BuiltinName, CodegenError, ContextField, Location, RuntimeAbi, RuntimeEntry,
+    RuntimeFunction,
+};
 use ncl_asm_aarch64::{Assembler, Cond, Inst, MemOperand, Reg, RegOrSp, Shift};
-use ncl_ir::{Function, ValueId};
+use ncl_ir::ValueId;
 
 #[allow(clippy::needless_pass_by_value)]
 fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError> {
@@ -9,34 +12,15 @@ fn emit(assembler: &mut Assembler, instruction: Inst) -> Result<(), CodegenError
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
 
-pub(super) fn slots(function: &Function, argument_words: u32) -> (Vec<(ValueId, u32)>, u32) {
-    let mut result = Vec::new();
-    let mut next = argument_words;
-    for block in &function.blocks {
-        for parameter in &block.params {
-            result.push((parameter.value, next));
-            next = next.saturating_add(1);
-        }
-        for op in &block.ops {
-            for (value, _) in &op.results {
-                result.push((*value, next));
-                next = next.saturating_add(1);
-            }
-        }
-    }
-    (result, next.saturating_sub(argument_words))
-}
-
-fn slot(slots: &[(ValueId, u32)], value: ValueId) -> Result<u32, CodegenError> {
-    slots
-        .iter()
-        .find(|(id, _)| *id == value)
-        .map(|(_, index)| *index)
-        .ok_or(CodegenError::UnknownValue(value))
-}
-
-fn slot_mem(slots: &[(ValueId, u32)], value: ValueId) -> Result<MemOperand, CodegenError> {
-    let index = slot(slots, value)?;
+fn spill_mem(allocation: &Allocation, value: ValueId) -> Result<MemOperand, CodegenError> {
+    let Location::Spill(index) = allocation
+        .location(value)
+        .ok_or(CodegenError::UnknownValue(value))?
+    else {
+        return Err(CodegenError::Unsupported(
+            "register value has no spill slot".into(),
+        ));
+    };
     let offset = i16::try_from((index.saturating_add(1)).saturating_mul(8))
         .map_err(|_| CodegenError::FrameOverflow)?;
     Ok(MemOperand::Unscaled {
@@ -45,48 +29,76 @@ fn slot_mem(slots: &[(ValueId, u32)], value: ValueId) -> Result<MemOperand, Code
     })
 }
 
-pub(super) fn load_slot(
+pub(super) fn load_value(
     assembler: &mut Assembler,
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
     value: ValueId,
     register: Reg,
 ) -> Result<(), CodegenError> {
-    emit(
-        assembler,
-        Inst::Ldr {
-            rt: register,
-            mem: slot_mem(slots, value)?,
-        },
-    )
+    match allocation
+        .location(value)
+        .ok_or(CodegenError::UnknownValue(value))?
+    {
+        Location::Register(source) => emit(
+            assembler,
+            Inst::Mov {
+                rd: RegOrSp::Reg(register),
+                rn: RegOrSp::Reg(Reg(
+                    u8::try_from(source).map_err(|_| CodegenError::FrameOverflow)?
+                )),
+            },
+        ),
+        Location::Spill(_) => emit(
+            assembler,
+            Inst::Ldr {
+                rt: register,
+                mem: spill_mem(allocation, value)?,
+            },
+        ),
+    }
 }
 
-fn store_slot(
+pub(super) fn store_value(
     assembler: &mut Assembler,
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
     value: ValueId,
     register: Reg,
 ) -> Result<(), CodegenError> {
-    emit(
-        assembler,
-        Inst::Str {
-            rt: register,
-            mem: slot_mem(slots, value)?,
-        },
-    )
+    match allocation
+        .location(value)
+        .ok_or(CodegenError::UnknownValue(value))?
+    {
+        Location::Register(destination) => emit(
+            assembler,
+            Inst::Mov {
+                rd: RegOrSp::Reg(Reg(
+                    u8::try_from(destination).map_err(|_| CodegenError::FrameOverflow)?
+                )),
+                rn: RegOrSp::Reg(register),
+            },
+        ),
+        Location::Spill(_) => emit(
+            assembler,
+            Inst::Str {
+                rt: register,
+                mem: spill_mem(allocation, value)?,
+            },
+        ),
+    }
 }
 
 pub(super) fn lower_call(
     assembler: &mut Assembler,
     callee: ValueId,
     args: &[ValueId],
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
 ) -> Result<(), CodegenError> {
     if args.len() > 4 {
         return Err(CodegenError::Unsupported(
             "AArch64 calls support at most four register arguments".into(),
         ));
     }
-    load_slot(assembler, slots, callee, Reg(16))?;
+    load_value(assembler, allocation, callee, Reg(16))?;
     emit(
         assembler,
         Inst::Mov {
@@ -99,7 +111,7 @@ pub(super) fn lower_call(
     }
     for (index, argument) in args.iter().enumerate() {
         let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
-        load_slot(assembler, slots, *argument, register)?;
+        load_value(assembler, allocation, *argument, register)?;
     }
     Ok(())
 }
@@ -108,9 +120,9 @@ pub(super) fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
     args: &[ValueId],
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
 ) -> Result<(), CodegenError> {
-    lower_call(assembler, closure, args, slots)?;
+    lower_call(assembler, closure, args, allocation)?;
     emit(
         assembler,
         Inst::Ldr {
@@ -128,7 +140,7 @@ pub(super) fn lower_runtime_builtin(
     name: &str,
     immediate_args: &[u64],
     value_args: &[ValueId],
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     if immediate_args.len() + value_args.len() > 4 {
@@ -137,7 +149,7 @@ pub(super) fn lower_runtime_builtin(
         ));
     }
     let address = abi
-        .runtime_address(RuntimeFunction::Builtin, Some(name))
+        .runtime_entry_address(RuntimeEntry::Builtin(BuiltinName::new(name)))
         .ok_or_else(|| {
             CodegenError::Unsupported(format!("runtime address is unavailable: {name}"))
         })?;
@@ -160,9 +172,9 @@ pub(super) fn lower_runtime_builtin(
         }
     }
     for (index, value) in value_args.iter().copied().enumerate() {
-        load_slot(
+        load_value(
             assembler,
-            slots,
+            allocation,
             value,
             Reg(u8::try_from(immediate_args.len() + index + 1)
                 .map_err(|_| CodegenError::FrameOverflow)?),
@@ -193,7 +205,7 @@ fn lower_alloc(
     assembler: &mut Assembler,
     words: u32,
     result: Option<ValueId>,
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
     abi: &dyn RuntimeAbi,
 ) -> Result<u32, CodegenError> {
     let bytes = words
@@ -248,7 +260,7 @@ fn lower_alloc(
         },
     )?;
     if let Some(result) = result {
-        store_slot(assembler, slots, result, Reg(16))?;
+        store_value(assembler, allocation, result, Reg(16))?;
     }
     emit(assembler, Inst::B { label: done })?;
     assembler
@@ -273,7 +285,7 @@ fn lower_alloc(
     emit(assembler, Inst::Blr { rn: Reg(17) })?;
     let call_pc = u32::try_from(assembler.offset()).map_err(|_| CodegenError::FrameOverflow)?;
     if let Some(result) = result {
-        store_slot(assembler, slots, result, Reg(0))?;
+        store_value(assembler, allocation, result, Reg(0))?;
     }
     assembler
         .bind(done)
@@ -336,7 +348,7 @@ fn lower_builtin(
     assembler: &mut Assembler,
     name: &str,
     args: &[ValueId],
-    slots: &[(ValueId, u32)],
+    allocation: &Allocation,
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     if args.len() > 4 {
@@ -344,9 +356,11 @@ fn lower_builtin(
             "AArch64 builtins support at most four arguments".into(),
         ));
     }
-    let address = abi.builtin_address(name).ok_or_else(|| {
-        CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
-    })?;
+    let address = abi
+        .builtin_address_named(BuiltinName::new(name))
+        .ok_or_else(|| {
+            CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
+        })?;
     emit(
         assembler,
         Inst::Mov {
@@ -359,7 +373,7 @@ fn lower_builtin(
     }
     for (index, argument) in args.iter().enumerate() {
         let register = Reg(u8::try_from(index + 1).map_err(|_| CodegenError::FrameOverflow)?);
-        load_slot(assembler, slots, *argument, register)?;
+        load_value(assembler, allocation, *argument, register)?;
     }
     Ok(())
 }

@@ -75,7 +75,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     ctx.register(runtime)?;
     for row in ROWS {
         let package = runtime.ensure_package(&mut ctx, row.package)?;
-        let (symbol, _status) = Package::from(package).intern(&mut ctx, runtime, row.name)?;
+        let (symbol, _status) = Package::from_word(package).intern(&mut ctx, runtime, row.name)?;
         match row.kind {
             Kind::Variable => set_symbol_special(&mut ctx, symbol, true)?,
             Kind::Function => {

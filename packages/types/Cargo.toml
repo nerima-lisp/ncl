@@ -11,5 +11,16 @@ ncl-object = { path = "../object" }
 [dev-dependencies]
 ncl-ownership = { path = "../ownership" }
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+as_conversions = "deny"
+wildcard_enum_match_arm = "deny"
+fn_params_excessive_bools = "deny"
+struct_excessive_bools = "deny"
+string_slice = "deny"

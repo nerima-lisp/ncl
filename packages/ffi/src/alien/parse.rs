@@ -1,6 +1,6 @@
 //! Parsing alien type names and type specifiers.
 
-use super::{AlienEnum, AlienRecord, AlienType};
+use super::{AlienEnum, AlienRecord, AlienRoutine, AlienType};
 use crate::FfiError;
 
 /// Parse an atomic alien type name such as `int` or `unsigned-long`.
@@ -70,14 +70,20 @@ fn tokenize(input: &str) -> Vec<&str> {
     for (index, ch) in input.char_indices() {
         match ch {
             '(' | ')' => {
-                if let Some(begin) = start.take() {
-                    tokens.push(&input[begin..index]);
+                if let Some(begin) = start.take()
+                    && let Some(token) = input.get(begin..index)
+                {
+                    tokens.push(token);
                 }
-                tokens.push(&input[index..index + ch.len_utf8()]);
+                if let Some(token) = input.get(index..index + ch.len_utf8()) {
+                    tokens.push(token);
+                }
             }
             _ if ch.is_whitespace() => {
-                if let Some(begin) = start.take() {
-                    tokens.push(&input[begin..index]);
+                if let Some(begin) = start.take()
+                    && let Some(token) = input.get(begin..index)
+                {
+                    tokens.push(token);
                 }
             }
             _ => {
@@ -87,8 +93,10 @@ fn tokenize(input: &str) -> Vec<&str> {
             }
         }
     }
-    if let Some(begin) = start {
-        tokens.push(&input[begin..]);
+    if let Some(begin) = start
+        && let Some(token) = input.get(begin..)
+    {
+        tokens.push(token);
     }
     tokens
 }
@@ -173,7 +181,7 @@ impl<'a> Parser<'a> {
             "function" => {
                 let result = self.parse_spec(source)?;
                 let arguments = self.parse_arguments(source)?;
-                AlienType::function("", arguments, result, false)
+                AlienType::Function(Box::new(AlienRoutine::new("", arguments, result, false)))
             }
             other => return Err(FfiError::UnknownAlienType(other.to_owned())),
         };
@@ -196,7 +204,7 @@ impl<'a> Parser<'a> {
             self.expect_token(")", source)?;
             fields.push((field_name, field_type));
         }
-        Ok(AlienRecord { name, fields })
+        Ok(AlienRecord::new(name, fields))
     }
 
     fn parse_enumeration(&mut self, source: &str) -> Result<AlienEnum, FfiError> {
@@ -213,7 +221,7 @@ impl<'a> Parser<'a> {
             self.expect_token(")", source)?;
             variants.push((variant, value));
         }
-        Ok(AlienEnum { name, variants })
+        Ok(AlienEnum::new(name, variants))
     }
 
     fn parse_arguments(&mut self, source: &str) -> Result<Vec<AlienType>, FfiError> {

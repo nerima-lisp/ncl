@@ -30,7 +30,7 @@ pub fn make_simple_fun(
                 put(ctx, object, function_offset::NAME, *name)?;
                 put(ctx, object, function_offset::LAMBDA_LIST, *lambda_list)?;
                 put(ctx, object, function_offset::CODE, *code)?;
-                Ok(object.into())
+                Ok(Function::from_word(object))
             })
         })
     })
@@ -73,7 +73,7 @@ pub fn make_closure(
                     for (index, value) in values.iter().copied().enumerate() {
                         put(ctx, object, function_offset::CAPTURES + index, *value)?;
                     }
-                    Ok(object.into())
+                    Ok(Function::from_word(object))
                 })
             })
         })
@@ -120,7 +120,7 @@ pub fn closure_ref(
 /// # Errors
 /// Returns an error when the object is not a function.
 pub fn function_code(ctx: &ThreadContext, object: Function) -> Result<CodeObject, ObjectError> {
-    get_function(ctx, object.into(), function_offset::CODE).map(Into::into)
+    get_function(ctx, object.into(), function_offset::CODE).map(CodeObject::from_word)
 }
 /// Read a function lambda list.
 ///

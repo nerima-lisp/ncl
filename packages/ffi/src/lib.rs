@@ -27,14 +27,16 @@ mod symbols;
 pub mod sys_requirements;
 
 pub use alien::{
-    AlienEnum, AlienRecord, AlienRoutine, AlienType, align_of, marshal_argument, offset_of,
-    parse_type_name, parse_type_specifier, record_size, size_of, union_size, unmarshal_result,
+    AlienEnum, AlienRecord, AlienRoutine, AlienType, ArrayLength, CallableMode, FieldOffset,
+    align_of, field_offset, marshal_argument, offset_of, parse_type_name, parse_type_specifier,
+    record_size, size_of, union_size, unmarshal_result,
 };
 pub use condition::signal_ffi_error;
 pub use dynamic::{
-    SharedObject, dlerror_message, dlopen_or_lose, extern_alien_name,
-    find_dynamic_foreign_symbol_address, find_foreign_symbol_address, foreign_symbol_address,
-    foreign_symbol_dataref_sap, foreign_symbol_sap, load_shared_object, unload_shared_object,
+    ForeignSymbolName, LoaderMode, SharedObject, SharedObjectPath, dlerror_message, dlopen_or_lose,
+    extern_alien_name, find_dynamic_foreign_symbol_address, find_foreign_symbol_address,
+    foreign_symbol_address, foreign_symbol_dataref_sap, foreign_symbol_sap, load_shared_object,
+    unload_shared_object,
 };
 pub use error::FfiError;
 pub use funcall::{alien_funcall, alien_routine, alien_sap, alien_size, cast, null_alien};
@@ -44,3 +46,4 @@ pub use memory::{
 };
 pub use register::register;
 pub use sap::{SystemAreaPointer, sap_eq, sap_ge, sap_gt, sap_le, sap_lt};
+pub use sys_requirements::SysPrimitive;

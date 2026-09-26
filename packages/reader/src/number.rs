@@ -40,27 +40,34 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
     let mut index = 0;
     let n = token.len();
 
-    if index < n && (token[index] == '+' || token[index] == '-') {
+    if matches!(token.get(index), Some('+' | '-')) {
         index += 1;
     }
 
-    let start = index;
     let mut digits_before = 0_usize;
-    while index < n && digit_value(token[index], base).is_some() {
+    while token
+        .get(index)
+        .and_then(|ch| digit_value(*ch, base))
+        .is_some()
+    {
         digits_before += 1;
         index += 1;
     }
 
-    if index < n && token[index] == '/' {
+    if token.get(index) == Some(&'/') {
         if digits_before == 0 {
             return None;
         }
         index += 1;
-        if index < n && (token[index] == '+' || token[index] == '-') {
+        if matches!(token.get(index), Some('+' | '-')) {
             index += 1;
         }
         let mut digits_after = 0_usize;
-        while index < n && digit_value(token[index], base).is_some() {
+        while token
+            .get(index)
+            .and_then(|ch| digit_value(*ch, base))
+            .is_some()
+        {
             digits_after += 1;
             index += 1;
         }
@@ -72,10 +79,14 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
 
     let mut has_dot = false;
     let mut has_digits_after_dot = false;
-    if index < n && token[index] == '.' {
+    if token.get(index) == Some(&'.') {
         has_dot = true;
         index += 1;
-        while index < n && digit_value(token[index], base).is_some() {
+        while token
+            .get(index)
+            .and_then(|ch| digit_value(*ch, base))
+            .is_some()
+        {
             has_digits_after_dot = true;
             index += 1;
         }
@@ -91,11 +102,15 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
     {
         has_exponent = true;
         index += 1;
-        if index < n && (token[index] == '+' || token[index] == '-') {
+        if matches!(token.get(index), Some('+' | '-')) {
             index += 1;
         }
         let mut exp_digits = 0_usize;
-        while index < n && digit_value(token[index], 10).is_some() {
+        while token
+            .get(index)
+            .and_then(|ch| digit_value(*ch, 10))
+            .is_some()
+        {
             exp_digits += 1;
             index += 1;
         }
@@ -121,7 +136,6 @@ fn scan_number(token: &[char], base: u32) -> Option<NumberShape> {
     if digits_before == 0 {
         return None;
     }
-    let _ = start;
     Some(NumberShape::Integer)
 }
 
@@ -147,8 +161,22 @@ pub fn parse_number(
                 .iter()
                 .position(|&c| c == '/')
                 .ok_or_else(|| ReadError::InvalidNumber(collect(token)))?;
-            let numerator = parse_integer_chars(ctx, runtime, &token[..slash], base)?;
-            let denominator = parse_integer_chars(ctx, runtime, &token[slash + 1..], base)?;
+            let numerator = parse_integer_chars(
+                ctx,
+                runtime,
+                token
+                    .get(..slash)
+                    .ok_or_else(|| ReadError::InvalidNumber(collect(token)))?,
+                base,
+            )?;
+            let denominator = parse_integer_chars(
+                ctx,
+                runtime,
+                token
+                    .get(slash + 1..)
+                    .ok_or_else(|| ReadError::InvalidNumber(collect(token)))?,
+                base,
+            )?;
             Ok(Some(
                 make_ratio(ctx, runtime, numerator, denominator)?.into(),
             ))
@@ -178,8 +206,7 @@ pub fn parse_integer_chars(
     }
     let mut value: i128 = 0;
     let mut digits = 0_usize;
-    while index < token.len() {
-        let ch = token[index];
+    while let Some(&ch) = token.get(index) {
         if ch == '.' {
             break;
         }
@@ -198,7 +225,8 @@ pub fn parse_integer_chars(
         value = -value;
     }
     if (MIN_FIXNUM..=MAX_FIXNUM).contains(&value) {
-        Ok(Word::fixnum(value as i64))
+        let fixnum = i64::try_from(value).map_err(|_| ReadError::NumberOutOfRange)?;
+        Ok(Word::fixnum(fixnum))
     } else {
         Ok(make_bignum_from_i128(ctx, runtime, value)?.into())
     }
@@ -268,19 +296,31 @@ pub fn parse_integer(
     let mut index = start.unwrap_or(0).min(chars.len());
     let end = end.unwrap_or(chars.len()).min(chars.len());
 
-    while index < end && chars[index].is_whitespace() {
+    while chars.get(index).is_some_and(|ch| ch.is_whitespace()) {
         index += 1;
     }
-    if index < end && (chars[index] == '+' || chars[index] == '-') {
+    if matches!(chars.get(index), Some('+' | '-')) {
         index += 1;
     }
     let digits_start = index;
-    while index < end && digit_value(chars[index], radix).is_some() {
+    while index < end
+        && chars
+            .get(index)
+            .and_then(|ch| digit_value(*ch, radix))
+            .is_some()
+    {
         index += 1;
     }
     if index == digits_start {
         return Err(ReadError::InvalidNumber(string.to_owned()));
     }
-    let integer = parse_integer_chars(ctx, runtime, &chars[..index], radix)?;
+    let integer = parse_integer_chars(
+        ctx,
+        runtime,
+        chars
+            .get(..index)
+            .ok_or_else(|| ReadError::InvalidNumber(string.to_owned()))?,
+        radix,
+    )?;
     Ok((integer, index))
 }

@@ -32,7 +32,9 @@ fn build_graph(runtime: &Runtime, ctx: &mut ThreadContext) -> Graph {
     let string_token = push_root(ctx, &mut string);
 
     let package = runtime.find_package(ctx, "NCL").unwrap();
-    let (mut symbol, _) = Package::from(package).intern(ctx, runtime, "FOO").unwrap();
+    let (mut symbol, _) = Package::from_word(package)
+        .intern(ctx, runtime, "FOO")
+        .unwrap();
     set_symbol_value(ctx, symbol, Word::fixnum(5)).unwrap();
     let symbol_token = push_root(ctx, &mut symbol);
 
@@ -55,9 +57,16 @@ fn build_graph(runtime: &Runtime, ctx: &mut ThreadContext) -> Graph {
     let mut name = make_string(ctx, runtime, &['f', 'n']).unwrap();
     let name_token = push_root(ctx, &mut name);
 
-    let mut function = make_simple_fun(ctx, runtime, 0, name, Word::NIL, CodeObject::from(code))
-        .unwrap()
-        .as_word();
+    let mut function = make_simple_fun(
+        ctx,
+        runtime,
+        0,
+        name,
+        Word::NIL,
+        CodeObject::from_word(code),
+    )
+    .unwrap()
+    .as_word();
     let function_token = push_root(ctx, &mut function);
 
     let roots = vec![cons, table_word, function];
@@ -133,12 +142,12 @@ fn loaded_objects_survive_a_full_collection() {
     assert_eq!(symbol_value(&ctx2, symbol).unwrap().as_fixnum(), Some(5));
 
     // The hash table still maps 1 to the string.
-    let table = HashTable::from(roots[1]);
+    let table = HashTable::from_word(roots[1]);
     let found = table.get(&mut ctx2, Word::fixnum(1)).unwrap().unwrap();
     assert_eq!(read_string(&ctx2, found), "hi");
 
     // The function object still names its code object.
-    let function = Function::from(roots[2]);
+    let function = Function::from_word(roots[2]);
     assert_eq!(function_entry(&ctx2, function).unwrap(), 0);
     let code = function_code(&ctx2, function).unwrap();
     assert_eq!(code_entry(&ctx2, code).unwrap().as_fixnum(), Some(0));
@@ -217,7 +226,7 @@ fn iso(
             true
         }
         (ObjectRef::HashTable(x), ObjectRef::HashTable(y)) => {
-            let (ta, tb) = (HashTable::from(x), HashTable::from(y));
+            let (ta, tb) = (HashTable::from_word(x), HashTable::from_word(y));
             if ta.test(a).unwrap() != tb.test(b).unwrap()
                 || ta.weakness(a).unwrap() != tb.weakness(b).unwrap()
             {
@@ -247,7 +256,7 @@ fn iso(
             true
         }
         (ObjectRef::Function(x), ObjectRef::Function(y)) => {
-            let (fa, fb) = (Function::from(x), Function::from(y));
+            let (fa, fb) = (Function::from_word(x), Function::from_word(y));
             if function_entry(a, fa).unwrap() != function_entry(b, fb).unwrap() {
                 return false;
             }
@@ -263,7 +272,7 @@ fn iso(
             iso(a, na, b, nb, seen) && iso(a, la, b, lb, seen) && iso(a, ca, b, cb, seen)
         }
         (ObjectRef::Code(x), ObjectRef::Code(y)) => {
-            let (ca, cb) = (CodeObject::from(x), CodeObject::from(y));
+            let (ca, cb) = (CodeObject::from_word(x), CodeObject::from_word(y));
             if code_entry(a, ca).unwrap() != code_entry(b, cb).unwrap()
                 || code_size(a, ca).unwrap() != code_size(b, cb).unwrap()
             {
@@ -286,6 +295,9 @@ fn iso(
 
 /// Report whether a word addresses a heap object.
 fn is_heap(word: Word) -> bool {
+    if word.is_fixnum() || word.is_character() || word.is_unbound() {
+        return false;
+    }
     let tag = word.lowtag();
     if tag == LowTag::List as u8 {
         return word != Word::NIL;
@@ -307,6 +319,6 @@ fn package_name(ctx: &ThreadContext, symbol: Word) -> String {
     if package == Word::NIL {
         String::new()
     } else {
-        read_string(ctx, Package::from(package).name(ctx).unwrap())
+        read_string(ctx, Package::from_word(package).name(ctx).unwrap())
     }
 }

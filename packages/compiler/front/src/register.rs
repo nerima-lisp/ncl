@@ -29,7 +29,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     ctx.register(runtime)?;
     for owned in OWNED_SYMBOLS {
         let package = runtime.ensure_package(&mut ctx, owned.package)?;
-        let (symbol, _) = Package::from(package).intern(&mut ctx, runtime, owned.name)?;
+        let (symbol, _) = Package::from_word(package).intern(&mut ctx, runtime, owned.name)?;
         apply_kinds(&mut ctx, runtime, symbol, owned)?;
     }
     Ok(())

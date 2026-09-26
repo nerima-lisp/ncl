@@ -5,6 +5,7 @@ mod frame;
 mod isa_x86_64;
 mod lowering;
 mod machine;
+mod regalloc;
 mod relocation;
 mod safepoint;
 mod target;
@@ -17,11 +18,19 @@ mod tests;
 mod tests_aarch64;
 #[cfg(test)]
 mod tests_x86_64;
+#[cfg(test)]
+mod tests_x86_64_fixture;
+#[cfg(test)]
+mod tests_x86_64_golden;
 
-pub use abi::{Aarch64Abi, ContextField, RegisterId, RuntimeAbi, RuntimeFunction, X86_64Abi};
+pub use abi::{
+    Aarch64Abi, BuiltinName, ConstantName, ContextField, RegisterId, RuntimeAbi, RuntimeEntry,
+    RuntimeFunction, X86_64Abi,
+};
 pub use frame::{FRAME_HEADER_WORDS, FrameLayout};
 pub use lowering::compile_function;
 pub use machine::{Block, CompiledFunction, DebugLocation, MachineFunction, MachineOp};
+pub use regalloc::{Allocation, AllocationTarget, LiveInterval, Location, allocate};
 pub use relocation::{Relocation, RelocationKind, relocations_from_fixups};
 pub use safepoint::{
     FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_HAS_DERIVED_ADDRESS, FLAG_LOOP_BACKEDGE, MapError,

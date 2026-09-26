@@ -1,8 +1,6 @@
 //! The `subtypep` relation.
 
-use ncl_object::Word;
-
-use crate::{NamedType, TypeError, TypeSpecifier};
+use crate::{IntegerBound, NamedType, TypeError, TypeSpecifier};
 
 /// Decide whether every object of type `sub` is also of type `sup`.
 ///
@@ -20,16 +18,16 @@ pub fn subtypep(sub: &TypeSpecifier, sup: &TypeSpecifier) -> Result<(bool, bool)
         return Ok((true, true));
     }
     if let TypeSpecifier::Deftype { name, .. } = sub {
-        return Err(TypeError::UnexpandedDeftype(*name));
+        return Err(TypeError::UnexpandedDeftype(name.clone()));
     }
     if let TypeSpecifier::Deftype { name, .. } = sup {
-        return Err(TypeError::UnexpandedDeftype(*name));
+        return Err(TypeError::UnexpandedDeftype(name.clone()));
     }
     if let TypeSpecifier::Satisfies(word) = sub {
-        return Err(TypeError::CannotInvoke(*word));
+        return Err(TypeError::CannotInvoke(word.clone()));
     }
     if let TypeSpecifier::Satisfies(word) = sup {
-        return Err(TypeError::CannotInvoke(*word));
+        return Err(TypeError::CannotInvoke(word.clone()));
     }
     match (sub, sup) {
         (TypeSpecifier::Named(NamedType::Nil), _)
@@ -67,35 +65,39 @@ const fn named_subtype(sub: NamedType, sup: NamedType) -> (bool, bool) {
 
 #[allow(clippy::similar_names)]
 fn range_subtype(
-    sub_low: Option<Word>,
-    sub_high: Option<Word>,
-    sup_low: Option<Word>,
-    sup_high: Option<Word>,
+    sub_low: IntegerBound,
+    sub_high: IntegerBound,
+    sup_low: IntegerBound,
+    sup_high: IntegerBound,
 ) -> (bool, bool) {
-    let sub_low = sub_low.and_then(Word::as_fixnum);
-    let sub_high = sub_high.and_then(Word::as_fixnum);
-    let sup_low = sup_low.and_then(Word::as_fixnum);
-    let sup_high = sup_high.and_then(Word::as_fixnum);
-
-    if let (Some(low), Some(high)) = (sub_low, sub_high)
-        && low > high
-    {
-        return (true, true);
-    }
-    let low_ok = match (sup_low, sub_low) {
-        (None, _) => true,
-        (Some(_), None) => false,
-        (Some(sup), Some(sub)) => sub >= sup,
-    };
-    let high_ok = match (sup_high, sub_high) {
-        (None, _) => true,
-        (Some(_), None) => false,
-        (Some(sup), Some(sub)) => sub <= sup,
-    };
-    if low_ok && high_ok {
+    if lower_contains(sup_low, sub_low) && upper_contains(sup_high, sub_high) {
         (true, true)
     } else {
         (false, false)
+    }
+}
+
+fn lower_contains(sup: IntegerBound, sub: IntegerBound) -> bool {
+    match (sup, sub) {
+        (IntegerBound::Unbounded, _) => true,
+        (_, IntegerBound::Unbounded) => false,
+        (IntegerBound::Inclusive(a), IntegerBound::Inclusive(b) | IntegerBound::Exclusive(b)) => {
+            b >= a
+        }
+        (IntegerBound::Exclusive(a), IntegerBound::Inclusive(b)) => b > a,
+        (IntegerBound::Exclusive(a), IntegerBound::Exclusive(b)) => b >= a,
+    }
+}
+
+fn upper_contains(sup: IntegerBound, sub: IntegerBound) -> bool {
+    match (sup, sub) {
+        (IntegerBound::Unbounded, _) => true,
+        (_, IntegerBound::Unbounded) => false,
+        (IntegerBound::Inclusive(a), IntegerBound::Inclusive(b) | IntegerBound::Exclusive(b)) => {
+            b <= a
+        }
+        (IntegerBound::Exclusive(a), IntegerBound::Inclusive(b)) => b < a,
+        (IntegerBound::Exclusive(a), IntegerBound::Exclusive(b)) => b <= a,
     }
 }
 

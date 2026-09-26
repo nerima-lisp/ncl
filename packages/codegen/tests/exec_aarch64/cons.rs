@@ -152,7 +152,7 @@ fn executes_cons_allocation_car_and_cdr_on_tlab_fast_path() {
         [0; 4],
         0,
     );
-    assert_eq!(value, abi.encode_fixnum(30) as u64);
+    assert_eq!(value, Word::fixnum(30).bits());
     assert_eq!(count, 1);
     assert_eq!(tlab_bump(&thread), bump + 16);
     let Some(map) = compiled.safepoint_maps.first() else {
@@ -241,7 +241,7 @@ fn executes_safepoint_poll_without_and_with_request() {
         [0; 4],
         0,
     );
-    assert_eq!(native_no_request, (abi.encode_fixnum(7) as u64, 1));
+    assert_eq!(native_no_request, (Word::fixnum(7).bits(), 1));
     assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 0);
     leave_native(&mut thread);
     let no_request = invoke_entry(
@@ -252,7 +252,7 @@ fn executes_safepoint_poll_without_and_with_request() {
         [0; 4],
         0,
     );
-    assert_eq!(no_request, (abi.encode_fixnum(7) as u64, 1));
+    assert_eq!(no_request, (Word::fixnum(7).bits(), 1));
     assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 0);
     request_safepoint(&mut thread);
     let requested = invoke_entry(
@@ -263,7 +263,7 @@ fn executes_safepoint_poll_without_and_with_request() {
         [0; 4],
         0,
     );
-    assert_eq!(requested, (abi.encode_fixnum(7) as u64, 1));
+    assert_eq!(requested, (Word::fixnum(7).bits(), 1));
     assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 1);
     let Some(map) = compiled.safepoint_maps.first() else {
         panic!("safepoint map missing");
@@ -359,12 +359,14 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
         }],
         vec![],
     );
-    builder
+    let live_local = builder
         .push_op(OpKind::LoadArg { index: 0 }, &[Ty::Word])
-        .expect("live local");
+        .expect("live local")[0];
     builder.push_op(OpKind::Safepoint, &[]).expect("safepoint");
     builder
-        .terminate(Terminator::Return { values: Vec::new() })
+        .terminate(Terminator::Return {
+            values: vec![live_local],
+        })
         .expect("return");
     let compiled = compile_function_aarch64(&builder.finish(), &BuiltinAbi).expect("lowering");
     let mut code = alloc_code(compiled.code.len()).expect("code allocation");
@@ -389,16 +391,16 @@ fn forwards_function_object_from_real_frame_after_safepoint_collection() {
     COLLECT_IN_SAFEPOINT.store(false, Ordering::SeqCst);
     ncl_sys::register_thread_with_thread(&thread, object_context.thread_mut())
         .expect("re-register object context");
-    assert_eq!(result, (0, 0));
     assert!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst) > slow_before);
     let after = function.bits();
+    assert_eq!(result, (after, 1));
     assert_ne!(old, after);
     assert_eq!(FRAME_WORD_BEFORE.load(Ordering::SeqCst), old);
     assert_eq!(FRAME_WORD_AFTER.load(Ordering::SeqCst), after);
     assert_eq!(FRAME_LOCAL_BEFORE.load(Ordering::SeqCst), old);
     assert_eq!(FRAME_LOCAL_AFTER.load(Ordering::SeqCst), after);
     assert_eq!(
-        ncl_object::function_name(&object_context, (*function).into()),
+        ncl_object::function_name(&object_context, ncl_object::Function::from_word(*function),),
         Ok(Word::NIL)
     );
 }

@@ -1,8 +1,6 @@
 //! Signalling and handler records.
 
-use ncl_object::{
-    Runtime, ThreadContext, Word, make_simple_vector, make_string, simple_vector_ref,
-};
+use ncl_object::{Runtime, ThreadContext, Word, make_simple_vector, make_string};
 
 use crate::class::{class_named, condition_class_of, superclass_of};
 use crate::error::ConditionError;
@@ -63,10 +61,9 @@ pub fn signal(ctx: &mut ThreadContext, condition: Word) -> Result<(), ConditionE
     let class = condition_class_of(ctx, condition)?;
     let mut head = records::cluster_head(ctx);
     while head != Word::NIL {
-        let kind = simple_vector_ref(ctx, head, records::KIND).map_err(ConditionError::from)?;
-        if kind == records::HANDLER_TAG {
-            let handler_class = simple_vector_ref(ctx, head, records::HANDLER_CLASS)
-                .map_err(ConditionError::from)?;
+        let record = records::ClusterRecord::from_word(ctx, head).map_err(ConditionError::from)?;
+        if let records::ClusterRecord::Handler(handler) = record {
+            let handler_class = handler.class(ctx).map_err(ConditionError::from)?;
             if class_matches(ctx, class.as_word(), handler_class)? {
                 return Ok(());
             }

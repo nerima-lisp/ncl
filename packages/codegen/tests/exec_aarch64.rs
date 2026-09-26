@@ -49,7 +49,7 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
             Ordering::SeqCst,
         );
         FRAME_LOCAL_BEFORE.store(
-            ctx.frame_word(5).expect("captured live local").bits(),
+            ctx.frame_word(4).expect("captured live local").bits(),
             Ordering::SeqCst,
         );
         ctx.clear_safepoint_request();
@@ -62,7 +62,7 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
             .expect("written-back frame function object");
         FRAME_WORD_AFTER.store(after.bits(), Ordering::SeqCst);
         FRAME_LOCAL_AFTER.store(
-            ctx.last_written_frame_word(5)
+            ctx.last_written_frame_word(4)
                 .expect("written-back live local")
                 .bits(),
             Ordering::SeqCst,
@@ -77,14 +77,6 @@ extern "C" fn safepoint_slow(ctx: &mut Thread, frame_fp: usize, return_pc: usize
 }
 struct BuiltinAbi;
 impl RuntimeAbi for BuiltinAbi {
-    fn encode_fixnum(&self, value: i64) -> i64 {
-        value << 3
-    }
-
-    fn encode_character(&self, value: u32) -> i64 {
-        i64::from(value) << 8 | 0x0f
-    }
-
     fn builtin_address(&self, name: &str) -> Option<u64> {
         (name == "add").then_some(builtin_add as *const () as usize as u64)
     }
@@ -160,15 +152,10 @@ fn executes_fixnum_add_of_two_arguments() {
         compiled.entry_offset as usize,
         &mut thread,
         2,
-        [
-            abi.encode_fixnum(1) as u64,
-            abi.encode_fixnum(2) as u64,
-            0,
-            0,
-        ],
+        [Word::fixnum(1).bits(), Word::fixnum(2).bits(), 0, 0],
         0,
     );
-    assert_eq!(value, abi.encode_fixnum(3) as u64);
+    assert_eq!(value, Word::fixnum(3).bits());
     assert_eq!(count, 1);
 }
 
@@ -217,21 +204,15 @@ fn preserves_arguments_across_entry_safepoint() {
     publish_code(&mut code).expect("code publication");
     let mut thread = Thread::new();
     request_safepoint(&mut thread);
-    let abi = BuiltinAbi;
     let (value, count) = invoke_entry(
         &code,
         compiled.entry_offset as usize,
         &mut thread,
         2,
-        [
-            abi.encode_fixnum(11) as u64,
-            abi.encode_fixnum(31) as u64,
-            0,
-            0,
-        ],
+        [Word::fixnum(11).bits(), Word::fixnum(31).bits(), 0, 0],
         0,
     );
-    assert_eq!(value, abi.encode_fixnum(42) as u64);
+    assert_eq!(value, Word::fixnum(42).bits());
     assert_eq!(count, 1);
     assert_eq!(SAFEPOINT_SLOW_CALLS.load(Ordering::SeqCst), 1);
 }
@@ -284,15 +265,10 @@ fn executes_builtin_call_with_context_and_arguments() {
         compiled.entry_offset as usize,
         &mut thread,
         2,
-        [
-            abi.encode_fixnum(4) as u64,
-            abi.encode_fixnum(5) as u64,
-            0,
-            0,
-        ],
+        [Word::fixnum(4).bits(), Word::fixnum(5).bits(), 0, 0],
         0,
     );
-    assert_eq!(value, abi.encode_fixnum(9) as u64);
+    assert_eq!(value, Word::fixnum(9).bits());
     assert_eq!(count, 1);
 }
 
@@ -338,7 +314,7 @@ fn loads_fifth_argument_from_rest_storage() {
     let mut code = alloc_code(compiled.code.len()).expect("code allocation");
     write_code(&mut code, 0, &compiled.code).expect("code write");
     publish_code(&mut code).expect("code publication");
-    let rest = [abi.encode_fixnum(7) as u64];
+    let rest = [Word::fixnum(7).bits()];
     let mut thread = Thread::new();
     let (value, count) = invoke_entry(
         &code,
@@ -348,7 +324,7 @@ fn loads_fifth_argument_from_rest_storage() {
         [1, 2, 3, 4],
         rest.as_ptr() as u64,
     );
-    assert_eq!(value, abi.encode_fixnum(7) as u64);
+    assert_eq!(value, Word::fixnum(7).bits());
     assert_eq!(count, 1);
 }
 
@@ -421,12 +397,12 @@ fn executes_both_branch_paths_with_block_arguments() {
             compiled.entry_offset as usize,
             &mut thread,
             1,
-            [abi.encode_fixnum(value) as u64, 0, 0, 0],
+            [Word::fixnum(value).bits(), 0, 0, 0],
             0,
         )
     };
-    assert_eq!(invoke(1), (abi.encode_fixnum(1) as u64, 1));
-    assert_eq!(invoke(2), (abi.encode_fixnum(2) as u64, 1));
+    assert_eq!(invoke(1), (Word::fixnum(1).bits(), 1));
+    assert_eq!(invoke(2), (Word::fixnum(2).bits(), 1));
 }
 
 #[path = "exec_aarch64/cons.rs"]

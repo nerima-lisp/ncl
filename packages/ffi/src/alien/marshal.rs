@@ -7,7 +7,6 @@ use ncl_object::{
     Bignum, DoubleFloat, Runtime, ThreadContext, Word, bignum_limbs, bignum_sign, double_value,
     make_bignum_from_i128, make_double,
 };
-use ncl_sys::LowTag;
 
 use super::{AlienType, size_of};
 use crate::FfiError;
@@ -119,7 +118,7 @@ pub fn unmarshal_result(
             })?;
             let bits = u64::from(f32::from_le_bytes(raw).to_bits());
             Ok(Word::from_bits(
-                (bits << 4) | u64::from(LowTag::SingleFloat as u8),
+                (bits << 4) | u64::from(LOWTAG_SINGLE_FLOAT),
             ))
         }
         AlienType::DoubleFloat => {
@@ -158,7 +157,12 @@ fn signed_bytes(value: i128, width: usize, type_name: &'static str) -> Result<Ve
     if value < minimum || value > maximum {
         return Err(FfiError::ValueOutOfRange { type_name });
     }
-    Ok(value.cast_unsigned().to_le_bytes()[..width].to_vec())
+    Ok(value
+        .cast_unsigned()
+        .to_le_bytes()
+        .into_iter()
+        .take(width)
+        .collect())
 }
 
 /// Encode an unsigned value in `width` little-endian bytes.
@@ -167,7 +171,7 @@ fn unsigned_bytes(value: u128, width: usize, type_name: &'static str) -> Result<
     if bits < 128 && value >= (1_u128 << bits) {
         return Err(FfiError::ValueOutOfRange { type_name });
     }
-    Ok(value.to_le_bytes()[..width].to_vec())
+    Ok(value.to_le_bytes().into_iter().take(width).collect())
 }
 
 /// Decode a signed value from little-endian bytes of any width up to 16.
@@ -176,7 +180,9 @@ fn read_signed(bytes: &[u8]) -> Result<i128, FfiError> {
     if bytes.len() > buffer.len() {
         return Err(FfiError::UnsupportedType("integer"));
     }
-    buffer[..bytes.len()].copy_from_slice(bytes);
+    for (destination, source) in buffer.iter_mut().zip(bytes) {
+        *destination = *source;
+    }
     let raw = i128::from_le_bytes(buffer);
     let width = u32::try_from(bytes.len() * 8).map_err(|_| FfiError::UnsupportedType("integer"))?;
     let shift = 128_u32.saturating_sub(width);
@@ -192,7 +198,9 @@ fn read_unsigned(bytes: &[u8]) -> Result<u128, FfiError> {
     if bytes.len() > buffer.len() {
         return Err(FfiError::UnsupportedType("integer"));
     }
-    buffer[..bytes.len()].copy_from_slice(bytes);
+    for (destination, source) in buffer.iter_mut().zip(bytes) {
+        *destination = *source;
+    }
     Ok(u128::from_le_bytes(buffer))
 }
 
@@ -222,17 +230,12 @@ fn boolean_value(value: Word) -> Result<bool, FfiError> {
 
 /// Decode a Lisp character into its Unicode scalar value.
 ///
-/// `Word::character` encodes `(scalar << 4) | 1`, so `Word::lowtag()` reports
-/// `List` for a character and `Word::is_character` never matches it. A cons
-/// address is a heap pointer far above the Unicode scalar range, so the scalar
-/// bound separates the two; this mirrors `ncl-printer`'s `character_code`.
+/// The sys word API owns character classification. The encoded address stores
+/// `code + 1`, so decoding removes the tag offset after the character shift.
 fn character_value(value: Word) -> Result<u32, FfiError> {
-    const SCALAR_LIMIT: u64 = 1 << 25;
-    if value.lowtag() == LowTag::List as u8 && value != Word::NIL && value.bits() < SCALAR_LIMIT {
-        u32::try_from(value.bits() >> 4).map_err(|_| FfiError::TypeMismatch { type_name: "char" })
-    } else {
-        Err(FfiError::TypeMismatch { type_name: "char" })
-    }
+    value
+        .as_character()
+        .ok_or(FfiError::TypeMismatch { type_name: "char" })
 }
 
 /// Decode a Lisp value into an `f32`, accepting a single- or double-float.
@@ -241,15 +244,15 @@ fn character_value(value: Word) -> Result<u32, FfiError> {
     reason = "a double-float passed where a float is declared narrows by design"
 )]
 fn single_value(ctx: &ThreadContext, value: Word) -> Result<f32, FfiError> {
-    if value.lowtag() == LowTag::SingleFloat as u8 {
+    if value.lowtag() == LOWTAG_SINGLE_FLOAT {
         let bits = (value.bits() >> 4) & 0xFFFF_FFFF;
         let bits = u32::try_from(bits).map_err(|_| FfiError::TypeMismatch {
             type_name: "single-float",
         })?;
         return Ok(f32::from_bits(bits));
     }
-    double_value(ctx, DoubleFloat::from(value))
-        .map(|double| double as f32)
+    double_value(ctx, DoubleFloat::from_word(value))
+        .map(f64_to_f32)
         .map_err(|_| FfiError::TypeMismatch {
             type_name: "single-float",
         })
@@ -257,16 +260,27 @@ fn single_value(ctx: &ThreadContext, value: Word) -> Result<f32, FfiError> {
 
 /// Decode a Lisp value into an `f64`, accepting a single- or double-float.
 fn double_value_of(ctx: &ThreadContext, value: Word) -> Result<f64, FfiError> {
-    if value.lowtag() == LowTag::SingleFloat as u8 {
+    if value.lowtag() == LOWTAG_SINGLE_FLOAT {
         let bits = (value.bits() >> 4) & 0xFFFF_FFFF;
         let bits = u32::try_from(bits).map_err(|_| FfiError::TypeMismatch {
             type_name: "double-float",
         })?;
         return Ok(f64::from(f32::from_bits(bits)));
     }
-    double_value(ctx, DoubleFloat::from(value)).map_err(|_| FfiError::TypeMismatch {
+    double_value(ctx, DoubleFloat::from_word(value)).map_err(|_| FfiError::TypeMismatch {
         type_name: "double-float",
     })
+}
+
+const LOWTAG_SINGLE_FLOAT: u8 = 2;
+
+#[allow(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    reason = "the foreign single-float ABI explicitly narrows a double value"
+)]
+const fn f64_to_f32(value: f64) -> f32 {
+    value as f32
 }
 
 /// Decode a pointer argument into an address.
@@ -322,7 +336,7 @@ fn word_to_u128(ctx: &ThreadContext, value: Word) -> Result<u128, FfiError> {
 
 /// Decode a bignum into its sign and magnitude.
 fn word_magnitude(ctx: &ThreadContext, value: Word) -> Result<(bool, u128), FfiError> {
-    let bignum = Bignum::from(value);
+    let bignum = Bignum::from_word(value);
     let limbs = bignum_limbs(ctx, bignum).map_err(|_| FfiError::TypeMismatch {
         type_name: "integer",
     })?;

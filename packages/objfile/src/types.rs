@@ -1,16 +1,6 @@
 use crate::ObjectError;
 
-#[cfg(target_pointer_width = "64")]
-pub(crate) fn target_usize(
-    value: u64,
-    _field: &'static str,
-    _error_value: u64,
-) -> Result<usize, ObjectError> {
-    Ok(value as usize)
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-pub(crate) fn target_usize(
+pub fn target_usize(
     value: u64,
     field: &'static str,
     error_value: u64,

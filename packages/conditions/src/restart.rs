@@ -2,7 +2,6 @@
 
 use ncl_object::{
     Runtime, ThreadContext, Word, make_cons, make_simple_vector, pop_root, push_root,
-    simple_vector_ref,
 };
 
 use crate::class::string_words_equal;
@@ -55,7 +54,9 @@ pub fn push_restart(
 
 /// Restore the handler cluster to the head before `record`.
 pub fn pop_restart(ctx: &mut ThreadContext, record: RestartRecord) {
-    let previous = simple_vector_ref(ctx, record.0, records::RESTART_PREVIOUS).unwrap_or(Word::NIL);
+    let previous = records::RestartRecord::from_word(record.0)
+        .previous(ctx)
+        .unwrap_or(Word::NIL);
     records::set_cluster_head(ctx, previous);
 }
 
@@ -66,10 +67,9 @@ pub fn pop_restart(ctx: &mut ThreadContext, record: RestartRecord) {
 pub fn find_restart(ctx: &ThreadContext, name: Word) -> Result<Option<Word>, ConditionError> {
     let mut head = records::cluster_head(ctx);
     while head != Word::NIL {
-        let kind = simple_vector_ref(ctx, head, records::KIND).map_err(ConditionError::from)?;
-        if kind == records::RESTART_TAG {
-            let restart_name = simple_vector_ref(ctx, head, records::RESTART_NAME)
-                .map_err(ConditionError::from)?;
+        let record = records::ClusterRecord::from_word(ctx, head).map_err(ConditionError::from)?;
+        if let records::ClusterRecord::Restart(restart) = record {
+            let restart_name = restart.name(ctx).map_err(ConditionError::from)?;
             if string_words_equal(ctx, restart_name, name)? {
                 return Ok(Some(head));
             }
@@ -90,8 +90,8 @@ pub fn compute_restarts(
     let mut list = Word::NIL;
     let mut head = records::cluster_head(ctx);
     while head != Word::NIL {
-        let kind = simple_vector_ref(ctx, head, records::KIND).map_err(ConditionError::from)?;
-        if kind == records::RESTART_TAG {
+        let record = records::ClusterRecord::from_word(ctx, head).map_err(ConditionError::from)?;
+        if matches!(record, records::ClusterRecord::Restart(_)) {
             let token_head = push_root(ctx, &mut head);
             let token_list = push_root(ctx, &mut list);
             list = make_cons(ctx, runtime, head, list).map_err(ConditionError::from)?;
@@ -111,8 +111,8 @@ pub fn compute_restarts(
 /// # Errors
 /// Returns an object-layer error when `restart` is malformed.
 pub fn invoke_restart(ctx: &mut ThreadContext, restart: Word) -> Result<Word, ConditionError> {
-    let function =
-        simple_vector_ref(ctx, restart, records::RESTART_FUNCTION).map_err(ConditionError::from)?;
+    let restart = records::RestartRecord::from_word(restart);
+    let function = restart.function(ctx).map_err(ConditionError::from)?;
     ctx.set_non_local_exit(true);
     Ok(function)
 }
@@ -146,7 +146,9 @@ pub fn push_cleanup(
 
 /// Restore the cleanup chain to the head before `record`.
 pub fn pop_cleanup(ctx: &mut ThreadContext, record: CleanupRecord) {
-    let previous = simple_vector_ref(ctx, record.0, records::CLEANUP_PREVIOUS).unwrap_or(Word::NIL);
+    let previous = records::CleanupRecord::from_word(record.0)
+        .previous(ctx)
+        .unwrap_or(Word::NIL);
     records::set_cleanup_head(ctx, previous);
 }
 

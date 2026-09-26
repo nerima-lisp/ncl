@@ -11,12 +11,12 @@ impl Runtime {
         let mut name_word = make_string(ctx, self, &name.chars().collect::<Vec<_>>())?;
         crate::with_root(ctx, &mut name_word, |context, name_word| {
             let table = Self::table(&self.packages)?;
-            if let Some(package) = HashTable::from(table).get(context, *name_word)? {
+            if let Some(package) = HashTable::from_word(table).get(context, *name_word)? {
                 return Ok(package);
             }
             let mut package = Package::new(context, self, name)?.as_word();
             crate::with_root(context, &mut package, |context, package| {
-                HashTable::from(Self::table(&self.packages)?)
+                HashTable::from_word(Self::table(&self.packages)?)
                     .insert(context, self, *name_word, *package)
             })?;
             Ok(package)
@@ -29,12 +29,12 @@ impl Runtime {
         let name_chars = name.chars().collect::<Vec<_>>();
         let mut result = None;
         let mut failure = None;
-        HashTable::from(table)
+        HashTable::from_word(table)
             .for_each_entry(context, |_, package| {
                 if result.is_some() || failure.is_some() {
                     return;
                 }
-                let package = Package::from(package);
+                let package = Package::from_word(package);
                 let matches = |word: Word| {
                     string_length(context, word).ok() == Some(name_chars.len())
                         && name_chars
@@ -113,7 +113,7 @@ impl Runtime {
             let mut name = make_string(context, self, &name.chars().collect::<Vec<_>>())?;
             crate::with_root(context, &mut name, |context, name| {
                 let table = Self::table(&self.classes)?;
-                HashTable::from(table).insert(context, self, *name, *class)
+                HashTable::from_word(table).insert(context, self, *name, *class)
             })
         })
     }
@@ -122,7 +122,7 @@ impl Runtime {
     pub fn class(&self, ctx: &mut ThreadContext, name: &str) -> Option<Word> {
         let name = make_string(ctx, self, &name.chars().collect::<Vec<_>>()).ok()?;
         let table = Self::table(&self.classes).ok()?;
-        HashTable::from(table).get(ctx, name).ok().flatten()
+        HashTable::from_word(table).get(ctx, name).ok().flatten()
     }
 
     pub fn add_feature(&self, feature: impl Into<String>) {

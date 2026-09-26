@@ -1,5 +1,5 @@
 use super::*;
-use crate::{alloc_code, publish_code, CodeObjectMetadata, CodeRegistry, SafepointMap};
+use crate::{CodeObjectMetadata, CodeRegistry, SafepointMap, alloc_code, publish_code};
 
 fn map_for_frame() -> SafepointMap {
     let mut bytes = vec![0; 16];
@@ -36,8 +36,8 @@ fn native_frame_capture_reads_registered_layout_and_writes_back() {
     assert!(crate::register_thread(&heap, &mut thread).is_ok());
     let Ok(mut code) = alloc_code(16) else { return };
     assert!(publish_code(&mut code).is_ok());
-    assert!(heap
-        .register_code(
+    assert!(
+        heap.register_code(
             &code,
             CodeObjectMetadata {
                 entry_offset: 0,
@@ -50,7 +50,8 @@ fn native_frame_capture_reads_registered_layout_and_writes_back() {
                 debug_table: Vec::new(),
             }
         )
-        .is_ok());
+        .is_ok()
+    );
     let mut storage = vec![Word::fixnum(9); 8];
     // SAFETY: the pointer stays within the live vector and the frame layout reads its initialized words.
     let frame_pointer = unsafe { storage.as_mut_ptr().add(3) } as usize;

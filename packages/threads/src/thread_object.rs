@@ -20,7 +20,7 @@ use crate::thread::{
 /// Returns [`ThreadError::NotAThread`] when the object has no identifier slot.
 pub fn object_id(ctx: &ThreadContext, thread: Word) -> Result<ThreadId, ThreadError> {
     let value =
-        slot_ref(ctx, Instance::from(thread), ID_SLOT).map_err(|_| ThreadError::NotAThread)?;
+        slot_ref(ctx, Instance::from_word(thread), ID_SLOT).map_err(|_| ThreadError::NotAThread)?;
     value
         .as_fixnum()
         .and_then(|id| u64::try_from(id).ok())
@@ -91,7 +91,7 @@ pub fn make_thread(
             with_root(ctx, &mut object, |ctx, object| {
                 let id = spawn(runtime, name, idle_body)?;
                 let id = i64::try_from(id.get()).map_err(|_| ThreadError::NotAThread)?;
-                slot_set(ctx, Instance::from(*object), ID_SLOT, Word::fixnum(id))?;
+                slot_set(ctx, Instance::from_word(*object), ID_SLOT, Word::fixnum(id))?;
                 push_all_threads(ctx, runtime, *object)?;
                 Ok(*object)
             })
@@ -163,7 +163,7 @@ pub fn thread_alive_p(ctx: &ThreadContext, thread: Word) -> Result<Word, ThreadE
 /// # Errors
 /// Returns an object-layer error when the name slot is malformed.
 pub fn thread_name_of(ctx: &ThreadContext, thread: Word) -> Result<Word, ThreadError> {
-    Ok(slot_ref(ctx, Instance::from(thread), NAME_SLOT)?)
+    Ok(slot_ref(ctx, Instance::from_word(thread), NAME_SLOT)?)
 }
 
 /// Return a thread object's recorded OS thread identifier.
@@ -185,7 +185,7 @@ pub fn terminate_thread(ctx: &mut ThreadContext, thread: Word) -> Result<(), Thr
     terminate(object_id(ctx, thread)?)?;
     slot_set(
         ctx,
-        Instance::from(thread),
+        Instance::from_word(thread),
         STATE_SLOT,
         Word::fixnum(STATE_TERMINATED),
     )?;
@@ -252,7 +252,7 @@ pub const fn thread_error_thread(_condition: Word) -> Result<Word, ThreadError> 
 /// # Errors
 /// Returns [`ThreadError::NotAThread`] for a non-thread object.
 pub fn thread_state_of(ctx: &ThreadContext, thread: Word) -> Result<i64, ThreadError> {
-    slot_ref(ctx, Instance::from(thread), STATE_SLOT)
+    slot_ref(ctx, Instance::from_word(thread), STATE_SLOT)
         .map_err(|_| ThreadError::NotAThread)?
         .as_fixnum()
         .ok_or(ThreadError::NotAThread)

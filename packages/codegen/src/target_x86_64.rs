@@ -1,4 +1,7 @@
-use crate::{CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, SafepointMap, checked_u32};
+use crate::{
+    AllocationTarget, CodegenError, CompiledFunction, FrameLayout, RuntimeAbi, SafepointMap,
+    allocate, checked_u32,
+};
 use crate::{FLAG_ALLOCATION_SLOW, FLAG_CALL, FLAG_LOOP_BACKEDGE};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, OpKind, Terminator};
@@ -22,11 +25,13 @@ fn add_map(
     maps: &mut Vec<SafepointMap>,
     pc: u32,
     frame: FrameLayout,
+    values: &ValueSlots,
+    position: u32,
     flags: u32,
 ) -> Result<(), CodegenError> {
     let slots = u16::try_from(frame.frame_words).map_err(|_| CodegenError::FrameOverflow)?;
-    let live_slots = (4..slots).collect::<Vec<_>>();
-    SafepointMap::new(pc, slots, slots, &live_slots, &[0], flags)
+    let (registers, live_slots) = values.roots(position);
+    SafepointMap::new(pc, slots, slots, &live_slots, &registers, flags)
         .map(|map| maps.push(map))
         .map_err(|error| CodegenError::Encode(error.to_string()))
 }
@@ -76,8 +81,16 @@ pub fn compile_function_x86_64(
     };
     let argument_words =
         u32::try_from(function.params.len()).map_err(|_| CodegenError::FrameOverflow)?;
-    let (value_slots, local_words) = slots(function, argument_words);
-    let frame = FrameLayout::new(argument_words, local_words, 0)?;
+    let allocation = allocate(function, AllocationTarget::X86_64);
+    let spill_words = allocation.spill_words;
+    let (value_slots, local_words) = slots(function, argument_words, allocation);
+    let frame = FrameLayout::new(
+        argument_words,
+        local_words
+            .checked_add(spill_words)
+            .ok_or(CodegenError::FrameOverflow)?,
+        0,
+    )?;
     let mut assembler = Assembler::new();
     let labels = function
         .blocks
@@ -107,6 +120,23 @@ pub fn compile_function_x86_64(
         )?;
     }
     spill_arguments(&mut assembler, argument_words)?;
+    for (index, parameter) in function
+        .blocks
+        .first()
+        .map(|block| block.params.iter())
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let offset = i32::try_from(index.saturating_add(1).saturating_mul(8))
+            .map_err(|_| CodegenError::FrameOverflow)?;
+        emit(
+            &mut assembler,
+            Inst::MovRM(ENTRY, Mem::base(FRAME_POINTER, -offset)),
+        )?;
+        lowering::store_slot(&mut assembler, &value_slots, parameter.value, ENTRY)?;
+    }
+    let mut position = 0u32;
     for block in &function.blocks {
         assembler.bind(labels[&block.id]);
         for op in &block.ops {
@@ -116,6 +146,8 @@ pub fn compile_function_x86_64(
                     &mut maps,
                     call_pc.unwrap_or(checked_u32(assembler.bytes().len())?),
                     frame,
+                    &value_slots,
+                    position,
                     FLAG_ALLOCATION_SLOW,
                 )?;
             } else if matches!(
@@ -133,9 +165,12 @@ pub fn compile_function_x86_64(
                     &mut maps,
                     call_pc.unwrap_or(checked_u32(assembler.bytes().len())?),
                     frame,
+                    &value_slots,
+                    position,
                     FLAG_CALL,
                 )?;
             }
+            position = position.saturating_add(1);
         }
         match &block.terminator {
             Terminator::Jump { target, args } => {
@@ -151,6 +186,8 @@ pub fn compile_function_x86_64(
                         &mut maps,
                         checked_u32(assembler.bytes().len())?,
                         frame,
+                        &value_slots,
+                        position,
                         FLAG_LOOP_BACKEDGE,
                     )?;
                 }
@@ -231,7 +268,11 @@ pub fn compile_function_x86_64(
                 if let Some(value) = values.first() {
                     load_slot(&mut assembler, &value_slots, *value, RETURN_VALUE)?;
                 } else {
-                    load_immediate(&mut assembler, RETURN_VALUE, abi.encode_fixnum(0))?;
+                    load_immediate(
+                        &mut assembler,
+                        RETURN_VALUE,
+                        i64::from_ne_bytes(ncl_sys::Word::fixnum(0).bits().to_ne_bytes()),
+                    )?;
                 }
                 load_immediate(
                     &mut assembler,
@@ -243,13 +284,14 @@ pub fn compile_function_x86_64(
             Terminator::CallReturn { function, args } | Terminator::TailCall { function, args } => {
                 lower_call(&mut assembler, *function, args, &value_slots)?;
                 let call_pc = emit_call(&mut assembler)?;
-                add_map(&mut maps, call_pc, frame, FLAG_CALL)?;
+                add_map(&mut maps, call_pc, frame, &value_slots, position, FLAG_CALL)?;
                 emit_epilogue(&mut assembler)?;
             }
             Terminator::Throw { .. } | Terminator::Unreachable => {
                 emit(&mut assembler, Inst::Ud2)?;
             }
         }
+        position = position.saturating_add(1);
     }
     let blob = assembler
         .finish()

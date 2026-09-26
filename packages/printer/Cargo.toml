@@ -12,4 +12,22 @@ ncl-object = { path = "../object" }
 ncl-ownership = { path = "../ownership" }
 
 [lints]
-workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+panic = "deny"
+as_conversions = "deny"
+wildcard_enum_match_arm = "deny"
+fn_params_excessive_bools = "deny"
+struct_excessive_bools = "deny"
+string_slice = "deny"

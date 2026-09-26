@@ -127,7 +127,7 @@ fn downcase_readtable_case_folds_symbols() {
     )
     .unwrap();
     let mut opts = standard(&runtime, &mut ctx);
-    opts.readtable = table;
+    opts.set_readtable(table);
     let mut source = ncl_reader::StringSource::new("HELLO");
     let word = read(&mut ctx, &runtime, &mut source, &opts)
         .unwrap()
@@ -143,7 +143,7 @@ fn reads_keyword_symbols() {
     let kw = read_one(&runtime, &mut ctx, ":foo");
     assert_eq!(name_of(&ctx, kw), "FOO");
     let pkg = ncl_object::symbol_package(&ctx, kw).unwrap();
-    let pkg_name = ncl_object::Package::from(pkg).name(&ctx).unwrap();
+    let pkg_name = ncl_object::Package::from_word(pkg).name(&ctx).unwrap();
     let len = string_length(&ctx, pkg_name).unwrap();
     let pkg_name: String = (0..len)
         .map(|i| string_ref(&ctx, pkg_name, i).unwrap())
@@ -307,7 +307,7 @@ fn read_base_is_honoured() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     let mut opts = standard(&runtime, &mut ctx);
-    opts.read_base = 16;
+    opts.set_read_base(ncl_reader::ReadBase::new(16).unwrap());
     let mut source = ncl_reader::StringSource::new("ff");
     let word = read(&mut ctx, &runtime, &mut source, &opts)
         .unwrap()

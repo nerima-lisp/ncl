@@ -47,7 +47,21 @@ impl std::fmt::Display for ThreadError {
         match self {
             Self::Object(error) => write!(f, "object error: {error}"),
             Self::Condition(error) => write!(f, "condition error: {error}"),
-            other => write!(f, "{other:?}"),
+            Self::NotAThread => f.write_str("not a thread"),
+            Self::NotAMutex => f.write_str("not a mutex"),
+            Self::NotASemaphore => f.write_str("not a semaphore"),
+            Self::NotAWaitQueue => f.write_str("not a wait queue"),
+            Self::NotATimer => f.write_str("not a timer"),
+            Self::NotARwLock => f.write_str("not a read/write lock"),
+            Self::NotAProcess => f.write_str("not a process"),
+            Self::NotRunning => f.write_str("thread is not running"),
+            Self::JoinTimeout => f.write_str("thread join timed out"),
+            Self::Timeout => f.write_str("operation timed out"),
+            Self::Interrupted => f.write_str("operation interrupted"),
+            Self::Deadlock => f.write_str("operation would deadlock"),
+            Self::SpawnFailed => f.write_str("thread spawn failed"),
+            Self::MissingClass => f.write_str("registered class is missing"),
+            Self::RootStackCorrupted => f.write_str("root stack is corrupted"),
         }
     }
 }
@@ -57,7 +71,21 @@ impl std::error::Error for ThreadError {
         match self {
             Self::Object(error) => Some(error),
             Self::Condition(error) => Some(error),
-            _ => None,
+            Self::NotAThread
+            | Self::NotAMutex
+            | Self::NotASemaphore
+            | Self::NotAWaitQueue
+            | Self::NotATimer
+            | Self::NotARwLock
+            | Self::NotAProcess
+            | Self::NotRunning
+            | Self::JoinTimeout
+            | Self::Timeout
+            | Self::Interrupted
+            | Self::Deadlock
+            | Self::SpawnFailed
+            | Self::MissingClass
+            | Self::RootStackCorrupted => None,
         }
     }
 }

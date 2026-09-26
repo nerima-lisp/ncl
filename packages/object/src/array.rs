@@ -1,4 +1,4 @@
-use crate::{allocate, layout, with_roots, ObjectError, Runtime, ThreadContext};
+use crate::{ObjectError, Runtime, ThreadContext, allocate, layout, with_roots};
 use crate::{specialized_array_ref, specialized_array_set};
 use ncl_sys::Word;
 /// Options for constructing a non-simple array.
@@ -152,8 +152,7 @@ pub fn string_ref(ctx: &ThreadContext, object: Word, index: usize) -> Result<cha
         layout::string_offset::DATA + index,
         layout::widetag::STRING,
     )?;
-    char::from_u32(u32::try_from(word.bits() >> 4).map_err(|_| ObjectError::Layout)?)
-        .ok_or(ObjectError::Layout)
+    char::from_u32(word.as_character().ok_or(ObjectError::Layout)?).ok_or(ObjectError::Layout)
 }
 
 /// Write a character into a string.
@@ -490,79 +489,5 @@ pub fn array_row_major_set(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{length, read, write, ArrayElementType};
-    use crate::{make_simple_vector, make_string, Runtime, ThreadContext};
-    use ncl_sys::Word;
-
-    #[test]
-    fn element_type_decoding_and_low_level_array_access_are_explicit() {
-        for (value, expected) in [
-            (0, ArrayElementType::T),
-            (1, ArrayElementType::Bit),
-            (2, ArrayElementType::Character),
-            (3, ArrayElementType::BaseChar),
-            (4, ArrayElementType::Fixnum),
-            (5, ArrayElementType::Signed),
-            (6, ArrayElementType::Unsigned),
-            (7, ArrayElementType::SingleFloat),
-            (8, ArrayElementType::DoubleFloat),
-        ] {
-            assert_eq!(
-                ArrayElementType::from_word(Word::fixnum(value)),
-                Ok(expected)
-            );
-        }
-        assert_eq!(
-            ArrayElementType::from_word(Word::fixnum(9)),
-            Err(crate::ObjectError::Layout)
-        );
-        assert_eq!(
-            ArrayElementType::from_word(Word::TRUE),
-            Err(crate::ObjectError::Layout)
-        );
-
-        let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
-        let mut context = ThreadContext::new();
-        context
-            .register(&runtime)
-            .unwrap_or_else(|error| panic!("register: {error:?}"));
-        let vector =
-            make_simple_vector(&mut context, &runtime, &[Word::fixnum(3)]).unwrap_or(Word::NIL);
-        assert_eq!(
-            length(&context, vector, crate::widetag::SIMPLE_VECTOR, 0),
-            Ok(1)
-        );
-        assert_eq!(
-            read(&context, vector, 1, crate::widetag::SIMPLE_VECTOR),
-            Ok(Word::fixnum(3))
-        );
-        assert!(write(
-            &mut context,
-            vector,
-            1,
-            Word::fixnum(4),
-            crate::widetag::SIMPLE_VECTOR
-        )
-        .is_ok());
-        assert_eq!(
-            read(&context, vector, 1, crate::widetag::STRING),
-            Err(crate::ObjectError::TypeError)
-        );
-        assert_eq!(
-            length(&context, Word::NIL, crate::widetag::SIMPLE_VECTOR, 0),
-            Err(crate::ObjectError::TypeError)
-        );
-        let string = make_string(&mut context, &runtime, &['x']).unwrap_or(Word::NIL);
-        assert_eq!(
-            read(&context, string, 1, crate::widetag::STRING),
-            Ok(Word::character('x' as u32))
-        );
-        assert_eq!(
-            write(&mut context, string, 2, Word::NIL, crate::widetag::STRING),
-            Err(crate::ObjectError::Storage(
-                ncl_sys::StorageCondition::ThreadNotRegistered
-            ))
-        );
-    }
-}
+#[path = "array_coverage_tests.rs"]
+mod tests;

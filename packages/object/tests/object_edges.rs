@@ -30,6 +30,24 @@ fn classify_covers_immediate_and_pointer_lowtags() {
 }
 
 #[test]
+fn classify_unbound_as_immediate_and_preserve_fixnum_two() {
+    assert_eq!(classify(Word::UNBOUND), ObjectRef::Immediate(Word::UNBOUND));
+    assert_eq!(classify(Word::fixnum(2)), ObjectRef::Fixnum(2));
+}
+
+#[test]
+fn symbol_value_fixnum_two_is_not_unbound() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register failed: {error:?}"));
+    let symbol = ncl_object::make_symbol(&mut ctx, &runtime, Word::NIL).unwrap_or(Word::NIL);
+    ncl_object::set_symbol_value(&mut ctx, symbol, Word::fixnum(2))
+        .unwrap_or_else(|error| panic!("set_symbol_value failed: {error:?}"));
+    assert_eq!(ncl_object::symbol_value(&ctx, symbol), Ok(Word::fixnum(2)));
+}
+
+#[test]
 fn runtime_and_context_state_report_observed_values() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("Runtime::new failed: {error:?}"));
     let mut ctx = ThreadContext::new();
@@ -72,5 +90,8 @@ fn accessors_return_type_and_bounds_errors() {
         simple_vector_ref(&ctx, vector, 1),
         Err(ObjectError::TypeError)
     );
-    assert_eq!(classify_object(&ctx, Word::UNBOUND), ObjectRef::Fixnum(2));
+    assert_eq!(
+        classify_object(&ctx, Word::UNBOUND),
+        ObjectRef::Immediate(Word::UNBOUND)
+    );
 }

@@ -1,15 +1,12 @@
 //! Value types representing parsed Common Lisp type specifiers.
 
-use ncl_object::Word;
-
 /// A parsed Common Lisp type specifier.
 ///
 /// [`TypeSpecifier`] is a value object produced by
 /// [`parse_type_specifier`](crate::parse_type_specifier) and consumed by
 /// [`typep`](crate::typep()) and [`subtypep`](crate::subtypep()). Variants that
-/// carry heap [`Word`]s (`IntegerRange`, `Member`, `Eql`, `Satisfies`,
-/// `Deftype`) reference the objects of the source form; a parsed specifier
-/// must not outlive the root protection of that form.
+/// carries no object-layer representation. Conversion to and from runtime
+/// objects is confined to the adapter module.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum TypeSpecifier {
@@ -17,10 +14,10 @@ pub enum TypeSpecifier {
     Named(NamedType),
     /// `(integer low high)`; `None` marks an unbounded (`*`) end.
     IntegerRange {
-        /// Lower bound; `None` means `*`.
-        low: Option<Word>,
-        /// Upper bound; `None` means `*`.
-        high: Option<Word>,
+        /// Lower bound.
+        low: IntegerBound,
+        /// Upper bound.
+        high: IntegerBound,
     },
     /// `(or spec*)`.
     Or(Vec<Self>),
@@ -29,11 +26,11 @@ pub enum TypeSpecifier {
     /// `(not spec)`.
     Not(Box<Self>),
     /// `(member object*)`.
-    Member(Vec<Word>),
+    Member(Vec<Value>),
     /// `(eql object)`.
-    Eql(Word),
+    Eql(Value),
     /// `(satisfies predicate)`.
-    Satisfies(Word),
+    Satisfies(String),
     /// `(array element-type dimensions)` and `(simple-array ...)`.
     Array {
         /// Element type; `None` matches any element type.
@@ -48,7 +45,7 @@ pub enum TypeSpecifier {
         /// Element type; `None` matches any element type.
         element_type: Option<Box<Self>>,
         /// Fixed length; `None` matches any length.
-        size: Option<Word>,
+        size: Option<ArrayDimension>,
     },
     /// `(cons car-type cdr-type)`.
     Cons {
@@ -69,9 +66,9 @@ pub enum TypeSpecifier {
     /// A `deftype` name awaiting expansion.
     Deftype {
         /// The `deftype` name symbol.
-        name: Word,
+        name: String,
         /// Arguments passed to the `deftype` definition.
-        args: Vec<Word>,
+        args: Vec<Value>,
     },
 }
 
@@ -82,9 +79,55 @@ pub enum ArrayDimensions {
     /// `*`: any rank.
     Wild,
     /// A dimension list such as `(3 4)` or `(* 4)`; `None` marks `*`.
-    Ranks(Vec<Option<Word>>),
+    Ranks(Vec<ArrayDimension>),
     /// A single rank, as in `(array t 3)`.
     Rank(usize),
+}
+
+/// A boundary in an integer type specifier. `Exclusive(n)` represents the
+/// CLHS `(n)` notation and is therefore not folded into a magic sentinel.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum IntegerBound {
+    /// `*`, with no finite boundary.
+    Unbounded,
+    /// An inclusive integer boundary.
+    Inclusive(i64),
+    /// An exclusive integer boundary, written `(n)` in a type specifier.
+    Exclusive(i64),
+}
+
+/// A single array dimension or vector length constraint.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ArrayDimension {
+    /// `*`, accepting any value.
+    Any,
+    /// A concrete dimension or length.
+    Exact(usize),
+    /// An exclusive dimension or length boundary.
+    Exclusive(usize),
+}
+
+/// Object values that can occur in a type specifier.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum Value {
+    /// NIL.
+    Nil,
+    /// T.
+    True,
+    /// A fixnum value.
+    Integer(i64),
+    /// An immediate character.
+    Character(u32),
+    /// A string value.
+    String(String),
+    /// A symbol name, normalized by the adapter.
+    Symbol(String),
+    /// An object whose identity is meaningful but whose domain shape is not
+    /// modeled by this crate.
+    Opaque(u64),
 }
 
 /// Atomic standard type names.

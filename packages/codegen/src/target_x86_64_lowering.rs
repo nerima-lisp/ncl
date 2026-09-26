@@ -1,5 +1,8 @@
 use crate::isa_x86_64::{SCRATCH, THREAD_CONTEXT};
-use crate::{CodegenError, ContextField, RuntimeAbi, RuntimeFunction};
+use crate::{
+    Allocation, BuiltinName, CodegenError, ContextField, Location, RuntimeAbi, RuntimeEntry,
+    RuntimeFunction,
+};
 use ncl_asm_x86_64::{Assembler, BinOp, Cond, Imm, Inst, Mem, Reg};
 use ncl_ir::{Function, ValueId};
 
@@ -39,7 +42,64 @@ pub(super) fn load_immediate(
     emit(assembler, Inst::MovRI(register, immediate))
 }
 
-pub(super) fn slots(function: &Function, argument_words: u32) -> (Vec<(ValueId, u32)>, u32) {
+pub(super) struct ValueSlots {
+    values: Vec<(ValueId, u32)>,
+    allocation: Allocation,
+    spill_base: u32,
+}
+
+impl ValueSlots {
+    pub(super) fn location(&self, value: ValueId) -> Result<Location, CodegenError> {
+        self.allocation
+            .location(value)
+            .ok_or(CodegenError::UnknownValue(value))
+    }
+
+    pub(super) fn stack_index(&self, value: ValueId) -> Result<u32, CodegenError> {
+        match self.location(value)? {
+            Location::Spill(index) => self
+                .spill_base
+                .checked_add(index)
+                .ok_or(CodegenError::FrameOverflow),
+            Location::Register(_) => slot(self, value),
+        }
+    }
+
+    pub(super) fn roots(&self, position: u32) -> (Vec<u16>, Vec<u16>) {
+        let mut registers = Vec::new();
+        let mut spills = Vec::new();
+        for interval in &self.allocation.intervals {
+            if interval.ty != ncl_ir::Ty::Word
+                || interval.start >= position
+                || position > interval.end
+            {
+                continue;
+            }
+            match self.allocation.location(interval.value) {
+                Some(Location::Register(register)) => registers.push(register),
+                Some(Location::Spill(spill)) => {
+                    if let Some(slot) = self.spill_base.checked_add(spill)
+                        && let Ok(slot) = u16::try_from(slot)
+                    {
+                        spills.push(slot);
+                    }
+                }
+                None => {}
+            }
+        }
+        registers.sort_unstable();
+        registers.dedup();
+        spills.sort_unstable();
+        spills.dedup();
+        (registers, spills)
+    }
+}
+
+pub(super) fn slots(
+    function: &Function,
+    argument_words: u32,
+    allocation: Allocation,
+) -> (ValueSlots, u32) {
     let mut result = Vec::new();
     let mut next = argument_words;
     for block in &function.blocks {
@@ -54,11 +114,21 @@ pub(super) fn slots(function: &Function, argument_words: u32) -> (Vec<(ValueId, 
             }
         }
     }
-    (result, next.saturating_sub(argument_words))
+    let local_words = next.saturating_sub(argument_words);
+    let spill_base = argument_words.saturating_add(local_words);
+    (
+        ValueSlots {
+            values: result,
+            allocation,
+            spill_base,
+        },
+        local_words,
+    )
 }
 
-pub(super) fn slot(slots: &[(ValueId, u32)], value: ValueId) -> Result<u32, CodegenError> {
+fn slot(slots: &ValueSlots, value: ValueId) -> Result<u32, CodegenError> {
     slots
+        .values
         .iter()
         .find(|(id, _)| *id == value)
         .map(|(_, index)| *index)
@@ -77,26 +147,52 @@ pub(super) fn slot_mem_of(index: u32) -> Result<Mem, CodegenError> {
     ))
 }
 
-fn slot_mem(slots: &[(ValueId, u32)], value: ValueId) -> Result<Mem, CodegenError> {
-    slot_mem_of(slot(slots, value)?)
+fn value_location(slots: &ValueSlots, value: ValueId) -> Result<Location, CodegenError> {
+    slots.location(value)
+}
+
+fn stack_index(slots: &ValueSlots, value: ValueId) -> Result<u32, CodegenError> {
+    slots.stack_index(value)
+}
+
+fn slot_mem(slots: &ValueSlots, value: ValueId) -> Result<Mem, CodegenError> {
+    slot_mem_of(stack_index(slots, value)?)
 }
 
 pub(super) fn load_slot(
     assembler: &mut Assembler,
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
     value: ValueId,
     register: Reg,
 ) -> Result<(), CodegenError> {
-    emit(assembler, Inst::MovRM(register, slot_mem(slots, value)?))
+    match value_location(slots, value)? {
+        Location::Register(id) => {
+            let source = Reg::from_id(u8::try_from(id).map_err(|_| CodegenError::FrameOverflow)?)
+                .ok_or(CodegenError::FrameOverflow)?;
+            emit(assembler, Inst::MovRR(register, source))
+        }
+        Location::Spill(_) => emit(assembler, Inst::MovRM(register, slot_mem(slots, value)?)),
+    }
 }
 
-fn store_slot(
+pub(super) fn store_slot(
     assembler: &mut Assembler,
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
     value: ValueId,
     register: Reg,
 ) -> Result<(), CodegenError> {
-    emit(assembler, Inst::MovMR(slot_mem(slots, value)?, register))
+    match value_location(slots, value)? {
+        Location::Register(id) => {
+            let destination =
+                Reg::from_id(u8::try_from(id).map_err(|_| CodegenError::FrameOverflow)?)
+                    .ok_or(CodegenError::FrameOverflow)?;
+            if destination != register {
+                emit(assembler, Inst::MovRR(destination, register))?;
+            }
+            Ok(())
+        }
+        Location::Spill(_) => emit(assembler, Inst::MovMR(slot_mem(slots, value)?, register)),
+    }
 }
 
 /// Emits an indirect call and returns the offset of the callee's return address.
@@ -126,7 +222,7 @@ pub(super) fn lower_call(
     assembler: &mut Assembler,
     callee: ValueId,
     args: &[ValueId],
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
     if args.len() > ARGUMENT_REGISTERS.len() {
         return Err(CodegenError::Unsupported(
@@ -150,7 +246,7 @@ pub(super) fn lower_closure_call(
     assembler: &mut Assembler,
     closure: ValueId,
     args: &[ValueId],
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
 ) -> Result<(), CodegenError> {
     lower_call(assembler, closure, args, slots)?;
     emit(assembler, Inst::MovRM(ENTRY, Mem::base(FUNCTION_OBJECT, 0)))
@@ -161,7 +257,7 @@ pub(super) fn lower_runtime_builtin(
     name: &str,
     immediate_args: &[i64],
     value_args: &[ValueId],
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     if immediate_args.len() + value_args.len() > ARGUMENT_REGISTERS.len() {
@@ -170,7 +266,7 @@ pub(super) fn lower_runtime_builtin(
         ));
     }
     let address = abi
-        .runtime_address(RuntimeFunction::Builtin, Some(name))
+        .runtime_entry_address(RuntimeEntry::Builtin(BuiltinName::new(name)))
         .map(u64::cast_signed)
         .ok_or_else(|| {
             CodegenError::Unsupported(format!("runtime address is unavailable: {name}"))
@@ -242,7 +338,7 @@ fn lower_alloc(
     assembler: &mut Assembler,
     words: u32,
     result: Option<ValueId>,
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
     abi: &dyn RuntimeAbi,
 ) -> Result<u32, CodegenError> {
     let bytes = words
@@ -324,7 +420,7 @@ fn lower_builtin(
     assembler: &mut Assembler,
     name: &str,
     args: &[ValueId],
-    slots: &[(ValueId, u32)],
+    slots: &ValueSlots,
     abi: &dyn RuntimeAbi,
 ) -> Result<(), CodegenError> {
     if args.len() > ARGUMENT_REGISTERS.len() {
@@ -332,9 +428,11 @@ fn lower_builtin(
             "x86-64 builtins support at most four arguments".into(),
         ));
     }
-    let address = abi.builtin_address(name).ok_or_else(|| {
-        CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
-    })?;
+    let address = abi
+        .builtin_address_named(BuiltinName::new(name))
+        .ok_or_else(|| {
+            CodegenError::Unsupported(format!("builtin address is unavailable: {name}"))
+        })?;
     emit(assembler, Inst::MovRR(ARGUMENT_COUNT, THREAD_CONTEXT))?;
     load_immediate(assembler, ENTRY, address.cast_signed())?;
     for (index, argument) in args.iter().enumerate() {

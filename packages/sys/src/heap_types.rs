@@ -9,6 +9,8 @@ pub enum StorageCondition {
     InvalidSize,
     /// An operation requiring a mutator was attempted by an unregistered thread.
     ThreadNotRegistered,
+    /// The allocator returned a heap address in the immediate-value range.
+    HeapAddressTooLow,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// The storage class used to choose object layout and collection policy.

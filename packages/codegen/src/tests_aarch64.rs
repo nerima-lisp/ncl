@@ -18,14 +18,6 @@ fn decoded_text(bytes: [u8; 4], label: &str) -> String {
 struct Aarch64FixtureAbi;
 
 impl RuntimeAbi for Aarch64FixtureAbi {
-    fn encode_fixnum(&self, value: i64) -> i64 {
-        value << 3
-    }
-
-    fn encode_character(&self, value: u32) -> i64 {
-        i64::from(value) << 8 | 0x0f
-    }
-
     fn builtin_address(&self, _name: &str) -> Option<u64> {
         None
     }
@@ -182,6 +174,7 @@ fn golden_aarch64_safepoint_pc_follows_emitted_instruction() {
 }
 
 #[test]
+#[allow(clippy::chunks_exact_to_as_chunks)]
 fn golden_aarch64_prologue_spills_register_arguments() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(28),
@@ -209,19 +202,67 @@ fn golden_aarch64_prologue_spills_register_arguments() {
     let Some(compiled) = compiled_result.ok() else {
         return;
     };
-    let word = |offset| {
-        u32::from_le_bytes(
-            compiled.code[offset..offset + 4]
-                .try_into()
-                .unwrap_or([0; 4]),
-        )
+    let instructions = compiled
+        .code
+        .chunks_exact(4)
+        .map(|bytes| {
+            decoded_text(
+                bytes.try_into().unwrap_or([0; 4]),
+                "decode argument initialization",
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        instructions
+            .iter()
+            .any(|text| text == "orr x6, x31, x1, lsl #0")
+    );
+    assert!(
+        instructions
+            .iter()
+            .any(|text| text == "orr x7, x31, x2, lsl #0")
+    );
+}
+
+#[test]
+#[allow(clippy::chunks_exact_to_as_chunks)]
+fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(29),
+        "allocator-locations",
+        Vec::new(),
+        vec![Ty::Word],
+    );
+    let mut values = Vec::new();
+    for index in 0..12 {
+        let constant = builder.add_constant(Constant::Fixnum(index));
+        values.push(
+            match builder.push_op(OpKind::Const { result: constant }, &[Ty::Word]) {
+                Ok(ids) => ids[0],
+                Err(error) => unreachable!("constant: {error:?}"),
+            },
+        );
+    }
+    assert!(builder.push_op(OpKind::Safepoint, &[]).is_ok(), "safepoint");
+    assert!(
+        builder.terminate(Terminator::Return { values }).is_ok(),
+        "return"
+    );
+
+    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
+        Ok(compiled) => compiled,
+        Err(error) => unreachable!("{error:?}"),
     };
-    assert_eq!(
-        decoded_text(word(24).to_le_bytes(), "decode STR x1"),
-        "str x1, [x29, #-8]"
+    let Some(map) = compiled.safepoint_maps.first() else {
+        unreachable!("safepoint map");
+    };
+    assert!(
+        compiled.frame_size > 32,
+        "spill slots must extend the frame"
     );
-    assert_eq!(
-        decoded_text(word(28).to_le_bytes(), "decode STR x2"),
-        "str x2, [x29, #-16]"
+    assert!(
+        map.registers.is_empty(),
+        "safepoint-crossing values are spilled"
     );
+    assert!(map.bitmap.iter().any(|byte| byte & (1 << 4) != 0));
 }

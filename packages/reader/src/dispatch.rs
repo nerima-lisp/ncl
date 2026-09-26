@@ -10,9 +10,9 @@ use crate::error::ReadError;
 use crate::features::eval_feature_expr;
 use crate::input::CharSource;
 use crate::number::{digit_value, parse_integer_chars};
-use crate::reader::{ReadOptions, intern_common_lisp, read_form, read_list};
+use crate::reader::{ReadOptions, read_form, read_list};
 use crate::readtable::readtable_from_word;
-use crate::token::{fold_name, read_token_chars};
+use crate::token::{intern_common_lisp, read_token_chars};
 
 /// Handle the `#` dispatch macro character, returning the sub-form or `None`
 /// when nothing was produced (a block comment).
@@ -44,7 +44,7 @@ pub fn read_sharp(
         '*' => read_bit_vector(ctx, runtime, source).map(Some),
         ':' => read_uninterned(ctx, runtime, source, rt).map(Some),
         '.' => {
-            if opts.read_eval {
+            if matches!(opts.read_evaluation(), crate::ReadEvaluation::Enabled) {
                 Err(ReadError::ReadEvalUnavailable)
             } else {
                 Err(ReadError::ReadEvalDisabled)
@@ -62,9 +62,9 @@ pub fn read_sharp(
         'x' | 'X' => read_radix(ctx, runtime, source, 16).map(Some),
         'd' | 'D' => read_radix(ctx, runtime, source, 10).map(Some),
         'c' | 'C' => read_complex(ctx, runtime, source, opts, rt, labels).map(Some),
-        'a' | 'A' => Err(ReadError::Unsupported("array syntax #a".to_owned())),
-        's' | 'S' => Err(ReadError::Unsupported("structure syntax #s".to_owned())),
-        'p' | 'P' => Err(ReadError::Unsupported("pathname syntax #p".to_owned())),
+        'a' | 'A' => Err(ReadError::ArraySyntax),
+        's' | 'S' => Err(ReadError::StructureSyntax),
+        'p' | 'P' => Err(ReadError::PathnameSyntax),
         '0'..='9' => {
             source.unread_char(sub);
             let number = read_label_number(source)?;
@@ -142,11 +142,12 @@ fn read_uninterned(
     source: &mut dyn CharSource,
     rt: &Word,
 ) -> Result<Word, ReadError> {
-    let Some((chars, escaped)) = read_token_chars(ctx, source, rt)? else {
+    let Some(token) = read_token_chars(ctx, source, rt)? else {
         return Err(ReadError::UnexpectedEof);
     };
     let case = readtable_from_word(*rt)?.case_mode(ctx)?;
-    let name = fold_name(&chars, &escaped, case);
+    let range = 0..token.characters().len();
+    let name = token.fold_name(&range, case);
     let name_word = make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
     Ok(make_symbol(ctx, runtime, name_word)?)
 }
@@ -299,7 +300,7 @@ fn read_label(
     let table = ensure_labels_table(ctx, runtime, labels)?;
     let mut form = form;
     let token = push_root(ctx, &mut form);
-    let result = HashTable::from(table).insert(ctx, runtime, Word::fixnum(label), form);
+    let result = HashTable::from_word(table).insert(ctx, runtime, Word::fixnum(label), form);
     let _ = pop_root(ctx, token);
     result?;
     Ok(Some(form))
@@ -318,7 +319,7 @@ fn read_label_ref(
     }
     let mut table = *labels;
     let token = push_root(ctx, &mut table);
-    let value = HashTable::from(table).get(ctx, Word::fixnum(label))?;
+    let value = HashTable::from_word(table).get(ctx, Word::fixnum(label))?;
     let _ = pop_root(ctx, token);
     value
         .map(Some)

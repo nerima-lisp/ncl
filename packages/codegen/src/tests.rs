@@ -54,14 +54,6 @@ fn constant_return(id: u32, name: &str, value: i64) -> ncl_ir::Function {
 struct Aarch64FixtureAbi;
 
 impl RuntimeAbi for Aarch64FixtureAbi {
-    fn encode_fixnum(&self, value: i64) -> i64 {
-        value << 3
-    }
-
-    fn encode_character(&self, value: u32) -> i64 {
-        i64::from(value) << 8 | 0x0f
-    }
-
     fn builtin_address(&self, name: &str) -> Option<u64> {
         (name == "identity").then_some(0x1000)
     }
@@ -292,12 +284,6 @@ fn golden_builtin_call_has_call_safepoint() {
     #[derive(Clone, Copy)]
     struct Abi;
     impl RuntimeAbi for Abi {
-        fn encode_fixnum(&self, value: i64) -> i64 {
-            value << 3
-        }
-        fn encode_character(&self, value: u32) -> i64 {
-            i64::from(value) << 8 | 0x0f
-        }
         fn builtin_address(&self, name: &str) -> Option<u64> {
             (name == "identity").then_some(0x1000)
         }

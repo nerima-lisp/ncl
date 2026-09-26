@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, reason = "tests assert on concrete values")]
+#![allow(
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "tests assert on concrete values"
+)]
 
 //! Alien type parsing, layout, and marshalling.
 
@@ -242,7 +246,7 @@ fn double_round_trips_through_bytes() {
     let bytes = marshal_argument(&ctx, &AlienType::DoubleFloat, original).unwrap();
     let value = unmarshal_result(&mut ctx, &runtime, &AlienType::DoubleFloat, &bytes).unwrap();
     assert_eq!(
-        double_value(&ctx, DoubleFloat::from(value))
+        double_value(&ctx, DoubleFloat::from_word(value))
             .unwrap()
             .to_bits(),
         1.5_f64.to_bits()
@@ -297,12 +301,7 @@ fn result_width_must_match_the_type() {
 
 #[test]
 fn routine_declaration_carries_its_signature() {
-    let routine = AlienRoutine {
-        name: "strlen".to_owned(),
-        arguments: vec![AlienType::CString],
-        result: AlienType::SizeT,
-        callable: false,
-    };
-    assert_eq!(routine.arguments.len(), 1);
-    assert_eq!(routine.result, AlienType::SizeT);
+    let routine = AlienRoutine::new("strlen", vec![AlienType::CString], AlienType::SizeT, false);
+    assert_eq!(routine.arguments().len(), 1);
+    assert_eq!(routine.result(), &AlienType::SizeT);
 }

@@ -176,7 +176,7 @@ fn check_function_bindings(
         let mut package = package_word;
         let name_token = push_root(ctx, &mut name);
         let package_token = push_root(ctx, &mut package);
-        let found = Package::from(package).find_symbol(ctx, name);
+        let found = Package::from_word(package).find_symbol(ctx, name);
         let _ = pop_root(ctx, package_token);
         let _ = pop_root(ctx, name_token);
         let Some((mut symbol, _)) = found? else {
@@ -221,7 +221,7 @@ fn check_row(
     let mut package = package_word;
     let name_token = push_root(ctx, &mut name);
     let package_token = push_root(ctx, &mut package);
-    let found = Package::from(package).find_symbol(ctx, name);
+    let found = Package::from_word(package).find_symbol(ctx, name);
     let _ = pop_root(ctx, package_token);
     let _ = pop_root(ctx, name_token);
     let Some((mut symbol, _status)) = found? else {

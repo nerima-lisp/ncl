@@ -18,15 +18,29 @@ pub struct Relocation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelocationError {
-    OffsetOutOfRange(usize),
+    OffsetOutOfRange { offset: usize },
 }
+
+impl core::fmt::Display for RelocationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::OffsetOutOfRange { offset } => {
+                write!(f, "relocation offset {offset} does not fit in u32")
+            }
+        }
+    }
+}
+
+impl std::error::Error for RelocationError {}
 
 impl TryFrom<Fixup> for Relocation {
     type Error = RelocationError;
 
     fn try_from(fixup: Fixup) -> Result<Self, Self::Error> {
-        let offset = u32::try_from(fixup.offset)
-            .map_err(|_| RelocationError::OffsetOutOfRange(fixup.offset))?;
+        let offset =
+            u32::try_from(fixup.offset).map_err(|_| RelocationError::OffsetOutOfRange {
+                offset: fixup.offset,
+            })?;
         let kind = match fixup.kind {
             FixupKind::Rel32 => RelocationKind::PcRelative32,
             FixupKind::Abs64 => RelocationKind::Absolute64,

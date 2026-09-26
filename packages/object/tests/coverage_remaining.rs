@@ -2,10 +2,11 @@
 
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
-    array_dimensions, array_row_major_ref, array_row_major_set, classify, classify_object,
-    make_array, make_string, make_structure, structure_layout, structure_ref, structure_set,
     ArrayElementType, ArrayOptions, FindStatus, ObjectError, ObjectRef, Package, Runtime,
-    ThreadContext, WordView,
+    ThreadContext, WordView, array_dimensions, array_row_major_ref, array_row_major_set, classify,
+    classify_object, code_slot, make_array, make_cons, make_instance, make_readtable, make_stream,
+    make_string, make_structure, readtable_slot, rplaca, rplacd, slot_ref, slot_set, stream_slot,
+    structure_layout, structure_ref, structure_set,
 };
 use ncl_sys::Word;
 
@@ -128,38 +129,50 @@ fn package_visibility_and_list_removal_cover_internal_external_and_inherited() {
     assert_eq!(owner.export(&mut context, &runtime, name_a), Ok(true));
     assert_eq!(owner.unexport(&mut context, &runtime, name_a), Ok(true));
     assert_eq!(owner.unexport(&mut context, &runtime, name_a), Ok(false));
-    assert!(owner
-        .export(&mut context, &runtime, name_a)
-        .unwrap_or(false));
-    assert!(consumer
-        .use_package(&mut context, &runtime, owner.as_word())
-        .unwrap_or(false));
+    assert!(
+        owner
+            .export(&mut context, &runtime, name_a)
+            .unwrap_or(false)
+    );
+    assert!(
+        consumer
+            .use_package(&mut context, &runtime, owner.as_word())
+            .unwrap_or(false)
+    );
     assert_eq!(
         consumer.find_symbol(&mut context, name_a),
         Ok(Some((symbol_a, FindStatus::Inherited)))
     );
-    assert!(consumer
-        .import(&mut context, &runtime, name_a, symbol_a)
-        .is_ok());
+    assert!(
+        consumer
+            .import(&mut context, &runtime, name_a, symbol_a)
+            .is_ok()
+    );
     assert_eq!(
         consumer.import(&mut context, &runtime, name_a, symbol_a),
         Ok(())
     );
-    assert!(consumer
-        .unuse_package(&mut context, owner.as_word())
-        .unwrap_or(false));
+    assert!(
+        consumer
+            .unuse_package(&mut context, owner.as_word())
+            .unwrap_or(false)
+    );
     assert_eq!(
         consumer.find_symbol(&mut context, name_a),
         Ok(Some((symbol_a, FindStatus::Internal)))
     );
     assert!(consumer.shadow(&mut context, &runtime, name_b).is_ok());
     assert!(consumer.shadow(&mut context, &runtime, name_a).is_ok());
-    assert!(consumer
-        .unintern(&mut context, &runtime, name_b)
-        .unwrap_or(false));
-    assert!(consumer
-        .unintern(&mut context, &runtime, name_a)
-        .unwrap_or(false));
+    assert!(
+        consumer
+            .unintern(&mut context, &runtime, name_b)
+            .unwrap_or(false)
+    );
+    assert!(
+        consumer
+            .unintern(&mut context, &runtime, name_a)
+            .unwrap_or(false)
+    );
     assert_eq!(consumer.find_symbol(&mut context, name_b), Ok(None));
 }
 
@@ -167,9 +180,11 @@ fn package_visibility_and_list_removal_cover_internal_external_and_inherited() {
 fn runtime_context_roots_and_classification_report_values() {
     let (runtime, mut context) = setup();
     assert_eq!(runtime.widetag(Word::NIL), None);
-    assert!(runtime
-        .define_function(&mut context, "COVERAGE", "FUNCTION", Word::TRUE)
-        .is_ok());
+    assert!(
+        runtime
+            .define_function(&mut context, "COVERAGE", "FUNCTION", Word::TRUE)
+            .is_ok()
+    );
     assert_eq!(
         runtime.function(&mut context, "COVERAGE", "FUNCTION"),
         Some(Word::TRUE)
@@ -218,15 +233,19 @@ fn hash_tables_resize_replace_and_iterate_meaningful_entries() {
     for index in 0..16 {
         let key =
             make_string(&mut context, &runtime, &[char::from(b'a' + index)]).unwrap_or(Word::NIL);
-        assert!(table
-            .insert(&mut context, &runtime, key, Word::fixnum(index.into()))
-            .is_ok());
+        assert!(
+            table
+                .insert(&mut context, &runtime, key, Word::fixnum(index.into()))
+                .is_ok()
+        );
     }
     assert!(table.capacity(&context).unwrap_or(0) > initial_capacity);
     let key = make_string(&mut context, &runtime, &['a']).unwrap_or(Word::NIL);
-    assert!(table
-        .insert(&mut context, &runtime, key, Word::fixnum(99))
-        .is_ok());
+    assert!(
+        table
+            .insert(&mut context, &runtime, key, Word::fixnum(99))
+            .is_ok()
+    );
     assert_eq!(table.get(&mut context, key), Ok(Some(Word::fixnum(99))));
     assert_eq!(
         table.remove(&mut context, &runtime, key),
@@ -234,11 +253,78 @@ fn hash_tables_resize_replace_and_iterate_meaningful_entries() {
     );
     assert_eq!(table.get(&mut context, key), Ok(None));
     let mut count = 0;
-    assert!(table
-        .for_each_entry(&context, |_, value| {
-            assert!(value.as_fixnum().is_some());
-            count += 1;
-        })
-        .is_ok());
+    assert!(
+        table
+            .for_each_entry(&context, |_, value| {
+                assert!(value.as_fixnum().is_some());
+                count += 1;
+            })
+            .is_ok()
+    );
     assert_eq!(count, 15);
+}
+
+#[test]
+fn raw_slots_and_mutators_report_boundary_errors() {
+    let (runtime, mut context) = setup();
+    let cons = make_cons(&mut context, &runtime, Word::NIL, Word::NIL).unwrap_or(Word::NIL);
+    assert_eq!(
+        rplaca(&mut context, Word::TRUE, Word::NIL),
+        Err(ObjectError::TypeError)
+    );
+    assert_eq!(
+        rplacd(&mut context, Word::TRUE, Word::NIL),
+        Err(ObjectError::TypeError)
+    );
+
+    let mut unregistered = ThreadContext::new();
+    assert_eq!(
+        rplaca(&mut unregistered, cons, Word::TRUE),
+        Err(ObjectError::Storage(
+            ncl_sys::StorageCondition::ThreadNotRegistered
+        ))
+    );
+    assert_eq!(
+        rplacd(&mut unregistered, cons, Word::TRUE),
+        Err(ObjectError::Storage(
+            ncl_sys::StorageCondition::ThreadNotRegistered
+        ))
+    );
+
+    let instance = make_instance(&mut context, &runtime, Word::NIL, &[Word::NIL])
+        .unwrap_or_else(|error| panic!("instance: {error:?}"));
+    assert_eq!(slot_ref(&context, instance, 1), Err(ObjectError::TypeError));
+    assert_eq!(
+        slot_set(&mut context, instance, 1, Word::TRUE),
+        Err(ObjectError::TypeError)
+    );
+
+    let readtable = make_readtable(&mut context, &runtime, Word::NIL, Word::NIL, Word::NIL)
+        .unwrap_or_else(|error| panic!("readtable: {error:?}"));
+    assert_eq!(
+        readtable_slot(&context, readtable, 3),
+        Err(ObjectError::Storage(
+            ncl_sys::StorageCondition::ThreadNotRegistered
+        ))
+    );
+    let stream = make_stream(
+        &mut context,
+        &runtime,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+        Word::NIL,
+    )
+    .unwrap_or_else(|error| panic!("stream: {error:?}"));
+    assert_eq!(
+        stream_slot(&context, stream, 5),
+        Err(ObjectError::Storage(
+            ncl_sys::StorageCondition::ThreadNotRegistered
+        ))
+    );
+    assert_eq!(
+        code_slot(&context, ncl_object::CodeObject::from_word(Word::TRUE), 0),
+        Err(ObjectError::TypeError)
+    );
 }

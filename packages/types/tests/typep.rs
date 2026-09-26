@@ -7,7 +7,7 @@ use ncl_object::{
     ArrayElementType, ArrayOptions, Package, Runtime, ThreadContext, Word, make_array, make_cons,
     make_double, make_simple_vector, make_specialized_array, make_string,
 };
-use ncl_types::{NamedType, TypeSpecifier, typep};
+use ncl_types::{ArrayDimension, IntegerBound, NamedType, TypeSpecifier, Value, typep};
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();
@@ -86,7 +86,7 @@ fn symbol_and_keyword() {
     let (runtime, mut ctx) = setup();
     let symbol = {
         let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
-        Package::from(package)
+        Package::from_word(package)
             .intern(&mut ctx, &runtime, "FOO")
             .unwrap()
             .0
@@ -96,7 +96,7 @@ fn symbol_and_keyword() {
 
     let keyword = {
         let package = runtime.find_package(&ctx, "KEYWORD").unwrap();
-        Package::from(package)
+        Package::from_word(package)
             .intern(&mut ctx, &runtime, "FOO")
             .unwrap()
             .0
@@ -161,8 +161,8 @@ fn integer_range() {
     let (runtime, mut ctx) = setup();
     let _ = &runtime;
     let spec = TypeSpecifier::IntegerRange {
-        low: Some(Word::fixnum(0)),
-        high: Some(Word::fixnum(10)),
+        low: IntegerBound::Inclusive(0),
+        high: IntegerBound::Inclusive(10),
     };
     assert!(typep(&mut ctx, Word::fixnum(5), &spec).unwrap());
     assert!(typep(&mut ctx, Word::fixnum(0), &spec).unwrap());
@@ -188,11 +188,11 @@ fn compound_and_or_not_member_eql() {
     let not = TypeSpecifier::Not(Box::new(named(NamedType::Cons)));
     assert!(typep(&mut ctx, one, &not).unwrap());
 
-    let member = TypeSpecifier::Member(vec![one, Word::fixnum(2)]);
+    let member = TypeSpecifier::Member(vec![Value::Integer(1), Value::Integer(2)]);
     assert!(typep(&mut ctx, one, &member).unwrap());
     assert!(!typep(&mut ctx, Word::fixnum(3), &member).unwrap());
 
-    let eql = TypeSpecifier::Eql(one);
+    let eql = TypeSpecifier::Eql(Value::Integer(1));
     assert!(typep(&mut ctx, one, &eql).unwrap());
     assert!(!typep(&mut ctx, Word::fixnum(2), &eql).unwrap());
 }
@@ -204,13 +204,13 @@ fn array_and_vector_dimension_checks() {
         make_simple_vector(&mut ctx, &runtime, &[Word::fixnum(1), Word::fixnum(2)]).unwrap();
     let sized = TypeSpecifier::Vector {
         element_type: None,
-        size: Some(Word::fixnum(2)),
+        size: Some(ArrayDimension::Exact(2)),
     };
     assert!(typep(&mut ctx, vector, &sized).unwrap());
 
     let wrong = TypeSpecifier::Vector {
         element_type: None,
-        size: Some(Word::fixnum(3)),
+        size: Some(ArrayDimension::Exact(3)),
     };
     assert!(!typep(&mut ctx, vector, &wrong).unwrap());
 
@@ -231,8 +231,8 @@ fn array_and_vector_dimension_checks() {
     let dims = TypeSpecifier::Array {
         element_type: None,
         dimensions: Some(ncl_types::ArrayDimensions::Ranks(vec![
-            Some(Word::fixnum(2)),
-            Some(Word::fixnum(3)),
+            ArrayDimension::Exact(2),
+            ArrayDimension::Exact(3),
         ])),
         simple: false,
     };
@@ -243,25 +243,25 @@ fn array_and_vector_dimension_checks() {
 fn satisfies_and_deftype_error() {
     let (runtime, mut ctx) = setup();
     let _ = &runtime;
-    let predicate = {
+    let _predicate = {
         let package = runtime.find_package(&ctx, "COMMON-LISP").unwrap();
-        Package::from(package)
+        Package::from_word(package)
             .intern(&mut ctx, &runtime, "PRED")
             .unwrap()
             .0
     };
-    let satisfies = TypeSpecifier::Satisfies(predicate);
+    let satisfies = TypeSpecifier::Satisfies("PREDICATE".to_owned());
     assert!(matches!(
         typep(&mut ctx, Word::NIL, &satisfies),
-        Err(ncl_types::TypeError::CannotInvoke(word)) if word == predicate
+        Err(ncl_types::TypeError::CannotInvoke(word)) if word == "PREDICATE"
     ));
 
     let deftype = TypeSpecifier::Deftype {
-        name: predicate,
+        name: "PREDICATE".to_owned(),
         args: vec![],
     };
     assert!(matches!(
         typep(&mut ctx, Word::NIL, &deftype),
-        Err(ncl_types::TypeError::UnexpandedDeftype(word)) if word == predicate
+        Err(ncl_types::TypeError::UnexpandedDeftype(word)) if word == "PREDICATE"
     ));
 }

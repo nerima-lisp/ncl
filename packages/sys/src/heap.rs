@@ -15,6 +15,8 @@ const CARD_SIZE: usize = 512;
 const LARGE_OBJECT: usize = 8 * 1024;
 const WIDETAG_MASK: u64 = 0xff;
 const FORWARDED_FLAG: u64 = 1 << 10;
+/// Heap objects must not occupy the address range used by immediate values.
+pub const MIN_HEAP_ADDRESS: usize = 1_usize << 32;
 #[derive(Debug)]
 /// Moving heap and its stop-the-world coordination state.
 pub struct Heap {
@@ -54,6 +56,19 @@ impl Heap {
             stop_world: Mutex::new(crate::stw::StopWorld::default()),
             stop_world_ready: Condvar::new(),
         }
+    }
+    /// Verify that the host allocator can place heap storage outside the
+    /// 32-bit immediate-character address range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageCondition::HeapAddressTooLow`] when the allocator
+    /// returns an address in the immediate-value range.
+    pub fn validate_address_space() -> Result<(), StorageCondition> {
+        let probe = Box::new([0_u64; 1]);
+        (probe.as_ptr() as usize >= MIN_HEAP_ADDRESS)
+            .then_some(())
+            .ok_or(StorageCondition::HeapAddressTooLow)
     }
     /// Return the configured dynamic-space capacity in bytes.
     pub const fn dynamic_space_size(&self) -> usize {
@@ -287,6 +302,9 @@ impl Heap {
             data[0] = u64::from(tag.widetag);
         }
         let address = data.as_ptr() as usize;
+        if address < MIN_HEAP_ADDRESS {
+            return Err(StorageCondition::HeapAddressTooLow);
+        }
         state.used += bytes;
         state.objects.push(Object {
             words: data,

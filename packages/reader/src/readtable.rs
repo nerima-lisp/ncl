@@ -11,6 +11,7 @@ use crate::error::ReadError;
 
 /// Number of entries in a syntax or dispatch table (one per base character).
 const TABLE_SIZE: usize = 256;
+const TABLE_SIZE_U32: u32 = 256;
 
 /// Fixnum encoding of the [`ReadtableCase::Upcase`] mode.
 const CASE_UPCASE: i64 = 0;
@@ -50,6 +51,7 @@ pub enum ReadtableCase {
 
 /// How a character behaves inside a readtable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum SyntaxKind {
     /// Part of a symbol or number token.
     Constituent,
@@ -65,8 +67,18 @@ pub enum SyntaxKind {
     MultipleEscape,
     /// A character with no defined syntax.
     Invalid,
-    /// A user-installed macro character; the flag is true when non-terminating.
-    CustomMacro(bool),
+    /// A user-installed macro character and its termination behavior.
+    CustomMacro(CustomMacroKind),
+}
+
+/// Whether an installed reader macro terminates a token.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CustomMacroKind {
+    /// The macro terminates a preceding token.
+    Terminating,
+    /// The macro may occur within a token.
+    NonTerminating,
 }
 
 /// A Common Lisp readtable: a syntax table, a dispatch table, and a case mode.
@@ -154,14 +166,30 @@ pub fn standard_readtable(
 ) -> Result<Readtable, ReadError> {
     let mut syntax = [Word::fixnum(SYNTAX_CONSTITUENT); TABLE_SIZE];
     for ch in [' ', '\t', '\n', '\r', '\u{0c}'] {
-        syntax[ch as usize] = Word::fixnum(SYNTAX_WHITESPACE);
+        if let Some(index) = table_index(ch)
+            && let Some(slot) = syntax.get_mut(index)
+        {
+            *slot = Word::fixnum(SYNTAX_WHITESPACE);
+        }
     }
     for ch in ['(', ')', '\'', '`', ',', '"', ';'] {
-        syntax[ch as usize] = Word::fixnum(SYNTAX_TERMINATING_MACRO);
+        if let Some(index) = table_index(ch)
+            && let Some(slot) = syntax.get_mut(index)
+        {
+            *slot = Word::fixnum(SYNTAX_TERMINATING_MACRO);
+        }
     }
-    syntax['#' as usize] = Word::fixnum(SYNTAX_NON_TERMINATING_MACRO);
-    syntax['\\' as usize] = Word::fixnum(SYNTAX_SINGLE_ESCAPE);
-    syntax['|' as usize] = Word::fixnum(SYNTAX_MULTIPLE_ESCAPE);
+    for (ch, value) in [
+        ('#', SYNTAX_NON_TERMINATING_MACRO),
+        ('\\', SYNTAX_SINGLE_ESCAPE),
+        ('|', SYNTAX_MULTIPLE_ESCAPE),
+    ] {
+        if let Some(index) = table_index(ch)
+            && let Some(slot) = syntax.get_mut(index)
+        {
+            *slot = Word::fixnum(value);
+        }
+    }
 
     let mut syntax_word = make_simple_vector(ctx, runtime, &syntax)?;
     let syntax_token = push_root(ctx, &mut syntax_word);
@@ -210,17 +238,25 @@ fn copy_vector(
     Ok(make_simple_vector(ctx, runtime, &entries)?)
 }
 
+fn table_index(ch: char) -> Option<usize> {
+    let code = u32::from(ch);
+    if code < TABLE_SIZE_U32 {
+        usize::try_from(code).ok()
+    } else {
+        None
+    }
+}
+
 /// Classify a character's syntax within a readtable.
 pub fn syntax_kind(
     ctx: &mut ThreadContext,
     readtable: Readtable,
     ch: char,
 ) -> Result<SyntaxKind, ReadError> {
-    let code = u32::from(ch);
-    if code >= TABLE_SIZE as u32 {
+    let Some(index) = table_index(ch) else {
         return Ok(SyntaxKind::Constituent);
-    }
-    let entry = simple_vector_ref(ctx, readtable.syntax_table(ctx)?, code as usize)?;
+    };
+    let entry = simple_vector_ref(ctx, readtable.syntax_table(ctx)?, index)?;
     Ok(classify_entry(ctx, entry))
 }
 
@@ -239,7 +275,11 @@ fn classify_entry(ctx: &mut ThreadContext, entry: Word) -> SyntaxKind {
     }
     if entry.is_cons() {
         let terminating = ncl_object::cdr(ctx, entry).ok() == Some(Word::NIL);
-        return SyntaxKind::CustomMacro(!terminating);
+        return SyntaxKind::CustomMacro(if terminating {
+            CustomMacroKind::Terminating
+        } else {
+            CustomMacroKind::NonTerminating
+        });
     }
     SyntaxKind::Invalid
 }
@@ -253,11 +293,10 @@ pub fn get_macro_character(
     readtable: Readtable,
     ch: char,
 ) -> Result<Option<Word>, ReadError> {
-    let code = u32::from(ch);
-    if code >= TABLE_SIZE as u32 {
+    let Some(index) = table_index(ch) else {
         return Ok(None);
-    }
-    let entry = simple_vector_ref(ctx, readtable.syntax_table(ctx)?, code as usize)?;
+    };
+    let entry = simple_vector_ref(ctx, readtable.syntax_table(ctx)?, index)?;
     if entry.is_cons() {
         Ok(Some(ncl_object::car(ctx, entry)?))
     } else {
@@ -281,20 +320,18 @@ pub fn set_macro_character(
     readtable: Readtable,
     ch: char,
     function: Option<Word>,
-    non_terminating: bool,
+    termination: CustomMacroKind,
 ) -> Result<(), ReadError> {
-    let code = u32::from(ch);
-    if code >= TABLE_SIZE as u32 {
+    let Some(index) = table_index(ch) else {
         return Ok(());
-    }
+    };
     let entry = match function {
         Some(function) => {
             let mut function = function;
             let token = push_root(ctx, &mut function);
-            let flag = if non_terminating {
-                Word::fixnum(1)
-            } else {
-                Word::NIL
+            let flag = match termination {
+                CustomMacroKind::NonTerminating => Word::fixnum(1),
+                CustomMacroKind::Terminating => Word::NIL,
             };
             let entry = make_cons(ctx, runtime, function, flag)?;
             let _ = pop_root(ctx, token);
@@ -302,7 +339,7 @@ pub fn set_macro_character(
         }
         None => Word::fixnum(SYNTAX_CONSTITUENT),
     };
-    simple_vector_set(ctx, readtable.syntax_table(ctx)?, code as usize, entry)?;
+    simple_vector_set(ctx, readtable.syntax_table(ctx)?, index, entry)?;
     Ok(())
 }
 
@@ -317,15 +354,12 @@ pub fn get_dispatch_macro_character(
     sub: char,
 ) -> Result<Option<Word>, ReadError> {
     if ch != '#' {
-        return Err(ReadError::Unsupported(format!(
-            "{ch} is not a dispatch macro character"
-        )));
+        return Err(ReadError::NotDispatchMacro(ch));
     }
-    let code = u32::from(sub);
-    if code >= TABLE_SIZE as u32 {
+    let Some(index) = table_index(sub) else {
         return Ok(None);
-    }
-    let entry = simple_vector_ref(ctx, readtable.dispatch_table(ctx)?, code as usize)?;
+    };
+    let entry = simple_vector_ref(ctx, readtable.dispatch_table(ctx)?, index)?;
     if entry.is_cons() {
         Ok(Some(ncl_object::car(ctx, entry)?))
     } else {
@@ -346,19 +380,16 @@ pub fn set_dispatch_macro_character(
     function: Word,
 ) -> Result<(), ReadError> {
     if ch != '#' {
-        return Err(ReadError::Unsupported(format!(
-            "{ch} is not a dispatch macro character"
-        )));
+        return Err(ReadError::NotDispatchMacro(ch));
     }
-    let code = u32::from(sub);
-    if code >= TABLE_SIZE as u32 {
+    let Some(index) = table_index(sub) else {
         return Ok(());
-    }
+    };
     let mut function = function;
     let token = push_root(ctx, &mut function);
     let entry = make_cons(ctx, runtime, function, Word::NIL)?;
     let _ = pop_root(ctx, token);
-    simple_vector_set(ctx, readtable.dispatch_table(ctx)?, code as usize, entry)?;
+    simple_vector_set(ctx, readtable.dispatch_table(ctx)?, index, entry)?;
     Ok(())
 }
 
@@ -373,9 +404,7 @@ pub fn make_dispatch_macro_character(
     ch: char,
 ) -> Result<(), ReadError> {
     if ch != '#' {
-        return Err(ReadError::Unsupported(format!(
-            "{ch} is not a dispatch macro character"
-        )));
+        return Err(ReadError::NotDispatchMacro(ch));
     }
     let entry = make_cons(ctx, runtime, Word::NIL, Word::NIL)?;
     for sub in 0..TABLE_SIZE {
@@ -398,17 +427,15 @@ pub fn set_syntax_from_char(
     to_table: Readtable,
     from_table: Readtable,
 ) -> Result<(), ReadError> {
-    let to_code = u32::from(to);
-    let from_code = u32::from(from);
-    if to_code >= TABLE_SIZE as u32 {
+    let Some(to_index) = table_index(to) else {
         return Ok(());
-    }
-    let entry = if from_code >= TABLE_SIZE as u32 {
-        Word::fixnum(SYNTAX_CONSTITUENT)
-    } else {
-        simple_vector_ref(ctx, from_table.syntax_table(ctx)?, from_code as usize)?
     };
-    simple_vector_set(ctx, to_table.syntax_table(ctx)?, to_code as usize, entry)?;
+    let entry = if let Some(from_index) = table_index(from) {
+        simple_vector_ref(ctx, from_table.syntax_table(ctx)?, from_index)?
+    } else {
+        Word::fixnum(SYNTAX_CONSTITUENT)
+    };
+    simple_vector_set(ctx, to_table.syntax_table(ctx)?, to_index, entry)?;
     Ok(())
 }
 
@@ -434,5 +461,5 @@ pub fn readtable_from_word(word: Word) -> Result<Readtable, ReadError> {
     if word == Word::NIL {
         return Err(ReadError::Object(ObjectError::TypeError));
     }
-    Ok(Readtable::from_object(ObjectReadtable::from(word)))
+    Ok(Readtable::from_object(ObjectReadtable::from_word(word)))
 }

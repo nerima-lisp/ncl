@@ -60,3 +60,76 @@ fn empty_elf_sections_allow_zero_offset_relocations() {
     });
     assert!(value.write().is_ok());
 }
+
+#[test]
+fn private_section_header_rejects_unrepresentable_symbol_count() {
+    assert_eq!(
+        write_section_header(&mut Vec::new(), &[(0, 0); 9], &[0; 8], 6, u32::MAX as usize,),
+        Err(ObjectError::InvalidField {
+            field: "symbol count",
+            value: u64::MAX,
+        })
+    );
+}
+
+#[test]
+fn private_elf_helpers_write_all_section_header_kinds() {
+    let mut bytes = Vec::new();
+    let ranges = [(0, 0); 9];
+    let names: Vec<u32> = (0..8).collect();
+    for index in 1..9 {
+        assert_eq!(
+            write_section_header(&mut bytes, &ranges, &names, index, 1),
+            Ok(())
+        );
+    }
+    assert_eq!(bytes.len(), 8 * 64);
+    assert_eq!(&bytes[64..68], &1u32.to_le_bytes());
+    assert_eq!(&bytes[4 * 64..4 * 64 + 4], &4u32.to_le_bytes());
+    assert_eq!(&bytes[5 * 64 + 4..5 * 64 + 8], &2u32.to_le_bytes());
+}
+
+#[test]
+fn private_elf_writer_round_trip_contains_symbols_and_sections() {
+    let value = ElfObject {
+        architecture: ElfArchitecture::Aarch64,
+        sections: vec![
+            ElfSection {
+                id: SectionId(1),
+                kind: ElfSectionKind::Text,
+                bytes: vec![1, 2],
+            },
+            ElfSection {
+                id: SectionId(2),
+                kind: ElfSectionKind::Rodata,
+                bytes: vec![3],
+            },
+            ElfSection {
+                id: SectionId(3),
+                kind: ElfSectionKind::Metadata,
+                bytes: vec![4],
+            },
+        ],
+        relocations: vec![Relocation {
+            section: SectionId(3),
+            offset: 0,
+            kind: RelocKind::Abs64,
+            symbol: SymbolRef::Local(0),
+            addend: 9,
+        }],
+        symbols: vec![ElfSymbol {
+            name: "entry".into(),
+            section: Some(SectionId(1)),
+            value: 0,
+            global: true,
+        }],
+    };
+    let result = value.write();
+    assert!(result.is_ok());
+    let Ok(bytes) = result else { return };
+    assert_eq!(
+        ElfReader::validate(&bytes, ElfArchitecture::Aarch64),
+        Ok(())
+    );
+    assert!(bytes.windows(5).any(|window| window == b"entry"));
+}

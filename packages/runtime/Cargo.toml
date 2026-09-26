@@ -7,11 +7,15 @@ license.workspace = true
 
 [dependencies]
 ncl-compiler-front = { path = "../compiler/front" }
+ncl-opt = { path = "../compiler/opt" }
 ncl-codegen = { path = "../codegen" }
 ncl-stdlib = { path = "../stdlib" }
 ncl-image = { path = "../image" }
 ncl-threads = { path = "../threads" }
 ncl-ffi = { path = "../ffi" }
+ncl-object = { path = "../object" }
+ncl-reader = { path = "../reader" }
+ncl-sys = { path = "../sys" }
 
 [lints]
 workspace = true

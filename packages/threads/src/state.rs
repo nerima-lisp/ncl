@@ -52,7 +52,7 @@ pub fn intern_internal(
     name: &str,
 ) -> Result<Word, ThreadError> {
     let package = runtime.ensure_package(ctx, package)?;
-    let (symbol, _status) = Package::from(package).intern(ctx, runtime, name)?;
+    let (symbol, _status) = Package::from_word(package).intern(ctx, runtime, name)?;
     Ok(symbol)
 }
 
@@ -62,7 +62,7 @@ pub fn intern_internal(
 /// Returns a type error when the object is not an instance, and a storage error
 /// when the slot cannot be read.
 pub fn read_slot(ctx: &ThreadContext, object: Word, slot: usize) -> Result<Word, ThreadError> {
-    Ok(slot_ref(ctx, Instance::from(object), slot)?)
+    Ok(slot_ref(ctx, Instance::from_word(object), slot)?)
 }
 
 /// Write an instance slot.
@@ -76,7 +76,7 @@ pub fn write_slot(
     slot: usize,
     value: Word,
 ) -> Result<(), ThreadError> {
-    slot_set(ctx, Instance::from(object), slot, value)?;
+    slot_set(ctx, Instance::from_word(object), slot, value)?;
     Ok(())
 }
 

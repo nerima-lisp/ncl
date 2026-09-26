@@ -23,12 +23,12 @@ fn equal_tables_match_string_contents_and_equalp_folds_case() {
         let right = make_string(&mut ctx, &runtime, &right.chars().collect::<Vec<_>>())
             .unwrap_or(Word::NIL);
         assert!(
-            HashTable::from(table_word)
+            HashTable::from_word(table_word)
                 .insert(&mut ctx, &runtime, left, Word::fixnum(7))
                 .is_ok()
         );
         assert_eq!(
-            HashTable::from(table_word).get(&mut ctx, right),
+            HashTable::from_word(table_word).get(&mut ctx, right),
             Ok(Some(Word::fixnum(7)))
         );
         assert!(ncl_object::pop_root(&mut ctx, token));
@@ -62,7 +62,7 @@ fn eql_matches_bignum_values_and_eq_rehashes_after_gc() {
     assert!(eq.insert(&mut ctx, &runtime, symbol, Word::TRUE).is_ok());
     assert!(ctx.collect(true).is_ok());
     assert_eq!(
-        HashTable::from(eq_table_word).get(&mut ctx, symbol_root),
+        HashTable::from_word(eq_table_word).get(&mut ctx, symbol_root),
         Ok(Some(Word::TRUE))
     );
     assert!(ncl_object::pop_root(&mut ctx, symbol_token));
@@ -82,19 +82,19 @@ fn package_export_and_use_list_return_inherited_symbol() {
     let mut user_word = user.as_word();
     let base_token = ncl_object::push_root(&mut ctx, &mut base_word);
     let user_token = ncl_object::push_root(&mut ctx, &mut user_word);
-    let (symbol, _) = Package::from(base_word)
+    let (symbol, _) = Package::from_word(base_word)
         .intern(&mut ctx, &runtime, "NAME")
         .unwrap_or((Word::NIL, FindStatus::Internal));
     let name = make_string(&mut ctx, &runtime, &['N', 'A', 'M', 'E']).unwrap_or(Word::NIL);
-    let exported = Package::from(base_word).export(&mut ctx, &runtime, name);
+    let exported = Package::from_word(base_word).export(&mut ctx, &runtime, name);
     assert!(exported.unwrap_or(false));
     assert!(
-        Package::from(user_word)
+        Package::from_word(user_word)
             .use_package(&mut ctx, &runtime, base_word)
             .unwrap_or(false)
     );
     assert_eq!(
-        Package::from(user_word).intern(&mut ctx, &runtime, "NAME"),
+        Package::from_word(user_word).intern(&mut ctx, &runtime, "NAME"),
         Ok((symbol, FindStatus::Inherited))
     );
     assert!(ncl_object::pop_root(&mut ctx, user_token));

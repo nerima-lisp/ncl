@@ -132,14 +132,14 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         let package = runtime
             .find_package(&ctx, package)
             .ok_or(ObjectError::PackageConflict)?;
-        let _ = Package::from(package).intern(&mut ctx, runtime, name)?;
+        let _ = Package::from_word(package).intern(&mut ctx, runtime, name)?;
     }
 
     for &(package, name) in CONSTANTS {
         let package = runtime
             .find_package(&ctx, package)
             .ok_or(ObjectError::PackageConflict)?;
-        let (symbol, _) = Package::from(package).intern(&mut ctx, runtime, name)?;
+        let (symbol, _) = Package::from_word(package).intern(&mut ctx, runtime, name)?;
         set_symbol_constant(&mut ctx, symbol, true)?;
     }
 

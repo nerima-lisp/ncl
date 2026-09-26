@@ -16,16 +16,20 @@
 #![forbid(unsafe_code)]
 
 mod class;
+mod conversion;
 mod error;
 mod handler;
-mod records;
+pub(crate) mod records;
 mod register;
 mod restart;
 mod symbols;
 
 pub use class::{
-    ConditionClass, condition_class, condition_class_name, condition_class_of, make_condition,
+    ConditionClass, ConditionIdentifier, ConditionRecord, ConditionSlotValue, condition_class,
+    condition_class_name, condition_class_of, make_condition, make_condition_record,
+    make_typed_condition,
 };
+pub use conversion::condition_from_lisp_error;
 pub use error::ConditionError;
 pub use handler::{HandlerChain, cerror, error, pop_handler, push_handler, signal, warn};
 pub use register::register;

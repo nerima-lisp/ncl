@@ -51,7 +51,7 @@ fn register_row(
     row: &SymbolRow,
 ) -> Result<(), ObjectError> {
     let package = runtime.ensure_package(ctx, row.package)?;
-    let (mut symbol, _status) = Package::from(package).intern(ctx, runtime, row.name)?;
+    let (mut symbol, _status) = Package::from_word(package).intern(ctx, runtime, row.name)?;
     let token = push_root(ctx, &mut symbol);
     let result = apply_kind(runtime, ctx, row, symbol);
     let _ = pop_root(ctx, token);
@@ -85,7 +85,7 @@ fn apply_kind(
 fn install_classes(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
     for (name, package) in CLASSES {
         let package = runtime.ensure_package(ctx, package)?;
-        let _ = Package::from(package).intern(ctx, runtime, name)?;
+        let _ = Package::from_word(package).intern(ctx, runtime, name)?;
         let descriptor = class_descriptor(ctx, runtime, name)?;
         runtime.define_class(ctx, *name, descriptor)?;
     }

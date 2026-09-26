@@ -28,23 +28,20 @@
 //! - `&optional` parameters lower to `LoadArg`, an `argc` comparison, and a
 //!   default block.
 //!
-//! # Known gaps reported for `ncl-ir`
+//! # IR v2 lowering
 //!
-//! `ncl-ir` has no constant or op naming a function entry, so a lambda's callee
-//! is a `Constant::Symbol` placeholder and its captured values are passed as
-//! leading arguments rather than through a closure object. `multiple-value-call`
-//! and the special-variable builtins use named `Builtin`s. `catch`,
-//! `unwind-protect`, and `progv` need the handler-region and builtin lowering
-//! owned by the runtime lane and lower to [`LowerError::Unsupported`].
+//! The v2 path below uses `FunctionEntry` constants and closure operations for
+//! lambdas, and records dynamic control constructs with `HandlerRegion`s. The
+//! runtime still owns the meaning of the named builtins and the actual unwind
+//! transfer; the front end only emits their frozen IR contract.
 
 mod capture;
-mod control;
 mod env;
 mod error;
-mod expr;
 mod function;
 mod lambda;
 mod literal;
+mod v2;
 
 pub use error::LowerError;
 
@@ -74,10 +71,16 @@ pub struct Lowered {
 pub fn lower_toplevel(expr: &Expr) -> Result<Lowered, LowerError> {
     let mut module = function::Lowerer::new();
     let mut entry = function::FunctionLowerer::entry("toplevel");
-    let value = expr::lower_expr(&mut entry, &mut module, expr)?;
+    // Function zero is the entry function. Reserve it before allocating nested
+    // function identities for FunctionEntry constants.
+    let _entry_id = module.fresh_function();
+    let mut lowering = v2::Context::new(&mut module);
+    let value = lowering.lower_expr(&mut entry, expr)?;
     entry.return_value(value)?;
+    let mut entry_function = entry.into_function();
+    entry_function.handler_regions = lowering.regions;
     Ok(Lowered {
-        entry: entry.into_function(),
+        entry: entry_function,
         nested: module.into_functions(),
     })
 }

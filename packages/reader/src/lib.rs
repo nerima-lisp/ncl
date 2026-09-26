@@ -33,7 +33,7 @@ mod input;
 mod number;
 mod reader;
 mod readtable;
-mod token;
+pub(crate) mod token;
 
 use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word};
 
@@ -41,8 +41,8 @@ pub use error::ReadError;
 pub use input::{CharSource, StringSource};
 pub use number::parse_integer;
 pub use reader::{
-    FloatFormat, ReadOptions, read, read_delimited_list, read_from_string,
-    read_preserving_whitespace,
+    FloatFormat, PackageName, ReadBase, ReadEvaluation, ReadOptions, ReadSuppression, read,
+    read_delimited_list, read_from_string, read_preserving_whitespace,
 };
 pub use readtable::{
     Readtable, ReadtableCase, copy_readtable, get_dispatch_macro_character, get_macro_character,
@@ -123,7 +123,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         let package_word = runtime
             .find_package(&ctx, package)
             .ok_or(ObjectError::Layout)?;
-        let (symbol, _) = Package::from(package_word).intern(&mut ctx, runtime, name)?;
+        let (symbol, _) = Package::from_word(package_word).intern(&mut ctx, runtime, name)?;
         match kind {
             SymbolKind::Variable => ncl_object::set_symbol_special(&mut ctx, symbol, true)?,
             SymbolKind::Function => {

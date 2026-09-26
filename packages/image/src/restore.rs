@@ -92,7 +92,7 @@ fn create_packages(
         for nickname in nicknames {
             let mut word = make_string(ctx, runtime, &nickname.chars().collect::<Vec<_>>())?;
             let token = push_root(ctx, &mut word);
-            let result = Package::from(slots[index]).add_nickname(ctx, runtime, word);
+            let result = Package::from_word(slots[index]).add_nickname(ctx, runtime, word);
             let _ = pop_root(ctx, token);
             result?;
         }
@@ -116,7 +116,7 @@ fn intern_symbols(
             make_symbol(ctx, runtime, name_word)?
         } else {
             let package_word = runtime.ensure_package(ctx, package)?;
-            let (symbol, _status) = Package::from(package_word).intern(ctx, runtime, name)?;
+            let (symbol, _status) = Package::from_word(package_word).intern(ctx, runtime, name)?;
             symbol
         };
         let index = id;
@@ -277,7 +277,7 @@ fn fill_objects(
                 }
             }
             Record::HashTable { entries, .. } => {
-                let table = HashTable::from(word);
+                let table = HashTable::from_word(word);
                 for (key, value) in entries {
                     let key = resolve(slots, *key)?;
                     let value = resolve(slots, *value)?;

@@ -4,7 +4,7 @@
 //! `AArch64` on Linux and macOS): `long`, `size_t`, and pointers are eight bytes,
 //! `int` is four, `short` is two, and `char` is one.
 
-use super::{AlienRecord, AlienType};
+use super::{AlienRecord, AlienType, FieldOffset};
 
 /// Round `value` up to a multiple of `align`.
 const fn align_up(value: usize, align: usize) -> usize {
@@ -42,7 +42,7 @@ pub fn size_of(ty: &AlienType) -> usize {
         | AlienType::SystemAreaPointer
         | AlienType::Function(_) => 8,
         AlienType::LongFloat => 16,
-        AlienType::Array(element, length) => size_of(element).saturating_mul(*length),
+        AlienType::Array(element, length) => size_of(element).saturating_mul(length.get()),
         AlienType::Structure(record) => record_size(record),
         AlienType::Union(record) => union_size(record),
     }
@@ -79,6 +79,12 @@ pub fn align_of(ty: &AlienType) -> usize {
 /// The offset in bytes of the field at `index` within `record`.
 #[must_use]
 pub fn offset_of(record: &AlienRecord, index: usize) -> Option<usize> {
+    field_offset(record, index).map(FieldOffset::get)
+}
+
+/// Return the typed byte offset of a field within a structure.
+#[must_use]
+pub fn field_offset(record: &AlienRecord, index: usize) -> Option<FieldOffset> {
     record_offsets(record).get(index).copied()
 }
 
@@ -119,13 +125,13 @@ fn record_align(record: &AlienRecord) -> usize {
 }
 
 /// The byte offset of every field of a structure, in declaration order.
-fn record_offsets(record: &AlienRecord) -> Vec<usize> {
+fn record_offsets(record: &AlienRecord) -> Vec<FieldOffset> {
     let mut offset = 0;
     let mut offsets = Vec::with_capacity(record.fields.len());
     for (_, field) in &record.fields {
         let field_align = align_of(field);
         offset = align_up(offset, field_align);
-        offsets.push(offset);
+        offsets.push(FieldOffset::new(offset));
         offset = offset.saturating_add(size_of(field));
     }
     offsets

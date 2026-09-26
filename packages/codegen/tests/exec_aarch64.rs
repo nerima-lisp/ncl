@@ -434,5 +434,8 @@ mod cons;
 #[path = "exec_aarch64/fib.rs"]
 mod fib;
 
+#[path = "exec_aarch64/rest_key.rs"]
+mod rest_key;
+
 #[path = "exec_aarch64/basic.rs"]
 mod basic;

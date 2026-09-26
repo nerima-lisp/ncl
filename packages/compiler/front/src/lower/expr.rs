@@ -11,7 +11,7 @@ use super::super::function::FunctionLowerer;
 use super::super::lambda;
 use super::super::literal::lower_literal;
 use super::Context;
-use super::params::{bind_captures, bind_required, lambda_params, reject_lambda_list};
+use super::params::{bind_captures, bind_required, lambda_params};
 
 impl Context<'_> {
     pub(crate) fn lower_expr(
@@ -200,7 +200,6 @@ impl Context<'_> {
         lambda: &LambdaExpr,
         captures: &[super::super::lambda::Capture],
     ) -> Result<FunctionId, LowerError> {
-        reject_lambda_list(&lambda.lambda_list)?;
         let id = self.module.fresh_function();
         let params = lambda_params(&lambda.lambda_list, captures)?;
         let mut nested = FunctionLowerer::new(id, format!("lambda-{id:?}"), params, vec![Ty::Word]);
@@ -208,6 +207,7 @@ impl Context<'_> {
         bind_required(&mut nested, &lambda.lambda_list, 1 + captures.len())?;
         let mut child = Context::with_targets(self.module, self.targets.clone());
         child.bind_optional(&mut nested, &lambda.lambda_list, 1 + captures.len())?;
+        child.bind_rest_and_keys(&mut nested, &lambda.lambda_list)?;
         child.bind_aux(&mut nested, &lambda.lambda_list)?;
         let value = child.lower_body(&mut nested, &lambda.body)?;
         if !nested.is_terminated() {

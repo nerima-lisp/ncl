@@ -224,6 +224,58 @@ fn lowers_an_optional_parameter_with_a_default_block() {
 }
 
 #[test]
+fn lowers_a_rest_parameter_through_the_runtime_prologue() {
+    let mut fx = Fixture::new();
+    let lambda = fx.cl("LAMBDA");
+    let rest = fx.cl("&REST");
+    let name = fx.user("ARGS");
+    let lambda_list = fx.list(&[rest, name]);
+    let lambda_form = fx.list(&[lambda, lambda_list, name]);
+    let form = fx.list(&[lambda_form, Word::fixnum(1), Word::fixnum(2)]);
+
+    let expr = fx.expand(form).expect("expand rest lambda");
+    let lowered = lower_toplevel(&expr).expect("lower rest lambda");
+    let lambda_function = &lowered.nested[0];
+    assert_verifies(lambda_function);
+    assert!(any_op(lambda_function, |kind| matches!(
+        kind,
+        OpKind::Builtin { name, .. } if name == "make-rest-list"
+    )));
+}
+
+#[test]
+fn lowers_key_parameters_with_defaults_and_supplied_p() {
+    let mut fx = Fixture::new();
+    let lambda = fx.cl("LAMBDA");
+    let key = fx.cl("&KEY");
+    let key_name = fx.keyword("VALUE");
+    let value = fx.user("VALUE");
+    let supplied = fx.user("VALUE-P");
+    let key_pair = fx.list(&[key_name, value]);
+    let key_spec = fx.list(&[key_pair, Word::fixnum(7), supplied]);
+    let lambda_list = fx.list(&[key, key_spec]);
+    let lambda_form = fx.list(&[lambda, lambda_list, value]);
+    let form = fx.list(&[lambda_form]);
+
+    let expr = fx.expand(form).expect("expand key lambda");
+    let lowered = lower_toplevel(&expr).expect("lower key lambda");
+    let lambda_function = &lowered.nested[0];
+    assert_verifies(lambda_function);
+    assert!(any_op(lambda_function, |kind| matches!(
+        kind,
+        OpKind::Builtin { name, .. } if name == "check-keywords"
+    )));
+    assert!(any_op(lambda_function, |kind| matches!(
+        kind,
+        OpKind::Builtin { name, .. } if name == "keyword-supplied-p"
+    )));
+    assert!(any_terminator(lambda_function, |term| matches!(
+        term,
+        Terminator::Branch { .. }
+    )));
+}
+
+#[test]
 fn lowers_lambda_to_function_entry_closure_and_closure_call() {
     let mut fx = Fixture::new();
     let lambda = fx.cl("LAMBDA");

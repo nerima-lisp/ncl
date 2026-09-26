@@ -23,6 +23,7 @@ fn word_boundaries_and_root_slot_are_observable() {
     }
     let character = Word::character('λ' as u32);
     assert!(character.is_character());
+    assert!(!character.is_list());
     assert_eq!(character.lowtag(), LowTag::List as u8);
     assert!(Word::NIL.is_list());
     assert!(!Word::NIL.is_cons());
@@ -52,6 +53,31 @@ fn fixnums_and_characters_keep_distinct_word_contracts() {
         assert_eq!(word.bits() >> 4, u64::from(value));
         assert_eq!(word.is_character(), value != 0);
     }
+}
+
+#[test]
+fn fixnum_boundaries_are_not_other_immediates() {
+    let values = [-(1_i64 << 62), 0, 1, 2, -1, (1_i64 << 62) - 1];
+    for value in values {
+        let word = Word::fixnum(value);
+        assert!(word.is_fixnum());
+        assert!(!word.is_character());
+        assert!(!word.is_unbound());
+    }
+}
+
+#[test]
+fn unbound_is_reserved_outside_all_fixnum_and_character_values() {
+    let unbound = Word::UNBOUND;
+    assert!(!unbound.is_fixnum());
+    assert!(!unbound.is_character());
+    assert!(!unbound.is_list());
+    assert!(!unbound.is_cons());
+    assert!(unbound.is_unbound());
+    assert_ne!(unbound, Word::NIL);
+    assert_ne!(unbound, Word::TRUE);
+    assert_ne!(unbound, Word::pointer(0x1000, LowTag::OtherPointer));
+    assert_ne!(unbound, Word::pointer(0x1000, LowTag::List));
 }
 
 #[test]

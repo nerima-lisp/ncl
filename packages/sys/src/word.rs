@@ -4,20 +4,12 @@ use core::fmt;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum LowTag {
-    /// Immediate character or character-like value.
-    Character = 0,
     /// Cons pointer, including the NIL singleton.
     List = 1,
-    /// Immediate single-float representation.
-    SingleFloat = 2,
     /// Function object pointer.
     Function = 3,
-    /// Other immediate value.
-    OtherImmediate = 4,
     /// Instance pointer.
     Instance = 5,
-    /// Reserved tag value.
-    Reserved = 6,
     /// General heap pointer.
     OtherPointer = 7,
 }
@@ -38,8 +30,8 @@ impl Word {
     pub const NIL: Self = Self(1);
     /// The canonical true value, represented as an other pointer placeholder until object layout is registered.
     pub const TRUE: Self = Self(7);
-    /// The unbound marker.
-    pub const UNBOUND: Self = Self(4);
+    /// The reserved unbound immediate. It is outside the 32-bit character payload.
+    pub const UNBOUND: Self = Self(0xffff_ffff_ffff_fff9);
     /// Encode a signed 63-bit fixnum.
     #[must_use]
     pub const fn fixnum(value: i64) -> Self {
@@ -95,7 +87,7 @@ impl Word {
     /// Whether this is a list value, including NIL.
     #[must_use]
     pub const fn is_list(self) -> bool {
-        self.lowtag() == LowTag::List as u8
+        self.lowtag() == LowTag::List as u8 && !self.is_character() && !self.is_unbound()
     }
     /// Whether this is a non-NIL cons pointer.
     #[must_use]
@@ -113,5 +105,10 @@ impl Word {
         self.lowtag() == LowTag::List as u8
             && self.bits() != Self::NIL.bits()
             && self.address() < (1_usize << 32)
+    }
+    /// Whether this is the reserved unbound immediate.
+    #[must_use]
+    pub const fn is_unbound(self) -> bool {
+        self.bits() == Self::UNBOUND.bits()
     }
 }

@@ -11,7 +11,8 @@ fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i6
     match constant {
         ncl_ir::Constant::Fixnum(value) => Ok(abi.encode_fixnum(*value)),
         ncl_ir::Constant::Character(value) => Ok(abi.encode_character(*value)),
-        ncl_ir::Constant::Nil | ncl_ir::Constant::Unbound => Ok(0),
+        ncl_ir::Constant::Nil => Ok(abi.encode_nil()),
+        ncl_ir::Constant::Unbound => Ok(abi.encode_unbound()),
         ncl_ir::Constant::T => Ok(abi.encode_fixnum(1)),
         ncl_ir::Constant::FunctionEntry(function) => abi
             .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))

@@ -10,11 +10,46 @@ pub(super) fn selection_transform_entry(
     values: &mut MultipleValues,
     replacement: Option<Word>,
 ) -> Result<Word, ObjectError> {
-    let (positional, options) = if replacement.is_some() {
-        selection_parse(ctx, args.as_slice().get(1..).ok_or(ObjectError::TypeError)?)?
-    } else {
-        selection_parse(ctx, args.as_slice())?
-    };
+    if replacement.is_some() {
+        return ncl_object::with_roots(ctx, args.as_slice(), |ctx, roots| {
+            let parsed_args = roots
+                .get(1..)
+                .ok_or(ObjectError::TypeError)?
+                .iter()
+                .map(|root| **root)
+                .collect::<Vec<_>>();
+            let (positional, options) = selection_parse(ctx, &parsed_args)?;
+            let object = *positional.first().ok_or(ObjectError::TypeError)?;
+            let sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
+            let mut items = domain::selection::sequence_values(
+                ctx,
+                domain::selection::object_sequence(ctx, sequence)?,
+            )?;
+            let mut caller = BuiltinFunctionCaller;
+            let indices = domain::selection::matching_indices(
+                ctx,
+                runtime,
+                &mut caller,
+                &mut items,
+                object,
+                options,
+            )?;
+            let replaced = indices
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>();
+            let mut result = Vec::with_capacity(items.len());
+            for (index, value) in items.iter().enumerate() {
+                result.push(if replaced.contains(&index) {
+                    **roots.first().ok_or(ObjectError::Layout)?
+                } else {
+                    *value
+                });
+            }
+            values.clear();
+            domain::selection::list_from_values(ctx, runtime, &mut result)
+        });
+    }
+    let (positional, options) = selection_parse(ctx, args.as_slice())?;
     let object = *positional.first().ok_or(ObjectError::TypeError)?;
     let sequence = *positional.get(1).ok_or(ObjectError::TypeError)?;
     let mut items = domain::selection::sequence_values(
@@ -22,19 +57,8 @@ pub(super) fn selection_transform_entry(
         domain::selection::object_sequence(ctx, sequence)?,
     )?;
     let mut caller = BuiltinFunctionCaller;
-    let result = if let Some(replacement) = replacement {
-        domain::selection::substitute(
-            ctx,
-            runtime,
-            &mut caller,
-            &mut items,
-            replacement,
-            object,
-            options,
-        )?
-    } else {
-        domain::selection::remove(ctx, runtime, &mut caller, &mut items, object, options)?
-    };
+    let result =
+        domain::selection::remove(ctx, runtime, &mut caller, &mut items, object, options)?;
     values.clear();
     let mut result = result;
     domain::selection::list_from_values(ctx, runtime, &mut result)

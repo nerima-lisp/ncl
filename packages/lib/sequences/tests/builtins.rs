@@ -418,7 +418,7 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
         .unwrap_or_else(|error| panic!("context: {error:?}"));
     ncl_lib_sequences::register(&runtime).unwrap_or_else(|error| panic!("sequences: {error:?}"));
     let names = [
-        "LIST", "MAPCAR", "MAP-INTO", "REDUCE", "SORT", "UNION", "CAR", "CONS",
+        "LIST", "MAPCAR", "MAP-INTO", "REDUCE", "SORT", "UNION", "SUBSTITUTE", "CAR", "CONS",
     ];
     let functions = names
         .into_iter()
@@ -489,12 +489,12 @@ fn sequence_callbacks_run_through_gc_stress_paths() {
     );
     assert!(union.is_cons());
     assert_eq!(ncl_object::cdr(&mut ctx, union), Ok(Word::NIL));
+    let substituted = call(&runtime, &mut ctx, &functions, "SUBSTITUTE", &[Word::fixnum(9), Word::fixnum(2), source, test_keyword, cons]);
+    assert_list(&mut ctx, substituted, &[Word::fixnum(9); 3]);
     assert!(ncl_object::pop_root(&mut ctx, test_keyword_root));
     assert!(ncl_object::pop_root(&mut ctx, cons_root));
     assert!(ncl_object::pop_root(&mut ctx, car_root));
     assert!(ncl_object::pop_root(&mut ctx, destination_root));
     assert!(ncl_object::pop_root(&mut ctx, source_root));
-    assert!(ncl_object::pop_root(&mut ctx, three_root));
-    assert!(ncl_object::pop_root(&mut ctx, two_root));
-    assert!(ncl_object::pop_root(&mut ctx, one_root));
+    assert!(ncl_object::pop_root(&mut ctx, three_root)); assert!(ncl_object::pop_root(&mut ctx, two_root)); assert!(ncl_object::pop_root(&mut ctx, one_root));
 }

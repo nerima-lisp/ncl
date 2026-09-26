@@ -1,4 +1,4 @@
-use super::vector::{simple_bit_vector_p_builtin, vector_builtin};
+use super::vector::{bit_vector_p_builtin, simple_bit_vector_p_builtin, vector_builtin};
 use super::{
     ARRAY, DIMENSIONS, ELEMENT, EXTENSION, INDEX, LambdaList, OPTIONS, ObjectError, RESULT,
     Runtime, ThreadContext, VALUE, adjust_array_builtin, adjustable_array_p_builtin, aref_builtin,
@@ -11,6 +11,7 @@ use super::{
     row_major_aref_builtin, sbit_builtin, simple_vector_p_builtin, svref_builtin,
     vector_pop_builtin, vector_push_builtin, vector_push_extend_builtin, vectorp_builtin,
 };
+use ncl_object::{Package, Word, set_symbol_constant, set_symbol_value};
 
 pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
     register_arrays(runtime, ctx)?;
@@ -18,6 +19,18 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
 }
 
 fn register_arrays(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), ObjectError> {
+    let common_lisp = runtime
+        .find_package(ctx, "COMMON-LISP")
+        .ok_or(ObjectError::PackageConflict)?;
+    for (name, value) in [
+        ("ARRAY-RANK-LIMIT", 8),
+        ("ARRAY-DIMENSION-LIMIT", 1024),
+        ("ARRAY-TOTAL-SIZE-LIMIT", 1024),
+    ] {
+        let (symbol, _) = Package::from_word(common_lisp).intern(ctx, runtime, name)?;
+        set_symbol_value(ctx, symbol, Word::fixnum(value))?;
+        set_symbol_constant(ctx, symbol, true)?;
+    }
     register_one(
         runtime,
         ctx,
@@ -81,6 +94,13 @@ fn register_array_properties(
         "SIMPLE-BIT-VECTOR-P",
         LambdaList::fixed(&[ARRAY]),
         simple_bit_vector_p_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "BIT-VECTOR-P",
+        LambdaList::fixed(&[ARRAY]),
+        bit_vector_p_builtin,
     )?;
     register_one(
         runtime,
@@ -156,7 +176,7 @@ fn register_array_operations(
         runtime,
         ctx,
         "ADJUST-ARRAY",
-        LambdaList::with_optional(&[ARRAY, DIMENSIONS], &[OPTIONS]),
+        LambdaList::with_rest(&[ARRAY, DIMENSIONS], OPTIONS),
         adjust_array_builtin,
     )?;
     register_one(

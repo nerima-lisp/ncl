@@ -7,8 +7,7 @@ use ncl_object::{
     ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
     ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
     array_dimensions, array_row_major_ref, array_row_major_set, car, cdr, classify_object,
-    make_array, make_cons, make_simple_vector, simple_vector_length, simple_vector_ref,
-    string_length,
+    make_array, make_cons, simple_vector_length, simple_vector_ref, string_length,
 };
 
 use super::{register_one, symbol_text};
@@ -186,15 +185,6 @@ fn vectorp_builtin(
         },
     )
 }
-fn vector_builtin(
-    ctx: &mut ThreadContext,
-    runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    make_simple_vector(ctx, runtime, args.as_slice())
-}
-
 fn simple_vector_p_builtin(
     ctx: &mut ThreadContext,
     _: &Runtime,
@@ -211,19 +201,6 @@ fn simple_vector_p_builtin(
             nil()
         },
     )
-}
-
-fn simple_bit_vector_p_builtin(
-    ctx: &mut ThreadContext,
-    _: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let value = args.required(0)?;
-    let simple_bit_vector = matches!(classify_object(ctx, value), ObjectRef::SpecializedArray(_))
-        && array_element_type(ctx, value)? == ArrayElementType::Bit
-        && array_shape(ctx, value)?.len() == 1;
-    Ok(if simple_bit_vector { truth() } else { nil() })
 }
 
 fn adjustable_array_p_builtin(
@@ -519,4 +496,5 @@ use bit::{
 };
 
 mod register;
+mod vector;
 pub use register::register;

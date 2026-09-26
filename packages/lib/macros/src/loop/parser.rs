@@ -1,7 +1,6 @@
 use super::{
-    AccumulatorKind, ForClause, LimitDirection, LoopAst, LoopClause,
-    ObjectError, Result, StepDirection, ThreadContext, Word, string_length, string_ref,
-    symbol_name,
+    AccumulatorKind, ForClause, LimitDirection, LoopAst, LoopClause, ObjectError, Result,
+    StepDirection, ThreadContext, Word, string_length, string_ref, symbol_name,
 };
 fn word_name(ctx: &ThreadContext, word: Word) -> Result<String> {
     let name = symbol_name(ctx, word)?;

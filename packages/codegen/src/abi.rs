@@ -147,18 +147,6 @@ impl RegisterId {
 
 /// Runtime values and entry points needed by code generation.
 pub trait RuntimeAbi {
-    /// Encodes a fixnum as a machine word.
-    fn encode_fixnum(&self, value: i64) -> i64;
-    /// Encodes a character as a machine word.
-    fn encode_character(&self, value: u32) -> i64;
-    /// Encodes the canonical NIL value as a machine word.
-    fn encode_nil(&self) -> i64 {
-        i64::from_ne_bytes(ncl_sys::Word::NIL.bits().to_ne_bytes())
-    }
-    /// Encodes the reserved unbound value as a machine word.
-    fn encode_unbound(&self) -> i64 {
-        i64::from_ne_bytes(ncl_sys::Word::UNBOUND.bits().to_ne_bytes())
-    }
     /// Returns the address of a runtime symbol.
     fn builtin_address(&self, name: &str) -> Option<u64>;
     /// Returns the address of a named builtin through the typed ABI boundary.
@@ -265,12 +253,6 @@ mod builtin_address_tests {
 pub struct X86_64Abi;
 
 impl RuntimeAbi for X86_64Abi {
-    fn encode_fixnum(&self, value: i64) -> i64 {
-        value << 3
-    }
-    fn encode_character(&self, value: u32) -> i64 {
-        i64::from(value) << 8 | 0x0f
-    }
     fn builtin_address(&self, _name: &str) -> Option<u64> {
         None
     }
@@ -284,14 +266,6 @@ impl RuntimeAbi for X86_64Abi {
 pub struct Aarch64Abi;
 
 impl RuntimeAbi for Aarch64Abi {
-    fn encode_fixnum(&self, value: i64) -> i64 {
-        value << 3
-    }
-
-    fn encode_character(&self, value: u32) -> i64 {
-        i64::from(value) << 8 | 0x0f
-    }
-
     fn builtin_address(&self, _name: &str) -> Option<u64> {
         None
     }

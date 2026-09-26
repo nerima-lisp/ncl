@@ -168,8 +168,8 @@ fn golden_x86_64_compare_materialises_full_word() {
 }
 
 #[test]
-fn golden_x86_64_large_constant_uses_movabs() {
-    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(31), "movabs", Vec::new(), vec![]);
+fn golden_x86_64_fixnum_constant_uses_imm32() {
+    let mut builder = FunctionBuilder::new(ncl_ir::FunctionId(31), "imm32", Vec::new(), vec![]);
     let constant = builder.add_constant(Constant::Fixnum(0x1234_5678));
     assert!(
         builder
@@ -186,10 +186,10 @@ fn golden_x86_64_large_constant_uses_movabs() {
     let Some(compiled) = compiled_result.ok() else {
         return;
     };
-    // encode_fixnum(0x1234_5678) = 0x91A2B3C0 exceeds imm32, so `movabs r10, imm64`.
+    // ncl_sys::Word::fixnum(0x1234_5678).bits() = 0x2468ACF0 fits the signed imm32 form.
     assert!(contains(
         &compiled.code,
-        &[0x49, 0xBA, 0xC0, 0xB3, 0xA2, 0x91, 0x00, 0x00, 0x00, 0x00]
+        &[0x49, 0xC7, 0xC2, 0xF0, 0xAC, 0x68, 0x24]
     ));
 }
 

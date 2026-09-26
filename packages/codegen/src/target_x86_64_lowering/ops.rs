@@ -9,11 +9,17 @@ use ncl_ir::{BlockParam, Compare, Function, Op, OpKind, Prim, ValueId};
 
 fn constant_word(constant: &ncl_ir::Constant, abi: &dyn RuntimeAbi) -> Result<i64, CodegenError> {
     match constant {
-        ncl_ir::Constant::Fixnum(value) => Ok(abi.encode_fixnum(*value)),
-        ncl_ir::Constant::Character(value) => Ok(abi.encode_character(*value)),
-        ncl_ir::Constant::Nil => Ok(abi.encode_nil()),
-        ncl_ir::Constant::Unbound => Ok(abi.encode_unbound()),
-        ncl_ir::Constant::T => Ok(abi.encode_fixnum(1)),
+        ncl_ir::Constant::Fixnum(value) => Ok(i64::from_ne_bytes(
+            ncl_sys::Word::fixnum(*value).bits().to_ne_bytes(),
+        )),
+        ncl_ir::Constant::Character(value) => Ok(i64::from_ne_bytes(
+            ncl_sys::Word::character(*value).bits().to_ne_bytes(),
+        )),
+        ncl_ir::Constant::Nil => Ok(i64::from_ne_bytes(ncl_sys::Word::NIL.bits().to_ne_bytes())),
+        ncl_ir::Constant::Unbound => Ok(i64::from_ne_bytes(
+            ncl_sys::Word::UNBOUND.bits().to_ne_bytes(),
+        )),
+        ncl_ir::Constant::T => Ok(i64::from_ne_bytes(ncl_sys::Word::TRUE.bits().to_ne_bytes())),
         ncl_ir::Constant::FunctionEntry(function) => abi
             .constant_word_named(ConstantName::new(&format!("function-entry:{}", function.0)))
             .ok_or_else(|| {

@@ -267,7 +267,11 @@ pub fn compile_function_x86_64(
                 if let Some(value) = values.first() {
                     load_slot(&mut assembler, &value_slots, *value, RETURN_VALUE)?;
                 } else {
-                    load_immediate(&mut assembler, RETURN_VALUE, abi.encode_fixnum(0))?;
+                    load_immediate(
+                        &mut assembler,
+                        RETURN_VALUE,
+                        i64::from_ne_bytes(ncl_sys::Word::fixnum(0).bits().to_ne_bytes()),
+                    )?;
                 }
                 load_immediate(
                     &mut assembler,

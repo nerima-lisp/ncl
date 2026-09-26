@@ -137,11 +137,11 @@ fn executes_recursive_fib_twenty_five() {
             compiled.entry_offset as usize,
             &mut thread,
             2,
-            [code.address() as u64, abi.encode_fixnum(25) as u64, 0, 0],
+            [code.address() as u64, Word::fixnum(25).bits(), 0, 0],
             0,
         );
         samples.push(started.elapsed().as_nanos());
-        assert_eq!(value, abi.encode_fixnum(75_025) as u64);
+        assert_eq!(value, Word::fixnum(75_025).bits());
         assert_eq!(count, 1);
     }
     samples.sort_unstable();

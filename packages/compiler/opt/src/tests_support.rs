@@ -3,7 +3,7 @@ use ncl_ir::{
 };
 use std::fmt::Debug;
 
-pub(crate) trait Fixture<T> {
+pub trait Fixture<T> {
     fn fixture(self) -> T;
 }
 
@@ -13,7 +13,7 @@ impl<T, E: Debug> Fixture<T> for Result<T, E> {
     }
 }
 
-pub(crate) fn leaf() -> Function {
+pub fn leaf() -> Function {
     let mut b = FunctionBuilder::new(
         FunctionId(2),
         "leaf",
@@ -31,7 +31,7 @@ pub(crate) fn leaf() -> Function {
     b.finish()
 }
 
-pub(crate) fn caller() -> Function {
+pub fn caller() -> Function {
     let mut b = FunctionBuilder::new(
         FunctionId(1),
         "caller",

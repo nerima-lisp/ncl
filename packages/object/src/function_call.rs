@@ -1,7 +1,11 @@
 //! The object-layer port for calling Lisp functions from Rust builtins.
 
 use crate::typed::{FunctionDesignator, LispError, ProgramError};
-use crate::{FunctionObject, MultipleValues, ObjectError, Runtime, ThreadContext, Word};
+use crate::{
+    function_entry, Function, FunctionObject, MultipleValues, ObjectError, Runtime, ThreadContext,
+    Word,
+};
+use ncl_sys::invoke_entry_with_function_address;
 
 /// A GC-safe borrowed sequence of Lisp arguments.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -77,17 +81,64 @@ impl FunctionCaller for BuiltinFunctionCaller {
         args: FunctionArguments<'_>,
         values: &mut MultipleValues,
     ) -> Result<Word, ObjectError> {
-        let function = match designator {
-            FunctionDesignator::Function(function) => function,
-            FunctionDesignator::Symbol(symbol) => {
-                let word = crate::symbol_function(ctx, symbol.into())?;
-                FunctionObject::try_from(word).map_err(|_| ObjectError::UndefinedFunction)?
-            }
+        let designator_word = match designator {
+            FunctionDesignator::Function(function) => function.as_word(),
+            FunctionDesignator::Symbol(symbol) => symbol.into(),
         };
-        let result = runtime.call_builtin(ctx, function, args.as_slice())?;
-        values.set(ctx.values());
-        Ok(result)
+        let mut rooted_values = Vec::with_capacity(args.len() + 1);
+        rooted_values.push(designator_word);
+        rooted_values.extend_from_slice(args.as_slice());
+        crate::with_roots(ctx, &rooted_values, |ctx, rooted_values| {
+            let function = match designator {
+                FunctionDesignator::Function(_) => FunctionObject::try_from(*rooted_values[0])
+                    .map_err(|_| ObjectError::UndefinedFunction)?,
+                FunctionDesignator::Symbol(_) => {
+                    let word = crate::symbol_function(ctx, *rooted_values[0])?;
+                    FunctionObject::try_from(word).map_err(|_| ObjectError::UndefinedFunction)?
+                }
+            };
+            let current_args: Vec<Word> = rooted_values[1..].iter().map(|value| **value).collect();
+            let result = if runtime.builtin_descriptor(function).is_some() {
+                runtime.call_builtin(ctx, function, &current_args)?
+            } else {
+                call_native(ctx, function, &current_args, values)?
+            };
+            values.set(ctx.values());
+            Ok(result)
+        })
     }
+}
+
+fn call_native(
+    ctx: &mut ThreadContext,
+    function: FunctionObject,
+    args: &[Word],
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    if args.len() > 4 {
+        return Err(ObjectError::TypeError);
+    }
+    let entry = function_entry(ctx, Function::from_word(function.as_word()))?;
+    if entry == 0 {
+        return Err(ObjectError::UndefinedFunction);
+    }
+    let mut registers = [0_u64; 4];
+    for (register, argument) in args.iter().enumerate() {
+        registers[register] = argument.bits();
+    }
+    let (result, count) = invoke_entry_with_function_address(
+        entry,
+        ctx.thread_mut() as *mut ncl_sys::Thread,
+        function.as_word().bits(),
+        args.len() as u64,
+        registers,
+        0,
+    );
+    if count > 1 {
+        return Err(ObjectError::TypeError);
+    }
+    values.clear();
+    Ok(Word::from_bits(result))
 }
 
 impl Runtime {
@@ -101,38 +152,47 @@ impl Runtime {
         if function.is_unbound() {
             return Err(ObjectError::Unbound);
         }
-        let implementation = self
-            .builtins
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(&function.as_word())
-            .copied()
-            .ok_or(ObjectError::Unbound)?;
-        let result = if args.len() < implementation.descriptor.lambda_list.min_arity()
-            || implementation
-                .descriptor
-                .lambda_list
-                .max_arity()
-                .is_some_and(|max| args.len() > max)
-        {
-            ctx.set_pending_lisp_error(LispError::ProgramError(
-                ProgramError::WrongNumberOfArguments {
-                    minimum: implementation.descriptor.lambda_list.min_arity(),
-                    maximum: implementation.descriptor.lambda_list.max_arity(),
-                },
-            ));
-            Err(ObjectError::TypeError)
-        } else {
-            let original = args.to_vec();
-            let args = crate::BuiltinArgs::new(&original);
+        let mut rooted_values = Vec::with_capacity(args.len() + 1);
+        rooted_values.push(function.as_word());
+        rooted_values.extend_from_slice(args);
+        let result = crate::with_roots(ctx, &rooted_values, |ctx, rooted_values| {
+            let function_word = *rooted_values[0];
+            let implementation = self
+                .builtins
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(&function_word)
+                .copied()
+                .ok_or(ObjectError::Unbound)?;
+            if rooted_values.len() - 1 < implementation.descriptor.lambda_list.min_arity()
+                || implementation
+                    .descriptor
+                    .lambda_list
+                    .max_arity()
+                    .is_some_and(|max| rooted_values.len() - 1 > max)
+            {
+                ctx.set_pending_lisp_error(LispError::ProgramError(
+                    ProgramError::WrongNumberOfArguments {
+                        minimum: implementation.descriptor.lambda_list.min_arity(),
+                        maximum: implementation.descriptor.lambda_list.max_arity(),
+                    },
+                ));
+                return Ok(Err(ObjectError::TypeError));
+            }
+            let original: Vec<Word> = rooted_values[1..].iter().map(|value| **value).collect();
+            let args = crate::BuiltinArgs::from_rooted(&original, &rooted_values[1..]);
             let adapted = if let Some(adapter) = implementation.keyword_adapter {
                 adapter(&args)?
             } else {
                 original
             };
-            let adapted = crate::BuiltinArgs::new(&adapted);
-            (implementation.function)(ctx, self, &adapted, values)
-        };
+            crate::with_roots(ctx, &adapted, |ctx, rooted_adapted| {
+                let callback_args: Vec<Word> = rooted_adapted.iter().map(|value| **value).collect();
+                let callback_args = crate::BuiltinArgs::from_rooted(&callback_args, rooted_adapted);
+                (implementation.function)(ctx, self, &callback_args, values)
+            })
+            .map(Ok)
+        })?;
         ctx.set_values(values.as_slice());
         if let Some(error) = ctx.take_pending_lisp_error()
             && let Some(converter) = self.lisp_error_converter()

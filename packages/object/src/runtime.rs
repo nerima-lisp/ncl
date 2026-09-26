@@ -223,11 +223,13 @@ impl Runtime {
         operator: Word,
         expander: PlaceExpander,
     ) -> Result<(), ObjectError> {
+        let operator = crate::place::SymbolId::from_symbol(ctx, operator)?;
         let mut expanders = self
             .place_expanders
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
-        expanders.register(ctx, operator, expander)
+        expanders.register(&self.heap, operator, expander);
+        Ok(())
     }
 
     /// Look up a generalized-reference expander without invoking it.
@@ -239,11 +241,12 @@ impl Runtime {
         ctx: &ThreadContext,
         operator: Word,
     ) -> Result<Option<PlaceExpander>, ObjectError> {
+        let operator = crate::place::SymbolId::from_symbol(ctx, operator)?;
         let expanders = self
             .place_expanders
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
-        expanders.get(ctx, operator)
+        Ok(expanders.get(operator))
     }
     /// Register a function object under a package and name.
     ///

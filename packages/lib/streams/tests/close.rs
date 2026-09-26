@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use ncl_object::{
-    FunctionObject, Runtime, ThreadContext, Word, make_simple_vector, make_stream, pop_root,
-    push_root, simple_vector_ref, stream_state,
+    FunctionObject, Package, Runtime, ThreadContext, Word, make_simple_vector, make_stream,
+    make_string, pop_root, push_root, simple_vector_ref, stream_state,
 };
 
 fn builtin(runtime: &Runtime, ctx: &mut ThreadContext, name: &str) -> FunctionObject {
@@ -106,4 +106,50 @@ fn binary_and_state_predicates_run_under_gc_stress_and_strict_forwarding() {
         Ok(Word::fixnum(65))
     );
     assert!(pop_root(&mut ctx, stream_token));
+}
+
+#[test]
+fn open_output_stream_retains_sink_under_gc_stress_and_strict_forwarding() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    ncl_lib_streams::register(&runtime).unwrap_or_else(|error| panic!("streams: {error:?}"));
+    let open = builtin(&runtime, &mut ctx, "OPEN");
+    let write_char = builtin(&runtime, &mut ctx, "WRITE-CHAR");
+    let close = builtin(&runtime, &mut ctx, "CLOSE");
+    let keyword = runtime
+        .ensure_package(&mut ctx, "KEYWORD")
+        .unwrap_or_else(|error| panic!("keyword: {error:?}"));
+    let (direction, _) = Package::from_word(keyword)
+        .intern(&mut ctx, &runtime, "DIRECTION")
+        .unwrap_or_else(|error| panic!("direction: {error:?}"));
+    let (output, _) = Package::from_word(keyword)
+        .intern(&mut ctx, &runtime, "OUTPUT")
+        .unwrap_or_else(|error| panic!("output: {error:?}"));
+    let path = format!("/tmp/ncl-stream-output-{}", std::process::id());
+    let path_word = make_string(&mut ctx, &runtime, &path.chars().collect::<Vec<_>>())
+        .unwrap_or_else(|error| panic!("path: {error:?}"));
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    let stream = runtime
+        .call_builtin(&mut ctx, open, &[path_word, direction, output])
+        .unwrap_or_else(|error| panic!("open: {error:?}"));
+    assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            write_char,
+            &[Word::character(u32::from('z')), stream]
+        ),
+        Ok(Word::character(u32::from('z')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, close, &[stream]),
+        Ok(Word::TRUE)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("read output: {error:?}")),
+        "z"
+    );
+    std::fs::remove_file(path).unwrap_or_else(|error| panic!("remove output: {error:?}"));
 }

@@ -16,6 +16,7 @@ const DATA: usize = 2;
 const STRING_INPUT: i64 = -1;
 const STRING_OUTPUT: i64 = -2;
 const CLOSED: i64 = -3;
+const FILE_OUTPUT: i64 = -4;
 const STREAM_PARAMETER: ncl_object::Parameter = ncl_object::Parameter {
     name: ncl_object::BuiltinName::new("stream"),
     ty: ncl_object::ParameterType::Any,

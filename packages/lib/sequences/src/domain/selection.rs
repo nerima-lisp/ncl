@@ -31,7 +31,8 @@ pub fn parse_options(
     let mut options = SelectionOptions::default();
     let mut index = 0;
     while index < args.len() {
-        let name = if let ObjectRef::Symbol(symbol) = classify_object(ctx, args[index]) {
+        let argument = args.get(index).ok_or(ObjectError::Layout)?;
+        let name = if let ObjectRef::Symbol(symbol) = classify_object(ctx, *argument) {
             let name = ncl_object::symbol_name(ctx, symbol)?;
             (0..ncl_object::string_length(ctx, name)?)
                 .map(|i| ncl_object::string_ref(ctx, name, i))
@@ -69,7 +70,7 @@ pub fn parse_options(
             }
             index += 2;
         } else {
-            positional.push(args[index]);
+            positional.push(*argument);
             index += 1;
         }
     }
@@ -186,6 +187,8 @@ fn matches<C: FunctionCaller>(
         } else {
             Word::NIL
         };
+        let keyed = **roots.first().ok_or(ObjectError::Layout)?;
+        let object = **roots.get(1).ok_or(ObjectError::Layout)?;
         let truth = result != Word::NIL;
         Ok(if options.test_not.is_some() {
             !truth
@@ -286,11 +289,13 @@ pub fn find<C: FunctionCaller>(
     object: Word,
     options: SelectionOptions,
 ) -> Result<Word, ObjectError> {
-    Ok(
-        matching_indices(ctx, runtime, caller, values, object, options)?
-            .first()
-            .map_or(Word::NIL, |&index| values[index]),
-    )
+    let Some(index) = matching_indices(ctx, runtime, caller, values, object, options)?
+        .first()
+        .copied()
+    else {
+        return Ok(Word::NIL);
+    };
+    values.get(index).copied().ok_or(ObjectError::Layout)
 }
 
 pub fn position<C: FunctionCaller>(
@@ -382,8 +387,6 @@ pub fn search<C: FunctionCaller>(
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, left, |ctx, left_roots| {
         ncl_object::with_roots(ctx, right, |ctx, right_roots| {
-            let left_snapshot = left_roots.iter().map(|root| **root).collect::<Vec<_>>();
-            let right_snapshot = right_roots.iter().map(|root| **root).collect::<Vec<_>>();
             let (start, end) = bounds(options, left.len())?;
             let width = end - start;
             if width > right.len() {
@@ -402,8 +405,8 @@ pub fn search<C: FunctionCaller>(
                         ctx,
                         runtime,
                         options,
-                        left_snapshot[start + i],
-                        right_snapshot[offset + i],
+                        **left_roots.get(start + i).ok_or(ObjectError::Layout)?,
+                        **right_roots.get(offset + i).ok_or(ObjectError::Layout)?,
                     )? {
                         equal = false;
                         break;
@@ -429,8 +432,6 @@ pub fn mismatch<C: FunctionCaller>(
 ) -> Result<Word, ObjectError> {
     ncl_object::with_roots(ctx, left, |ctx, left_roots| {
         ncl_object::with_roots(ctx, right, |ctx, right_roots| {
-            let left_snapshot = left_roots.iter().map(|root| **root).collect::<Vec<_>>();
-            let right_snapshot = right_roots.iter().map(|root| **root).collect::<Vec<_>>();
             let (start, end) = bounds(options, left.len())?;
             for index in start..end.min(right.len()) {
                 if !matches(
@@ -438,8 +439,8 @@ pub fn mismatch<C: FunctionCaller>(
                     ctx,
                     runtime,
                     options,
-                    left_snapshot[index],
-                    right_snapshot[index],
+                    **left_roots.get(index).ok_or(ObjectError::Layout)?,
+                    **right_roots.get(index).ok_or(ObjectError::Layout)?,
                 )? {
                     return index_word(index);
                 }

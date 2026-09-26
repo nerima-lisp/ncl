@@ -1,0 +1,5 @@
+package	symbol	kind	crate	phase	direct-expansion	notes
+NCL-PROFILER	PROFILE-START	function	ncl-profiler	1	no	start statistical sampling
+NCL-PROFILER	PROFILE-STOP	function	ncl-profiler	1	no	stop statistical sampling
+NCL-PROFILER	PROFILE-REPORT	function	ncl-profiler	1	no	render the collected profile
+NCL-PROFILER	WITH-PROFILING	macro	ncl-profiler	1	no	profile the protected body and report on exit

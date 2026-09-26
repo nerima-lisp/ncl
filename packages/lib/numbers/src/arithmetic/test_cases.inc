@@ -30,8 +30,8 @@ fn bignum(ctx: &mut ThreadContext, runtime: &Runtime, value: i128) -> Result<Wor
 #[test]
 fn arithmetic_preserves_fixnum_bignum_boundary_and_argument_order() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = context()?;
-    let max = i128::from(i64::MAX >> 4);
-    let fixnum = Word::fixnum(i64::try_from(max).map_err(|_| ObjectError::TypeError)?);
+    let max = i128::from(crate::MOST_POSITIVE_FIXNUM);
+    let fixnum = Word::fixnum(crate::MOST_POSITIVE_FIXNUM);
     let next = bignum(&mut ctx, &runtime, max + 1)?;
 
     let result = add(&mut ctx, &runtime, &[fixnum, Word::fixnum(1)])?;
@@ -131,8 +131,8 @@ fn arithmetic_rejects_i128_overflow_and_abs_minimum() -> Result<(), ObjectError>
 #[test]
 fn comparisons_keep_pairwise_and_chain_semantics_at_boundary() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = context()?;
-    let max = i128::from(i64::MAX >> 4);
-    let fixnum = Word::fixnum(i64::try_from(max).map_err(|_| ObjectError::TypeError)?);
+    let max = i128::from(crate::MOST_POSITIVE_FIXNUM);
+    let fixnum = Word::fixnum(crate::MOST_POSITIVE_FIXNUM);
     let next = bignum(&mut ctx, &runtime, max + 1)?;
     let after = bignum(&mut ctx, &runtime, max + 2)?;
 
@@ -157,8 +157,8 @@ fn comparisons_keep_pairwise_and_chain_semantics_at_boundary() -> Result<(), Obj
 #[test]
 fn registered_arithmetic_and_comparisons_use_builtin_boundary() -> Result<(), ObjectError> {
     let (runtime, mut ctx) = context()?;
-    let max = i128::from(i64::MAX >> 4);
-    let fixnum = Word::fixnum(i64::try_from(max).map_err(|_| ObjectError::TypeError)?);
+    let max = i128::from(crate::MOST_POSITIVE_FIXNUM);
+    let fixnum = Word::fixnum(crate::MOST_POSITIVE_FIXNUM);
     let next = bignum(&mut ctx, &runtime, max + 1)?;
 
     let addition = call(&runtime, &mut ctx, "+", &[fixnum, Word::fixnum(1)])?;

@@ -17,6 +17,9 @@ use ncl_object::{
     set_symbol_value,
 };
 
+pub(crate) const MOST_POSITIVE_FIXNUM: i64 = i64::MAX >> ncl_sys::FIXNUM_TAG_BITS;
+pub(crate) const MOST_NEGATIVE_FIXNUM: i64 = i64::MIN >> ncl_sys::FIXNUM_TAG_BITS;
+
 fn install(
     runtime: &Runtime,
     ctx: &mut ThreadContext,
@@ -319,8 +322,8 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         set_symbol_constant(&mut ctx, symbol, true)?;
         let value = match name {
             "PI" => make_double(&mut ctx, runtime, std::f64::consts::PI)?.into(),
-            "MOST-POSITIVE-FIXNUM" => Word::fixnum(i64::MAX >> 4),
-            _ => Word::fixnum(i64::MIN >> 4),
+            "MOST-POSITIVE-FIXNUM" => Word::fixnum(MOST_POSITIVE_FIXNUM),
+            _ => Word::fixnum(MOST_NEGATIVE_FIXNUM),
         };
         set_symbol_value(&mut ctx, symbol, value)?;
     }

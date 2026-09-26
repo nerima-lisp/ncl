@@ -232,18 +232,18 @@ pub fn typed_lcm(
         Number::Integer(value.checked_abs().ok_or(ObjectError::TypeError)?),
     )
 }
-const fn integer_sqrt(value: i128) -> i128 {
+fn integer_sqrt(value: i128) -> Option<i128> {
     let mut low = 0i128;
-    let mut high = 1i128 << 64;
-    while low + 1 < high {
-        let middle = low + (high - low) / 2;
-        if middle <= value / middle {
+    let mut high = 1_i128.checked_shl(64)?;
+    while low.checked_add(1)? < high {
+        let middle = low.checked_add(high.checked_sub(low)?.checked_div(2)?)?;
+        if middle <= value.checked_div(middle)? {
             low = middle;
         } else {
             high = middle;
         }
     }
-    low
+    Some(low)
 }
 pub fn typed_isqrt(
     ctx: &mut ThreadContext,
@@ -255,7 +255,11 @@ pub fn typed_isqrt(
     if value < 0 {
         return Err(ObjectError::TypeError);
     }
-    word(ctx, runtime, Number::Integer(integer_sqrt(value)))
+    word(
+        ctx,
+        runtime,
+        Number::Integer(integer_sqrt(value).ok_or(ObjectError::TypeError)?),
+    )
 }
 
 #[cfg(test)]

@@ -7,6 +7,8 @@ use ncl_object::{
     make_instance, set_symbol_constant, set_symbol_special, set_symbol_value, slot_ref, slot_set,
 };
 
+use crate::MOST_POSITIVE_FIXNUM;
+
 const fn u64_to_f64(value: u64) -> f64 {
     #[allow(clippy::cast_precision_loss)]
     {
@@ -51,7 +53,7 @@ fn make_state(ctx: &mut ThreadContext, runtime: &Runtime, seed: i64) -> Result<W
         ctx,
         runtime,
         class,
-        &[Word::fixnum(seed & ((1_i64 << 62) - 1))],
+        &[Word::fixnum(seed & MOST_POSITIVE_FIXNUM)],
     )?
     .into())
 }
@@ -65,7 +67,8 @@ fn next_word(ctx: &mut ThreadContext, state: Word) -> Result<u64, ObjectError> {
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    let next = i64::try_from(seed & ((1_u64 << 62) - 1)).map_err(|_| ObjectError::TypeError)?;
+    let next = i64::try_from(seed & MOST_POSITIVE_FIXNUM as u64)
+        .map_err(|_| ObjectError::TypeError)?;
     slot_set(ctx, instance, STATE_SLOT, Word::fixnum(next))?;
     u64::try_from(next).map_err(|_| ObjectError::TypeError)
 }
@@ -96,7 +99,8 @@ fn random_builtin(
             if !bound.is_finite() || bound <= 0.0 {
                 return Err(ObjectError::TypeError);
             }
-            let fraction = u64_to_f64(next_word(ctx, state)?) / u64_to_f64(1_u64 << 62);
+            let fraction = u64_to_f64(next_word(ctx, state)?)
+                / u64_to_f64(MOST_POSITIVE_FIXNUM as u64 + 1);
             make_double(ctx, runtime, bound * fraction).map(Into::into)
         }
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {
@@ -178,14 +182,14 @@ fn register_constants(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), 
         runtime,
         package,
         "MOST-POSITIVE-FIXNUM",
-        Word::fixnum(i64::MAX >> 4),
+        Word::fixnum(crate::MOST_POSITIVE_FIXNUM),
     )?;
     set_constant(
         ctx,
         runtime,
         package,
         "MOST-NEGATIVE-FIXNUM",
-        Word::fixnum(i64::MIN >> 4),
+        Word::fixnum(crate::MOST_NEGATIVE_FIXNUM),
     )?;
     set_float_constant(ctx, runtime, package, "PI", std::f64::consts::PI)?;
     for name in [

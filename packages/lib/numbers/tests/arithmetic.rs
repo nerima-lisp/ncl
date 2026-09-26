@@ -9,8 +9,8 @@ use ncl_object::{
     bignum_sign, classify_object, make_bignum_from_i128,
 };
 
-const MAX_FIXNUM: i64 = i64::MAX >> 4;
-const MIN_FIXNUM: i64 = i64::MIN >> 4;
+const MAX_FIXNUM: i64 = i64::MAX >> ncl_sys::FIXNUM_TAG_BITS;
+const MIN_FIXNUM: i64 = i64::MIN >> ncl_sys::FIXNUM_TAG_BITS;
 
 fn setup() -> (Runtime, ThreadContext) {
     let runtime = Runtime::new().unwrap();

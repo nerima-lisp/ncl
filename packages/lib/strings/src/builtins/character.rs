@@ -208,8 +208,24 @@ fn digit_char_p_builtin(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let c = character_arg(args.required(0)?)?;
-    Ok(c.to_digit(36)
-        .map_or(Word::NIL, |n| Word::fixnum(i64::from(n))))
+    let radix = args
+        .get(1)
+        .map_or(Ok(10), |value| value.as_fixnum().ok_or(ObjectError::TypeError))?;
+    if !(2..=36).contains(&radix) {
+        return Err(ObjectError::TypeError);
+    }
+    let code = u32::from(c);
+    let digit = match c {
+        '0'..='9' => i64::from(code - u32::from('0')),
+        'A'..='Z' => i64::from(code - u32::from('A')) + 10,
+        'a'..='z' => i64::from(code - u32::from('a')) + 10,
+        _ => return Ok(Word::NIL),
+    };
+    Ok(if digit < radix {
+        Word::fixnum(digit)
+    } else {
+        Word::NIL
+    })
 }
 fn char_upcase_builtin(
     _ctx: &mut ThreadContext,

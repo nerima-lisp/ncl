@@ -241,94 +241,101 @@ fn set_float_constant(
 }
 
 fn register_constants(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
-    let package = runtime
+    let mut package = runtime
         .find_package(ctx, "COMMON-LISP")
         .ok_or(ObjectError::PackageConflict)?;
-    set_constant(
-        ctx,
-        runtime,
-        package,
-        "MOST-POSITIVE-FIXNUM",
-        Word::fixnum(crate::MOST_POSITIVE_FIXNUM),
-    )?;
-    set_constant(
-        ctx,
-        runtime,
-        package,
-        "MOST-NEGATIVE-FIXNUM",
-        Word::fixnum(crate::MOST_NEGATIVE_FIXNUM),
-    )?;
-    set_float_constant(ctx, runtime, package, "PI", std::f64::consts::PI)?;
-    for name in [
-        "SHORT-FLOAT-EPSILON",
-        "SINGLE-FLOAT-EPSILON",
-        "DOUBLE-FLOAT-EPSILON",
-        "LONG-FLOAT-EPSILON",
-    ] {
-        set_float_constant(ctx, runtime, package, name, f64::EPSILON)?;
-    }
-    for name in [
-        "SHORT-FLOAT-NEGATIVE-EPSILON",
-        "SINGLE-FLOAT-NEGATIVE-EPSILON",
-        "DOUBLE-FLOAT-NEGATIVE-EPSILON",
-        "LONG-FLOAT-NEGATIVE-EPSILON",
-    ] {
-        set_float_constant(ctx, runtime, package, name, f64::EPSILON / 2.0)?;
-    }
-    for name in [
-        "LEAST-POSITIVE-SHORT-FLOAT",
-        "LEAST-POSITIVE-SINGLE-FLOAT",
-        "LEAST-POSITIVE-DOUBLE-FLOAT",
-        "LEAST-POSITIVE-LONG-FLOAT",
-        "LEAST-POSITIVE-NORMALIZED-SHORT-FLOAT",
-        "LEAST-POSITIVE-NORMALIZED-SINGLE-FLOAT",
-        "LEAST-POSITIVE-NORMALIZED-DOUBLE-FLOAT",
-        "LEAST-POSITIVE-NORMALIZED-LONG-FLOAT",
-    ] {
-        set_float_constant(ctx, runtime, package, name, f64::MIN_POSITIVE)?;
-    }
-    for name in [
-        "LEAST-NEGATIVE-SHORT-FLOAT",
-        "LEAST-NEGATIVE-SINGLE-FLOAT",
-        "LEAST-NEGATIVE-DOUBLE-FLOAT",
-        "LEAST-NEGATIVE-LONG-FLOAT",
-        "LEAST-NEGATIVE-NORMALIZED-SHORT-FLOAT",
-        "LEAST-NEGATIVE-NORMALIZED-SINGLE-FLOAT",
-        "LEAST-NEGATIVE-NORMALIZED-DOUBLE-FLOAT",
-        "LEAST-NEGATIVE-NORMALIZED-LONG-FLOAT",
-    ] {
-        set_float_constant(ctx, runtime, package, name, -f64::MIN_POSITIVE)?;
-    }
-    for name in [
-        "MOST-POSITIVE-SHORT-FLOAT",
-        "MOST-POSITIVE-SINGLE-FLOAT",
-        "MOST-POSITIVE-DOUBLE-FLOAT",
-        "MOST-POSITIVE-LONG-FLOAT",
-    ] {
-        set_float_constant(ctx, runtime, package, name, f64::MAX)?;
-    }
-    for name in [
-        "MOST-NEGATIVE-SHORT-FLOAT",
-        "MOST-NEGATIVE-SINGLE-FLOAT",
-        "MOST-NEGATIVE-DOUBLE-FLOAT",
-        "MOST-NEGATIVE-LONG-FLOAT",
-    ] {
-        set_float_constant(ctx, runtime, package, name, -f64::MAX)?;
-    }
-    Ok(())
+    with_root(ctx, &mut package, |ctx, package| {
+        set_constant(
+            ctx,
+            runtime,
+            *package,
+            "MOST-POSITIVE-FIXNUM",
+            Word::fixnum(crate::MOST_POSITIVE_FIXNUM),
+        )?;
+        set_constant(
+            ctx,
+            runtime,
+            *package,
+            "MOST-NEGATIVE-FIXNUM",
+            Word::fixnum(crate::MOST_NEGATIVE_FIXNUM),
+        )?;
+        set_float_constant(ctx, runtime, *package, "PI", std::f64::consts::PI)?;
+        for name in [
+            "SHORT-FLOAT-EPSILON",
+            "SINGLE-FLOAT-EPSILON",
+            "DOUBLE-FLOAT-EPSILON",
+            "LONG-FLOAT-EPSILON",
+        ] {
+            set_float_constant(ctx, runtime, *package, name, f64::EPSILON)?;
+        }
+        for name in [
+            "SHORT-FLOAT-NEGATIVE-EPSILON",
+            "SINGLE-FLOAT-NEGATIVE-EPSILON",
+            "DOUBLE-FLOAT-NEGATIVE-EPSILON",
+            "LONG-FLOAT-NEGATIVE-EPSILON",
+        ] {
+            set_float_constant(ctx, runtime, *package, name, f64::EPSILON / 2.0)?;
+        }
+        for name in [
+            "LEAST-POSITIVE-SHORT-FLOAT",
+            "LEAST-POSITIVE-SINGLE-FLOAT",
+            "LEAST-POSITIVE-DOUBLE-FLOAT",
+            "LEAST-POSITIVE-LONG-FLOAT",
+            "LEAST-POSITIVE-NORMALIZED-SHORT-FLOAT",
+            "LEAST-POSITIVE-NORMALIZED-SINGLE-FLOAT",
+            "LEAST-POSITIVE-NORMALIZED-DOUBLE-FLOAT",
+            "LEAST-POSITIVE-NORMALIZED-LONG-FLOAT",
+        ] {
+            set_float_constant(ctx, runtime, *package, name, f64::MIN_POSITIVE)?;
+        }
+        for name in [
+            "LEAST-NEGATIVE-SHORT-FLOAT",
+            "LEAST-NEGATIVE-SINGLE-FLOAT",
+            "LEAST-NEGATIVE-DOUBLE-FLOAT",
+            "LEAST-NEGATIVE-LONG-FLOAT",
+            "LEAST-NEGATIVE-NORMALIZED-SHORT-FLOAT",
+            "LEAST-NEGATIVE-NORMALIZED-SINGLE-FLOAT",
+            "LEAST-NEGATIVE-NORMALIZED-DOUBLE-FLOAT",
+            "LEAST-NEGATIVE-NORMALIZED-LONG-FLOAT",
+        ] {
+            set_float_constant(ctx, runtime, *package, name, -f64::MIN_POSITIVE)?;
+        }
+        for name in [
+            "MOST-POSITIVE-SHORT-FLOAT",
+            "MOST-POSITIVE-SINGLE-FLOAT",
+            "MOST-POSITIVE-DOUBLE-FLOAT",
+            "MOST-POSITIVE-LONG-FLOAT",
+        ] {
+            set_float_constant(ctx, runtime, *package, name, f64::MAX)?;
+        }
+        for name in [
+            "MOST-NEGATIVE-SHORT-FLOAT",
+            "MOST-NEGATIVE-SINGLE-FLOAT",
+            "MOST-NEGATIVE-DOUBLE-FLOAT",
+            "MOST-NEGATIVE-LONG-FLOAT",
+        ] {
+            set_float_constant(ctx, runtime, *package, name, -f64::MAX)?;
+        }
+        Ok(())
+    })
 }
 
 /// Register random-state support and numeric constants.
 pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     register_constants(ctx, runtime)?;
-    let package = runtime
+    let mut package = runtime
         .find_package(ctx, "COMMON-LISP")
         .ok_or(ObjectError::PackageConflict)?;
-    let (symbol, _) = Package::from_word(package).intern(ctx, runtime, "*RANDOM-STATE*")?;
-    set_symbol_special(ctx, symbol, true)?;
-    let mut state = make_state(ctx, runtime, INITIAL_SEED)?;
-    with_root(ctx, &mut state, |ctx, state| {
-        set_symbol_value(ctx, symbol, *state)
+    with_root(ctx, &mut package, |ctx, package| {
+        let (mut symbol, _) =
+            Package::from_word(*package).intern(ctx, runtime, "*RANDOM-STATE*")?;
+        with_root(ctx, &mut symbol, |ctx, symbol| {
+            set_symbol_special(ctx, *symbol, true)?;
+            let mut state = make_state(ctx, runtime, INITIAL_SEED)?;
+            with_root(ctx, &mut state, |ctx, state| {
+                set_symbol_value(ctx, *symbol, *state)
+            })
+        })
     })?;
 
     let descriptor = Builtin {

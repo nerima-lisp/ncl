@@ -4,7 +4,7 @@ use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
     BuiltinArgs, BuiltinFunctionCaller, BuiltinName, FunctionArguments, FunctionCaller, LambdaList,
     MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime,
-    ThreadContext, Word, classify_object, make_double, pop_root, push_root,
+    ThreadContext, Word, classify_object, pop_root, push_root,
 };
 
 use super::{register_one, symbol_text};
@@ -70,24 +70,53 @@ fn make_hash_table_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
+    let mut rooted_args = args.as_slice().to_vec();
+    let root_tokens = rooted_args
+        .iter_mut()
+        .map(|value| push_root(ctx, value))
+        .collect::<Vec<_>>();
     let mut test = HashTest::Eql;
     let mut weak = Weakness::None;
-    if !args.len().is_multiple_of(2) {
-        return Err(ObjectError::TypeError);
-    }
-    for pair in args.as_slice().as_chunks::<2>().0 {
-        match symbol_text(ctx, pair[0])?
-            .to_ascii_uppercase()
-            .trim_start_matches(':')
-        {
-            "TEST" => test = decode_test(ctx, pair[1])?,
-            "WEAKNESS" => weak = decode_weakness(ctx, pair[1])?,
-            // SIZE is not exposed by the heap HashTable API, so it is rejected
-            // rather than registered as a misleading placeholder.
-            _ => return Err(ObjectError::TypeError),
+    let mut size = Word::fixnum(8);
+    let mut rehash_size = None;
+    let mut rehash_threshold = None;
+    let result = (|| {
+        if !rooted_args.len().is_multiple_of(2) {
+            return Err(ObjectError::TypeError);
         }
+        for pair in rooted_args.as_chunks::<2>().0 {
+            match symbol_text(ctx, pair[0])?
+                .to_ascii_uppercase()
+                .trim_start_matches(':')
+            {
+                "TEST" => test = decode_test(ctx, pair[1])?,
+                "WEAKNESS" => weak = decode_weakness(ctx, pair[1])?,
+                "SIZE" => size = pair[1],
+                "REHASH-SIZE" => rehash_size = Some(pair[1]),
+                "REHASH-THRESHOLD" => rehash_threshold = Some(pair[1]),
+                _ => return Err(ObjectError::TypeError),
+            }
+        }
+        Ok(HashTable::new_with_options(
+            ctx,
+            runtime,
+            test,
+            weak,
+            size,
+            rehash_size,
+            rehash_threshold,
+        )?
+        .as_word())
+    })();
+    let roots_valid = root_tokens
+        .into_iter()
+        .rev()
+        .fold(true, |valid, token| valid && pop_root(ctx, token));
+    if roots_valid {
+        result
+    } else {
+        Err(ObjectError::Layout)
     }
-    Ok(HashTable::new(ctx, runtime, test, weak)?.as_word())
 }
 
 fn gethash_builtin(
@@ -195,38 +224,22 @@ fn maphash_builtin(
 
 fn hash_table_rehash_size_builtin(
     ctx: &mut ThreadContext,
-    runtime: &Runtime,
+    _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let mut table_word = args.required(0)?;
-    let table_token = push_root(ctx, &mut table_word);
-    let result = (|| {
-        table(ctx, table_word)?;
-        Ok(make_double(ctx, runtime, 1.5)?.as_word())
-    })();
-    if !pop_root(ctx, table_token) {
-        return Err(ObjectError::Layout);
-    }
-    result
+    let table = table(ctx, args.required(0)?)?;
+    table.rehash_size(ctx)
 }
 
 fn hash_table_rehash_threshold_builtin(
     ctx: &mut ThreadContext,
-    runtime: &Runtime,
+    _runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let mut table_word = args.required(0)?;
-    let table_token = push_root(ctx, &mut table_word);
-    let result = (|| {
-        table(ctx, table_word)?;
-        Ok(make_double(ctx, runtime, 0.75)?.as_word())
-    })();
-    if !pop_root(ctx, table_token) {
-        return Err(ObjectError::Layout);
-    }
-    result
+    let table = table(ctx, args.required(0)?)?;
+    table.rehash_threshold(ctx)
 }
 
 fn hash_table_p_builtin(

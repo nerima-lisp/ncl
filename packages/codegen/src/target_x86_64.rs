@@ -7,8 +7,8 @@ use ncl_ir::{Function, OpKind, Terminator};
 mod lowering;
 use lowering::{
     ARGUMENT_REGISTERS, ENTRY, FRAME_POINTER, FUNCTION_OBJECT, REST_ARGUMENT, RETURN_VALUE,
-    VALUE_COUNT, emit, emit_call, load_immediate, load_slot, lower_call, lower_op, move_args,
-    slots,
+    VALUE_COUNT, ValueSlots, emit, emit_call, load_immediate, load_slot, lower_call, lower_op,
+    move_args, slots, store_return_values,
 };
 
 /// Offset of the frame header's function-object word from the frame pointer.
@@ -227,6 +227,7 @@ pub fn compile_function_x86_64(
                 }
             }
             Terminator::Return { values } => {
+                store_return_values(&mut assembler, &value_slots, values, abi)?;
                 if let Some(value) = values.first() {
                     load_slot(&mut assembler, &value_slots, *value, RETURN_VALUE)?;
                 } else {

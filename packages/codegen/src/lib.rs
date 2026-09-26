@@ -55,6 +55,13 @@ pub enum CodegenError {
     Encode(String),
     /// Frame layout arithmetic overflowed.
     FrameOverflow,
+    /// The function returns more values than the fixed runtime area can hold.
+    MultipleValueAreaOverflow {
+        /// Number of values requested by the function.
+        count: usize,
+        /// Number of words available in the runtime area.
+        capacity: usize,
+    },
     /// The fixed-template backend does not have the runtime contract needed for an operation.
     Unsupported(String),
 }
@@ -67,6 +74,12 @@ impl core::fmt::Display for CodegenError {
             Self::UnknownValue(id) => write!(f, "unknown value {id}"),
             Self::Encode(message) => write!(f, "encoding failed: {message}"),
             Self::FrameOverflow => f.write_str("frame layout overflowed"),
+            Self::MultipleValueAreaOverflow { count, capacity } => {
+                write!(
+                    f,
+                    "multiple-value area holds {capacity} words, function returns {count}"
+                )
+            }
             Self::Unsupported(message) => write!(f, "unsupported operation: {message}"),
         }
     }

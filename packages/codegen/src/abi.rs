@@ -184,6 +184,15 @@ impl RuntimeAbi for X86_64Abi {
     fn context_offset(&self, _field: &str) -> Option<i32> {
         None
     }
+
+    fn field_offset(&self, field: ContextField) -> Option<i32> {
+        let layout = ncl_sys::thread_layout();
+        let offset = match field {
+            ContextField::MultipleValueArea => layout.mv,
+            _ => return None,
+        };
+        i32::try_from(offset).ok()
+    }
 }
 
 /// `AArch64` ABI policy used by native execution tests and embedders.
@@ -205,5 +214,14 @@ impl RuntimeAbi for Aarch64Abi {
 
     fn context_offset(&self, _field: &str) -> Option<i32> {
         None
+    }
+
+    fn field_offset(&self, field: ContextField) -> Option<i32> {
+        let layout = ncl_sys::thread_layout();
+        let offset = match field {
+            ContextField::MultipleValueArea => layout.mv,
+            _ => return None,
+        };
+        i32::try_from(offset).ok()
     }
 }

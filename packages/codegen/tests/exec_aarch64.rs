@@ -99,6 +99,7 @@ impl RuntimeAbi for BuiltinAbi {
             ContextField::TlabBump => layout.tlab_bump,
             ContextField::TlabLimit => layout.tlab_limit,
             ContextField::SafepointRequest => layout.safepoint_request,
+            ContextField::MultipleValueArea => layout.mv,
             _ => return None,
         };
         i32::try_from(offset).ok()

@@ -78,6 +78,12 @@ fn golden_aarch64_builtin_decodes() {
         fn context_offset(&self, _field: &str) -> Option<i32> {
             None
         }
+
+        fn field_offset(&self, field: ContextField) -> Option<i32> {
+            (field == ContextField::MultipleValueArea)
+                .then(|| i32::try_from(ncl_sys::thread_layout().mv).ok())
+                .flatten()
+        }
     }
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(23),

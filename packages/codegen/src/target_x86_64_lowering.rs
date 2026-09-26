@@ -198,6 +198,38 @@ fn context_mem(abi: &dyn RuntimeAbi, field: ContextField) -> Result<Mem, Codegen
     Ok(Mem::base(THREAD_CONTEXT, offset))
 }
 
+pub(super) fn store_return_values(
+    assembler: &mut Assembler,
+    slots: &ValueSlots,
+    values: &[ValueId],
+    abi: &dyn RuntimeAbi,
+) -> Result<(), CodegenError> {
+    if values.len() > ncl_sys::MULTIPLE_VALUE_AREA_WORDS {
+        return Err(CodegenError::MultipleValueAreaOverflow {
+            count: values.len(),
+            capacity: ncl_sys::MULTIPLE_VALUE_AREA_WORDS,
+        });
+    }
+    let base = abi
+        .field_offset(ContextField::MultipleValueArea)
+        .ok_or_else(|| {
+            CodegenError::Unsupported("context offset is unavailable: MultipleValueArea".into())
+        })?;
+    for (index, value) in values.iter().copied().enumerate() {
+        let byte_offset = i32::try_from(index)
+            .ok()
+            .and_then(|index| index.checked_mul(8))
+            .and_then(|index| base.checked_add(index))
+            .ok_or(CodegenError::FrameOverflow)?;
+        load_slot(assembler, slots, value, FUNCTION_OBJECT)?;
+        emit(
+            assembler,
+            Inst::MovMR(Mem::base(THREAD_CONTEXT, byte_offset), FUNCTION_OBJECT),
+        )?;
+    }
+    Ok(())
+}
+
 fn runtime_address(abi: &dyn RuntimeAbi, function: RuntimeFunction) -> Result<i64, CodegenError> {
     abi.runtime_address(function, None)
         .map(u64::cast_signed)

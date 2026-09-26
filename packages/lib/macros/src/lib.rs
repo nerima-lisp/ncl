@@ -169,6 +169,41 @@ mod tests {
         Ok(Word::fixnum(sum))
     }
 
+    #[allow(clippy::unnecessary_wraps)]
+    fn returns_zero(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _args: &BuiltinArgs<'_>,
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        values.clear();
+        Ok(Word::NIL)
+    }
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn returns_one(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _args: &BuiltinArgs<'_>,
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        let value = Word::fixnum(11);
+        values.set(&[value]);
+        Ok(value)
+    }
+
+    #[allow(clippy::unnecessary_wraps)]
+    fn returns_two(
+        _ctx: &mut ThreadContext,
+        _runtime: &Runtime,
+        _args: &BuiltinArgs<'_>,
+        values: &mut MultipleValues,
+    ) -> Result<Word, ObjectError> {
+        let values_to_return = [Word::fixnum(21), Word::fixnum(22)];
+        values.set(&values_to_return);
+        Ok(values_to_return[0])
+    }
+
     fn setup() -> (Runtime, ThreadContext, ncl_object::FunctionObject) {
         let runtime = Runtime::new().unwrap();
         let mut ctx = ThreadContext::new();
@@ -190,6 +225,27 @@ mod tests {
         (runtime, ctx, function)
     }
 
+    fn register_result_builtin(
+        ctx: &mut ThreadContext,
+        runtime: &Runtime,
+        name: &'static str,
+        function: ncl_object::RustBuiltin,
+    ) -> ncl_object::FunctionObject {
+        runtime
+            .register_builtin(
+                ctx,
+                BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new(name)),
+                BuiltinImplementation::direct(
+                    Builtin {
+                        lambda_list: LambdaList::new(&[], &[], None, &[], false),
+                        convention: BuiltinConvention::Direct(Arity::exact(0)),
+                    },
+                    function,
+                ),
+            )
+            .unwrap()
+    }
+
     #[test]
     fn funcall_and_apply_forward_arguments_and_multiple_values() {
         let (runtime, mut ctx, function) = setup();
@@ -197,6 +253,8 @@ mod tests {
             .function(&mut ctx, "COMMON-LISP", "FUNCALL")
             .unwrap();
         let apply = runtime.function(&mut ctx, "COMMON-LISP", "APPLY").unwrap();
+        let funcall_function = ncl_object::FunctionObject::try_from(funcall).unwrap();
+        let apply_function = ncl_object::FunctionObject::try_from(apply).unwrap();
         let tail = make_cons(&mut ctx, &runtime, Word::fixnum(3), Word::NIL).unwrap();
         let list = make_cons(&mut ctx, &runtime, Word::fixnum(2), tail).unwrap();
         assert_eq!(
@@ -217,6 +275,105 @@ mod tests {
             Ok(Word::fixnum(6))
         );
         assert_eq!(ctx.values(), &[Word::fixnum(6), Word::fixnum(7)]);
+
+        for (name, callback, result, values) in [
+            (
+                "RETURNS-ZERO",
+                returns_zero as ncl_object::RustBuiltin,
+                Word::NIL,
+                &[][..],
+            ),
+            (
+                "RETURNS-ONE",
+                returns_one as ncl_object::RustBuiltin,
+                Word::fixnum(11),
+                &[Word::fixnum(11)][..],
+            ),
+            (
+                "RETURNS-TWO",
+                returns_two as ncl_object::RustBuiltin,
+                Word::fixnum(21),
+                &[Word::fixnum(21), Word::fixnum(22)][..],
+            ),
+        ] {
+            let result_function = register_result_builtin(&mut ctx, &runtime, name, callback);
+            let result_function_word = result_function.as_word();
+            assert_eq!(
+                runtime.call_builtin(&mut ctx, funcall_function, &[result_function_word],),
+                Ok(result)
+            );
+            assert_eq!(ctx.values(), values);
+            assert_eq!(
+                runtime.call_builtin(&mut ctx, apply_function, &[result_function_word, Word::NIL],),
+                Ok(result)
+            );
+            assert_eq!(ctx.values(), values);
+        }
+    }
+
+    #[test]
+    fn funcall_and_apply_forward_five_arguments_with_rooted_values_under_gc_stress() {
+        let runtime = Runtime::new().unwrap();
+        let mut ctx = ThreadContext::new();
+        ctx.register(&runtime).unwrap();
+        let function = runtime
+            .register_builtin(
+                &mut ctx,
+                BuiltinIdentifier::new(BuiltinPackage::NclTest, BuiltinName::new("ADD-STRESS")),
+                BuiltinImplementation::direct(
+                    Builtin {
+                        lambda_list: LambdaList::with_rest(&[], ARGUMENT),
+                        convention: BuiltinConvention::Direct(Arity::exact(0)),
+                    },
+                    add,
+                ),
+            )
+            .unwrap();
+        register(&mut ctx, &runtime).unwrap();
+        let mut function_word = function.as_word();
+        let function_token = ncl_object::push_root(&mut ctx, &mut function_word);
+        let mut list = Word::NIL;
+        let list_token = ncl_object::push_root(&mut ctx, &mut list);
+        for value in (1..=5).rev() {
+            list = make_cons(&mut ctx, &runtime, Word::fixnum(value), list).unwrap();
+        }
+        let mut funcall_word = runtime
+            .function(&mut ctx, "COMMON-LISP", "FUNCALL")
+            .unwrap();
+        let funcall_token = ncl_object::push_root(&mut ctx, &mut funcall_word);
+        let mut apply_word = runtime.function(&mut ctx, "COMMON-LISP", "APPLY").unwrap();
+        let apply_token = ncl_object::push_root(&mut ctx, &mut apply_word);
+        let funcall = ncl_object::FunctionObject::try_from(funcall_word).unwrap();
+        let apply = ncl_object::FunctionObject::try_from(apply_word).unwrap();
+        let target = ncl_object::FunctionObject::try_from(function_word).unwrap();
+        ctx.set_gc_stress(true);
+        ctx.set_strict_forwarding(true);
+        assert_eq!(
+            runtime.call_builtin(
+                &mut ctx,
+                funcall,
+                &[
+                    target.as_word(),
+                    Word::fixnum(1),
+                    Word::fixnum(2),
+                    Word::fixnum(3),
+                    Word::fixnum(4),
+                    Word::fixnum(5),
+                ],
+            ),
+            Ok(Word::fixnum(15))
+        );
+        assert_eq!(ctx.values(), &[Word::fixnum(15), Word::fixnum(16)]);
+        assert_eq!(
+            runtime.call_builtin(&mut ctx, apply, &[target.as_word(), Word::fixnum(0), list],),
+            Ok(Word::fixnum(15))
+        );
+        assert_eq!(ctx.values(), &[Word::fixnum(15), Word::fixnum(16)]);
+
+        assert!(ncl_object::pop_root(&mut ctx, apply_token));
+        assert!(ncl_object::pop_root(&mut ctx, funcall_token));
+        assert!(ncl_object::pop_root(&mut ctx, list_token));
+        assert!(ncl_object::pop_root(&mut ctx, function_token));
     }
 
     #[test]

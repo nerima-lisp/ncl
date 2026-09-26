@@ -10,12 +10,28 @@ mod remainder;
 mod rounding;
 mod transcendental;
 
+use core::cell::Cell;
 use ncl_object::{
     Arity, Builtin, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, LambdaList, ObjectError, Package, Parameter, ParameterType, Runtime,
-    RustBuiltin, ThreadContext, Word, make_double, set_symbol_constant, set_symbol_special,
-    set_symbol_value,
+    RustBuiltin, ThreadContext, Word, set_symbol_constant, set_symbol_special, set_symbol_value,
 };
+use ncl_sys::RootSlot;
+
+fn with_root<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut slot = Cell::new(*value);
+    let token = ncl_object::push_root(ctx, slot.get_mut());
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
+    }
+    result
+}
 
 #[derive(Clone, Copy)]
 enum NativeEntry {
@@ -333,45 +349,38 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     )?;
     constants::register(&mut ctx, runtime)?;
     random::register(&mut ctx, runtime)?;
-    let package = runtime
+    let mut package = runtime
         .find_package(&ctx, "COMMON-LISP")
         .ok_or(ObjectError::PackageConflict)?;
-    for name in ["PI", "MOST-POSITIVE-FIXNUM", "MOST-NEGATIVE-FIXNUM"] {
-        let (symbol, _) = Package::from_word(package).intern(&mut ctx, runtime, name)?;
-        set_symbol_constant(&mut ctx, symbol, true)?;
-        let value = match name {
-            "PI" => make_double(&mut ctx, runtime, std::f64::consts::PI)?.into(),
-            "MOST-POSITIVE-FIXNUM" => Word::fixnum(MOST_POSITIVE_FIXNUM),
-            _ => Word::fixnum(MOST_NEGATIVE_FIXNUM),
-        };
-        set_symbol_value(&mut ctx, symbol, value)?;
-    }
-    for name in ["*", "+", "-", "/"] {
-        let (symbol, _) = Package::from_word(package).intern(&mut ctx, runtime, name)?;
-        set_symbol_special(&mut ctx, symbol, true)?;
-        set_symbol_value(&mut ctx, symbol, Word::NIL)?;
-    }
-    for (name, value) in [
-        ("BOOLE-CLR", bitops::BOOLE_CLR),
-        ("BOOLE-1", bitops::BOOLE_1),
-        ("BOOLE-2", bitops::BOOLE_2),
-        ("BOOLE-C1", bitops::BOOLE_C1),
-        ("BOOLE-C2", bitops::BOOLE_C2),
-        ("BOOLE-AND", bitops::BOOLE_AND),
-        ("BOOLE-IOR", bitops::BOOLE_IOR),
-        ("BOOLE-XOR", bitops::BOOLE_XOR),
-        ("BOOLE-EQV", bitops::BOOLE_EQV),
-        ("BOOLE-NAND", bitops::BOOLE_NAND),
-        ("BOOLE-NOR", bitops::BOOLE_NOR),
-        ("BOOLE-ANDC1", bitops::BOOLE_ANDC1),
-        ("BOOLE-ANDC2", bitops::BOOLE_ANDC2),
-        ("BOOLE-ORC1", bitops::BOOLE_ORC1),
-        ("BOOLE-ORC2", bitops::BOOLE_ORC2),
-        ("BOOLE-SET", bitops::BOOLE_SET),
-    ] {
-        let (symbol, _) = Package::from_word(package).intern(&mut ctx, runtime, name)?;
-        set_symbol_constant(&mut ctx, symbol, true)?;
-        set_symbol_value(&mut ctx, symbol, Word::fixnum(value))?;
-    }
+    with_root(&mut ctx, &mut package, |ctx, package| {
+        for name in ["*", "+", "-", "/"] {
+            let (symbol, _) = Package::from_word(*package).intern(ctx, runtime, name)?;
+            set_symbol_special(ctx, symbol, true)?;
+            set_symbol_value(ctx, symbol, Word::NIL)?;
+        }
+        for (name, value) in [
+            ("BOOLE-CLR", bitops::BOOLE_CLR),
+            ("BOOLE-1", bitops::BOOLE_1),
+            ("BOOLE-2", bitops::BOOLE_2),
+            ("BOOLE-C1", bitops::BOOLE_C1),
+            ("BOOLE-C2", bitops::BOOLE_C2),
+            ("BOOLE-AND", bitops::BOOLE_AND),
+            ("BOOLE-IOR", bitops::BOOLE_IOR),
+            ("BOOLE-XOR", bitops::BOOLE_XOR),
+            ("BOOLE-EQV", bitops::BOOLE_EQV),
+            ("BOOLE-NAND", bitops::BOOLE_NAND),
+            ("BOOLE-NOR", bitops::BOOLE_NOR),
+            ("BOOLE-ANDC1", bitops::BOOLE_ANDC1),
+            ("BOOLE-ANDC2", bitops::BOOLE_ANDC2),
+            ("BOOLE-ORC1", bitops::BOOLE_ORC1),
+            ("BOOLE-ORC2", bitops::BOOLE_ORC2),
+            ("BOOLE-SET", bitops::BOOLE_SET),
+        ] {
+            let (symbol, _) = Package::from_word(*package).intern(ctx, runtime, name)?;
+            set_symbol_constant(ctx, symbol, true)?;
+            set_symbol_value(ctx, symbol, Word::fixnum(value))?;
+        }
+        Ok(())
+    })?;
     Ok(())
 }

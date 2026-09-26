@@ -1,8 +1,8 @@
 use super::{
-    args_numbers, bool_word, number, word, Number, ObjectError, Ordering, Runtime, ThreadContext,
-    Word,
+    Number, ObjectError, Ordering, Runtime, ThreadContext, Word, args_numbers, bool_word, number,
+    word,
 };
-use ncl_object::{classify_object, ObjectRef};
+use ncl_object::{ObjectRef, classify_object};
 
 fn comparison(
     ctx: &ThreadContext,

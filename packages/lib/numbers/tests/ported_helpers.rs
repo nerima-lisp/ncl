@@ -84,13 +84,9 @@ fn binary64_allocations_survive_gc_stress_and_strict_forwarding() {
     let token = ncl_object::push_root(&mut ctx, &mut value);
 
     let mut values = MultipleValues::new();
-    let decoded = rational_float::decode_float(
-        &mut ctx,
-        &runtime,
-        &BuiltinArgs::new(&[value]),
-        &mut values,
-    )
-    .unwrap();
+    let decoded =
+        rational_float::decode_float(&mut ctx, &runtime, &BuiltinArgs::new(&[value]), &mut values)
+            .unwrap();
     assert_eq!(decoded, values.as_slice()[0]);
     assert_eq!(values.as_slice()[1], Word::fixnum(1));
 

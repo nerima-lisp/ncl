@@ -1,6 +1,6 @@
 use super::{
     ArrayOptions, ObjectError, Runtime, ThreadContext, Word, allocate, layout, metadata_offset,
-    with_roots, write,
+    validate_element, with_roots, write,
 };
 
 /// Allocate a general, possibly displaced, multidimensional array.
@@ -35,6 +35,7 @@ pub fn make_array(
     if displaced_to.is_some() && total.checked_add(displaced_index_offset).is_none() {
         return Err(ObjectError::Layout);
     }
+    validate_element(element_type, initial_element)?;
     let rank = dimensions.len();
     let capacity = if adjustable && fill_pointer.is_some() && displaced_to.is_none() {
         total.checked_mul(2).unwrap_or(total)

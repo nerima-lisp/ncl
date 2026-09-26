@@ -296,7 +296,12 @@ pub fn make_array(
         return Err(ObjectError::Layout);
     }
     let rank = dimensions.len();
-    let data_offset = metadata_offset(rank, 4);
+    let capacity = if adjustable && fill_pointer.is_some() && displaced_to.is_none() {
+        total.checked_mul(2).unwrap_or(total)
+    } else {
+        total
+    };
+    let data_offset = metadata_offset(rank, 5);
     let displaced = displaced_to.is_some();
     let displaced_to = displaced_to.unwrap_or(Word::NIL);
     with_roots(ctx, &[initial_element, displaced_to], |ctx, rooted| {
@@ -304,7 +309,9 @@ pub fn make_array(
             ctx,
             runtime,
             layout::widetag::NON_SIMPLE_ARRAY,
-            data_offset.checked_add(total).ok_or(ObjectError::Layout)?,
+            data_offset
+                .checked_add(capacity)
+                .ok_or(ObjectError::Layout)?,
         )?;
         let write_meta = |ctx: &mut ThreadContext, slot: usize, value: Word| {
             write(ctx, object, slot, value, layout::widetag::NON_SIMPLE_ARRAY)
@@ -348,8 +355,13 @@ pub fn make_array(
             metadata_offset(rank, 3),
             Word::fixnum(i64::try_from(flags).map_err(|_| ObjectError::Layout)?),
         )?;
-        for index in 0..total {
-            write_meta(ctx, metadata_offset(rank, 4) + index, *rooted[0])?;
+        write_meta(
+            ctx,
+            metadata_offset(rank, 4),
+            Word::fixnum(i64::try_from(capacity).map_err(|_| ObjectError::Layout)?),
+        )?;
+        for index in 0..capacity {
+            write_meta(ctx, data_offset + index, *rooted[0])?;
         }
         Ok(object)
     })
@@ -357,6 +369,81 @@ pub fn make_array(
 
 const fn metadata_offset(rank: usize, field: usize) -> usize {
     layout::array_offset::DYNAMIC_BASE + rank + field
+}
+
+fn array_flags(ctx: &ThreadContext, object: Word, rank: usize) -> Result<u64, ObjectError> {
+    u64::try_from(
+        read(
+            ctx,
+            object,
+            metadata_offset(rank, 3),
+            layout::widetag::NON_SIMPLE_ARRAY,
+        )?
+        .as_fixnum()
+        .ok_or(ObjectError::Layout)?,
+    )
+    .map_err(|_| ObjectError::Layout)
+}
+
+/// Return an array's element type.
+pub fn array_element_type(
+    ctx: &ThreadContext,
+    object: Word,
+) -> Result<ArrayElementType, ObjectError> {
+    ArrayElementType::from_word(read(
+        ctx,
+        object,
+        layout::array_offset::ELEMENT_TYPE,
+        layout::widetag::NON_SIMPLE_ARRAY,
+    )?)
+}
+
+/// Return whether an array is adjustable.
+pub fn adjustable_array_p(ctx: &ThreadContext, object: Word) -> Result<bool, ObjectError> {
+    let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
+    Ok(array_flags(ctx, object, rank)? & layout::array_offset::FLAG_ADJUSTABLE != 0)
+}
+
+/// Return whether an array has a fill pointer.
+pub fn array_has_fill_pointer_p(
+    ctx: &ThreadContext,
+    object: Word,
+) -> Result<bool, ObjectError> {
+    let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
+    Ok(array_flags(ctx, object, rank)? & layout::array_offset::FLAG_HAS_FILL_POINTER != 0)
+}
+
+/// Return an array's fill pointer.
+pub fn fill_pointer(ctx: &ThreadContext, object: Word) -> Result<usize, ObjectError> {
+    let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
+    if !array_has_fill_pointer_p(ctx, object)? {
+        return Err(ObjectError::TypeError);
+    }
+    length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, metadata_offset(rank, 0))
+}
+
+/// Set an array's fill pointer.
+pub fn set_fill_pointer(
+    ctx: &mut ThreadContext,
+    object: Word,
+    value: usize,
+) -> Result<(), ObjectError> {
+    let rank = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, 1)?;
+    if !array_has_fill_pointer_p(ctx, object)? || rank != 1 {
+        return Err(ObjectError::TypeError);
+    }
+    let capacity = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, metadata_offset(rank, 4))?;
+    if value > capacity {
+        return Err(ObjectError::TypeError);
+    }
+    write(
+        ctx,
+        object,
+        metadata_offset(rank, 0),
+        Word::fixnum(i64::try_from(value).map_err(|_| ObjectError::Layout)?),
+        layout::widetag::NON_SIMPLE_ARRAY,
+    )?;
+    Ok(())
 }
 
 /// Return an array's dimensions.
@@ -424,7 +511,7 @@ pub fn array_row_major_ref(
             _ => Err(ObjectError::TypeError),
         };
     }
-    let slot = metadata_offset(dimensions.len(), 4) + index;
+    let slot = metadata_offset(dimensions.len(), 5) + index;
     read(ctx, object, slot, layout::widetag::NON_SIMPLE_ARRAY)
 }
 
@@ -482,10 +569,116 @@ pub fn array_row_major_set(
     write(
         ctx,
         object,
-        metadata_offset(dimensions.len(), 4) + index,
+        metadata_offset(dimensions.len(), 5) + index,
         value,
         layout::widetag::NON_SIMPLE_ARRAY,
     )
+}
+
+/// Return a new array with the requested dimensions and the old contents copied.
+pub fn adjust_array(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+    dimensions: &[usize],
+    initial_element: Word,
+) -> Result<Word, ObjectError> {
+    if !adjustable_array_p(ctx, object)? || array_has_fill_pointer_p(ctx, object)? && dimensions.len() != 1 {
+        return Err(ObjectError::TypeError);
+    }
+    let old_dimensions = array_dimensions(ctx, object)?;
+    let old_total = old_dimensions
+        .iter()
+        .try_fold(1usize, |size, dimension| size.checked_mul(*dimension))
+        .ok_or(ObjectError::Layout)?;
+    let new_total = dimensions
+        .iter()
+        .try_fold(1usize, |size, dimension| size.checked_mul(*dimension))
+        .ok_or(ObjectError::Layout)?;
+    let fill = array_has_fill_pointer_p(ctx, object)?.then(|| fill_pointer(ctx, object)).transpose()?;
+    with_roots(ctx, &[object, initial_element], |ctx, rooted| {
+        let adjusted = make_array(
+            ctx,
+            runtime,
+            dimensions,
+            ArrayOptions {
+                element_type: array_element_type(ctx, *rooted[0])?,
+                initial_element: *rooted[1],
+                adjustable: true,
+                fill_pointer: fill.map(|value| value.min(new_total)),
+                displaced_to: None,
+                displaced_index_offset: 0,
+            },
+        )?;
+        let copy_count = old_total.min(new_total);
+        for index in 0..copy_count {
+            let value = array_row_major_ref(ctx, *rooted[0], index)?;
+            array_row_major_set(ctx, adjusted, index, value)?;
+        }
+        Ok(adjusted)
+    })
+}
+
+/// Push an element into a vector with a fill pointer, returning its old pointer.
+pub fn vector_push(
+    ctx: &mut ThreadContext,
+    object: Word,
+    value: Word,
+) -> Result<Option<usize>, ObjectError> {
+    let pointer = fill_pointer(ctx, object)?;
+    let dimensions = array_dimensions(ctx, object)?;
+    if dimensions.len() != 1 || pointer >= dimensions[0] {
+        return Ok(None);
+    }
+    array_row_major_set(ctx, object, pointer, value)?;
+    set_fill_pointer(ctx, object, pointer + 1)?;
+    Ok(Some(pointer))
+}
+
+/// Push an element, extending the vector when its current capacity is exhausted.
+pub fn vector_push_extend(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    object: Word,
+    value: Word,
+    extension: usize,
+) -> Result<(usize, Word), ObjectError> {
+    if extension == 0 {
+        return Err(ObjectError::TypeError);
+    }
+    if let Some(index) = vector_push(ctx, object, value)? {
+        return Ok((index, object));
+    }
+    let dimensions = array_dimensions(ctx, object)?;
+    if dimensions.len() != 1 || !adjustable_array_p(ctx, object)? {
+        return Err(ObjectError::TypeError);
+    }
+    let pointer = fill_pointer(ctx, object)?;
+    let capacity = length(ctx, object, layout::widetag::NON_SIMPLE_ARRAY, metadata_offset(1, 4))?;
+    if pointer < capacity {
+        write(ctx, object, metadata_offset(1, 5) + pointer, value, layout::widetag::NON_SIMPLE_ARRAY)?;
+        write(ctx, object, metadata_offset(1, 0), Word::fixnum(i64::try_from(pointer + 1).map_err(|_| ObjectError::Layout)?), layout::widetag::NON_SIMPLE_ARRAY)?;
+        write(ctx, object, 2, Word::fixnum(i64::try_from(pointer + 1).map_err(|_| ObjectError::Layout)?), layout::widetag::NON_SIMPLE_ARRAY)?;
+        return Ok((pointer, object));
+    }
+    let new_length = dimensions[0].checked_add(extension).ok_or(ObjectError::Layout)?;
+    let adjusted = adjust_array(ctx, runtime, object, &[new_length], Word::NIL)?;
+    let index = fill_pointer(ctx, adjusted)?;
+    array_row_major_set(ctx, adjusted, index, value)?;
+    set_fill_pointer(ctx, adjusted, index + 1)?;
+    Ok((index, adjusted))
+}
+
+/// Pop the most recently pushed element from a vector.
+pub fn vector_pop(ctx: &mut ThreadContext, object: Word) -> Result<Word, ObjectError> {
+    let pointer = fill_pointer(ctx, object)?;
+    if pointer == 0 {
+        return Err(ObjectError::TypeError);
+    }
+    let index = pointer - 1;
+    let value = array_row_major_ref(ctx, object, index)?;
+    set_fill_pointer(ctx, object, index)?;
+    Ok(value)
 }
 
 #[cfg(test)]

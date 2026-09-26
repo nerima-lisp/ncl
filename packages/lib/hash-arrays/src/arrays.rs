@@ -1,4 +1,6 @@
 use ncl_object::package::{nil, truth};
+use ncl_object::array::{adjust_array, adjustable_array_p, array_has_fill_pointer_p, fill_pointer,
+    vector_pop, vector_push, vector_push_extend};
 use ncl_object::{
     ArrayElementType, ArrayOptions, BuiltinArgs, BuiltinName, LambdaList, MultipleValues,
     ObjectError, ObjectRef, Parameter, ParameterType, Runtime, ThreadContext, Word,
@@ -23,6 +25,14 @@ const DIMENSIONS: Parameter = Parameter {
 const OPTIONS: Parameter = Parameter {
     name: BuiltinName::new("OPTIONS"),
     ty: ParameterType::Any,
+};
+const ELEMENT: Parameter = Parameter {
+    name: BuiltinName::new("ELEMENT"),
+    ty: ParameterType::Any,
+};
+const EXTENSION: Parameter = Parameter {
+    name: BuiltinName::new("EXTENSION"),
+    ty: ParameterType::Fixnum,
 };
 
 fn list_values(ctx: &mut ThreadContext, mut list: Word) -> Result<Vec<Word>, ObjectError> {
@@ -159,6 +169,91 @@ fn simple_vector_p_builtin(
             nil()
         },
     )
+}
+
+fn adjustable_array_p_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let result = match classify_object(ctx, args.required(0)?) {
+        ObjectRef::Array(array) => adjustable_array_p(ctx, array)?,
+        _ => false,
+    };
+    Ok(if result { truth() } else { nil() })
+}
+
+fn array_has_fill_pointer_p_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let result = match classify_object(ctx, args.required(0)?) {
+        ObjectRef::Array(array) => array_has_fill_pointer_p(ctx, array)?,
+        _ => false,
+    };
+    Ok(if result { truth() } else { nil() })
+}
+
+fn fill_pointer_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    fill_pointer(ctx, args.required(0)?).and_then(|value| {
+        Ok(Word::fixnum(i64::try_from(value).map_err(|_| ObjectError::Layout)?))
+    })
+}
+
+fn adjust_array_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let dimensions = list_values(ctx, args.required(1)?)?
+        .into_iter()
+        .map(|value| usize::try_from(value.as_fixnum().ok_or(ObjectError::TypeError)?).map_err(|_| ObjectError::TypeError))
+        .collect::<Result<Vec<_>, _>>()?;
+    let initial = args.as_slice().get(2).copied().unwrap_or(Word::NIL);
+    adjust_array(ctx, runtime, args.required(0)?, &dimensions, initial)
+}
+
+fn vector_push_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    Ok(vector_push(ctx, args.required(0)?, args.required(1)?)?
+        .and_then(|index| i64::try_from(index).ok().map(Word::fixnum))
+        .unwrap_or(Word::NIL))
+}
+
+fn vector_push_extend_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let extension = args.as_slice().get(2).copied().unwrap_or(Word::fixnum(1));
+    let extension = usize::try_from(extension.as_fixnum().ok_or(ObjectError::TypeError)?)
+        .map_err(|_| ObjectError::TypeError)?;
+    let (index, adjusted) = vector_push_extend(ctx, runtime, args.required(0)?, args.required(1)?, extension)?;
+    values.set(&[Word::fixnum(i64::try_from(index).map_err(|_| ObjectError::Layout)?), adjusted]);
+    Ok(Word::fixnum(i64::try_from(index).map_err(|_| ObjectError::Layout)?))
+}
+
+fn vector_pop_builtin(
+    ctx: &mut ThreadContext,
+    _: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    vector_pop(ctx, args.required(0)?)
 }
 fn array_rank_builtin(
     ctx: &mut ThreadContext,
@@ -384,5 +479,12 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
         LambdaList::with_rest(&[ARRAY], INDEX),
         array_in_bounds_builtin,
     )?;
+    register_one(runtime, ctx, "ADJUSTABLE-ARRAY-P", LambdaList::fixed(&[ARRAY]), adjustable_array_p_builtin)?;
+    register_one(runtime, ctx, "ARRAY-HAS-FILL-POINTER-P", LambdaList::fixed(&[ARRAY]), array_has_fill_pointer_p_builtin)?;
+    register_one(runtime, ctx, "FILL-POINTER", LambdaList::fixed(&[ARRAY]), fill_pointer_builtin)?;
+    register_one(runtime, ctx, "ADJUST-ARRAY", LambdaList::with_optional(&[ARRAY, DIMENSIONS], &[OPTIONS]), adjust_array_builtin)?;
+    register_one(runtime, ctx, "VECTOR-PUSH", LambdaList::fixed(&[ELEMENT, ARRAY]), vector_push_builtin)?;
+    register_one(runtime, ctx, "VECTOR-PUSH-EXTEND", LambdaList::with_optional(&[ELEMENT, ARRAY], &[EXTENSION]), vector_push_extend_builtin)?;
+    register_one(runtime, ctx, "VECTOR-POP", LambdaList::fixed(&[ARRAY]), vector_pop_builtin)?;
     Ok(())
 }

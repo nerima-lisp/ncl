@@ -389,6 +389,76 @@ fn thousands_of_entries_survive_reuse_and_gc_rehash() {
     assert!(ncl_object::pop_root(&mut ctx, table_token));
 }
 
+fn weak_entry_after_gc(
+    weakness: Weakness,
+    keep_key: bool,
+    keep_value: bool,
+    expected_count: usize,
+    expected_value: Word,
+) {
+    let (runtime, mut ctx) = setup();
+    let mut table_word = HashTable::new(&mut ctx, &runtime, HashTest::Eq, weakness)
+        .unwrap_or_else(|error| panic!("table allocation failed: {error:?}"))
+        .as_word();
+    let table_token = ncl_object::push_root(&mut ctx, &mut table_word);
+    let key = string(&mut ctx, &runtime, "weak-key");
+    let value = if weakness == Weakness::KeyOrValue {
+        Word::fixnum(99)
+    } else {
+        string(&mut ctx, &runtime, "weak-value")
+    };
+    let mut key_root = key;
+    let mut value_root = value;
+    let key_token = keep_key.then(|| ncl_object::push_root(&mut ctx, &mut key_root));
+    let value_token = keep_value.then(|| ncl_object::push_root(&mut ctx, &mut value_root));
+    HashTable::from_word(table_word)
+        .insert(&mut ctx, &runtime, key, value)
+        .unwrap_or_else(|error| panic!("insert failed: {error:?}"));
+    assert!(ctx.collect(true).is_ok());
+    let table = HashTable::from_word(table_word);
+    assert_eq!(table.count(&ctx), Ok(expected_count));
+    let lookup = if expected_count == 0 {
+        Word::fixnum(123)
+    } else {
+        key_root
+    };
+    assert_eq!(
+        table.get(&mut ctx, lookup),
+        if expected_count == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(expected_value))
+        }
+    );
+    if let Some(token) = value_token {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+    if let Some(token) = key_token {
+        assert!(ncl_object::pop_root(&mut ctx, token));
+    }
+    assert!(ncl_object::pop_root(&mut ctx, table_token));
+}
+
+#[test]
+fn weak_key_entry_is_removed_when_key_dies() {
+    weak_entry_after_gc(Weakness::Key, false, false, 0, Word::NIL);
+}
+
+#[test]
+fn weak_value_entry_is_removed_when_value_dies() {
+    weak_entry_after_gc(Weakness::Value, true, false, 0, Word::NIL);
+}
+
+#[test]
+fn weak_key_and_value_entry_requires_both_referents() {
+    weak_entry_after_gc(Weakness::KeyAndValue, false, false, 0, Word::NIL);
+}
+
+#[test]
+fn weak_key_or_value_entry_survives_when_key_is_live() {
+    weak_entry_after_gc(Weakness::KeyOrValue, true, false, 1, Word::fixnum(99));
+}
+
 #[test]
 fn moving_keys_are_rehashed_in_every_table() {
     let (runtime, mut ctx) = setup();

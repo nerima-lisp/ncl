@@ -1,5 +1,7 @@
 //! Typed, safe values and runtime state for NCL.
 #![allow(missing_docs)]
+// `Runtime` exposes the documented typed extension store through its public
+// methods; the crate-level allowance remains for the existing API surface.
 pub use ncl_sys::Word;
 pub mod array;
 mod builtin;

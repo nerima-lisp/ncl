@@ -6,8 +6,23 @@ use crate::{
     with_root,
 };
 use ncl_sys::{Heap, HeapConfig, RootToken, StorageCondition};
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::fmt;
+use std::sync::{Arc, Mutex};
+
+#[derive(Default)]
+struct ExtensionStore {
+    values: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
+}
+
+impl fmt::Debug for ExtensionStore {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ExtensionStore")
+            .finish_non_exhaustive()
+    }
+}
 
 /// Shared runtime heap and registries.
 #[derive(Debug)]
@@ -22,6 +37,7 @@ pub struct Runtime {
     layouts_registered: Mutex<bool>,
     pub(crate) builtins: Mutex<HashMap<Word, BuiltinImplementation>>,
     lisp_error_converter: Mutex<Option<LispErrorConverter>>,
+    extensions: Mutex<ExtensionStore>,
 }
 /// Per-mutator object-layer context. Generated code obtains its stable thread
 /// pointer with [`ThreadContext::thread_mut`].
@@ -54,6 +70,7 @@ impl Runtime {
             layouts_registered: Mutex::new(false),
             builtins: Mutex::new(HashMap::new()),
             lisp_error_converter: Mutex::new(None),
+            extensions: Mutex::new(ExtensionStore::default()),
         };
         runtime.register_layouts()?;
         let mut context = ThreadContext::new();
@@ -113,6 +130,35 @@ impl Runtime {
     /// Configure strict stale-word checking for this runtime heap.
     pub fn set_strict_forwarding(&self, on: bool) {
         self.heap.set_strict_forwarding(on);
+    }
+    /// Store a per-runtime extension value keyed by its concrete type.
+    ///
+    /// Replaces any value previously stored for `T`. The value is retained as
+    /// an [`Arc`] so an extension can share it with its callers safely.
+    pub fn set_extension<T>(&self, extension: Arc<T>)
+    where
+        T: Any + Send + Sync,
+    {
+        self.extensions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .values
+            .insert(TypeId::of::<T>(), extension);
+    }
+
+    /// Get a clone of the per-runtime extension value keyed by `T`.
+    #[must_use]
+    pub fn get_extension<T>(&self) -> Option<Arc<T>>
+    where
+        T: Any + Send + Sync,
+    {
+        self.extensions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .values
+            .get(&TypeId::of::<T>())
+            .cloned()
+            .and_then(|extension| Arc::downcast::<T>(extension).ok())
     }
     /// Register a function object under a package and name.
     ///

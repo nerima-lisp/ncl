@@ -260,7 +260,7 @@ fn parse_float(
         _ => float_format,
     };
     if target == FloatFormat::SingleFloat {
-        return Err(ReadError::UnsupportedFloatFormat(marker.unwrap_or('s')));
+        return Err(ReadError::FloatFormatUnavailable(marker.unwrap_or('s')));
     }
     let value: f64 = normalized
         .parse()

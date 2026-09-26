@@ -35,7 +35,7 @@ mod reader;
 mod readtable;
 pub(crate) mod token;
 
-use ncl_object::{ObjectError, Package, Runtime, ThreadContext, Word};
+use ncl_object::{ObjectError, Package, Runtime, ThreadContext};
 
 pub use error::ReadError;
 pub use input::{CharSource, StringSource};
@@ -108,11 +108,12 @@ const OWNED_SYMBOLS: &[(&str, &str, SymbolKind)] = &[
     ("COMMON-LISP", "SET-SYNTAX-FROM-CHAR", SymbolKind::Function),
 ];
 
-/// Intern every owned symbol and register the function and class entries.
+/// Intern every owned symbol and install metadata for implemented entries.
 ///
-/// Function and class words are placeholders ([`Word::UNBOUND`]) until a
-/// callable function ABI and CLOS class objects land in a later lane; the
-/// ownership gate checks presence, not callability.
+/// Reader functions and the `READTABLE` class are not registered until their
+/// callable builtin and class implementations exist.  They are still
+/// interned so the ownership table can distinguish ownership from runtime
+/// callability.
 ///
 /// # Errors
 /// Returns an object-layer failure when a package or symbol cannot be created.
@@ -126,12 +127,7 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
         let (symbol, _) = Package::from_word(package_word).intern(&mut ctx, runtime, name)?;
         match kind {
             SymbolKind::Variable => ncl_object::set_symbol_special(&mut ctx, symbol, true)?,
-            SymbolKind::Function => {
-                runtime.define_function(&mut ctx, package, name, Word::UNBOUND)?;
-            }
-            SymbolKind::Class => {
-                runtime.define_class(&mut ctx, name, Word::UNBOUND)?;
-            }
+            SymbolKind::Function | SymbolKind::Class => {}
             SymbolKind::Macro => ncl_object::set_symbol_macro(&mut ctx, symbol, true)?,
         }
     }

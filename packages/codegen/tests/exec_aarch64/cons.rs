@@ -76,22 +76,26 @@ fn build_cons_function() -> ncl_ir::Function {
             &[Ty::Word],
         )
         .expect("cdr")[0];
+    // A cons cell has no header word (`Prim::Car`/`Prim::Cdr` below read it
+    // directly at byte offsets 0/8), so it must be filled in with the
+    // matching headerless `Rplaca`/`Rplacd` primitives rather than the
+    // generic `StoreField`, whose `field` is header-relative.
     builder
         .push_op(
-            OpKind::StoreField {
-                object,
-                field: 0,
-                value: car,
+            OpKind::Prim {
+                op: Prim::Rplaca,
+                args: vec![object, car],
+                condition: None,
             },
             &[],
         )
         .expect("store car");
     builder
         .push_op(
-            OpKind::StoreField {
-                object,
-                field: 1,
-                value: cdr,
+            OpKind::Prim {
+                op: Prim::Rplacd,
+                args: vec![object, cdr],
+                condition: None,
             },
             &[],
         )

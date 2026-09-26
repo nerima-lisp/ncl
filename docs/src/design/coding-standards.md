@@ -264,6 +264,8 @@ Verification uses `nix develop path:. --command cargo ...`. Reports name changed
 
 `python3 scripts/check_standards.py` scans `packages/*` for non-path dependencies, unsafe outside `packages/sys`, Rust files over 500 lines, `mod.rs`, and production unwrap/expect/panic. It reports todo counts outside tests. Any violation exits nonzero. The script is not a Rust parser and does not replace cargo, clippy, or review. Skeleton violations are reported rather than hidden, with target file count and all output.
 
+The added-lines gate runs `python3 scripts/check_added_lines.py --base <revision>` locally and in CI. Pull requests use the event base revision; pushes use the previous commit, with the parent commit as the initial-push fallback. It reports only violations on newly added Rust lines, while existing violations remain outside this gate.
+
 ## Review examples
 
 An accessor that accepts `&mut Word` without a ThreadContext is incomplete when it can allocate. A field store that omits the write barrier is incorrect even if the unit test uses only old objects. A `HashMap<Word, Word>` in a static registry is incorrect unless its slots are registered roots. An OS call in a safe crate is incorrect even when the declaration is copied verbatim.

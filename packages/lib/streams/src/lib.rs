@@ -50,16 +50,6 @@ const STRING_PARAMETERS: &[Parameter] = &[
         ty: ParameterType::Any,
     },
 ];
-const BYTE_PARAMETERS: &[Parameter] = &[
-    Parameter {
-        name: BuiltinName::new("byte"),
-        ty: ParameterType::Any,
-    },
-    Parameter {
-        name: BuiltinName::new("stream"),
-        ty: ParameterType::Any,
-    },
-];
 
 /// Register the implemented file-stream functions.
 ///
@@ -163,17 +153,6 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             },
             read_byte_adapter,
             pass_arguments,
-        ),
-    )?;
-    runtime.register_builtin(
-        &mut ctx,
-        BuiltinIdentifier::new(BuiltinPackage::CommonLisp, BuiltinName::new("WRITE-BYTE")),
-        BuiltinImplementation::direct(
-            Builtin {
-                lambda_list: LambdaList::fixed(BYTE_PARAMETERS),
-                convention: BuiltinConvention::Direct(Arity::exact(2)),
-            },
-            write_byte_adapter,
         ),
     )?;
     for (name, function) in [
@@ -576,40 +555,13 @@ fn read_byte_adapter(
     let position = position(ctx, state, POSITION)?;
     let length = simple_vector_length(ctx, state)?.saturating_sub(DATA);
     if position >= length {
-        return Ok(args.get(1).unwrap_or(Word::NIL));
+        return Ok(args.get(2).unwrap_or(Word::NIL));
     }
     let byte = simple_vector_ref(ctx, state, DATA + position)?
         .as_fixnum()
         .ok_or(ObjectError::Layout)?;
     set_position(ctx, state, POSITION, position.saturating_add(1))?;
     Ok(Word::fixnum(byte))
-}
-
-fn write_byte_adapter(
-    ctx: &mut ThreadContext,
-    _runtime: &Runtime,
-    args: &BuiltinArgs<'_>,
-    _values: &mut MultipleValues,
-) -> Result<Word, ObjectError> {
-    let byte = args
-        .required(0)?
-        .as_fixnum()
-        .ok_or(ObjectError::TypeError)?;
-    let byte = u8::try_from(byte).map_err(|_| ObjectError::TypeError)?;
-    let stream = stream_from_args(args, 1)?;
-    let state = stream_state(ctx, stream)?;
-    ensure_open(ctx, state)?;
-    if state_kind(ctx, state)?.is_some() {
-        return Err(ObjectError::TypeError);
-    }
-    let position = position(ctx, state, POSITION)?;
-    let slot = DATA.checked_add(position).ok_or(ObjectError::Layout)?;
-    if slot >= simple_vector_length(ctx, state)? {
-        return Err(ObjectError::TypeError);
-    }
-    simple_vector_set(ctx, state, slot, Word::fixnum(i64::from(byte)))?;
-    set_position(ctx, state, POSITION, position.saturating_add(1))?;
-    Ok(Word::fixnum(i64::from(byte)))
 }
 
 fn write_string_adapter(

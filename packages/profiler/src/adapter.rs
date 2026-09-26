@@ -186,7 +186,7 @@ fn append_line(output: &mut String, names: &[&str], samples: u64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameCatalog, ReportFormat, ReportText};
+    use super::{FrameCatalog, ReportFormat, ReportText, ThreadSampler};
     use crate::domain::{FrameId, Profile, Sample};
 
     #[test]
@@ -207,6 +207,47 @@ mod tests {
         }
         let report = ReportText::render(&profile, &catalog, ReportFormat::Folded);
         assert_eq!(report.as_str(), "root;leaf 1");
+    }
+
+    #[test]
+    fn catalog_and_report_formats_cover_boundary_variants() {
+        let mut catalog = FrameCatalog::new();
+        assert_eq!(
+            catalog.intern(""),
+            Err(crate::domain::SampleError::EmptyFrameName)
+        );
+        let root = catalog.intern("root").unwrap_or(FrameId::new(99));
+        let leaf = catalog.intern("leaf").unwrap_or(FrameId::new(99));
+        assert_eq!(catalog.intern("root"), Ok(root));
+        assert_eq!(catalog.name(FrameId::new(999)), None);
+        assert_eq!(
+            ThreadSampler::new(0, 1),
+            Err(crate::domain::SampleError::InvalidSamplerCapacity)
+        );
+        assert_eq!(
+            ThreadSampler::new(1, 0),
+            Err(crate::domain::SampleError::InvalidSamplerCapacity)
+        );
+        let sample = Sample::new(vec![root, leaf]);
+        assert!(sample.is_ok());
+        let mut profile = Profile::new();
+        if let Ok(sample) = sample {
+            profile.push(sample);
+        }
+        if let Ok(sample) = Sample::new(vec![FrameId::new(7)]) {
+            profile.push(sample);
+        }
+        for format in [
+            ReportFormat::Flat,
+            ReportFormat::Cumulative,
+            ReportFormat::Callgraph,
+        ] {
+            assert!(
+                !ReportText::render(&profile, &catalog, format)
+                    .as_str()
+                    .is_empty()
+            );
+        }
     }
 
     #[test]

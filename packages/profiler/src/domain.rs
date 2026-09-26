@@ -264,4 +264,19 @@ mod tests {
     fn rejects_an_empty_stack() {
         assert_eq!(Sample::new(Vec::new()), Err(SampleError::EmptyStack));
     }
+
+    #[test]
+    fn sample_errors_have_stable_messages() {
+        for error in [
+            SampleError::EmptyStack,
+            SampleError::InvalidSamplerCapacity,
+            SampleError::MissingReturnPc,
+            SampleError::UnknownCodeAddress,
+            SampleError::UnknownSafepoint,
+            SampleError::EmptyFrameName,
+            SampleError::TooManyFrames,
+        ] {
+            assert!(!error.to_string().is_empty());
+        }
+    }
 }

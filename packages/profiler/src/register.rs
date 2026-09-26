@@ -254,6 +254,8 @@ mod tests {
         let stop = function(&runtime, &mut context, "PROFILE-STOP");
         let report = function(&runtime, &mut context, "PROFILE-REPORT");
 
+        assert!(runtime.call_builtin(&mut context, report, &[]).is_err());
+        assert!(runtime.call_builtin(&mut context, stop, &[]).is_err());
         assert_eq!(
             runtime.call_builtin(&mut context, start, &[]),
             Ok(Word::NIL)
@@ -264,6 +266,7 @@ mod tests {
             assert_eq!(string_length(&context, value), Ok(0));
         }
         assert_eq!(runtime.call_builtin(&mut context, stop, &[]), Ok(Word::NIL));
+        assert!(runtime.call_builtin(&mut context, stop, &[]).is_err());
     }
 
     #[test]

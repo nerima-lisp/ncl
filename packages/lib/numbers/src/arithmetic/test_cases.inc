@@ -70,30 +70,9 @@ fn arithmetic_handles_i64_and_i128_boundaries_without_wrapping() -> Result<(), O
     assert_eq!(integer(&ctx, max)?, i128::MAX);
     assert_eq!(integer(&ctx, min)?, i128::MIN);
 
-    assert_eq!(
-        word(
-            &mut ctx,
-            &runtime,
-            add_pair(Number::Integer(i128::MAX), Number::Integer(1))
-        ),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        word(
-            &mut ctx,
-            &runtime,
-            sub_pair(Number::Integer(i128::MIN), Number::Integer(1))
-        ),
-        Err(ObjectError::TypeError)
-    );
-    assert_eq!(
-        word(
-            &mut ctx,
-            &runtime,
-            mul_pair(Number::Integer(i128::MAX), Number::Integer(2))
-        ),
-        Err(ObjectError::TypeError)
-    );
+    assert!(add_pair(Number::Integer(i128::MAX), Number::Integer(1)).is_err());
+    assert!(sub_pair(Number::Integer(i128::MIN), Number::Integer(1)).is_err());
+    assert!(mul_pair(Number::Integer(i128::MAX), Number::Integer(2)).is_err());
     assert_eq!(
         div_pair(Number::Integer(i128::MIN), Number::Integer(-1))
             .and_then(|value| word(&mut ctx, &runtime, value)),

@@ -1,12 +1,28 @@
 //! Random-state objects and Common Lisp numeric constants.
 
+use core::cell::Cell;
 use ncl_object::{
-    classify_object, instance_class, make_double, make_instance, set_symbol_constant,
-    set_symbol_special, set_symbol_value, slot_ref, slot_set, Builtin, BuiltinArgs,
-    BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName, BuiltinPackage,
-    LambdaList, MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType, Runtime,
-    ThreadContext, Word,
+    Builtin, BuiltinArgs, BuiltinConvention, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
+    BuiltinPackage, LambdaList, MultipleValues, ObjectError, ObjectRef, Package, Parameter,
+    ParameterType, Runtime, ThreadContext, Word, classify_object, instance_class, make_double,
+    make_instance, set_symbol_constant, set_symbol_special, set_symbol_value, slot_ref, slot_set,
 };
+use ncl_sys::RootSlot;
+
+fn with_root<T>(
+    ctx: &mut ThreadContext,
+    value: &mut Word,
+    f: impl FnOnce(&mut ThreadContext, RootSlot<'_>) -> Result<T, ObjectError>,
+) -> Result<T, ObjectError> {
+    let mut slot = Cell::new(*value);
+    let token = ncl_object::push_root(ctx, slot.get_mut());
+    let result = f(ctx, RootSlot::new(&slot));
+    *value = slot.get();
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
+    }
+    result
+}
 
 use crate::MOST_POSITIVE_FIXNUM;
 
@@ -48,14 +64,16 @@ fn state_p(ctx: &mut ThreadContext, runtime: &Runtime, value: Word) -> Result<bo
 }
 
 fn make_state(ctx: &mut ThreadContext, runtime: &Runtime, seed: i64) -> Result<Word, ObjectError> {
-    let class = random_state_class(ctx, runtime)?;
-    Ok(make_instance(
-        ctx,
-        runtime,
-        class,
-        &[Word::fixnum(seed & MOST_POSITIVE_FIXNUM)],
-    )?
-    .into())
+    let mut class = random_state_class(ctx, runtime)?;
+    with_root(ctx, &mut class, |ctx, class| {
+        Ok(make_instance(
+            ctx,
+            runtime,
+            *class,
+            &[Word::fixnum(seed & MOST_POSITIVE_FIXNUM)],
+        )?
+        .into())
+    })
 }
 
 fn next_word(ctx: &mut ThreadContext, state: Word) -> Result<u64, ObjectError> {
@@ -125,7 +143,9 @@ fn random_builtin(
     if !state_p(ctx, runtime, state)? {
         return Err(ObjectError::TypeError);
     }
-    match classify_object(ctx, limit) {
+    let mut rooted_state = state;
+    let token = ncl_object::push_root(ctx, &mut rooted_state);
+    let result = match classify_object(ctx, limit) {
         ObjectRef::DoubleFloat(value) => {
             let bound = ncl_object::double_value(ctx, ncl_object::DoubleFloat::from_word(value))?;
             if !bound.is_finite() || bound <= 0.0 {
@@ -135,7 +155,7 @@ fn random_builtin(
                 .ok()
                 .and_then(|value| value.checked_add(1))
                 .ok_or(ObjectError::TypeError)?;
-            let fraction = u64_to_f64(next_word(ctx, state)?)? / u64_to_f64(modulus)?;
+            let fraction = u64_to_f64(next_word(ctx, rooted_state)?)? / u64_to_f64(modulus)?;
             make_double(ctx, runtime, bound * fraction).map(Into::into)
         }
         ObjectRef::Fixnum(_) | ObjectRef::Bignum(_) => {
@@ -143,7 +163,7 @@ fn random_builtin(
             if bound <= 0 {
                 return Err(ObjectError::TypeError);
             }
-            let value = random_below(ctx, state, bound)?;
+            let value = random_below(ctx, rooted_state, bound)?;
             i64::try_from(value)
                 .ok()
                 .and_then(|value| {
@@ -156,7 +176,11 @@ fn random_builtin(
                 )
         }
         _ => Err(ObjectError::TypeError),
+    };
+    if !ncl_object::pop_root(ctx, token) {
+        return Err(ObjectError::Layout);
     }
+    result
 }
 
 fn make_random_state_builtin(
@@ -210,8 +234,10 @@ fn set_float_constant(
     name: &'static str,
     value: f64,
 ) -> Result<(), ObjectError> {
-    let value = make_double(ctx, runtime, value)?.into();
-    set_constant(ctx, runtime, package, name, value)
+    let mut value: Word = make_double(ctx, runtime, value)?.into();
+    with_root(ctx, &mut value, |ctx, value| {
+        set_constant(ctx, runtime, package, name, *value)
+    })
 }
 
 fn register_constants(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
@@ -300,8 +326,10 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
         .ok_or(ObjectError::PackageConflict)?;
     let (symbol, _) = Package::from_word(package).intern(ctx, runtime, "*RANDOM-STATE*")?;
     set_symbol_special(ctx, symbol, true)?;
-    let state = make_state(ctx, runtime, INITIAL_SEED)?;
-    set_symbol_value(ctx, symbol, state)?;
+    let mut state = make_state(ctx, runtime, INITIAL_SEED)?;
+    with_root(ctx, &mut state, |ctx, state| {
+        set_symbol_value(ctx, symbol, *state)
+    })?;
 
     let descriptor = Builtin {
         lambda_list: LambdaList::with_optional(RANDOM_REQUIRED, &[ANY]),

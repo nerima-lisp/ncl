@@ -131,6 +131,25 @@ fn random_rejects_invalid_limits() {
 }
 
 #[test]
+fn random_and_constants_survive_gc_stress_and_strict_forwarding() {
+    let (runtime, mut ctx) = setup();
+    let mut state = call(&runtime, &mut ctx, "MAKE-RANDOM-STATE", &[Word::NIL]).unwrap();
+    let token = ncl_object::push_root(&mut ctx, &mut state);
+    let state_p = function(&runtime, &mut ctx, "RANDOM-STATE-P");
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, state_p, &[state]),
+        Ok(Word::TRUE)
+    );
+    assert!(ncl_object::pop_root(&mut ctx, token));
+
+    let pi = common_lisp_symbol(&runtime, &mut ctx, "PI");
+    let pi_value = symbol_value(&ctx, pi).unwrap();
+    assert!(float(&ctx, pi_value).is_finite());
+}
+
+#[test]
 fn numeric_constants_are_constant_and_bound() {
     let (runtime, mut ctx) = setup();
     for name in ["PI", "DOUBLE-FLOAT-EPSILON", "MOST-POSITIVE-FIXNUM"] {

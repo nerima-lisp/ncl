@@ -3,8 +3,8 @@
 use core::cell::Cell;
 
 use ncl_object::{
-    classify_object, complex_imag, complex_real, double_value, make_complex, make_double,
     BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Runtime, ThreadContext, Word,
+    classify_object, complex_imag, complex_real, double_value, make_complex, make_double,
 };
 use ncl_sys::{RootSlot, RootToken};
 
@@ -97,8 +97,10 @@ pub fn typed_complex(
         }
         let mut real = make_double(ctx, runtime, real_value)?.into();
         with_root(ctx, &mut real, |ctx, real| {
-            let imag = make_double(ctx, runtime, imag_value)?.into();
-            make_complex(ctx, runtime, *real, imag).map(Into::into)
+            let mut imag = make_double(ctx, runtime, imag_value)?.into();
+            with_root(ctx, &mut imag, |ctx, imag| {
+                make_complex(ctx, runtime, *real, *imag).map(Into::into)
+            })
         })
     })
 }
@@ -116,8 +118,10 @@ pub fn typed_conjugate(
             let mut real_word = complex_real(ctx, object)?;
             let imag_value = -real(ctx, complex_imag(ctx, object)?)?;
             with_root(ctx, &mut real_word, |ctx, real_word| {
-                let imag = make_double(ctx, runtime, imag_value)?.into();
-                make_complex(ctx, runtime, *real_word, imag).map(Into::into)
+                let mut imag = make_double(ctx, runtime, imag_value)?.into();
+                with_root(ctx, &mut imag, |ctx, imag| {
+                    make_complex(ctx, runtime, *real_word, *imag).map(Into::into)
+                })
             })
         } else {
             real(ctx, *value)?;
@@ -172,7 +176,9 @@ pub fn typed_cis(
     let angle = real(ctx, args.required(0)?)?;
     let mut real = make_double(ctx, runtime, angle.cos())?.into();
     with_root(ctx, &mut real, |ctx, real| {
-        let imag = make_double(ctx, runtime, angle.sin())?.into();
-        make_complex(ctx, runtime, *real, imag).map(Into::into)
+        let mut imag = make_double(ctx, runtime, angle.sin())?.into();
+        with_root(ctx, &mut imag, |ctx, imag| {
+            make_complex(ctx, runtime, *real, *imag).map(Into::into)
+        })
     })
 }

@@ -1,4 +1,4 @@
-use super::{list_items, package_arg, package_designator, string_designator};
+use super::{list_items, package_arg, package_designator, string_designator, with_rooted_words};
 use ncl_object::{
     BuiltinArgs, MultipleValues, ObjectError, ObjectRef, Package, Parameter, ParameterType,
     Runtime, ThreadContext, Word, classify_object,
@@ -54,15 +54,19 @@ pub(super) fn shadowing_import(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let symbols = list_items(ctx, args.required(0)?)?;
-    let package = package_arg(ctx, runtime, args, 1)?;
-    for symbol in symbols {
-        if !matches!(classify_object(ctx, symbol), ObjectRef::Symbol(_)) {
-            return Err(ObjectError::TypeError);
-        }
-        package.shadowing_import(ctx, runtime, symbol)?;
-    }
-    Ok(Word::TRUE)
+    let mut symbols = list_items(ctx, args.required(0)?)?;
+    let mut package = package_arg(ctx, runtime, args, 1)?.as_word();
+    with_rooted_words(ctx, &mut symbols, |ctx, symbols| {
+        with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+            for symbol in symbols.iter().copied() {
+                if !matches!(classify_object(ctx, symbol), ObjectRef::Symbol(_)) {
+                    return Err(ObjectError::TypeError);
+                }
+                Package::from_word(package[0]).shadowing_import(ctx, runtime, symbol)?;
+            }
+            Ok(Word::TRUE)
+        })
+    })
 }
 
 pub(super) fn make_package(
@@ -97,18 +101,47 @@ pub(super) fn make_package(
             }
             "USE" => {
                 for used in list_items(ctx, value)? {
-                    use_packages.push(package_designator(ctx, runtime, used)?);
+                    use_packages.push(package_designator(ctx, runtime, used)?.as_word());
                 }
             }
             _ => return Err(ObjectError::TypeError),
         }
         index += 2;
     }
-    let package = Package::from_word(runtime.ensure_package(ctx, &name)?);
-    let name_word = ncl_object::make_string(ctx, runtime, &name.chars().collect::<Vec<_>>())?;
-    runtime.rename_package(ctx, package, name_word, nicknames)?;
-    for used in use_packages {
-        package.use_package(ctx, runtime, used.as_word())?;
-    }
-    Ok(package.as_word())
+    with_rooted_words(ctx, &mut use_packages, |ctx, use_packages| {
+        with_rooted_words(
+            ctx,
+            std::slice::from_mut(&mut nicknames),
+            |ctx, nicknames| {
+                let mut package = runtime.ensure_package(ctx, &name)?;
+                with_rooted_words(ctx, std::slice::from_mut(&mut package), |ctx, package| {
+                    let mut roots = [package[0], nicknames[0]];
+                    with_rooted_words(ctx, &mut roots, |ctx, roots| {
+                        let name_word = ncl_object::make_string(
+                            ctx,
+                            runtime,
+                            &name.chars().collect::<Vec<_>>(),
+                        )?;
+                        let mut name_word = name_word;
+                        with_rooted_words(
+                            ctx,
+                            std::slice::from_mut(&mut name_word),
+                            |ctx, name_word| {
+                                runtime.rename_package(
+                                    ctx,
+                                    Package::from_word(roots[0]),
+                                    name_word[0],
+                                    roots[1],
+                                )?;
+                                for used in use_packages.iter().copied() {
+                                    Package::from_word(roots[0]).use_package(ctx, runtime, used)?;
+                                }
+                                Ok(roots[0])
+                            },
+                        )
+                    })
+                })
+            },
+        )
+    })
 }

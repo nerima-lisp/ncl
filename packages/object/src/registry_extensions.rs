@@ -48,49 +48,60 @@ impl Runtime {
         name: Word,
         nicknames: Word,
     ) -> Result<(), ObjectError> {
-        package.ensure_unlocked(ctx)?;
-        string_length(ctx, name)?;
+        let mut package_word = package.as_word();
+        crate::with_root(ctx, &mut package_word, |ctx, package| {
+            Package::from_word(*package).ensure_unlocked(ctx)?;
+            let mut name = name;
+            crate::with_root(ctx, &mut name, |ctx, name| {
+                string_length(ctx, *name)?;
+                let mut nicknames = nicknames;
+                crate::with_root(ctx, &mut nicknames, |ctx, nicknames| {
+                    let table = Self::table(&self.packages)?;
+                    let mut names = *nicknames;
+                    while names != Word::NIL {
+                        let nickname = ncl_sys::read_cons_word(&ctx.thread, names, 0)
+                            .ok_or(ObjectError::Layout)?;
+                        string_length(ctx, nickname)?;
+                        if let Some(found) = HashTable::from_word(table).get(ctx, nickname)?
+                            && found != *package
+                        {
+                            return Err(ObjectError::PackageConflict);
+                        }
+                        names = ncl_sys::read_cons_word(&ctx.thread, names, 1)
+                            .ok_or(ObjectError::Layout)?;
+                    }
+                    if let Some(found) = HashTable::from_word(table).get(ctx, *name)?
+                        && found != *package
+                    {
+                        return Err(ObjectError::PackageConflict);
+                    }
 
-        let table = Self::table(&self.packages)?;
-        let mut names = nicknames;
-        while names != Word::NIL {
-            let nickname =
-                ncl_sys::read_cons_word(&ctx.thread, names, 0).ok_or(ObjectError::Layout)?;
-            string_length(ctx, nickname)?;
-            if let Some(found) = HashTable::from_word(table).get(ctx, nickname)?
-                && found != package.as_word()
-            {
-                return Err(ObjectError::PackageConflict);
-            }
-            names = ncl_sys::read_cons_word(&ctx.thread, names, 1).ok_or(ObjectError::Layout)?;
-        }
-        if let Some(found) = HashTable::from_word(table).get(ctx, name)?
-            && found != package.as_word()
-        {
-            return Err(ObjectError::PackageConflict);
-        }
-
-        let old_name = package.name(ctx)?;
-        HashTable::from_word(table).remove(ctx, self, old_name)?;
-        let old_nicknames = package.nicknames(ctx)?;
-        let mut old = old_nicknames;
-        while old != Word::NIL {
-            let nickname =
-                ncl_sys::read_cons_word(&ctx.thread, old, 0).ok_or(ObjectError::Layout)?;
-            HashTable::from_word(table).remove(ctx, self, nickname)?;
-            old = ncl_sys::read_cons_word(&ctx.thread, old, 1).ok_or(ObjectError::Layout)?;
-        }
-        put(ctx, package.as_word(), NAME, name)?;
-        put(ctx, package.as_word(), NICKNAMES, nicknames)?;
-        HashTable::from_word(table).insert(ctx, self, name, package.as_word())?;
-        let mut names = nicknames;
-        while names != Word::NIL {
-            let nickname =
-                ncl_sys::read_cons_word(&ctx.thread, names, 0).ok_or(ObjectError::Layout)?;
-            HashTable::from_word(table).insert(ctx, self, nickname, package.as_word())?;
-            names = ncl_sys::read_cons_word(&ctx.thread, names, 1).ok_or(ObjectError::Layout)?;
-        }
-        Ok(())
+                    let old_name = Package::from_word(*package).name(ctx)?;
+                    HashTable::from_word(table).remove(ctx, self, old_name)?;
+                    let old_nicknames = Package::from_word(*package).nicknames(ctx)?;
+                    let mut old = old_nicknames;
+                    while old != Word::NIL {
+                        let nickname = ncl_sys::read_cons_word(&ctx.thread, old, 0)
+                            .ok_or(ObjectError::Layout)?;
+                        HashTable::from_word(table).remove(ctx, self, nickname)?;
+                        old = ncl_sys::read_cons_word(&ctx.thread, old, 1)
+                            .ok_or(ObjectError::Layout)?;
+                    }
+                    put(ctx, *package, NAME, *name)?;
+                    put(ctx, *package, NICKNAMES, *nicknames)?;
+                    HashTable::from_word(table).insert(ctx, self, *name, *package)?;
+                    let mut names = *nicknames;
+                    while names != Word::NIL {
+                        let nickname = ncl_sys::read_cons_word(&ctx.thread, names, 0)
+                            .ok_or(ObjectError::Layout)?;
+                        HashTable::from_word(table).insert(ctx, self, nickname, *package)?;
+                        names = ncl_sys::read_cons_word(&ctx.thread, names, 1)
+                            .ok_or(ObjectError::Layout)?;
+                    }
+                    Ok(())
+                })
+            })
+        })
     }
 
     /// Remove a package from the runtime package registry.

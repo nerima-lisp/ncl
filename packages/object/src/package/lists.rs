@@ -194,38 +194,39 @@ impl super::Package {
             Self::from_word(*package).ensure_unlocked(ctx)?;
             let mut name = name;
             crate::with_root(ctx, &mut name, |ctx, name| {
-                let symbol =
+                let (mut symbol, new_symbol) =
                     if let Some((symbol, _)) = Self::from_word(*package).find_symbol(ctx, *name)? {
-                        symbol
+                        (symbol, false)
                     } else {
-                        let mut symbol = crate::make_symbol(ctx, runtime, *name)?;
-                        crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                            put(
-                                ctx,
-                                *symbol,
-                                crate::layout::symbol_offset::PACKAGE,
-                                *package,
-                            )?;
-                            HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
-                                .insert(ctx, runtime, *name, *symbol)?;
-                            Ok(*symbol)
-                        })?
+                        (crate::make_symbol(ctx, runtime, *name)?, true)
                     };
-                let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
-                while list != Word::NIL {
-                    if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(symbol) {
-                        return Ok(());
+                crate::with_root(ctx, &mut symbol, |ctx, symbol| {
+                    if new_symbol {
+                        put(
+                            ctx,
+                            *symbol,
+                            crate::layout::symbol_offset::PACKAGE,
+                            *package,
+                        )?;
+                        HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?)
+                            .insert(ctx, runtime, *name, *symbol)?;
                     }
-                    list =
-                        ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
-                }
-                let list = make_cons(
-                    ctx,
-                    runtime,
-                    symbol,
-                    get(ctx, *package, widetag::PACKAGE, SHADOWING)?,
-                )?;
-                put(ctx, *package, SHADOWING, list)
+                    let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
+                    while list != Word::NIL {
+                        if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(*symbol) {
+                            return Ok(());
+                        }
+                        list = ncl_sys::read_cons_word(&ctx.thread, list, 1)
+                            .ok_or(ObjectError::Layout)?;
+                    }
+                    let list = make_cons(
+                        ctx,
+                        runtime,
+                        *symbol,
+                        get(ctx, *package, widetag::PACKAGE, SHADOWING)?,
+                    )?;
+                    put(ctx, *package, SHADOWING, list)
+                })
             })
         })
     }
@@ -245,28 +246,30 @@ impl super::Package {
         symbol: Word,
     ) -> Result<(), ObjectError> {
         self.ensure_unlocked(ctx)?;
-        let name = symbol_name(ctx, symbol)?;
-        self.unintern(ctx, runtime, name)?;
-        self.import(ctx, runtime, name, symbol)?;
         let mut package = self.0;
         crate::with_root(ctx, &mut package, |ctx, package| {
             let mut symbol = symbol;
             crate::with_root(ctx, &mut symbol, |ctx, symbol| {
-                let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
-                while list != Word::NIL {
-                    if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(*symbol) {
-                        return Ok(());
+                let mut name = symbol_name(ctx, *symbol)?;
+                crate::with_root(ctx, &mut name, |ctx, name| {
+                    Self::from_word(*package).unintern(ctx, runtime, *name)?;
+                    Self::from_word(*package).import(ctx, runtime, *name, *symbol)?;
+                    let mut list = get(ctx, *package, widetag::PACKAGE, SHADOWING)?;
+                    while list != Word::NIL {
+                        if ncl_sys::read_cons_word(&ctx.thread, list, 0) == Some(*symbol) {
+                            return Ok(());
+                        }
+                        list = ncl_sys::read_cons_word(&ctx.thread, list, 1)
+                            .ok_or(ObjectError::Layout)?;
                     }
-                    list =
-                        ncl_sys::read_cons_word(&ctx.thread, list, 1).ok_or(ObjectError::Layout)?;
-                }
-                let list = make_cons(
-                    ctx,
-                    runtime,
-                    *symbol,
-                    get(ctx, *package, widetag::PACKAGE, SHADOWING)?,
-                )?;
-                put(ctx, *package, SHADOWING, list)
+                    let list = make_cons(
+                        ctx,
+                        runtime,
+                        *symbol,
+                        get(ctx, *package, widetag::PACKAGE, SHADOWING)?,
+                    )?;
+                    put(ctx, *package, SHADOWING, list)
+                })
             })
         })
     }

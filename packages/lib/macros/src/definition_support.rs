@@ -67,10 +67,7 @@ fn macro_function_builtin(
 ) -> Result<Word, ObjectError> {
     let name = checked_symbol(ctx, args.required(0)?)?;
     let function = symbol_function(ctx, name)?;
-    Ok(match FunctionObject::try_from(function) {
-        Ok(function) => Word::from(function),
-        Err(_) => Word::NIL,
-    })
+    Ok(FunctionObject::try_from(function).map_or(Word::NIL, Word::from))
 }
 
 fn set_macro_function_builtin(
@@ -269,10 +266,9 @@ pub fn register_runtime_support(
         ),
     ];
     for (builtin, callback, params) in builtins {
-        let (package, builtin_name) = match (*builtin).split_once("::") {
-            Some(parts) => parts,
-            None => ("COMMON-LISP", *builtin),
-        };
+        let (package, builtin_name) = (*builtin)
+            .split_once("::")
+            .map_or(("COMMON-LISP", *builtin), |parts| parts);
         let package = match package {
             "COMMON-LISP" => CL,
             "NCL" => BuiltinPackage::NclExt,

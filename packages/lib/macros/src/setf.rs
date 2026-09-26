@@ -77,7 +77,7 @@ fn place(
     Ok(expansion)
 }
 
-fn validate_expansion(expansion: &SetfExpansion) -> Result<(), ObjectError> {
+const fn validate_expansion(expansion: &SetfExpansion) -> Result<(), ObjectError> {
     if expansion.temporary_variables.len() != expansion.value_forms.len()
         || expansion.store_variables.len() != 1
     {

@@ -35,7 +35,7 @@ impl<'runtime> PlaceRegistry<'runtime> {
         self.runtime.place_expander(ctx, operator)
     }
 
-    pub(crate) fn belongs_to(&self, runtime: &Runtime) -> bool {
+    pub(crate) fn belongs_to(self, runtime: &Runtime) -> bool {
         std::ptr::eq(self.runtime, runtime)
     }
 }

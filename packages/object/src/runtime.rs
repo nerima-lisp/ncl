@@ -35,7 +35,6 @@ pub struct RootedTable {
     slot: Box<Word>,
     _token: RootToken,
 }
-
 const KEYWORD_LIST: Parameter = Parameter {
     name: BuiltinName::new("LIST"),
     ty: ParameterType::Any,
@@ -84,6 +83,28 @@ const KEYWORD_VALUE_DESCRIPTOR: Builtin = Builtin {
     lambda_list: LambdaList::new(&[KEYWORD_LIST, KEYWORD], &[], None, &[], false),
     convention: BuiltinConvention::Direct(Arity::exact(2)),
 };
+
+/// A runtime-owned word that remains a precise GC root for the runtime life.
+#[derive(Debug)]
+pub struct RootedWord {
+    slot: Box<Word>,
+    _token: RootToken,
+}
+
+impl RootedWord {
+    pub(crate) fn new(heap: &Heap, value: Word) -> Self {
+        let mut slot = Box::new(value);
+        let token = ncl_sys::push_heap_root(heap, &mut slot);
+        Self {
+            slot,
+            _token: token,
+        }
+    }
+
+    pub(crate) fn get(&self) -> Word {
+        *self.slot
+    }
+}
 impl Runtime {
     /// Create a runtime with the default heap policy.
     ///
@@ -229,6 +250,7 @@ impl Runtime {
             .lock()
             .map_err(|_| ObjectError::Storage(StorageCondition::ThreadNotRegistered))?;
         expanders.register(&self.heap, operator, expander);
+        drop(expanders);
         Ok(())
     }
 

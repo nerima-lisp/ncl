@@ -150,9 +150,7 @@ impl Runtime {
                 _token: token,
             });
         }
-        for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
-            runtime.ensure_package(&mut context, name)?;
-        }
+        context.ensure_standard_packages(&runtime)?;
         runtime.register_keyword_builtins(&mut context)?;
         Ok(runtime)
     }

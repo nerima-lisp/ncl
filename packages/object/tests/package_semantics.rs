@@ -11,6 +11,51 @@ fn string(ctx: &mut ThreadContext, runtime: &Runtime, value: &str) -> Word {
 }
 
 #[test]
+fn common_lisp_user_inherits_common_lisp_symbols_under_gc_stress() {
+    let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)
+        .unwrap_or_else(|error| panic!("register: {error:?}"));
+    ctx.set_gc_stress(true);
+    ctx.set_strict_forwarding(true);
+
+    let mut common_word = runtime
+        .find_package(&ctx, "COMMON-LISP")
+        .unwrap_or_else(|| panic!("COMMON-LISP package missing"));
+    let common_token = ncl_object::push_root(&mut ctx, &mut common_word);
+    let mut user_word = runtime
+        .find_package(&ctx, "COMMON-LISP-USER")
+        .unwrap_or_else(|| panic!("COMMON-LISP-USER package missing"));
+    let user_token = ncl_object::push_root(&mut ctx, &mut user_word);
+    let use_list = Package::from_word(user_word)
+        .use_list(&ctx)
+        .unwrap_or_else(|error| panic!("use-list: {error:?}"));
+    assert_ne!(use_list, Word::NIL);
+
+    for name in ["QUOTE", "IF", "<", "DEFUN"] {
+        let (common_symbol, common_status) = Package::from_word(common_word)
+            .intern(&mut ctx, &runtime, name)
+            .unwrap_or_else(|error| panic!("common intern {name}: {error:?}"));
+        assert_eq!(common_status, FindStatus::External);
+        let mut common_symbol = common_symbol;
+        let common_symbol_token = ncl_object::push_root(&mut ctx, &mut common_symbol);
+        let (user_symbol, user_status) = Package::from_word(user_word)
+            .intern(&mut ctx, &runtime, name)
+            .unwrap_or_else(|error| panic!("user intern {name}: {error:?}"));
+        assert_eq!(user_symbol, common_symbol);
+        assert_eq!(user_status, FindStatus::Inherited);
+        let lookup_name = string(&mut ctx, &runtime, name);
+        assert_eq!(
+            Package::from_word(user_word).find_symbol(&mut ctx, lookup_name),
+            Ok(Some((common_symbol, FindStatus::Inherited)))
+        );
+        assert!(ncl_object::pop_root(&mut ctx, common_symbol_token));
+    }
+    assert!(ncl_object::pop_root(&mut ctx, user_token));
+    assert!(ncl_object::pop_root(&mut ctx, common_token));
+}
+
+#[test]
 fn import_preserves_home_and_rejects_accessible_conflicts() {
     let runtime = Runtime::new().unwrap_or_else(|error| panic!("runtime: {error:?}"));
     let mut ctx = ThreadContext::new();

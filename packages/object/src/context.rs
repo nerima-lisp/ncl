@@ -49,9 +49,22 @@ impl ThreadContext {
     pub fn register(&mut self, runtime: &Runtime) -> Result<(), ObjectError> {
         ncl_sys::register_thread(&runtime.heap, &mut self.thread).map_err(ObjectError::from)?;
         self.registered = true;
+        self.ensure_standard_packages(runtime)
+    }
+    pub(crate) fn ensure_standard_packages(
+        &mut self,
+        runtime: &Runtime,
+    ) -> Result<(), ObjectError> {
         for name in ["COMMON-LISP", "COMMON-LISP-USER", "KEYWORD", "NCL"] {
             runtime.ensure_package(self, name)?;
         }
+        let common_lisp = runtime
+            .find_package(self, "COMMON-LISP")
+            .ok_or(ObjectError::Layout)?;
+        let common_lisp_user = runtime
+            .find_package(self, "COMMON-LISP-USER")
+            .ok_or(ObjectError::Layout)?;
+        crate::Package::from_word(common_lisp_user).use_package(self, runtime, common_lisp)?;
         Ok(())
     }
     /// Bind a special variable, preserving stack order.

@@ -228,10 +228,20 @@ impl Package {
                         crate::layout::symbol_offset::PACKAGE,
                         *package,
                     )?;
+                    let table_slot = if runtime.find_package(ctx, "COMMON-LISP") == Some(*package) {
+                        EXTERNAL
+                    } else {
+                        INTERNAL
+                    };
+                    let status = if table_slot == EXTERNAL {
+                        FindStatus::External
+                    } else {
+                        FindStatus::Internal
+                    };
                     let table =
-                        HashTable::from_word(get(ctx, *package, widetag::PACKAGE, INTERNAL)?);
+                        HashTable::from_word(get(ctx, *package, widetag::PACKAGE, table_slot)?);
                     table.insert(ctx, runtime, *name_word, *symbol)?;
-                    Ok((*symbol, FindStatus::Internal))
+                    Ok((*symbol, status))
                 })
             })
         })

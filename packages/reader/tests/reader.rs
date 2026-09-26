@@ -269,6 +269,20 @@ fn reads_uninterned_symbols() {
 }
 
 #[test]
+fn reads_quote_with_the_common_lisp_symbol() {
+    let runtime = Runtime::new().unwrap();
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime).unwrap();
+    let common = Package::from_word(runtime.find_package(&ctx, "COMMON-LISP").unwrap());
+    let (quote, status) = common.intern(&mut ctx, &runtime, "QUOTE").unwrap();
+    assert_eq!(status, ncl_object::package::FindStatus::External);
+    let form = read_one(&runtime, &mut ctx, "(quote a)");
+    let operator = car(&mut ctx, form).unwrap();
+    assert_eq!(operator, quote);
+    assert_eq!(symbol_package(&ctx, operator), Ok(common.as_word()));
+}
+
+#[test]
 fn reads_radix_integers() {
     let runtime = Runtime::new().unwrap();
     let mut ctx = ThreadContext::new();

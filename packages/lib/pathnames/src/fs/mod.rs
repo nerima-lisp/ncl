@@ -76,7 +76,10 @@ pub enum FsError {
     /// The operation expected a directory but found another filesystem object.
     NotDirectory { operation: Operation },
     /// The operating system rejected an operation.
-    Io { operation: Operation, kind: io::ErrorKind },
+    Io {
+        operation: Operation,
+        kind: io::ErrorKind,
+    },
     /// A requested metadata field is not available on this host.
     MetadataUnavailable { field: MetadataField },
 }
@@ -85,7 +88,9 @@ impl fmt::Display for FsError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidPath => formatter.write_str("pathname is empty"),
-            Self::NotDirectory { operation } => write!(formatter, "{operation:?} requires a directory"),
+            Self::NotDirectory { operation } => {
+                write!(formatter, "{operation:?} requires a directory")
+            }
             Self::Io { operation, kind } => write!(formatter, "{operation:?} failed: {kind}"),
             Self::MetadataUnavailable { field } => {
                 write!(formatter, "metadata is unavailable: {field:?}")
@@ -125,13 +130,16 @@ pub fn truename(pathname: &Pathname) -> Result<Pathname, FsError> {
 
 /// Return the canonical path of every entry in a directory.
 pub fn directory(pathname: &Pathname) -> Result<Vec<Pathname>, FsError> {
-    let entries = fs::read_dir(pathname.as_path())
-        .map_err(|error| io_error(Operation::Directory, error))?;
+    let entries =
+        fs::read_dir(pathname.as_path()).map_err(|error| io_error(Operation::Directory, error))?;
     entries
         .map(|entry| {
             let entry = entry.map_err(|error| io_error(Operation::Directory, error))?;
             truename(&Pathname(entry.path())).map_err(|error| match error {
-                FsError::Io { kind: io::ErrorKind::NotFound, .. } => FsError::Io {
+                FsError::Io {
+                    kind: io::ErrorKind::NotFound,
+                    ..
+                } => FsError::Io {
                     operation: Operation::Directory,
                     kind: io::ErrorKind::NotFound,
                 },
@@ -151,20 +159,26 @@ pub struct EnsureDirectoriesResult {
 }
 
 /// Create a directory and all missing parents.
-pub fn ensure_directories_exist(
-    pathname: &Pathname,
-) -> Result<EnsureDirectoriesResult, FsError> {
+pub fn ensure_directories_exist(pathname: &Pathname) -> Result<EnsureDirectoriesResult, FsError> {
     match fs::metadata(pathname.as_path()) {
         Ok(metadata) => {
             if metadata.is_dir() {
-                return Ok(EnsureDirectoriesResult { pathname: pathname.clone(), created: false });
+                return Ok(EnsureDirectoriesResult {
+                    pathname: pathname.clone(),
+                    created: false,
+                });
             }
-            Err(FsError::NotDirectory { operation: Operation::EnsureDirectoriesExist })
+            Err(FsError::NotDirectory {
+                operation: Operation::EnsureDirectoriesExist,
+            })
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             fs::create_dir_all(pathname.as_path())
                 .map_err(|error| io_error(Operation::EnsureDirectoriesExist, error))?;
-            Ok(EnsureDirectoriesResult { pathname: pathname.clone(), created: true })
+            Ok(EnsureDirectoriesResult {
+                pathname: pathname.clone(),
+                created: true,
+            })
         }
         Err(error) => Err(io_error(Operation::EnsureDirectoriesExist, error)),
     }
@@ -205,8 +219,7 @@ pub fn delete_file(pathname: &Pathname) -> Result<(), FsError> {
 
 /// Return the file author when the host exposes a portable author name.
 pub fn file_author(pathname: &Pathname) -> Result<Option<String>, FsError> {
-    fs::metadata(pathname.as_path())
-        .map_err(|error| io_error(Operation::FileAuthor, error))?;
+    fs::metadata(pathname.as_path()).map_err(|error| io_error(Operation::FileAuthor, error))?;
     Ok(None)
 }
 

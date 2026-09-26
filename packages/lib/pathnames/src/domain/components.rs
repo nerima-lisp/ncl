@@ -71,10 +71,16 @@ pub struct Directory {
 
 impl Directory {
     pub fn relative(elements: Vec<DirectoryElement>) -> Self {
-        Self { kind: DirectoryKind::Relative, elements }
+        Self {
+            kind: DirectoryKind::Relative,
+            elements,
+        }
     }
 
     pub fn absolute(elements: Vec<DirectoryElement>) -> Self {
-        Self { kind: DirectoryKind::Absolute, elements }
+        Self {
+            kind: DirectoryKind::Absolute,
+            elements,
+        }
     }
 }

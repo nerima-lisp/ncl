@@ -4,6 +4,14 @@ struct Registration {
     implementation: BuiltinImplementation,
 }
 
+#[derive(Clone, Copy)]
+struct DirectBuiltin {
+    package: BuiltinPackage,
+    name: BuiltinName,
+    arity: BuiltinArity,
+    callback: ncl_object::RustBuiltin,
+}
+
 fn direct_registration(
     package: BuiltinPackage,
     name: &'static str,
@@ -16,69 +24,40 @@ fn direct_registration(
     }
 }
 
+const DIRECT_BUILTINS: [DirectBuiltin; 8] = [
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("CLASS-OF"), arity: BuiltinArity::One, callback: class_of_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-BOUNDP"), arity: BuiltinArity::Two, callback: slot_boundp_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-EXISTS-P"), arity: BuiltinArity::Two, callback: slot_exists_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-MAKUNBOUND"), arity: BuiltinArity::Two, callback: slot_makunbound_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE"), arity: BuiltinArity::Two, callback: slot_value_builtin },
+    DirectBuiltin { package: BuiltinPackage::CommonLisp, name: BuiltinName::new("SLOT-VALUE-SET"), arity: BuiltinArity::Three, callback: slot_set_builtin },
+    DirectBuiltin { package: BuiltinPackage::NclMop, name: BuiltinName::new("CLASS-NAME"), arity: BuiltinArity::One, callback: class_name_builtin },
+];
+
 fn builtin_manifest() -> Vec<Registration> {
-    let mut manifest = vec![
-        direct_registration(
-            BuiltinPackage::CommonLisp,
-            "CLASS-NAME",
-            BuiltinArity::One,
-            class_name_builtin,
-        ),
-        direct_registration(
-            BuiltinPackage::CommonLisp,
-            "CLASS-OF",
-            BuiltinArity::One,
-            class_of_builtin,
-        ),
-        direct_registration(
-            BuiltinPackage::CommonLisp,
-            "SLOT-BOUNDP",
-            BuiltinArity::Two,
-            slot_boundp_builtin,
-        ),
-        direct_registration(
-            BuiltinPackage::CommonLisp,
-            "SLOT-EXISTS-P",
-            BuiltinArity::Two,
-            slot_exists_builtin,
-        ),
-        direct_registration(
-            BuiltinPackage::CommonLisp,
-            "SLOT-MAKUNBOUND",
-            BuiltinArity::Two,
-            slot_makunbound_builtin,
-        ),
-        direct_registration(
-            BuiltinPackage::CommonLisp,
-            "SLOT-VALUE",
-            BuiltinArity::Two,
-            slot_value_builtin,
-        ),
-        direct_registration(
-            BuiltinPackage::NclMop,
-            "CLASS-NAME",
-            BuiltinArity::One,
-            class_name_builtin,
-        ),
-    ];
-    manifest.extend(mop::builtin_descriptors().iter().map(|descriptor| Registration {
+    let mut registrations = DIRECT_BUILTINS
+        .iter()
+        .map(|builtin| direct_registration(builtin.package, builtin.name.as_str(), builtin.arity, builtin.callback))
+        .collect::<Vec<_>>();
+    registrations.extend(mop::builtin_descriptors().iter().map(|descriptor| Registration {
         identifier: BuiltinIdentifier::new(descriptor.package, descriptor.name),
         implementation: mop::implementation(*descriptor),
     }));
     for descriptor in initialization::builtin_descriptors() {
         let implementation = initialization::implementation(*descriptor);
-        manifest.push(Registration {
+        registrations.push(Registration {
             identifier: BuiltinIdentifier::new(descriptor.package, descriptor.name),
             implementation,
         });
-        if descriptor.name.as_str() == "MAKE-INSTANCE" {
-            manifest.push(Registration {
-                identifier: BuiltinIdentifier::new(BuiltinPackage::NclMop, descriptor.name),
+        for package in descriptor.aliases {
+            registrations.push(Registration {
+                identifier: BuiltinIdentifier::new(*package, descriptor.name),
                 implementation,
             });
         }
     }
-    manifest
+    registrations
 }
 
 /// Every callable installed by the CLOS production registration path.
@@ -90,138 +69,80 @@ pub fn production_function_names() -> Vec<BuiltinIdentifier> {
         .collect()
 }
 
+#[derive(Clone, Copy)]
+struct ClassDefinition {
+    name: BuiltinName,
+    superclass: Option<BuiltinName>,
+}
+
+const CLASS_NAMES: [BuiltinName; 32] = [
+    BuiltinName::new("CLASS"), BuiltinName::new("NULL"), BuiltinName::new("STANDARD-OBJECT"),
+    BuiltinName::new("STANDARD-CLASS"), BuiltinName::new("BUILT-IN-CLASS"), BuiltinName::new("STRUCTURE-CLASS"),
+    BuiltinName::new("GENERIC-FUNCTION"), BuiltinName::new("STANDARD-GENERIC-FUNCTION"), BuiltinName::new("METHOD"),
+    BuiltinName::new("STANDARD-METHOD"), BuiltinName::new("METHOD-COMBINATION"), BuiltinName::new("STRUCTURE-OBJECT"),
+    BuiltinName::new("EQL-SPECIALIZER"), BuiltinName::new("T"), BuiltinName::new("NUMBER"), BuiltinName::new("INTEGER"),
+    BuiltinName::new("LIST"), BuiltinName::new("CONS"), BuiltinName::new("SYMBOL"), BuiltinName::new("STRING"),
+    BuiltinName::new("VECTOR"), BuiltinName::new("ARRAY"), BuiltinName::new("HASH-TABLE"), BuiltinName::new("STREAM"),
+    BuiltinName::new("PACKAGE"), BuiltinName::new("FUNCTION"), BuiltinName::new("CHARACTER"), BuiltinName::new("SIMPLE-VECTOR"),
+    BuiltinName::new("BIGNUM"), BuiltinName::new("RATIO"), BuiltinName::new("DOUBLE-FLOAT"), BuiltinName::new("COMPLEX"),
+];
+
+const fn class(name: &'static str, superclass: Option<&'static str>) -> ClassDefinition {
+    ClassDefinition {
+        name: BuiltinName::new(name),
+        superclass: match superclass {
+            Some(name) => Some(BuiltinName::new(name)),
+            None => None,
+        },
+    }
+}
+
+const CLASS_DEFINITIONS: [ClassDefinition; 32] = [
+    class("T", None), class("NULL", Some("T")), class("CLASS", Some("T")),
+    class("STANDARD-OBJECT", Some("T")), class("STANDARD-CLASS", Some("CLASS")),
+    class("BUILT-IN-CLASS", Some("CLASS")), class("STRUCTURE-CLASS", Some("CLASS")),
+    class("GENERIC-FUNCTION", Some("FUNCTION")), class("STANDARD-GENERIC-FUNCTION", Some("GENERIC-FUNCTION")),
+    class("METHOD", Some("STANDARD-OBJECT")), class("STANDARD-METHOD", Some("METHOD")),
+    class("METHOD-COMBINATION", Some("STANDARD-OBJECT")), class("STRUCTURE-OBJECT", Some("STANDARD-OBJECT")),
+    class("EQL-SPECIALIZER", Some("STANDARD-OBJECT")), class("NUMBER", Some("T")), class("INTEGER", Some("T")),
+    class("LIST", Some("T")), class("CONS", Some("T")), class("SYMBOL", Some("T")), class("STRING", Some("T")),
+    class("VECTOR", Some("T")), class("ARRAY", Some("T")), class("HASH-TABLE", Some("T")), class("STREAM", Some("T")),
+    class("PACKAGE", Some("T")), class("FUNCTION", Some("T")), class("CHARACTER", Some("T")),
+    class("SIMPLE-VECTOR", Some("T")), class("BIGNUM", Some("T")), class("RATIO", Some("T")),
+    class("DOUBLE-FLOAT", Some("T")), class("COMPLEX", Some("T")),
+];
+
 fn register_classes(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
-    for name in [
-        "CLASS",
-        "NULL",
-        "STANDARD-OBJECT",
-        "STANDARD-CLASS",
-        "BUILT-IN-CLASS",
-        "STRUCTURE-CLASS",
-        "GENERIC-FUNCTION",
-        "STANDARD-GENERIC-FUNCTION",
-        "METHOD",
-        "STANDARD-METHOD",
-        "METHOD-COMBINATION",
-        "STRUCTURE-OBJECT",
-        "EQL-SPECIALIZER",
-        "T",
-        "NUMBER",
-        "INTEGER",
-        "LIST",
-        "CONS",
-        "SYMBOL",
-        "STRING",
-        "VECTOR",
-        "ARRAY",
-        "HASH-TABLE",
-        "STREAM",
-        "PACKAGE",
-        "FUNCTION",
-        "CHARACTER",
-        "SIMPLE-VECTOR",
-        "BIGNUM",
-        "RATIO",
-        "DOUBLE-FLOAT",
-        "COMPLEX",
-    ] {
-        let package = runtime.ensure_package(ctx, COMMON_LISP)?;
-        Package::from_word(package).intern(ctx, runtime, name)?;
+    let package = runtime.ensure_package(ctx, COMMON_LISP)?;
+    for name in CLASS_NAMES {
+        Package::from_word(package).intern(ctx, runtime, name.as_str())?;
     }
-    install_class(ctx, runtime, "T", None)?;
-    install_class(ctx, runtime, "NULL", Some("T"))?;
-    for &(name, superclass) in &[
-        ("CLASS", Some("T")),
-        ("STANDARD-OBJECT", Some("T")),
-        ("STANDARD-CLASS", Some("CLASS")),
-        ("BUILT-IN-CLASS", Some("CLASS")),
-        ("STRUCTURE-CLASS", Some("CLASS")),
-        ("GENERIC-FUNCTION", Some("FUNCTION")),
-        ("STANDARD-GENERIC-FUNCTION", Some("GENERIC-FUNCTION")),
-        ("METHOD", Some("STANDARD-OBJECT")),
-        ("STANDARD-METHOD", Some("METHOD")),
-        ("METHOD-COMBINATION", Some("STANDARD-OBJECT")),
-        ("STRUCTURE-OBJECT", Some("STANDARD-OBJECT")),
-        ("EQL-SPECIALIZER", Some("STANDARD-OBJECT")),
-    ] {
-        if runtime.class(ctx, name).is_none() {
-            install_class(ctx, runtime, name, superclass)?;
-        }
-    }
-    for name in [
-        "NUMBER",
-        "INTEGER",
-        "LIST",
-        "CONS",
-        "SYMBOL",
-        "STRING",
-        "VECTOR",
-        "ARRAY",
-        "HASH-TABLE",
-        "STREAM",
-        "PACKAGE",
-        "FUNCTION",
-        "CHARACTER",
-        "SIMPLE-VECTOR",
-        "BIGNUM",
-        "RATIO",
-        "DOUBLE-FLOAT",
-        "COMPLEX",
-    ] {
-        if runtime.class(ctx, name).is_none() {
-            install_class(ctx, runtime, name, Some("T"))?;
+    let [root, null, remaining @ ..] = CLASS_DEFINITIONS;
+    install_typed_class(ctx, runtime, root.name, root.superclass)?;
+    install_typed_class(ctx, runtime, null.name, null.superclass)?;
+    for definition in remaining {
+        if runtime.class(ctx, definition.name.as_str()).is_none() {
+            install_typed_class(ctx, runtime, definition.name, definition.superclass)?;
         }
     }
     Ok(())
 }
 
-fn register_owned_symbols(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
-    let manifest = builtin_manifest();
-    for row in include_str!("../ownership.tsv").lines().skip(1) {
-        let fields: Vec<_> = row.split('\t').collect();
-        if fields.len() != 7 {
-            return Err(ObjectError::TypeError);
-        }
-        match fields[0] {
-            COMMON_LISP | NCL_MOP => {}
-            _ => return Err(ObjectError::TypeError),
-        }
-
-        match fields[2] {
-            "class" | "special-operator+class" | "constant+class" => {
-                let package = runtime.ensure_package(ctx, fields[0])?;
-                Package::from_word(package).intern(ctx, runtime, fields[1])?;
-                if runtime.class(ctx, fields[1]).is_none() {
-                    install_class(ctx, runtime, fields[1], Some("T"))?;
-                }
-            }
-            "other" => {}
-            "function" => {
-                let registration = manifest
-                    .iter()
-                    .find(|registration| {
-                        registration.identifier.package.as_str() == fields[0]
-                            && registration.identifier.name.as_str() == fields[1]
-                    })
-                    .ok_or(ObjectError::TypeError)?;
-                let package = runtime.ensure_package(ctx, fields[0])?;
-                Package::from_word(package).intern(ctx, runtime, fields[1])?;
-                let function = runtime
-                    .function(ctx, fields[0], fields[1])
-                    .ok_or(ObjectError::TypeError)?;
-                let function = ncl_object::FunctionObject::try_from(function)
-                    .map_err(|_| ObjectError::TypeError)?;
-                if runtime.builtin_descriptor(function) != Some(registration.implementation.descriptor) {
-                    return Err(ObjectError::TypeError);
-                }
-            }
-            _ => return Err(ObjectError::TypeError),
-        }
-    }
-    Ok(())
+fn install_typed_class(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    name: BuiltinName,
+    superclass: Option<BuiltinName>,
+) -> Result<(), ObjectError> {
+    let name_word = ncl_object::make_string(ctx, runtime, &name.as_str().chars().collect::<Vec<_>>())?;
+    let supers = superclass
+        .and_then(|parent| runtime.class(ctx, parent.as_str()))
+        .unwrap_or(Word::NIL);
+    let class = make_class(ctx, runtime, name_word, supers, Word::NIL, Word::fixnum(0))?;
+    runtime.define_class(ctx, name.as_str(), class)
 }
 
-/// Register CLOS classes, NCL-MOP names, and the implemented slot builtins.
+/// Register the typed CLOS class and builtin tables.
 ///
 /// # Errors
 ///
@@ -234,13 +155,5 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     for registration in builtin_manifest() {
         runtime.register_builtin(&mut ctx, registration.identifier, registration.implementation)?;
     }
-    let slot_value_set = direct_registration(
-        BuiltinPackage::CommonLisp,
-        "SLOT-VALUE-SET",
-        BuiltinArity::Three,
-        slot_set_builtin,
-    );
-    runtime.register_builtin(&mut ctx, slot_value_set.identifier, slot_value_set.implementation)?;
-    register_owned_symbols(&mut ctx, runtime)?;
     Ok(())
 }

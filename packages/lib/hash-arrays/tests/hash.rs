@@ -4,7 +4,7 @@ use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::{
     ArrayElementType, ArrayOptions, FunctionObject, ObjectError, ObjectRef, Runtime, ThreadContext,
     Word, array_row_major_ref, array_row_major_set, car, cdr, classify_object, make_array,
-    make_specialized_array, make_string, pop_root, push_root,
+    make_cons, make_specialized_array, make_string, pop_root, push_root,
 };
 
 fn call(
@@ -105,6 +105,53 @@ fn hash_builtins_retain_heap_words_under_gc_stress() -> Result<(), ObjectError> 
 }
 
 #[test]
+fn hash_table_test_reports_equalp_and_weakness_semantics() -> Result<(), ObjectError> {
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    let mut table = HashTable::new(&mut ctx, &runtime, HashTest::Equalp, Weakness::Key)?.as_word();
+    let table_token = push_root(&mut ctx, &mut table);
+    let mut stored_key = make_string(&mut ctx, &runtime, &['K', 'e', 'y'])?;
+    let stored_key_token = push_root(&mut ctx, &mut stored_key);
+    let mut lookup_key = make_string(&mut ctx, &runtime, &['k', 'E', 'Y'])?;
+    let lookup_key_token = push_root(&mut ctx, &mut lookup_key);
+    let value = Word::fixnum(42);
+    HashTable::from_word(table).insert(&mut ctx, &runtime, stored_key, value)?;
+
+    let mut test_function = runtime
+        .function(&mut ctx, "COMMON-LISP", "HASH-TABLE-TEST")
+        .ok_or(ObjectError::UndefinedFunction)?;
+    let test_function_token = push_root(&mut ctx, &mut test_function);
+    let test = runtime.call_builtin(
+        &mut ctx,
+        FunctionObject::try_from(test_function).map_err(|_| ObjectError::TypeError)?,
+        &[table],
+    )?;
+    assert!(matches!(classify_object(&ctx, test), ObjectRef::Symbol(_)));
+    assert_eq!(HashTable::from_word(table).weakness(&ctx)?, Weakness::Key);
+    let mut gethash_function = runtime
+        .function(&mut ctx, "COMMON-LISP", "GETHASH")
+        .ok_or(ObjectError::UndefinedFunction)?;
+    let gethash_function_token = push_root(&mut ctx, &mut gethash_function);
+    let gethash = runtime.call_builtin(
+        &mut ctx,
+        FunctionObject::try_from(gethash_function).map_err(|_| ObjectError::TypeError)?,
+        &[lookup_key, table],
+    )?;
+    assert_eq!(gethash, value);
+    assert_eq!(ctx.values(), &[value, Word::TRUE]);
+
+    assert!(pop_root(&mut ctx, gethash_function_token));
+    assert!(pop_root(&mut ctx, test_function_token));
+    assert!(pop_root(&mut ctx, lookup_key_token));
+    assert!(pop_root(&mut ctx, stored_key_token));
+    assert!(pop_root(&mut ctx, table_token));
+    Ok(())
+}
+
+#[test]
 fn vector_builtins_cover_simple_and_bit_vectors() -> Result<(), ObjectError> {
     let runtime = Runtime::new()?;
     let mut ctx = ThreadContext::new();
@@ -137,6 +184,83 @@ fn vector_builtins_cover_simple_and_bit_vectors() -> Result<(), ObjectError> {
         call(&runtime, &mut ctx, "SIMPLE-BIT-VECTOR-P", &[bits])?,
         Word::TRUE
     );
+    assert_eq!(
+        call(&runtime, &mut ctx, "BIT-VECTOR-P", &[bits])?,
+        Word::TRUE
+    );
+    Ok(())
+}
+
+#[test]
+fn array_limits_are_bound_and_adjust_array_accepts_displacement_options() -> Result<(), ObjectError>
+{
+    let runtime = Runtime::new()?;
+    let mut ctx = ThreadContext::new();
+    ctx.register(&runtime)?;
+    ncl_lib_hash_arrays::register(&runtime)?;
+
+    for name in [
+        "ARRAY-RANK-LIMIT",
+        "ARRAY-DIMENSION-LIMIT",
+        "ARRAY-TOTAL-SIZE-LIMIT",
+    ] {
+        let symbol = runtime
+            .find_package(&ctx, "COMMON-LISP")
+            .ok_or(ObjectError::PackageConflict)?;
+        let (symbol, _) =
+            ncl_object::Package::from_word(symbol).intern(&mut ctx, &runtime, name)?;
+        assert!(
+            ncl_object::symbol_value(&ctx, symbol)?
+                .as_fixnum()
+                .is_some()
+        );
+    }
+
+    let base = make_array(
+        &mut ctx,
+        &runtime,
+        &[3],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::fixnum(0),
+            adjustable: true,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let target = make_array(
+        &mut ctx,
+        &runtime,
+        &[5],
+        ArrayOptions {
+            element_type: ArrayElementType::T,
+            initial_element: Word::fixnum(9),
+            adjustable: false,
+            fill_pointer: None,
+            displaced_to: None,
+            displaced_index_offset: 0,
+        },
+    )?;
+    let dimensions = make_cons(&mut ctx, &runtime, Word::fixnum(2), Word::NIL)?;
+    let keyword = ncl_object::Package::from_word(
+        runtime
+            .find_package(&ctx, "KEYWORD")
+            .ok_or(ObjectError::PackageConflict)?,
+    )
+    .intern(&mut ctx, &runtime, "DISPLACED-TO")?
+    .0;
+    let adjusted = call(
+        &runtime,
+        &mut ctx,
+        "ADJUST-ARRAY",
+        &[base, dimensions, keyword, target],
+    )?;
+    assert_eq!(
+        call(&runtime, &mut ctx, "ARRAY-DISPLACEMENT", &[adjusted])?,
+        target
+    );
+    assert_eq!(array_row_major_ref(&ctx, adjusted, 0)?, Word::fixnum(9));
     Ok(())
 }
 

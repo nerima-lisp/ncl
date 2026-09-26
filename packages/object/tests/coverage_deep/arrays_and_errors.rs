@@ -162,10 +162,14 @@ fn malformed_metadata_and_recursive_equal_values_return_domain_errors() {
     assert!(ncl_object::rplacd(&mut context, cycle, cycle).is_ok());
     let recursive = HashTable::new(&mut context, &runtime, HashTest::Equal, Weakness::None)
         .unwrap_or_else(|error| panic!("table: {error:?}"));
+    // A circular cons key is not malformed metadata: EQUAL's content hash and
+    // comparison both bound their recursion at a fixed depth (see
+    // `hash_table/equality.rs`) and return a value rather than an error once
+    // the bound is hit, so insertion succeeds instead of failing.
     assert!(
         recursive
             .insert(&mut context, &runtime, cycle, Word::TRUE)
-            .is_err()
+            .is_ok()
     );
 }
 

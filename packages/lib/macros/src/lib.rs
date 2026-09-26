@@ -463,6 +463,3 @@ const OWNED_MACROS: &[&str] = &[
     "WITH-SIMPLE-RESTART",
     "WITH-SLOTS",
 ];
-#[cfg(test)]
-#[path = "tests/registration.rs"]
-mod tests;

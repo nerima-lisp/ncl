@@ -1,8 +1,10 @@
 use ncl_object::hash_table::{HashTable, HashTest, Weakness};
 use ncl_object::package::{nil, truth};
+use ncl_object::typed::FunctionDesignator;
 use ncl_object::{
-    BuiltinArgs, BuiltinName, FunctionObject, LambdaList, MultipleValues, ObjectError, ObjectRef,
-    Package, Parameter, ParameterType, Runtime, ThreadContext, Word, classify_object,
+    classify_object, make_double, pop_root, push_root, BuiltinArgs, BuiltinFunctionCaller,
+    BuiltinName, FunctionArguments, FunctionCaller, LambdaList, MultipleValues, ObjectError,
+    ObjectRef, Package, Parameter, ParameterType, Runtime, ThreadContext, Word,
 };
 
 use super::{register_one, symbol_text};
@@ -80,9 +82,8 @@ fn make_hash_table_builtin(
         {
             "TEST" => test = decode_test(ctx, pair[1])?,
             "WEAKNESS" => weak = decode_weakness(ctx, pair[1])?,
-            // SIZE, REHASH-SIZE, and REHASH-THRESHOLD are not exposed by the
-            // heap HashTable API, so they are rejected rather than registered
-            // as a misleading placeholder.
+            // SIZE is not exposed by the heap HashTable API, so it is rejected
+            // rather than registered as a misleading placeholder.
             _ => return Err(ObjectError::TypeError),
         }
     }
@@ -97,7 +98,10 @@ fn gethash_builtin(
 ) -> Result<Word, ObjectError> {
     let key = args.required(0)?;
     let table = table(ctx, args.required(1)?)?;
-    let default = args.get(2).unwrap_or(Word::NIL);
+    let default = match args.get(2) {
+        Some(value) => value,
+        None => Word::NIL,
+    };
     let result = table.get(ctx, key)?;
     let (value, present) = result.map_or((default, nil()), |value| (value, truth()));
     values.set(&[value, present]);
@@ -142,15 +146,51 @@ fn maphash_builtin(
     args: &BuiltinArgs<'_>,
     _: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let callback = FunctionObject::try_from(args.required(0)?)?;
+    let callback = FunctionDesignator::try_from_word(ctx, args.required(0)?)?;
     let table = table(ctx, args.required(1)?)?;
     let mut entries = Vec::new();
     table.for_each_entry(ctx, |key, value| entries.push((key, value)))?;
     for (key, value) in entries {
-        let callback_args = <[Word; 2]>::from((key, value));
-        runtime.call_builtin(ctx, callback, &callback_args)?;
+        let mut callback_args = [key, value];
+        let key_token = push_root(ctx, &mut callback_args[0]);
+        let value_token = push_root(ctx, &mut callback_args[1]);
+        let mut caller = BuiltinFunctionCaller;
+        let mut values = MultipleValues::new();
+        let result = caller.call_function(
+            ctx,
+            runtime,
+            callback,
+            FunctionArguments::new(&callback_args),
+            &mut values,
+        );
+        let value_popped = pop_root(ctx, value_token);
+        let key_popped = pop_root(ctx, key_token);
+        if !value_popped || !key_popped {
+            return Err(ObjectError::Layout);
+        }
+        result?;
     }
     Ok(nil())
+}
+
+fn hash_table_rehash_size_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    table(ctx, args.required(0)?)?;
+    Ok(make_double(ctx, runtime, 1.5)?.as_word())
+}
+
+fn hash_table_rehash_threshold_builtin(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    table(ctx, args.required(0)?)?;
+    Ok(make_double(ctx, runtime, 0.75)?.as_word())
 }
 
 fn hash_table_p_builtin(
@@ -279,6 +319,20 @@ pub fn register(runtime: &Runtime, ctx: &mut ThreadContext) -> Result<(), Object
         "HASH-TABLE-SIZE",
         LambdaList::fixed(&[TABLE]),
         hash_table_size_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "HASH-TABLE-REHASH-SIZE",
+        LambdaList::fixed(&[TABLE]),
+        hash_table_rehash_size_builtin,
+    )?;
+    register_one(
+        runtime,
+        ctx,
+        "HASH-TABLE-REHASH-THRESHOLD",
+        LambdaList::fixed(&[TABLE]),
+        hash_table_rehash_threshold_builtin,
     )?;
     register_one(
         runtime,

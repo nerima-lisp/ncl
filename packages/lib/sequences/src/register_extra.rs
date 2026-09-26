@@ -213,7 +213,13 @@ pub(super) fn list_map_entry(
     let function = args.required(0)?;
     callback_word(ctx, function)?;
     let mut caller = BuiltinFunctionCaller;
-    let result = operation(ctx, runtime, function, &args.as_slice()[1..], &mut caller);
+    let result = operation(
+        ctx,
+        runtime,
+        function,
+        args.as_slice().get(1..).ok_or(ObjectError::TypeError)?,
+        &mut caller,
+    );
     values.clear();
     result
 }
@@ -226,7 +232,7 @@ pub(super) fn map_into_entry(
     let destination = args.required(0)?;
     let function = args.required(1)?;
     callback_word(ctx, function)?;
-    let sequences = hof_sequences(ctx, &args.as_slice()[2..])?;
+    let sequences = hof_sequences(ctx, args.as_slice().get(2..).ok_or(ObjectError::TypeError)?)?;
     let mut caller = BuiltinFunctionCaller;
     let result = domain::higher_order::map_into(
         ctx,

@@ -8,7 +8,7 @@ use ncl_reader::{ReadOptions, StringSource, read};
 
 /// The optimization policy selected for one expanded form.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum OptimizationLevel {
+pub enum OptimizationLevel {
     /// Prefer the existing safe optimization pipeline for execution speed.
     Speed,
     /// Keep the default safety-first pipeline.
@@ -56,7 +56,7 @@ impl OptimizationProfile {
         }
     }
 
-    fn level(self) -> OptimizationLevel {
+    const fn level(self) -> OptimizationLevel {
         if self.unsupported {
             return OptimizationLevel::Safety;
         }
@@ -72,7 +72,7 @@ impl OptimizationProfile {
 
 /// Resolve optimize declarations in an expanded form without making unknown
 /// or unsupported declarations increase optimization beyond the safe default.
-pub(crate) fn optimization_level(expr: &Expr) -> OptimizationLevel {
+pub fn optimization_level(expr: &Expr) -> OptimizationLevel {
     let mut profile = OptimizationProfile::default();
     visit_expr(expr, &mut profile);
     profile.level()
@@ -101,9 +101,9 @@ fn visit_function(function: &FunctionDesignator, profile: &mut OptimizationProfi
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn visit_expr(expr: &Expr, profile: &mut OptimizationProfile) {
     match expr {
-        Expr::Constant(_) | Expr::Variable(_) | Expr::Go { .. } => {}
         Expr::Call {
             operator,
             arguments,
@@ -137,11 +137,10 @@ fn visit_expr(expr: &Expr, profile: &mut OptimizationProfile) {
                 visit_expr(form, profile);
             }
         }
-        Expr::ReturnFrom { value, .. } => {
-            if let Some(value) = value {
-                visit_expr(value, profile);
-            }
-        }
+        Expr::ReturnFrom {
+            value: Some(value),
+            ..
+        } => visit_expr(value, profile),
         Expr::Tagbody(items) => {
             for item in items {
                 if let ncl_compiler_front::TagbodyItem::Form(form) = item {

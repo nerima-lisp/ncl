@@ -28,6 +28,10 @@ pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, O
     Ok(pop_root(ctx, token))
 }
 
+/// Run a callback while keeping one heap word precisely rooted.
+///
+/// # Errors
+/// Returns the callback's object-layer error.
 pub fn with_root<T>(
     ctx: &mut ThreadContext,
     value: &mut Word,
@@ -44,6 +48,13 @@ pub fn with_root<T>(
     finish_root(ctx, token, result)
 }
 
+/// Run a callback while keeping a sequence of heap words precisely rooted.
+///
+/// # Errors
+/// Returns a root-stack or callback error.
+///
+/// # Panics
+/// Panics if the root stack is corrupted and a registered root cannot be popped.
 pub fn with_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],

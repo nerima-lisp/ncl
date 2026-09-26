@@ -115,6 +115,9 @@ fn apply(
 }
 
 /// Register the function-calling builtins owned by this crate.
+///
+/// # Errors
+/// Returns an object-layer error if either builtin cannot be registered.
 pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     runtime.register_builtin(
         ctx,
@@ -144,6 +147,7 @@ pub fn register(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), Object
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use ncl_object::{Arity, Package, make_cons};

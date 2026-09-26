@@ -305,6 +305,7 @@ version = "0.1.0"
 dependencies = [
  "ncl-asdf",
  "ncl-clos",
+ "ncl-compiler-front",
  "ncl-conditions",
  "ncl-coverage",
  "ncl-debug",

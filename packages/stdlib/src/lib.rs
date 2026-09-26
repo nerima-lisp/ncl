@@ -45,6 +45,14 @@ pub const REGISTRATION_ORDER: &[&str] = &[
 /// Returns the first [`ObjectError`] reported by a crate registration.
 pub fn register_all(ctx: &mut ThreadContext, runtime: &Runtime) -> Result<(), ObjectError> {
     ncl_types::register(runtime)?;
+    // Pre-intern the standard Common Lisp symbols (special operators,
+    // constants, etc.) into `COMMON-LISP` before anything else runs. Without
+    // this, the first *unqualified* reference to e.g. `PROGN` or `IF` inside
+    // `COMMON-LISP-USER` finds nothing to inherit and interns a fresh,
+    // locally-homed symbol instead, so the front end's package-sensitive
+    // special-form dispatch (`SymbolRef.package == "COMMON-LISP"`) never
+    // matches and the form is (mis)compiled as an ordinary function call.
+    ncl_compiler_front::register(runtime)?;
     ncl_reader::register(runtime)?;
     ncl_printer::register(ctx, runtime)?;
     ncl_conditions::register(runtime)?;

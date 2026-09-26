@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 ncl-object = { path = "../object" }
 ncl-sys = { path = "../sys" }
+ncl-compiler-front = { path = "../compiler/front" }
 ncl-types = { path = "../types" }
 ncl-reader = { path = "../reader" }
 ncl-printer = { path = "../printer" }

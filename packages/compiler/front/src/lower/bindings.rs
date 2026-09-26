@@ -1,6 +1,6 @@
 //! Lexical binding and call-form lowering for the IR v2 path.
 
-use ncl_ir::{HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId};
+use ncl_ir::{Convert, HandlerKind, HandlerRegion, HandlerRegionId, OpKind, Terminator, Ty, ValueId};
 
 use crate::ast::Expr;
 use crate::symbols::SymbolRef;
@@ -139,14 +139,26 @@ impl Context<'_> {
         arguments: &[Expr],
     ) -> Result<ValueId, LowerError> {
         let callee = self.lower_expr(f, function)?;
-        let mut args = vec![callee];
-        for argument in arguments {
-            args.push(self.lower_expr(f, argument)?);
-        }
+        let values = arguments
+            .iter()
+            .map(|argument| self.lower_expr(f, argument))
+            .collect::<Result<Vec<_>, _>>()?;
+        let raw_argc = f.fixnum(i64::try_from(values.len()).map_err(|_| LowerError::Ir {
+            detail: "argument count does not fit i64".to_owned(),
+        })?)?;
+        let argc = f.one(
+            OpKind::Convert {
+                op: Convert::I64ToWord,
+                value: raw_argc,
+            },
+            Ty::Word,
+        )?;
+        let mut args = vec![argc];
+        args.extend(values);
         f.safepoint()?;
         f.one(
-            OpKind::Builtin {
-                name: "multiple-value-call".to_owned(),
+            OpKind::CallIndirect {
+                callee,
                 args,
             },
             Ty::Word,

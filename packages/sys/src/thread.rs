@@ -36,6 +36,7 @@ pub struct RootToken {
     pub(crate) index: usize,
     pub(crate) count: usize,
 }
+
 /// Machine-visible mutator context.
 ///
 /// This type is `repr(C)` so the offsets returned by [`thread_layout`] are a
@@ -153,17 +154,13 @@ impl Thread {
     }
     /// Push a precise root. The referenced slot must outlive the token.
     pub fn push_root(&mut self, value: &mut Word) -> RootToken {
-        let token = RootToken {
-            index: self.roots.len(),
-            count: 1,
-        };
+        let token = RootToken::spanning(self.roots.len(), 1);
         self.roots.push(ptr::from_mut(value));
         token
     }
     /// Pop the most recently pushed root.
     pub fn pop_root(&mut self, token: RootToken) -> bool {
-        token.index + token.count == self.roots.len()
-            && (0..token.count).all(|_| self.roots.pop().is_some())
+        self.pop_root_span(token)
     }
     /// Return the native ABI multiple-value area.
     #[must_use]

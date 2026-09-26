@@ -38,6 +38,38 @@ pub use thread::{
     thread_layout,
 };
 
+impl RootToken {
+    /// Construct a token covering a contiguous span of root slots.
+    #[must_use]
+    pub const fn spanning(index: usize, count: usize) -> Self {
+        Self { index, count }
+    }
+}
+
+impl Thread {
+    /// Push a precise root slot backed by interior-mutable storage.
+    pub fn push_root_cell(&mut self, cell: &core::cell::Cell<Word>) -> RootToken {
+        let token = RootToken::spanning(self.roots.len(), 1);
+        self.roots.push(cell.as_ptr());
+        token
+    }
+
+    /// Pop a contiguous span of the most recently pushed roots.
+    pub fn pop_root_span(&mut self, token: RootToken) -> bool {
+        token
+            .index
+            .checked_add(token.count)
+            .is_some_and(|end| end == self.roots.len())
+            && (0..token.count).all(|_| self.roots.pop().is_some())
+    }
+
+    /// Return the number of currently registered precise roots.
+    #[must_use]
+    pub const fn root_len(&self) -> usize {
+        self.roots.len()
+    }
+}
+
 /// Run a callback with the opaque context installed for synchronous native execution.
 pub fn with_native_context<T, R>(
     thread: std::ptr::NonNull<Thread>,
@@ -295,10 +327,7 @@ pub fn publish_conservative_root(thread: &mut Thread, value: Word) {
 
 /// Register a contiguous set of precise root slots.
 pub fn register_root_set(thread: &mut Thread, values: &mut [Word]) -> RootToken {
-    let token = RootToken {
-        index: thread.roots.len(),
-        count: values.len(),
-    };
+    let token = RootToken::spanning(thread.root_len(), values.len());
     thread
         .roots
         .extend(values.iter_mut().map(std::ptr::from_mut));
@@ -333,6 +362,11 @@ pub fn push_root(thread: &mut Thread, value: &mut Word) -> RootToken {
 /// Remove the most recent precise root.
 pub fn pop_root(thread: &mut Thread, token: RootToken) -> bool {
     thread.pop_root(token)
+}
+
+/// Remove a contiguous span of precise roots.
+pub fn pop_root_span(thread: &mut Thread, token: RootToken) -> bool {
+    thread.pop_root_span(token)
 }
 
 /// Record a reference store for the generational collector.

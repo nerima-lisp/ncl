@@ -233,6 +233,84 @@ fn golden_aarch64_prologue_spills_register_arguments() {
 
 #[test]
 #[allow(clippy::chunks_exact_to_as_chunks)]
+fn golden_aarch64_tail_call_restores_frame_and_branches() {
+    let mut builder =
+        FunctionBuilder::new(ncl_ir::FunctionId(30), "tail-call", Vec::new(), Vec::new());
+    let callee = builder.add_constant(Constant::FunctionEntry(ncl_ir::FunctionId(7)));
+    let Some(callee) = builder
+        .push_op(OpKind::Const { result: callee }, &[Ty::Address])
+        .ok()
+        .and_then(|values| values.first().copied())
+    else {
+        unreachable!("callee result")
+    };
+    assert!(
+        builder
+            .terminate(Terminator::TailCall {
+                function: callee,
+                args: Vec::new()
+            })
+            .is_ok()
+    );
+
+    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
+        Ok(compiled) => compiled,
+        Err(error) => unreachable!("AArch64 tail-call lowering: {error:?}"),
+    };
+    let instructions = compiled
+        .code
+        .chunks_exact(4)
+        .map(|bytes| decoded_text(bytes.try_into().unwrap_or([0; 4]), "decode tail call"))
+        .collect::<Vec<_>>();
+    assert_eq!(instructions.last().map(String::as_str), Some("br x17"));
+    assert!(
+        instructions
+            .iter()
+            .any(|text| text == "ldp x29, x30, [sp], #32")
+    );
+    assert!(!instructions.iter().any(|text| text == "ret x30"));
+    assert!(compiled.safepoint_maps.is_empty());
+}
+
+#[test]
+#[allow(clippy::chunks_exact_to_as_chunks)]
+fn golden_aarch64_generated_lambda_saves_argc_from_x0() {
+    let mut builder = FunctionBuilder::new(
+        ncl_ir::FunctionId(31),
+        "generated-lambda-argc",
+        vec![
+            ncl_ir::Param {
+                name: "argc".into(),
+                ty: Ty::Word,
+            },
+            ncl_ir::Param {
+                name: "argument".into(),
+                ty: Ty::Word,
+            },
+        ],
+        Vec::new(),
+    );
+    assert!(
+        builder
+            .terminate(Terminator::Return { values: Vec::new() })
+            .is_ok()
+    );
+
+    let compiled = match compile_function_aarch64(&builder.finish(), &Aarch64FixtureAbi) {
+        Ok(compiled) => compiled,
+        Err(error) => unreachable!("AArch64 generated-lambda lowering: {error:?}"),
+    };
+    let instructions = compiled
+        .code
+        .chunks_exact(4)
+        .map(|bytes| decoded_text(bytes.try_into().unwrap_or([0; 4]), "decode argc prologue"))
+        .collect::<Vec<_>>();
+    assert!(instructions.iter().any(|text| text.ends_with("x0, lsl #0")));
+    assert!(instructions.iter().any(|text| text.ends_with("x1, lsl #0")));
+}
+
+#[test]
+#[allow(clippy::chunks_exact_to_as_chunks)]
 fn allocator_locations_reach_aarch64_code_and_safepoint_map() {
     let mut builder = FunctionBuilder::new(
         ncl_ir::FunctionId(29),

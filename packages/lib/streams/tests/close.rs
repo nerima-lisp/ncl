@@ -117,6 +117,8 @@ fn open_output_stream_retains_sink_under_gc_stress_and_strict_forwarding() {
     ncl_lib_streams::register(&runtime).unwrap_or_else(|error| panic!("streams: {error:?}"));
     let open = builtin(&runtime, &mut ctx, "OPEN");
     let write_char = builtin(&runtime, &mut ctx, "WRITE-CHAR");
+    let write_byte = builtin(&runtime, &mut ctx, "WRITE-BYTE");
+    let finish_output = builtin(&runtime, &mut ctx, "FINISH-OUTPUT");
     let close = builtin(&runtime, &mut ctx, "CLOSE");
     let keyword = runtime
         .ensure_package(&mut ctx, "KEYWORD")
@@ -144,12 +146,24 @@ fn open_output_stream_retains_sink_under_gc_stress_and_strict_forwarding() {
         Ok(Word::character(u32::from('z')))
     );
     assert_eq!(
+        runtime.call_builtin(
+            &mut ctx,
+            write_byte,
+            &[Word::fixnum(i64::from(b'!')), stream]
+        ),
+        Ok(Word::fixnum(i64::from(b'!')))
+    );
+    assert_eq!(
+        runtime.call_builtin(&mut ctx, finish_output, &[stream]),
+        Ok(Word::NIL)
+    );
+    assert_eq!(
         runtime.call_builtin(&mut ctx, close, &[stream]),
         Ok(Word::TRUE)
     );
     assert_eq!(
         std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("read output: {error:?}")),
-        "z"
+        "z!"
     );
     std::fs::remove_file(path).unwrap_or_else(|error| panic!("remove output: {error:?}"));
 }

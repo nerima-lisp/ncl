@@ -10,6 +10,7 @@ pub mod character;
 pub mod file;
 /// Builtin registration.
 pub mod registration;
+pub(crate) mod standard;
 
 const POSITION: usize = 1;
 const DATA: usize = 2;

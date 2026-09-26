@@ -7,6 +7,39 @@ use ncl_object::{
     string_length, string_ref, with_root, with_roots,
 };
 
+const FILE_IO: i64 = -5;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum StreamKind {
+    Data,
+    StringInput,
+    StringOutput,
+    FileOutput,
+    FileIo,
+    Closed,
+    StandardInput,
+    StandardOutput,
+    StandardError,
+    StandardTwoWay,
+}
+
+impl StreamKind {
+    pub(crate) const fn code(self) -> i64 {
+        match self {
+            Self::Data => 0,
+            Self::StringInput => STRING_INPUT,
+            Self::StringOutput => STRING_OUTPUT,
+            Self::FileOutput => super::FILE_OUTPUT,
+            Self::FileIo => FILE_IO,
+            Self::Closed => CLOSED,
+            Self::StandardInput => -6,
+            Self::StandardOutput => -7,
+            Self::StandardError => -8,
+            Self::StandardTwoWay => -9,
+        }
+    }
+}
+
 pub(crate) fn pass_arguments(args: &BuiltinArgs<'_>) -> Result<Vec<Word>, ObjectError> {
     (0..args.len())
         .map(|index| args.get(index).ok_or(ObjectError::TypeError))
@@ -20,9 +53,38 @@ pub(crate) fn stream_from_args(
     Ok(Stream::from_word(args.required(index)?))
 }
 
-pub(crate) fn state_kind(ctx: &ThreadContext, state: Word) -> Result<Option<i64>, ObjectError> {
-    let first = simple_vector_ref(ctx, state, 0)?.as_fixnum();
-    Ok(first.filter(|value| *value == STRING_INPUT || *value == STRING_OUTPUT))
+fn stream_or_default(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    index: usize,
+    name: &str,
+) -> Result<Stream, ObjectError> {
+    match args.get(index) {
+        Some(word) if word != Word::NIL => Ok(Stream::from_word(word)),
+        Some(_) | None => super::standard::lookup(ctx, runtime, name),
+    }
+}
+
+pub(crate) fn state_kind(ctx: &ThreadContext, state: Word) -> Result<StreamKind, ObjectError> {
+    match simple_vector_ref(ctx, state, 0)?.as_fixnum() {
+        Some(0) => Ok(StreamKind::Data),
+        Some(value) if value == STRING_INPUT => Ok(StreamKind::StringInput),
+        Some(value) if value == STRING_OUTPUT => Ok(StreamKind::StringOutput),
+        Some(value) if value == super::FILE_OUTPUT => Ok(StreamKind::FileOutput),
+        Some(value) if value == FILE_IO => Ok(StreamKind::FileIo),
+        Some(value) if value == CLOSED => Ok(StreamKind::Closed),
+        Some(value) if value == StreamKind::StandardInput.code() => Ok(StreamKind::StandardInput),
+        Some(value) if value == StreamKind::StandardOutput.code() => Ok(StreamKind::StandardOutput),
+        Some(value) if value == StreamKind::StandardError.code() => Ok(StreamKind::StandardError),
+        Some(value) if value == StreamKind::StandardTwoWay.code() => Ok(StreamKind::StandardTwoWay),
+        Some(value) => invalid_stream_kind(value),
+        None => Err(ObjectError::Layout),
+    }
+}
+
+const fn invalid_stream_kind(_value: i64) -> Result<StreamKind, ObjectError> {
+    Err(ObjectError::Layout)
 }
 
 pub(crate) fn ensure_open(ctx: &ThreadContext, state: Word) -> Result<(), ObjectError> {
@@ -65,7 +127,8 @@ pub(crate) fn next_character(
 ) -> Result<Option<char>, ObjectError> {
     let state = stream_state(ctx, stream)?;
     ensure_open(ctx, state)?;
-    if state_kind(ctx, state)?.is_some() {
+    let kind = state_kind(ctx, state)?;
+    if kind == StreamKind::StringInput {
         let pos = position(ctx, state, 1)?;
         let string = simple_vector_ref(ctx, state, 2)?;
         let length = string_length(ctx, string)?;
@@ -81,12 +144,51 @@ pub(crate) fn next_character(
         set_position(ctx, state, 1, pos.saturating_add(1))?;
         return Ok(Some(character));
     }
+    if matches!(
+        kind,
+        StreamKind::FileOutput
+            | StreamKind::StringOutput
+            | StreamKind::StandardOutput
+            | StreamKind::StandardError
+    ) {
+        return Err(ObjectError::TypeError);
+    }
+    if matches!(kind, StreamKind::StandardInput | StreamKind::StandardTwoWay) {
+        let mut input = std::io::stdin();
+        let mut byte = [0_u8; 1];
+        let count = std::io::Read::read(&mut input, &mut byte).map_err(|_| ObjectError::Layout)?;
+        if count == 0 {
+            return Ok(None);
+        }
+        let pos = position(ctx, state, POSITION)?;
+        set_position(ctx, state, POSITION, pos.saturating_add(1))?;
+        return byte
+            .first()
+            .copied()
+            .map(char::from)
+            .map(Some)
+            .ok_or(ObjectError::Layout);
+    }
+    if kind == StreamKind::FileIo {
+        let pos = position(ctx, state, POSITION)?;
+        let byte = super::file::read_file_byte(ctx, state, pos)?;
+        if let Some(byte) = byte {
+            set_position(ctx, state, POSITION, pos.saturating_add(1))?;
+            return Ok(Some(char::from(byte)));
+        }
+        return Ok(None);
+    }
+    let data_offset = if kind == StreamKind::FileIo {
+        DATA + 1
+    } else {
+        DATA
+    };
     let pos = position(ctx, state, POSITION)?;
-    let length = simple_vector_length(ctx, state)?.saturating_sub(DATA);
+    let length = simple_vector_length(ctx, state)?.saturating_sub(data_offset);
     if pos >= length {
         return Ok(None);
     }
-    let byte = simple_vector_ref(ctx, state, DATA + pos)?
+    let byte = simple_vector_ref(ctx, state, data_offset + pos)?
         .as_fixnum()
         .ok_or(ObjectError::Layout)?;
     let character = char::from_u32(u32::try_from(byte).map_err(|_| ObjectError::Layout)?)
@@ -100,7 +202,19 @@ pub(crate) fn peek_character(
     stream: Stream,
 ) -> Result<Option<char>, ObjectError> {
     let state = stream_state(ctx, stream)?;
-    let pos_index = if state_kind(ctx, state)?.is_some() {
+    if matches!(
+        state_kind(ctx, state)?,
+        StreamKind::StandardInput | StreamKind::StandardTwoWay
+    ) {
+        return Err(ObjectError::TypeError);
+    }
+    let pos_index = if matches!(
+        state_kind(ctx, state)?,
+        StreamKind::StringInput
+            | StreamKind::StringOutput
+            | StreamKind::StandardInput
+            | StreamKind::StandardTwoWay
+    ) {
         1
     } else {
         POSITION
@@ -113,11 +227,11 @@ pub(crate) fn peek_character(
 
 pub(crate) fn read_char_adapter(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let stream = stream_from_args(args, 0)?;
+    let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-INPUT*")?;
     next_character(ctx, stream)?.map_or_else(
         || Ok(args.get(2).unwrap_or(Word::NIL)),
         |character| Ok(Word::character(u32::from(character))),
@@ -132,7 +246,19 @@ pub(crate) fn unread_char_adapter(
 ) -> Result<Word, ObjectError> {
     let stream = stream_from_args(args, 1)?;
     let state = stream_state(ctx, stream)?;
-    let index = if state_kind(ctx, state)?.is_some() {
+    if matches!(
+        state_kind(ctx, state)?,
+        StreamKind::StandardInput | StreamKind::StandardTwoWay
+    ) {
+        return Err(ObjectError::TypeError);
+    }
+    let index = if matches!(
+        state_kind(ctx, state)?,
+        StreamKind::StringInput
+            | StreamKind::StringOutput
+            | StreamKind::StandardInput
+            | StreamKind::StandardTwoWay
+    ) {
         1
     } else {
         POSITION
@@ -147,12 +273,17 @@ pub(crate) fn unread_char_adapter(
 
 pub(crate) fn peek_char_adapter(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let stream_index = usize::from(args.len() > 1);
-    peek_character(ctx, stream_from_args(args, stream_index)?)?.map_or_else(
+    let stream = if args.is_empty() {
+        super::standard::lookup(ctx, runtime, "*STANDARD-INPUT*")?
+    } else {
+        stream_from_args(args, stream_index)?
+    };
+    peek_character(ctx, stream)?.map_or_else(
         || Ok(args.get(3).unwrap_or(Word::NIL)),
         |character| Ok(Word::character(u32::from(character))),
     )
@@ -164,7 +295,7 @@ pub(crate) fn read_line_adapter(
     args: &BuiltinArgs<'_>,
     values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let stream = stream_from_args(args, 0)?;
+    let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-INPUT*")?;
     let mut characters = Vec::new();
     let mut ended = false;
     while let Some(character) = next_character(ctx, stream)? {
@@ -187,19 +318,29 @@ pub(crate) fn write_to_stream(
 ) -> Result<(), ObjectError> {
     let state = stream_state(ctx, stream)?;
     ensure_open(ctx, state)?;
-    if simple_vector_ref(ctx, state, 0)?.as_fixnum() == Some(super::FILE_OUTPUT) {
-        let path = super::file::text(ctx, simple_vector_ref(ctx, state, 2)?)?;
-        let mut file = std::fs::OpenOptions::new()
-            .append(true)
-            .open(path)
-            .map_err(|_| ObjectError::Layout)?;
-        std::io::Write::write_all(&mut file, character.encode_utf8(&mut [0; 4]).as_bytes())
-            .map_err(|_| ObjectError::Layout)?;
-        let count = position(ctx, state, POSITION)?;
-        return set_position(ctx, state, POSITION, count.saturating_add(1));
-    }
-    match state_kind(ctx, state)? {
-        Some(STRING_OUTPUT) => {
+    let kind = state_kind(ctx, state)?;
+    match kind {
+        StreamKind::FileOutput | StreamKind::FileIo => {
+            let mut buffer = [0; 4];
+            let encoded = character.encode_utf8(&mut buffer);
+            super::file::write_bytes(ctx, state, encoded.as_bytes())?;
+        }
+        StreamKind::StandardOutput | StreamKind::StandardTwoWay => {
+            let mut output = std::io::stdout();
+            let mut buffer = [0; 4];
+            let encoded = character.encode_utf8(&mut buffer);
+            std::io::Write::write_all(&mut output, encoded.as_bytes())
+                .map_err(|_| ObjectError::Layout)?;
+        }
+        StreamKind::StandardError => {
+            let mut output = std::io::stderr();
+            let mut buffer = [0; 4];
+            let encoded = character.encode_utf8(&mut buffer);
+            std::io::Write::write_all(&mut output, encoded.as_bytes())
+                .map_err(|_| ObjectError::Layout)?;
+        }
+        StreamKind::StandardInput => return Err(ObjectError::TypeError),
+        StreamKind::StringOutput => {
             let mut state = state;
             let token = push_root(ctx, &mut state);
             let result = (|| {
@@ -212,10 +353,12 @@ pub(crate) fn write_to_stream(
             if !pop_root(ctx, token) {
                 return Err(ObjectError::Layout);
             }
-            result
+            result?;
         }
-        Some(STRING_INPUT) => Err(ObjectError::TypeError),
-        None => {
+        StreamKind::StringInput | StreamKind::Data | StreamKind::Closed => {
+            if kind != StreamKind::Data {
+                return Err(ObjectError::TypeError);
+            }
             let pos = position(ctx, state, POSITION)?;
             if DATA + pos >= simple_vector_length(ctx, state)? {
                 return Err(ObjectError::TypeError);
@@ -226,10 +369,10 @@ pub(crate) fn write_to_stream(
                 DATA + pos,
                 Word::fixnum(i64::from(u32::from(character))),
             )?;
-            set_position(ctx, state, POSITION, pos.saturating_add(1))
+            set_position(ctx, state, POSITION, pos.saturating_add(1))?;
         }
-        Some(_) => Err(ObjectError::Layout),
     }
+    Ok(())
 }
 
 pub(crate) fn write_char_adapter(
@@ -243,20 +386,101 @@ pub(crate) fn write_char_adapter(
     } else {
         return Err(ObjectError::TypeError);
     };
-    write_to_stream(ctx, runtime, stream_from_args(args, 1)?, character)?;
+    let stream = stream_or_default(ctx, runtime, args, 1, "*STANDARD-OUTPUT*")?;
+    write_to_stream(ctx, runtime, stream, character)?;
     args.required(0)
+}
+
+pub(crate) fn write_byte_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let byte = args
+        .required(0)?
+        .as_fixnum()
+        .ok_or(ObjectError::TypeError)?;
+    let byte = u8::try_from(byte).map_err(|_| ObjectError::TypeError)?;
+    let stream = stream_or_default(ctx, runtime, args, 1, "*STANDARD-OUTPUT*")?;
+    let state = stream_state(ctx, stream)?;
+    ensure_open(ctx, state)?;
+    match state_kind(ctx, state)? {
+        StreamKind::FileOutput | StreamKind::FileIo => {
+            super::file::write_bytes(ctx, state, &[byte])?;
+        }
+        StreamKind::StandardOutput | StreamKind::StandardTwoWay => {
+            std::io::Write::write_all(&mut std::io::stdout(), &[byte])
+                .map_err(|_| ObjectError::Layout)?;
+        }
+        StreamKind::StandardError => {
+            std::io::Write::write_all(&mut std::io::stderr(), &[byte])
+                .map_err(|_| ObjectError::Layout)?;
+        }
+        StreamKind::StandardInput
+        | StreamKind::StringInput
+        | StreamKind::StringOutput
+        | StreamKind::Data
+        | StreamKind::Closed => return Err(ObjectError::TypeError),
+    }
+    args.required(0)
+}
+
+pub(crate) fn finish_output_adapter(
+    ctx: &mut ThreadContext,
+    runtime: &Runtime,
+    args: &BuiltinArgs<'_>,
+    _values: &mut MultipleValues,
+) -> Result<Word, ObjectError> {
+    let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-OUTPUT*")?;
+    let state = stream_state(ctx, stream)?;
+    ensure_open(ctx, state)?;
+    match state_kind(ctx, state)? {
+        StreamKind::FileOutput | StreamKind::FileIo => super::file::flush_file_stream(ctx, state)?,
+        StreamKind::StandardOutput | StreamKind::StandardTwoWay => {
+            std::io::Write::flush(&mut std::io::stdout()).map_err(|_| ObjectError::Layout)?;
+        }
+        StreamKind::StandardError => {
+            std::io::Write::flush(&mut std::io::stderr()).map_err(|_| ObjectError::Layout)?;
+        }
+        StreamKind::StandardInput
+        | StreamKind::StringInput
+        | StreamKind::StringOutput
+        | StreamKind::Data => {}
+        StreamKind::Closed => return Err(ObjectError::TypeError),
+    }
+    Ok(Word::NIL)
 }
 
 pub(crate) fn read_byte_adapter(
     ctx: &mut ThreadContext,
-    _runtime: &Runtime,
+    runtime: &Runtime,
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let stream = stream_from_args(args, 0)?;
+    let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-INPUT*")?;
     let state = stream_state(ctx, stream)?;
     ensure_open(ctx, state)?;
-    if state_kind(ctx, state)?.is_some() {
+    let kind = state_kind(ctx, state)?;
+    if matches!(kind, StreamKind::StandardInput | StreamKind::StandardTwoWay) {
+        let mut input = std::io::stdin();
+        let mut byte = [0_u8; 1];
+        let count = std::io::Read::read(&mut input, &mut byte).map_err(|_| ObjectError::Layout)?;
+        return byte.first().copied().filter(|_| count != 0).map_or_else(
+            || Ok(args.get(2).unwrap_or(Word::NIL)),
+            |value| Ok(Word::fixnum(i64::from(value))),
+        );
+    }
+    if kind == StreamKind::FileIo {
+        let position = position(ctx, state, POSITION)?;
+        let byte = super::file::read_file_byte(ctx, state, position)?;
+        if let Some(byte) = byte {
+            set_position(ctx, state, POSITION, position.saturating_add(1))?;
+            return Ok(Word::fixnum(i64::from(byte)));
+        }
+        return Ok(args.get(2).unwrap_or(Word::NIL));
+    }
+    if kind != StreamKind::Data {
         return Err(ObjectError::TypeError);
     }
     let position = position(ctx, state, POSITION)?;
@@ -278,7 +502,7 @@ pub(crate) fn write_string_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let string = args.required(0)?;
-    let stream = stream_from_args(args, 1)?;
+    let stream = stream_or_default(ctx, runtime, args, 1, "*STANDARD-OUTPUT*")?;
     let start = args
         .get(2)
         .and_then(Word::as_fixnum)
@@ -312,7 +536,7 @@ pub(crate) fn write_line_adapter(
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
     let string = args.required(0)?;
-    let stream = stream_from_args(args, 1)?;
+    let stream = stream_or_default(ctx, runtime, args, 1, "*STANDARD-OUTPUT*")?;
     let start = args
         .get(2)
         .and_then(Word::as_fixnum)
@@ -347,7 +571,8 @@ pub(crate) fn terpri_adapter(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    write_to_stream(ctx, runtime, stream_from_args(args, 0)?, '\n')?;
+    let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-OUTPUT*")?;
+    write_to_stream(ctx, runtime, stream, '\n')?;
     Ok(Word::NIL)
 }
 
@@ -357,7 +582,7 @@ pub(crate) fn fresh_line_adapter(
     args: &BuiltinArgs<'_>,
     _values: &mut MultipleValues,
 ) -> Result<Word, ObjectError> {
-    let stream = stream_from_args(args, 0)?;
+    let stream = stream_or_default(ctx, runtime, args, 0, "*STANDARD-OUTPUT*")?;
     if peek_character(ctx, stream)? == Some('\n') {
         return Ok(Word::NIL);
     }
@@ -447,7 +672,7 @@ pub(crate) fn get_output_stream_string_adapter(
 ) -> Result<Word, ObjectError> {
     let stream = stream_from_args(args, 0)?;
     let state = stream_state(ctx, stream)?;
-    if state_kind(ctx, state)? != Some(STRING_OUTPUT) {
+    if state_kind(ctx, state)? != StreamKind::StringOutput {
         return Err(ObjectError::TypeError);
     }
     let mut list = simple_vector_ref(ctx, state, 2)?;

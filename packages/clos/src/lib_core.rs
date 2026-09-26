@@ -314,4 +314,3 @@ fn install_class(
     let class = make_class(ctx, runtime, name_word, supers, Word::NIL, Word::fixnum(0))?;
     runtime.define_class(ctx, name, class)
 }
-

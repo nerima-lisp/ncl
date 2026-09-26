@@ -171,4 +171,3 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
     initialization::register_initialization_builtins(runtime)?;
     Ok(())
 }
-

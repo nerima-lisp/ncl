@@ -27,7 +27,7 @@ fn registration_covers_the_owned_symbols() {
     let mut ctx = ThreadContext::new();
     ctx.register(&runtime).unwrap();
     register(&runtime).unwrap();
-    assert_eq!(owned_symbol_count(), 151);
+    assert_eq!(owned_symbol_count(), 152);
 
     // A special operator and a lambda-list keyword from COMMON-LISP.
     let block = find(&runtime, &mut ctx, "COMMON-LISP", "BLOCK");

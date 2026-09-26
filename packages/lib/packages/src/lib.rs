@@ -1,5 +1,8 @@
 //! Typed package-lock builtins.
 
+mod introspection;
+mod symbols;
+
 use ncl_object::{
     Arity, Builtin, BuiltinArgs, BuiltinIdentifier, BuiltinImplementation, BuiltinName,
     BuiltinPackage, FromLispArg, LambdaList, LispError, MultipleValues, ObjectError, ObjectRef,
@@ -321,6 +324,8 @@ pub fn register(runtime: &Runtime) -> Result<(), ObjectError> {
             BuiltinImplementation::direct(descriptor, function),
         )?;
     }
+    introspection::register(runtime)?;
+    symbols::register(runtime)?;
     Ok(())
 }
 

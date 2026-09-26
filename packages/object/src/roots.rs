@@ -28,6 +28,9 @@ pub fn try_pop_root(ctx: &mut ThreadContext, token: RootToken) -> Result<bool, O
     Ok(pop_root(ctx, token))
 }
 
+///
+/// # Errors
+/// Returns the callback's error.
 pub fn with_root<T>(
     ctx: &mut ThreadContext,
     value: &mut Word,
@@ -44,6 +47,12 @@ pub fn with_root<T>(
     finish_root(ctx, token, result)
 }
 
+///
+/// # Errors
+/// Returns the callback's error.
+///
+/// # Panics
+/// Panics if a root token is not at the top of the root stack while cleanup runs.
 pub fn with_roots<T>(
     ctx: &mut ThreadContext,
     values: &[Word],

@@ -1,7 +1,8 @@
 //! Runtime-owned generalized-reference expanders.
 
+use crate::runtime::RootedWord;
 use crate::{ObjectError, Runtime, ThreadContext, Word, symbol_name};
-use ncl_sys::{Heap, RootToken};
+use ncl_sys::Heap;
 
 /// The five values returned by `get-setf-expansion`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -29,8 +30,7 @@ pub(crate) struct PlaceExpanders {
 
 #[derive(Debug)]
 struct PlaceExpanderEntry {
-    operator: Box<Word>,
-    _token: RootToken,
+    operator: RootedWord,
     expander: PlaceExpander,
 }
 
@@ -45,26 +45,18 @@ impl SymbolId {
 }
 
 impl PlaceExpanders {
-    pub(crate) fn register(
-        &mut self,
-        heap: &Heap,
-        operator: SymbolId,
-        expander: PlaceExpander,
-    ) {
+    pub(crate) fn register(&mut self, heap: &Heap, operator: SymbolId, expander: PlaceExpander) {
         if let Some(entry) = self
             .entries
             .iter_mut()
-            .find(|entry| *entry.operator == operator.0)
+            .find(|entry| entry.operator.get() == operator.0)
         {
             entry.expander = expander;
             return;
         }
 
-        let mut operator = Box::new(operator.0);
-        let token = ncl_sys::push_heap_root(heap, &mut operator);
         self.entries.push(PlaceExpanderEntry {
-            operator,
-            _token: token,
+            operator: RootedWord::new(heap, operator.0),
             expander,
         });
     }
@@ -72,7 +64,7 @@ impl PlaceExpanders {
     pub(crate) fn get(&self, operator: SymbolId) -> Option<PlaceExpander> {
         self.entries
             .iter()
-            .find(|entry| *entry.operator == operator.0)
+            .find(|entry| entry.operator.get() == operator.0)
             .map(|entry| entry.expander)
     }
 }

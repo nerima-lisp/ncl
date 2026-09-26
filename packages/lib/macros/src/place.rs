@@ -22,7 +22,8 @@ impl<'runtime> PlaceRegistry<'runtime> {
         operator: Word,
         expander: PlaceExpander,
     ) -> Result<(), ObjectError> {
-        self.runtime.register_place_expander(ctx, operator, expander)
+        self.runtime
+            .register_place_expander(ctx, operator, expander)
     }
 
     /// Read an expander. The runtime lock is released before callers invoke it.

@@ -1,8 +1,8 @@
 #![allow(missing_docs, clippy::missing_errors_doc)]
 #![allow(clippy::trivially_copy_pass_by_ref, clippy::chunks_exact_to_as_chunks)]
 
-use crate::{elements, fresh_symbol, list, symbol, PlaceRegistry, SetfExpansion};
-use ncl_object::{classify_object, ObjectError, ObjectRef, Runtime, ThreadContext, Word};
+use crate::{PlaceRegistry, SetfExpansion, elements, fresh_symbol, list, symbol};
+use ncl_object::{ObjectError, ObjectRef, Runtime, ThreadContext, Word, classify_object};
 
 fn form(
     ctx: &mut ThreadContext,
@@ -357,8 +357,8 @@ pub fn expand_get_setf_expansion(
 mod tests {
     use super::*;
     use ncl_object::{Runtime, ThreadContext};
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     static PLACE_EXPANSIONS: AtomicUsize = AtomicUsize::new(0);
     static PLACE_TEST_LOCK: Mutex<()> = Mutex::new(());

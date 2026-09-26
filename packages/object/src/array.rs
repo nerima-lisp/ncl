@@ -41,6 +41,23 @@ impl ArrayElementType {
         }
     }
 }
+
+pub(crate) fn validate_element(
+    element_type: ArrayElementType,
+    value: Word,
+) -> Result<Word, ObjectError> {
+    let valid = match element_type {
+        ArrayElementType::Bit => matches!(value.as_fixnum(), Some(0 | 1)),
+        ArrayElementType::Character | ArrayElementType::BaseChar => value.is_character(),
+        ArrayElementType::Fixnum | ArrayElementType::Signed | ArrayElementType::Unsigned => {
+            value.as_fixnum().is_some()
+        }
+        ArrayElementType::SingleFloat | ArrayElementType::DoubleFloat | ArrayElementType::T => {
+            true
+        }
+    };
+    valid.then_some(value).ok_or(ObjectError::TypeError)
+}
 pub(crate) fn read(
     ctx: &ThreadContext,
     object: Word,
@@ -375,6 +392,7 @@ pub fn array_row_major_set(
     if index >= total {
         return Err(ObjectError::TypeError);
     }
+    validate_element(array_element_type(ctx, object)?, value)?;
     let displaced = read(
         ctx,
         object,
